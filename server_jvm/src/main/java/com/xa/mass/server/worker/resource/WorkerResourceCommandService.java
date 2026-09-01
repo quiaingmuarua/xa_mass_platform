@@ -1,8 +1,8 @@
 package com.xa.mass.server.worker.resource;
 
-import com.fasterxml.jackson.annotation.JsonValue;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.Map;
@@ -27,7 +27,7 @@ public final class WorkerResourceCommandService {
         );
     }
 
-    public PatchStatus patchPlatformProperties(
+    public ActionOutcome patchPlatformProperties(
             String workerGroupId,
             String workerId,
             Map<String, @Nullable Object> properties
@@ -56,8 +56,8 @@ public final class WorkerResourceCommandService {
             throw failure(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE);
         }
         return switch (result.status()) {
-            case OK -> PatchStatus.UPDATED;
-            case NOOP -> PatchStatus.UNCHANGED;
+            case OK -> ActionOutcome.applied();
+            case NOOP -> ActionOutcome.unchanged();
             case NOT_FOUND -> throw failure(
                     ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
             );
@@ -80,19 +80,4 @@ public final class WorkerResourceCommandService {
         return new ServerException(code, PATCH_OPERATION, null, null);
     }
 
-    public enum PatchStatus {
-        UPDATED("updated"),
-        UNCHANGED("unchanged");
-
-        private final String wireValue;
-
-        PatchStatus(String wireValue) {
-            this.wireValue = wireValue;
-        }
-
-        @JsonValue
-        public String wireValue() {
-            return wireValue;
-        }
-    }
 }

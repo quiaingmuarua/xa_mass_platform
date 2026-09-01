@@ -15,7 +15,6 @@ import type {
   TaskCreateApiResponse,
   TaskExportResult,
   TaskItemApiRequest,
-  TaskItemAppendOutcome,
   TaskItemsAppendApiResponse
 } from "@/task-management/types";
 import { createTaskManagementStore } from "@/stores/task-management";
@@ -58,10 +57,10 @@ describe("HttpFiniteTaskClient", () => {
       .fn()
       .mockResolvedValueOnce({ data: { taskId: "task-1" }, status: 200 })
       .mockResolvedValueOnce({
-        data: { "task-1-00001": { status: "succeeded" } },
+        data: { "task-1-00001": { status: "applied" } },
         status: 200
       })
-      .mockResolvedValueOnce({ data: { status: "approved" }, status: 200 })
+      .mockResolvedValueOnce({ data: { status: "applied" }, status: 200 })
       .mockResolvedValueOnce({ data: download, status: 200, headers: {} });
     const client = new HttpFiniteTaskClient("/api", {
       post
@@ -114,6 +113,28 @@ describe("HttpFiniteTaskClient", () => {
       ready: false
     });
     expect(post.mock.calls[0]?.[2].validateStatus(503)).toBe(true);
+  });
+
+  it("rejects legacy Action response shapes", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { "message-1": { status: "succeeded" } },
+        status: 200
+      })
+      .mockResolvedValueOnce({ data: { status: "approved" }, status: 200 });
+    const client = new HttpFiniteTaskClient("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await expect(
+      client.appendItems("task-1", [
+        { messageId: "message-1", eventCode: "event", payload: {} }
+      ])
+    ).rejects.toMatchObject({ kind: "schema" });
+    await expect(client.approveTask("task-1")).rejects.toMatchObject({
+      kind: "schema"
+    });
   });
 });
 
@@ -183,7 +204,7 @@ describe("finite Task management store", () => {
         )
         .mockResolvedValueOnce({
           "task-1-00101": {
-            status: "failed",
+            status: "rejected",
             code: 12003,
             message: "Task data is temporarily unavailable."
           }
@@ -252,9 +273,9 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
 
 function appended(messageIds: string[]): TaskItemsAppendApiResponse {
   return Object.fromEntries(
-    messageIds.map((messageId): [string, TaskItemAppendOutcome] => [
+    messageIds.map((messageId): [string, TaskItemsAppendApiResponse[string]] => [
       messageId,
-      { status: "succeeded" }
+      { status: "applied" }
     ])
   );
 }

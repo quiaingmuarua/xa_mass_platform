@@ -55,11 +55,15 @@ export interface TaskItemApiRequest {
   payload: Record<string, string>;
 }
 
-export type TaskItemsAppendApiResponse = Record<string, TaskItemAppendOutcome>;
+export type ActionOutcome =
+  | { status: "applied" }
+  | { status: "unchanged" }
+  | { status: "rejected"; code: number; message: string };
 
-export type TaskItemAppendOutcome =
-  | { status: "succeeded" }
-  | { status: "failed"; code: number; message: string };
+export type TaskItemsAppendApiResponse = Record<
+  string,
+  Exclude<ActionOutcome, { status: "unchanged" }>
+>;
 
 export interface TaskExportDownload {
   ready: true;

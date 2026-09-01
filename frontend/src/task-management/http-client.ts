@@ -4,7 +4,7 @@ import type { ZodType } from "zod";
 import { FiniteTaskError } from "./errors";
 import {
   taskApiErrorResponseSchema,
-  taskApprovalResponseSchema,
+  taskActionOutcomeSchema,
   taskCreateResponseSchema,
   taskItemsAppendResponseSchema
 } from "./schemas";
@@ -75,7 +75,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
         { headers: requestHeaders(requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);
-      parseResponse(taskApprovalResponseSchema, response.data, requestId);
+      parseResponse(taskActionOutcomeSchema, response.data, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
     }

@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -43,10 +44,9 @@ public class ResourceCommandController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Worker platform properties patch completed",
+                    description = "Action outcome: applied or unchanged",
                     content = @Content(schema = @Schema(
-                            implementation =
-                                    WorkerResourceCommandService.PatchStatus.class
+                            implementation = ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -64,7 +64,7 @@ public class ResourceCommandController {
                     ))
             )
     })
-    public WorkerResourceCommandService.PatchStatus patchPlatformProperties(
+    public ActionOutcome patchPlatformProperties(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(

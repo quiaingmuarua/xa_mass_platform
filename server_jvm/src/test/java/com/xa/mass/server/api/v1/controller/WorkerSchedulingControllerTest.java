@@ -52,7 +52,7 @@ class WorkerSchedulingControllerTest {
     }
 
     @Test
-    void pauseReturnsANaturalSuccessResponse() throws Exception {
+    void pauseTransitionReturnsApplied() throws Exception {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
@@ -65,12 +65,13 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value("paused"))
-                .andExpect(jsonPath("$.score").doesNotExist());
+                .andExpect(jsonPath("$.status").value("applied"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
     }
 
     @Test
-    void duplicatePauseReturnsAlreadyPaused() throws Exception {
+    void duplicatePauseReturnsUnchanged() throws Exception {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
@@ -83,7 +84,7 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value("already_paused"));
+                .andExpect(jsonPath("$.status").value("unchanged"));
     }
 
     @Test
@@ -141,8 +142,9 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(RESUME_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value("already_resumed"))
-                .andExpect(jsonPath("$.score").doesNotExist());
+                .andExpect(jsonPath("$.status").value("unchanged"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
     }
 
     @Test

@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.resource.WorkerResourceCommandService.PatchStatus;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,20 +27,20 @@ class WorkerResourceCommandServiceTest {
     }
 
     @Test
-    void mapsSuccessfulOwnerResultsToNaturalStatuses() {
+    void mapsSuccessfulOwnerResultsToActionOutcomes() {
         when(workerCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
         )).thenReturn(result(WorkerRuntimeStatus.OK));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
-        )).isEqualTo(PatchStatus.UPDATED);
+        )).isEqualTo(ActionOutcome.applied());
 
         when(workerCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).thenReturn(result(WorkerRuntimeStatus.NOOP));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of()
-        )).isEqualTo(PatchStatus.UNCHANGED);
+        )).isEqualTo(ActionOutcome.unchanged());
     }
 
     @Test

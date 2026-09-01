@@ -233,6 +233,13 @@ contract, an independently meaningful structured resource, a status result
 item or a cross-field invariant. Do not add generic envelopes, `SimpleRequest`
 or one-field status wrappers.
 
+`ActionOutcome` is the one shared mutation-effect item for APIs that genuinely
+share `applied | unchanged | rejected` semantics. Single-resource actions use
+only `applied` or `unchanged`; `rejected` carries the business code and message
+for an independently failed member of a batch. Whole-request failure still
+uses `ApiErrorResponse`. Do not turn `ActionOutcome` into a generic response
+envelope or force identity, observation, delivery or protocol results into it.
+
 Task `items:call` and `results:load` expose the shared
 `succeeded | failed | not_observed` Result view; only succeeded carries an
 opaque payload. This is a Result projection and must not be treated as

@@ -7,7 +7,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.server.api.v1.contract.task.TaskItemAppendOutcome;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -38,7 +38,7 @@ public final class TaskDataService {
         this.taskItems = taskItems;
     }
 
-    public Map<String, TaskItemAppendOutcome> appendFiniteTaskItems(
+    public Map<String, ActionOutcome> appendFiniteTaskItems(
             String taskId,
             List<TaskItemRequest> requestedItems
     ) {
@@ -203,10 +203,10 @@ public final class TaskDataService {
         return ordered;
     }
 
-    private static Map<String, TaskItemAppendOutcome> appendResponse(
+    private static Map<String, ActionOutcome> appendResponse(
             Map<String, TaskItemAppendResult> appended
     ) {
-        var results = new LinkedHashMap<String, TaskItemAppendOutcome>();
+        var results = new LinkedHashMap<String, ActionOutcome>();
         appended.forEach((messageId, result) -> {
             if (result == null) {
                 throw new ServerException(
@@ -216,15 +216,15 @@ public final class TaskDataService {
                         null
                 );
             }
-            TaskItemAppendOutcome outcome = switch (result.status()) {
-                case APPENDED -> TaskItemAppendOutcome.succeeded();
-                case INVALID -> TaskItemAppendOutcome.failed(
+            ActionOutcome outcome = switch (result.status()) {
+                case APPENDED -> ActionOutcome.applied();
+                case INVALID -> ActionOutcome.rejected(
                         ServerErrorCode.INVALID_TASK_DATA_REQUEST
                 );
-                case NOT_FOUND -> TaskItemAppendOutcome.failed(
+                case NOT_FOUND -> ActionOutcome.rejected(
                         ServerErrorCode.TASK_NOT_FOUND
                 );
-                case RETRYABLE -> TaskItemAppendOutcome.failed(
+                case RETRYABLE -> ActionOutcome.rejected(
                         ServerErrorCode.TASK_DATA_UNAVAILABLE
                 );
             };

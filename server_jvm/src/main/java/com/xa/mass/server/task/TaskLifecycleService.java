@@ -5,8 +5,7 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.server.api.v1.contract.task.TaskApprovalResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskCloseResponse;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.List;
@@ -27,7 +26,7 @@ public final class TaskLifecycleService {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
     }
 
-    public TaskApprovalResponse approve(String taskId) {
+    public ActionOutcome approve(String taskId) {
         String operation = "taskLifecycle.approve";
         requireFiniteTask(taskId, operation);
         TaskLifecycleCommands.TaskApprovalResult result;
@@ -40,12 +39,8 @@ public final class TaskLifecycleService {
             throw unavailable(operation, null);
         }
         return switch (result.status()) {
-            case APPROVED -> new TaskApprovalResponse(
-                    TaskApprovalResponse.Status.APPROVED
-            );
-            case ALREADY_APPROVED -> new TaskApprovalResponse(
-                    TaskApprovalResponse.Status.ALREADY_APPROVED
-            );
+            case APPROVED -> ActionOutcome.applied();
+            case ALREADY_APPROVED -> ActionOutcome.unchanged();
             case NOT_FOUND -> throw failure(
                     ServerErrorCode.TASK_NOT_FOUND,
                     "taskLifecycle.approve"
@@ -61,7 +56,7 @@ public final class TaskLifecycleService {
         };
     }
 
-    public TaskCloseResponse close(String taskId) {
+    public ActionOutcome close(String taskId) {
         String operation = "taskLifecycle.close";
         requireFiniteTask(taskId, operation);
         TaskLifecycleCommands.TaskCloseResult result;
@@ -74,12 +69,8 @@ public final class TaskLifecycleService {
             throw unavailable(operation, null);
         }
         return switch (result.status()) {
-            case CLOSED -> new TaskCloseResponse(
-                    TaskCloseResponse.Status.CLOSED
-            );
-            case ALREADY_CLOSED -> new TaskCloseResponse(
-                    TaskCloseResponse.Status.ALREADY_CLOSED
-            );
+            case CLOSED -> ActionOutcome.applied();
+            case ALREADY_CLOSED -> ActionOutcome.unchanged();
             case NOT_FOUND -> throw failure(
                     ServerErrorCode.TASK_NOT_FOUND,
                     "taskLifecycle.close"

@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,10 +38,9 @@ public class WorkerSchedulingController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Worker scheduling pause completed",
+                    description = "Action outcome: applied or unchanged",
                     content = @Content(schema = @Schema(
-                            implementation =
-                                    WorkerSchedulingService.PauseStatus.class
+                            implementation = ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -58,7 +58,7 @@ public class WorkerSchedulingController {
                     ))
             )
     })
-    public WorkerSchedulingService.PauseStatus pauseScheduling(
+    public ActionOutcome pauseScheduling(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId
     ) {
@@ -72,10 +72,9 @@ public class WorkerSchedulingController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Worker scheduling resume completed",
+                    description = "Action outcome: applied or unchanged",
                     content = @Content(schema = @Schema(
-                            implementation =
-                                    WorkerSchedulingService.ResumeStatus.class
+                            implementation = ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -93,7 +92,7 @@ public class WorkerSchedulingController {
                     ))
             )
     })
-    public WorkerSchedulingService.ResumeStatus resumeScheduling(
+    public ActionOutcome resumeScheduling(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId
     ) {

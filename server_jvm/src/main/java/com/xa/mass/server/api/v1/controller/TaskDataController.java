@@ -1,8 +1,8 @@
 package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskItemAppendOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
@@ -99,11 +99,12 @@ public class TaskDataController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Item append outcomes",
+                    description = "Applied or rejected Action outcomes keyed "
+                            + "by messageId",
                     content = @Content(schema = @Schema(
                             type = "object",
                             additionalPropertiesSchema =
-                                    TaskItemAppendOutcome.class
+                                    ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -122,7 +123,7 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<Map<String, TaskItemAppendOutcome>> appendTaskItems(
+    public ResponseEntity<Map<String, ActionOutcome>> appendTaskItems(
             @PathVariable @NotBlank String taskId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,

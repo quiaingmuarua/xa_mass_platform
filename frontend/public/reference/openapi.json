@@ -1,6 +1,22 @@
 {
   "components" : {
     "schemas" : {
+      "ActionOutcome" : {
+        "properties" : {
+          "code" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "applied", "unchanged", "rejected" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiErrorResponse" : {
         "properties" : {
           "code" : {
@@ -81,24 +97,6 @@
         },
         "type" : "object"
       },
-      "TaskApprovalResponse" : {
-        "properties" : {
-          "status" : {
-            "enum" : [ "approved", "already_approved" ],
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "TaskCloseResponse" : {
-        "properties" : {
-          "status" : {
-            "enum" : [ "closed", "already_closed" ],
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
       "TaskCreateRequest" : {
         "properties" : {
           "allocationRule" : {
@@ -133,22 +131,6 @@
       "TaskCreateResponse" : {
         "properties" : {
           "taskId" : {
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "TaskItemAppendOutcome" : {
-        "properties" : {
-          "code" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "message" : {
-            "type" : "string"
-          },
-          "status" : {
-            "enum" : [ "succeeded", "failed" ],
             "type" : "string"
           }
         },
@@ -994,11 +976,11 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TaskApprovalResponse"
+                  "$ref" : "#/components/schemas/ActionOutcome"
                 }
               }
             },
-            "description" : "Task approval completed"
+            "description" : "Action outcome: applied or unchanged"
           },
           "400" : {
             "content" : {
@@ -1042,11 +1024,11 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TaskCloseResponse"
+                  "$ref" : "#/components/schemas/ActionOutcome"
                 }
               }
             },
-            "description" : "Task close completed"
+            "description" : "Action outcome: applied or unchanged"
           },
           "400" : {
             "content" : {
@@ -1106,13 +1088,13 @@
               "*/*" : {
                 "schema" : {
                   "additionalProperties" : {
-                    "$ref" : "#/components/schemas/TaskItemAppendOutcome"
+                    "$ref" : "#/components/schemas/ActionOutcome"
                   },
                   "type" : "object"
                 }
               }
             },
-            "description" : "Item append outcomes"
+            "description" : "Applied or rejected Action outcomes keyed by messageId"
           },
           "400" : {
             "content" : {
@@ -1718,12 +1700,11 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "enum" : [ "updated", "unchanged" ],
-                  "type" : "string"
+                  "$ref" : "#/components/schemas/ActionOutcome"
                 }
               }
             },
-            "description" : "Worker platform properties patch completed"
+            "description" : "Action outcome: applied or unchanged"
           },
           "400" : {
             "content" : {
@@ -1775,12 +1756,11 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "enum" : [ "paused", "already_paused" ],
-                  "type" : "string"
+                  "$ref" : "#/components/schemas/ActionOutcome"
                 }
               }
             },
-            "description" : "Worker scheduling pause completed"
+            "description" : "Action outcome: applied or unchanged"
           },
           "400" : {
             "content" : {
@@ -1832,12 +1812,11 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "enum" : [ "resumed", "already_resumed" ],
-                  "type" : "string"
+                  "$ref" : "#/components/schemas/ActionOutcome"
                 }
               }
             },
-            "description" : "Worker scheduling resume completed"
+            "description" : "Action outcome: applied or unchanged"
           },
           "400" : {
             "content" : {

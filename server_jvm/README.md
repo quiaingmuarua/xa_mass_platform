@@ -175,6 +175,15 @@ lifecycle and ordinary append remain non-public. Calling an operation with the
 wrong public Task type returns `400/12008`; a missing Task returns
 `400/12002`.
 
+Approve and close return the shared action effect
+`{"status":"applied"}` when owner state changes and
+`{"status":"unchanged"}` when the Task is already in the requested state.
+Ordinary Item append keeps its direct Message-ID-keyed Map: each accepted Item
+has `{"status":"applied"}`, while an independently rejected Item has
+`{"status":"rejected","code":...,"message":"..."}`. A whole-request
+failure still uses the non-2xx `ApiErrorResponse`; `rejected` is not a
+single-resource success response.
+
 The Tasks API follows the repository-wide HTTP response contract documented
 below: HTTP is the coarse processing class, while the numeric business code is
 the detailed rejection reason. Successful DTOs remain use-case-specific and
@@ -339,8 +348,8 @@ Group/client key coordinate and never send a Worker ID hint. Transparent
 reconnect reuses the current in-memory identity and Endpoint without preparing
 again.
 
-Worker scheduling control and platform Properties changes use resource-shaped
-success responses:
+Worker scheduling control and platform Properties changes use the same action
+effect contract:
 
 ```text
 POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling
@@ -348,9 +357,10 @@ POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
 ```
 
-Pause returns the JSON string `"paused"` or `"already_paused"`; resume returns
-`"resumed"` or `"already_resumed"`; a Properties patch accepts the direct JSON
-Properties object and returns `"updated"` or `"unchanged"`.
+Pause, resume and Properties patch return `{"status":"applied"}` when the
+requested mutation changes owner state and `{"status":"unchanged"}` when the
+resource is already at the requested value. A Properties patch still accepts
+the direct JSON Properties object.
 Missing resources, invalid changes and state conflicts use the public
 `15008..15010` business codes and never expose the Kernel Owner reason.
 Properties Owner failure uses `503/15011`; scheduling Owner failure keeps

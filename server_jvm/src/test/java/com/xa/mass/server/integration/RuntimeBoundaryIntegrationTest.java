@@ -998,7 +998,7 @@ class RuntimeBoundaryIntegrationTest {
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("\"status\":\"succeeded\"");
+        assertThat(response.body()).contains("\"status\":\"applied\"");
     }
 
     private RunningWorker startWorker(

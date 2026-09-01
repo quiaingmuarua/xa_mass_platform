@@ -445,7 +445,9 @@ class RuntimeApiControllerTest {
                         .content("{\"pool\":\"batch\","
                                 + "\"removed\":null}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value("updated"));
+                .andExpect(jsonPath("$.status").value("applied"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
@@ -507,6 +509,25 @@ class RuntimeApiControllerTest {
     }
 
     @Test
+    void workerPropertiesPatchReturnsUnchangedForOwnerNoop()
+            throws Exception {
+        when(workerCatalog.patchWorkerPlatformProperties(
+                "phone-tools", "worker-1", Map.of("pool", "batch")
+        )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP));
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/platform-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pool\":\"batch\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("unchanged"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
+    }
+
+    @Test
     void exposesVersionedTaskCommandsAndDirectItemResults() throws Exception {
         mockMvc.perform(post("/api/v1/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -538,11 +559,15 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post("/api/v1/tasks/task-1/approve"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("approved"));
+                .andExpect(jsonPath("$.status").value("applied"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
 
         mockMvc.perform(post("/api/v1/tasks/task-1/close"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("closed"));
+                .andExpect(jsonPath("$.status").value("applied"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.message").doesNotExist());
 
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -556,7 +581,7 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message-1.status")
-                        .value("succeeded"))
+                        .value("applied"))
                 .andExpect(jsonPath("$.message-1.code")
                         .doesNotExist())
                 .andExpect(jsonPath("$.message-1.message")
@@ -589,7 +614,30 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void itemAppendUsesOnlySucceededOrFailedPublicOutcomes()
+    void idempotentTaskActionsReturnUnchanged() throws Exception {
+        when(taskLifecycle.approveTask("task-1")).thenReturn(
+                new TaskApprovalResult(
+                        TaskApprovalStatus.ALREADY_APPROVED,
+                        null
+                )
+        );
+        when(taskLifecycle.closeTask("task-1")).thenReturn(
+                new TaskCloseResult(
+                        TaskCloseStatus.ALREADY_CLOSED,
+                        null
+                )
+        );
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/approve"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("unchanged"));
+        mockMvc.perform(post("/api/v1/tasks/task-1/close"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("unchanged"));
+    }
+
+    @Test
+    void itemAppendUsesAppliedOrRejectedActionOutcomes()
             throws Exception {
         when(taskRuntime.appendItems(eq("task-1"), anyList()))
                 .thenReturn(Map.of(
@@ -621,15 +669,15 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message-invalid.status")
-                        .value("failed"))
+                        .value("rejected"))
                 .andExpect(jsonPath("$.message-invalid.code")
                         .value(12001))
                 .andExpect(jsonPath("$.message-missing.status")
-                        .value("failed"))
+                        .value("rejected"))
                 .andExpect(jsonPath("$.message-missing.code")
                         .value(12002))
                 .andExpect(jsonPath("$.message-retry.status")
-                        .value("failed"))
+                        .value("rejected"))
                 .andExpect(jsonPath("$.message-retry.code")
                         .value(12003))
                 .andExpect(jsonPath("$..reason").doesNotExist());

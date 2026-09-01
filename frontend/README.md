@@ -153,7 +153,9 @@ only in API mode:
    Event Name, and Payload key.
 3. Create one ordinary finite Task through `POST /api/v1/tasks`.
 4. Convert each line into one standard TaskItem and append chunks of at most
-   100 Items.
+   100 Items. The direct Message-ID-keyed response uses shared action outcomes:
+   accepted Items are `applied`, and a locally rejected Item carries
+   `rejected + code/message`.
 5. Require explicit approval before calling the Task approve endpoint.
 6. Export successful Results manually through
    `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not

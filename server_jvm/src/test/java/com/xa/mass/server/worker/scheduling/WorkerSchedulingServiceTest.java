@@ -13,10 +13,9 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.scheduling.WorkerSchedulingService.PauseStatus;
-import com.xa.mass.server.worker.scheduling.WorkerSchedulingService.ResumeStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +50,7 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(PauseStatus.PAUSED);
+                .isEqualTo(ActionOutcome.applied());
     }
 
     @Test
@@ -67,7 +66,7 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(PauseStatus.ALREADY_PAUSED);
+                .isEqualTo(ActionOutcome.unchanged());
     }
 
     @Test
@@ -133,14 +132,14 @@ class WorkerSchedulingServiceTest {
         ));
         long before = System.currentTimeMillis();
 
-        ResumeStatus status = service.resume(
+        ActionOutcome status = service.resume(
                 GROUP_ID,
                 WORKER_ID
         );
         long after = System.currentTimeMillis();
 
         assertThat(status)
-                .isEqualTo(ResumeStatus.RESUMED);
+                .isEqualTo(ActionOutcome.applied());
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Long>> observations =
                 ArgumentCaptor.forClass(Map.class);
@@ -216,7 +215,7 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.resume(GROUP_ID, WORKER_ID))
-                .isEqualTo(ResumeStatus.ALREADY_RESUMED);
+                .isEqualTo(ActionOutcome.unchanged());
         verify(workerScores, never()).releaseScoreHolds(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyMap(),

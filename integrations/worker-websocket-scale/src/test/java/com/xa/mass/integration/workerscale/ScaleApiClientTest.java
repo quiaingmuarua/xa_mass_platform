@@ -1,6 +1,7 @@
 package com.xa.mass.integration.workerscale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,12 @@ class ScaleApiClientTest {
 
     private HttpServer server;
     private ScaleApiClient client;
+    private final AtomicReference<Object> appendResponse =
+            new AtomicReference<>(Map.of(
+                    "message-1", Map.of("status", "applied")
+            ));
+    private final AtomicReference<Object> approvalResponse =
+            new AtomicReference<>(Map.of("status", "applied"));
 
     @BeforeEach
     void startServer() throws IOException {
@@ -44,6 +52,14 @@ class ScaleApiClientTest {
                 "/api/v1/runtime-view/worker-groups/group-a/"
                         + "workers:scheduling-observe",
                 exchange -> observation(exchange, "held-hot")
+        );
+        server.createContext(
+                "/api/v1/tasks/task-1/items",
+                exchange -> respond(exchange, 200, appendResponse.get())
+        );
+        server.createContext(
+                "/api/v1/tasks/task-1/approve",
+                exchange -> respond(exchange, 200, approvalResponse.get())
         );
         server.start();
         URI base = URI.create(
@@ -70,6 +86,38 @@ class ScaleApiClientTest {
                 .containsExactly(Map.entry("worker-a", "connected"));
         assertThat(client.observeScheduling("group-a", List.of("worker-a")))
                 .containsExactly(Map.entry("worker-a", "held-hot"));
+    }
+
+    @Test
+    void acceptsCurrentActionOutcomes() {
+        client.appendItems("task-1", List.of(new ScaleApiClient.TaskItem(
+                "message-1",
+                "event.one",
+                Map.of()
+        )));
+        client.approveTask("task-1");
+
+        approvalResponse.set(Map.of("status", "unchanged"));
+        client.approveTask("task-1");
+    }
+
+    @Test
+    void rejectsLegacyActionOutcomes() {
+        appendResponse.set(Map.of(
+                "message-1", Map.of("status", "succeeded")
+        ));
+        approvalResponse.set(Map.of("status", "approved"));
+
+        assertThatThrownBy(() -> client.appendItems(
+                "task-1",
+                List.of(new ScaleApiClient.TaskItem(
+                        "message-1",
+                        "event.one",
+                        Map.of()
+                ))
+        )).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> client.approveTask("task-1"))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     private static void observation(HttpExchange exchange, String state)

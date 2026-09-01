@@ -1,9 +1,8 @@
 package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskApprovalResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskCloseResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.task.TaskCreationService;
@@ -75,9 +74,9 @@ public class TaskControlController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Task approval completed",
+                    description = "Action outcome: applied or unchanged",
                     content = @Content(schema = @Schema(
-                            implementation = TaskApprovalResponse.class
+                            implementation = ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -96,7 +95,7 @@ public class TaskControlController {
             )
     })
     @PostMapping("/{taskId}/approve")
-    public TaskApprovalResponse approveTask(
+    public ActionOutcome approveTask(
             @PathVariable @NotBlank String taskId
     ) {
         return taskLifecycle.approve(taskId);
@@ -106,9 +105,9 @@ public class TaskControlController {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Task close completed",
+                    description = "Action outcome: applied or unchanged",
                     content = @Content(schema = @Schema(
-                            implementation = TaskCloseResponse.class
+                            implementation = ActionOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -127,7 +126,7 @@ public class TaskControlController {
             )
     })
     @PostMapping("/{taskId}/close")
-    public TaskCloseResponse closeTask(
+    public ActionOutcome closeTask(
             @PathVariable @NotBlank String taskId
     ) {
         return taskLifecycle.close(taskId);

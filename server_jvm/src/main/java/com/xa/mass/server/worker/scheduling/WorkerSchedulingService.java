@@ -3,6 +3,7 @@ package com.xa.mass.server.worker.scheduling;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.Collections;
@@ -33,7 +34,7 @@ public final class WorkerSchedulingService {
         );
     }
 
-    public PauseStatus pause(
+    public ActionOutcome pause(
             String workerGroupId,
             String workerId
     ) {
@@ -50,11 +51,11 @@ public final class WorkerSchedulingService {
                     workerId
             );
             return switch (result.status()) {
-                case TRANSITIONED -> PauseStatus.PAUSED;
-                case NOOP -> PauseStatus.ALREADY_PAUSED;
+                case TRANSITIONED -> ActionOutcome.applied();
+                case NOOP -> ActionOutcome.unchanged();
                 case STALE -> {
                     if (result.score() != null) {
-                        yield PauseStatus.ALREADY_PAUSED;
+                        yield ActionOutcome.unchanged();
                     }
                     throw failure(
                             ServerErrorCode.WORKER_RESOURCE_NOT_FOUND,
@@ -73,7 +74,7 @@ public final class WorkerSchedulingService {
         }
     }
 
-    public ResumeStatus resume(
+    public ActionOutcome resume(
             String workerGroupId,
             String workerId
     ) {
@@ -91,7 +92,7 @@ public final class WorkerSchedulingService {
             }
             if (state.timeMillis()
                     != WorkerScoreCore.PAUSE_TIME_MILLIS) {
-                return ResumeStatus.ALREADY_RESUMED;
+                return ActionOutcome.unchanged();
             }
             WorkerScoreTransitionResult result = requireResult(
                     workerScores.releaseScoreHolds(
@@ -102,8 +103,8 @@ public final class WorkerSchedulingService {
                     workerId
             );
             return switch (result.status()) {
-                case TRANSITIONED -> ResumeStatus.RESUMED;
-                case NOOP -> ResumeStatus.ALREADY_RESUMED;
+                case TRANSITIONED -> ActionOutcome.applied();
+                case NOOP -> ActionOutcome.unchanged();
                 case STALE, INVALID -> throw failure(
                         ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT,
                         RESUME_OPERATION
@@ -252,38 +253,6 @@ public final class WorkerSchedulingService {
         private final String wireValue;
 
         SchedulingState(String wireValue) {
-            this.wireValue = wireValue;
-        }
-
-        @JsonValue
-        public String wireValue() {
-            return wireValue;
-        }
-    }
-
-    public enum PauseStatus {
-        PAUSED("paused"),
-        ALREADY_PAUSED("already_paused");
-
-        private final String wireValue;
-
-        PauseStatus(String wireValue) {
-            this.wireValue = wireValue;
-        }
-
-        @JsonValue
-        public String wireValue() {
-            return wireValue;
-        }
-    }
-
-    public enum ResumeStatus {
-        RESUMED("resumed"),
-        ALREADY_RESUMED("already_resumed");
-
-        private final String wireValue;
-
-        ResumeStatus(String wireValue) {
             this.wireValue = wireValue;
         }
 

@@ -115,7 +115,7 @@ final class ScaleApiClient {
                     results.get(item.messageId()),
                     "append result"
             );
-            if (!"succeeded".equals(ScaleJson.string(result, "status"))) {
+            if (!"applied".equals(ScaleJson.string(result, "status"))) {
                 throw ScaleJson.invalid(
                         "Task Item append failed for " + item.messageId()
                 );
@@ -131,7 +131,7 @@ final class ScaleApiClient {
         );
         requireStatus(response.statusCode(), 200, "approve Task");
         String status = ScaleJson.string(response.body(), "status");
-        if (!"approved".equals(status) && !"already_approved".equals(status)) {
+        if (!"applied".equals(status) && !"unchanged".equals(status)) {
             throw ScaleJson.invalid("Task approval status is invalid");
         }
     }

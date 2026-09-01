@@ -177,6 +177,8 @@ class ServerArchitectureBoundaryTest {
         assertThat(countJavaSources(CONTROLLERS)).isEqualTo(10L);
         assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
                 .isRegularFile();
+        assertThat(CONTRACTS.resolve("ActionOutcome.java"))
+                .isRegularFile();
         assertThat(readSources(CONTRACTS))
                 .doesNotContain("@RestController");
         String contractSources = readSources(CONTRACTS);
@@ -197,7 +199,11 @@ class ServerArchitectureBoundaryTest {
                         "TaskItemsAppendRequest",
                         "TaskItemResultsLoadRequest",
                         "WorkerCommandConsumeRequest",
-                        "WorkerResultBatchRequest"
+                        "WorkerResultBatchRequest",
+                        "ActionResponse",
+                        "TaskApprovalResponse",
+                        "TaskCloseResponse",
+                        "TaskItemAppendOutcome"
                 );
         assertThat(readSourcesExcluding(API_V1, CONTROLLERS))
                 .doesNotContain("@RestController");

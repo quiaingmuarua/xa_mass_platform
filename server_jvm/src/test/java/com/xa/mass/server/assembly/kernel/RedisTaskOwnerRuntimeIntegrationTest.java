@@ -1096,9 +1096,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task").status()
-                .wireValue()).isEqualTo("approved");
+                .wireValue()).isEqualTo("applied");
         assertThat(controller.closeTask("public-task").status()
-                .wireValue()).isEqualTo("closed");
+                .wireValue()).isEqualTo("applied");
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {
