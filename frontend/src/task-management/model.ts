@@ -3,7 +3,6 @@ import type { FiniteTaskSeedItem, FiniteTaskStage, TaskItemApiRequest } from "./
 export const MAX_TASK_SEED_BYTES = 1024 * 1024;
 export const MAX_TASK_SEED_LINES = 10_000;
 export const TASK_APPEND_CHUNK_SIZE = 100;
-export const DEFAULT_EXPORT_WAIT_MILLIS = 30_000;
 
 export function stageLabel(stage: FiniteTaskStage): string {
   return {

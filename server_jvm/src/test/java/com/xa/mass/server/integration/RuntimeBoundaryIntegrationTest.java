@@ -236,12 +236,7 @@ class RuntimeBoundaryIntegrationTest {
             awaitStoredResult(taskId, firstMessageId);
             awaitStoredResult(taskId, secondMessageId);
 
-            HttpResponse<String> exported = send(
-                    "POST",
-                    "/api/v1/tasks/" + taskId + "/results:export",
-                    "{\"waitTimeoutMillis\":10000}"
-            );
-            assertThat(exported.statusCode()).isEqualTo(200);
+            HttpResponse<String> exported = awaitTaskExport(taskId);
             assertThat(exported.headers().firstValue("Content-Type"))
                     .hasValueSatisfying(value -> assertThat(value)
                             .startsWith("application/x-ndjson"));
@@ -1181,6 +1176,31 @@ class RuntimeBoundaryIntegrationTest {
             Thread.sleep(20);
         }
         throw new AssertionError("TaskItem success result was not stored");
+    }
+
+    private HttpResponse<String> awaitTaskExport(String taskId)
+            throws Exception {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(8).toNanos();
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/results:export",
+                    null
+            );
+            if (response.statusCode() == 200) {
+                return response;
+            }
+            if (response.statusCode() != 400
+                    || JSON.readTree(response.body()).get("code").asInt()
+                    != 12010) {
+                throw new AssertionError(
+                        "Task Result export returned an unexpected response"
+                );
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("Task Result export did not become ready");
     }
 
     private String createTask(

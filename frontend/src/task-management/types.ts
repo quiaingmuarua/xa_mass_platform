@@ -82,7 +82,7 @@ export interface FiniteTaskClient {
     items: TaskItemApiRequest[]
   ): Promise<TaskItemsAppendApiResponse>;
   approveTask(taskId: string): Promise<void>;
-  exportResults(taskId: string, waitTimeoutMillis: number): Promise<TaskExportResult>;
+  exportResults(taskId: string): Promise<TaskExportResult>;
 }
 
 export interface TaskManagementCatalog {

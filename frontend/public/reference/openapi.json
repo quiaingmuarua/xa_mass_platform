@@ -293,19 +293,6 @@
         },
         "type" : "object"
       },
-      "TaskResultsExportRequest" : {
-        "properties" : {
-          "waitTimeoutMillis" : {
-            "default" : 30000,
-            "description" : "Maximum terminal wait in milliseconds",
-            "format" : "int64",
-            "maximum" : 300000,
-            "minimum" : 1,
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
       "TaskRpcCallItemResponse" : {
         "properties" : {
           "opaqueResultPayload" : {
@@ -1423,6 +1410,7 @@
     },
     "/api/v1/tasks/{taskId}/results:export" : {
       "post" : {
+        "description" : "The Task score is observed once. A non-terminal Task returns TASK_RESULTS_NOT_READY immediately.",
         "operationId" : "exportTaskItemResults",
         "parameters" : [ {
           "in" : "path",
@@ -1433,16 +1421,6 @@
             "type" : "string"
           }
         } ],
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/TaskResultsExportRequest"
-              }
-            }
-          },
-          "required" : true
-        },
         "responses" : {
           "200" : {
             "content" : {

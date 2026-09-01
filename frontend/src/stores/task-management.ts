@@ -3,7 +3,6 @@ import { defineStore } from "pinia";
 
 import {
   chunkTaskItems,
-  DEFAULT_EXPORT_WAIT_MILLIS,
   buildSeedItems,
   materializeTaskItems,
   MAX_TASK_SEED_BYTES,
@@ -200,7 +199,7 @@ export function createTaskManagementStore(
       }
       activeTaskId.value = taskId;
       try {
-        const exported = await client.exportResults(taskId, DEFAULT_EXPORT_WAIT_MILLIS);
+        const exported = await client.exportResults(taskId);
         if (!exported.ready) {
           notice.value = "结果尚未就绪，请稍后手工重试导出。";
           return undefined;

@@ -709,7 +709,7 @@
           <article class="card kernel">
             <span class="owner">WORKER SCORE</span>
             <h3>Scheduling serviceability</h3>
-            <p>HOT/RECOVERY polarity、time、lane与dirty。它不是socket在线状态。</p>
+            <p>HOT/RECOVERY polarity、time、lane与dirty。它不是socket在线状态，也不承诺跨Evidence Batch的单调连接历史；后续Route或Probe证据驱动最终收敛。</p>
           </article>
           <article class="card kernel">
             <span class="owner">TASKITEM SCORE</span>
@@ -766,7 +766,7 @@
               <li>不提供pause、drain、互斥或抢占</li>
               <li>不允许Server从候选Worker中选择目标</li>
             </ul>
-            <p style="margin-top: 18px">DIRECT_CALL只保证投递时不覆盖已有Worker槽位；已经消费的Direct Command不会被后来的TASK撤回。解绑、迁移、排他维护或可靠执行需要独立Fleet owner。</p>
+            <p style="margin-top: 18px">DIRECT_CALL只保证投递时不覆盖已有Worker槽位；已经消费的Direct Command不会被后来的TASK撤回。解绑、迁移、排他维护或可靠执行需要另行定义明确的Owner与机制。</p>
           </article>
         </div>
       </section>
@@ -799,8 +799,26 @@
             <div class="axis">
               <div class="axis-row"><b>Client</b><span>具体网络、透明重连和物理callback serialization。</span></div>
               <div class="axis-row"><b>Transport</b><span>identity、Command decode、同步handler execution、Result encode与endpoint termination。</span></div>
-              <div class="axis-row"><b>Run Controller</b><span>只拥有RUNNING/STOPPED与一次Preparation；不拥有connection或Command。</span></div>
+              <div class="axis-row"><b>Run Controller</b><span>只拥有显式run的RUNNING/STOPPED与一次Preparation；active stop先撤销run，endpoint耗尽后必须由Host再次start。</span></div>
             </div>
+          </article>
+        </div>
+
+        <div class="grid-3" style="margin-top: 14px">
+          <article class="card server">
+            <span class="owner">PREPARE & IDENTITY</span>
+            <h3>Server拥有注册坐标</h3>
+            <p>普通Worker使用<code>CLIENT_KEY</code>；Scenario使用<code>SCENARIO_LAB</code> inventory坐标。单条与1..100批量Prepare进入同一Identity、Binding与canonical Properties owner链，不构成跨Owner事务。</p>
+          </article>
+          <article class="card worker">
+            <span class="owner">JAVA HOST</span>
+            <h3>显式启动，共享平台资源</h3>
+            <p>Manager固定一个WorkerGroup与replica集合；透明重连复用已Prepare坐标，不刷新Properties。WebSocket reader与OkHttp TaskRunner使用Platform-owned virtual threads。</p>
+          </article>
+          <article class="card worker">
+            <span class="owner">SCENARIO LAB</span>
+            <h3>Mutation source，不是真相源</h3>
+            <p>JSONL保存Lab坐标与Properties，不保存workerId。start、stop、原子文件替换和checkpoint只建立本地动作，不能替代Adapter Route或Kernel Scheduling观察。</p>
           </article>
         </div>
 
@@ -862,19 +880,31 @@ DeliveryReport
           <article class="card worker">
             <span class="owner">ASSEMBLY & OBSERVATION</span>
             <h3>Finite edges</h3>
-            <p>Scenario/Android提供具体Definitions与Host；Integrations和Frontend只通过公开API执行acceptance、Runtime Preview、有限Task与诊断调用，不拥有Kernel truth。</p>
+            <p>Scenario/Android提供具体Definitions与Host；四个Integration与Frontend只通过公开API执行correctness、convergence、capacity、Android和有限诊断，不拥有Kernel truth。</p>
           </article>
         </div>
 
         <pre class="code-panel" style="margin-top: 14px">Production
   Java Server / KernelPacerAssembly
     -> KernelPacerRuntime
-       -> fixed Java Pacer applications
-          -> kernel_jvm mechanical owners
-             -> Redis
+       -> Result Convergence
+          -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE
+       -> Dispatch Convergence
+          -> one Main Scheduler / one bounded RUNNING Task observation
+          -> TASK_INITIALIZATION / WORKER_ALLOCATION / TASK_DISPATCH / optional WORKER_SERVICEABILITY
+       -> kernel_jvm mechanical owners -> Redis
+
+Deployment
+  Server Runtime ZIP -> Server + Pacer + Frontend; external Redis
+  Worker SDK ZIP     -> Delivery Contract + Worker Core + Android Worker/Capability artifacts
+  Scenario Host      -> independent source-checkout Lab process
 
 Proof
-  focused JVM -> Redis Owner -> Runtime Boundary -> finite E2E</pre>
+  Owner / Boundary
+    -> Worker Correctness
+    -> Worker Convergence Health
+    -> Worker WebSocket Capacity
+  Android Host -> API 33 Android Worker Proof</pre>
 
         <div class="rule">
           真相分类：<span class="tag">truth</span><span class="tag">evidence</span><span class="tag">address</span>
@@ -887,37 +917,36 @@ Proof
         <div class="section-head">
           <div>
             <p class="kicker">06 · Proof & stability</p>
-            <h2>主结构冻结，proof继续增长</h2>
+            <h2>固定claim，分层证明</h2>
           </div>
           <p>
-            CI按照owner invariant分lane，而不是用一个绿色build代表全系统正确。
-            Deferred内容不能以兼容分支或空接口提前进入生产代码。
+            每个机制claim只有一个Primary Proof；其他lane只能提供前置条件或边界见证。
+            完美正确性、故障收敛、连接容量与Android进程事实不能互相替代。
           </p>
         </div>
 
         <div class="grid-3">
           <article class="card kernel">
-            <span class="owner">FROZEN</span>
+            <span class="owner">STABLE CUT</span>
             <h3>稳定owner cut</h3>
             <ul>
-              <li>三条独立score轴</li>
-              <li>两类Worker allocation mechanism与独立idle disposition</li>
-              <li>Assignment / Result planes</li>
-              <li>纯Java生产Kernel runtime</li>
+              <li>Task、TaskItem、Worker三条独立score轴</li>
+              <li>两类Worker acquisition workflow与同一Matcher</li>
+              <li>一个KernelPacerRuntime、两个Convergence Application</li>
               <li>Kernel / Server / Transport authority</li>
               <li>Adapter与Worker三层结构</li>
-              <li>统一Adapter delivery API</li>
+              <li>Server发行包与Worker Host/SDK独立</li>
             </ul>
           </article>
           <article class="card server">
             <span class="owner">EVOLVING</span>
             <h3>Owner-local增量</h3>
             <ul>
-              <li>有caller的JVM parity</li>
+              <li>有明确生产caller的mechanical operation</li>
               <li>有限Server use case</li>
-              <li>具体SYSTEM handler</li>
-              <li>Scenario / Android capability</li>
-              <li>deployment与observability policy</li>
+              <li>Worker Prepare与Host资源实现</li>
+              <li>Scenario / Android capability和Lab surface</li>
+              <li>deployment、projection与claim-owned proof</li>
             </ul>
           </article>
           <article class="card worker">
@@ -928,16 +957,19 @@ Proof
               <li>分布式DIRECT_CALL correlation</li>
               <li>认证、Adapter HA与显式unbind</li>
               <li>persistent delivery ack</li>
+              <li>大规模活跃Task公平、分片与Property Index</li>
               <li>通用plugin与动态Process系统</li>
             </ul>
           </article>
         </div>
 
-        <div class="grid-4" style="margin-top: 14px">
-          <article class="card"><h3>JVM Contracts</h3><p>mechanical Owner、固定Pacer policy、生命周期与架构守卫。</p></article>
-          <article class="card"><h3>Redis Owner</h3><p>真实Redis范围、原子转换、跨Owner调用闭包与故障语义。</p></article>
-          <article class="card"><h3>Runtime Boundary</h3><p>单一Java Server宿主、四个Java Pacer、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
-          <article class="card"><h3>Capability Task / Android / Frontend</h3><p>普通有限Task、真实文件、Host assembly、Runtime Preview与公开诊断客户端proof。</p></article>
+        <div class="grid-3" style="margin-top: 14px">
+          <article class="card"><h3>Owner & Boundary</h3><p>JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime Boundary证明相邻Owner和协议拓扑。</p></article>
+          <article class="card"><h3>Worker Correctness</h3><p>2 Groups × 10 Workers、100 Items全部成功，并闭合Identity、Route、Extension、Result与Host restart。</p></article>
+          <article class="card"><h3>Convergence Health</h3><p>2 Groups × 50 Workers、1000 offered Items；固定mutation与named witnesses，不把所有offered work声明为成功。</p></article>
+          <article class="card"><h3>Worker Capacity</h3><p>10,000 offered WebSocket Workers、至少9,900 connected + HOT，并检查Server restart和native resource边界。</p></article>
+          <article class="card"><h3>Android Worker Proof</h3><p>API 33单App正确性与进程丢失恢复，加三App同Group的局部故障隔离；Android不是Java Worker的重复见证。</p></article>
+          <article class="card"><h3>Finite Product Lanes</h3><p>Android Host、Frontend、Runtime Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。</p></article>
         </div>
 
         <div class="reading">
@@ -945,6 +977,8 @@ Proof
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"><b>Java Kernel Documents</b><br>score、resource、policy、delivery与result truth。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"><b>Server Runtime</b><br>provider matrix、use case边界与assembly。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"><b>Transport Modules</b><br>Adapter、Worker Core、Java与Android physical implementations。</a>
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/scenario_workers_jvm/README.md"><b>Scenario Worker Lab</b><br>persistent inventory、显式Host lifecycle与local mutation边界。</a>
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/worker-proof-scenarios.md"><b>Worker Proof Scenarios</b><br>Correctness、Convergence、Capacity与Android固定世界。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"><b>Proof Lanes</b><br>每条CI lane究竟证明什么，以及不证明什么。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/AGENTS.md"><b>Agent Change Contract</b><br>修改代码时必须保持的owner与negative guards。</a>
         </div>

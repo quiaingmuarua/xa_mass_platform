@@ -9,6 +9,8 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.operation.OperationAlreadyRunningException;
+import com.xa.mass.server.operation.OperationGuard;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -27,29 +29,30 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public final class TaskResultsExportService {
 
-    static final long DEFAULT_WAIT_TIMEOUT_MILLIS = 30_000;
-    static final long MAX_WAIT_TIMEOUT_MILLIS = 300_000;
-    static final long POLL_INTERVAL_MILLIS = 100;
+    static final String OPERATION_NAMESPACE = "task-results-export";
 
     private final TaskResourceCatalog taskCatalog;
     private final TaskScoreBandCore taskScores;
     private final TaskRuntime taskRuntime;
     private final ObjectMapper mapper;
     private final Path temporaryDirectory;
+    private final OperationGuard operations;
 
     @Autowired
     public TaskResultsExportService(
             TaskResourceCatalog taskCatalog,
             TaskScoreBandCore taskScores,
             TaskRuntime taskRuntime,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            OperationGuard operations
     ) {
         this(
                 taskCatalog,
                 taskScores,
                 taskRuntime,
                 mapper,
-                Path.of(System.getProperty("java.io.tmpdir"))
+                Path.of(System.getProperty("java.io.tmpdir")),
+                operations
         );
     }
 
@@ -58,7 +61,8 @@ public final class TaskResultsExportService {
             TaskScoreBandCore taskScores,
             TaskRuntime taskRuntime,
             ObjectMapper mapper,
-            Path temporaryDirectory
+            Path temporaryDirectory,
+            OperationGuard operations
     ) {
         this.taskCatalog = java.util.Objects.requireNonNull(
                 taskCatalog,
@@ -77,23 +81,29 @@ public final class TaskResultsExportService {
                 temporaryDirectory,
                 "temporaryDirectory"
         );
+        this.operations = java.util.Objects.requireNonNull(
+                operations,
+                "operations"
+        );
     }
 
-    public TaskResultsExport export(
-            String taskId,
-            @Nullable Long requestedWaitTimeoutMillis
-    ) {
-        long waitTimeoutMillis = waitTimeout(requestedWaitTimeoutMillis);
+    public TaskResultsExport export(String taskId) {
         validateFiniteTask(taskId);
-        if (!awaitTerminal(taskId, waitTimeoutMillis)) {
+        requireTerminal(taskId);
+        try {
+            return operations.execute(
+                    OPERATION_NAMESPACE,
+                    taskId,
+                    () -> new TaskResultsExport(writeExport(taskId))
+            );
+        } catch (OperationAlreadyRunningException error) {
             throw new ServerException(
-                    ServerErrorCode.TASK_RESULTS_NOT_READY,
-                    "taskResultsExport.awaitTerminal",
+                    ServerErrorCode.TASK_STATE_CONFLICT,
+                    "taskResultsExport.export",
                     null,
-                    null
+                    error
             );
         }
-        return new TaskResultsExport(writeExport(taskId));
     }
 
     public void transferAndDelete(
@@ -138,39 +148,27 @@ public final class TaskResultsExportService {
         }
     }
 
-    private boolean awaitTerminal(String taskId, long waitTimeoutMillis) {
-        long deadlineNanos = System.nanoTime()
-                + waitTimeoutMillis * 1_000_000L;
-        while (true) {
-            try {
-                var state = taskScores.getScoreStates(List.of(taskId))
-                        .get(taskId);
-                if (state == null) {
-                    throw new IllegalStateException(
-                            "Task score was not available"
-                    );
-                }
-                if (state.band() == TaskScoreBand.TERMINAL) {
-                    return true;
-                }
-            } catch (RuntimeException error) {
-                throw unavailable("awaitTerminal", error);
+    private void requireTerminal(String taskId) {
+        try {
+            var state = taskScores.getScoreStates(List.of(taskId))
+                    .get(taskId);
+            if (state == null) {
+                throw new IllegalStateException(
+                        "Task score was not available"
+                );
             }
-
-            long remainingNanos = deadlineNanos - System.nanoTime();
-            if (remainingNanos <= 0) {
-                return false;
+            if (state.band() != TaskScoreBand.TERMINAL) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_RESULTS_NOT_READY,
+                        "taskResultsExport.requireTerminal",
+                        null,
+                        null
+                );
             }
-            long sleepMillis = Math.min(
-                    POLL_INTERVAL_MILLIS,
-                    Math.max(1, (remainingNanos + 999_999L) / 1_000_000L)
-            );
-            try {
-                Thread.sleep(sleepMillis);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                throw unavailable("awaitTerminal", error);
-            }
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable("requireTerminal", error);
         }
     }
 
@@ -224,21 +222,6 @@ public final class TaskResultsExportService {
             }
             cursor = page.nextCursor();
         } while (!"0".equals(cursor));
-    }
-
-    private static long waitTimeout(@Nullable Long requested) {
-        long timeout = requested == null
-                ? DEFAULT_WAIT_TIMEOUT_MILLIS
-                : requested;
-        if (timeout < 1 || timeout > MAX_WAIT_TIMEOUT_MILLIS) {
-            throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskResultsExport.validate",
-                    "waitTimeoutMillis must be in 1..300000",
-                    null
-            );
-        }
-        return timeout;
     }
 
     private static ServerException unavailable(

@@ -19,6 +19,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemSuccessResultPage;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.operation.OperationGuard;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -38,6 +39,7 @@ class TaskResultsExportServiceTest {
     private TaskResourceCatalog taskCatalog;
     private TaskScoreBandCore taskScores;
     private TaskRuntime taskRuntime;
+    private OperationGuard operations;
     private TaskResultsExportService service;
 
     @TempDir
@@ -48,12 +50,14 @@ class TaskResultsExportServiceTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskScores = mock(TaskScoreBandCore.class);
         taskRuntime = mock(TaskRuntime.class);
+        operations = new OperationGuard();
         service = new TaskResultsExportService(
                 taskCatalog,
                 taskScores,
                 taskRuntime,
                 JsonMapper.builder().build(),
-                temporaryDirectory
+                temporaryDirectory,
+                operations
         );
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of("task-1", finiteTask("task-1")));
@@ -82,7 +86,7 @@ class TaskResultsExportServiceTest {
                         Map.of("message-1", "newer-value")
                 ));
 
-        var export = service.export("task-1", 30_000L);
+        var export = service.export("task-1");
 
         assertThat(Files.readAllLines(export.file())).containsExactly(
                 "{\"messageId\":\"message-1\","
@@ -110,7 +114,7 @@ class TaskResultsExportServiceTest {
                         score("task-1", TaskScoreBand.RUNNING_VISIBLE)
                 ));
 
-        assertThatThrownBy(() -> service.export("task-1", 1L))
+        assertThatThrownBy(() -> service.export("task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_RESULTS_NOT_READY
@@ -123,7 +127,7 @@ class TaskResultsExportServiceTest {
         when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
                 .thenReturn(new TaskItemSuccessResultPage("0", Map.of()));
 
-        var export = service.export("task-1", null);
+        var export = service.export("task-1");
         var output = new ByteArrayOutputStream();
         service.transferAndDelete(export.file(), output);
 
@@ -138,12 +142,12 @@ class TaskResultsExportServiceTest {
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("managed")))
                 .thenReturn(Map.of("managed", managedTask("managed")));
 
-        assertThatThrownBy(() -> service.export("missing", null))
+        assertThatThrownBy(() -> service.export("missing"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_NOT_FOUND
                         ));
-        assertThatThrownBy(() -> service.export("managed", null))
+        assertThatThrownBy(() -> service.export("managed"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED
@@ -152,17 +156,12 @@ class TaskResultsExportServiceTest {
     }
 
     @Test
-    void invalidWaitAndResultOwnerFailureUseTaskDataErrorsAndCleanFiles()
+    void resultOwnerFailureUsesTaskDataErrorAndCleansFiles()
             throws Exception {
-        assertThatThrownBy(() -> service.export("task-1", 0L))
-                .isInstanceOfSatisfying(ServerException.class, error ->
-                        assertThat(error.errorCode()).isEqualTo(
-                                ServerErrorCode.INVALID_TASK_DATA_REQUEST
-                        ));
         when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
                 .thenThrow(new IllegalStateException("redis unavailable"));
 
-        assertThatThrownBy(() -> service.export("task-1", null))
+        assertThatThrownBy(() -> service.export("task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -176,7 +175,7 @@ class TaskResultsExportServiceTest {
     void scoreAndTemporaryFileFailuresAreUnavailable() throws Exception {
         when(taskScores.getScoreStates(List.of("task-1")))
                 .thenThrow(new IllegalStateException("score unavailable"));
-        assertThatThrownBy(() -> service.export("task-1", null))
+        assertThatThrownBy(() -> service.export("task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -189,7 +188,8 @@ class TaskResultsExportServiceTest {
                 taskScores,
                 taskRuntime,
                 JsonMapper.builder().build(),
-                notDirectory
+                notDirectory,
+                operations
         );
         doReturn(Map.of(
                         "task-1",
@@ -197,7 +197,7 @@ class TaskResultsExportServiceTest {
                 ))
                 .when(taskScores)
                 .getScoreStates(List.of("task-1"));
-        assertThatThrownBy(() -> invalidFileService.export("task-1", null))
+        assertThatThrownBy(() -> invalidFileService.export("task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -212,7 +212,7 @@ class TaskResultsExportServiceTest {
                         "0",
                         Map.of("message-1", "result")
                 ));
-        var export = service.export("task-1", null);
+        var export = service.export("task-1");
         OutputStream failingOutput = new OutputStream() {
             @Override
             public void write(int value) throws IOException {
@@ -225,6 +225,32 @@ class TaskResultsExportServiceTest {
                 failingOutput
         )).isInstanceOf(IOException.class);
         assertThat(export.file()).doesNotExist();
+    }
+
+    @Test
+    void concurrentExportForTheSameTaskIsRejectedAndLaterRetryIsAllowed() {
+        operations.execute(
+                TaskResultsExportService.OPERATION_NAMESPACE,
+                "task-1",
+                () -> {
+                    assertThatThrownBy(() -> service.export("task-1"))
+                            .isInstanceOfSatisfying(
+                                    ServerException.class,
+                                    error -> assertThat(error.errorCode())
+                                            .isEqualTo(
+                                                    ServerErrorCode
+                                                            .TASK_STATE_CONFLICT
+                                            )
+                            );
+                    return null;
+                }
+        );
+        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
+                .thenReturn(new TaskItemSuccessResultPage("0", Map.of()));
+
+        var export = service.export("task-1");
+
+        assertThat(export.file()).exists();
     }
 
     private static TaskDescriptor finiteTask(String taskId) {

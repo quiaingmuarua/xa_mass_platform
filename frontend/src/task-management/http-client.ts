@@ -81,19 +81,15 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     }
   }
 
-  async exportResults(
-    taskId: string,
-    waitTimeoutMillis: number
-  ): Promise<TaskExportResult> {
+  async exportResults(taskId: string): Promise<TaskExportResult> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/results:export`,
-        { waitTimeoutMillis },
+        undefined,
         {
           headers: requestHeaders(requestId),
           responseType: "blob",
-          timeout: waitTimeoutMillis + 5_000,
           validateStatus: () => true
         }
       );

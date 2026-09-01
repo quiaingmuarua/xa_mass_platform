@@ -139,11 +139,11 @@ final class ScaleApiClient {
         }
     }
 
-    TaskExport exportTask(String taskId, long waitTimeoutMillis) {
+    TaskExport exportTask(String taskId) {
         ScaleHttpClient.BinaryResponse response = runtime.binary(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/results:export",
-                Map.of("waitTimeoutMillis", waitTimeoutMillis)
+                null
         );
         if (response.statusCode() == 400) {
             Map<String, Object> body = Jsons.parseObject(new String(

@@ -152,7 +152,8 @@ only in API mode:
 5. Require explicit approval before calling the Task approve endpoint.
 6. Export successful Results manually through
    `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not
-   ready and never triggers automatic polling.
+   ready and never triggers automatic polling. The request has no terminal
+   wait budget or JSON body.
 
 Create/append, approve and successful export each request a fresh Task Runtime
 Preview, but failure to refresh never rolls back the completed write. The

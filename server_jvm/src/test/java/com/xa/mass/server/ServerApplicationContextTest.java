@@ -434,6 +434,7 @@ class ServerApplicationContextTest {
                 .path("200")
                 .path("content")
                 .has("application/x-ndjson")).isTrue();
+        assertThat(exportOperation.has("requestBody")).isFalse();
         assertThat(document.path("paths").has(
                 "/api/v1/task-batches/runs"
         )).isFalse();

@@ -77,7 +77,7 @@ describe("HttpFiniteTaskClient", () => {
       { messageId: "task-1-00001", eventCode: "event", payload: { value: "a" } }
     ]);
     await client.approveTask("task-1");
-    await expect(client.exportResults("task-1", 30_000)).resolves.toMatchObject({
+    await expect(client.exportResults("task-1")).resolves.toMatchObject({
       ready: true,
       fileName: "task-1-results.jsonl"
     });
@@ -89,6 +89,8 @@ describe("HttpFiniteTaskClient", () => {
       "/v1/tasks/task-1/results:export"
     ]);
     expect(post.mock.calls[1]?.[1].items[0]).not.toHaveProperty("allocationRule");
+    expect(post.mock.calls[3]?.[1]).toBeUndefined();
+    expect(post.mock.calls[3]?.[2]).not.toHaveProperty("timeout");
   });
 
   it("treats only 400/12010 as an export that can be retried", async () => {
@@ -107,7 +109,7 @@ describe("HttpFiniteTaskClient", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(client.exportResults("task-1", 30_000)).resolves.toEqual({
+    await expect(client.exportResults("task-1")).resolves.toEqual({
       ready: false
     });
     expect(post.mock.calls[0]?.[2].validateStatus(503)).toBe(true);

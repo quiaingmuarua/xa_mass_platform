@@ -374,14 +374,7 @@ public final class WorkerWebSocketScaleMain {
 
         long deadline = deadline(options.taskResultWait());
         do {
-            long remainingMillis = Math.max(
-                    1L,
-                    Duration.ofNanos(deadline - System.nanoTime()).toMillis()
-            );
-            TaskExport result = api.exportTask(
-                    taskId,
-                    Math.min(2_000L, remainingMillis)
-            );
+            TaskExport result = api.exportTask(taskId);
             if (result.ready()) {
                 if (!expected.equals(result.messageIds())) {
                     throw new IllegalStateException(

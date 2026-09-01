@@ -982,18 +982,17 @@ class RuntimeApiControllerTest {
     @Test
     void finiteTaskExportNotReadyUsesTheTaskErrorContract()
             throws Exception {
-        when(taskResultsExport.export("task-1", 30_000L))
+        when(taskResultsExport.export("task-1"))
                 .thenThrow(new com.xa.mass.server.error.ServerException(
                         com.xa.mass.server.error.ServerErrorCode
                                 .TASK_RESULTS_NOT_READY,
-                        "taskResultsExport.awaitTerminal",
+                        "taskResultsExport.requireTerminal",
                         null,
                         null
                 ));
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:export")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"waitTimeoutMillis\":30000}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12010))
                 .andExpect(jsonPath("$.message")

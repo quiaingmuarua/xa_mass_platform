@@ -8,7 +8,6 @@ import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
-import com.xa.mass.server.api.v1.model.TaskResultsExportRequest;
 import com.xa.mass.server.taskdata.TaskDataService;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskResultsExportService;
@@ -163,7 +162,11 @@ public class TaskDataController {
         ));
     }
 
-    @Operation(summary = "Export successful finite Task results")
+    @Operation(
+            summary = "Export successful finite Task results",
+            description = "The Task score is observed once. A non-terminal "
+                    + "Task returns TASK_RESULTS_NOT_READY immediately."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -190,13 +193,9 @@ public class TaskDataController {
     })
     @PostMapping("/{taskId}/results:export")
     public ResponseEntity<StreamingResponseBody> exportTaskItemResults(
-            @PathVariable @NotBlank String taskId,
-            @Valid @RequestBody TaskResultsExportRequest request
+            @PathVariable @NotBlank String taskId
     ) {
-        var export = taskResultsExport.export(
-                taskId,
-                request.waitTimeoutMillis()
-        );
+        var export = taskResultsExport.export(taskId);
         StreamingResponseBody body = output ->
                 taskResultsExport.transferAndDelete(export.file(), output);
         return ResponseEntity.ok()

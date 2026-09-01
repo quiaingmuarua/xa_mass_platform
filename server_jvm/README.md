@@ -177,14 +177,17 @@ below: HTTP is the coarse processing class, while the numeric business code is
 the detailed rejection reason. Successful DTOs remain use-case-specific and
 are not wrapped in a common envelope.
 
-`results:export` supports only finite Tasks. It waits up to the caller's
-`1..300000` millisecond budget (30 seconds by default) for the Task score to
-become `TERMINAL`, returning `400/12010` when that precondition is not
-observed. Once terminal, Server iterates the Task-scoped success Result Hash
-through bounded owner `HSCAN` pages, deduplicates message IDs, and streams
-`application/x-ndjson`. Each line contains only `messageId` and the unchanged
-`opaqueResultPayload`; ordering is not a contract. The temporary file is
-deleted after the response stream closes, including failure paths.
+`results:export` supports only finite Tasks. It observes the Task score once
+and returns `400/12010` immediately unless the Task is already `TERMINAL`.
+Once terminal, Server iterates the Task-scoped success Result Hash through
+bounded owner `HSCAN COUNT 1000` pages, deduplicates Redis cursor observations
+by caller-owned `messageId`, and streams `application/x-ndjson`. Only one
+Result scan and temporary-file generation may run per Task in one Server
+process; an overlapping request returns `400/12009`. The guard is released
+after file generation, so independent response transfers may overlap. Each
+line contains only `messageId` and the unchanged `opaqueResultPayload`;
+ordering is not a contract. The temporary file is deleted after the response
+stream closes, including failure paths.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
