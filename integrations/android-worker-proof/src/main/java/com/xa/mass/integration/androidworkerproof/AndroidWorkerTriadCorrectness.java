@@ -63,7 +63,7 @@ final class AndroidWorkerTriadCorrectness {
                 AndroidWorkerTriadTopology.WORKERS,
                 identities
         );
-        AndroidWorkerTriad.requireSucceeded(
+        triad.requireSucceeded(
                 calls,
                 "triad.correctness.task-success"
         );

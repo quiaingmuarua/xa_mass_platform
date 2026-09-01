@@ -32,6 +32,11 @@ The ten Item identities and `SUCCEEDED` statuses are exact. Result payloads are
 opaque. This lane does not claim throughput, concurrent Handler execution, or
 device-matrix compatibility.
 
+Task submissions use a 250 millisecond `items:call` observation window so the
+accepted message identity returns well inside the HTTP request timeout. A
+`NOT_OBSERVED` response is completed by passively waiting on `results:load`;
+the Harness never retries an ambiguously timed-out mutation request.
+
 ## Convergence Health
 
 The convergence proof establishes four separate mutations:
@@ -70,12 +75,13 @@ performs each ADB or process mutation once after the phase emits its stable
 checkpoint marker. A device-local state establishes that a local mutation
 happened; Network and Scheduling projections remain independent oracles.
 
-Temporary HTTP connection, read and request-timeout failures may be observed
-again until the phase deadline. Invalid JSON, unexpected HTTP status, invalid
-state or identity drift fails immediately. Defaults are 60 seconds for the
-phase wait and 5 seconds for one request, with `requestTimeout <= maximumWait`.
-A phase can therefore exit at most one in-progress request timeout after its
-maximum wait budget.
+Temporary HTTP connection, read and request-timeout failures from observation
+reads may be observed again until the phase deadline. Mutation requests are
+issued once and an ambiguous transport failure fails the phase. Invalid JSON,
+unexpected HTTP status, invalid state or identity drift fails immediately.
+Defaults are 60 seconds for the phase wait and 5 seconds for one request, with
+`requestTimeout <= maximumWait`. A phase can therefore exit at most one
+in-progress request timeout after its maximum wait budget.
 
 ## Three-application isolation
 

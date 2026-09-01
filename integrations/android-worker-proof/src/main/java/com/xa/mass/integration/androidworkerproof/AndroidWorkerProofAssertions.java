@@ -198,6 +198,17 @@ final class AndroidWorkerProofAssertions {
         );
     }
 
+    static void awaitSucceededCall(
+            AndroidRuntimeApiClient runtime,
+            AndroidRuntimeApiClient.TaskCall call,
+            Duration maximumWait
+    ) {
+        if (call.status() == AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
+            return;
+        }
+        awaitResult(runtime, call.messageId(), maximumWait);
+    }
+
     private static AndroidDeviceHostClient.Snapshot requireExpectedWorkerId(
             AndroidDeviceHostClient.Snapshot snapshot,
             String expectedWorkerId

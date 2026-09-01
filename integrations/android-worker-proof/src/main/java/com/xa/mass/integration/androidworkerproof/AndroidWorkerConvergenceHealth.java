@@ -129,7 +129,7 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 10_000L),
-                250L
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         if (delayed.status()
                 != AndroidRuntimeApiClient.CallStatus.NOT_OBSERVED) {
@@ -204,7 +204,7 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 30_000L),
-                250L
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         if (delayed.status()
                 != AndroidRuntimeApiClient.CallStatus.NOT_OBSERVED) {
@@ -376,14 +376,13 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall witness = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 100L),
-                Math.min(options.maximumWait().toMillis(), 30_000L)
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
-        if (witness.status() != AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
-            throw new ProofFailure(
-                    "server-restart.witness",
-                    "Android Worker recovery witness did not succeed"
-            );
-        }
+        AndroidWorkerProofAssertions.awaitSucceededCall(
+                runtime,
+                witness,
+                options.maximumWait()
+        );
         evidence.check("explicitStartConnected", true);
         evidence.check("explicitStartSchedulingState", scheduling);
         evidence.check("recoveryWitnessMessageId", witness.messageId());

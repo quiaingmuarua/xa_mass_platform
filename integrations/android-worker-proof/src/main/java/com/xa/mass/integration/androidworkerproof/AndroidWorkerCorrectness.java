@@ -106,7 +106,7 @@ final class AndroidWorkerCorrectness {
             AndroidRuntimeApiClient.TaskCall call = runtime.callItem(
                     AndroidWorkerProofConstants.DELAY_EVENT,
                     Map.of("delayMillis", 100L),
-                    Math.min(maximumWait.toMillis(), 30_000L)
+                    AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
             );
             if (!messageIds.add(call.messageId())) {
                 throw new ProofFailure(
@@ -114,15 +114,11 @@ final class AndroidWorkerCorrectness {
                         "Android Worker correctness message IDs are duplicated"
                 );
             }
-            if (call.status() != AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
-                throw new ProofFailure(
-                        "correctness.task-success",
-                        "Android Worker correctness Task did not succeed",
-                        java.util.List.of(call.messageId()),
-                        java.util.List.of(),
-                        java.util.List.of()
-                );
-            }
+            AndroidWorkerProofAssertions.awaitSucceededCall(
+                    runtime,
+                    call,
+                    maximumWait
+            );
             succeeded++;
         }
         evidence.check("deviceEventCodes", Set.copyOf(
@@ -218,14 +214,13 @@ final class AndroidWorkerCorrectness {
         AndroidRuntimeApiClient.TaskCall witness = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 100L),
-                Math.min(maximumWait.toMillis(), 30_000L)
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
-        if (witness.status() != AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
-            throw new ProofFailure(
-                    "process-restart.task-success",
-                    "Android Worker process-restart witness did not succeed"
-            );
-        }
+        AndroidWorkerProofAssertions.awaitSucceededCall(
+                runtime,
+                witness,
+                maximumWait
+        );
         evidence.check("processRestartConnected", true);
         evidence.check("processRestartSchedulingState", "hot-score-overdue");
         evidence.check("processRestartMessageId", witness.messageId());

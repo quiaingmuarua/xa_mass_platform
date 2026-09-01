@@ -108,7 +108,7 @@ final class AndroidWorkerTriadConvergenceHealth {
                         survivors,
                         baseline.workersByApplicationId()
                 );
-        AndroidWorkerTriad.requireSucceeded(
+        triad.requireSucceeded(
                 calls,
                 "triad.convergence.survivor-task-success"
         );
@@ -156,7 +156,7 @@ final class AndroidWorkerTriadConvergenceHealth {
                 List.of(target),
                 baseline.workersByApplicationId()
         );
-        AndroidWorkerTriad.requireSucceeded(
+        triad.requireSucceeded(
                 calls,
                 "triad.convergence.recovery-task-success"
         );

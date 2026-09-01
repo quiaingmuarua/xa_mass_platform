@@ -132,7 +132,7 @@ final class AndroidWorkerTriad {
                 .toList();
         List<AndroidRuntimeApiClient.TaskCall> calls = runtime.callItems(
                 requests,
-                Math.min(options.maximumWait().toMillis(), 30_000L)
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         Map<String, AndroidRuntimeApiClient.TaskCall> byApplicationId =
                 new LinkedHashMap<>();
@@ -145,27 +145,26 @@ final class AndroidWorkerTriad {
         return Map.copyOf(byApplicationId);
     }
 
-    static void requireSucceeded(
+    void requireSucceeded(
             Map<String, AndroidRuntimeApiClient.TaskCall> calls,
             String invariant
     ) {
         Set<String> messageIds = new LinkedHashSet<>();
-        List<String> failed = new java.util.ArrayList<>();
         for (Map.Entry<String, AndroidRuntimeApiClient.TaskCall> call
                 : calls.entrySet()) {
-            if (!messageIds.add(call.getValue().messageId())
-                    || call.getValue().status()
-                    != AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
-                failed.add(call.getKey());
+            if (!messageIds.add(call.getValue().messageId())) {
+                throw new ProofFailure(
+                        invariant,
+                        "Android Worker triad Task witness IDs are duplicated",
+                        List.of(),
+                        List.of(),
+                        List.of(call.getKey())
+                );
             }
-        }
-        if (!failed.isEmpty()) {
-            throw new ProofFailure(
-                    invariant,
-                    "Android Worker triad Task witnesses did not all succeed",
-                    List.of(),
-                    List.of(),
-                    failed
+            AndroidWorkerProofAssertions.awaitSucceededCall(
+                    runtime,
+                    call.getValue(),
+                    options.maximumWait()
             );
         }
     }
