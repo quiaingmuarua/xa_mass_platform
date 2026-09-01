@@ -5,8 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class RuntimeApiClient {
 
@@ -99,6 +101,51 @@ final class RuntimeApiClient {
                 Map.of("workerIds", workerIds),
                 "observe scheduling"
         );
+    }
+
+    Map<String, String> previewTaskScoreBands(List<String> taskIds) {
+        if (taskIds == null || taskIds.isEmpty() || taskIds.size() > 100) {
+            throw new IllegalArgumentException(
+                    "taskIds must contain 1..100 values"
+            );
+        }
+        Set<String> requested = new LinkedHashSet<>();
+        for (String taskId : taskIds) {
+            if (taskId == null || taskId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "taskIds must contain non-blank values"
+                );
+            }
+            requested.add(taskId);
+        }
+        JsonHttpClient.Response response = http.send(
+                "POST",
+                "/api/v1/runtime-view/tasks:preview",
+                Map.of("sampleLimit", 100)
+        );
+        requireStatus(response, 200, "preview Tasks");
+        Map<String, String> scoreBands = new LinkedHashMap<>();
+        for (Object raw : JsonValues.array(
+                response.body().get("entries"),
+                "Task preview entries"
+        )) {
+            Map<String, Object> entry = JsonValues.object(
+                    raw,
+                    "Task preview entry"
+            );
+            String taskId = JsonValues.requiredString(entry, "taskId");
+            if (!requested.contains(taskId)) {
+                continue;
+            }
+            String previous = scoreBands.putIfAbsent(
+                    taskId,
+                    JsonValues.requiredString(entry, "scoreBand")
+            );
+            if (previous != null) {
+                throw JsonValues.invalid("Duplicate Task preview identity");
+            }
+        }
+        return Collections.unmodifiableMap(scoreBands);
     }
 
     Map<String, CallStatus> callItems(
@@ -270,6 +317,14 @@ final class RuntimeApiClient {
         SUCCEEDED,
         FAILED,
         NOT_OBSERVED;
+
+        String wireValue() {
+            return switch (this) {
+                case SUCCEEDED -> "succeeded";
+                case FAILED -> "failed";
+                case NOT_OBSERVED -> "not_observed";
+            };
+        }
 
         private static CallStatus fromWire(String value) {
             return switch (value) {

@@ -346,6 +346,88 @@ class WorkerCandidateSelectionPolicyTest {
         verifyNoInteractions(cache);
     }
 
+    @Test
+    void onDemandSelectionReloadsCanonicalDescriptorOnEachCall() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.observeDueHotScores(
+                "group-1",
+                List.of("target"),
+                null
+        )).thenReturn(
+                Map.of("target", 101L),
+                Map.of("target", 102L)
+        );
+        when(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("target")
+        )).thenReturn(
+                Map.of("target", worker("target", Map.of("slot", "B"))),
+                Map.of("target", worker("target", Map.of("slot", "C"))),
+                Map.of("target", worker("target", Map.of("slot", "C")))
+        );
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1",
+                Map.of("target", 102L),
+                6_000L
+        )).thenReturn(Map.of("target", transitioned(202L)));
+        Map<String, WorkerCandidateRequest> requests = Map.of(
+                "candidate",
+                new WorkerCandidateRequest(
+                        0,
+                        1,
+                        Map.of(
+                                "workerId",
+                                Map.of("$eq", "target"),
+                                "worker.slot",
+                                Map.of("$eq", "C")
+                        )
+                )
+        );
+
+        assertEquals(List.of(), policy(
+                scores,
+                cache,
+                catalog
+        ).acquireOnDemandCandidates(
+                "group-1",
+                requests,
+                5_000L
+        ).get("candidate"));
+        Map<String, List<AcquiredWorkerCandidate>> acquired = policy(
+                scores,
+                cache,
+                catalog
+        ).acquireOnDemandCandidates(
+                "group-1",
+                requests,
+                6_000L
+        );
+
+        assertEquals(List.of("target"), acquired.get("candidate").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
+        assertEquals(
+                202L,
+                acquired.get("candidate").getFirst().workerLeaseScore()
+        );
+        verify(scores, never()).acquireObservedHotScoreLeases(
+                "group-1",
+                Map.of("target", 101L),
+                5_000L
+        );
+        verify(scores).acquireObservedHotScoreLeases(
+                "group-1",
+                Map.of("target", 102L),
+                6_000L
+        );
+        verify(catalog, times(3)).getWorkerDescriptors(
+                "group-1",
+                List.of("target")
+        );
+        verifyNoInteractions(cache);
+    }
+
     private static WorkerCandidateSelectionPolicy policy(
             WorkerScoreCore scores,
             CandidateWorkerCache cache,
@@ -391,11 +473,18 @@ class WorkerCandidateSelectionPolicyTest {
     }
 
     private static WorkerDescriptor worker(String workerId, String region) {
+        return worker(workerId, Map.of("region", region));
+    }
+
+    private static WorkerDescriptor worker(
+            String workerId,
+            Map<String, Object> workerProperties
+    ) {
         return new WorkerDescriptor(
                 workerId,
                 "group-1",
                 "adapter-1",
-                Map.of("region", region),
+                workerProperties,
                 Map.of()
         );
     }

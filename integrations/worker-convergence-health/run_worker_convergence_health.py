@@ -90,7 +90,8 @@ def _build_artifacts() -> None:
     _run(
         [
             str(_gradle_wrapper()),
-            "--no-daemon",
+            "--daemon",
+            "-Dorg.gradle.daemon.idletimeout=300000",
             ":server_jvm:bootJar",
             ":scenario_workers_jvm:installDist",
             f"{MODULE_TASK}:classes",
@@ -291,7 +292,8 @@ def _run_harness(
     _run(
         [
             str(_gradle_wrapper()),
-            "--no-daemon",
+            "--daemon",
+            "-Dorg.gradle.daemon.idletimeout=300000",
             f"{MODULE_TASK}:{task}",
             f"--args={encoded}",
         ],

@@ -40,6 +40,15 @@
       "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
     },
     {
+      "path": "kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/KernelPacerRuntimeTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
+    },
+    {
       "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
       "lanes": [
         "jvm_contracts",
@@ -85,8 +94,7 @@
     {
       "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
       "lanes": [
-        "android_host",
-        "runtime_distribution"
+        "android_host"
       ],
       "reason": "Android test-only changes stay on the deterministic Android Host lane."
     },

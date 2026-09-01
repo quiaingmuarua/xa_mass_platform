@@ -100,10 +100,15 @@ stable repository-wide identity.
   offered DELAY and FAIL Items each. Fault Item counts are offered load, not
   observed execution counts.
 - **Mutation:** deterministic stop/start, stopped-state Properties replacement,
-  full Group outage, Server restart and Scenario Host kill.
+  full Group outage, one Server restart with the directed Worker already
+  stopped, and Scenario Host kill. After restart, 99 Workers recover before the
+  stopped Worker is changed and explicitly started once.
 - **Oracle:** established Lab local state followed by independent Network and
   Scheduling convergence plus passive `results:load` observation of named
-  witnesses. Non-witness outcomes and Result payloads are not assertions.
+  witnesses. Host-loss recovery requires all 99 active identities to reconnect
+  unchanged and the explicitly targeted backup to become canonical and HOT; it
+  does not require all 99 to be simultaneously HOT while due work exists.
+  Non-witness outcomes and Result payloads are not assertions.
 - **Prerequisites:** Redis 7, Server and Scenario Host; each scenario owns an
   isolated scope and Lab root.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
@@ -111,7 +116,10 @@ stable repository-wide identity.
   background fault Result status or execution count, executing Worker, random
   coverage, throughput and soak.
 - **Command:** `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15`.
-- **CI cost:** high.
+- **CI execution:** `state` and `task-fault` run as independent matrix jobs with
+  isolated Redis services, scopes and artifacts; the job ID exposes one
+  aggregate Proof Gate result.
+- **CI cost:** medium per scenario; high when run locally through `all`.
 
 ## worker_websocket_scale
 
@@ -136,8 +144,9 @@ stable repository-wide identity.
 ## android_host
 
 - **Primary owner:** Android Worker and XA Android modules.
-- **Claim:** Android assembly, identity persistence, capability Definitions,
-  local lifecycle, Control HTTP and Java proof clients remain compatible.
+- **Claim:** Android library assembly, identity persistence, capability
+  Definitions, local lifecycle, Control HTTP and Java proof clients remain
+  compatible.
 - **Failure model:** lifecycle race, callback ordering, persistence conflict or
   assembly drift.
 - **World:** Robolectric, MockWebServer and JDK HttpServer.
@@ -149,6 +158,9 @@ stable repository-wide identity.
   device behavior.
 - **Command:** Android Debug tasks plus
   `:integrations:android-worker-proof:test`.
+- **Required CI prerequisite:** Android APK Assembly builds the Debug and three
+  fixed Lab APKs independently. Host selection requires this job even when no
+  Emulator artifact upload is needed.
 - **CI cost:** medium.
 
 ## android_emulator
@@ -175,7 +187,9 @@ stable repository-wide identity.
 - **Oracle:** device-local state only establishes local mutations; independent
   Network, Scheduling, Direct Call, `items:call`, and `results:load` APIs prove
   system behavior. Result payloads remain opaque.
-- **Prerequisites:** Linux KVM and Android artifacts.
+- **Prerequisites:** Linux KVM and the Android APK Assembly artifact. Emulator
+  execution does not wait for Android Host tests unless that lane is selected
+  independently.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
   attempts, transient Score sequence, UI behavior, arbitrary replica counts,
   dynamic Properties re-Prepare end to end, multi-device compatibility,

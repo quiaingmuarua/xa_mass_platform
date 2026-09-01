@@ -157,8 +157,12 @@ it must not add a test-only Properties control API to the Demo Host.
 ```
 
 The real proof runs as `Android Worker Proof` in Proof CI on one API 33 x86_64
-emulator. Before installing the Apps, the harness disables Android's cached-app
-freezer and reboots the disposable Emulator so all three Lab processes remain
-executable during the fixed topology proof. This is test-environment control,
-not a background-liveness mechanism. Physical-device vendor policy and
-background execution remain manual proofs.
+emulator. `Android APK Assembly` builds and uploads the Debug and three fixed
+Lab APKs independently of `Android Host`; the Emulator depends only on that
+artifact job. The hosted shell reuses one Gradle daemon with a five-minute idle
+timeout for its Java phases without changing App, Server, Redis-scope or
+evidence lifecycles. Before installing the Apps, the harness disables Android's
+cached-app freezer and reboots the disposable Emulator so all three Lab
+processes remain executable during the fixed topology proof. This is
+test-environment control, not a background-liveness mechanism. Physical-device
+vendor policy and background execution remain manual proofs.

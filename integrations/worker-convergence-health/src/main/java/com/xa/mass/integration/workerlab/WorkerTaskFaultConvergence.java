@@ -208,7 +208,14 @@ final class WorkerTaskFaultConvergence {
                     runtime,
                     evidence
             );
-            awaitHot("backup-world-hot", options, runtime, identities);
+            identities.forEach((worker, workerId) -> require(
+                    workerId.equals(
+                            state.workerIdsByCoordinate().get(
+                                    worker.coordinate()
+                            )
+                    ),
+                    "Worker identity changed across Scenario Host recovery"
+            ));
             String backupWorkerId = identities.get(BACKUP);
             require(backupWorkerId != null, "Backup Worker was not started");
             await(
@@ -222,6 +229,12 @@ final class WorkerTaskFaultConvergence {
                             worker.workerProperties().get("labSlot"),
                             state.labSlot()
                     )
+            );
+            awaitHot(
+                    "backup-hot",
+                    options,
+                    runtime,
+                    Map.of(BACKUP, backupWorkerId)
             );
 
             ConvergenceWorkload workload = new ConvergenceWorkload(

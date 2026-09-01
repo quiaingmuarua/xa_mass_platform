@@ -75,7 +75,7 @@ stop_process() {
 
 clear_scope() {
     local scope=$1
-    python "$workspace/.github/scripts/cleanup_redis_test_scope.py" \
+    python3 "$workspace/.github/scripts/cleanup_redis_test_scope.py" \
         --redis-url redis://127.0.0.1:6379/15 \
         --scope "$scope"
 }
@@ -131,18 +131,23 @@ wait_for_android_boot() {
 }
 
 disable_cached_app_freezer() {
-    local current
-    current=$(adb shell device_config get \
-        activity_manager_native_boot use_freezer | tr -d '\r')
-    if [ "$current" != "false" ]; then
+    local runtime_setting
+    runtime_setting=$(adb shell dumpsys activity settings \
+        | sed -n 's/^[[:space:]]*use_freezer=//p' \
+        | tr -d '\r' \
+        | tail -n 1)
+    if [ "$runtime_setting" != "false" ]; then
         adb shell device_config put \
             activity_manager_native_boot use_freezer false
+        adb shell settings put global cached_apps_freezer disabled
         adb reboot
         wait_for_android_boot
+        runtime_setting=$(adb shell dumpsys activity settings \
+            | sed -n 's/^[[:space:]]*use_freezer=//p' \
+            | tr -d '\r' \
+            | tail -n 1)
     fi
-    current=$(adb shell device_config get \
-        activity_manager_native_boot use_freezer | tr -d '\r')
-    if [ "$current" != "false" ]; then
+    if [ "$runtime_setting" != "false" ]; then
         echo "Android cached-app freezer remained enabled"
         return 1
     fi
@@ -151,13 +156,18 @@ disable_cached_app_freezer() {
 start_server() {
     local label=$1
     local scope=$2
+    local candidate
     local server_jar
-    server_jar=$(find "$workspace/server_jvm/build/libs" \
-        -name 'xa-mass-server-jvm-*.jar' \
-        ! -name '*-plain.jar' -printf '%T@ %p\n' \
-        | sort -nr \
-        | head -n 1 \
-        | cut -d ' ' -f 2-)
+    server_jar=
+    for candidate in \
+            "$workspace"/server_jvm/build/libs/xa-mass-server-jvm-*.jar; do
+        if [ ! -f "$candidate" ] || [[ $candidate == *-plain.jar ]]; then
+            continue
+        fi
+        if [ -z "$server_jar" ] || [ "$candidate" -nt "$server_jar" ]; then
+            server_jar=$candidate
+        fi
+    done
     test -n "$server_jar"
     XA_MASS_REDIS_SCOPE="$scope" java -jar "$server_jar" \
         --spring.profiles.active=scenario-workers \
@@ -243,7 +253,8 @@ run_proof_phase() {
     if [ -n "$baseline_file" ]; then
         arguments+=("--baseline-file=$baseline_file")
     fi
-    "$workspace/gradlew" --no-daemon \
+    "$workspace/gradlew" --daemon \
+        -Dorg.gradle.daemon.idletimeout=300000 \
         ":integrations:android-worker-proof:$task" \
         "--args=${arguments[*]}"
 }

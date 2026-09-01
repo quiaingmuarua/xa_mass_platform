@@ -180,10 +180,10 @@ failure choreography is owned by the hosted shell described below.
 ## Hosted Emulator proof
 
 `Android Worker Proof` is the primary Android platform E2E lane in Proof CI.
-It reuses the Debug and three Lab APKs produced by `Android Host`, boots one API
-33 x86_64 Emulator, and uses ADB only to install/start/force-stop the Apps and
-map shared Runtime ports plus the four distinct Host ports. All device-side
-Worker controls use the three
+It reuses the Debug and three Lab APKs produced by `Android APK Assembly`, boots
+one API 33 x86_64 Emulator, and uses ADB only to
+install/start/force-stop the Apps and map shared Runtime ports plus the four
+distinct Host ports. All device-side Worker controls use the three
 local Host Events above. The Java 21 `:integrations:android-worker-proof`
 module owns workload, assertions, and evidence; the shell owns only Emulator,
 ADB, Server, App, and Redis-scope lifecycles.

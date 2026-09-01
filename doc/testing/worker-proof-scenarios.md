@@ -64,20 +64,26 @@ Directed witnesses use an explicit finite candidate identity set together with
 their mutable Property condition. The other 49 Items keep empty rules, so this
 scenario does not turn bounded candidate discovery into part of its oracle.
 
-1. Baseline all 100 Workers connected and HOT.
-2. Stop five Workers per Group; require disconnected plus recovery/cold, then
-   restore them.
+1. Baseline all 100 Workers connected and HOT, then stop the directed String
+   Worker before any workload and keep it unavailable through wave six.
+2. Stop five other Workers per Group; require disconnected plus recovery/cold,
+   then restore them.
 3. Stop two Workers per Group, replace `convergenceSlot`, start them, observe
    the refreshed snapshot and prove ON_DEMAND matching uses it.
-4. Stop the entire String Group. Phone work completes while String work stays
-   due; restore String and close it.
-5. Complete a recovered baseline witness wave.
-6. Submit a String witness for an unmatched slot, prove it remains unobserved,
-   restart Runtime Server while Scenario Host stays alive, then introduce one
-   matching Worker.
-7. Require 100 stable worker identities, connected/HOT convergence, the parked
-   witness and the final stable witnesses. Fix `700 offered / 70 invalid`, not
-   700 successful Results.
+4. Stop the other 49 String Workers and observe all 50 unavailable. Submit wave
+   one: Phone work completes while String work stays due; restore only those 49
+   and close it.
+5. Complete waves two through five on the recovered world, including the
+   directed witness that proves the earlier `convergenceSlot` replacement.
+6. Reconfirm the directed String Worker is locally STOPPED, Adapter
+   disconnected and Kernel scheduling-unavailable. Submit its unmatched-slot
+   witness and prove it remains unobserved before restarting Runtime Server
+   while Scenario Host stays alive.
+7. Reconnect the other 99 stable identities and require them HOT while the
+   directed Worker remains stopped. Replace its slot, start it exactly once,
+   require its original identity plus connected/HOT/canonical Property, then
+   close the parked witness and final stable wave. Fix `700 offered / 70
+   invalid`, not 700 successful Results.
 
 ### In-Flight Loss Convergence: 300 Items
 
@@ -94,8 +100,11 @@ remains Item one and is the only execution Item promoted to a named oracle.
    and leave serviceable HOT state.
 4. While Host is down, change one backup Worker's `labSlot`; restart 99 Workers
    while excluding the original target.
-5. Require the original in-flight checkpoint witness to finish on the recovered
-   world; submit wave three and complete its two named witnesses.
+5. Require all 99 identities to reconnect unchanged, then require the canonical
+   backup Property and that explicitly targeted backup's HOT state. The proof
+   does not require every recovered Worker to be simultaneously HOT while due
+   work is present. Finish the original in-flight checkpoint witness, submit
+   wave three and complete its two named witnesses.
 6. Kill Host again and prove the checkpoint Result remains final. Fix `300
    offered / 30 invalid`, not 300 successful Results.
 

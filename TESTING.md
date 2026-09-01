@@ -80,7 +80,8 @@ python .github/scripts/check_proof_selection.py
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| Android Host | Android Debug/Lab builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
+| Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
+| Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
@@ -97,6 +98,11 @@ Redis protocol, authentication, TLS and URL handling belong to `redis-py`.
 Proof runners must not maintain a private RESP client. Each high-level lane
 retains one orchestration entrypoint because its process topology and failure
 sequence are part of that lane's evidence.
+
+The local Worker Convergence `--scenario all` entry remains the complete
+one-shot command. Proof CI runs `state` and `task-fault` as two independent
+matrix jobs, each with its own Redis service, scope, evidence artifact and
+summary; the matrix aggregate remains the one selected Proof Gate result.
 
 ## Proof Quality
 
@@ -131,20 +137,26 @@ Worker Convergence Health start Server and Scenario Host as independent
 processes. Worker WebSocket Scale is a separate nightly/manual workflow and is
 not part of the pull-request Proof Gate.
 
-Android Host is the deterministic SDK and Demo Owner lane. Android Worker Proof
-is a separate single-emulator platform lane: its Java Harness owns Correctness
-and Convergence assertions, including one DELAY Handler process-loss recovery,
-while its shell owns only ADB, Server, App, and Redis-scope process
-choreography. Contract-invalid observations fail immediately; only temporary
-HTTP transport failures remain eligible for bounded polling. Android is not a
-secondary witness for the Java Worker proof.
+Android Host owns deterministic SDK, capability, Demo and proof-Harness tests
+plus Android library assembly. Android APK Assembly independently builds the
+Debug and three fixed Lab APKs. It is required when Android Host or Android
+Worker Proof is selected, uploads artifacts only for the Emulator, and may run
+in parallel with Host tests. Android Worker Proof is a separate single-emulator
+platform lane: its Java Harness owns Correctness and Convergence assertions,
+including one DELAY Handler process-loss recovery, while its shell owns only
+ADB, Server, App, and Redis-scope process choreography. Contract-invalid
+observations fail immediately; only temporary HTTP transport failures remain
+eligible for bounded polling. Android is not a secondary witness for the Java
+Worker proof.
 
 ## CI Gate
 
 `.github/workflows/proof-ci.yml` runs on pull requests, `main` pushes and
 manual dispatch. `.github/proof-paths.yml` selects claim-driven lanes. Manual
 dispatch selects every required lane. The final Proof Gate requires each
-selected lane to succeed and each unselected lane to be skipped.
+selected lane to succeed and each unselected lane to be skipped. It checks
+Android Host, Android APK Assembly and Android Worker Proof independently, and
+uses the aggregate result of both Worker Convergence matrix jobs.
 
 CI does not retry failed proofs. Evidence artifacts contain IDs, relation sets,
 counts, state timelines and process logs, never full Worker payloads,

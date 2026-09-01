@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 final class WorkerStateConvergence {
 
@@ -42,6 +44,14 @@ final class WorkerStateConvergence {
     private static final WorkerRef MUTATED_PHONE_WORKER = PHONE_WORKERS.get(5);
     private static final WorkerRef MUTATED_STRING_WORKER = STRING_WORKERS.get(5);
     private static final WorkerRef SLOT_C_WORKER = STRING_WORKERS.get(7);
+    private static final List<WorkerRef> SERVER_RESTART_RUNNING_WORKERS =
+            CONVERGENCE_WORKERS.stream()
+                    .filter(worker -> !SLOT_C_WORKER.equals(worker))
+                    .toList();
+    private static final List<WorkerRef> STRING_WORKERS_EXCEPT_SLOT_C =
+            STRING_WORKERS.stream()
+                    .filter(worker -> !SLOT_C_WORKER.equals(worker))
+                    .toList();
 
     private WorkerStateConvergence() {
     }
@@ -68,15 +78,14 @@ final class WorkerStateConvergence {
                     evidence
             );
             awaitHot("baseline-hot", options, runtime, identities);
-
-            ConvergenceWorkload workload = new ConvergenceWorkload(
+            stopOnceAndAwait(
+                    "slot-c-pre-work-stop",
+                    options,
+                    lab,
                     runtime,
-                    options.proofId()
-            );
-            awaitWaveWitnesses(
-                    workload,
-                    workload.submitWave("wave-1", Map.of(), null),
-                    options
+                    identities,
+                    List.of(SLOT_C_WORKER),
+                    evidence
             );
 
             stopOnceAndAwait(
@@ -87,11 +96,6 @@ final class WorkerStateConvergence {
                     identities,
                     STOPPED_SAMPLE,
                     evidence
-            );
-            awaitWaveWitnesses(
-                    workload,
-                    workload.submitWave("wave-2", Map.of(), null),
-                    options
             );
             startOnceAndAwait(
                     "sample-recovery",
@@ -135,23 +139,28 @@ final class WorkerStateConvergence {
                             MUTATED_SLOT
                     )
             );
-            awaitWaveWitnesses(
-                    workload,
-                    workload.submitWave("wave-3", slotRules, null),
-                    options
-            );
-
-            stopOnceAndAwait(
+            stopLocally(
                     "string-group-outage",
                     options,
                     lab,
+                    STRING_WORKERS_EXCEPT_SLOT_C,
+                    evidence
+            );
+            awaitUnavailable(
+                    "string-group-outage",
+                    options,
                     runtime,
                     identities,
                     STRING_WORKERS,
-                    evidence
+                    evidence,
+                    "disconnected"::equals
+            );
+            ConvergenceWorkload workload = new ConvergenceWorkload(
+                    runtime,
+                    options.proofId()
             );
             List<Batch> outageWave = workload.submitWave(
-                    "wave-4",
+                    "wave-1",
                     Map.of(),
                     null
             );
@@ -173,22 +182,56 @@ final class WorkerStateConvergence {
                     "workerGroupId", STRING_GROUP,
                     "witnessMessageId", stringOutage.witnessMessageId()
             ));
-            startOnceAndAwait(
+            startOnceAndAwaitConnected(
                     "string-group-recovery",
                     options,
                     lab,
                     runtime,
-                    STRING_WORKERS,
+                    STRING_WORKERS_EXCEPT_SLOT_C,
                     evidence
             );
             workload.awaitWitness(stringOutage, options.maximumWait());
 
             awaitWaveWitnesses(
                     workload,
+                    workload.submitWave("wave-2", Map.of(), null),
+                    options
+            );
+            awaitWaveWitnesses(
+                    workload,
+                    workload.submitWave("wave-3", slotRules, null),
+                    options
+            );
+            awaitWaveWitnesses(
+                    workload,
+                    workload.submitWave("wave-4", Map.of(), null),
+                    options
+            );
+            awaitWaveWitnesses(
+                    workload,
                     workload.submitWave("wave-5", Map.of(), null),
                     options
             );
 
+            require(
+                    isStopped(lab.worker(
+                            SLOT_C_WORKER.groupId(),
+                            SLOT_C_WORKER.labWorkerKey()
+                    )),
+                    "Slot C Worker must remain stopped before wave-6"
+            );
+            awaitUnavailable(
+                    "slot-c-pre-restart-unavailable",
+                    options,
+                    runtime,
+                    Map.of(
+                            SLOT_C_WORKER,
+                            workerId(identities, SLOT_C_WORKER)
+                    ),
+                    List.of(SLOT_C_WORKER),
+                    evidence,
+                    "disconnected"::equals
+            );
             List<Batch> restartWave = workload.submitWave(
                     "wave-6",
                     Map.of(STRING_GROUP, slotRule(
@@ -255,34 +298,40 @@ final class WorkerStateConvergence {
         WorkerLabControlClient lab = options.labClient();
         RuntimeApiClient runtime = options.runtimeClient();
         try {
-            requireExactWorld(lab);
+            requireServerRestartWorld(lab);
             Map<WorkerRef, String> reconnected = awaitConnected(
                     "server-restarted-connected",
                     options,
-                    CONVERGENCE_WORKERS,
+                    SERVER_RESTART_RUNNING_WORKERS,
                     lab,
                     runtime,
                     evidence
             );
-            require(
-                    state.workerIdsByCoordinate().equals(coordinates(reconnected)),
-                    "Worker identities changed across Runtime Server restart"
-            );
+            requireStableIdentities(state, reconnected);
             awaitHot("server-restarted-hot", options, runtime, reconnected);
+
+            String expectedSlotCWorkerId = state.workerIdsByCoordinate().get(
+                    SLOT_C_WORKER.coordinate()
+            );
+            require(
+                    expectedSlotCWorkerId != null,
+                    "Phase state is missing the slot C Worker identity"
+            );
+            awaitUnavailable(
+                    "server-restarted-slot-c-unavailable",
+                    options,
+                    runtime,
+                    Map.of(SLOT_C_WORKER, expectedSlotCWorkerId),
+                    List.of(SLOT_C_WORKER),
+                    evidence,
+                    networkState -> "disconnected".equals(networkState)
+                            || "unknown".equals(networkState)
+            );
 
             ConvergenceWorkload workload = new ConvergenceWorkload(
                     runtime,
                     options.proofId(),
                     state.batches()
-            );
-            stopOnceAndAwait(
-                    "slot-c-stop",
-                    options,
-                    lab,
-                    runtime,
-                    reconnected,
-                    List.of(SLOT_C_WORKER),
-                    evidence
             );
             mutatePropertiesOnce(
                     "slot-c-change",
@@ -299,6 +348,12 @@ final class WorkerStateConvergence {
                     List.of(SLOT_C_WORKER),
                     evidence
             );
+            require(
+                    expectedSlotCWorkerId.equals(
+                            workerId(slotCWorker, SLOT_C_WORKER)
+                    ),
+                    "Slot C Worker identity changed across Runtime Server restart"
+            );
             awaitProjectedSlot(
                     "slot-c-projected",
                     options,
@@ -306,9 +361,29 @@ final class WorkerStateConvergence {
                     slotCWorker,
                     UNMATCHED_SLOT
             );
-            workload.awaitWitness(
-                    workload.requireBatch(state.batches(), STRING_GROUP, "wave-6"),
-                    options.maximumWait()
+            Map<WorkerRef, String> completeWorld = new LinkedHashMap<>(
+                    reconnected
+            );
+            completeWorld.putAll(slotCWorker);
+            require(
+                    state.workerIdsByCoordinate().equals(
+                            coordinates(completeWorld)
+                    ),
+                    "Worker identities changed across Runtime Server restart"
+            );
+            Batch restartWitness = workload.requireBatch(
+                    state.batches(),
+                    STRING_GROUP,
+                    "wave-6"
+            );
+            awaitRestartWitness(
+                    options,
+                    lab,
+                    runtime,
+                    evidence,
+                    workload,
+                    restartWitness,
+                    expectedSlotCWorkerId
             );
             awaitWaveWitnesses(
                     workload,
@@ -332,7 +407,7 @@ final class WorkerStateConvergence {
                     "State convergence workload did not offer 7 fail Items"
             );
             evidence.record("complete", "named-witnesses-converged", Map.of(
-                    "workerCount", reconnected.size(),
+                    "workerCount", completeWorld.size(),
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
                     "offeredDelayItemCount", workload.offeredDelayItemCount(),
@@ -341,7 +416,7 @@ final class WorkerStateConvergence {
                     "waveCount", 7
             ));
             evidence.writeSummary("succeeded", Map.of(
-                    "workerCount", reconnected.size(),
+                    "workerCount", completeWorld.size(),
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
                     "offeredDelayItemCount", workload.offeredDelayItemCount(),
@@ -372,6 +447,39 @@ final class WorkerStateConvergence {
         );
     }
 
+    private static void requireServerRestartWorld(WorkerLabControlClient lab) {
+        List<WorkerSnapshot> workers = lab.workers();
+        require(workers.size() == 100, "Convergence world must contain 100 Workers");
+        Map<WorkerRef, WorkerSnapshot> inventory =
+                WorkerLabConvergenceSupport.requireInventory(
+                        lab,
+                        CONVERGENCE_WORKERS
+                );
+        for (WorkerRef worker : CONVERGENCE_WORKERS) {
+            WorkerSnapshot snapshot = inventory.get(worker);
+            boolean expected = SLOT_C_WORKER.equals(worker)
+                    ? isStopped(snapshot)
+                    : "RUNNING".equals(snapshot.desiredState())
+                    && "RUNNING".equals(snapshot.runtimeState());
+            require(
+                    expected,
+                    "Only the slot C Worker may remain stopped after Server restart"
+            );
+        }
+    }
+
+    private static void requireStableIdentities(
+            StateConvergencePhaseState state,
+            Map<WorkerRef, String> observed
+    ) {
+        observed.forEach((worker, workerId) -> require(
+                workerId.equals(
+                        state.workerIdsByCoordinate().get(worker.coordinate())
+                ),
+                "Worker identity changed across Runtime Server restart"
+        ));
+    }
+
     private static void stopOnceAndAwait(
             String phase,
             WorkerLabHarnessOptions options,
@@ -382,32 +490,90 @@ final class WorkerStateConvergence {
             ConvergenceEvidence evidence
     ) {
         stopLocally(phase, options, lab, workers, evidence);
+        awaitUnavailable(
+                phase,
+                options,
+                runtime,
+                identities,
+                workers,
+                evidence,
+                "disconnected"::equals
+        );
+    }
+
+    private static void awaitUnavailable(
+            String phase,
+            WorkerLabHarnessOptions options,
+            RuntimeApiClient runtime,
+            Map<WorkerRef, String> identities,
+            List<WorkerRef> workers,
+            ConvergenceEvidence evidence,
+            Predicate<String> acceptedNetworkState
+    ) {
+        require(
+                !workers.isEmpty() && workers.size() <= 100,
+                "Unavailable observation requires 1..100 Workers"
+        );
+        Map<WorkerRef, String> targetIdentities = new LinkedHashMap<>();
         for (WorkerRef worker : workers) {
             String workerId = identities.get(worker);
             require(workerId != null, "Missing baseline Worker identity");
-            WorkerLabConvergenceSupport.awaitNetworkState(
-                    phase + "-network-" + worker.labWorkerKey(),
-                    options.maximumWait(),
-                    runtime,
-                    options.endpointManagerId(),
-                    workerId,
-                    "disconnected"
-            );
-            String scheduling = WorkerLabConvergenceSupport.awaitUnavailableScheduling(
-                    phase + "-scheduling-" + worker.labWorkerKey(),
-                    options.maximumWait(),
-                    runtime,
-                    worker,
-                    workerId
-            );
-            evidence.record(phase, "worker-unavailable", Map.of(
-                    "workerGroupId", worker.groupId(),
-                    "labWorkerKey", worker.labWorkerKey(),
-                    "workerId", workerId,
-                    "networkState", "disconnected",
-                    "schedulingState", scheduling
-            ));
+            targetIdentities.put(worker, workerId);
         }
+        List<String> workerIds = List.copyOf(targetIdentities.values());
+        Map<String, String> networkStates = await(
+                phase + "-network",
+                options.maximumWait(),
+                () -> runtime.observeNetwork(
+                        options.endpointManagerId(),
+                        workerIds
+                ),
+                states -> states.size() == workerIds.size()
+                        && workerIds.stream().allMatch(workerId ->
+                        acceptedNetworkState.test(states.get(workerId))),
+                states -> WorkerLabConvergenceSupport.describeUnexpectedStates(
+                        workerIds,
+                        states,
+                        acceptedNetworkState
+                )
+        );
+
+        Map<String, List<String>> identitiesByGroup = new LinkedHashMap<>();
+        targetIdentities.forEach((worker, workerId) -> identitiesByGroup
+                .computeIfAbsent(worker.groupId(), ignored -> new ArrayList<>())
+                .add(workerId));
+        Map<String, String> schedulingStates = new LinkedHashMap<>();
+        identitiesByGroup.forEach((groupId, groupWorkerIds) ->
+                schedulingStates.putAll(await(
+                        phase + "-scheduling-" + groupId,
+                        options.maximumWait(),
+                        () -> runtime.observeScheduling(groupId, groupWorkerIds),
+                        states -> states.size() == groupWorkerIds.size()
+                                && groupWorkerIds.stream().allMatch(workerId ->
+                                WorkerLabConvergenceSupport
+                                        .isUnavailableSchedulingState(
+                                                states.get(workerId)
+                                        )),
+                        states -> WorkerLabConvergenceSupport
+                                .describeUnexpectedStates(
+                                        groupWorkerIds,
+                                        states,
+                                        WorkerLabConvergenceSupport
+                                                ::isUnavailableSchedulingState
+                                )
+                ))
+        );
+        targetIdentities.forEach((worker, workerId) -> evidence.record(
+                phase,
+                "worker-unavailable",
+                Map.of(
+                        "workerGroupId", worker.groupId(),
+                        "labWorkerKey", worker.labWorkerKey(),
+                        "workerId", workerId,
+                        "networkState", networkStates.get(workerId),
+                        "schedulingState", schedulingStates.get(workerId)
+                )
+        ));
     }
 
     private static void stopLocally(
@@ -442,6 +608,26 @@ final class WorkerStateConvergence {
             List<WorkerRef> workers,
             ConvergenceEvidence evidence
     ) {
+        Map<WorkerRef, String> connected = startOnceAndAwaitConnected(
+                phase,
+                options,
+                lab,
+                runtime,
+                workers,
+                evidence
+        );
+        awaitHot(phase + "-hot", options, runtime, connected);
+        return connected;
+    }
+
+    private static Map<WorkerRef, String> startOnceAndAwaitConnected(
+            String phase,
+            WorkerLabHarnessOptions options,
+            WorkerLabControlClient lab,
+            RuntimeApiClient runtime,
+            List<WorkerRef> workers,
+            ConvergenceEvidence evidence
+    ) {
         workers.forEach(worker -> {
             lab.start(worker.groupId(), worker.labWorkerKey());
             evidence.record(phase, "start-issued", Map.of(
@@ -457,7 +643,6 @@ final class WorkerStateConvergence {
                 runtime,
                 evidence
         );
-        awaitHot(phase + "-hot", options, runtime, connected);
         return connected;
     }
 
@@ -556,6 +741,130 @@ final class WorkerStateConvergence {
     ) {
         for (Batch batch : wave) {
             workload.awaitWitness(batch, options.maximumWait());
+        }
+    }
+
+    private static void awaitRestartWitness(
+            WorkerLabHarnessOptions options,
+            WorkerLabControlClient lab,
+            RuntimeApiClient runtime,
+            ConvergenceEvidence evidence,
+            ConvergenceWorkload workload,
+            Batch batch,
+            String targetWorkerId
+    ) {
+        try {
+            workload.awaitWitness(batch, options.maximumWait());
+        } catch (RuntimeException error) {
+            recordRestartFailureSnapshot(
+                    options,
+                    lab,
+                    runtime,
+                    evidence,
+                    batch,
+                    targetWorkerId,
+                    error
+            );
+            throw error;
+        }
+    }
+
+    private static void recordRestartFailureSnapshot(
+            WorkerLabHarnessOptions options,
+            WorkerLabControlClient lab,
+            RuntimeApiClient runtime,
+            ConvergenceEvidence evidence,
+            Batch batch,
+            String targetWorkerId,
+            RuntimeException primaryFailure
+    ) {
+        try {
+            Map<String, Object> facts = new LinkedHashMap<>();
+            captureSnapshot(
+                    facts,
+                    "witnessStatus",
+                    () -> {
+                        CallStatus status = runtime.loadResultStatuses(
+                                batch.taskId(),
+                                List.of(batch.witnessMessageId())
+                        ).get(batch.witnessMessageId());
+                        return status == null ? "missing" : status.wireValue();
+                    },
+                    primaryFailure
+            );
+            captureSnapshot(
+                    facts,
+                    "taskScoreBand",
+                    () -> runtime.previewTaskScoreBands(
+                            List.of(batch.taskId())
+                    ).getOrDefault(batch.taskId(), "missing"),
+                    primaryFailure
+            );
+            captureSnapshot(
+                    facts,
+                    "networkState",
+                    () -> runtime.observeNetwork(
+                            options.endpointManagerId(),
+                            List.of(targetWorkerId)
+                    ).getOrDefault(targetWorkerId, "missing"),
+                    primaryFailure
+            );
+            captureSnapshot(
+                    facts,
+                    "schedulingState",
+                    () -> runtime.observeScheduling(
+                            SLOT_C_WORKER.groupId(),
+                            List.of(targetWorkerId)
+                    ).getOrDefault(targetWorkerId, "missing"),
+                    primaryFailure
+            );
+            try {
+                WorkerSnapshot local = lab.worker(
+                        SLOT_C_WORKER.groupId(),
+                        SLOT_C_WORKER.labWorkerKey()
+                );
+                facts.put("localDesiredState", local.desiredState());
+                facts.put("localRuntimeState", local.runtimeState());
+            } catch (RuntimeException snapshotFailure) {
+                primaryFailure.addSuppressed(snapshotFailure);
+                facts.put("localDesiredState", "unavailable");
+                facts.put("localRuntimeState", "unavailable");
+            }
+            try {
+                RuntimeApiClient.WorkerView view = runtime.previewWorkers(
+                        SLOT_C_WORKER.groupId()
+                ).get(SLOT_C_WORKER.labWorkerKey());
+                facts.put(
+                        "slotCProjected",
+                        view != null && UNMATCHED_SLOT.equals(
+                                view.workerProperties().get(SLOT_PROPERTY)
+                        )
+                );
+            } catch (RuntimeException snapshotFailure) {
+                primaryFailure.addSuppressed(snapshotFailure);
+            }
+            facts.put("targetWorkerId", targetWorkerId);
+            evidence.record(
+                    "server-restart",
+                    "wave-6-timeout-snapshot",
+                    facts
+            );
+        } catch (RuntimeException snapshotFailure) {
+            primaryFailure.addSuppressed(snapshotFailure);
+        }
+    }
+
+    private static void captureSnapshot(
+            Map<String, Object> facts,
+            String name,
+            Supplier<String> observation,
+            RuntimeException primaryFailure
+    ) {
+        try {
+            facts.put(name, observation.get());
+        } catch (RuntimeException snapshotFailure) {
+            primaryFailure.addSuppressed(snapshotFailure);
+            facts.put(name, "unavailable");
         }
     }
 

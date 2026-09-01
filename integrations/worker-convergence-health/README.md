@@ -42,9 +42,14 @@ oracle. The scenario proves:
   ON_DEMAND matching;
 - a full String Group outage does not stop Phone progress, and parked String
   witness work finishes after recovery;
-- Server can restart with Scenario Host retained, all 100 identities reconnect,
-  Kernel state converges and an unmatched String witness finishes after a
-  matching Worker appears.
+- after the 100-Worker baseline, the directed String Worker is stopped before
+  any workload and remains unavailable through the pre-restart part of wave
+  six; all other Worker stop/start and Property mutations also finish before
+  wave one. The full String outage stops and restores only the other 49 Workers
+  while the unavailable observation still covers all 50. After the Server
+  restart the other 99 identities reconnect and become HOT while that Worker
+  remains stopped, then one stopped-state Property replacement and one explicit
+  start restore its original identity and finish the witness.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
 witnesses. The workload also offers seven delay and seven fail Items. These are
@@ -60,8 +65,12 @@ Scenario-only checkpoint on the initial target. The runner kills Scenario Host,
 waits for the entire Worker world to become disconnected and unavailable,
 changes one stopped backup Worker's `labSlot`, then restarts 99 Workers while
 excluding the original target. The original checkpoint witness must finish on
-the recovered world, and the recovery-wave witnesses must succeed. A second
-Host loss must not revoke the checkpoint Result.
+the recovered world: all 99 identities must reconnect unchanged, while the
+canonical backup Property and that explicitly targeted backup's HOT state are
+checked before the checkpoint closes. The recovery-wave witnesses must then
+succeed. The proof does not require all 99 Workers to be simultaneously HOT
+while due work is present. A second Host loss must not revoke the checkpoint
+Result.
 
 Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,
@@ -74,9 +83,14 @@ these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
 DSL or automatic compensation.
 
-Timeout diagnostics retain only the unresolved Worker IDs and their latest
-Network or Scheduling states, or the named witness's latest Result status.
-They do not record Worker Properties or result payloads.
+Multi-Worker outage checks issue one bounded Network observation for the
+EndpointManager and one bounded Scheduling observation per WorkerGroup, then
+write the existing per-Worker timeline rows only after the whole requested set
+has converged. A `wave-6` timeout additionally records a best-effort bounded
+snapshot of witness status, managed Task score band, target Network/Scheduling
+and local states, and whether the canonical slot equals C. Snapshot failure is
+suppressed under the original proof failure. Diagnostics do not record Worker
+Properties, score values, Redis keys, Task payloads or result payloads.
 
 ## Run
 
@@ -96,6 +110,10 @@ python integrations/worker-convergence-health/run_worker_convergence_health.py `
 ```
 
 Use `--scenario state` or `--scenario task-fault` for one isolated scenario.
+Proof CI runs those two values as independent matrix jobs; `--scenario all`
+remains the local complete entrypoint. One runner invocation reuses a Gradle
+daemon with a five-minute idle timeout across artifact build and Java phases;
+Server, Host, Redis-scope and mutation ownership are unchanged.
 Default evidence root:
 
 ```text

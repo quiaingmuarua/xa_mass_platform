@@ -275,13 +275,19 @@ jobs:
           retention-days: 7
 
   worker-convergence-health:
-    name: Worker Convergence Health
+    name: Worker Convergence Health (${{ matrix.scenario }})
     needs: changes
     if: >-
       needs.changes.outputs.worker_convergence_health == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - state
+          - task-fault
     services:
       redis:
         image: redis:7.4.10
@@ -309,24 +315,24 @@ jobs:
       - name: Prove Worker convergence health
         run: >-
           python integrations/worker-convergence-health/run_worker_convergence_health.py
-          --scenario all
+          --scenario "${{ matrix.scenario }}"
           --redis-url redis://127.0.0.1:6379/15
           --output-root "$GITHUB_WORKSPACE/build/worker-convergence-health-proof"
       - name: Summarize Worker convergence health proof
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Worker Convergence Health:** workers=100, taskItems=1000, scenarios=2" \
+            echo "- **Worker Convergence Health (${{ matrix.scenario }}):** succeeded" \
               >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Worker Convergence Health:** failed; inspect per-scenario evidence" \
+            echo "- **Worker Convergence Health (${{ matrix.scenario }}):** failed; inspect scenario evidence" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload Worker convergence evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: worker-convergence-health-${{ github.run_attempt }}
+          name: worker-convergence-health-${{ matrix.scenario }}-${{ github.run_attempt }}
           path: |
             build/worker-convergence-health-proof/**
           if-no-files-found: ignore
@@ -337,7 +343,6 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.android_host == 'true' ||
-      needs.changes.outputs.android_emulator == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -361,34 +366,7 @@ jobs:
           :xa-android:capability-http:testDebugUnitTest
           :xa-android:capability-http:assembleDebug
           :xa-android:worker-demo:testDebugUnitTest
-          :xa-android:worker-demo:assembleDebug
-          :xa-android:worker-demo:assembleLab1
-          :xa-android:worker-demo:assembleLab2
-          :xa-android:worker-demo:assembleLab3
           :integrations:android-worker-proof:test
-      - name: Stage Android Worker APKs
-        if: >-
-          needs.changes.outputs.android_emulator == 'true' ||
-          github.event_name == 'workflow_dispatch'
-        run: |
-          mkdir -p build/android-worker-apks
-          cp xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk \
-            build/android-worker-apks/
-          for variant in lab1 lab2 lab3; do
-            cp "xa-android/worker-demo/build/outputs/apk/$variant/xa-mass-android-worker-demo-$variant.apk" \
-              build/android-worker-apks/
-          done
-      - name: Upload Android Worker Demo APK
-        if: >-
-          needs.changes.outputs.android_emulator == 'true' ||
-          github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: android-worker-demo-apk
-          path: build/android-worker-apks/*.apk
-          if-no-files-found: error
-          retention-days: 1
-          overwrite: true
       - name: Summarize Android proof
         if: always()
         run: >-
@@ -416,16 +394,65 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  android-apk:
+    name: Android APK Assembly
+    needs: changes
+    if: >-
+      needs.changes.outputs.android_host == 'true' ||
+      needs.changes.outputs.android_emulator == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Assemble Android Worker APKs
+        run: >-
+          ./gradlew --no-daemon --continue
+          :xa-android:worker-demo:assembleDebug
+          :xa-android:worker-demo:assembleLab1
+          :xa-android:worker-demo:assembleLab2
+          :xa-android:worker-demo:assembleLab3
+      - name: Stage Android Worker APKs
+        run: |
+          mkdir -p build/android-worker-apks
+          cp xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk \
+            build/android-worker-apks/
+          for variant in lab1 lab2 lab3; do
+            cp "xa-android/worker-demo/build/outputs/apk/$variant/xa-mass-android-worker-demo-$variant.apk" \
+              build/android-worker-apks/
+          done
+      - name: Upload Android Worker Demo APKs
+        if: >-
+          needs.changes.outputs.android_emulator == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-worker-demo-apk
+          path: build/android-worker-apks/*.apk
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      - name: Summarize Android APK assembly
+        if: always()
+        run: |
+          echo "- **Android APK Assembly:** ${{ job.status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+
   android-emulator-worker:
     name: Android Worker Proof
     needs:
       - changes
-      - android-host
+      - android-apk
     if: >-
       always() &&
       (needs.changes.outputs.android_emulator == 'true' ||
       github.event_name == 'workflow_dispatch') &&
-      needs.android-host.result == 'success'
+      needs.android-apk.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     concurrency:
@@ -467,7 +494,10 @@ jobs:
           name: android-worker-demo-apk
           path: build/android-emulator-proof/apk
       - name: Build Scenario Server
-        run: ./gradlew --no-daemon :server_jvm:bootJar
+        run: >-
+          ./gradlew --daemon
+          -Dorg.gradle.daemon.idletimeout=300000
+          :server_jvm:bootJar
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -631,6 +661,7 @@ jobs:
       - worker-correctness
       - worker-convergence-health
       - android-host
+      - android-apk
       - android-emulator-worker
       - frontend
       - runtime-distribution
@@ -650,8 +681,10 @@ jobs:
       WORKER_CORRECTNESS_RESULT: ${{ needs.worker-correctness.result }}
       WORKER_CONVERGENCE_HEALTH_SELECTED: ${{ needs.changes.outputs.worker_convergence_health }}
       WORKER_CONVERGENCE_HEALTH_RESULT: ${{ needs.worker-convergence-health.result }}
-      ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
+      ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
+      ANDROID_APK_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
+      ANDROID_APK_RESULT: ${{ needs.android-apk.result }}
       ANDROID_EMULATOR_SELECTED: ${{ needs.changes.outputs.android_emulator }}
       ANDROID_EMULATOR_RESULT: ${{ needs.android-emulator-worker.result }}
       FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
@@ -701,6 +734,8 @@ jobs:
             "Worker Convergence Health" "$WORKER_CONVERGENCE_HEALTH_SELECTED" "$WORKER_CONVERGENCE_HEALTH_RESULT"
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
+          check_lane \
+            "Android APK Assembly" "$ANDROID_APK_SELECTED" "$ANDROID_APK_RESULT"
           check_lane \
             "Android Worker Proof" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
           check_lane \

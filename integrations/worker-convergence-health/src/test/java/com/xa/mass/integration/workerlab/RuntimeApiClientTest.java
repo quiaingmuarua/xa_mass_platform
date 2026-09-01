@@ -54,6 +54,19 @@ class RuntimeApiClientTest {
                                 "worker-1", "recovery"
                         )
                 ));
+            } else if (path.endsWith("/tasks:preview")) {
+                respondJson(exchange, 200, Map.of(
+                        "entries", List.of(
+                                Map.of(
+                                        "taskId", "task-1",
+                                        "scoreBand", "running-normal"
+                                ),
+                                Map.of(
+                                        "taskId", "another-task",
+                                        "scoreBand", "terminal"
+                                )
+                        )
+                ));
             } else if (path.endsWith("/items:call")) {
                 respondJson(exchange, 200, Map.of(
                         "results", Map.of(
@@ -96,6 +109,8 @@ class RuntimeApiClientTest {
                     "group-1",
                     List.of("worker-1")
             )).containsEntry("worker-1", "recovery");
+            assertThat(client.previewTaskScoreBands(List.of("task-1")))
+                    .containsExactly(Map.entry("task-1", "running-normal"));
             assertThat(client.callItems("task-1", List.of(
                     new TaskItem(
                             "message-1",
@@ -141,6 +156,9 @@ class RuntimeApiClientTest {
                 assertThat(body).containsEntry("waitTimeoutMillis", 250L);
                 assertThat(body.get("items")).asList().hasSize(2);
             });
+            assertThat(requests).anySatisfy(body ->
+                    assertThat(body).containsEntry("sampleLimit", 100L)
+            );
         } finally {
             server.stop(0);
         }
