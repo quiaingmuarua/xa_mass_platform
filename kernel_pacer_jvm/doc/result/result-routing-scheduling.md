@@ -142,19 +142,26 @@ guard this Java production layering.
 
 ```text
 TaskItemResultEvents.onItemsSucceeded
-  -> atomically store self-describing code=200 Results
-  -> promote the same Item IDs to FINAL_SUCCESS
+  -> store self-describing code=200 Results in one TaskRuntime HASH operation
+  -> separately request FINAL_SUCCESS promotion for the same Item IDs
 
 WorkerExecutionResultEvents.onTaskSucceeded
   -> apply the correlated successful-execution event per WorkerGroup
 ```
 
 Result storage precedes Item promotion, so a promoted success has stored
-result truth. One TaskRuntime operation encodes each payload with code `200`
-and writes the Result HASH. A later success may replace a terminal failed value
-or an earlier success payload and may promote an Item from `FINAL_FAILED`
-according to the existing Item owner contract. Terminal failed storage uses
-`HSETNX` and therefore cannot replace any observed success.
+result truth under the normal Owner path. The Result write and Score promotion
+are separate operations, not one cross-owner transaction. The current event
+implementation does not interpret or retry a per-Item promotion result that
+did not transition. A stored success may therefore coexist with an `ACTIVE` or
+`FINAL_FAILED` Score, and there is no current guarantee that it will eventually
+reach `FINAL_SUCCESS`.
+
+One TaskRuntime operation encodes each payload with code `200` and writes the
+Result HASH. A later success may replace a terminal failed value or an earlier
+success payload. When that evidence is actually consumed, the existing Item
+owner contract may promote `FINAL_FAILED` to `FINAL_SUCCESS`. Terminal failed
+storage uses `HSETNX` and therefore cannot replace any observed success.
 
 The current Worker event implementation uses
 `releaseCompletedHotScoreHolds`. It accepts only:
@@ -198,11 +205,19 @@ Worker STALE / NOOP / INVALID
 missing DeliveryReport
   -> UNKNOWN; Item claim and Worker lease expiry recover
 
-process crash after queue pop
-  -> evidence may be lost; normal owner expiry paths recover
+process crash after queue pop, before Result storage
+  -> evidence may be lost; claim/lease expiry recovers resource eligibility,
+     not the consumed Result evidence
+
+process crash after success Result storage, before Score promotion
+  -> Result remains success while Score may remain ACTIVE or FINAL_FAILED;
+     there is no pending/ack, replay or Result-to-Score repair owner
+
+process crash after Score promotion, before Worker release
+  -> Item finality remains FINAL_SUCCESS; Worker lease expiry may recover
 
 duplicate evidence
-  -> may be consumed again; owner-local monotonic transition or exact fence
+  -> when consumed again, owner-local monotonic transition or exact fence
      decides whether it changes truth
 ```
 

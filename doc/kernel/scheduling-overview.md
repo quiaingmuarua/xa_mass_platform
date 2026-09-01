@@ -64,7 +64,9 @@ Task score acquire
      -> accept Worker point results or Adapter result batches
      -> DeliveryReport queue
   -> Result Routing
-     -> 200: atomically store success Result + FINAL_SUCCESS + completed-HOT exact release
+     -> 200: store the success Result projection
+             -> separately request FINAL_SUCCESS
+             -> separately apply completed-HOT exact release
      -> Worker failure: keep Item claim coordinate + Worker exact release
      -> Adapter rejection: keep Item claim coordinate + Worker exact release
      -> no result: Item claim and Worker lease expire naturally
@@ -128,7 +130,7 @@ TaskInitializationCheck
 
 TaskRuntime
   owns Task descriptors, canonical TaskItem records, the Task-scoped unified
-  Result HASH and private Success classification SET
+  self-describing Result HASH
 
 TaskItemScoreBandCore
   owns Item initialization, bounded ACTIVE acquisition, observed same-tag
@@ -227,18 +229,19 @@ Worker Delivery Dispatch
 | Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through direct bounded Candidate Cache and Worker Score Owner calls; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
 | Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item-rule on-demand acquisition including `{}` as Group-unrestricted, stable Item binding, failed-result-before-`FINAL_FAILED` exhaustion/TTL closure, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
-| Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; SUCCESS stores the unified Item Result before `FINAL_SUCCESS`, while retryable FAILURE mutates only the correlated Worker lease | Failure reason/history and stronger queue reliability require separate owners and invariants |
+| Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; SUCCESS stores the unified Item Result before separately requesting `FINAL_SUCCESS`, while retryable FAILURE mutates only the correlated Worker lease; ordered calls are not a cross-owner transaction | Failure reason/history, pending/ack queue reliability and Result-to-Score reconciliation require separate owners and invariants |
 
 Both WorkerAllocationMechanisms also have Runtime Boundary Redis E2E proof from
 Java control and Task data APIs through Java scheduling and the Java Server
 Worker Delivery API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transport;
 `ON_DEMAND_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
 the matching Worker transports. Tests install a local observable handler
-rather than a framework-owned business handler. All paths converge through
-Result-Routing, `FINAL_SUCCESS`, Java unified Result query, and exact Worker
-lease release. Java controllers and Pacers use the same stable Kernel Owner
-contracts. Task business commands use Java Redis providers, and production
-uses Java for every Pacer.
+rather than a framework-owned business handler. The successful proof paths
+observe Result-Routing, `FINAL_SUCCESS`, Java unified Result query, and exact
+Worker lease release. They do not establish repair for a process interruption
+between those independent Owner calls. Java controllers and Pacers use the
+same stable Kernel Owner contracts. Task business commands use Java Redis
+providers, and production uses Java for every Pacer.
 Additional Redis proofs cover immediate idle close, private idle park followed
 by scheduling-aware Task Call submission, complete RUNNING soft-limit
 observation, and an external explicit close request.

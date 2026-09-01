@@ -237,7 +237,7 @@ classification lag is allowed.
 | Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
 | Result | `200` or Worker failure | exact release |
 | Result | Adapter rejection | exact release; no online inference |
-| Result | malformed/missing evidence | no guessed mutation; expiry recovers |
+| Result | malformed/missing evidence | no guessed mutation; expiry recovers lease eligibility only |
 
 No branch adds a repair scanner, compensation queue, distributed lock, or
 cross-owner transaction.

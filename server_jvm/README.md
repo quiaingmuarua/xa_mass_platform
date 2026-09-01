@@ -74,9 +74,10 @@ WorkerGroup registration creates no Server mapping or second Task catalog. In
 addition to the create-only Group declaration, it derives one internal Task
 coordinate, creates the fixed `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` descriptor
 through Kernel owners, and approves it. Calls submit one Item through the
-Kernel Task Call command and observe its unified terminal Result through one
-shared probe; both `succeeded` and `failed` complete the bounded wait, while
-only an absent Result remains `not_observed`.
+Kernel Task Call command and observe its Result projection through one shared
+probe; both `succeeded` and `failed` complete the bounded wait, while only an
+absent Result remains `not_observed`. This projection does not establish the
+TaskItem Score finality observed by Kernel lifecycle paths.
 Finite Task input remains caller-owned and is appended through the ordinary
 Task data API in chunks of at most 100. Result export waits only for a finite
 Task's `TERMINAL` score, scans the existing Result owner Hash, and streams a
@@ -226,7 +227,11 @@ or `not_observed`. Only `succeeded` includes
 `opaqueResultPayload`; failed carries no Worker payload or reason. A late
 success may replace an earlier failed snapshot, so each response is a read-time
 view rather than an immutable historical event. Server does not read TaskItem
-score or Task score to derive these states.
+score or Task score to derive these states. Consequently `items:call` or
+`results:load` may report `succeeded` while the independent Item Score remains
+`ACTIVE` or `FINAL_FAILED`. Score-based lifecycle, statistics and Runtime
+projections continue to follow Kernel Score truth; Server neither coordinates
+nor repairs the two resources.
 
 Task Call remains at-least-once. Submission spans existing owner operations,
 so an Item write followed by an unconfirmed idle-park release repair can still return `503`.

@@ -64,6 +64,62 @@ the existing retry budget is exhausted or Item TTL has elapsed, and only then
 promotes the same IDs to `FINAL_FAILED`. A failed-result write exception leaves
 the Item score unchanged for a later idempotent Dispatch round.
 
+## Result And Score Consistency
+
+The two resources have different authority:
+
+```text
+TaskItem Score
+  scheduling / retry / finality / statistics truth
+
+Task Result HASH
+  observed Result query projection
+  may exist before the corresponding Score transition
+```
+
+Neither resource is derived from the other. A Result read does not establish
+TaskItem finality, and a Score read does not supply a Result code or payload.
+For a successful Result, the following combinations are current observable
+states:
+
+| Result projection | TaskItem Score | Meaning |
+| --- | --- | --- |
+| `code=200` | `ACTIVE` | SUCCESS was stored, but success finality was not confirmed |
+| `code=200` | `FINAL_FAILED` | late SUCCESS replaced the failed projection, but its success promotion was not confirmed |
+| `code=200` | `FINAL_SUCCESS` | Result projection and Item finality are aligned |
+
+For one consumed SUCCESS batch, production performs ordered, independent
+owner operations:
+
+```text
+LPOP Result evidence
+  -> TaskRuntime HSET of the success Result
+  -> TaskItemScoreBandCore FINAL_SUCCESS promotion
+  -> WorkerScoreCore completed-HOT exact release
+```
+
+The Result HASH write is completed before promotion is requested, but there is
+no transaction across the LIST, Result HASH, TaskItem Score and Worker Score.
+`DefaultTaskItemResultEvents` also does not interpret or retry a per-Item
+promotion result that did not transition. Therefore `code=200` does not imply
+that the current implementation will eventually establish `FINAL_SUCCESS`.
+
+The relevant interruption windows are:
+
+- after `LPOP` and before Result storage, the evidence may be lost; Item claim
+  and Worker lease expiry can recover resource eligibility, not the consumed
+  Result evidence;
+- after Result storage and before successful Score promotion, the Result is
+  retained while Score may remain `ACTIVE` or `FINAL_FAILED`; there is no
+  pending/ack, replay, Result-to-Score repair scan or compensation Owner;
+- after Score promotion and before Worker release, Item finality is retained
+  and the Worker lease relies on its existing expiry and recovery mechanism.
+
+Terminal failed closure is also ordered rather than cross-owner atomic: Task
+Dispatch stores failed first and then requests `FINAL_FAILED`. Its normal later
+round may repeat that idempotent sequence while the Item remains eligible, but
+there is no general background reconciliation between Result and Score.
+
 ## Owner Rules
 
 ```text
@@ -84,8 +140,8 @@ TaskResultBatchPolicy
   SUCCESS/FAILURE semantic event publication
 
 TaskItemResultEvents
-  owns successful TaskItem Result meaning; it stores payload then promotes
-  finality
+  owns successful TaskItem Result meaning; it orders Result storage before a
+  separate finality promotion request
 
 WorkerExecutionResultEvents
   owns Worker execution success/failure event meaning and is the only Result

@@ -87,8 +87,11 @@ lifecycle live in `kernel_pacer_jvm`.
   event publication; Transport only carries evidence. Finite TaskItem, Worker
   execution and Worker Serviceability Mechanism ports decide which legal
   mechanical transitions implement each event. SUCCESS stores the TaskItem
-  Result before `FINAL_SUCCESS`; retryable FAILURE does not write an Item
-  Result or decide Item finality.
+  Result before separately requesting `FINAL_SUCCESS`; retryable FAILURE does
+  not write an Item Result or decide Item finality. Result HASH is observed
+  projection, while TaskItem Score is finality truth. The ordered Owner calls
+  are not atomic, and no current replay or repair contract guarantees
+  `Result.success => eventually FINAL_SUCCESS`.
 - DeliveryReport and raw Worker lease scores stop at Result Policy boundaries.
   Task execution events may exact-release the correlated opaque Worker lease
   but must not infer connection polarity. Adapter Route/delivery-expiry
@@ -160,7 +163,8 @@ architectures.
   Success replaces an earlier failed value, while terminal failed storage uses
   one fixed internal failure description with `HSETNX` and cannot replace any
   observed Result. Missing remains not observed; there is no companion
-  classification key.
+  classification key. Result reads must not be used to infer TaskItem finality,
+  and Score reads must not be used to infer a Result code or payload.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
@@ -183,8 +187,10 @@ kernel_jvm`.
 - Task Dispatch must store the failed Result marker before promoting an
   exhausted or TTL-expired Item to `FINAL_FAILED`; a failed write leaves the
   score unchanged for a later round. Result FAILURE only releases the
-  correlated Worker lease. Late SUCCESS may replace failed and promote the
-  existing score to `FINAL_SUCCESS`.
+  correlated Worker lease. When late SUCCESS evidence is consumed it may
+  replace failed and request promotion of the existing score to
+  `FINAL_SUCCESS`; destructive consumption and the separate Owner calls do not
+  provide unconditional eventual convergence.
 - `WorkerCandidateSelectionPolicy` owns the three fixed source operations:
   shared HOT acquisition for Task-rule precomputation, cached candidate
   renewal, and Item-rule on-demand acquisition. It also owns Score eligibility,
@@ -229,9 +235,10 @@ or one-field status wrappers.
 
 Task `items:call` and `results:load` expose the shared
 `succeeded | failed | not_observed` Result view; only succeeded carries an
-opaque payload. Export remains finite-Task, terminal-only and success-only: it
-scans the unified owner pages and filters failed without reading Redis directly
-or adding failed/all modes.
+opaque payload. This is a Result projection and must not be treated as
+TaskItem Score finality. Export remains finite-Task, terminal-only and
+success-only: it scans the unified owner pages and filters failed without
+reading Redis directly or adding failed/all modes.
 
 Server must not own:
 

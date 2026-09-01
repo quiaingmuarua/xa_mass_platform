@@ -686,7 +686,7 @@
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Result Routing</div>
-            <div class="flow-body">TASK evidence进入Kernel Result Routing，由owner-local policy决定last-success、retry/finality与Worker disposition。</div>
+            <div class="flow-body">TASK evidence进入Kernel Result Routing。SUCCESS先写Result查询投影，再分别请求TaskItem <code>FINAL_SUCCESS</code>与Worker lease释放；Result HASH不是Item finality truth，这些owner调用有顺序但不跨资源原子。</div>
           </div>
         </div>
 

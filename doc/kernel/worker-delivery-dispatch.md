@@ -543,8 +543,12 @@ contract.
   waiter may already have timed out when its late evidence reaches Server.
 - Instance-local Adapter Direct FIFO and waiter state require Adapter HTTP
   affinity to the Server process that accepted the call.
-- Result Routing fences converge late and duplicate evidence.
-- Item claim and Worker lease expiry recover missing evidence.
+- When late or duplicate evidence is actually consumed, Result Routing owner
+  fences decide whether it changes state; queue loss can prevent that evidence
+  from participating in convergence.
+- Item claim and Worker lease expiry recover resource eligibility after missing
+  evidence. They do not reconcile a success Result already stored before its
+  separate TaskItem Score promotion.
 
 These are deliberate best-effort, at-least-once boundaries. Transport ACK,
 pending/ack Redis, Worker connectivity truth, Adapter ownership HA, and

@@ -339,6 +339,14 @@ shape is a clean cut: legacy raw payload/marker values are corrupt rather than
 implicitly classified, and the retired `results:success` SET is not read or
 migrated.
 
+This HASH is an observed Result projection, not TaskItem scheduling or
+finality truth. TaskItem Score independently owns scheduling, retry, finality
+and statistics. SUCCESS storage precedes a separate `FINAL_SUCCESS` promotion
+request, so `code=200` may be visible while Score is still `ACTIVE` or
+`FINAL_FAILED`. No current pending/ack, replay or reconciliation owner makes
+`Result.success => eventually FINAL_SUCCESS` a guaranteed invariant. Reading
+Score likewise cannot recover a Result code or payload.
+
 The Server RPC wait path uses only this projection. It does not read the
 TaskItem record, Item score, or Task score while waiting. Both succeeded and
 failed complete the corresponding waiter; only a missing HASH field remains
@@ -496,9 +504,9 @@ descriptor keys.
 Bounded descriptor reads pipeline one `HMGET` per requested Task key. They do
 not use `SCAN`, `HGETALL`, or a second descriptor index.
 
-TaskItem records and unified Results use Task-scoped HASH keys; successful IDs
-also use the Task-scoped private classification SET. Item scheduling identity
-remains in the separate TaskItem score ZSET.
+TaskItem records and unified Results use separate Task-scoped HASH keys. Item
+scheduling identity and finality remain in the separate TaskItem score ZSET;
+there is no Result classification SET.
 
 Each canonical Item JSON stores `allocationRule` as either an object or null.
 It is resource metadata, never encoded into Item score.

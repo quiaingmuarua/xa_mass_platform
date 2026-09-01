@@ -576,10 +576,18 @@ late success
 ```
 
 The score kernel owns same-tag claim CAS and cross-tag outcome precedence.
-Result routing owns successful payload storage followed by FINAL_SUCCESS
-promotion. Task closure does not reopen scheduling, but result retention must
-continue accepting a valid `FINAL_SUCCESS` promotion until the owner-defined
-late-result retention barrier expires.
+Result routing owns successful payload storage followed by a separate
+`FINAL_SUCCESS` promotion request. These calls are ordered but are not one
+cross-owner transaction. Result HASH is the observed query projection, while
+this Score remains scheduling, retry, finality and statistics truth. A
+successful Result may therefore coexist with `ACTIVE` or `FINAL_FAILED` after
+an interruption or an unsuccessful promotion result; reading either resource
+does not derive the other. No current replay or reconciliation owner guarantees
+`Result.success => eventually FINAL_SUCCESS`.
+
+Task closure does not reopen scheduling, but result retention must continue
+accepting a valid `FINAL_SUCCESS` promotion until the owner-defined late-result
+retention barrier expires.
 
 ## Exhausted Budget
 
