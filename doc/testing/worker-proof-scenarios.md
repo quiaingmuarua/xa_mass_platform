@@ -152,25 +152,26 @@ real Runtime boundary, Doze/OEM policy, multiple devices, Handler throughput or
 an arbitrary number of Apps. Those are separate claims rather than missing
 iterations of the fixed single-Worker and Triad scenarios.
 
-## Capacity: 10,000 Workers
+## Capacity: 15,000 Identities / 10,000 Active Workers
 
 ```text
-World       1 Group x 10,000 Workers
+World       1 Group x 15,000 identities; 10,000 active after contraction
 Topology    WebSocket, one Adapter, one Java 21 Host
-Workload    two same-Group Tasks x 500 Items, repeated after restart
-Mutation    one Runtime Server restart; Host retained
-Oracle      bounded dual-Task drain, >= 9,900 connected-and-HOT after drain,
-            plus Linux resources
+Workload    ten same-Group Tasks x 5,000 Items, repeated after restart
+Mutation    deterministic 5,000-run stop, then one Server restart; Host retained
+Oracle      10 terminal Tasks + 50,000 exact exports per phase,
+            >= 9,900 active connected-and-HOT after drain, plus Linux resources
 ```
 
-The shared Inventory materializer generates 100 JSONL files of 100 Workers,
-then the lane prepares all 10,000
-identities, holds the threshold for a stable window and drains two fully seeded
-500-Item Tasks. During work it requires the connection threshold but not HOT;
-after drain it re-establishes the connected-and-HOT threshold. It restarts
-Server once without another Prepare and repeats the same workload. It records
-both Task progress trajectories, worker-ID digest, RSS, native thread and
-file-descriptor evidence.
+The shared Inventory materializer generates 150 JSONL files of 100 Workers.
+The lane prepares all 15,000 identities, holds at least 14,800
+connected-and-HOT for a stable window, and stops the final 5,000 coordinates
+without deleting identity. It then drains ten fully seeded 5,000-Item Tasks on
+the retained Fleet. During work it requires the 9,900 connection threshold but
+not HOT; after drain it re-establishes connected-and-HOT and rejects serviceable
+state for the stopped set. It restarts Server once without another Prepare and
+repeats the complete workload. It records Task progress, three identity-set
+digests, RSS, CPU, native-thread and file-descriptor evidence.
 
 This is a resource/capacity claim. It does not repeat the 100-Worker correctness
 oracle, inject the 100-Worker fault matrix, or claim Task fairness, completion
@@ -188,5 +189,5 @@ The scenarios deliberately do not multiply:
   assigned to one health scenario.
 - 1,000 Workers as an intermediate scale; it adds neither the 100-Worker
   convergence claim nor the 10k resource boundary.
-- TaskItem counts beyond 100/1000 for scale theater; Tasks construct sustained
-  due work, while Worker count owns capacity pressure.
+- large TaskItem counts in Correctness or Convergence merely for scale theater;
+  only the dedicated capacity lane owns the two 50,000-Item loaded operations.

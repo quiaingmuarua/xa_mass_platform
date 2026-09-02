@@ -11,6 +11,8 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,17 +42,7 @@ class ScaleApiClientTest {
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/lab/v1/workers", exchange -> respond(
-                exchange,
-                200,
-                Map.of("workers", List.of(Map.of(
-                        "workerGroupId", "group-a",
-                        "labWorkerKey", "workers.jsonl:1",
-                        "desiredState", "RUNNING",
-                        "runtimeState", "RUNNING",
-                        "workerId", "worker-a"
-                )))
-        ));
+        server.createContext("/lab/v1/workers", this::labWorkers);
         server.createContext(
                 "/api/v1/runtime-view/endpoint-managers/adapter-a/"
                         + "workers:network-observe",
@@ -106,6 +98,19 @@ class ScaleApiClientTest {
                 .containsExactly(Map.entry("worker-a", "connected"));
         assertThat(client.observeScheduling("group-a", List.of("worker-a")))
                 .containsExactly(Map.entry("worker-a", "held-hot"));
+    }
+
+    @Test
+    void submitsOneValidatedLabStopBatch() {
+        client.stopWorkers("group-a", List.of(
+                "workers.jsonl:1",
+                "workers.jsonl:2"
+        ));
+
+        assertThatThrownBy(() -> client.stopWorkers(
+                "group-a",
+                java.util.Collections.nCopies(101, "duplicate")
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -172,6 +177,25 @@ class ScaleApiClientTest {
     }
 
     @Test
+    void loadsOneThousandResultIdentitiesInOnePublicRequest() {
+        List<String> messageIds = new ArrayList<>();
+        Map<String, Object> response = new LinkedHashMap<>();
+        for (int index = 0; index < 1_000; index++) {
+            String messageId = "message-" + index;
+            messageIds.add(messageId);
+            response.put(messageId, Map.of("status", "not_observed"));
+        }
+        loadResponse.set(response);
+
+        Map<String, ScaleApiClient.TaskResultStatus> statuses =
+                client.loadResultStatuses("task-1", messageIds);
+        assertThat(statuses).hasSize(1_000);
+        assertThat(statuses.values()).containsOnly(
+                ScaleApiClient.TaskResultStatus.NOT_OBSERVED
+        );
+    }
+
+    @Test
     void readsTaskTerminalStateFromTheRuntimePreview() {
         assertThat(client.previewTaskScoreBands(List.of("task-1")))
                 .containsExactly(Map.entry("task-1", "terminal"));
@@ -212,6 +236,25 @@ class ScaleApiClientTest {
         respond(exchange, 200, Map.of(
                 "statesByWorkerId", Map.of("worker-a", state)
         ));
+    }
+
+    private void labWorkers(HttpExchange exchange) throws IOException {
+        if ("/lab/v1/workers:stop".equals(exchange.getRequestURI().getPath())) {
+            List<Object> request = Jsons.parseArray(new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            ));
+            assertThat(request).hasSize(2);
+            respond(exchange, 202, Map.of("acceptedCount", 2));
+            return;
+        }
+        respond(exchange, 200, Map.of("workers", List.of(Map.of(
+                "workerGroupId", "group-a",
+                "labWorkerKey", "workers.jsonl:1",
+                "desiredState", "RUNNING",
+                "runtimeState", "RUNNING",
+                "workerId", "worker-a"
+        ))));
     }
 
     private static Map<String, Object> taskPreviewEntry() {

@@ -1,4 +1,4 @@
-name: Java WebSocket 10k Workers + Dual-Task 1k Workload
+name: Java WebSocket 15k Headroom + 10k Loaded Fleet
 
 on:
   schedule:
@@ -17,9 +17,9 @@ env:
 
 jobs:
   worker-websocket-scale:
-    name: Java WebSocket 10k Workers + Dual-Task 1k Workload
+    name: Java WebSocket 15k Headroom + 10k Loaded Fleet
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     services:
       redis:
         image: redis:7.4.10
@@ -44,6 +44,8 @@ jobs:
           cache-dependency-path: .github/scripts/requirements.txt
       - name: Install Python proof dependencies
         run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Configure local connection port range
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
       - name: Verify scale owner contracts
         run: |
           ./gradlew --no-daemon \
@@ -58,9 +60,11 @@ jobs:
       - name: Run Java WebSocket Worker scale proof
         run: |
           python integrations/worker-websocket-scale/run_worker_websocket_scale.py \
-            --workers 10000 \
-            --minimum-converged 9900 \
-            --workload-items-per-task 500 \
+            --prepared-workers 15000 \
+            --retained-workers 10000 \
+            --minimum-initial-converged 14800 \
+            --minimum-retained-converged 9900 \
+            --workload-items-per-task 5000 \
             --redis-url redis://127.0.0.1:6379/15 \
             --output-root build/worker-websocket-scale-proof
       - name: Upload safe scale evidence and process logs

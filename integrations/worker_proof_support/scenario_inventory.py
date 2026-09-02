@@ -11,7 +11,7 @@ from typing import Any
 PHONE_GROUP = "scenario-phone-number-workers"
 STRING_GROUP = "scenario-string-utils-workers"
 MAX_RECORDS_PER_FILE = 100
-MAX_RECORDS_PER_GROUP = 10_000
+MAX_RECORDS_PER_GROUP = 15_000
 _RESERVED_PROPERTIES = frozenset({"labInventoryKey", "labInventoryLine"})
 
 

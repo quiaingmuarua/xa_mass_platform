@@ -211,6 +211,31 @@ public final class ScenarioWorkers implements AutoCloseable {
         group.manager().stop(replicaKey);
     }
 
+    void stopWorkers(List<ScenarioWorkerCoordinate> coordinates) {
+        Objects.requireNonNull(coordinates, "coordinates");
+        List<WorkerStopTarget> targets = new ArrayList<>(coordinates.size());
+        synchronized (this) {
+            ensureControllable();
+            for (ScenarioWorkerCoordinate coordinate : coordinates) {
+                Objects.requireNonNull(coordinate, "coordinate");
+                ManagedGroup group = requireManagedGroup(
+                        coordinate.workerGroupId()
+                );
+                PreparedReplica replica = requireReplica(
+                        group,
+                        coordinate.labWorkerKey()
+                );
+                targets.add(new WorkerStopTarget(
+                        group.manager(),
+                        replica.labWorkerKey()
+                ));
+            }
+        }
+        for (WorkerStopTarget target : targets) {
+            target.manager().stop(target.replicaKey());
+        }
+    }
+
     synchronized void replaceWorkerState(
             String workerGroupId,
             String labWorkerKey,
@@ -699,6 +724,12 @@ public final class ScenarioWorkers implements AutoCloseable {
     private record ManagedGroup(
             PreparedGroup preparedGroup,
             JavaWorkerManager manager
+    ) {
+    }
+
+    private record WorkerStopTarget(
+            JavaWorkerManager manager,
+            String replicaKey
     ) {
     }
 }

@@ -1,82 +1,79 @@
 # Java WebSocket Worker Scale
 
-`integrations:worker-websocket-scale` is the offered-load proof for one Java 21
-Scenario Worker Host process, one `JavaWorkerManager`, one WorkerGroup, and one
-WebSocket Adapter Endpoint.
+`integrations:worker-websocket-scale` is the nightly/manual loaded-capacity
+proof for one Java 21 Scenario Worker Host process, one `JavaWorkerManager`,
+one WorkerGroup and one WebSocket Adapter Endpoint.
 
 ```text
-10,000 prepared Worker identities
--> 10,000 offered WebSocket connections
--> Runtime Network and Scheduling observations
--> minimum 9,900 connected-and-HOT Workers
--> two same-Group Tasks x 500 Items
--> both Tasks complete and export exactly
--> connected-and-HOT recovers after drain
--> one Runtime Server restart
--> transparent reconnect without Host restart or Prepare
--> minimum 9,900 connected-and-HOT Workers
--> another two same-Group Tasks x 500 Items
+15,000 prepared Worker identities
+-> at least 14,800 connected-and-HOT
+-> deterministically stop 5,000 runs
+-> retain the exact 15,000 identities and exact 10,000 active target set
+-> at least 9,900 active connected-and-HOT; stopped set is neither connected nor HOT
+-> 10 fully seeded Tasks x 5,000 Items
+-> 10 terminal Tasks and 50,000 exact success-only exports
+-> active Fleet reconnects to connected-and-HOT after drain
+-> restart Runtime Server while retaining the Host
+-> same 10,000 active identities reconnect without start or Prepare
+-> repeat the complete 50,000-Item loaded operation
 ```
 
-The two Tasks share one WorkerGroup, the same empty allocation rule and the
-same candidate pool. They are completely populated before consecutive
-approval. The proof observes both progress curves, but makes no fairness,
-execution-ratio or completion-order claim. This remains a bounded capacity and
-recovery proof, not a 10,000 concurrent Handler claim, TPS/P99 benchmark,
-long-running soak test or exact 10,000-online guarantee.
-
-The native-thread threshold covers both the OkHttp Dispatcher and OkHttp's
-internal WebSocket TaskRunner. A reconnect burst that recreates thousands of
-platform TaskRunner threads fails the lane even when all connections recover.
+The ten Tasks share one WorkerGroup, empty allocation rules and the same
+candidate pool. Each Task has `maximumCandidateWorkers=100`. All ten are fully
+populated before consecutive approval. The proof records their independent
+progress but makes no fairness, execution-ratio or completion-order claim.
+It is not a TPS/P99 benchmark, a 10,000 concurrent Handler claim or a soak test.
 
 ## Ownership
 
-The Python runner owns processes, the exact Redis
-test scope, one Server restart, Linux `/proc` sampling, and safe evidence
-packaging. The Java Harness uses only the loopback Lab API and public Runtime
-APIs. It pages existing Network and Scheduling observations in groups of 100;
-it does not widen Server APIs or read Redis.
+The Python runner owns process lifecycle, the exact Redis test scope, private
+topology materialization, one Server restart, Linux `/proc` sampling and safe
+evidence packaging. The Java Harness uses only the loopback Lab API and public
+Runtime APIs. Network and Scheduling observations remain paged at 100 Worker
+IDs; Result observation uses the public 1,000-ID `results:load` boundary.
 
-Inventory is produced by the same strict materializer used by the 100-Worker
-Correctness and Convergence lanes. This lane supplies one 10,000-record scale
-world; the materializer alone owns deterministic 100-record JSONL splitting.
+Inventory is produced by the same strict materializer as the 100-Worker
+Correctness and Convergence lanes. This lane supplies one 15,000-record Group
+in 150 JSONL files. Materialization order defines the private topology: the
+first 10,000 coordinates are retained and the final 5,000 are stopped. Public
+evidence stores only counts and sorted worker-ID SHA-256 digests.
 
-The generated Host assembly contains only the existing
-`extension.worker.string.md5` capability. One hundred JSONL files contain one
-hundred strict records each. The complete Server-issued Worker ID set is kept
-in a private inter-phase file so the post-restart phase can compare identity;
-uploaded evidence retains only its count and sorted SHA-256 digest.
+The Harness sends 50 one-shot Lab batch-stop requests of 100 coordinates. Any
+failed or ambiguous request fails the mutation; the runner does not retry,
+compensate or reshape the Fleet. Stopping a run does not delete its
+Server-issued identity.
 
-The Runtime Server uses the checked `scenario-workers` Profile plus the
-Integration-owned Adapter capacity override. Redis, Server, and Host remain
-separate processes. The Host remains alive across the Server restart and does
-not Prepare again; its concrete WebSocket Clients reconnect to the same
-Endpoint URI.
+The generated Host assembly contains only
+`extension.worker.string.md5`. The Runtime Server uses the checked
+`scenario-workers` Profile plus the Integration-owned capacity configuration.
+Redis, Server and Host are separate processes. Across Server restart the Host
+PID is retained and no Lab start or Prepare endpoint is invoked; existing
+Clients reconnect to the same Endpoint URI.
 
 ## Acceptance
 
-Initial and post-restart convergence each require three consecutive complete
-scans with at least 9,900 Workers in both `connected` Network state and a HOT
-Scheduling projection. The converged final scan rejects any HOT Worker that is
-observed disconnected. The initial phase then holds the 9,900 threshold for 60
-seconds with scans every 10 seconds.
+The initial 15,000-Worker world requires three complete scans at or above
+14,800 connected-and-HOT, then holds that threshold for 60 seconds. After
+contraction, and again after Server restart, the active set requires three
+scans at or above 9,900 connected-and-HOT. Every convergence scan also rejects
+HOT-but-disconnected active Workers and any connected or HOT stopped Worker.
 
-Each phase creates two Tasks and appends 500 Items to each in five 100-Item
-requests. Both Tasks must show successful progress without a global 60-second
-stall, finish within 300 seconds and export exactly their submitted message-ID
-sets. Result payload remains opaque. During execution only the 9,900 connected
-threshold applies; the connected-and-HOT threshold is re-established with
-three full scans after the Tasks drain.
+Each loaded operation creates ten Tasks and appends 5,000 valid Items to each
+in 50 requests. The first successful Result must appear within 120 seconds;
+after progress starts, a global 90-second success gap fails the lane. All Tasks
+must become terminal within 900 seconds. Each Task is exported exactly once,
+after terminal observation, and its success-only message-ID set must equal its
+5,000 submitted IDs. Result payload remains opaque. During work only the 9,900
+active connection threshold applies; HOT is re-established after drain.
 
-The Worker Host and Runtime Server must each remain below 512 native Linux
-threads. The Worker Host must remain below 32,768 open file descriptors, while
-the Runtime Server must remain below 16,384. Virtual threads are not counted as
-native `/proc` threads; the thread guard detects accidental
-one-platform-thread-per-WebSocket behavior. RSS remains recorded evidence
-without a cross-machine threshold. All process resources are sampled every five
-seconds.
+The Worker Host and each Runtime Server process must remain below 512 native
+Linux threads. The Host must remain below 32,768 open file descriptors and
+each Server process below 16,384. RSS, cumulative CPU time and interval average
+CPU core usage are recorded without cross-machine limits. Resources are
+sampled every five seconds, with the pre- and post-restart Servers carrying
+separate labels.
 
-Run the quick contract tests on any development host:
+Run quick contracts on any development host:
 
 ```powershell
 .\gradlew.bat :integrations:worker-websocket-scale:test
@@ -85,25 +82,22 @@ python -m unittest discover `
   -p "test_*.py"
 ```
 
-Run the real proof on Linux with Java 21, Redis 7.4, `nofile >= 65536`, and an
-ephemeral port range containing at least 20,000 ports. Python 3.11 or newer and
-the shared proof dependencies are required:
+The real proof requires Linux, Java 21, Redis 7.4, `nofile >= 65536` and a
+local ephemeral port range containing at least 45,000 ports. Install the small
+shared Python dependency set, widen the disposable host's port range, then run:
 
 ```bash
 python -m pip install -r .github/scripts/requirements.txt
-```
-
-Then run:
-
-```bash
+sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
 python integrations/worker-websocket-scale/run_worker_websocket_scale.py \
-  --workers 10000 \
-  --minimum-converged 9900 \
-  --workload-items-per-task 500 \
+  --prepared-workers 15000 \
+  --retained-workers 10000 \
+  --minimum-initial-converged 14800 \
+  --minimum-retained-converged 9900 \
+  --workload-items-per-task 5000 \
   --redis-url redis://127.0.0.1:6379/15 \
   --output-root build/worker-websocket-scale-proof
 ```
 
-The same command runs nightly and on manual dispatch in
-`.github/workflows/worker-websocket-scale.yml`; it is intentionally outside the
-ordinary pull-request Proof Gate.
+The same command runs in `.github/workflows/worker-websocket-scale.yml`; this
+high-cost proof is intentionally outside the ordinary pull-request gate.

@@ -140,7 +140,7 @@ class ScenarioWorkerLabTest {
         assertInvalid(root);
 
         Files.delete(group.resolve("too-many.jsonl"));
-        for (int file = 0; file < 100; file++) {
+        for (int file = 0; file < 150; file++) {
             writeInventory(
                     group.resolve("inventory-" + file + ".jsonl"),
                     properties(100)
@@ -151,7 +151,7 @@ class ScenarioWorkerLabTest {
                 root.toString()
         ).prepare(List.of(group(PHONE_GROUP))))
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .hasMessageContaining("more than 10000");
+                .hasMessageContaining("more than 15000");
     }
 
     @Test

@@ -38,14 +38,33 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
                     observed += 1
             self.assertEqual(205, observed)
 
-    def test_ten_thousand_workers_use_one_hundred_inventory_files(self):
+    def test_fifteen_thousand_workers_use_one_hundred_fifty_files(self):
         with tempfile.TemporaryDirectory() as directory:
             sandbox = Path(directory) / "scenario-workers"
-            RUNNER._generate_inventory(sandbox, 10_000)
+            coordinates = RUNNER._generate_inventory(sandbox, 15_000)
 
             files = sorted((sandbox / RUNNER.WORKER_GROUP).glob("*.jsonl"))
-            self.assertEqual(100, len(files))
+            self.assertEqual(150, len(files))
             self.assertTrue(all(len(path.read_text().splitlines()) == 100 for path in files))
+            self.assertEqual("workers-149.jsonl:100", coordinates[-1])
+
+            topology = RUNNER._partition_topology(coordinates, 10_000)
+            self.assertEqual(
+                10_000,
+                len(topology["retainedLabWorkerKeys"]),
+            )
+            self.assertEqual(
+                5_000,
+                len(topology["stoppedLabWorkerKeys"]),
+            )
+            self.assertEqual(
+                "workers-099.jsonl:100",
+                topology["retainedLabWorkerKeys"][-1],
+            )
+            self.assertEqual(
+                "workers-100.jsonl:1",
+                topology["stoppedLabWorkerKeys"][0],
+            )
 
     def test_capability_assembly_keeps_only_the_existing_md5_capability(self):
         assembly = RUNNER._capability_assembly()
@@ -54,15 +73,17 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
         self.assertEqual(["extension.worker.string.md5"], group["eventCodes"])
         self.assertEqual(600, group["reconnectPolicy"]["maxUnstableAttempts"])
 
-    def test_each_phase_receives_the_fixed_dual_task_workload(self):
+    def test_each_phase_receives_the_fixed_loaded_operation(self):
         options = SimpleNamespace(
-            workers=10_000,
-            minimum_converged=9_900,
-            workload_items_per_task=500,
+            prepared_workers=15_000,
+            retained_workers=10_000,
+            minimum_initial_converged=14_800,
+            minimum_retained_converged=9_900,
+            workload_items_per_task=5_000,
             stable_hold_millis=60_000,
             scan_interval_millis=10_000,
             maximum_convergence_wait_millis=900_000,
-            task_result_wait_millis=300_000,
+            task_result_wait_millis=900_000,
             request_timeout_millis=30_000,
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -72,6 +93,7 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
                     "initial",
                     options,
                     "proof-a",
+                    root / "topology.json",
                     root / "baseline.json",
                     root / "summary.json",
                     root / "timeline.jsonl",
@@ -79,9 +101,12 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
                 )
 
         command = run.call_args.args[0]
-        self.assertIn("--workload-items-per-task=500", command)
+        self.assertIn("--prepared-workers=15000", command)
+        self.assertIn("--retained-workers=10000", command)
+        self.assertIn("--workload-items-per-task=5000", command)
+        self.assertIn("--topology-file=" + str(root / "topology.json"), command)
         self.assertFalse(
-            any(value.startswith("--task-item-count=") for value in command)
+            any(value.startswith("--workers=") for value in command)
         )
 
     def test_resource_contract_covers_both_processes(self):
@@ -89,52 +114,93 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
             "worker-host": {
                 "maximumNativeThreads": 511,
                 "maximumOpenFileDescriptors": 32_767,
+                "averageCpuCores": 2.0,
             },
-            "runtime-server": {
+            "runtime-server-initial": {
                 "maximumNativeThreads": 511,
                 "maximumOpenFileDescriptors": 16_383,
+                "averageCpuCores": 2.0,
+            },
+            "runtime-server-restarted": {
+                "maximumNativeThreads": 511,
+                "maximumOpenFileDescriptors": 16_383,
+                "averageCpuCores": 2.0,
             },
         })
 
         for owner, field, value in (
             ("worker-host", "maximumNativeThreads", 512),
             ("worker-host", "maximumOpenFileDescriptors", 32_768),
-            ("runtime-server", "maximumOpenFileDescriptors", 16_384),
+            (
+                "runtime-server-initial",
+                "maximumOpenFileDescriptors",
+                16_384,
+            ),
         ):
             resources = {
                 "worker-host": {
                     "maximumNativeThreads": 100,
                     "maximumOpenFileDescriptors": 1_000,
+                    "averageCpuCores": 1.0,
                 },
-                "runtime-server": {
+                "runtime-server-initial": {
                     "maximumNativeThreads": 100,
                     "maximumOpenFileDescriptors": 1_000,
+                    "averageCpuCores": 1.0,
+                },
+                "runtime-server-restarted": {
+                    "maximumNativeThreads": 100,
+                    "maximumOpenFileDescriptors": 1_000,
+                    "averageCpuCores": 1.0,
                 },
             }
             resources[owner][field] = value
             with self.assertRaises(RuntimeError):
                 RUNNER._validate_resource_contract(resources)
 
-    def test_phase_summary_requires_two_complete_tasks_and_reconvergence(self):
+    def test_phase_summary_requires_ten_exports_and_reconvergence(self):
         options = SimpleNamespace(
-            workload_items_per_task=500,
-            minimum_converged=9_900,
+            prepared_workers=15_000,
+            retained_workers=10_000,
+            workload_items_per_task=5_000,
+            minimum_initial_converged=14_800,
+            minimum_retained_converged=9_900,
         )
         summary = {
-            "activeTaskCount": 2,
-            "offeredItemsPerTask": 500,
-            "totalOfferedItems": 1_000,
-            "appendBatchCount": 10,
-            "taskASucceededCount": 500,
-            "taskBSucceededCount": 500,
+            "phase": "initial",
+            "preparedIdentities": 15_000,
+            "retainedIdentities": 10_000,
+            "stoppedIdentities": 5_000,
+            "activeTaskCount": 10,
+            "maximumCandidateWorkersPerTask": 100,
+            "offeredItemsPerTask": 5_000,
+            "totalOfferedItems": 50_000,
+            "appendBatchCount": 500,
+            "succeededItemCount": 50_000,
+            "tasks": [
+                {"succeededCount": 5_000, "exported": True}
+                for _ in range(10)
+            ],
             "minimumConnectedDuringWork": 9_900,
+            "retainedConnectedAndHotWorkers": 9_900,
+            "stoppedConnectedWorkers": 0,
+            "stoppedHotWorkers": 0,
+            "initialHeadroomConnectedAndHot": 14_800,
             "postWorkConnectedAndHot": 9_900,
+            "postWorkStoppedConnected": 0,
+            "postWorkStoppedHot": 0,
+            "batchStopRequestCount": 50,
         }
         RUNNER._validate_phase_summary(summary, options)
 
-        summary["taskBSucceededCount"] = 499
+        summary["tasks"][9]["succeededCount"] = 4_999
         with self.assertRaises(RuntimeError):
             RUNNER._validate_phase_summary(summary, options)
+
+    def test_cpu_interval_is_expressed_as_average_cores(self):
+        self.assertEqual(2.5, RUNNER._interval_cpu_cores(2.0, 5_000))
+        self.assertIsNone(RUNNER._interval_cpu_cores(0.0, 10))
+        self.assertIsNone(RUNNER._interval_cpu_cores(1.0, -1))
 
 
 if __name__ == "__main__":

@@ -33,8 +33,10 @@ LAB_CONTROL = "http://127.0.0.1:18086"
 MAXIMUM_NATIVE_THREADS = 512
 MAXIMUM_OPEN_FILE_DESCRIPTORS = {
     "worker-host": 32_768,
-    "runtime-server": 16_384,
+    "runtime-server-initial": 16_384,
+    "runtime-server-restarted": 16_384,
 }
+TASKS_PER_PHASE = 10
 WORKER_GROUP = "scenario-string-utils-workers"
 ENDPOINT_MANAGER = "scenario-websocket"
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
@@ -42,10 +44,12 @@ TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the Java WebSocket 10k Worker scale proof."
+        description="Run the Java WebSocket 15k/10k loaded Worker proof."
     )
-    parser.add_argument("--workers", type=int, default=10_000)
-    parser.add_argument("--minimum-converged", type=int, default=9_900)
+    parser.add_argument("--prepared-workers", type=int, default=15_000)
+    parser.add_argument("--retained-workers", type=int, default=10_000)
+    parser.add_argument("--minimum-initial-converged", type=int, default=14_800)
+    parser.add_argument("--minimum-retained-converged", type=int, default=9_900)
     parser.add_argument("--redis-url", required=True)
     parser.add_argument(
         "--output-root",
@@ -61,12 +65,12 @@ def main() -> int:
     )
     parser.add_argument("--stable-hold-millis", type=int, default=60_000)
     parser.add_argument("--scan-interval-millis", type=int, default=10_000)
-    parser.add_argument("--task-result-wait-millis", type=int, default=300_000)
+    parser.add_argument("--task-result-wait-millis", type=int, default=900_000)
     parser.add_argument("--request-timeout-millis", type=int, default=30_000)
     parser.add_argument(
         "--workload-items-per-task",
         type=int,
-        default=500,
+        default=5_000,
     )
     options = parser.parse_args()
     _validate_options(parser, options)
@@ -82,7 +86,12 @@ def main() -> int:
     sandbox = output_root / "data" / "scenario-workers"
     evidence_root.mkdir(parents=True)
     private_root.mkdir(parents=True)
-    _generate_inventory(sandbox, options.workers)
+    coordinates = _generate_inventory(sandbox, options.prepared_workers)
+    topology = private_root / "worker-topology.json"
+    _write_json(topology, _partition_topology(
+        coordinates,
+        options.retained_workers,
+    ))
     capability_assembly = private_root / "capability-assembly.json"
     _write_json(capability_assembly, _capability_assembly())
 
@@ -97,8 +106,8 @@ def main() -> int:
     sampler.start()
     try:
         server = _start_server(output_root, environment, "runtime-server-1.log")
-        processes["runtime-server"] = server
-        sampler.register("runtime-server", server)
+        processes["runtime-server-initial"] = server
+        sampler.register("runtime-server-initial", server)
         _wait_http(
             f"{RUNTIME_API}/actuator/health/readiness",
             server,
@@ -129,6 +138,7 @@ def main() -> int:
             "initial",
             options,
             proof_id,
+            topology,
             baseline,
             initial_summary,
             timeline,
@@ -136,13 +146,13 @@ def main() -> int:
         )
 
         _stop_process(server, force=False, timeout_seconds=60)
-        processes.pop("runtime-server", None)
-        sampler.unregister("runtime-server")
+        processes.pop("runtime-server-initial", None)
+        sampler.unregister("runtime-server-initial")
         _require_running(host, output_root / "scenario-worker-host.log")
 
         server = _start_server(output_root, environment, "runtime-server-2.log")
-        processes["runtime-server"] = server
-        sampler.register("runtime-server", server)
+        processes["runtime-server-restarted"] = server
+        sampler.register("runtime-server-restarted", server)
         _wait_http(
             f"{RUNTIME_API}/actuator/health/readiness",
             server,
@@ -153,6 +163,7 @@ def main() -> int:
             "reconnected",
             options,
             proof_id,
+            topology,
             baseline,
             reconnected_summary,
             timeline,
@@ -163,17 +174,24 @@ def main() -> int:
         resources = sampler.summary()
         _validate_resource_contract(resources)
         worker_resources = resources["worker-host"]
-        server_resources = resources["runtime-server"]
+        initial_server_resources = resources["runtime-server-initial"]
+        restarted_server_resources = resources["runtime-server-restarted"]
         initial = _read_json(initial_summary)
         reconnected = _read_json(reconnected_summary)
         if initial.get("status") != "passed" or reconnected.get("status") != "passed":
             raise RuntimeError("one or more Java scale phases did not pass")
         _validate_phase_summary(initial, options)
         _validate_phase_summary(reconnected, options)
-        if initial.get("workerIdSetSha256") != reconnected.get(
-            "workerIdSetSha256"
+        if initial.get("allWorkerIdSetSha256") != reconnected.get(
+            "allWorkerIdSetSha256"
         ):
             raise RuntimeError("Worker identity digest changed across restart")
+        for field in (
+            "retainedWorkerIdSetSha256",
+            "stoppedWorkerIdSetSha256",
+        ):
+            if initial.get(field) != reconnected.get(field):
+                raise RuntimeError(f"{field} changed across Server restart")
 
         _write_json(
             evidence_root / "worker-websocket-scale-summary.json",
@@ -181,39 +199,56 @@ def main() -> int:
                 "proofId": proof_id,
                 "lane": "worker-websocket-scale",
                 "status": "passed",
-                "offeredWorkers": options.workers,
-                "minimumConnectedAndHot": options.minimum_converged,
-                "workerIdSetSha256": initial["workerIdSetSha256"],
-                "workloadTasksPerPhase": 2,
-                "workloadItemsPerTask": options.workload_items_per_task,
-                "workloadItemsPerPhase": 2 * options.workload_items_per_task,
-                "totalWorkloadItems": 4 * options.workload_items_per_task,
-                "initialSucceededTaskItems": (
-                    initial["taskASucceededCount"]
-                    + initial["taskBSucceededCount"]
+                "preparedWorkers": options.prepared_workers,
+                "retainedWorkers": options.retained_workers,
+                "stoppedWorkers": (
+                    options.prepared_workers - options.retained_workers
                 ),
+                "minimumInitialConnectedAndHot": (
+                    options.minimum_initial_converged
+                ),
+                "minimumRetainedConnectedAndHot": (
+                    options.minimum_retained_converged
+                ),
+                "allWorkerIdSetSha256": initial["allWorkerIdSetSha256"],
+                "retainedWorkerIdSetSha256": (
+                    initial["retainedWorkerIdSetSha256"]
+                ),
+                "stoppedWorkerIdSetSha256": (
+                    initial["stoppedWorkerIdSetSha256"]
+                ),
+                "workloadTasksPerPhase": TASKS_PER_PHASE,
+                "workloadItemsPerTask": options.workload_items_per_task,
+                "workloadItemsPerPhase": (
+                    TASKS_PER_PHASE * options.workload_items_per_task
+                ),
+                "totalWorkloadItems": (
+                    2 * TASKS_PER_PHASE * options.workload_items_per_task
+                ),
+                "initialSucceededTaskItems": initial["succeededItemCount"],
                 "reconnectedSucceededTaskItems": (
-                    reconnected["taskASucceededCount"]
-                    + reconnected["taskBSucceededCount"]
+                    reconnected["succeededItemCount"]
                 ),
                 "maximumWorkerHostNativeThreads": worker_resources[
                     "maximumNativeThreads"
                 ],
-                "maximumRuntimeServerNativeThreads": server_resources[
-                    "maximumNativeThreads"
-                ],
+                "runtimeServers": {
+                    "initial": initial_server_resources,
+                    "restarted": restarted_server_resources,
+                },
                 "maximumWorkerHostRssBytes": worker_resources[
-                    "maximumRssBytes"
-                ],
-                "maximumRuntimeServerRssBytes": server_resources[
                     "maximumRssBytes"
                 ],
                 "maximumWorkerHostOpenFileDescriptors": worker_resources[
                     "maximumOpenFileDescriptors"
                 ],
-                "maximumRuntimeServerOpenFileDescriptors": server_resources[
-                    "maximumOpenFileDescriptors"
+                "averageWorkerHostCpuCores": worker_resources[
+                    "averageCpuCores"
                 ],
+                "maximumWorkerHostCpuCores": worker_resources[
+                    "maximumCpuCores"
+                ],
+                "workerHostPid": host.pid,
                 "serverRestartCount": 1,
                 "completedAtEpochMillis": int(time.time() * 1_000),
             },
@@ -221,9 +256,10 @@ def main() -> int:
         baseline.unlink(missing_ok=True)
         print(
             "Worker WebSocket scale proof passed "
-            f"offeredWorkers={options.workers} "
-            f"minimumConnectedAndHot={options.minimum_converged} "
-            f"workloadItemsPerPhase={2 * options.workload_items_per_task} "
+            f"preparedWorkers={options.prepared_workers} "
+            f"retainedWorkers={options.retained_workers} "
+            "workloadItemsPerPhase="
+            f"{TASKS_PER_PHASE * options.workload_items_per_task} "
             "maximumWorkerHostNativeThreads="
             f"{worker_resources['maximumNativeThreads']}"
         )
@@ -243,10 +279,20 @@ def main() -> int:
 
 
 def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespace) -> None:
-    if not 1 <= options.workers <= 10_000:
-        parser.error("--workers must be in 1..10000")
-    if not 1 <= options.minimum_converged <= options.workers:
-        parser.error("--minimum-converged must be in 1..workers")
+    if not 1 <= options.prepared_workers <= 15_000:
+        parser.error("--prepared-workers must be in 1..15000")
+    if not 1 <= options.retained_workers < options.prepared_workers:
+        parser.error(
+            "--retained-workers must be in 1..prepared-workers-1"
+        )
+    if not 1 <= options.minimum_initial_converged <= options.prepared_workers:
+        parser.error(
+            "--minimum-initial-converged must be in 1..prepared-workers"
+        )
+    if not 1 <= options.minimum_retained_converged <= options.retained_workers:
+        parser.error(
+            "--minimum-retained-converged must be in 1..retained-workers"
+        )
     if options.maximum_convergence_wait_millis < 10_000:
         parser.error("--maximum-convergence-wait-millis must be at least 10000")
     if options.stable_hold_millis < 0:
@@ -257,8 +303,8 @@ def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespa
         parser.error("--task-result-wait-millis must be at least 1000")
     if options.request_timeout_millis < 1_000:
         parser.error("--request-timeout-millis must be at least 1000")
-    if not 1 <= options.workload_items_per_task <= 500:
-        parser.error("--workload-items-per-task must be in 1..500")
+    if not 1 <= options.workload_items_per_task <= 5_000:
+        parser.error("--workload-items-per-task must be in 1..5000")
 
 
 def _preflight(redis_url: str) -> None:
@@ -274,9 +320,9 @@ def _preflight(redis_url: str) -> None:
     if len(port_range) != 2:
         raise RuntimeError("Linux local port range is unreadable")
     low, high = (int(value) for value in port_range)
-    if high - low + 1 < 20_000:
+    if high - low + 1 < 45_000:
         raise RuntimeError(
-            "Linux local ephemeral port range must contain at least 20000 ports"
+            "Linux local ephemeral port range must contain at least 45000 ports"
         )
     version = subprocess.run(
         ["java", "-version"],
@@ -305,8 +351,8 @@ def _build_artifacts() -> None:
     )
 
 
-def _generate_inventory(sandbox: Path, workers: int) -> None:
-    materialize_inventory(
+def _generate_inventory(sandbox: Path, workers: int) -> tuple[str, ...]:
+    coordinates = materialize_inventory(
         sandbox,
         {
             WORKER_GROUP: tuple(
@@ -320,6 +366,18 @@ def _generate_inventory(sandbox: Path, workers: int) -> None:
             )
         },
     )
+    return coordinates[WORKER_GROUP]
+
+
+def _partition_topology(
+    coordinates: tuple[str, ...],
+    retained_workers: int,
+) -> dict[str, object]:
+    return {
+        "workerGroupId": WORKER_GROUP,
+        "retainedLabWorkerKeys": list(coordinates[:retained_workers]),
+        "stoppedLabWorkerKeys": list(coordinates[retained_workers:]),
+    }
 
 
 def _capability_assembly() -> dict[str, object]:
@@ -402,6 +460,7 @@ def _run_phase(
     phase: str,
     options: argparse.Namespace,
     proof_id: str,
+    topology: Path,
     baseline: Path,
     summary: Path,
     timeline: Path,
@@ -422,8 +481,12 @@ def _run_phase(
         f"--lab-base-url={LAB_CONTROL}",
         f"--worker-group-id={WORKER_GROUP}",
         f"--endpoint-manager-id={ENDPOINT_MANAGER}",
-        f"--offered-workers={options.workers}",
-        f"--minimum-converged={options.minimum_converged}",
+        f"--prepared-workers={options.prepared_workers}",
+        f"--retained-workers={options.retained_workers}",
+        "--minimum-initial-converged="
+        + str(options.minimum_initial_converged),
+        "--minimum-retained-converged="
+        + str(options.minimum_retained_converged),
         "--workload-items-per-task=" + str(options.workload_items_per_task),
         "--stable-hold-millis="
         + str(options.stable_hold_millis if phase == "initial" else 0),
@@ -432,6 +495,7 @@ def _run_phase(
         + str(options.maximum_convergence_wait_millis),
         f"--task-result-wait-millis={options.task_result_wait_millis}",
         f"--request-timeout-millis={options.request_timeout_millis}",
+        f"--topology-file={topology}",
         f"--baseline-file={baseline}",
         f"--summary-file={summary}",
         f"--timeline-file={timeline}",
@@ -454,7 +518,8 @@ class _ProcessSampler:
             name="worker-websocket-scale-sampler",
             daemon=True,
         )
-        self._summary: dict[str, dict[str, int]] = {}
+        self._summary: dict[str, dict[str, float | int]] = {}
+        self._previous_cpu: dict[str, tuple[int, float, int]] = {}
 
     def start(self) -> None:
         self._thread.start()
@@ -462,10 +527,12 @@ class _ProcessSampler:
     def register(self, owner: str, process: subprocess.Popen[str]) -> None:
         with self._lock:
             self._processes[owner] = process
+            self._previous_cpu.pop(owner, None)
 
     def unregister(self, owner: str) -> None:
         with self._lock:
             self._processes.pop(owner, None)
+            self._previous_cpu.pop(owner, None)
 
     def _run(self) -> None:
         while not self._closed.wait(5):
@@ -481,6 +548,7 @@ class _ProcessSampler:
                 sample = _process_sample(process.pid)
             except (FileNotFoundError, ProcessLookupError):
                 continue
+            sampled_at = time.monotonic()
             value = {
                 "atEpochMillis": int(time.time() * 1_000),
                 "process": owner,
@@ -496,14 +564,56 @@ class _ProcessSampler:
                     ("openFileDescriptors", "maximumOpenFileDescriptors"),
                 ):
                     current[target] = max(current.get(target, 0), sample[field])
+                previous = self._previous_cpu.get(owner)
+                if previous is not None and previous[0] == process.pid:
+                    elapsed_seconds = sampled_at - previous[1]
+                    cpu_delta_millis = sample["cpuTimeMillis"] - previous[2]
+                    cpu_cores = _interval_cpu_cores(
+                        elapsed_seconds,
+                        cpu_delta_millis,
+                    )
+                    if cpu_cores is not None:
+                        value["intervalAverageCpuCores"] = cpu_cores
+                        current["maximumCpuCores"] = max(
+                            current.get("maximumCpuCores", 0.0),
+                            cpu_cores,
+                        )
+                        current["cpuCoreSeconds"] = (
+                            current.get("cpuCoreSeconds", 0.0)
+                            + cpu_cores * elapsed_seconds
+                        )
+                        current["cpuObservedSeconds"] = (
+                            current.get("cpuObservedSeconds", 0.0)
+                            + elapsed_seconds
+                        )
+                self._previous_cpu[owner] = (
+                    process.pid,
+                    sampled_at,
+                    sample["cpuTimeMillis"],
+                )
                 self._path.parent.mkdir(parents=True, exist_ok=True)
                 with self._path.open("a", encoding="utf-8", newline="\n") as out:
                     out.write(json.dumps(value, separators=(",", ":"), sort_keys=True))
                     out.write("\n")
 
-    def summary(self) -> dict[str, dict[str, int]]:
+    def summary(self) -> dict[str, dict[str, float | int]]:
         with self._lock:
-            return {owner: dict(value) for owner, value in self._summary.items()}
+            result: dict[str, dict[str, float | int]] = {}
+            for owner, value in self._summary.items():
+                observed_seconds = value.get("cpuObservedSeconds", 0.0)
+                public = {
+                    field: observed
+                    for field, observed in value.items()
+                    if field not in {"cpuCoreSeconds", "cpuObservedSeconds"}
+                }
+                public["averageCpuCores"] = (
+                    value.get("cpuCoreSeconds", 0.0) / observed_seconds
+                    if observed_seconds > 0
+                    else 0.0
+                )
+                public.setdefault("maximumCpuCores", 0.0)
+                result[owner] = public
+            return result
 
     def close(self) -> None:
         self._closed.set()
@@ -522,17 +632,39 @@ def _process_sample(pid: int) -> dict[str, int]:
     if len(rss_parts) != 2 or rss_parts[1] != "kB":
         raise RuntimeError(f"process {pid} VmRSS is invalid")
     threads = int(fields.get("Threads", "0"))
+    stat = (Path("/proc") / str(pid) / "stat").read_text(encoding="ascii")
+    closing_parenthesis = stat.rfind(")")
+    if closing_parenthesis < 0:
+        raise RuntimeError(f"process {pid} stat is invalid")
+    stat_fields = stat[closing_parenthesis + 2 :].split()
+    if len(stat_fields) <= 12:
+        raise RuntimeError(f"process {pid} stat is incomplete")
+    clock_ticks = os.sysconf("SC_CLK_TCK")
+    cpu_ticks = int(stat_fields[11]) + int(stat_fields[12])
     return {
         "rssBytes": int(rss_parts[0]) * 1024,
         "nativeThreads": threads,
         "openFileDescriptors": len(list((Path("/proc") / str(pid) / "fd").iterdir())),
+        "cpuTimeMillis": cpu_ticks * 1_000 // clock_ticks,
     }
 
 
-def _validate_resource_contract(resources: dict[str, dict[str, int]]) -> None:
+def _interval_cpu_cores(
+    elapsed_seconds: float,
+    cpu_delta_millis: int,
+) -> float | None:
+    if elapsed_seconds <= 0 or cpu_delta_millis < 0:
+        return None
+    return cpu_delta_millis / (elapsed_seconds * 1_000)
+
+
+def _validate_resource_contract(
+    resources: dict[str, dict[str, float | int]],
+) -> None:
     for owner, label in (
         ("worker-host", "Worker Host"),
-        ("runtime-server", "Runtime Server"),
+        ("runtime-server-initial", "Initial Runtime Server"),
+        ("runtime-server-restarted", "Restarted Runtime Server"),
     ):
         observed = resources.get(owner, {})
         native_threads = observed.get("maximumNativeThreads", 0)
@@ -541,6 +673,8 @@ def _validate_resource_contract(resources: dict[str, dict[str, int]]) -> None:
             raise RuntimeError(f"{label} native-thread evidence is missing")
         if open_files <= 0:
             raise RuntimeError(f"{label} open-file evidence is missing")
+        if "averageCpuCores" not in observed:
+            raise RuntimeError(f"{label} CPU evidence is missing")
         if native_threads >= MAXIMUM_NATIVE_THREADS:
             raise RuntimeError(
                 f"{label} native threads exceeded the "
@@ -559,14 +693,21 @@ def _validate_phase_summary(
     options: argparse.Namespace,
 ) -> None:
     items_per_task = options.workload_items_per_task
-    expected_batches = 2 * ((items_per_task + 99) // 100)
+    expected_batches = TASKS_PER_PHASE * ((items_per_task + 99) // 100)
     expected = {
-        "activeTaskCount": 2,
+        "preparedIdentities": options.prepared_workers,
+        "retainedIdentities": options.retained_workers,
+        "stoppedIdentities": (
+            options.prepared_workers - options.retained_workers
+        ),
+        "activeTaskCount": TASKS_PER_PHASE,
+        "maximumCandidateWorkersPerTask": 100,
         "offeredItemsPerTask": items_per_task,
-        "totalOfferedItems": 2 * items_per_task,
+        "totalOfferedItems": TASKS_PER_PHASE * items_per_task,
         "appendBatchCount": expected_batches,
-        "taskASucceededCount": items_per_task,
-        "taskBSucceededCount": items_per_task,
+        "succeededItemCount": TASKS_PER_PHASE * items_per_task,
+        "postWorkStoppedConnected": 0,
+        "postWorkStoppedHot": 0,
     }
     for field, value in expected.items():
         if summary.get(field) != value:
@@ -574,10 +715,48 @@ def _validate_phase_summary(
                 f"scale phase summary {field} must be {value}, "
                 f"observed {summary.get(field)!r}"
             )
-    if summary.get("minimumConnectedDuringWork", 0) < options.minimum_converged:
+    tasks = summary.get("tasks")
+    if not isinstance(tasks, list) or len(tasks) != TASKS_PER_PHASE:
+        raise RuntimeError("scale phase must report ten Tasks")
+    for task in tasks:
+        if (
+            not isinstance(task, dict)
+            or task.get("succeededCount") != items_per_task
+            or task.get("exported") is not True
+        ):
+            raise RuntimeError("scale phase Task export is incomplete")
+    if (
+        summary.get("minimumConnectedDuringWork", 0)
+        < options.minimum_retained_converged
+    ):
         raise RuntimeError("scale phase lost the minimum workload connections")
-    if summary.get("postWorkConnectedAndHot", 0) < options.minimum_converged:
+    if (
+        summary.get("postWorkConnectedAndHot", 0)
+        < options.minimum_retained_converged
+    ):
         raise RuntimeError("scale phase did not reconverge after workload drain")
+    if (
+        summary.get("retainedConnectedAndHotWorkers", 0)
+        < options.minimum_retained_converged
+    ):
+        raise RuntimeError("scale phase did not establish the retained Fleet")
+    if summary.get("stoppedConnectedWorkers") != 0:
+        raise RuntimeError("scale phase observed a connected stopped Worker")
+    if summary.get("stoppedHotWorkers") != 0:
+        raise RuntimeError("scale phase observed a HOT stopped Worker")
+    if (
+        summary.get("phase") == "initial"
+        and summary.get("initialHeadroomConnectedAndHot", 0)
+        < options.minimum_initial_converged
+    ):
+        raise RuntimeError("scale phase did not establish initial headroom")
+    expected_stop_batches = (
+        (options.prepared_workers - options.retained_workers + 99) // 100
+        if summary.get("phase") == "initial"
+        else 0
+    )
+    if summary.get("batchStopRequestCount") != expected_stop_batches:
+        raise RuntimeError("scale phase batch-stop count changed")
 
 
 def _start_process(
@@ -690,8 +869,14 @@ def _write_failure_summary(
             "status": "failed",
             "failureKind": "proof-not-established",
             "failure": (str(error) or type(error).__name__)[:500],
-            "offeredWorkers": options.workers,
-            "minimumConnectedAndHot": options.minimum_converged,
+            "preparedWorkers": options.prepared_workers,
+            "retainedWorkers": options.retained_workers,
+            "minimumInitialConnectedAndHot": (
+                options.minimum_initial_converged
+            ),
+            "minimumRetainedConnectedAndHot": (
+                options.minimum_retained_converged
+            ),
             "workloadItemsPerTask": options.workload_items_per_task,
             "completedAtEpochMillis": int(time.time() * 1_000),
         },

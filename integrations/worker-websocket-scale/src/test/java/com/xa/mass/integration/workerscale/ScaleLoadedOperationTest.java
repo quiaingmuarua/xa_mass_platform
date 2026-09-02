@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,13 +21,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class ScaleDualTaskWorkloadTest {
+class ScaleLoadedOperationTest {
 
     @TempDir
     Path temporaryDirectory;
 
     private final AtomicInteger createdTasks = new AtomicInteger();
-    private final AtomicInteger taskBLoadRequests = new AtomicInteger();
+    private final AtomicInteger finalTaskLoadRequests = new AtomicInteger();
     private final Map<String, List<String>> messageIdsByTask =
             new LinkedHashMap<>();
     private final List<String> operations = new ArrayList<>();
@@ -49,9 +48,7 @@ class ScaleDualTaskWorkloadTest {
         );
         server.createContext("/api/v1/tasks", this::taskRequest);
         server.start();
-        URI base = URI.create(
-                "http://127.0.0.1:" + server.getAddress().getPort()
-        );
+        URI base = baseUri();
         client = new ScaleApiClient(
                 new ScaleHttpClient(base, Duration.ofSeconds(2)),
                 new ScaleHttpClient(base, Duration.ofSeconds(2))
@@ -64,77 +61,120 @@ class ScaleDualTaskWorkloadTest {
     }
 
     @Test
-    void fillsBothTasksBeforeApprovalAndAllowsOneToFinishFirst()
+    void fillsTenTasksBeforeApprovalAndAllowsAnyCompletionOrder()
             throws IOException {
-        ScaleOptions options = new ScaleOptions(
+        ScaleLoadedOperation.LoadedOperationResult result =
+                ScaleLoadedOperation.run(options(100), client, List.of("worker-a"));
+
+        assertThat(createdTasks).hasValue(10);
+        assertThat(operations.indexOf("approve-task-01")).isEqualTo(20);
+        assertThat(operations.subList(0, 20))
+                .allMatch(operation -> !operation.startsWith("approve-"));
+        for (int ordinal = 1; ordinal <= 10; ordinal++) {
+            String taskId = String.format("task-%02d", ordinal);
+            assertThat(operations).containsOnlyOnce("export-" + taskId);
+        }
+        assertThat(result.tasks()).hasSize(10)
+                .allSatisfy(task -> {
+                    assertThat(task.succeeded()).isEqualTo(100);
+                    assertThat(task.exported()).isTrue();
+                });
+        assertThat(result.appendBatchCount()).isEqualTo(10);
+        assertThat(result.minimumConnected()).isEqualTo(1);
+
+        List<Map<String, Object>> timeline = java.nio.file.Files.readAllLines(
+                options(100).timelineFile()
+        ).stream().map(Jsons::parseObject).toList();
+        assertThat(timeline).anySatisfy(entry -> assertThat(entry.get("event"))
+                .isEqualTo("loaded-operation-progress"));
+    }
+
+    @Test
+    void distinguishesFirstProgressAndPostProgressStalls() {
+        long firstLimit = Duration.ofSeconds(120).toNanos();
+        long laterLimit = Duration.ofSeconds(90).toNanos();
+
+        assertThat(ScaleLoadedOperation.progressDeadlineExceeded(
+                0,
+                firstLimit - 1,
+                laterLimit
+        )).isFalse();
+        assertThat(ScaleLoadedOperation.progressDeadlineExceeded(
+                0,
+                firstLimit,
+                0
+        )).isTrue();
+        assertThat(ScaleLoadedOperation.progressDeadlineExceeded(
+                1,
+                firstLimit,
+                laterLimit
+        )).isTrue();
+        assertThat(ScaleLoadedOperation.progressDeadlineExceeded(
+                0,
+                firstLimit,
+                laterLimit
+        )).isTrue();
+        assertThat(ScaleLoadedOperation.progressDeadlineExceeded(
+                1,
+                firstLimit,
+                laterLimit - 1
+        )).isFalse();
+    }
+
+    @Test
+    void fixedProductionShapeIsTenTasksWithFiveThousandItemsEach() {
+        ScaleOptions defaults = ScaleOptions.parse(new String[]{
+                "--phase=initial",
+                "--topology-file=" + temporaryDirectory.resolve("topology.json"),
+                "--baseline-file=" + temporaryDirectory.resolve("baseline.json"),
+                "--summary-file=" + temporaryDirectory.resolve("summary.json"),
+                "--timeline-file=" + temporaryDirectory.resolve("timeline.jsonl")
+        });
+
+        assertThat(ScaleLoadedOperation.TASK_COUNT).isEqualTo(10);
+        assertThat(ScaleLoadedOperation.MAXIMUM_CANDIDATE_WORKERS)
+                .isEqualTo(100);
+        assertThat(defaults.workloadItemsPerTask()).isEqualTo(5_000);
+        assertThat(
+                ScaleLoadedOperation.TASK_COUNT
+                        * ((defaults.workloadItemsPerTask() + 99) / 100)
+        ).isEqualTo(500);
+    }
+
+    @Test
+    void fiveThousandStopsFormFiftyOneShotRequests() {
+        List<String> keys = java.util.stream.IntStream.range(0, 5_000)
+                .mapToObj(index -> "workers-" + index)
+                .toList();
+
+        assertThat(WorkerWebSocketScaleMain.stopBatches(keys))
+                .hasSize(50)
+                .allSatisfy(batch -> assertThat(batch).hasSize(100));
+    }
+
+    private ScaleOptions options(int itemsPerTask) {
+        return new ScaleOptions(
                 ScaleOptions.Phase.INITIAL,
                 "proof-a",
                 baseUri(),
                 baseUri(),
                 "group-a",
                 "adapter-a",
+                2,
                 1,
+                2,
                 1,
-                500,
+                itemsPerTask,
                 Duration.ofSeconds(10),
                 Duration.ZERO,
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(2),
+                temporaryDirectory.resolve("topology.json"),
                 temporaryDirectory.resolve("baseline.json"),
                 temporaryDirectory.resolve("summary.json"),
                 temporaryDirectory.resolve("timeline.jsonl")
         );
-
-        ScaleDualTaskWorkload.WorkloadResult result =
-                ScaleDualTaskWorkload.run(
-                        options,
-                        client,
-                        List.of("worker-a")
-                );
-
-        assertThat(operations.subList(0, 13)).containsExactly(
-                "create-task-a",
-                "append-task-a-100",
-                "append-task-a-100",
-                "append-task-a-100",
-                "append-task-a-100",
-                "append-task-a-100",
-                "create-task-b",
-                "append-task-b-100",
-                "append-task-b-100",
-                "append-task-b-100",
-                "append-task-b-100",
-                "append-task-b-100",
-                "approve-task-a"
-        );
-        assertThat(operations.get(13)).isEqualTo("approve-task-b");
-        assertThat(operations).containsOnlyOnce("export-task-a");
-        assertThat(operations).containsOnlyOnce("export-task-b");
-        assertThat(result.appendBatchCount()).isEqualTo(10);
-        assertThat(result.taskA().succeeded()).isEqualTo(500);
-        assertThat(result.taskB().succeeded()).isEqualTo(500);
-        assertThat(result.minimumConnected()).isEqualTo(1);
-
-        List<Map<String, Object>> timeline = Files.readAllLines(
-                options.timelineFile()
-        ).stream().map(Jsons::parseObject).toList();
-        assertThat(timeline).anySatisfy(entry -> {
-            assertThat(entry.get("event"))
-                    .isEqualTo("dual-task-workload-progress");
-            assertThat(entry.get("taskASucceeded")).isEqualTo(500L);
-            assertThat(entry.get("taskBSucceeded")).isEqualTo(0L);
-        });
-    }
-
-    @Test
-    void onlyTheGlobalSuccessfulProgressGapCanTriggerTheStall() {
-        long limit = Duration.ofSeconds(60).toNanos();
-
-        assertThat(ScaleDualTaskWorkload.hasStalled(false, limit - 1))
-                .isFalse();
-        assertThat(ScaleDualTaskWorkload.hasStalled(false, limit)).isTrue();
-        assertThat(ScaleDualTaskWorkload.hasStalled(true, limit)).isFalse();
     }
 
     private URI baseUri() {
@@ -153,9 +193,15 @@ class ScaleDualTaskWorkloadTest {
     private void taskRequest(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         if ("/api/v1/tasks".equals(path)) {
-            String taskId = createdTasks.incrementAndGet() == 1
-                    ? "task-a"
-                    : "task-b";
+            Map<String, Object> request = Jsons.parseObject(new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            ));
+            assertThat(request.get("maximumCandidateWorkers")).isEqualTo(100L);
+            String taskId = String.format(
+                    "task-%02d",
+                    createdTasks.incrementAndGet()
+            );
             messageIdsByTask.put(taskId, new ArrayList<>());
             operations.add("create-" + taskId);
             respondJson(exchange, 200, Map.of("taskId", taskId));
@@ -179,11 +225,13 @@ class ScaleDualTaskWorkloadTest {
 
     private void taskPreview(HttpExchange exchange) throws IOException {
         List<Object> entries = new ArrayList<>();
-        entries.add(taskPreviewEntry("task-a", "terminal"));
-        entries.add(taskPreviewEntry(
-                "task-b",
-                taskBLoadRequests.get() > 5 ? "terminal" : "running-visible"
-        ));
+        for (String taskId : messageIdsByTask.keySet()) {
+            String scoreBand = "task-10".equals(taskId)
+                    && finalTaskLoadRequests.get() <= 1
+                    ? "running-visible"
+                    : "terminal";
+            entries.add(taskPreviewEntry(taskId, scoreBand));
+        }
         respondJson(exchange, 200, Map.of(
                 "sampleLimit", 100,
                 "generatedAt", "2026-09-02T00:00:00Z",
@@ -220,8 +268,8 @@ class ScaleDualTaskWorkloadTest {
     private void loadResults(HttpExchange exchange, String taskId)
             throws IOException {
         List<Object> requested = parseArray(exchange);
-        boolean succeeded = !"task-b".equals(taskId)
-                || taskBLoadRequests.incrementAndGet() > 5;
+        boolean succeeded = !"task-10".equals(taskId)
+                || finalTaskLoadRequests.incrementAndGet() > 1;
         Map<String, Object> response = new LinkedHashMap<>();
         for (Object raw : requested) {
             response.put(

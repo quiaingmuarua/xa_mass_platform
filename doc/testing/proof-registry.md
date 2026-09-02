@@ -131,28 +131,31 @@ processes, mutations or evidence.
 
 - **Primary owner:** `:integrations:worker-websocket-scale` and its separate
   workflow.
-- **Claim:** one Java 21 Host prepares 10,000 identities, sustains at least
-  9,900 connected-and-HOT Workers, drains two competing 500-Item Tasks, and
-  repeats that bounded workload after one Server restart while process
-  resources remain bounded.
+- **Claim:** one Java 21 Host prepares 15,000 identities, sustains at least
+  14,800 connected-and-HOT Workers, stops a deterministic 5,000-run subset,
+  then drains ten 5,000-Item Tasks on the retained 10,000-Worker world before
+  and after one Server restart while process resources remain bounded.
 - **Failure model:** connection ceiling, platform-thread explosion, FD or
   memory exhaustion and reconnect collapse.
-- **World:** one Group, 10,000 WebSocket Workers, one Adapter and one Server.
-- **Workload:** two same-Group 500-Item Tasks before and after restart; both
+- **World:** one Group, 15,000 registered WebSocket Worker identities, exactly
+  10,000 active runs after contraction, one Adapter and one Server.
+- **Workload:** ten same-Group 5,000-Item Tasks before and after restart; all
   Tasks are fully populated before consecutive approval.
-- **Mutation:** one Server restart with Host retained.
+- **Mutation:** fifty one-shot Lab batch stops followed by one Server restart
+  with the Host retained.
 - **Oracle:** paged Network/Scheduling observations, paged Result progress,
   exact per-Task exports, worker-ID digest and Linux process resource samples.
 - **Prerequisites:** Linux, Java 21, Redis 7.4 and `nofile >= 65536`.
-- **Deliberate nonclaims:** exact 10,000 online, Task fairness, fixed execution
-  ratio, completion order, throughput, latency, Handler concurrency, topology
-  breadth and soak.
-- **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --workload-items-per-task 500 --redis-url redis://127.0.0.1:6379/15`.
+- **Deliberate nonclaims:** exact 15,000 or 10,000 online, Task fairness, fixed
+  execution ratio, completion order, throughput, latency, Handler concurrency,
+  topology breadth and soak.
+- **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** very high; nightly/manual only.
 
-The 10k lane uses the same strict Inventory materializer and 100-record JSONL
-boundary as the 100-Worker lanes. Its scale capability and resource oracle are
-lane-owned additions rather than a second initialization path.
+The capacity lane uses the same strict Inventory materializer and 100-record
+JSONL boundary as the 100-Worker lanes. Its 15k/10k topology, scale capability
+and resource oracle are lane-owned additions rather than a second
+initialization path.
 
 ## android_host
 

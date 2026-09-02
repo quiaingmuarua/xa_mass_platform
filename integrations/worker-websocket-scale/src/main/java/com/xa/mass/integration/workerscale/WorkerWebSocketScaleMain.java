@@ -1,11 +1,12 @@
 package com.xa.mass.integration.workerscale;
 
 import com.xa.mass.integration.workerscale.ScaleApiClient.LabWorker;
+import com.xa.mass.integration.workerscale.ScaleEvidence.ScaleTopology;
+import com.xa.mass.integration.workerscale.ScaleLoadedOperation.LoadedOperationResult;
+import com.xa.mass.integration.workerscale.ScaleLoadedOperation.TaskProgress;
 import com.xa.mass.integration.workerscale.ScaleOptions.Phase;
-import com.xa.mass.integration.workerscale.ScaleDualTaskWorkload.WorkloadResult;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -13,13 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Public-API proof for one offered Java WebSocket Worker scale phase. */
+/** Public-API proof for one phase of the loaded Java WebSocket scale lane. */
 public final class WorkerWebSocketScaleMain {
 
     private static final System.Logger LOG = System.getLogger(
             WorkerWebSocketScaleMain.class.getName()
     );
     private static final int OBSERVATION_CHUNK_SIZE = 100;
+    private static final int STOP_BATCH_SIZE = 100;
     private static final int REQUIRED_CONSECUTIVE_SCANS = 3;
 
     private WorkerWebSocketScaleMain() {
@@ -40,51 +42,133 @@ public final class WorkerWebSocketScaleMain {
                             options.requestTimeout()
                     )
             );
-            List<String> workerIds = awaitIdentityInventory(options, api);
-            String identityDigest = ScaleEvidence.identityDigest(workerIds);
-            verifyIdentityBaseline(options, workerIds, identityDigest);
+            ScaleTopology topology = loadAndVerifyTopology(options);
+            boolean allRunning = options.phase() == Phase.INITIAL;
+            Map<String, String> observedIdentityByLabKey = awaitIdentityInventory(
+                    options,
+                    api,
+                    topology,
+                    allRunning
+            );
+            Map<String, String> identityByLabKey = establishIdentityBaseline(
+                    options,
+                    topology,
+                    observedIdentityByLabKey
+            );
 
-            Convergence convergence = awaitConvergence(
-                    options,
-                    api,
-                    workerIds,
-                    "convergence"
+            int stopBatchCount = 0;
+            int stableScans = 0;
+            Convergence initialHeadroom = null;
+            if (options.phase() == Phase.INITIAL) {
+                List<String> allWorkerIds = List.copyOf(
+                        identityByLabKey.values()
+                );
+                initialHeadroom = awaitConvergence(
+                        options,
+                        api,
+                        allWorkerIds,
+                        List.of(),
+                        options.minimumInitialConverged(),
+                        "initial-headroom"
+                );
+                stableScans = verifyStableHold(
+                        options,
+                        api,
+                        allWorkerIds,
+                        options.minimumInitialConverged()
+                );
+                stopBatchCount = stopExcessWorkers(options, api, topology);
+                observedIdentityByLabKey = awaitIdentityInventory(
+                        options,
+                        api,
+                        topology,
+                        false
+                );
+                verifyObservedIdentities(
+                        identityByLabKey,
+                        observedIdentityByLabKey,
+                        topology.retainedLabWorkerKeys()
+                );
+            }
+
+            List<String> activeWorkerIds = workerIds(
+                    identityByLabKey,
+                    topology.retainedLabWorkerKeys()
             );
-            int stableScans = verifyStableHold(
-                    options,
-                    api,
-                    workerIds
+            List<String> stoppedWorkerIds = workerIds(
+                    identityByLabKey,
+                    topology.stoppedLabWorkerKeys()
             );
-            WorkloadResult workload = ScaleDualTaskWorkload.run(
+            Convergence activeConvergence = awaitConvergence(
                     options,
                     api,
-                    workerIds
+                    activeWorkerIds,
+                    stoppedWorkerIds,
+                    options.minimumRetainedConverged(),
+                    "retained-fleet"
+            );
+            LoadedOperationResult operation = ScaleLoadedOperation.run(
+                    options,
+                    api,
+                    activeWorkerIds
             );
             Convergence postWorkConvergence = awaitConvergence(
                     options,
                     api,
-                    workerIds,
+                    activeWorkerIds,
+                    stoppedWorkerIds,
+                    options.minimumRetainedConverged(),
                     "post-work-convergence"
             );
 
             summary.put("status", "passed");
-            summary.put("preparedIdentities", workerIds.size());
-            summary.put("workerIdSetSha256", identityDigest);
-            summary.put("consecutiveConvergedScans", convergence.consecutive());
-            summary.put("connectedWorkers", convergence.scan().connected());
-            summary.put("hotWorkers", convergence.scan().hot());
+            summary.put("preparedIdentities", identityByLabKey.size());
+            summary.put("retainedIdentities", activeWorkerIds.size());
+            summary.put("stoppedIdentities", stoppedWorkerIds.size());
             summary.put(
-                    "connectedAndHotWorkers",
-                    convergence.scan().connectedAndHot()
+                    "allWorkerIdSetSha256",
+                    ScaleEvidence.identityDigest(identityByLabKey.values())
             );
             summary.put(
-                    "hotWithoutConnectionWorkers",
-                    convergence.scan().hotWithoutConnection()
+                    "retainedWorkerIdSetSha256",
+                    ScaleEvidence.identityDigest(activeWorkerIds)
             );
+            summary.put(
+                    "stoppedWorkerIdSetSha256",
+                    ScaleEvidence.identityDigest(stoppedWorkerIds)
+            );
+            summary.put("batchStopRequestCount", stopBatchCount);
             summary.put("stableHoldScans", stableScans);
+            if (initialHeadroom != null) {
+                summary.put(
+                        "initialHeadroomConnectedAndHot",
+                        initialHeadroom.scan().activeConnectedAndHot()
+                );
+                summary.put(
+                        "initialHeadroomConsecutiveScans",
+                        initialHeadroom.consecutive()
+                );
+            }
             summary.put(
-                    "activeTaskCount",
-                    ScaleDualTaskWorkload.TASK_COUNT
+                    "consecutiveRetainedConvergedScans",
+                    activeConvergence.consecutive()
+            );
+            summary.put(
+                    "retainedConnectedAndHotWorkers",
+                    activeConvergence.scan().activeConnectedAndHot()
+            );
+            summary.put(
+                    "stoppedConnectedWorkers",
+                    activeConvergence.scan().stoppedConnected()
+            );
+            summary.put(
+                    "stoppedHotWorkers",
+                    activeConvergence.scan().stoppedHot()
+            );
+            summary.put("activeTaskCount", ScaleLoadedOperation.TASK_COUNT);
+            summary.put(
+                    "maximumCandidateWorkersPerTask",
+                    ScaleLoadedOperation.MAXIMUM_CANDIDATE_WORKERS
             );
             summary.put(
                     "offeredItemsPerTask",
@@ -93,51 +177,50 @@ public final class WorkerWebSocketScaleMain {
             summary.put(
                     "totalOfferedItems",
                     Math.multiplyExact(
-                            ScaleDualTaskWorkload.TASK_COUNT,
+                            ScaleLoadedOperation.TASK_COUNT,
                             options.workloadItemsPerTask()
                     )
             );
-            summary.put("appendBatchCount", workload.appendBatchCount());
+            summary.put("appendBatchCount", operation.appendBatchCount());
             summary.put(
-                    "taskAFirstSuccessElapsedMillis",
-                    workload.taskA().firstSuccessElapsedMillis()
+                    "succeededItemCount",
+                    operation.tasks().stream()
+                            .mapToInt(TaskProgress::succeeded)
+                            .sum()
             );
-            summary.put(
-                    "taskACompletionElapsedMillis",
-                    workload.taskA().completionElapsedMillis()
-            );
-            summary.put("taskASucceededCount", workload.taskA().succeeded());
-            summary.put(
-                    "taskBFirstSuccessElapsedMillis",
-                    workload.taskB().firstSuccessElapsedMillis()
-            );
-            summary.put(
-                    "taskBCompletionElapsedMillis",
-                    workload.taskB().completionElapsedMillis()
-            );
-            summary.put("taskBSucceededCount", workload.taskB().succeeded());
+            summary.put("tasks", operation.tasks().stream()
+                    .map(WorkerWebSocketScaleMain::taskSummary)
+                    .toList());
             summary.put(
                     "maximumGlobalNoProgressMillis",
-                    workload.maximumNoProgressMillis()
+                    operation.maximumNoProgressMillis()
             );
             summary.put(
                     "minimumConnectedDuringWork",
-                    workload.minimumConnected()
+                    operation.minimumConnected()
             );
             summary.put(
                     "postWorkConnectedAndHot",
-                    postWorkConvergence.scan().connectedAndHot()
+                    postWorkConvergence.scan().activeConnectedAndHot()
+            );
+            summary.put(
+                    "postWorkStoppedConnected",
+                    postWorkConvergence.scan().stoppedConnected()
+            );
+            summary.put(
+                    "postWorkStoppedHot",
+                    postWorkConvergence.scan().stoppedHot()
             );
             summary.put("completedAtEpochMillis", System.currentTimeMillis());
             ScaleEvidence.writeSummary(options.summaryFile(), summary);
             LOG.log(
                     System.Logger.Level.INFO,
-                    "Worker WebSocket scale phase {0} passed: offered={1}, "
-                            + "connectedAndHot={2}, identitySha256={3}",
+                    "Worker WebSocket scale phase {0} passed: prepared={1}, "
+                            + "retained={2}, connectedAndHot={3}",
                     options.phase().wireValue(),
-                    options.offeredWorkers(),
-                    convergence.scan().connectedAndHot(),
-                    identityDigest
+                    options.preparedWorkers(),
+                    options.retainedWorkers(),
+                    activeConvergence.scan().activeConnectedAndHot()
             );
         } catch (RuntimeException | Error failure) {
             summary.put("status", "failed");
@@ -153,25 +236,49 @@ public final class WorkerWebSocketScaleMain {
         }
     }
 
-    private static List<String> awaitIdentityInventory(
+    private static ScaleTopology loadAndVerifyTopology(ScaleOptions options) {
+        ScaleTopology topology = ScaleEvidence.readTopology(
+                options.topologyFile(),
+                options.workerGroupId()
+        );
+        if (topology.retainedLabWorkerKeys().size()
+                != options.retainedWorkers()) {
+            throw new IllegalStateException(
+                    "Private topology retained Worker count changed"
+            );
+        }
+        if (topology.retainedLabWorkerKeys().size()
+                + topology.stoppedLabWorkerKeys().size()
+                != options.preparedWorkers()) {
+            throw new IllegalStateException(
+                    "Private topology prepared Worker count changed"
+            );
+        }
+        return topology;
+    }
+
+    private static Map<String, String> awaitIdentityInventory(
             ScaleOptions options,
-            ScaleApiClient api
+            ScaleApiClient api,
+            ScaleTopology topology,
+            boolean allRunning
     ) {
         long deadline = deadline(options.maximumConvergenceWait());
         RuntimeException latestFailure = null;
         do {
             try {
-                List<LabWorker> workers = api.labWorkers();
                 InventoryObservation observation = observeInventory(
                         options,
-                        workers
+                        topology,
+                        api.labWorkers(),
+                        allRunning
                 );
                 ScaleEvidence.appendTimeline(
                         options.timelineFile(),
                         observation.timeline(options)
                 );
                 if (observation.complete()) {
-                    return observation.workerIds();
+                    return observation.workerIdsByLabWorkerKey();
                 }
             } catch (RuntimeException error) {
                 latestFailure = error;
@@ -190,90 +297,214 @@ public final class WorkerWebSocketScaleMain {
 
     private static InventoryObservation observeInventory(
             ScaleOptions options,
-            List<LabWorker> workers
+            ScaleTopology topology,
+            List<LabWorker> workers,
+            boolean allRunning
     ) {
-        int matching = 0;
-        int running = 0;
-        List<String> workerIds = new ArrayList<>();
-        Set<String> labKeys = new HashSet<>();
+        Set<String> retained = Set.copyOf(topology.retainedLabWorkerKeys());
+        Set<String> stopped = Set.copyOf(topology.stoppedLabWorkerKeys());
+        Set<String> expectedKeys = new LinkedHashSet<>(retained);
+        expectedKeys.addAll(stopped);
+        Map<String, LabWorker> byLabKey = new LinkedHashMap<>();
         for (LabWorker worker : workers) {
             if (!options.workerGroupId().equals(worker.workerGroupId())) {
                 throw new IllegalStateException(
                         "Scale Lab contains an unexpected WorkerGroup"
                 );
             }
-            matching++;
-            if (!labKeys.add(worker.labWorkerKey())) {
+            if (!expectedKeys.contains(worker.labWorkerKey())) {
+                throw new IllegalStateException(
+                        "Scale Lab contains an unexpected Worker coordinate"
+                );
+            }
+            if (byLabKey.putIfAbsent(worker.labWorkerKey(), worker) != null) {
                 throw new IllegalStateException(
                         "Scale Lab contains a duplicate Worker coordinate"
                 );
+            }
+        }
+        Map<String, String> identities = new LinkedHashMap<>();
+        Set<String> uniqueWorkerIds = new HashSet<>();
+        int running = 0;
+        int stoppedCount = 0;
+        boolean expectedStates = byLabKey.keySet().equals(expectedKeys);
+        for (String labWorkerKey : expectedKeys) {
+            LabWorker worker = byLabKey.get(labWorkerKey);
+            if (worker == null) {
+                continue;
+            }
+            boolean shouldRun = allRunning || retained.contains(labWorkerKey);
+            String expectedState = shouldRun ? "RUNNING" : "STOPPED";
+            if (!expectedState.equals(worker.desiredState())
+                    || !expectedState.equals(worker.runtimeState())) {
+                expectedStates = false;
             }
             if ("RUNNING".equals(worker.desiredState())
                     && "RUNNING".equals(worker.runtimeState())) {
                 running++;
             }
+            if ("STOPPED".equals(worker.desiredState())
+                    && "STOPPED".equals(worker.runtimeState())) {
+                stoppedCount++;
+            }
             if (worker.workerId() != null && !worker.workerId().isBlank()) {
-                workerIds.add(worker.workerId());
+                if (!uniqueWorkerIds.add(worker.workerId())) {
+                    throw new IllegalStateException(
+                            "Scale Lab contains duplicate Server-issued workerIds"
+                    );
+                }
+                identities.put(labWorkerKey, worker.workerId());
             }
         }
-        Set<String> uniqueIds = new HashSet<>(workerIds);
-        if (uniqueIds.size() != workerIds.size()) {
-            throw new IllegalStateException(
-                    "Scale Lab contains duplicate Server-issued workerIds"
-            );
-        }
-        Collections.sort(workerIds);
-        boolean complete = matching == options.offeredWorkers()
-                && running == options.offeredWorkers()
-                && workerIds.size() == options.offeredWorkers();
+        Set<String> requiredIdentityKeys = allRunning
+                ? expectedKeys
+                : retained;
+        boolean complete = byLabKey.size() == options.preparedWorkers()
+                && identities.keySet().containsAll(requiredIdentityKeys)
+                && expectedStates;
         return new InventoryObservation(
-                matching,
+                byLabKey.size(),
                 running,
-                List.copyOf(workerIds),
+                stoppedCount,
+                identities,
                 complete
         );
     }
 
-    private static void verifyIdentityBaseline(
+    private static Map<String, String> establishIdentityBaseline(
             ScaleOptions options,
-            List<String> workerIds,
-            String identityDigest
+            ScaleTopology topology,
+            Map<String, String> observedIdentityByLabKey
     ) {
         if (options.phase() == Phase.INITIAL) {
+            if (observedIdentityByLabKey.size() != options.preparedWorkers()) {
+                throw new IllegalStateException(
+                        "Initial Lab inventory did not expose every workerId"
+                );
+            }
             ScaleEvidence.writeBaseline(
                     options.baselineFile(),
                     options.workerGroupId(),
-                    workerIds
+                    observedIdentityByLabKey
             );
-        } else {
-            List<String> baseline = ScaleEvidence.readBaseline(
-                    options.baselineFile(),
-                    options.workerGroupId()
+            appendIdentityEvidence(options, observedIdentityByLabKey);
+            return observedIdentityByLabKey;
+        }
+        Map<String, String> baseline = ScaleEvidence.readBaseline(
+                options.baselineFile(),
+                options.workerGroupId()
+        );
+        Set<String> topologyKeys = new LinkedHashSet<>(
+                topology.retainedLabWorkerKeys()
+        );
+        topologyKeys.addAll(topology.stoppedLabWorkerKeys());
+        if (baseline.size() != options.preparedWorkers()
+                || !baseline.keySet().equals(topologyKeys)) {
+            throw new IllegalStateException(
+                    "Identity baseline does not match the private topology"
             );
-            if (!baseline.equals(workerIds)) {
+        }
+        verifyObservedIdentities(
+                baseline,
+                observedIdentityByLabKey,
+                topology.retainedLabWorkerKeys()
+        );
+        appendIdentityEvidence(options, baseline);
+        return baseline;
+    }
+
+    private static void verifyObservedIdentities(
+            Map<String, String> baseline,
+            Map<String, String> observed,
+            List<String> requiredLabWorkerKeys
+    ) {
+        for (String labWorkerKey : requiredLabWorkerKeys) {
+            if (!baseline.get(labWorkerKey).equals(observed.get(labWorkerKey))) {
                 throw new IllegalStateException(
-                        "Server restart changed the Worker identity set"
-                );
-            }
-            if (!ScaleEvidence.identityDigest(baseline).equals(identityDigest)) {
-                throw new IllegalStateException(
-                        "Worker identity digest changed after Server restart"
+                        "Active Worker identity changed for " + labWorkerKey
                 );
             }
         }
+        for (Map.Entry<String, String> entry : observed.entrySet()) {
+            if (!entry.getValue().equals(baseline.get(entry.getKey()))) {
+                throw new IllegalStateException(
+                        "Observed Worker identity changed for " + entry.getKey()
+                );
+            }
+        }
+    }
+
+    private static void appendIdentityEvidence(
+            ScaleOptions options,
+            Map<String, String> identityByLabKey
+    ) {
         ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
                 "atEpochMillis", System.currentTimeMillis(),
                 "phase", options.phase().wireValue(),
                 "event", "identity-set-established",
-                "workerCount", workerIds.size(),
-                "workerIdSetSha256", identityDigest
+                "workerCount", identityByLabKey.size(),
+                "workerIdSetSha256",
+                ScaleEvidence.identityDigest(identityByLabKey.values())
         ));
+    }
+
+    private static int stopExcessWorkers(
+            ScaleOptions options,
+            ScaleApiClient api,
+            ScaleTopology topology
+    ) {
+        int batches = 0;
+        List<String> stopped = topology.stoppedLabWorkerKeys();
+        for (List<String> batch : stopBatches(stopped)) {
+            api.stopWorkers(options.workerGroupId(), batch);
+            batches++;
+            ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
+                    "atEpochMillis", System.currentTimeMillis(),
+                    "phase", options.phase().wireValue(),
+                    "event", "lab-stop-batch-accepted",
+                    "batchOrdinal", batches,
+                    "acceptedCount", batch.size()
+            ));
+        }
+        return batches;
+    }
+
+    static List<List<String>> stopBatches(List<String> labWorkerKeys) {
+        List<List<String>> result = new ArrayList<>();
+        for (int offset = 0;
+                offset < labWorkerKeys.size();
+                offset += STOP_BATCH_SIZE) {
+            result.add(List.copyOf(labWorkerKeys.subList(
+                    offset,
+                    Math.min(offset + STOP_BATCH_SIZE, labWorkerKeys.size())
+            )));
+        }
+        return List.copyOf(result);
+    }
+
+    private static List<String> workerIds(
+            Map<String, String> identityByLabKey,
+            List<String> labWorkerKeys
+    ) {
+        List<String> result = new ArrayList<>();
+        for (String labWorkerKey : labWorkerKeys) {
+            String workerId = identityByLabKey.get(labWorkerKey);
+            if (workerId == null) {
+                throw new IllegalStateException(
+                        "Worker identity is missing for " + labWorkerKey
+                );
+            }
+            result.add(workerId);
+        }
+        return List.copyOf(result);
     }
 
     private static Convergence awaitConvergence(
             ScaleOptions options,
             ScaleApiClient api,
-            List<String> workerIds,
+            List<String> activeWorkerIds,
+            List<String> stoppedWorkerIds,
+            int minimumConverged,
             String stage
     ) {
         long deadline = deadline(options.maximumConvergenceWait());
@@ -285,27 +516,28 @@ public final class WorkerWebSocketScaleMain {
                 latest = scan(
                         options,
                         api,
-                        workerIds,
+                        activeWorkerIds,
+                        stoppedWorkerIds,
                         stage
                 );
-                if (latest.connectedAndHot() >= options.minimumConverged()) {
-                    consecutive++;
-                } else {
-                    consecutive = 0;
-                }
-                if (consecutive >= REQUIRED_CONSECUTIVE_SCANS
-                        && latest.hotWithoutConnection() == 0) {
+                boolean converged = latest.activeConnectedAndHot()
+                        >= minimumConverged
+                        && latest.activeHotWithoutConnection() == 0
+                        && latest.stoppedConnected() == 0
+                        && latest.stoppedHot() == 0;
+                consecutive = converged ? consecutive + 1 : 0;
+                if (consecutive >= REQUIRED_CONSECUTIVE_SCANS) {
                     return new Convergence(latest, consecutive);
                 }
             } catch (RuntimeException error) {
                 latestFailure = error;
                 consecutive = 0;
-                appendFailure(options, "convergence-scan", error);
+                appendFailure(options, stage, error);
             }
             sleep(options.scanInterval());
         } while (System.nanoTime() < deadline);
         IllegalStateException timeout = new IllegalStateException(
-                "Worker network and scheduling projections did not converge"
+                "Worker projections did not converge for " + stage
                         + " (latest=" + latest + ")"
         );
         if (latestFailure != null) {
@@ -317,7 +549,8 @@ public final class WorkerWebSocketScaleMain {
     private static int verifyStableHold(
             ScaleOptions options,
             ScaleApiClient api,
-            List<String> workerIds
+            List<String> activeWorkerIds,
+            int minimumConverged
     ) {
         if (options.stableHold().isZero()) {
             return 0;
@@ -326,11 +559,18 @@ public final class WorkerWebSocketScaleMain {
         long holdNanos = options.stableHold().toNanos();
         int scans = 0;
         while (true) {
-            Scan observed = scan(options, api, workerIds, "stable-hold");
+            Scan observed = scan(
+                    options,
+                    api,
+                    activeWorkerIds,
+                    List.of(),
+                    "initial-stable-hold"
+            );
             scans++;
-            if (observed.connectedAndHot() < options.minimumConverged()) {
+            if (observed.activeConnectedAndHot() < minimumConverged
+                    || observed.activeHotWithoutConnection() != 0) {
                 throw new IllegalStateException(
-                        "Worker convergence fell below the stable-hold threshold"
+                        "Initial Worker headroom fell below the stable threshold"
                 );
             }
             long elapsed = System.nanoTime() - started;
@@ -347,8 +587,44 @@ public final class WorkerWebSocketScaleMain {
     private static Scan scan(
             ScaleOptions options,
             ScaleApiClient api,
-            List<String> workerIds,
+            List<String> activeWorkerIds,
+            List<String> stoppedWorkerIds,
             String stage
+    ) {
+        WorkerStates active = observeStates(options, api, activeWorkerIds);
+        WorkerStates stopped = observeStates(options, api, stoppedWorkerIds);
+        Scan scan = new Scan(
+                active.connected(),
+                active.hot(),
+                active.connectedAndHot(),
+                active.hotWithoutConnection(),
+                stopped.connected(),
+                stopped.hot()
+        );
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("atEpochMillis", System.currentTimeMillis());
+        evidence.put("phase", options.phase().wireValue());
+        evidence.put("event", "projection-scan");
+        evidence.put("stage", stage);
+        evidence.put("activeWorkers", activeWorkerIds.size());
+        evidence.put("activeConnected", active.connected());
+        evidence.put("activeHot", active.hot());
+        evidence.put("activeConnectedAndHot", active.connectedAndHot());
+        evidence.put(
+                "activeHotWithoutConnection",
+                active.hotWithoutConnection()
+        );
+        evidence.put("stoppedWorkers", stoppedWorkerIds.size());
+        evidence.put("stoppedConnected", stopped.connected());
+        evidence.put("stoppedHot", stopped.hot());
+        ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
+        return scan;
+    }
+
+    private static WorkerStates observeStates(
+            ScaleOptions options,
+            ScaleApiClient api,
+            List<String> workerIds
     ) {
         int connected = 0;
         int hot = 0;
@@ -385,24 +661,23 @@ public final class WorkerWebSocketScaleMain {
                 }
             }
         }
-        Scan scan = new Scan(
+        return new WorkerStates(
                 connected,
                 hot,
                 connectedAndHot,
                 hotWithoutConnection
         );
-        Map<String, Object> evidence = new LinkedHashMap<>();
-        evidence.put("atEpochMillis", System.currentTimeMillis());
-        evidence.put("phase", options.phase().wireValue());
-        evidence.put("event", "projection-scan");
-        evidence.put("stage", stage);
-        evidence.put("offeredWorkers", workerIds.size());
-        evidence.put("connectedWorkers", connected);
-        evidence.put("hotWorkers", hot);
-        evidence.put("connectedAndHotWorkers", connectedAndHot);
-        evidence.put("hotWithoutConnectionWorkers", hotWithoutConnection);
-        ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
-        return scan;
+    }
+
+    private static Map<String, Object> taskSummary(TaskProgress task) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("label", task.label());
+        result.put("taskId", task.taskId());
+        result.put("succeededCount", task.succeeded());
+        result.put("firstSuccessElapsedMillis", task.firstSuccessElapsedMillis());
+        result.put("completionElapsedMillis", task.completionElapsedMillis());
+        result.put("exported", task.exported());
+        return result;
     }
 
     private static Map<String, Object> baseSummary(
@@ -413,8 +688,16 @@ public final class WorkerWebSocketScaleMain {
         result.put("proofId", options.proofId());
         result.put("lane", "worker-websocket-scale");
         result.put("phase", options.phase().wireValue());
-        result.put("offeredWorkers", options.offeredWorkers());
-        result.put("minimumConnectedAndHot", options.minimumConverged());
+        result.put("preparedWorkers", options.preparedWorkers());
+        result.put("retainedWorkers", options.retainedWorkers());
+        result.put(
+                "minimumInitialConnectedAndHot",
+                options.minimumInitialConverged()
+        );
+        result.put(
+                "minimumRetainedConnectedAndHot",
+                options.minimumRetainedConverged()
+        );
         result.put("startedAtEpochMillis", startedAt);
         return result;
     }
@@ -468,7 +751,8 @@ public final class WorkerWebSocketScaleMain {
     private record InventoryObservation(
             int observedWorkers,
             int runningWorkers,
-            List<String> workerIds,
+            int stoppedWorkers,
+            Map<String, String> workerIdsByLabWorkerKey,
             boolean complete
     ) {
 
@@ -479,17 +763,28 @@ public final class WorkerWebSocketScaleMain {
                     "event", "identity-inventory-observed",
                     "observedWorkers", observedWorkers,
                     "runningWorkers", runningWorkers,
-                    "workersWithIdentity", workerIds.size(),
-                    "expectedWorkers", options.offeredWorkers()
+                    "stoppedWorkers", stoppedWorkers,
+                    "workersWithIdentity", workerIdsByLabWorkerKey.size(),
+                    "expectedWorkers", options.preparedWorkers()
             );
         }
     }
 
-    private record Scan(
+    private record WorkerStates(
             int connected,
             int hot,
             int connectedAndHot,
             int hotWithoutConnection
+    ) {
+    }
+
+    private record Scan(
+            int activeConnected,
+            int activeHot,
+            int activeConnectedAndHot,
+            int activeHotWithoutConnection,
+            int stoppedConnected,
+            int stoppedHot
     ) {
     }
 

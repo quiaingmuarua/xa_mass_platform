@@ -10,19 +10,25 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class ScaleEvidence {
 
     private ScaleEvidence() {
     }
 
-    static String identityDigest(List<String> sortedWorkerIds) {
+    static String identityDigest(Collection<String> workerIds) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            List<String> sortedWorkerIds = new ArrayList<>(workerIds);
+            Collections.sort(sortedWorkerIds);
             for (String workerId : sortedWorkerIds) {
                 digest.update(workerId.getBytes(StandardCharsets.UTF_8));
                 digest.update((byte) '\n');
@@ -36,35 +42,84 @@ final class ScaleEvidence {
     static void writeBaseline(
             Path path,
             String workerGroupId,
-            List<String> sortedWorkerIds
+            Map<String, String> workerIdsByLabWorkerKey
     ) {
-        writeJson(path, Map.of(
-                "workerGroupId", workerGroupId,
-                "workerIds", sortedWorkerIds
-        ));
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("workerGroupId", workerGroupId);
+        value.put(
+                "workerIdsByLabWorkerKey",
+                new LinkedHashMap<>(workerIdsByLabWorkerKey)
+        );
+        writeJson(path, value);
     }
 
-    static List<String> readBaseline(Path path, String workerGroupId) {
-        Map<String, Object> value;
-        try {
-            value = Jsons.parseObject(Files.readString(
-                    path,
-                    StandardCharsets.UTF_8
-            ));
-        } catch (IOException error) {
-            throw new IllegalStateException("Could not read identity baseline", error);
+    static Map<String, String> readBaseline(
+            Path path,
+            String workerGroupId
+    ) {
+        Map<String, Object> value = readJson(path, "identity baseline");
+        if (!value.keySet().equals(Set.of(
+                "workerGroupId",
+                "workerIdsByLabWorkerKey"
+        ))) {
+            throw ScaleJson.invalid("Identity baseline fields changed");
         }
         if (!workerGroupId.equals(ScaleJson.string(value, "workerGroupId"))) {
             throw ScaleJson.invalid("Identity baseline WorkerGroup changed");
         }
-        List<String> workerIds = new ArrayList<>();
-        for (Object raw : ScaleJson.array(value.get("workerIds"), "workerIds")) {
-            if (!(raw instanceof String workerId) || workerId.isBlank()) {
-                throw ScaleJson.invalid("Baseline workerId must be non-blank");
+        Map<String, Object> raw = ScaleJson.object(
+                value.get("workerIdsByLabWorkerKey"),
+                "workerIdsByLabWorkerKey"
+        );
+        Map<String, String> workerIds = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : raw.entrySet()) {
+            if (entry.getKey().isBlank()
+                    || !(entry.getValue() instanceof String workerId)
+                    || workerId.isBlank()) {
+                throw ScaleJson.invalid(
+                        "Baseline coordinates and workerIds must be non-blank"
+                );
             }
-            workerIds.add(workerId);
+            workerIds.put(entry.getKey(), workerId);
         }
-        return List.copyOf(workerIds);
+        if (new LinkedHashSet<>(workerIds.values()).size() != workerIds.size()) {
+            throw ScaleJson.invalid("Identity baseline contains duplicate workerIds");
+        }
+        return Collections.unmodifiableMap(workerIds);
+    }
+
+    static ScaleTopology readTopology(Path path, String workerGroupId) {
+        Map<String, Object> value = readJson(path, "private topology");
+        if (!value.keySet().equals(Set.of(
+                "workerGroupId",
+                "retainedLabWorkerKeys",
+                "stoppedLabWorkerKeys"
+        ))) {
+            throw ScaleJson.invalid("Private topology fields changed");
+        }
+        if (!workerGroupId.equals(ScaleJson.string(value, "workerGroupId"))) {
+            throw ScaleJson.invalid("Private topology WorkerGroup changed");
+        }
+        List<String> retained = stringList(
+                value.get("retainedLabWorkerKeys"),
+                "retainedLabWorkerKeys"
+        );
+        List<String> stopped = stringList(
+                value.get("stoppedLabWorkerKeys"),
+                "stoppedLabWorkerKeys"
+        );
+        Set<String> all = new LinkedHashSet<>(retained);
+        if (all.size() != retained.size() || !all.addAll(stopped)) {
+            throw ScaleJson.invalid(
+                    "Private topology coordinates must be unique"
+            );
+        }
+        if (all.size() != retained.size() + stopped.size()) {
+            throw ScaleJson.invalid(
+                    "Private topology coordinates must be unique"
+            );
+        }
+        return new ScaleTopology(retained, stopped);
     }
 
     static void appendTimeline(Path path, Map<String, Object> value) {
@@ -87,6 +142,28 @@ final class ScaleEvidence {
 
     static void writeSummary(Path path, Map<String, Object> value) {
         writeJson(path, new LinkedHashMap<>(value));
+    }
+
+    private static Map<String, Object> readJson(Path path, String owner) {
+        try {
+            return Jsons.parseObject(Files.readString(
+                    path,
+                    StandardCharsets.UTF_8
+            ));
+        } catch (IOException error) {
+            throw new IllegalStateException("Could not read " + owner, error);
+        }
+    }
+
+    private static List<String> stringList(Object raw, String owner) {
+        List<String> result = new ArrayList<>();
+        for (Object value : ScaleJson.array(raw, owner)) {
+            if (!(value instanceof String text) || text.isBlank()) {
+                throw ScaleJson.invalid(owner + " must contain non-blank strings");
+            }
+            result.add(text);
+        }
+        return List.copyOf(result);
     }
 
     private static void writeJson(Path path, Object value) {
@@ -125,5 +202,11 @@ final class ScaleEvidence {
                 }
             }
         }
+    }
+
+    record ScaleTopology(
+            List<String> retainedLabWorkerKeys,
+            List<String> stoppedLabWorkerKeys
+    ) {
     }
 }

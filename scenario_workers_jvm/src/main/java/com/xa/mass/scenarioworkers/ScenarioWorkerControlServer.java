@@ -13,9 +13,11 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,9 +30,11 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
 
     private static final String LAB_PATH = "/lab";
     private static final String WORKERS_PATH = "/lab/v1/workers";
+    private static final String WORKERS_STOP_PATH = WORKERS_PATH + ":stop";
     private static final String CONSOLE_RESOURCE =
             "/com/xa/mass/scenarioworkers/worker-lab.html";
     private static final int MAX_REQUEST_BYTES = 64 * 1024;
+    private static final int MAX_STOP_BATCH_SIZE = 100;
     private static final int CONTROL_THREADS = 4;
 
     private final ScenarioWorkers workers;
@@ -219,6 +223,19 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
 
     private void route(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getRawPath();
+        if (WORKERS_STOP_PATH.equals(path)) {
+            requireMethod(exchange, "POST");
+            List<ScenarioWorkerCoordinate> targets = requiredStopTargets(
+                    readBody(exchange)
+            );
+            workers.stopWorkers(targets);
+            respondJson(
+                    exchange,
+                    202,
+                    Map.of("acceptedCount", targets.size())
+            );
+            return;
+        }
         if (WORKERS_PATH.equals(path)) {
             requireMethod(exchange, "GET");
             List<Map<String, Object>> encoded = new ArrayList<>();
@@ -457,6 +474,48 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             );
         }
         return new CheckpointRequest(token, hold);
+    }
+
+    private static List<ScenarioWorkerCoordinate> requiredStopTargets(
+            String encoded
+    ) {
+        List<Object> values = Jsons.parseArray(encoded);
+        if (values.isEmpty() || values.size() > MAX_STOP_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "worker stop batch must contain 1..100 coordinates"
+            );
+        }
+        List<ScenarioWorkerCoordinate> targets = new ArrayList<>(
+                values.size()
+        );
+        Set<ScenarioWorkerCoordinate> unique = new LinkedHashSet<>();
+        for (Object value : values) {
+            if (!(value instanceof Map<?, ?> coordinate)
+                    || !coordinate.keySet().equals(Set.of(
+                            "workerGroupId",
+                            "labWorkerKey"
+                    ))
+                    || !(coordinate.get("workerGroupId")
+                            instanceof String workerGroupId)
+                    || !(coordinate.get("labWorkerKey")
+                            instanceof String labWorkerKey)) {
+                throw new IllegalArgumentException(
+                        "worker stop coordinate requires workerGroupId and "
+                                + "labWorkerKey"
+                );
+            }
+            ScenarioWorkerCoordinate target = new ScenarioWorkerCoordinate(
+                    workerGroupId,
+                    labWorkerKey
+            );
+            if (!unique.add(target)) {
+                throw new IllegalArgumentException(
+                        "worker stop batch contains duplicate coordinates"
+                );
+            }
+            targets.add(target);
+        }
+        return List.copyOf(targets);
     }
 
     private static String readBody(HttpExchange exchange) throws IOException {

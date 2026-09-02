@@ -481,6 +481,9 @@ system.
 - Its loopback Lab HTTP surface may atomically replace discovered Worker files,
   explicitly start/stop one replica, and own nonpersistent scheduled stops.
   Lab desired/runtime state is local observation, never Adapter or Kernel truth.
+  The Host binds this listener before starting outbound Worker connections and
+  begins serving only after initial startup completes, so the configured port
+  remains owned even when a scale lane widens the OS ephemeral port range.
 - Atomic Worker file replacement fails closed when the filesystem cannot honor
   `ATOMIC_MOVE`. A start issued while the Manager's previous stop is still
   converging is a conflict; callers observe `STOPPED` before retrying.
@@ -548,13 +551,16 @@ Adapter connectivity, Kernel state or schedulability.
   `results:export`, or repeat PRECOMPUTED and topology claims owned by Runtime
   Boundary.
 - Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
-  It may generate one 10,000-record Scenario Group, observe existing Runtime
-  APIs in 100-ID pages, drain two fully seeded same-Group 500-Item Tasks before
-  and after one Server restart while retaining the Host, and record `/proc`
-  resource evidence. During work it requires at least 9,900 connected Workers;
-  after drain it requires at least 9,900 connected-and-HOT Workers. It does not
-  claim exact online convergence, Task fairness, completion order, Handler
-  concurrency, throughput, latency or soak behavior.
+  It may generate one 15,000-record Scenario Group, establish connection
+  headroom, stop a deterministic 5,000-run subset, and drain ten fully seeded
+  same-Group 5,000-Item Tasks before and after one Server restart while
+  retaining the Host. Existing Runtime APIs remain bounded to 100 Worker IDs;
+  each terminal Task is exported exactly once. During work it requires at
+  least 9,900 retained connections; after drain it requires at least 9,900
+  retained connected-and-HOT Workers while the stopped set remains inactive.
+  `/proc` evidence includes RSS, CPU, native threads and file descriptors. The
+  lane does not claim exact online convergence, Task fairness, completion
+  order, Handler concurrency, throughput, latency or soak behavior.
 - Worker Correctness inputs are caller-owned local files. Its perfect-world
   proof uses managed batch `items:call`, fixes exact Item statuses and treats
   Result payload as opaque. The frontend separately turns lines into ordinary

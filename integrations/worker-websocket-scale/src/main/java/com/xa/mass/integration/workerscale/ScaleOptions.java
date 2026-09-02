@@ -14,14 +14,17 @@ record ScaleOptions(
         URI labBaseUri,
         String workerGroupId,
         String endpointManagerId,
-        int offeredWorkers,
-        int minimumConverged,
+        int preparedWorkers,
+        int retainedWorkers,
+        int minimumInitialConverged,
+        int minimumRetainedConverged,
         int workloadItemsPerTask,
         Duration maximumConvergenceWait,
         Duration stableHold,
         Duration scanInterval,
         Duration taskResultWait,
         Duration requestTimeout,
+        Path topologyFile,
         Path baselineFile,
         Path summaryFile,
         Path timelineFile
@@ -34,14 +37,17 @@ record ScaleOptions(
             "lab-base-url",
             "worker-group-id",
             "endpoint-manager-id",
-            "offered-workers",
-            "minimum-converged",
+            "prepared-workers",
+            "retained-workers",
+            "minimum-initial-converged",
+            "minimum-retained-converged",
             "workload-items-per-task",
             "maximum-convergence-wait-millis",
             "stable-hold-millis",
             "scan-interval-millis",
             "task-result-wait-millis",
             "request-timeout-millis",
+            "topology-file",
             "baseline-file",
             "summary-file",
             "timeline-file"
@@ -67,19 +73,31 @@ record ScaleOptions(
     }
 
     ScaleOptions {
-        if (offeredWorkers < 1 || offeredWorkers > 10_000) {
+        if (preparedWorkers < 1 || preparedWorkers > 15_000) {
             throw new IllegalArgumentException(
-                    "offeredWorkers must be in 1..10000"
+                    "preparedWorkers must be in 1..15000"
             );
         }
-        if (minimumConverged < 1 || minimumConverged > offeredWorkers) {
+        if (retainedWorkers < 1 || retainedWorkers >= preparedWorkers) {
             throw new IllegalArgumentException(
-                    "minimumConverged must be in 1..offeredWorkers"
+                    "retainedWorkers must be in 1..preparedWorkers-1"
             );
         }
-        if (workloadItemsPerTask < 1 || workloadItemsPerTask > 500) {
+        if (minimumInitialConverged < 1
+                || minimumInitialConverged > preparedWorkers) {
             throw new IllegalArgumentException(
-                    "workloadItemsPerTask must be in 1..500"
+                    "minimumInitialConverged must be in 1..preparedWorkers"
+            );
+        }
+        if (minimumRetainedConverged < 1
+                || minimumRetainedConverged > retainedWorkers) {
+            throw new IllegalArgumentException(
+                    "minimumRetainedConverged must be in 1..retainedWorkers"
+            );
+        }
+        if (workloadItemsPerTask < 1 || workloadItemsPerTask > 5_000) {
+            throw new IllegalArgumentException(
+                    "workloadItemsPerTask must be in 1..5000"
             );
         }
         requirePositive(maximumConvergenceWait, "maximumConvergenceWait");
@@ -91,6 +109,7 @@ record ScaleOptions(
         requirePositive(scanInterval, "scanInterval");
         requirePositive(taskResultWait, "taskResultWait");
         requirePositive(requestTimeout, "requestTimeout");
+        topologyFile = absolute(topologyFile, "topologyFile");
         baselineFile = absolute(baselineFile, "baselineFile");
         summaryFile = absolute(summaryFile, "summaryFile");
         timelineFile = absolute(timelineFile, "timelineFile");
@@ -137,9 +156,11 @@ record ScaleOptions(
                         "scenario-string-utils-workers"
                 ),
                 text(values, "endpoint-manager-id", "scenario-websocket"),
-                integer(values, "offered-workers", 10_000),
-                integer(values, "minimum-converged", 9_900),
-                integer(values, "workload-items-per-task", 500),
+                integer(values, "prepared-workers", 15_000),
+                integer(values, "retained-workers", 10_000),
+                integer(values, "minimum-initial-converged", 14_800),
+                integer(values, "minimum-retained-converged", 9_900),
+                integer(values, "workload-items-per-task", 5_000),
                 millis(values, "maximum-convergence-wait-millis", 900_000),
                 millis(
                         values,
@@ -147,8 +168,9 @@ record ScaleOptions(
                         phase == Phase.INITIAL ? 60_000 : 0
                 ),
                 millis(values, "scan-interval-millis", 10_000),
-                millis(values, "task-result-wait-millis", 300_000),
+                millis(values, "task-result-wait-millis", 900_000),
                 millis(values, "request-timeout-millis", 30_000),
+                path(values, "topology-file"),
                 path(values, "baseline-file"),
                 path(values, "summary-file"),
                 path(values, "timeline-file")

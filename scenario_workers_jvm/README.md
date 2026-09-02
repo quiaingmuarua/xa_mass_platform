@@ -131,7 +131,7 @@ not upgraded; delete `data/scenario-workers` to opt into the new default world.
 The Lab root must end in `data/scenario-workers` and must not pass through a
 symbolic link. Only direct, non-symlink `*.jsonl` children of configured
 Group directories are discovered. Files are sorted by name; each group is
-bounded to 10,000 Worker records, and each file contains `1..100` records. Any
+bounded to 15,000 Worker records, and each file contains `1..100` records. Any
 discovered invalid file fails aggregate startup
 before a Manager or network Client is created.
 
@@ -190,6 +190,7 @@ The Host exposes a loopback-only JDK `HttpServer` control surface:
 
 ```text
 GET    /lab/v1/workers
+POST   /lab/v1/workers:stop
 GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
 PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start
@@ -212,6 +213,12 @@ The command checkpoint is a String-Worker-only reliability fixture for
 for at most 120 seconds; release, timeout, or Host close opens the gate. It is
 not a Core hook, generic fault DSL, Worker identity context, or production
 control event.
+
+The collection-level stop endpoint accepts `1..100` unique existing Worker
+coordinates. It validates the complete request before issuing any stop and
+returns `202 {"acceptedCount":n}`. The call is a one-shot Lab mutation: the
+Host does not retry or compensate a failed batch, and stopping a run does not
+delete its Server-issued identity.
 
 The Host also makes two finite background-fault Definitions available to an
 explicit capability assembly:
@@ -250,7 +257,10 @@ The loopback server uses a bounded four-thread control executor. A slow
 single-Worker Prepare does not hold the Scenario inventory monitor, allowing a
 stop or local snapshot request to reach its independent replica. This is
 control-plane responsiveness, not a claim that Lab actions are transactional
-or distributed truth.
+or distributed truth. The Host binds the configured control listener before
+starting outbound Worker connections, but starts serving requests only after
+the initial startup plan completes. The listener address therefore remains
+reserved even when a scale proof widens the OS ephemeral port range.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
 unchanged. Persistent Lab state means stable Lab Worker keys, Properties, and
@@ -286,10 +296,11 @@ configured Adapter; each proof runner owns the Worker Host process:
   established local facts with independent Adapter, Kernel and Task
   observations.
 - [`worker-websocket-scale`](../integrations/worker-websocket-scale/) generates
-  one 10,000-record Group and proves at least 9,900 Workers converge to both
-  connected and HOT before and after one Server restart while the Host stays
-  alive. It is a nightly/manual connection-scale lane, not part of the fixed
-  default Lab inventory.
+  one 15,000-record Group, stops a deterministic 5,000-run subset, and proves
+  the retained 10,000-Worker world can drain two 50,000-Item loaded operations
+  while at least 9,900 Workers reconverge before and after one Server restart.
+  It is a nightly/manual capacity lane, not part of the fixed default Lab
+  inventory.
 
 Worker Correctness deliberately does not claim which Worker executed an Item
 or freeze capability-specific Result values.

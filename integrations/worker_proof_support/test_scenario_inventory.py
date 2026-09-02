@@ -55,13 +55,28 @@ class ScenarioInventoryTest(unittest.TestCase):
                 groups = {"group-a": tuple({"index": i} for i in range(count))}
                 coordinates = inventory_coordinates(groups)
                 self.assertEqual(count, len(coordinates["group-a"]))
-        with self.assertRaisesRegex(ValueError, "1..10000"):
+        with self.assertRaisesRegex(ValueError, "1..15000"):
             inventory_coordinates({
                 "group-a": tuple(
                     {"index": i}
                     for i in range(MAX_RECORDS_PER_GROUP + 1)
                 )
             })
+
+    def test_materializes_fifteen_thousand_records_in_fixed_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "scenario-workers"
+            records = tuple(
+                {"scaleIndex": index}
+                for index in range(1, MAX_RECORDS_PER_GROUP + 1)
+            )
+
+            coordinates = materialize_inventory(root, {"group-a": records})
+
+            files = sorted((root / "group-a").glob("*.jsonl"))
+            self.assertEqual(150, len(files))
+            self.assertTrue(all(len(_lines(path)) == 100 for path in files))
+            self.assertEqual("workers-149.jsonl:100", coordinates["group-a"][-1])
 
     def test_rejects_reserved_invalid_and_existing_inputs(self) -> None:
         with self.assertRaisesRegex(ValueError, "reserved properties"):

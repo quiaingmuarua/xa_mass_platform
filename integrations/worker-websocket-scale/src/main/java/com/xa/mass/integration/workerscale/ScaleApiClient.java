@@ -14,6 +14,9 @@ import java.util.Set;
 final class ScaleApiClient {
 
     private static final int OBSERVATION_LIMIT = 100;
+    private static final int RESULT_LOAD_LIMIT = 1_000;
+    private static final int STOP_BATCH_LIMIT = 100;
+    private static final int MAXIMUM_CANDIDATE_WORKERS = 100;
 
     private final ScaleHttpClient lab;
     private final ScaleHttpClient runtime;
@@ -45,6 +48,39 @@ final class ScaleApiClient {
             ));
         }
         return List.copyOf(workers);
+    }
+
+    void stopWorkers(String workerGroupId, List<String> labWorkerKeys) {
+        if (labWorkerKeys == null
+                || labWorkerKeys.isEmpty()
+                || labWorkerKeys.size() > STOP_BATCH_LIMIT
+                || new LinkedHashSet<>(labWorkerKeys).size()
+                != labWorkerKeys.size()
+                || labWorkerKeys.stream().anyMatch(
+                        key -> key == null || key.isBlank()
+                )) {
+            throw new IllegalArgumentException(
+                    "labWorkerKeys must contain 1..100 unique non-blank values"
+            );
+        }
+        List<Map<String, Object>> request = new ArrayList<>();
+        for (String labWorkerKey : labWorkerKeys) {
+            request.add(Map.of(
+                    "workerGroupId", workerGroupId,
+                    "labWorkerKey", labWorkerKey
+            ));
+        }
+        ScaleHttpClient.JsonResponse response = lab.json(
+                "POST",
+                "/lab/v1/workers:stop",
+                request
+        );
+        requireStatus(response.statusCode(), 202, "stop Lab Workers");
+        if (!response.body().keySet().equals(Set.of("acceptedCount"))
+                || ScaleJson.integer(response.body(), "acceptedCount")
+                != labWorkerKeys.size()) {
+            throw ScaleJson.invalid("Batch stop response changed");
+        }
     }
 
     Map<String, String> observeNetwork(
@@ -134,7 +170,7 @@ final class ScaleApiClient {
                         "workerGroupId", workerGroupId,
                         "allocationRule", Map.of(),
                         "priority", 50,
-                        "maximumCandidateWorkers", 10,
+                        "maximumCandidateWorkers", MAXIMUM_CANDIDATE_WORKERS,
                         "maxRetryTimes", 3
                 )
         );
@@ -195,14 +231,14 @@ final class ScaleApiClient {
     ) {
         if (messageIds == null
                 || messageIds.isEmpty()
-                || messageIds.size() > 100
+                || messageIds.size() > RESULT_LOAD_LIMIT
                 || new LinkedHashSet<>(messageIds).size()
                 != messageIds.size()
                 || messageIds.stream().anyMatch(
                         messageId -> messageId == null || messageId.isBlank()
                 )) {
             throw new IllegalArgumentException(
-                    "messageIds must contain 1..100 unique non-blank values"
+                    "messageIds must contain 1..1000 unique non-blank values"
             );
         }
         ScaleHttpClient.JsonResponse response = runtime.json(

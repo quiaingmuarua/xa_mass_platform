@@ -1,9 +1,12 @@
 package com.xa.mass.scenarioworkers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,21 +56,26 @@ class ScenarioWorkerControlServerTest {
         Path root = temporaryDirectory.resolve("data/scenario-workers");
         Path group = root.resolve(GROUP);
         Files.createDirectories(group);
-        Files.writeString(
-                group.resolve(INVENTORY),
-                Jsons.toJson(Map.of(
+        List<String> records = new java.util.ArrayList<>();
+        for (int line = 1; line <= 100; line++) {
+            records.add(Jsons.toJson(Map.of(
                         "schemaVersion", 2,
                         "workerProperties", Map.of(
                                 "labInventoryKey", INVENTORY,
-                                "labInventoryLine", 1,
-                                "labSlot", 1
+                                "labInventoryLine", line,
+                                "labSlot", line
                         )
-                )) + "\n",
+            )));
+        }
+        Files.writeString(
+                group.resolve(INVENTORY),
+                String.join("\n", records) + "\n",
                 StandardCharsets.UTF_8
         );
 
         manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot(CLIENT)).thenReturn(new WorkerLifecycle.Snapshot(
+        when(manager.snapshot(anyString())).thenReturn(
+                new WorkerLifecycle.Snapshot(
                 WorkerLifecycle.State.STOPPED,
                 "worker-1",
                 null,
@@ -298,6 +306,95 @@ class ScenarioWorkerControlServerTest {
     }
 
     @Test
+    void batchStopAcceptsOneAndOneHundredCoordinates() throws Exception {
+        HttpResponse<String> one = request(
+                "POST",
+                "/lab/v1/workers:stop",
+                batchStopBody(1)
+        );
+
+        assertThat(one.statusCode()).isEqualTo(202);
+        assertThat(one.body()).contains("\"acceptedCount\":1");
+        verify(manager).stop(CLIENT);
+
+        clearInvocations(manager);
+        HttpResponse<String> hundred = request(
+                "POST",
+                "/lab/v1/workers:stop",
+                batchStopBody(100)
+        );
+
+        assertThat(hundred.statusCode()).isEqualTo(202);
+        assertThat(hundred.body()).contains("\"acceptedCount\":100");
+        verify(manager, times(100)).stop(anyString());
+    }
+
+    @Test
+    void batchStopValidatesEveryCoordinateBeforeMutation() throws Exception {
+        String duplicate = Jsons.toJson(List.of(
+                coordinate(CLIENT),
+                coordinate(CLIENT)
+        ));
+        assertThat(request(
+                "POST",
+                "/lab/v1/workers:stop",
+                duplicate
+        ).statusCode()).isEqualTo(400);
+
+        assertThat(request(
+                "POST",
+                "/lab/v1/workers:stop",
+                batchStopBody(101)
+        ).statusCode()).isEqualTo(400);
+
+        String unknown = Jsons.toJson(List.of(
+                coordinate(CLIENT),
+                coordinate("missing.jsonl:1")
+        ));
+        assertThat(request(
+                "POST",
+                "/lab/v1/workers:stop",
+                unknown
+        ).statusCode()).isEqualTo(404);
+        verify(manager, never()).stop(anyString());
+    }
+
+    @Test
+    void batchStopDoesNotHoldTheInventoryGateDuringManagerCalls()
+            throws Exception {
+        CountDownLatch stopEntered = new CountDownLatch(1);
+        CountDownLatch releaseStop = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            stopEntered.countDown();
+            if (!releaseStop.await(2, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Stop was not released");
+            }
+            return null;
+        }).when(manager).stop(CLIENT);
+
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            Future<HttpResponse<String>> stopping = caller.submit(() ->
+                    request(
+                            "POST",
+                            "/lab/v1/workers:stop",
+                            batchStopBody(1)
+                    ));
+            assertThat(stopEntered.await(1, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(request("GET", workerPath(), null).statusCode())
+                    .isEqualTo(200);
+
+            releaseStop.countDown();
+            assertThat(stopping.get(1, TimeUnit.SECONDS).statusCode())
+                    .isEqualTo(202);
+        } finally {
+            releaseStop.countDown();
+            caller.shutdownNow();
+        }
+    }
+
+    @Test
     void armsReadsAndReleasesCommandCheckpoint() throws Exception {
         String path = workerPath() + ":command-checkpoint";
         String body = Jsons.toJson(Map.of(
@@ -358,5 +455,20 @@ class ScenarioWorkerControlServerTest {
 
     private static String workerPath() {
         return "/lab/v1/workers/" + GROUP + "/" + CLIENT;
+    }
+
+    private static String batchStopBody(int count) {
+        List<Map<String, Object>> coordinates = new java.util.ArrayList<>();
+        for (int line = 1; line <= count; line++) {
+            coordinates.add(coordinate(INVENTORY + ":" + line));
+        }
+        return Jsons.toJson(coordinates);
+    }
+
+    private static Map<String, Object> coordinate(String labWorkerKey) {
+        return Map.of(
+                "workerGroupId", GROUP,
+                "labWorkerKey", labWorkerKey
+        );
     }
 }

@@ -20,7 +20,7 @@ Worker worlds are in
 | Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
 | Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
 | Worker Convergence Health | 2 Groups x 50 Workers, 1000 Items | Finite-time convergence after deterministic state, process and Server faults |
-| Worker Capacity | 10,000 Workers, 2 x 500 Items per phase | Connection, bounded shared-Group work, thread, file-descriptor, memory and reconnect capacity |
+| Worker Capacity | 15,000 prepared / 10,000 active Workers, 10 x 5,000 Items per phase | Connection headroom, Fleet contraction, loaded work, resources and reconnect capacity |
 
 Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
 only a prerequisite or Boundary Witness. It must not be described as a second
@@ -38,13 +38,14 @@ execution-count oracle.
 
 Correctness and Convergence materialize the same canonical 100-Worker
 Inventory into isolated Lab roots. Capacity uses the same materialization
-contract at 10,000 Workers; only topology, capability assembly and proof oracle
-change between lanes.
+contract for 15,000 identities, then deterministically retains 10,000 active
+Workers; only topology, capability assembly and proof oracle change between
+lanes.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. Convergence Health uses `results:load` only for named
-witnesses. Capacity pages `results:load` for its bounded dual-Task progress and
-performs one final export per Task; this is the explicit bulk result-path
+witnesses. Capacity pages `results:load` for ten bounded Task progress streams
+and performs one final export per Task; this is the explicit bulk result-path
 witness rather than a business-payload oracle.
 
 ## Selection Decision
@@ -62,7 +63,7 @@ Use the lowest-cost proof that owns the changed claim:
    an Owner and Runtime Boundary claim; Convergence may be selected only as a
    downstream witness.
 5. Java Worker connection resource ownership changes: run focused Java Worker
-   tests; the 10k lane remains nightly/manual unless the capacity claim itself
+   tests; the 15k/10k lane remains nightly/manual unless the capacity claim itself
    must be re-established.
 6. Documentation-only changes run Docs Contract. They do not select runtime
    proofs.
@@ -88,7 +89,7 @@ python .github/scripts/check_proof_selection.py
 | Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
-| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --workload-items-per-task 500 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |

@@ -44,14 +44,14 @@ public final class ScenarioWorkerHostMain {
         ScenarioWorkerControlServer controlServer = null;
         Thread shutdownHook = null;
         try {
-            workers.start(startupPlan);
             scheduledStops = new ScenarioWorkerScheduledStops(workers);
-            scheduleStartupStops(startupPlan, scheduledStops);
             controlServer = ScenarioWorkerControlServer.open(
                     options.controlPort(),
                     workers,
                     scheduledStops
             );
+            workers.start(startupPlan);
+            scheduleStartupStops(startupPlan, scheduledStops);
             ScenarioWorkerScheduledStops finalScheduledStops =
                     scheduledStops;
             ScenarioWorkerControlServer finalControlServer = controlServer;
