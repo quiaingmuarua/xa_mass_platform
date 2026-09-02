@@ -7,6 +7,9 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
@@ -18,6 +21,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.CloseCurrentOutcome;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
@@ -32,6 +36,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -137,11 +142,13 @@ class WorkerConnectionMechanismTest {
     @Test
     void evidenceQueuePressureNeverClosesVerifiedWorkerChannel() {
         Fixture fixture = new Fixture(2);
-        assertThat(fixture.reportProcess.ingress(List.of(
+        assertThat(fixture.ingressReports(List.of(
                 "occupied-1",
                 "occupied-2"
         )))
-                .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
+                .isEqualTo(
+                        BatchDispatcher.DispatchStatus.ACCEPTED
+                );
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
@@ -469,12 +476,12 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.systemReports)
                     .containsExactly(fixture.systemResult("worker-1"));
 
-            assertThat(fixture.reportProcess.ingress(List.of(
+            assertThat(fixture.ingressReports(List.of(
                     "occupied-1",
                     "occupied-2"
             )))
                     .isEqualTo(
-                    DeliveryReportProcess.ReportIngressStatus.ACCEPTED
+                    BatchDispatcher.DispatchStatus.ACCEPTED
             );
             channel.writeInbound(fixture.systemResult("worker-1"));
 
@@ -494,11 +501,13 @@ class WorkerConnectionMechanismTest {
         awaitBound(fixture, channel);
         fixture.flushReports();
         fixture.systemReports.clear();
-        assertThat(fixture.reportProcess.ingress(List.of(
+        assertThat(fixture.ingressReports(List.of(
                 "occupied-1",
                 "occupied-2"
         )))
-                .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
+                .isEqualTo(
+                        BatchDispatcher.DispatchStatus.ACCEPTED
+                );
 
         channel.writeInbound(fixture.taskResult("worker-1"));
 
@@ -767,7 +776,10 @@ class WorkerConnectionMechanismTest {
         private final AtomicInteger completedReportRequests =
                 new AtomicInteger();
         private final ScriptedHttpServer reportServer;
+        private final ArrayDeque<String> reportQueue = new ArrayDeque<>();
+        private final BatchDispatcher<String> reportDispatcher;
         private final DeliveryReportProcess reportProcess;
+        private final int reportCapacity;
         private final WorkerRouteRegistry routes;
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism mechanism;
@@ -794,18 +806,22 @@ class WorkerConnectionMechanismTest {
                 WorkerRouteRegistry routes
         ) {
             this.routes = routes;
+            this.reportCapacity = reportCapacity;
             reportServer = reportServer();
+            reportDispatcher = reportDispatcher();
+            doAnswer(invocation -> ingressReports(
+                    invocation.getArgument(0)
+            )).when(reportDispatcher).tryDispatch(anyList());
             reportProcess = new DeliveryReportProcess(
                     new DeliveryReportRemoteApi(client(reportServer)),
-                    "adapter-1",
-                    reportCapacity
+                    "adapter-1"
             );
             mechanism = new WorkerConnectionMechanism(
                         routes,
                         network,
                         new WorkerRouteRemoteApi(client(remoteApi.server)),
                         codec,
-                        reportProcess,
+                        reportDispatcher,
                         "adapter-1",
                         Duration.ofSeconds(1),
                         new NettyWorkerPropertiesCacheConfig(
@@ -825,48 +841,43 @@ class WorkerConnectionMechanismTest {
 
         private void flushReports() {
             int previousRequests = completedReportRequests.get();
-            Thread loop = new Thread(
-                    reportProcess::runLoop,
-                    "connection-report-loop-test"
-            );
-            loop.start();
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(2).toNanos();
-            while (System.nanoTime() < deadline
-                    && completedReportRequests.get() <= previousRequests) {
-                Thread.onSpinWait();
-            }
-            while (System.nanoTime() < deadline
-                    && loop.isAlive()
-                    && !waitingForReportIngress(loop)) {
-                Thread.onSpinWait();
-            }
-            boolean reachedEmptyWait = waitingForReportIngress(loop);
-            loop.interrupt();
-            try {
-                loop.join(2_000);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError(
-                        "Interrupted while flushing reports",
-                        error
-                );
-            }
-            if (loop.isAlive()) {
-                throw new AssertionError("Report loop did not stop");
-            }
+            reportProcess.process(takeReports());
             if (completedReportRequests.get() <= previousRequests) {
                 throw new AssertionError("No queued report was submitted");
             }
-            if (!reachedEmptyWait) {
-                throw new AssertionError(
-                        "Report loop did not reach its empty wait"
-                );
-            }
         }
 
-        private boolean waitingForReportIngress(Thread loop) {
-            return loop.getState() == Thread.State.WAITING;
+        private synchronized BatchDispatcher.DispatchStatus ingressReports(
+                List<String> reportsToIngress
+        ) {
+            List<String> copied = List.copyOf(reportsToIngress);
+            if (copied.size() > reportCapacity) {
+                throw new IllegalArgumentException(
+                        "report batch exceeds test queue capacity"
+                );
+            }
+            if (reportQueue.size() >= reportCapacity) {
+                return BatchDispatcher.DispatchStatus.FULL;
+            }
+            reportQueue.addAll(copied);
+            return BatchDispatcher.DispatchStatus.ACCEPTED;
+        }
+
+        private synchronized List<String> takeReports() {
+            ArrayList<String> batch = new ArrayList<>(100);
+            while (batch.size() < 100 && !reportQueue.isEmpty()) {
+                batch.add(reportQueue.removeFirst());
+            }
+            if (batch.isEmpty()) {
+                throw new AssertionError("No queued report was available");
+            }
+            return List.copyOf(batch);
+        }
+
+        @SuppressWarnings("unchecked")
+        private BatchDispatcher<String> reportDispatcher() {
+            return (BatchDispatcher<String>) (BatchDispatcher<?>)
+                    mock(BatchDispatcher.class);
         }
 
         private ScriptedHttpServer reportServer() {

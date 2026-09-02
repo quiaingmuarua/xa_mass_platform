@@ -48,6 +48,10 @@ public enum WorkerDeliveryAdapterErrorCode {
     ADAPTER_EVENT_EXECUTION_FAILED(
             23006,
             "Adapter event execution failed"
+    ),
+    WORKER_DELIVERY_RETRY_LATER(
+            23007,
+            "Worker command delivery should be retried later"
     );
 
     private final int code;

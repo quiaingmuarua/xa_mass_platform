@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Remote Result ingress used by one Adapter's Report process. */
+/** Remote Result ingress used by one Adapter's Report Batch Processor. */
 public final class DeliveryReportRemoteApi {
 
     public static final int MAX_RESULTS_PER_APPEND = 100;

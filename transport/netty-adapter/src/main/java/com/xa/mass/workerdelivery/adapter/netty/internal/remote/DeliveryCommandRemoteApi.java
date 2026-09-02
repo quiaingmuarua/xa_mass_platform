@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Remote Command source used by one Adapter's Command process. */
+/** Remote Command acquisition used by one Adapter's Command Dispatcher. */
 public final class DeliveryCommandRemoteApi {
 
     private static final String OPERATION = "deliveryCommand.consumeRemote";

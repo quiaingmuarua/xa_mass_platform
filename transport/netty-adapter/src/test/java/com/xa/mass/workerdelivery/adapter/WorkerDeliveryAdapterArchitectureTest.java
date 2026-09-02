@@ -66,8 +66,7 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(adapter)
                 .contains("WorkerConnectionInboundHandler")
                 .contains("WorkerConnectionMechanism")
-                .contains("DeliveryCommandProcess")
-                .contains("DeliveryReportProcess")
+                .contains("AdapterProcessManager")
                 .contains("NettyWorkerServer")
                 .doesNotContain("WebSocketNettyWorkerServer")
                 .doesNotContain("SocketNettyWorkerServer")
@@ -75,6 +74,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("ScheduledExecutorService");
         assertThat(connection)
                 .doesNotContain("FiniteQueue")
+                .doesNotContain("DeliveryReportProcess")
                 .doesNotContain("WorkerDeliveryHttpClient")
                 .doesNotContain("java.net.http")
                 .doesNotContain("io.netty.bootstrap")
@@ -146,43 +146,68 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void processOwnersKeepQueuesPrivateAndUseFixedPlatformThreads()
+    void batchDispatcherOwnsTheOnlyProcessLoopQueueAndPlatformThread()
             throws IOException {
         String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
         String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
-        String reportQueue = read(PROCESS.resolve("FiniteQueue.java"));
-        String adapter = read(NETTY.resolve(
-                "NettyWorkerDeliveryAdapter.java"
-        ));
+        String dispatcher = read(PROCESS.resolve("BatchDispatcher.java"));
+        String result = read(PROCESS.resolve("BatchProcessResult.java"));
+        String manager = read(PROCESS.resolve("AdapterProcessManager.java"));
 
-        assertThat(command)
-                .contains("ArrayDeque<")
-                .doesNotContain("FiniteQueue<")
-                .doesNotContain("LaneState")
-                .doesNotContain("DeliveryLane");
-        assertThat(report)
-                .contains("FiniteQueue<")
-                .doesNotContain("LaneState")
-                .doesNotContain("DeliveryLane");
-        assertThat(reportQueue)
+        assertThat(command + report)
+                .doesNotContain("Queue<")
+                .doesNotContain("runLoop")
+                .doesNotContain("loopStopped")
+                .doesNotContain("pendingBatch")
+                .doesNotContain("Thread.sleep")
+                .doesNotContain("new Thread(")
+                .doesNotContain("while (")
+                .doesNotContain("retryCount")
+                .doesNotContain("retry_cnt");
+        assertThat(dispatcher)
                 .contains("LinkedBlockingQueue<")
                 .contains(".take()")
                 .contains(".drainTo(")
-                .doesNotContain("ArrayDeque")
-                .doesNotContain("wait()")
-                .doesNotContain("notifyAll()")
-                .doesNotContain(".put(");
-        assertThat(command + report)
-                .doesNotContain("ScheduledExecutorService")
-                .doesNotContain("SystemControlProcess")
-                .doesNotContain("ControlOnlyProcess");
-        assertThat(adapter)
+                .contains("while (")
+                .contains("Thread.sleep")
                 .contains("new Thread(")
                 .contains("thread.setDaemon(true)")
+                .contains("volatile boolean stopped")
+                .doesNotContain("while (currentBatch")
+                .doesNotContain("retryCount")
+                .doesNotContain("retry_cnt")
+                .doesNotContain("Executors.");
+        assertThat(result)
+                .contains("WorkerDeliveryAdapterErrorCode errorCode")
+                .contains("List<Integer> requeueIndexes")
+                .doesNotContain("List<T>");
+        assertThat(manager)
+                .contains("BatchDispatcher<DeliveryCommandItem>")
+                .contains("BatchDispatcher<String>")
+                .doesNotContain("List<BatchDispatcher")
+                .doesNotContain("register(")
+                .doesNotContain("enum QuiescePhase");
+        assertThat(command + report + dispatcher + result + manager)
+                .doesNotContain("FiniteQueue")
+                .doesNotContain("AdapterBatchLane")
+                .doesNotContain("AdapterBatchSource")
+                .doesNotContain("AdapterBatchFailurePolicy")
+                .doesNotContain("DeliveryReportIngress")
+                .doesNotContain("DeliveryReportQueue")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("Executors.")
                 .doesNotContain("Timer")
-                .doesNotContain("startVirtualThread");
+                .doesNotContain("SystemControlProcess")
+                .doesNotContain("ControlOnlyProcess");
+        assertThat(Files.exists(PROCESS.resolve(
+                "AdapterBatchLane.java"
+        ))).isFalse();
+        assertThat(Files.exists(PROCESS.resolve(
+                "AdapterBatchSource.java"
+        ))).isFalse();
+        assertThat(Files.exists(PROCESS.resolve(
+                "DeliveryReportQueue.java"
+        ))).isFalse();
     }
 
     @Test
@@ -338,6 +363,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("DeliveryCommandPump")
                 .doesNotContain("DeliveryReportPump")
                 .doesNotContain("BoundedDeliveryReportQueue")
+                .doesNotContain("FiniteQueue")
                 .doesNotContain("syncUninterruptibly()");
         assertThat(Files.exists(REMOTE.resolve(
                 "DeliveryCommandHttpContract.java"

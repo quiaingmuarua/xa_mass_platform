@@ -10,7 +10,8 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterEventDispatcher;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
@@ -142,11 +143,13 @@ public final class NettyWorkerDeliveryAdapters {
                 new DeliveryReportRemoteApi(httpClient);
         WorkerRouteRemoteApi routeRemoteApi =
                 new WorkerRouteRemoteApi(httpClient);
-        DeliveryReportProcess reportProcess = new DeliveryReportProcess(
-                reportRemoteApi,
+        BatchDispatcher<String> reportDispatcher = BatchDispatcher.queued(
                 adapterId,
+                "delivery-report",
                 reportConfig.queueCapacity(),
-                reportConfig.interval()
+                DeliveryReportRemoteApi.MAX_RESULTS_PER_APPEND,
+                reportConfig.interval(),
+                new DeliveryReportProcess(reportRemoteApi, adapterId)
         );
         WorkerRouteRegistry routes = new WorkerRouteRegistry(routeCacheConfig);
         WorkerConnectionMechanism connectionMechanism =
@@ -155,7 +158,7 @@ public final class NettyWorkerDeliveryAdapters {
                         networkServer,
                         routeRemoteApi,
                         codec,
-                        reportProcess,
+                        reportDispatcher,
                         adapterId,
                         sendTimeLimit,
                         propertiesCacheConfig
@@ -167,16 +170,17 @@ public final class NettyWorkerDeliveryAdapters {
                         adapterId,
                         connectionMechanism
                 );
-        DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
+        AdapterProcessManager processManager = new AdapterProcessManager(
+                adapterId,
                 commandRemoteApi,
                 connectionMechanism,
                 adapterEventDispatcher,
-                reportProcess,
+                reportDispatcher,
                 codec,
-                adapterId,
                 commandConfig.consumeLimit(),
                 commandConfig.queueCapacity(),
-                commandConfig.interval()
+                commandConfig.interval(),
+                shutdownTimeout
         );
 
         return new NettyWorkerDeliveryAdapter(
@@ -184,9 +188,7 @@ public final class NettyWorkerDeliveryAdapters {
                 networkServer,
                 connectionInboundHandler,
                 connectionMechanism,
-                commandProcess,
-                reportProcess,
-                shutdownTimeout
+                processManager
         );
     }
 

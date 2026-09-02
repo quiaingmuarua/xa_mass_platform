@@ -99,8 +99,8 @@ fields. Server constructs the Command only after higher-priority sources leave
 response capacity, Adapter executes its existing connection-snapshot Handler,
 and Server appends the `ADAPTER -> KERNEL` Report to the Kernel result handoff.
 The Adapter also emits one-Worker evidence for exact verified Route
-connected/disconnected transitions through the same Result Process and Server
-append boundary. An expired TASK-to-Worker Command atomically offers its normal
+connected/disconnected transitions through the same Report ingress queue and
+Server append boundary. An expired TASK-to-Worker Command atomically offers its normal
 23002 TASK Report and a separate one-Worker KERNEL evidence Report to that same
 Process. `KERNEL` does not authorize Server or Transport to call a score owner.
 
@@ -312,8 +312,8 @@ by `dst`. TASK is validated and appended through the Task Result owner; SYSTEM
 is handed to the Direct Call owner; KERNEL accepts only path-consistent Adapter
 reports and appends them to `WorkerServiceabilityRuntime`. Each selected owner
 performs its own forward and payload validation. The response reports combined
-accepted and rejected counts. Remote unavailability keeps the Adapter's one
-pending batch for retry.
+accepted and rejected counts. Remote unavailability appends the failed Adapter
+batch to its finite Report Queue tail for a later outer-loop acquisition.
 
 Priority is limited to the Adapter Direct FIFO prefix. It does not reorder
 commands already present in the Adapter's local FIFO, preempt an in-flight
@@ -428,12 +428,15 @@ Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract and
 selects one complete WebSocket or line-Socket physical Server. Every instance
-independently owns three layers: the Adapter aggregate owns lifecycle, network
-shutdown sequencing, the fixed Command and Report Processes, and their two
-resident daemon platform threads; the Command Process owns one thread-confined
-retry queue, while the Report Process owns one thread-safe finite queue and one
-pending batch. Each Process uses one owner-local Remote API.
-Source priority is decided by Server before the Command response is created.
+independently owns three layers: the Adapter aggregate owns lifecycle and
+network shutdown sequencing; one fixed Process Manager owns two generic Batch
+Dispatchers and their shared join deadline; each Dispatcher owns one resident
+daemon platform thread, finite queue, current batch, retry-tail placement and
+failure backoff. The Command Dispatcher processes one retry slice and one fresh
+remote batch per outer iteration, while the Report Dispatcher is both the
+thread-safe ingress and single consumer. Command and Report Processes handle
+one supplied batch once. Remote priority is decided by Server before the
+Command response is created.
 The Command Remote owns the unified command path and wire
 decoding, the Report Remote owns result paths and wire validation, and the
 route Remote owns verification status classification. A concrete
@@ -538,8 +541,9 @@ contract.
 - Worker sends each Result once; a failed send is lost. Adapter queues are
   process-local and can be lost.
 - Adapter batch retry can duplicate a DeliveryReport at Server ingress.
-- A mixed TASK/SYSTEM/KERNEL pending batch is retried as one unit; a DIRECT_CALL
-  waiter may already have timed out when its late evidence reaches Server.
+- A mixed TASK/SYSTEM/KERNEL batch requeued after remote unavailability remains
+  one unit at the Queue tail; a DIRECT_CALL waiter may already have timed out
+  when its late evidence reaches Server.
 - Instance-local Adapter Direct FIFO and waiter state require Adapter HTTP
   affinity to the Server process that accepted the call.
 - When late or duplicate evidence is actually consumed, Result Routing owner

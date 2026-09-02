@@ -15,144 +15,89 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import io.netty.channel.ChannelHandler;
-import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 class NettyWorkerDeliveryAdapterProcessTest {
 
     @Test
-    void aggregateOwnsTwoDaemonLoopsAndClosesInOwnerOrder()
-            throws Exception {
-        CountDownLatch loopsStarted = new CountDownLatch(2);
-        List<Thread> consumerThreads = new CopyOnWriteArrayList<>();
-        DeliveryCommandProcess command = mock(DeliveryCommandProcess.class);
-        DeliveryReportProcess report = mock(DeliveryReportProcess.class);
-        doAnswer(invocation -> runUntilInterrupted(
-                loopsStarted,
-                consumerThreads
-        )).when(command).runLoop();
-        doAnswer(invocation -> runUntilInterrupted(
-                loopsStarted,
-                consumerThreads
-        )).when(report).runLoop();
+    void aggregateKeepsNetworkAndLaneShutdownInOwnerOrder() {
         NettyWorkerServer network = mock(NettyWorkerServer.class);
         WorkerConnectionMechanism connection = mock(
                 WorkerConnectionMechanism.class
         );
-        WorkerConnectionInboundHandler inbound = mock(
-                WorkerConnectionInboundHandler.class
-        );
+        AdapterProcessManager processes = mock(AdapterProcessManager.class);
         NettyWorkerDeliveryAdapter adapter = adapter(
                 network,
-                inbound,
+                mock(WorkerConnectionInboundHandler.class),
                 connection,
-                command,
-                report,
-                Duration.ofSeconds(1)
+                processes
         );
 
         adapter.start();
-        assertThat(loopsStarted.await(2, TimeUnit.SECONDS)).isTrue();
-
         assertThat(adapter.state()).isEqualTo(
                 WorkerDeliveryAdapterState.RUNNING
         );
-        assertThat(consumerThreads)
-                .extracting(Thread::getName)
-                .containsExactlyInAnyOrder(
-                        "worker-delivery-adapter-1-delivery-command",
-                        "worker-delivery-adapter-1-delivery-report"
-                );
-        assertThat(consumerThreads).allMatch(Thread::isDaemon);
 
         adapter.close();
 
-        InOrder closeOrder = inOrder(command, network, connection, report);
-        closeOrder.verify(command).stop();
-        closeOrder.verify(network).close();
-        closeOrder.verify(connection).clear();
-        closeOrder.verify(report).stop();
-        assertThat(consumerThreads).noneMatch(Thread::isAlive);
+        InOrder order = inOrder(network, processes, connection);
+        order.verify(network).start(any(ChannelHandler.class));
+        order.verify(processes).start();
+        order.verify(processes).stopCommand();
+        order.verify(network).close();
+        order.verify(connection).clear();
+        order.verify(processes).stopReport();
+        order.verify(processes).awaitStopped();
         assertThat(adapter.state()).isEqualTo(
                 WorkerDeliveryAdapterState.CLOSED
         );
 
         adapter.close();
-        verify(command).stop();
-        verify(report).stop();
+        verify(processes).stopCommand();
+        verify(processes).stopReport();
     }
 
     @Test
-    void loopTimeoutUsesOneBoundedAggregateShutdownBudget()
-            throws Exception {
-        CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        AtomicReference<Thread> stubbornThread = new AtomicReference<>();
-        DeliveryCommandProcess command = mock(DeliveryCommandProcess.class);
-        doAnswer(invocation -> {
-            stubbornThread.set(Thread.currentThread());
-            started.countDown();
-            boolean interrupted = false;
-            while (release.getCount() > 0) {
-                try {
-                    release.await();
-                } catch (InterruptedException error) {
-                    interrupted = true;
-                }
-            }
-            if (interrupted) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }).when(command).runLoop();
-        DeliveryReportProcess report = mock(DeliveryReportProcess.class);
+    void processShutdownFailureStillClosesAggregate() {
+        AdapterProcessManager processes = mock(AdapterProcessManager.class);
+        doThrow(new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT,
+                "adapterProcess.awaitStopped",
+                null,
+                null
+        )).when(processes).awaitStopped();
         NettyWorkerDeliveryAdapter adapter = adapter(
                 mock(NettyWorkerServer.class),
                 mock(WorkerConnectionInboundHandler.class),
                 mock(WorkerConnectionMechanism.class),
-                command,
-                report,
-                Duration.ofMillis(40)
+                processes
         );
         adapter.start();
-        assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
 
-        long closeStarted = System.nanoTime();
-        try {
-            assertThatThrownBy(adapter::close)
-                    .isInstanceOfSatisfying(
-                            WorkerDeliveryAdapterException.class,
-                            failure -> {
-                                assertThat(failure.errorCode()).isEqualTo(
-                                        WorkerDeliveryAdapterErrorCode
-                                                .SHUTDOWN_TIMEOUT
-                                );
-                                assertThat(failure.operation()).isEqualTo(
-                                        "netty.stopConsumerLoops"
-                                );
-                            }
-                    );
-            assertThat(Duration.ofNanos(
-                    System.nanoTime() - closeStarted
-            )).isLessThan(Duration.ofSeconds(1));
-            assertThat(adapter.state()).isEqualTo(
-                    WorkerDeliveryAdapterState.CLOSED
-            );
-        } finally {
-            release.countDown();
-            stubbornThread.get().join(2_000);
-        }
+        assertThatThrownBy(adapter::close)
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        failure -> {
+                            assertThat(failure.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .SHUTDOWN_TIMEOUT
+                            );
+                            assertThat(failure.operation()).isEqualTo(
+                                    "adapterProcess.awaitStopped"
+                            );
+                        }
+                );
+        assertThat(adapter.state()).isEqualTo(
+                WorkerDeliveryAdapterState.CLOSED
+        );
     }
 
     @Test
@@ -164,15 +109,12 @@ class NettyWorkerDeliveryAdapterProcessTest {
         WorkerConnectionMechanism connection = mock(
                 WorkerConnectionMechanism.class
         );
-        DeliveryCommandProcess command = mock(DeliveryCommandProcess.class);
-        DeliveryReportProcess report = mock(DeliveryReportProcess.class);
+        AdapterProcessManager processes = mock(AdapterProcessManager.class);
         NettyWorkerDeliveryAdapter adapter = adapter(
                 network,
                 mock(WorkerConnectionInboundHandler.class),
                 connection,
-                command,
-                report,
-                Duration.ofSeconds(1)
+                processes
         );
 
         assertThatThrownBy(adapter::start)
@@ -184,10 +126,50 @@ class NettyWorkerDeliveryAdapterProcessTest {
                         )
                 );
 
-        verify(command).stop();
+        verify(processes).stopCommand();
         verify(network).close();
         verify(connection).clear();
-        verify(report).stop();
+        verify(processes).stopReport();
+        verify(processes).awaitStopped();
+        assertThat(adapter.state()).isEqualTo(
+                WorkerDeliveryAdapterState.CLOSED
+        );
+    }
+
+    @Test
+    void partialLaneStartFailureAlsoRunsTheConcreteClosePath() {
+        NettyWorkerServer network = mock(NettyWorkerServer.class);
+        WorkerConnectionMechanism connection = mock(
+                WorkerConnectionMechanism.class
+        );
+        AdapterProcessManager processes = mock(AdapterProcessManager.class);
+        doThrow(new IllegalStateException("lane start failed"))
+                .when(processes)
+                .start();
+        NettyWorkerDeliveryAdapter adapter = adapter(
+                network,
+                mock(WorkerConnectionInboundHandler.class),
+                connection,
+                processes
+        );
+
+        assertThatThrownBy(adapter::start)
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        failure -> assertThat(failure.errorCode()).isEqualTo(
+                                WorkerDeliveryAdapterErrorCode
+                                        .LISTENER_START_FAILED
+                        )
+                );
+
+        InOrder order = inOrder(network, processes, connection);
+        order.verify(network).start(any(ChannelHandler.class));
+        order.verify(processes).start();
+        order.verify(processes).stopCommand();
+        order.verify(network).close();
+        order.verify(connection).clear();
+        order.verify(processes).stopReport();
+        order.verify(processes).awaitStopped();
         assertThat(adapter.state()).isEqualTo(
                 WorkerDeliveryAdapterState.CLOSED
         );
@@ -211,9 +193,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
                 network,
                 mock(WorkerConnectionInboundHandler.class),
                 mock(WorkerConnectionMechanism.class),
-                mock(DeliveryCommandProcess.class),
-                mock(DeliveryReportProcess.class),
-                Duration.ofSeconds(1)
+                mock(AdapterProcessManager.class)
         );
         adapter.start();
         List<Throwable> failures = new CopyOnWriteArrayList<>();
@@ -243,19 +223,6 @@ class NettyWorkerDeliveryAdapterProcessTest {
         );
     }
 
-    private static Object runUntilInterrupted(
-            CountDownLatch started,
-            List<Thread> threads
-    ) {
-        Thread current = Thread.currentThread();
-        threads.add(current);
-        started.countDown();
-        while (!current.isInterrupted()) {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-        }
-        return null;
-    }
-
     private static void close(
             NettyWorkerDeliveryAdapter adapter,
             List<Throwable> failures,
@@ -276,18 +243,14 @@ class NettyWorkerDeliveryAdapterProcessTest {
             NettyWorkerServer network,
             WorkerConnectionInboundHandler inbound,
             WorkerConnectionMechanism connection,
-            DeliveryCommandProcess command,
-            DeliveryReportProcess report,
-            Duration shutdownTimeout
+            AdapterProcessManager processes
     ) {
         return new NettyWorkerDeliveryAdapter(
                 "adapter-1",
                 network,
                 inbound,
                 connection,
-                command,
-                report,
-                shutdownTimeout
+                processes
         );
     }
 }

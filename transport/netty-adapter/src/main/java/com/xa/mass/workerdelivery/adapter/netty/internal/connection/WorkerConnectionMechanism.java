@@ -17,7 +17,7 @@ import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -62,7 +62,7 @@ public final class WorkerConnectionMechanism {
     private final NettyWorkerServer networkServer;
     private final WorkerRouteRemoteApi routeRemoteApi;
     private final WorkerDeliveryCodec codec;
-    private final DeliveryReportProcess reportProcess;
+    private final BatchDispatcher<String> reportDispatcher;
     private final String adapterId;
     private final Duration sendTimeLimit;
 
@@ -71,7 +71,7 @@ public final class WorkerConnectionMechanism {
             NettyWorkerServer networkServer,
             WorkerRouteRemoteApi routeRemoteApi,
             WorkerDeliveryCodec codec,
-            DeliveryReportProcess reportProcess,
+            BatchDispatcher<String> reportDispatcher,
             String adapterId,
             Duration sendTimeLimit,
             NettyWorkerPropertiesCacheConfig propertiesCacheConfig
@@ -87,9 +87,9 @@ public final class WorkerConnectionMechanism {
                 "routeRemoteApi"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.reportProcess = Objects.requireNonNull(
-                reportProcess,
-                "reportProcess"
+        this.reportDispatcher = Objects.requireNonNull(
+                reportDispatcher,
+                "reportDispatcher"
         );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
@@ -388,7 +388,7 @@ public final class WorkerConnectionMechanism {
         }
         observePropertiesResult(context.channel(), report);
         boolean taskReport = report.dst() == TASK;
-        switch (reportProcess.ingress(List.of(encodedReport))) {
+        switch (reportDispatcher.tryDispatch(List.of(encodedReport))) {
             case ACCEPTED -> {
             }
             case FULL -> {
@@ -533,11 +533,12 @@ public final class WorkerConnectionMechanism {
                     )),
                     WORKER_SERVICEABILITY_EVIDENCE_FORWARD
             );
-            DeliveryReportProcess.ReportIngressStatus status =
-                    reportProcess.ingress(List.of(
+            BatchDispatcher.DispatchStatus status =
+                    reportDispatcher.tryDispatch(List.of(
                             codec.encodeDeliveryReport(evidence)
                     ));
-            if (status != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
+            if (status
+                    != BatchDispatcher.DispatchStatus.ACCEPTED) {
                 LOGGER.log(
                         System.Logger.Level.WARNING,
                         "errorCode={0} operation={1} adapterId={2} "

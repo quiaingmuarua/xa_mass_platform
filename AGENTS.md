@@ -293,8 +293,9 @@ The production cut is frozen:
 
 ```text
 NettyWorkerDeliveryAdapter
-  -> DeliveryCommandProcess + one resident thread
-  -> DeliveryReportProcess + one resident thread
+  -> AdapterProcessManager
+     -> BatchDispatcher<DeliveryCommandItem> -> DeliveryCommandProcess
+     -> BatchDispatcher<String> -> DeliveryReportProcess
   -> WorkerConnectionInboundHandler
      -> WorkerConnectionMechanism
         -> WorkerRouteRegistry
@@ -304,17 +305,24 @@ NettyWorkerDeliveryAdapter
 
 Rules:
 
-- The aggregate owns lifecycle, network shutdown ordering, the fixed Command
-  and Report Processes, and one same-lifetime resident daemon platform thread
-  per Process. There is no intermediary lifecycle owner or dynamic Process
-  list.
-- The Command retry queue is thread-confined. The Report Process owns the only
-  thread-safe `FiniteQueue`; queues never cross owner boundaries.
+- The aggregate owns public lifecycle and network shutdown ordering.
+  `AdapterProcessManager` owns exactly two same-lifetime Batch Dispatchers and
+  their shared join deadline; it is a fixed composition, not a dynamic list.
+- Each generic `BatchDispatcher` owns one finite `LinkedBlockingQueue`, one
+  resident daemon platform thread, stop intent, batch acquisition, retry-tail
+  placement, exception classification and backoff. Command and Report Processes
+  process one batch once and own no Queue, thread, sleep, pending batch or
+  lifecycle.
+- The Command Queue contains only deferred delivery items; one fresh remote
+  batch is processed directly after each retry slice. The Report Dispatcher is
+  both non-blocking multi-producer ingress and its single consumer. Queues do
+  not cross Dispatcher boundaries.
 - Owner-local Remote APIs own their paths, wire JSON and status semantics. One
   private HTTP client owns raw HTTP mechanics only.
-- Result queue capacity is only a local soft memory bound. The Report Process
-  submits fixed `1..100` remote batches; retries retain that exact batch and
-  shutdown drops pending and queued Reports without a final synchronous flush.
+- Result queue capacity is only a local soft memory bound. The Report Processor
+  submits fixed `1..100` remote batches once; classified remote unavailability
+  appends that batch to the Queue tail. Shutdown drops current and queued
+  Reports without a final synchronous flush.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
 - Registry keeps one atomic pending, connected or disconnected Route entry per
