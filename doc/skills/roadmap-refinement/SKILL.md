@@ -1,6 +1,6 @@
 ---
 name: roadmap-refinement
-description: Roadmap and boundary convergence skill. Use when the user asks to design, redesign, draft, create, write, rethink, structure, review, repair, or execute a roadmap; plan slices; prepare goal-mode roadmap execution; review owner boundaries; design proof/guards; scan residue; merge/split roadmap work; build caller/dependency/boundary inventory; or turn architecture/code review findings into roadmap, proof, boundary, convergence, or long-running execution planning. Avoid ordinary code, PR, bug, or implementation review unless roadmap/slice/proof/boundary/convergence planning is requested or clearly implied.
+description: Design, review, repair, or execute code-grounded roadmaps and convergence slices for owner boundaries, mechanisms, proof, guards, residue, callers, or dependencies. Use for explicit roadmap, slice, boundary, or convergence planning; avoid ordinary code, PR, bug, or implementation review.
 ---
 
 # Roadmap Refinement
@@ -86,6 +86,27 @@ If answers are weak, recommend deletion or narrowing instead of turning the
 request into a roadmap. In Implementation, ask only the questions implicated by
 the invalidating evidence instead of reopening the whole roadmap.
 
+## Mechanism-First Gate
+
+For roadmap work that changes a stateful or concurrent internal mechanism, read
+[mechanism-first.md](references/mechanism-first.md) completely before naming
+target types, writing slices, or implementing an approved assistant-generated
+plan. Approval locks user intent and scope, not a shape contradicted by the live
+mechanism.
+
+The gate requires six compact artifacts: representative-flow trace,
+state-owner ledger, failure/side-effect table, execution/blocking map, minimal
+pseudocode, and before/after complexity delta. Do not proceed when data flow,
+mutation authority, failure ownership, termination behavior, or added state
+cannot be explained. Owner clarity means one authority per invariant, not one
+class per noun.
+
+When the user rejects an owner, abstraction, lifecycle, or retry model, the
+derived plan is invalid. Re-read the scoped production path, discard its
+derived types/states, and re-derive the compact mechanism from zero instead of
+incrementally preserving the rejected model. After repeated corrections, show
+the compact model before producing another roadmap.
+
 ## Boundary Rules
 
 - Prefer shrinking externally visible surfaces before polishing internal debt.
@@ -113,6 +134,12 @@ the invalidating evidence instead of reopening the whole roadmap.
   become lifecycle, policy, or domain owners.
 - Do not add wrapper/facade/bridge/adapter layers unless they protect a real
   owner boundary, protocol seam, lifecycle split, or external caller surface.
+- Do not create an interface for a single fixed internal implementation unless
+  it removes a dependency cycle or protects a real owner/protocol/test seam.
+  Test mocking convenience and vocabulary symmetry are not sufficient.
+- Do not mirror two paths into symmetric abstractions when their side effects,
+  ordering, retry safety, producers, or blocking behavior differ. Share only
+  the algorithm they actually have in common.
 
 ## Lifecycle, Diagnostics, And Cost
 
@@ -122,6 +149,9 @@ the invalidating evidence instead of reopening the whole roadmap.
   the high-ROI invariant, writer, repair path, and proof.
 - Strong consistency needs a named high-ROI production invariant. Otherwise
   prefer best-effort observation, retry, bounded drift, or eventual convergence.
+- A state transition is not safer merely because every layer checks it. Put the
+  decisive check at the owner transition and let non-owners use the resulting
+  handle/status best effort unless a concrete race requires another fence.
 - Keep diagnostics/observability side-channel by default: append-only, bounded,
   owner-local, and non-authoritative. Observation must not become policy,
   lifecycle, dispatch, public DTO, or cross-module owner-fact dependency unless
@@ -208,6 +238,8 @@ evidence, test fixture, stale documentation.
 Use this shape flexibly:
 
 - current code observations
+- minimal mechanism sketch and failure/side-effect decisions for stateful work
+- state-owner and complexity delta when the goal includes simplification
 - owner review and boundary decision
 - target shape only when it adds clarity
 - non-goals
@@ -236,6 +268,9 @@ as active implementation input.
 
 A roadmap should be good enough to execute, not exhaustive. Prefer a narrow
 cutpoint with proof over a broader document that invites more discussion.
+Do not use a long contract as a substitute for the mechanism-first gate. A plan
+that precisely specifies many types while leaving item flow, mutation owner,
+or replay safety implicit is not executable.
 Do not store implementation history, broad proof catalogs, or owner essays in an
 `active-contract`; move them to inventory, proof registry, owner docs, or
 archive-ledger after proof.
@@ -332,6 +367,11 @@ require a later slice to restore compilation or runtime correctness.
   no longer satisfy the exit proof.
 - Guard stable owner invariants and forbidden regressions, not temporary class
   names, lifecycle states, or provisional implementation shape.
+- Prefer behavioral failure/order/lifecycle proof before structural guards.
+  Do not assert a lock/CAS keyword, internal class name, wrapper count, or
+  provisional decomposition unless its presence or absence is itself a stable
+  owner invariant. Use negative residue guards only after the replacement path
+  is proven.
 - Useful guards include forbidden imports, dependency-scope checks,
   architecture tests, contract-shape allowlists, route naming guards, and
   proof-registry/testing-index updates.
@@ -339,11 +379,16 @@ require a later slice to restore compilation or runtime correctness.
 When executing a slice:
 
 1. Confirm scope, current cursor, cutpoint, old path to close, target
-   mechanism/path, and exit proof.
+   mechanism/path, and exit proof. For stateful internal work, also confirm the
+   representative-flow trace, state ledger, failure boundary,
+   execution/blocking map, minimal pseudocode, and complexity delta before
+   editing.
 2. Check the worktree and preserve unrelated user changes.
 3. Establish a baseline when risk justifies it.
 4. Implement only the current slice; prefer closing or disabling the named old
-   path over adding new structure.
+   path over adding new structure. Start from the simplest standard-library
+   mechanism that satisfies the named invariants; add abstractions only when
+   the Mechanism-First abstraction admission test succeeds.
 5. Stop for owner coordination if roadmap definition is materially unclear or
    wrong, owner boundary changes, blast radius expands, or code conflicts with
    the slice.
@@ -396,6 +441,18 @@ code behavior changed.
 - Hiding public exposure behind local import cleanup.
 - Creating fake isolation with internal fat DTOs, mirrored DTOs, compatibility
   aliases, or pass-through wrappers.
+- Converting every noun or verb into a class/interface and calling the larger
+  type graph clearer ownership. Ownership follows mutable invariants.
+- Designing target types before tracing a representative runtime flow, its
+  state transitions, side-effect boundary, failure owner, and termination path.
+- Treating genericity as interface count instead of one shared algorithm with
+  narrow variation points.
+- Combining multiple retry, replay, recovery, or compensation paths without
+  distinct invariants, or replaying an unknown partial side effect.
+- Mechanically replacing coordination primitives or lifecycle state shapes
+  without proving the original shared-state invariant still exists.
+- Incrementally preserving a rejected plan's derived abstractions instead of
+  discarding the invalid model and re-deriving the minimal mechanism.
 - Expanding a mechanical operation into a universal interface for possible
   policy, lifecycle, consistency, dedupe/idempotency, diagnostics, repair, or
   future-extension needs.
