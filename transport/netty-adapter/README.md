@@ -102,9 +102,11 @@ and Route verification methods, including their paths, wire JSON, expected
 HTTP statuses, and method-specific failure classification. One instance is
 created per process Factory and keeps only its immutable base URI, request
 timeout, and codec; every Adapter created by that Factory uses the same facade.
-Its process-level static JDK `HttpClient` keeps shared connection and HTTP
-execution resources, uses HTTP/1.1, carries no Adapter configuration, and has
-no Adapter lifecycle. Each request receives the Factory-owned facade's timeout.
+Its process-level static JDK `HttpClient` keeps shared connection resources,
+uses HTTP/1.1, carries no Adapter configuration, and has no Adapter lifecycle.
+Its explicit process-level virtual-thread executor owns HTTP execution so a
+route-verification burst cannot expand the JDK client's default cached platform
+thread pool. Each request receives the Factory-owned facade's timeout.
 Processes and connection mechanism never see the Client, URL, status, or HTTP
 JSON contract.
 

@@ -320,8 +320,9 @@ Rules:
 - One process-scoped Adapter Factory owns the immutable Remote API facade and
   codec used by every Adapter it creates. The facade owns the three fixed
   paths, wire JSON and method-specific status semantics. Its process-shared
-  JDK HTTP client owns raw HTTP resources only and carries no Adapter
-  configuration or lifecycle.
+  JDK HTTP client and explicit virtual-thread executor own raw HTTP resources
+  only and carry no Adapter configuration or lifecycle. Do not restore the
+  JDK client's default cached platform-thread executor.
 - One flat public Adapter config is the complete construction input. Server
   binds it directly and checks only the matching Endpoint; the Factory
   destructures it so internal owners receive only their own values. Do not
@@ -543,10 +544,12 @@ Adapter connectivity, Kernel state or schedulability.
   Boundary.
 - Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
   It may generate one 10,000-record Scenario Group, observe existing Runtime
-  APIs in 100-ID pages, restart Server once while retaining the Host, and record
-  `/proc` resource evidence. Its fixed claim is 10,000 prepared identities and
-  at least 9,900 connected-and-HOT Workers, not exact online convergence,
-  Handler concurrency, throughput, latency, or soak behavior.
+  APIs in 100-ID pages, drain two fully seeded same-Group 500-Item Tasks before
+  and after one Server restart while retaining the Host, and record `/proc`
+  resource evidence. During work it requires at least 9,900 connected Workers;
+  after drain it requires at least 9,900 connected-and-HOT Workers. It does not
+  claim exact online convergence, Task fairness, completion order, Handler
+  concurrency, throughput, latency or soak behavior.
 - Worker Correctness inputs are caller-owned local files. Its perfect-world
   proof uses managed batch `items:call`, fixes exact Item statuses and treats
   Result payload as opaque. The frontend separately turns lines into ordinary

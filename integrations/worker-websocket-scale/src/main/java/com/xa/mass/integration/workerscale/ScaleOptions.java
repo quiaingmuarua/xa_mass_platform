@@ -16,7 +16,7 @@ record ScaleOptions(
         String endpointManagerId,
         int offeredWorkers,
         int minimumConverged,
-        int taskItemCount,
+        int workloadItemsPerTask,
         Duration maximumConvergenceWait,
         Duration stableHold,
         Duration scanInterval,
@@ -36,7 +36,7 @@ record ScaleOptions(
             "endpoint-manager-id",
             "offered-workers",
             "minimum-converged",
-            "task-item-count",
+            "workload-items-per-task",
             "maximum-convergence-wait-millis",
             "stable-hold-millis",
             "scan-interval-millis",
@@ -77,9 +77,9 @@ record ScaleOptions(
                     "minimumConverged must be in 1..offeredWorkers"
             );
         }
-        if (taskItemCount < 1 || taskItemCount > 100) {
+        if (workloadItemsPerTask < 1 || workloadItemsPerTask > 500) {
             throw new IllegalArgumentException(
-                    "taskItemCount must be in 1..100"
+                    "workloadItemsPerTask must be in 1..500"
             );
         }
         requirePositive(maximumConvergenceWait, "maximumConvergenceWait");
@@ -139,7 +139,7 @@ record ScaleOptions(
                 text(values, "endpoint-manager-id", "scenario-websocket"),
                 integer(values, "offered-workers", 10_000),
                 integer(values, "minimum-converged", 9_900),
-                integer(values, "task-item-count", 100),
+                integer(values, "workload-items-per-task", 500),
                 millis(values, "maximum-convergence-wait-millis", 900_000),
                 millis(
                         values,

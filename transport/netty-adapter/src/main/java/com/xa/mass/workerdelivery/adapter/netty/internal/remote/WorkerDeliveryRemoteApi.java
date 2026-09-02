@@ -22,14 +22,22 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
 
 /** Immutable Server HTTP facade shared by one Adapter process factory. */
 public final class WorkerDeliveryRemoteApi {
 
     public static final int MAX_RESULTS_PER_APPEND = 100;
 
+    private static final ThreadFactory HTTP_THREAD_FACTORY = Thread.ofVirtual()
+            .name("worker-delivery-http-", 0)
+            .factory();
+    private static final Executor HTTP_EXECUTOR = command ->
+            HTTP_THREAD_FACTORY.newThread(command).start();
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
+            .executor(HTTP_EXECUTOR)
             .build();
 
     private static final String COMMAND_OPERATION =

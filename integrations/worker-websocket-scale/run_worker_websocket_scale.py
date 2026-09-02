@@ -30,6 +30,8 @@ from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
 MODULE_ROOT = Path(__file__).resolve().parent
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
+MAXIMUM_NATIVE_THREADS = 512
+MAXIMUM_OPEN_FILE_DESCRIPTORS = 32_768
 WORKER_GROUP = "scenario-string-utils-workers"
 ENDPOINT_MANAGER = "scenario-websocket"
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
@@ -58,6 +60,11 @@ def main() -> int:
     parser.add_argument("--scan-interval-millis", type=int, default=10_000)
     parser.add_argument("--task-result-wait-millis", type=int, default=300_000)
     parser.add_argument("--request-timeout-millis", type=int, default=30_000)
+    parser.add_argument(
+        "--workload-items-per-task",
+        type=int,
+        default=500,
+    )
     options = parser.parse_args()
     _validate_options(parser, options)
     if not sys.platform.startswith("linux"):
@@ -151,20 +158,15 @@ def main() -> int:
 
         sampler.sample_now()
         resources = sampler.summary()
-        maximum_host_threads = resources.get("worker-host", {}).get(
-            "maximumNativeThreads", 0
-        )
-        if maximum_host_threads <= 0:
-            raise RuntimeError("Worker Host native-thread evidence is missing")
-        if maximum_host_threads >= 512:
-            raise RuntimeError(
-                "Worker Host native threads exceeded the <512 contract: "
-                f"{maximum_host_threads}"
-            )
+        _validate_resource_contract(resources)
+        worker_resources = resources["worker-host"]
+        server_resources = resources["runtime-server"]
         initial = _read_json(initial_summary)
         reconnected = _read_json(reconnected_summary)
         if initial.get("status") != "passed" or reconnected.get("status") != "passed":
             raise RuntimeError("one or more Java scale phases did not pass")
+        _validate_phase_summary(initial, options)
+        _validate_phase_summary(reconnected, options)
         if initial.get("workerIdSetSha256") != reconnected.get(
             "workerIdSetSha256"
         ):
@@ -179,11 +181,36 @@ def main() -> int:
                 "offeredWorkers": options.workers,
                 "minimumConnectedAndHot": options.minimum_converged,
                 "workerIdSetSha256": initial["workerIdSetSha256"],
-                "initialCompletedTaskItems": initial["completedTaskItems"],
-                "reconnectedCompletedTaskItems": reconnected[
-                    "completedTaskItems"
+                "workloadTasksPerPhase": 2,
+                "workloadItemsPerTask": options.workload_items_per_task,
+                "workloadItemsPerPhase": 2 * options.workload_items_per_task,
+                "totalWorkloadItems": 4 * options.workload_items_per_task,
+                "initialSucceededTaskItems": (
+                    initial["taskASucceededCount"]
+                    + initial["taskBSucceededCount"]
+                ),
+                "reconnectedSucceededTaskItems": (
+                    reconnected["taskASucceededCount"]
+                    + reconnected["taskBSucceededCount"]
+                ),
+                "maximumWorkerHostNativeThreads": worker_resources[
+                    "maximumNativeThreads"
                 ],
-                "maximumWorkerHostNativeThreads": maximum_host_threads,
+                "maximumRuntimeServerNativeThreads": server_resources[
+                    "maximumNativeThreads"
+                ],
+                "maximumWorkerHostRssBytes": worker_resources[
+                    "maximumRssBytes"
+                ],
+                "maximumRuntimeServerRssBytes": server_resources[
+                    "maximumRssBytes"
+                ],
+                "maximumWorkerHostOpenFileDescriptors": worker_resources[
+                    "maximumOpenFileDescriptors"
+                ],
+                "maximumRuntimeServerOpenFileDescriptors": server_resources[
+                    "maximumOpenFileDescriptors"
+                ],
                 "serverRestartCount": 1,
                 "completedAtEpochMillis": int(time.time() * 1_000),
             },
@@ -193,7 +220,9 @@ def main() -> int:
             "Worker WebSocket scale proof passed "
             f"offeredWorkers={options.workers} "
             f"minimumConnectedAndHot={options.minimum_converged} "
-            f"maximumWorkerHostNativeThreads={maximum_host_threads}"
+            f"workloadItemsPerPhase={2 * options.workload_items_per_task} "
+            "maximumWorkerHostNativeThreads="
+            f"{worker_resources['maximumNativeThreads']}"
         )
         return 0
     except BaseException as error:
@@ -225,6 +254,8 @@ def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespa
         parser.error("--task-result-wait-millis must be at least 1000")
     if options.request_timeout_millis < 1_000:
         parser.error("--request-timeout-millis must be at least 1000")
+    if not 1 <= options.workload_items_per_task <= 500:
+        parser.error("--workload-items-per-task must be in 1..500")
 
 
 def _preflight(redis_url: str) -> None:
@@ -390,7 +421,7 @@ def _run_phase(
         f"--endpoint-manager-id={ENDPOINT_MANAGER}",
         f"--offered-workers={options.workers}",
         f"--minimum-converged={options.minimum_converged}",
-        "--task-item-count=100",
+        "--workload-items-per-task=" + str(options.workload_items_per_task),
         "--stable-hold-millis="
         + str(options.stable_hold_millis if phase == "initial" else 0),
         f"--scan-interval-millis={options.scan_interval_millis}",
@@ -493,6 +524,56 @@ def _process_sample(pid: int) -> dict[str, int]:
         "nativeThreads": threads,
         "openFileDescriptors": len(list((Path("/proc") / str(pid) / "fd").iterdir())),
     }
+
+
+def _validate_resource_contract(resources: dict[str, dict[str, int]]) -> None:
+    for owner, label in (
+        ("worker-host", "Worker Host"),
+        ("runtime-server", "Runtime Server"),
+    ):
+        observed = resources.get(owner, {})
+        native_threads = observed.get("maximumNativeThreads", 0)
+        open_files = observed.get("maximumOpenFileDescriptors", 0)
+        if native_threads <= 0:
+            raise RuntimeError(f"{label} native-thread evidence is missing")
+        if open_files <= 0:
+            raise RuntimeError(f"{label} open-file evidence is missing")
+        if native_threads >= MAXIMUM_NATIVE_THREADS:
+            raise RuntimeError(
+                f"{label} native threads exceeded the "
+                f"<{MAXIMUM_NATIVE_THREADS} contract: {native_threads}"
+            )
+        if open_files >= MAXIMUM_OPEN_FILE_DESCRIPTORS:
+            raise RuntimeError(
+                f"{label} open files exceeded the "
+                f"<{MAXIMUM_OPEN_FILE_DESCRIPTORS} contract: {open_files}"
+            )
+
+
+def _validate_phase_summary(
+    summary: dict[str, object],
+    options: argparse.Namespace,
+) -> None:
+    items_per_task = options.workload_items_per_task
+    expected_batches = 2 * ((items_per_task + 99) // 100)
+    expected = {
+        "activeTaskCount": 2,
+        "offeredItemsPerTask": items_per_task,
+        "totalOfferedItems": 2 * items_per_task,
+        "appendBatchCount": expected_batches,
+        "taskASucceededCount": items_per_task,
+        "taskBSucceededCount": items_per_task,
+    }
+    for field, value in expected.items():
+        if summary.get(field) != value:
+            raise RuntimeError(
+                f"scale phase summary {field} must be {value}, "
+                f"observed {summary.get(field)!r}"
+            )
+    if summary.get("minimumConnectedDuringWork", 0) < options.minimum_converged:
+        raise RuntimeError("scale phase lost the minimum workload connections")
+    if summary.get("postWorkConnectedAndHot", 0) < options.minimum_converged:
+        raise RuntimeError("scale phase did not reconverge after workload drain")
 
 
 def _start_process(
@@ -607,6 +688,7 @@ def _write_failure_summary(
             "failure": (str(error) or type(error).__name__)[:500],
             "offeredWorkers": options.workers,
             "minimumConnectedAndHot": options.minimum_converged,
+            "workloadItemsPerTask": options.workload_items_per_task,
             "completedAtEpochMillis": int(time.time() * 1_000),
         },
     )

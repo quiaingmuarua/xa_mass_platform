@@ -20,7 +20,7 @@ Worker worlds are in
 | Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
 | Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
 | Worker Convergence Health | 2 Groups x 50 Workers, 1000 Items | Finite-time convergence after deterministic state, process and Server faults |
-| Worker Capacity | 10,000 Workers | Connection, thread, file-descriptor, memory and reconnect capacity |
+| Worker Capacity | 10,000 Workers, 2 x 500 Items per phase | Connection, bounded shared-Group work, thread, file-descriptor, memory and reconnect capacity |
 
 Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
 only a prerequisite or Boundary Witness. It must not be described as a second
@@ -42,8 +42,10 @@ contract at 10,000 Workers; only topology, capability assembly and proof oracle
 change between lanes.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
-Boundary claims. High-level Worker proofs use `results:load` only for named
-witnesses; `results:export` remains an Owner/boundary and bulk-transfer surface.
+Boundary claims. Convergence Health uses `results:load` only for named
+witnesses. Capacity pages `results:load` for its bounded dual-Task progress and
+performs one final export per Task; this is the explicit bulk result-path
+witness rather than a business-payload oracle.
 
 ## Selection Decision
 
@@ -86,7 +88,7 @@ python .github/scripts/check_proof_selection.py
 | Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
-| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --workload-items-per-task 500 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |

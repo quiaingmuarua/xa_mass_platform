@@ -1,9 +1,8 @@
 package com.xa.mass.integration.workerscale;
 
 import com.xa.mass.integration.workerscale.ScaleApiClient.LabWorker;
-import com.xa.mass.integration.workerscale.ScaleApiClient.TaskExport;
-import com.xa.mass.integration.workerscale.ScaleApiClient.TaskItem;
 import com.xa.mass.integration.workerscale.ScaleOptions.Phase;
+import com.xa.mass.integration.workerscale.ScaleDualTaskWorkload.WorkloadResult;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,7 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 /** Public-API proof for one offered Java WebSocket Worker scale phase. */
 public final class WorkerWebSocketScaleMain {
@@ -23,7 +21,6 @@ public final class WorkerWebSocketScaleMain {
     );
     private static final int OBSERVATION_CHUNK_SIZE = 100;
     private static final int REQUIRED_CONSECUTIVE_SCANS = 3;
-    private static final String TASK_EVENT = "extension.worker.string.md5";
 
     private WorkerWebSocketScaleMain() {
     }
@@ -50,14 +47,25 @@ public final class WorkerWebSocketScaleMain {
             Convergence convergence = awaitConvergence(
                     options,
                     api,
-                    workerIds
+                    workerIds,
+                    "convergence"
             );
             int stableScans = verifyStableHold(
                     options,
                     api,
                     workerIds
             );
-            int completedItems = verifyFiniteTask(options, api);
+            WorkloadResult workload = ScaleDualTaskWorkload.run(
+                    options,
+                    api,
+                    workerIds
+            );
+            Convergence postWorkConvergence = awaitConvergence(
+                    options,
+                    api,
+                    workerIds,
+                    "post-work-convergence"
+            );
 
             summary.put("status", "passed");
             summary.put("preparedIdentities", workerIds.size());
@@ -74,7 +82,52 @@ public final class WorkerWebSocketScaleMain {
                     convergence.scan().hotWithoutConnection()
             );
             summary.put("stableHoldScans", stableScans);
-            summary.put("completedTaskItems", completedItems);
+            summary.put(
+                    "activeTaskCount",
+                    ScaleDualTaskWorkload.TASK_COUNT
+            );
+            summary.put(
+                    "offeredItemsPerTask",
+                    options.workloadItemsPerTask()
+            );
+            summary.put(
+                    "totalOfferedItems",
+                    Math.multiplyExact(
+                            ScaleDualTaskWorkload.TASK_COUNT,
+                            options.workloadItemsPerTask()
+                    )
+            );
+            summary.put("appendBatchCount", workload.appendBatchCount());
+            summary.put(
+                    "taskAFirstSuccessElapsedMillis",
+                    workload.taskA().firstSuccessElapsedMillis()
+            );
+            summary.put(
+                    "taskACompletionElapsedMillis",
+                    workload.taskA().completionElapsedMillis()
+            );
+            summary.put("taskASucceededCount", workload.taskA().succeeded());
+            summary.put(
+                    "taskBFirstSuccessElapsedMillis",
+                    workload.taskB().firstSuccessElapsedMillis()
+            );
+            summary.put(
+                    "taskBCompletionElapsedMillis",
+                    workload.taskB().completionElapsedMillis()
+            );
+            summary.put("taskBSucceededCount", workload.taskB().succeeded());
+            summary.put(
+                    "maximumGlobalNoProgressMillis",
+                    workload.maximumNoProgressMillis()
+            );
+            summary.put(
+                    "minimumConnectedDuringWork",
+                    workload.minimumConnected()
+            );
+            summary.put(
+                    "postWorkConnectedAndHot",
+                    postWorkConvergence.scan().connectedAndHot()
+            );
             summary.put("completedAtEpochMillis", System.currentTimeMillis());
             ScaleEvidence.writeSummary(options.summaryFile(), summary);
             LOG.log(
@@ -220,7 +273,8 @@ public final class WorkerWebSocketScaleMain {
     private static Convergence awaitConvergence(
             ScaleOptions options,
             ScaleApiClient api,
-            List<String> workerIds
+            List<String> workerIds,
+            String stage
     ) {
         long deadline = deadline(options.maximumConvergenceWait());
         int consecutive = 0;
@@ -232,7 +286,7 @@ public final class WorkerWebSocketScaleMain {
                         options,
                         api,
                         workerIds,
-                        "convergence"
+                        stage
                 );
                 if (latest.connectedAndHot() >= options.minimumConverged()) {
                     consecutive++;
@@ -349,51 +403,6 @@ public final class WorkerWebSocketScaleMain {
         evidence.put("hotWithoutConnectionWorkers", hotWithoutConnection);
         ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
         return scan;
-    }
-
-    private static int verifyFiniteTask(
-            ScaleOptions options,
-            ScaleApiClient api
-    ) {
-        String taskId = api.createTask(options.workerGroupId());
-        List<TaskItem> items = new ArrayList<>();
-        Set<String> expected = new LinkedHashSet<>();
-        for (int index = 0; index < options.taskItemCount(); index++) {
-            String messageId = "scale-"
-                    + options.phase().wireValue()
-                    + "-" + index + "-" + UUID.randomUUID();
-            expected.add(messageId);
-            items.add(new TaskItem(
-                    messageId,
-                    TASK_EVENT,
-                    Map.of("value", "scale-" + index)
-            ));
-        }
-        api.appendItems(taskId, items);
-        api.approveTask(taskId);
-
-        long deadline = deadline(options.taskResultWait());
-        do {
-            TaskExport result = api.exportTask(taskId);
-            if (result.ready()) {
-                if (!expected.equals(result.messageIds())) {
-                    throw new IllegalStateException(
-                            "Task Results do not match the submitted Items"
-                    );
-                }
-                ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
-                        "atEpochMillis", System.currentTimeMillis(),
-                        "phase", options.phase().wireValue(),
-                        "event", "finite-task-completed",
-                        "taskItemCount", result.messageIds().size()
-                ));
-                return result.messageIds().size();
-            }
-            sleep(Duration.ofMillis(250));
-        } while (System.nanoTime() < deadline);
-        throw new IllegalStateException(
-                "Finite Task did not produce all successful Results in time"
-        );
     }
 
     private static Map<String, Object> baseSummary(

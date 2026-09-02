@@ -9,16 +9,21 @@ WebSocket Adapter Endpoint.
 -> 10,000 offered WebSocket connections
 -> Runtime Network and Scheduling observations
 -> minimum 9,900 connected-and-HOT Workers
--> 100 finite TaskItems
+-> two same-Group Tasks x 500 Items
+-> both Tasks complete and export exactly
+-> connected-and-HOT recovers after drain
 -> one Runtime Server restart
 -> transparent reconnect without Host restart or Prepare
 -> minimum 9,900 connected-and-HOT Workers
--> another 100 finite TaskItems
+-> another two same-Group Tasks x 500 Items
 ```
 
-This is a connection-scale and finite recovery proof. It is not a 10,000
-concurrent Handler claim, Task throughput benchmark, latency SLA, long-running
-soak test, or exact 10,000-online guarantee.
+The two Tasks share one WorkerGroup, the same empty allocation rule and the
+same candidate pool. They are completely populated before consecutive
+approval. The proof observes both progress curves, but makes no fairness,
+execution-ratio or completion-order claim. This remains a bounded capacity and
+recovery proof, not a 10,000 concurrent Handler claim, TPS/P99 benchmark,
+long-running soak test or exact 10,000-online guarantee.
 
 The native-thread threshold covers both the OkHttp Dispatcher and OkHttp's
 internal WebSocket TaskRunner. A reconnect burst that recreates thousands of
@@ -56,10 +61,19 @@ Scheduling projection. The converged final scan rejects any HOT Worker that is
 observed disconnected. The initial phase then holds the 9,900 threshold for 60
 seconds with scans every 10 seconds.
 
-The runner also requires the Worker Host to remain below 512 native Linux
-threads. Virtual threads are not counted as native `/proc` threads; this guard
-detects accidental one-platform-thread-per-WebSocket behavior. RSS, native
-threads, and open file descriptors are sampled every five seconds.
+Each phase creates two Tasks and appends 500 Items to each in five 100-Item
+requests. Both Tasks must show successful progress without a global 60-second
+stall, finish within 300 seconds and export exactly their submitted message-ID
+sets. Result payload remains opaque. During execution only the 9,900 connected
+threshold applies; the connected-and-HOT threshold is re-established with
+three full scans after the Tasks drain.
+
+The Worker Host and Runtime Server must each remain below 512 native Linux
+threads and 32,768 open file descriptors. Virtual threads are not counted as
+native `/proc` threads; the thread guard detects accidental
+one-platform-thread-per-WebSocket behavior. RSS remains recorded evidence
+without a cross-machine threshold. All process resources are sampled every five
+seconds.
 
 Run the quick contract tests on any development host:
 
@@ -84,6 +98,7 @@ Then run:
 python integrations/worker-websocket-scale/run_worker_websocket_scale.py \
   --workers 10000 \
   --minimum-converged 9900 \
+  --workload-items-per-task 500 \
   --redis-url redis://127.0.0.1:6379/15 \
   --output-root build/worker-websocket-scale-proof
 ```

@@ -73,6 +73,59 @@ final class ScaleApiClient {
         );
     }
 
+    Map<String, String> previewTaskScoreBands(List<String> taskIds) {
+        if (taskIds == null
+                || taskIds.isEmpty()
+                || taskIds.size() > 100
+                || new LinkedHashSet<>(taskIds).size() != taskIds.size()
+                || taskIds.stream().anyMatch(
+                        taskId -> taskId == null || taskId.isBlank()
+                )) {
+            throw new IllegalArgumentException(
+                    "taskIds must contain 1..100 unique non-blank values"
+            );
+        }
+        ScaleHttpClient.JsonResponse response = runtime.json(
+                "POST",
+                "/api/v1/runtime-view/tasks:preview",
+                100
+        );
+        requireStatus(response.statusCode(), 200, "preview Tasks");
+        if (!response.body().keySet().equals(
+                Set.of("sampleLimit", "generatedAt", "entries")
+        )) {
+            throw ScaleJson.invalid("Task preview fields changed");
+        }
+        if (ScaleJson.integer(response.body(), "sampleLimit") != 100L) {
+            throw ScaleJson.invalid("Task preview sampleLimit changed");
+        }
+        ScaleJson.string(response.body(), "generatedAt");
+
+        Set<String> requested = new LinkedHashSet<>(taskIds);
+        Map<String, String> scoreBands = new LinkedHashMap<>();
+        for (Object raw : ScaleJson.array(
+                response.body().get("entries"),
+                "Task preview entries"
+        )) {
+            Map<String, Object> entry = ScaleJson.object(
+                    raw,
+                    "Task preview entry"
+            );
+            if (!entry.keySet().equals(
+                    Set.of("taskId", "scoreBand", "task", "workerGroup")
+            )) {
+                throw ScaleJson.invalid("Task preview entry fields changed");
+            }
+            String taskId = ScaleJson.string(entry, "taskId");
+            String scoreBand = ScaleJson.string(entry, "scoreBand");
+            if (requested.contains(taskId)
+                    && scoreBands.putIfAbsent(taskId, scoreBand) != null) {
+                throw ScaleJson.invalid("Task preview contains duplicate taskId");
+            }
+        }
+        return Collections.unmodifiableMap(scoreBands);
+    }
+
     String createTask(String workerGroupId) {
         ScaleHttpClient.JsonResponse response = runtime.json(
                 "POST",
@@ -134,6 +187,57 @@ final class ScaleApiClient {
         if (!"applied".equals(status) && !"unchanged".equals(status)) {
             throw ScaleJson.invalid("Task approval status is invalid");
         }
+    }
+
+    Map<String, TaskResultStatus> loadResultStatuses(
+            String taskId,
+            List<String> messageIds
+    ) {
+        if (messageIds == null
+                || messageIds.isEmpty()
+                || messageIds.size() > 100
+                || new LinkedHashSet<>(messageIds).size()
+                != messageIds.size()
+                || messageIds.stream().anyMatch(
+                        messageId -> messageId == null || messageId.isBlank()
+                )) {
+            throw new IllegalArgumentException(
+                    "messageIds must contain 1..100 unique non-blank values"
+            );
+        }
+        ScaleHttpClient.JsonResponse response = runtime.json(
+                "POST",
+                "/api/v1/tasks/" + segment(taskId) + "/results:load",
+                messageIds
+        );
+        requireStatus(response.statusCode(), 200, "load Task Results");
+        if (!response.body().keySet().equals(
+                new LinkedHashSet<>(messageIds)
+        )) {
+            throw ScaleJson.invalid("Loaded result identities changed");
+        }
+        Map<String, TaskResultStatus> statuses = new LinkedHashMap<>();
+        for (String messageId : messageIds) {
+            Map<String, Object> result = ScaleJson.object(
+                    response.body().get(messageId),
+                    "loaded result"
+            );
+            TaskResultStatus status = TaskResultStatus.fromWire(
+                    ScaleJson.string(result, "status")
+            );
+            Set<String> expectedFields;
+            if (status == TaskResultStatus.SUCCEEDED) {
+                ScaleJson.string(result, "opaqueResultPayload");
+                expectedFields = Set.of("status", "opaqueResultPayload");
+            } else {
+                expectedFields = Set.of("status");
+            }
+            if (!result.keySet().equals(expectedFields)) {
+                throw ScaleJson.invalid("Loaded result fields changed");
+            }
+            statuses.put(messageId, status);
+        }
+        return Collections.unmodifiableMap(statuses);
     }
 
     TaskExport exportTask(String taskId) {
@@ -255,5 +359,22 @@ final class ScaleApiClient {
     }
 
     record TaskExport(boolean ready, Set<String> messageIds) {
+    }
+
+    enum TaskResultStatus {
+        SUCCEEDED,
+        FAILED,
+        NOT_OBSERVED;
+
+        static TaskResultStatus fromWire(String value) {
+            return switch (value) {
+                case "succeeded" -> SUCCEEDED;
+                case "failed" -> FAILED;
+                case "not_observed" -> NOT_OBSERVED;
+                default -> throw ScaleJson.invalid(
+                        "Task Result status is invalid"
+                );
+            };
+        }
     }
 }

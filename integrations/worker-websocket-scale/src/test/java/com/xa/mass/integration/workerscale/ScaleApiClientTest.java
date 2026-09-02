@@ -28,6 +28,14 @@ class ScaleApiClientTest {
             ));
     private final AtomicReference<Object> approvalResponse =
             new AtomicReference<>(Map.of("status", "applied"));
+    private final AtomicReference<Object> loadResponse =
+            new AtomicReference<>(Map.of(
+                    "message-1",
+                    Map.of(
+                            "status", "succeeded",
+                            "opaqueResultPayload", "opaque"
+                    )
+            ));
 
     @BeforeEach
     void startServer() throws IOException {
@@ -54,12 +62,24 @@ class ScaleApiClientTest {
                 exchange -> observation(exchange, "held-hot")
         );
         server.createContext(
+                "/api/v1/runtime-view/tasks:preview",
+                exchange -> respond(exchange, 200, Map.of(
+                        "sampleLimit", 100,
+                        "generatedAt", "2026-09-02T00:00:00Z",
+                        "entries", List.of(taskPreviewEntry())
+                ))
+        );
+        server.createContext(
                 "/api/v1/tasks/task-1/items",
                 exchange -> respond(exchange, 200, appendResponse.get())
         );
         server.createContext(
                 "/api/v1/tasks/task-1/approve",
                 exchange -> respond(exchange, 200, approvalResponse.get())
+        );
+        server.createContext(
+                "/api/v1/tasks/task-1/results:load",
+                exchange -> respond(exchange, 200, loadResponse.get())
         );
         server.start();
         URI base = URI.create(
@@ -120,6 +140,68 @@ class ScaleApiClientTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void loadsStrictResultStatusesWithoutExposingPayload() {
+        loadResponse.set(Map.of(
+                "message-1",
+                Map.of(
+                        "status", "succeeded",
+                        "opaqueResultPayload", "opaque"
+                ),
+                "message-2", Map.of("status", "failed"),
+                "message-3", Map.of("status", "not_observed")
+        ));
+
+        assertThat(client.loadResultStatuses(
+                "task-1",
+                List.of("message-1", "message-2", "message-3")
+        )).containsExactly(
+                Map.entry(
+                        "message-1",
+                        ScaleApiClient.TaskResultStatus.SUCCEEDED
+                ),
+                Map.entry(
+                        "message-2",
+                        ScaleApiClient.TaskResultStatus.FAILED
+                ),
+                Map.entry(
+                        "message-3",
+                        ScaleApiClient.TaskResultStatus.NOT_OBSERVED
+                )
+        );
+    }
+
+    @Test
+    void readsTaskTerminalStateFromTheRuntimePreview() {
+        assertThat(client.previewTaskScoreBands(List.of("task-1")))
+                .containsExactly(Map.entry("task-1", "terminal"));
+    }
+
+    @Test
+    void rejectsChangedResultIdentitiesAndFields() {
+        loadResponse.set(Map.of(
+                "other-message", Map.of("status", "not_observed")
+        ));
+        assertThatThrownBy(() -> client.loadResultStatuses(
+                "task-1",
+                List.of("message-1")
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("identities");
+
+        loadResponse.set(Map.of(
+                "message-1",
+                Map.of(
+                        "status", "failed",
+                        "opaqueResultPayload", "not-allowed"
+                )
+        ));
+        assertThatThrownBy(() -> client.loadResultStatuses(
+                "task-1",
+                List.of("message-1")
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("fields");
+    }
+
     private static void observation(HttpExchange exchange, String state)
             throws IOException {
         List<Object> request = Jsons.parseArray(new String(
@@ -130,6 +212,15 @@ class ScaleApiClientTest {
         respond(exchange, 200, Map.of(
                 "statesByWorkerId", Map.of("worker-a", state)
         ));
+    }
+
+    private static Map<String, Object> taskPreviewEntry() {
+        Map<String, Object> entry = new java.util.LinkedHashMap<>();
+        entry.put("taskId", "task-1");
+        entry.put("scoreBand", "terminal");
+        entry.put("task", null);
+        entry.put("workerGroup", null);
+        return entry;
     }
 
     private static void respond(

@@ -157,19 +157,24 @@ iterations of the fixed single-Worker and Triad scenarios.
 ```text
 World       1 Group x 10,000 Workers
 Topology    WebSocket, one Adapter, one Java 21 Host
-Workload    two finite 100-Item samples
+Workload    two same-Group Tasks x 500 Items, repeated after restart
 Mutation    one Runtime Server restart; Host retained
-Oracle      >= 9,900 connected-and-HOT plus Linux resources
+Oracle      bounded dual-Task drain, >= 9,900 connected-and-HOT after drain,
+            plus Linux resources
 ```
 
 The shared Inventory materializer generates 100 JSONL files of 100 Workers,
 then the lane prepares all 10,000
-identities, holds the threshold for a stable window, restarts Server once and
-re-establishes it without another Prepare. It records worker-ID digest, RSS,
-native thread and file-descriptor evidence.
+identities, holds the threshold for a stable window and drains two fully seeded
+500-Item Tasks. During work it requires the connection threshold but not HOT;
+after drain it re-establishes the connected-and-HOT threshold. It restarts
+Server once without another Prepare and repeats the same workload. It records
+both Task progress trajectories, worker-ID digest, RSS, native thread and
+file-descriptor evidence.
 
 This is a resource/capacity claim. It does not repeat the 100-Worker correctness
-oracle, inject the 100-Worker fault matrix, or claim Task throughput.
+oracle, inject the 100-Worker fault matrix, or claim Task fairness, completion
+order, throughput or latency.
 
 ## Excluded Products
 

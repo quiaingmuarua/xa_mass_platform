@@ -1,4 +1,4 @@
-name: Worker WebSocket Scale
+name: Java WebSocket 10k Workers + Dual-Task 1k Workload
 
 on:
   schedule:
@@ -17,7 +17,7 @@ env:
 
 jobs:
   worker-websocket-scale:
-    name: Java WebSocket 10k Workers
+    name: Java WebSocket 10k Workers + Dual-Task 1k Workload
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -60,6 +60,7 @@ jobs:
           python integrations/worker-websocket-scale/run_worker_websocket_scale.py \
             --workers 10000 \
             --minimum-converged 9900 \
+            --workload-items-per-task 500 \
             --redis-url redis://127.0.0.1:6379/15 \
             --output-root build/worker-websocket-scale-proof
       - name: Upload safe scale evidence and process logs

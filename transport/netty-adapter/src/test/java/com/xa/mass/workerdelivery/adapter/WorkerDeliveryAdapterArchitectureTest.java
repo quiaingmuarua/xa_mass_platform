@@ -142,9 +142,12 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("verify-binding");
         assertThat(remote)
                 .contains("java.net.http")
+                .contains("Thread.ofVirtual()")
+                .contains(".executor(HTTP_EXECUTOR)")
                 .contains("commands:consume")
                 .contains("results:append")
-                .contains("verify-binding");
+                .contains("verify-binding")
+                .doesNotContain("Executors.newCachedThreadPool");
     }
 
     @Test

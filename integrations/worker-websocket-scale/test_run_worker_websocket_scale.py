@@ -2,7 +2,9 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).with_name("run_worker_websocket_scale.py")
@@ -51,6 +53,87 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
         group = assembly[RUNNER.WORKER_GROUP]
         self.assertEqual(["extension.worker.string.md5"], group["eventCodes"])
         self.assertEqual(600, group["reconnectPolicy"]["maxUnstableAttempts"])
+
+    def test_each_phase_receives_the_fixed_dual_task_workload(self):
+        options = SimpleNamespace(
+            workers=10_000,
+            minimum_converged=9_900,
+            workload_items_per_task=500,
+            stable_hold_millis=60_000,
+            scan_interval_millis=10_000,
+            maximum_convergence_wait_millis=900_000,
+            task_result_wait_millis=300_000,
+            request_timeout_millis=30_000,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(RUNNER, "_run") as run:
+                RUNNER._run_phase(
+                    "initial",
+                    options,
+                    "proof-a",
+                    root / "baseline.json",
+                    root / "summary.json",
+                    root / "timeline.jsonl",
+                    {},
+                )
+
+        command = run.call_args.args[0]
+        self.assertIn("--workload-items-per-task=500", command)
+        self.assertFalse(
+            any(value.startswith("--task-item-count=") for value in command)
+        )
+
+    def test_resource_contract_covers_both_processes(self):
+        RUNNER._validate_resource_contract({
+            "worker-host": {
+                "maximumNativeThreads": 511,
+                "maximumOpenFileDescriptors": 32_767,
+            },
+            "runtime-server": {
+                "maximumNativeThreads": 511,
+                "maximumOpenFileDescriptors": 32_767,
+            },
+        })
+
+        for owner, field, value in (
+            ("worker-host", "maximumNativeThreads", 512),
+            ("runtime-server", "maximumOpenFileDescriptors", 32_768),
+        ):
+            resources = {
+                "worker-host": {
+                    "maximumNativeThreads": 100,
+                    "maximumOpenFileDescriptors": 1_000,
+                },
+                "runtime-server": {
+                    "maximumNativeThreads": 100,
+                    "maximumOpenFileDescriptors": 1_000,
+                },
+            }
+            resources[owner][field] = value
+            with self.assertRaises(RuntimeError):
+                RUNNER._validate_resource_contract(resources)
+
+    def test_phase_summary_requires_two_complete_tasks_and_reconvergence(self):
+        options = SimpleNamespace(
+            workload_items_per_task=500,
+            minimum_converged=9_900,
+        )
+        summary = {
+            "activeTaskCount": 2,
+            "offeredItemsPerTask": 500,
+            "totalOfferedItems": 1_000,
+            "appendBatchCount": 10,
+            "taskASucceededCount": 500,
+            "taskBSucceededCount": 500,
+            "minimumConnectedDuringWork": 9_900,
+            "postWorkConnectedAndHot": 9_900,
+        }
+        RUNNER._validate_phase_summary(summary, options)
+
+        summary["taskBSucceededCount"] = 499
+        with self.assertRaises(RuntimeError):
+            RUNNER._validate_phase_summary(summary, options)
 
 
 if __name__ == "__main__":

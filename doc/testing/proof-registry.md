@@ -131,20 +131,23 @@ processes, mutations or evidence.
 
 - **Primary owner:** `:integrations:worker-websocket-scale` and its separate
   workflow.
-- **Claim:** one Java 21 Host prepares 10,000 identities and sustains at least
-  9,900 connected-and-HOT Workers through a stable window, finite samples and
-  one Server restart while native threads remain bounded.
+- **Claim:** one Java 21 Host prepares 10,000 identities, sustains at least
+  9,900 connected-and-HOT Workers, drains two competing 500-Item Tasks, and
+  repeats that bounded workload after one Server restart while process
+  resources remain bounded.
 - **Failure model:** connection ceiling, platform-thread explosion, FD or
   memory exhaustion and reconnect collapse.
 - **World:** one Group, 10,000 WebSocket Workers, one Adapter and one Server.
-- **Workload:** two bounded 100-Item samples.
+- **Workload:** two same-Group 500-Item Tasks before and after restart; both
+  Tasks are fully populated before consecutive approval.
 - **Mutation:** one Server restart with Host retained.
-- **Oracle:** paged Network/Scheduling intersection, worker-ID digest and Linux
-  process resource samples.
+- **Oracle:** paged Network/Scheduling observations, paged Result progress,
+  exact per-Task exports, worker-ID digest and Linux process resource samples.
 - **Prerequisites:** Linux, Java 21, Redis 7.4 and `nofile >= 65536`.
-- **Deliberate nonclaims:** exact 10,000 online, throughput, Handler
-  concurrency, topology breadth and soak.
-- **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15`.
+- **Deliberate nonclaims:** exact 10,000 online, Task fairness, fixed execution
+  ratio, completion order, throughput, latency, Handler concurrency, topology
+  breadth and soak.
+- **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --workload-items-per-task 500 --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** very high; nightly/manual only.
 
 The 10k lane uses the same strict Inventory materializer and 100-record JSONL
