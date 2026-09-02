@@ -1,84 +1,72 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /** Thread-safe process-local FIFO with a soft admission capacity. */
 final class FiniteQueue<T> {
 
-    private final int capacity;
-    private final ArrayDeque<T> items = new ArrayDeque<>();
+    private final int softCapacity;
+    private final Object ingressGate = new Object();
+    private final LinkedBlockingQueue<T> items;
     private boolean accepting = true;
 
     FiniteQueue(int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
         }
-        this.capacity = capacity;
+        long physicalCapacity = 2L * capacity - 1L;
+        if (physicalCapacity > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("capacity is too large");
+        }
+        softCapacity = capacity;
+        items = new LinkedBlockingQueue<>((int) physicalCapacity);
     }
 
     QueueIngressStatus ingress(List<? extends T> values) {
         Objects.requireNonNull(values, "items");
         List<T> batch = List.copyOf(values);
-        if (batch.size() > capacity) {
+        if (batch.size() > softCapacity) {
             throw new IllegalArgumentException(
                     "ingress batch must not exceed capacity"
             );
         }
-        if (batch.isEmpty()) {
-            return QueueIngressStatus.ACCEPTED;
-        }
-        synchronized (this) {
+        synchronized (ingressGate) {
             if (!accepting) {
                 return QueueIngressStatus.CLOSED;
             }
-            if (items.size() >= capacity) {
+            if (batch.isEmpty()) {
+                return QueueIngressStatus.ACCEPTED;
+            }
+            if (items.size() >= softCapacity) {
                 return QueueIngressStatus.FULL;
             }
             items.addAll(batch);
-            notifyAll();
             return QueueIngressStatus.ACCEPTED;
         }
     }
 
-    synchronized List<T> consume(int limit) {
+    List<T> takeBatch(int limit) throws InterruptedException {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
         }
-        int count = Math.min(limit, items.size());
-        if (count == 0) {
-            return List.of();
+        ArrayList<T> batch = new ArrayList<>(limit);
+        batch.add(items.take());
+        if (limit > 1) {
+            items.drainTo(batch, limit - 1);
         }
-        ArrayList<T> consumed = new ArrayList<>(count);
-        for (int index = 0; index < count; index++) {
-            consumed.add(items.removeFirst());
-        }
-        return List.copyOf(consumed);
+        return List.copyOf(batch);
     }
 
-    synchronized List<T> awaitAndConsume(int limit)
-            throws InterruptedException {
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be positive");
+    void stopIngress() {
+        synchronized (ingressGate) {
+            accepting = false;
         }
-        while (items.isEmpty() && accepting) {
-            wait();
-        }
-        return consume(limit);
     }
 
-    int capacity() {
-        return capacity;
-    }
-
-    synchronized void stopIngress() {
-        accepting = false;
-        notifyAll();
-    }
-
-    synchronized void clear() {
+    void clear() {
         items.clear();
     }
 

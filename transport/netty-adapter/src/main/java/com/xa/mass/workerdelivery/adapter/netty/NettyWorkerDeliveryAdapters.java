@@ -1,7 +1,5 @@
 package com.xa.mass.workerdelivery.adapter.netty;
 
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase.AFTER_NETWORK_CLOSE;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase.BEFORE_NETWORK_CLOSE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
@@ -12,8 +10,6 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterEventDispatcher;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessEntry;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
@@ -28,11 +24,6 @@ import java.util.Objects;
 
 /** Finite construction boundary for the built-in Netty Adapter types. */
 public final class NettyWorkerDeliveryAdapters {
-
-    private static final String DELIVERY_COMMAND_PROCESS_ID =
-            "DELIVERY_COMMAND";
-    private static final String DELIVERY_REPORT_PROCESS_ID =
-            "DELIVERY_REPORT";
 
     private NettyWorkerDeliveryAdapters() {
     }
@@ -188,30 +179,14 @@ public final class NettyWorkerDeliveryAdapters {
                 commandConfig.interval()
         );
 
-        List<AdapterProcessEntry> processEntries = List.of(
-                new AdapterProcessEntry(
-                        DELIVERY_COMMAND_PROCESS_ID,
-                        BEFORE_NETWORK_CLOSE,
-                        commandProcess
-                ),
-                new AdapterProcessEntry(
-                        DELIVERY_REPORT_PROCESS_ID,
-                        AFTER_NETWORK_CLOSE,
-                        reportProcess
-                )
-        );
-
-        AdapterProcessManager processManager = new AdapterProcessManager(
-                adapterId,
-                shutdownTimeout,
-                processEntries
-        );
         return new NettyWorkerDeliveryAdapter(
                 adapterId,
                 networkServer,
                 connectionInboundHandler,
                 connectionMechanism,
-                processManager
+                commandProcess,
+                reportProcess,
+                shutdownTimeout
         );
     }
 

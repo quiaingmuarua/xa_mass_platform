@@ -205,9 +205,8 @@ Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; a finite factory creates independently isolated Adapter
   instances with three top-level owners: an Adapter aggregate owns start/close
-  and network ordering, while its `AdapterProcessManager` owns the fixed
-  Command/Report Process set and its single scheduler; one
-  shared connection mechanism plus route
+  and network ordering plus the fixed Command/Report Processes and their two
+  resident daemon platform threads; one shared connection mechanism plus route
   Registry owns one process-local per-Worker route state and Channel-local
   identity correlation, routing, and Result ingress; one complete WebSocket or line-Socket
   Server owns the listener, EventLoop, all physical child Channels, full
@@ -323,8 +322,9 @@ never scans a bucket. Each locally registered Adapter instance may
 consume one bounded random batch from its sparse bucket through the Server
 batch HTTP API and
 serve Workers through an independent Netty listener. The Adapter runtime owns
-its scheduler, command consume bound, common route/connection mechanism, every
-child Channel, current bound-route selection, bounded delivery,
+its fixed Command/Report resident loops, command consume bound, common
+route/connection mechanism, every child Channel, current bound-route
+selection, bounded delivery,
 Adapter-rejection/`UNKNOWN`, and Report-buffer policy. Its selected network
 protocol owns only physical framing and close. The Server host only binds
 configuration and forwards process lifecycle events.

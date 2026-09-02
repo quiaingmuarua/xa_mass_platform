@@ -293,9 +293,8 @@ The production cut is frozen:
 
 ```text
 NettyWorkerDeliveryAdapter
-  -> AdapterProcessManager
-     -> DeliveryCommandProcess
-     -> DeliveryReportProcess
+  -> DeliveryCommandProcess + one resident thread
+  -> DeliveryReportProcess + one resident thread
   -> WorkerConnectionInboundHandler
      -> WorkerConnectionMechanism
         -> WorkerRouteRegistry
@@ -305,17 +304,17 @@ NettyWorkerDeliveryAdapter
 
 Rules:
 
-- The aggregate owns lifecycle and network shutdown ordering.
-- `AdapterProcessManager` owns the finite Process list and one same-lifetime
-  resident daemon platform thread per Process. It exposes no individual
-  Process stop operation.
-- Each Process owns one private thread-safe `FiniteQueue`; queues never cross
-  owner boundaries.
+- The aggregate owns lifecycle, network shutdown ordering, the fixed Command
+  and Report Processes, and one same-lifetime resident daemon platform thread
+  per Process. There is no intermediary lifecycle owner or dynamic Process
+  list.
+- The Command retry queue is thread-confined. The Report Process owns the only
+  thread-safe `FiniteQueue`; queues never cross owner boundaries.
 - Owner-local Remote APIs own their paths, wire JSON and status semantics. One
   private HTTP client owns raw HTTP mechanics only.
 - Result queue capacity is only a local soft memory bound. The Report Process
   submits fixed `1..100` remote batches; retries retain that exact batch and
-  shutdown must not unboundedly drain the queue.
+  shutdown drops pending and queued Reports without a final synchronous flush.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
 - Registry keeps one atomic pending, connected or disconnected Route entry per

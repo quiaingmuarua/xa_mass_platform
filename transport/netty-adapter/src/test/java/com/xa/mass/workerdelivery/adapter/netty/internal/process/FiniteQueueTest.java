@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -21,28 +22,32 @@ import org.junit.jupiter.api.Test;
 class FiniteQueueTest {
 
     @Test
-    void acceptsOneBoundedBatchBeyondTheSoftCapacity() {
+    void acceptsOneBoundedBatchBeyondTheSoftCapacity() throws Exception {
         FiniteQueue<String> queue = new FiniteQueue<>(3);
 
         assertThat(queue.ingress(List.of("one", "two")))
                 .isEqualTo(ACCEPTED);
-        assertThat(queue.ingress(List.of("three", "four")))
+        assertThat(queue.ingress(List.of("three", "four", "five")))
                 .isEqualTo(ACCEPTED);
-        assertThat(queue.ingress(List.of("five"))).isEqualTo(FULL);
+        assertThat(queue.ingress(List.of("six"))).isEqualTo(FULL);
 
-        assertThat(queue.consume(2)).containsExactly("one", "two");
-        assertThat(queue.ingress(List.of("five"))).isEqualTo(ACCEPTED);
-        assertThat(queue.consume(10))
-                .containsExactly("three", "four", "five");
+        assertThat(queue.takeBatch(3))
+                .containsExactly("one", "two", "three");
+        assertThat(queue.ingress(List.of("six"))).isEqualTo(ACCEPTED);
+        assertThat(queue.takeBatch(3))
+                .containsExactly("four", "five", "six");
     }
 
     @Test
     void rejectsInvalidBoundsAndBatchValues() {
         assertThatThrownBy(() -> new FiniteQueue<>(0))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new FiniteQueue<>(
+                Integer.MAX_VALUE / 2 + 2
+        )).isInstanceOf(IllegalArgumentException.class);
 
         FiniteQueue<String> queue = new FiniteQueue<>(2);
-        assertThatThrownBy(() -> queue.consume(0))
+        assertThatThrownBy(() -> queue.takeBatch(0))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> queue.ingress(List.of("1", "2", "3")))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -55,7 +60,8 @@ class FiniteQueueTest {
     }
 
     @Test
-    void stopIngressStillAllowsDrainAndClearDoesNotReopen() {
+    void stopIngressRejectsNewBatchesWithoutOwningConsumerWakeup()
+            throws Exception {
         FiniteQueue<String> queue = new FiniteQueue<>(2);
         queue.ingress(List.of("one", "two"));
 
@@ -63,70 +69,60 @@ class FiniteQueueTest {
         queue.stopIngress();
 
         assertThat(queue.ingress(List.of("late"))).isEqualTo(CLOSED);
-        assertThat(queue.consume(1)).containsExactly("one");
+        assertThat(queue.ingress(List.of())).isEqualTo(CLOSED);
+        assertThat(queue.takeBatch(2)).containsExactly("one", "two");
         queue.clear();
-        assertThat(queue.consume(2)).isEmpty();
         assertThat(queue.ingress(List.of("still-late"))).isEqualTo(CLOSED);
     }
 
     @Test
-    void blockingConsumeWaitsForIngressAndWakesImmediately() throws Exception {
-        FiniteQueue<String> queue = new FiniteQueue<>(2);
+    void takeBatchWaitsForFirstIngressAndWakesImmediately()
+            throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(3);
         ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch started = new CountDownLatch(1);
         try {
-            Future<List<String>> consumed = executor.submit(
-                    () -> queue.awaitAndConsume(2)
-            );
-            Thread.sleep(50);
+            Future<List<String>> consumed = executor.submit(() -> {
+                started.countDown();
+                return queue.takeBatch(3);
+            });
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(consumed.isDone()).isFalse();
 
-            assertThat(queue.ingress(List.of("one", "two")))
+            assertThat(queue.ingress(List.of("one")))
                     .isEqualTo(ACCEPTED);
 
             assertThat(consumed.get(2, TimeUnit.SECONDS))
-                    .containsExactly("one", "two");
+                    .containsExactly("one");
         } finally {
             executor.shutdownNow();
         }
     }
 
     @Test
-    void stopIngressWakesAnEmptyBlockingConsumer() throws Exception {
-        FiniteQueue<String> queue = new FiniteQueue<>(2);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        try {
-            Future<List<String>> consumed = executor.submit(
-                    () -> queue.awaitAndConsume(2)
-            );
-            Thread.sleep(50);
+    void takeBatchDrainsAvailableRemainderInFifoOrder() throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(3);
+        assertThat(queue.ingress(List.of("one", "two", "three")))
+                .isEqualTo(ACCEPTED);
 
-            queue.stopIngress();
-
-            assertThat(consumed.get(2, TimeUnit.SECONDS)).isEmpty();
-        } finally {
-            executor.shutdownNow();
-        }
+        assertThat(queue.takeBatch(3))
+                .containsExactly("one", "two", "three");
     }
 
     @Test
-    void blockingConsumeIsInterruptible() throws Exception {
+    void takeBatchIsInterruptible() throws Exception {
         FiniteQueue<String> queue = new FiniteQueue<>(2);
         AtomicBoolean interrupted = new AtomicBoolean();
         Thread consumer = new Thread(() -> {
             try {
-                queue.awaitAndConsume(2);
+                queue.takeBatch(2);
             } catch (InterruptedException expected) {
                 interrupted.set(true);
             }
         });
         consumer.start();
-        long deadline = System.nanoTime()
-                + java.time.Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline
-                && consumer.getState() != Thread.State.WAITING) {
-            Thread.onSpinWait();
-        }
 
+        awaitState(consumer, Thread.State.WAITING);
         consumer.interrupt();
         consumer.join(2_000);
 
@@ -162,7 +158,24 @@ class FiniteQueueTest {
         }
 
         assertThat(accepted.get()).isEqualTo(capacity);
-        assertThat(queue.consume(capacity)).hasSize(capacity);
+        assertThat(queue.takeBatch(capacity)).hasSize(capacity);
+    }
+
+    @Test
+    void admitsAnExpiredTaskPairTogetherAtTheSoftBoundary()
+            throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(2);
+
+        assertThat(queue.ingress(List.of("existing"))).isEqualTo(ACCEPTED);
+        assertThat(queue.ingress(List.of("task-expired", "kernel-expired")))
+                .isEqualTo(ACCEPTED);
+        assertThat(queue.ingress(List.of("late"))).isEqualTo(FULL);
+
+        assertThat(queue.takeBatch(3)).containsExactly(
+                "existing",
+                "task-expired",
+                "kernel-expired"
+        );
     }
 
     @Test
@@ -176,5 +189,14 @@ class FiniteQueueTest {
         assertThat(List.of(FiniteQueue.class.getDeclaredMethods()))
                 .extracting(Method::getName)
                 .doesNotContain("name", "key");
+    }
+
+    private static void awaitState(Thread thread, Thread.State expected) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline
+                && thread.getState() != expected) {
+            Thread.onSpinWait();
+        }
+        assertThat(thread.getState()).isEqualTo(expected);
     }
 }

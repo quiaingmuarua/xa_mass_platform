@@ -16,15 +16,15 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 /** Resident Command acquisition and delivery process for one Adapter. */
-public final class DeliveryCommandProcess implements AdapterProcess {
+public final class DeliveryCommandProcess {
 
     private static final String WORKER_DELIVERY_EXPIRED_EVENT =
             "platform.adapter.worker-delivery.expired";
@@ -40,7 +40,8 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             DeliveryCommandProcess.class.getName()
     );
 
-    private final FiniteQueue<QueuedCommand> retryQueue;
+    private final ArrayDeque<QueuedCommand> retryQueue = new ArrayDeque<>();
+    private final int retryQueueCapacity;
     private final DeliveryCommandRemoteApi remoteApi;
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
@@ -50,7 +51,6 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     private final int commandConsumeLimit;
     private final long backoffMillis;
     private final LongSupplier nowMillis;
-    private final AtomicBoolean finishStarted = new AtomicBoolean();
     private volatile boolean loopStopped;
 
     public DeliveryCommandProcess(
@@ -165,37 +165,41 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
         this.adapterId = adapterId;
         this.commandConsumeLimit = commandConsumeLimit;
+        this.retryQueueCapacity = retryQueueCapacity;
         backoffMillis = requirePositiveMillis(
                 backoff,
                 "backoff"
         );
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
-        retryQueue = new FiniteQueue<>(retryQueueCapacity);
     }
 
-    @Override
     public void runLoop() {
-        while (!loopStopped && !Thread.currentThread().isInterrupted()) {
-            boolean backoff = true;
-            try {
-                dispatchBatch(retryQueue.consume(commandConsumeLimit));
-                if (loopStopped) {
+        try {
+            while (!loopStopped
+                    && !Thread.currentThread().isInterrupted()) {
+                boolean backoff = true;
+                try {
+                    dispatchBatch(consumeRetryBatch());
+                    if (loopStopped) {
+                        return;
+                    }
+                    List<QueuedCommand> fresh = acquireFreshBatch();
+                    if (!fresh.isEmpty()) {
+                        dispatchBatch(fresh);
+                        backoff = false;
+                    }
+                } catch (RuntimeException error) {
+                    if (!loopStopped
+                            && !Thread.currentThread().isInterrupted()) {
+                        logIterationFailure(error);
+                    }
+                }
+                if (backoff && !awaitBackoff()) {
                     return;
                 }
-                List<QueuedCommand> fresh = acquireFreshBatch();
-                if (fresh != null && !fresh.isEmpty()) {
-                    dispatchBatch(fresh);
-                    backoff = false;
-                }
-            } catch (RuntimeException error) {
-                if (!loopStopped
-                        && !Thread.currentThread().isInterrupted()) {
-                    logIterationFailure(error);
-                }
             }
-            if (backoff && !awaitBackoff()) {
-                return;
-            }
+        } finally {
+            retryQueue.clear();
         }
     }
 
@@ -221,8 +225,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             }
         }
         if (!loopStopped && !retryLater.isEmpty()
-                && retryQueue.ingress(retryLater)
-                != FiniteQueue.QueueIngressStatus.ACCEPTED) {
+                && !offerRetryBatch(retryLater)) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
                     "adapterId={0} commandCount={1} message={2}",
@@ -234,15 +237,10 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     }
 
     private List<QueuedCommand> acquireFreshBatch() {
-        Map<String, DeliveryCommand> acquired;
-        try {
-            acquired = remoteApi.consume(adapterId, commandConsumeLimit);
-        } catch (RuntimeException error) {
-            if (!loopStopped && !Thread.currentThread().isInterrupted()) {
-                logSourceFailure(error);
-            }
-            return null;
-        }
+        Map<String, DeliveryCommand> acquired = remoteApi.consume(
+                adapterId,
+                commandConsumeLimit
+        );
         if (acquired.isEmpty() || loopStopped) {
             return List.of();
         }
@@ -253,19 +251,28 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         return List.copyOf(batch);
     }
 
-    @Override
-    public void quiesce() {
+    public void stop() {
         loopStopped = true;
-        retryQueue.stopIngress();
     }
 
-    @Override
-    public void finishAfterLoopStop() {
-        if (!finishStarted.compareAndSet(false, true)) {
-            return;
+    private List<QueuedCommand> consumeRetryBatch() {
+        int count = Math.min(commandConsumeLimit, retryQueue.size());
+        if (count == 0) {
+            return List.of();
         }
-        quiesce();
-        retryQueue.clear();
+        ArrayList<QueuedCommand> consumed = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            consumed.add(retryQueue.removeFirst());
+        }
+        return List.copyOf(consumed);
+    }
+
+    private boolean offerRetryBatch(List<QueuedCommand> retryLater) {
+        if (retryQueue.size() >= retryQueueCapacity) {
+            return false;
+        }
+        retryQueue.addAll(retryLater);
+        return true;
     }
 
     private WorkerConnectionMechanism.DeliveryAttempt dispatch(
@@ -364,28 +371,6 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 adapterId,
                 entryKey,
                 command.messageType()
-        );
-    }
-
-    private void logSourceFailure(RuntimeException error) {
-        WorkerDeliveryAdapterException failure;
-        if (error instanceof WorkerDeliveryAdapterException classified) {
-            failure = classified;
-        } else {
-            failure = new WorkerDeliveryAdapterException(
-                    WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
-                    "deliveryCommand.consumeRemote",
-                    "Delivery Command acquisition failed",
-                    error
-            );
-        }
-        LOGGER.log(
-                System.Logger.Level.WARNING,
-                "errorCode={0} operation={1} adapterId={2} message={3}",
-                failure.errorCode().code(),
-                failure.operation(),
-                adapterId,
-                failure.getMessage()
         );
     }
 

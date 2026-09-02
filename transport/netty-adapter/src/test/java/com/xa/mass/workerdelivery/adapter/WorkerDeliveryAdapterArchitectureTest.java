@@ -66,12 +66,11 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(adapter)
                 .contains("WorkerConnectionInboundHandler")
                 .contains("WorkerConnectionMechanism")
-                .contains("AdapterProcessManager")
+                .contains("DeliveryCommandProcess")
+                .contains("DeliveryReportProcess")
                 .contains("NettyWorkerServer")
                 .doesNotContain("WebSocketNettyWorkerServer")
                 .doesNotContain("SocketNettyWorkerServer")
-                .doesNotContain("DeliveryCommandProcess")
-                .doesNotContain("DeliveryReportProcess")
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("ScheduledExecutorService");
         assertThat(connection)
@@ -151,21 +150,33 @@ class WorkerDeliveryAdapterArchitectureTest {
             throws IOException {
         String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
         String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
-        String manager = read(PROCESS.resolve("AdapterProcessManager.java"));
+        String reportQueue = read(PROCESS.resolve("FiniteQueue.java"));
+        String adapter = read(NETTY.resolve(
+                "NettyWorkerDeliveryAdapter.java"
+        ));
 
         assertThat(command)
-                .contains("FiniteQueue<")
+                .contains("ArrayDeque<")
+                .doesNotContain("FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
         assertThat(report)
                 .contains("FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
+        assertThat(reportQueue)
+                .contains("LinkedBlockingQueue<")
+                .contains(".take()")
+                .contains(".drainTo(")
+                .doesNotContain("ArrayDeque")
+                .doesNotContain("wait()")
+                .doesNotContain("notifyAll()")
+                .doesNotContain(".put(");
         assertThat(command + report)
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("SystemControlProcess")
                 .doesNotContain("ControlOnlyProcess");
-        assertThat(manager)
+        assertThat(adapter)
                 .contains("new Thread(")
                 .contains("thread.setDaemon(true)")
                 .doesNotContain("ScheduledExecutorService")

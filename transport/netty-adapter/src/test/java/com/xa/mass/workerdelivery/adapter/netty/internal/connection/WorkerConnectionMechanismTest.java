@@ -838,10 +838,10 @@ class WorkerConnectionMechanismTest {
             }
             while (System.nanoTime() < deadline
                     && loop.isAlive()
-                    && !waitingInReportQueue(loop)) {
+                    && !waitingForReportIngress(loop)) {
                 Thread.onSpinWait();
             }
-            boolean reachedEmptyWait = waitingInReportQueue(loop);
+            boolean reachedEmptyWait = waitingForReportIngress(loop);
             loop.interrupt();
             try {
                 loop.join(2_000);
@@ -865,16 +865,8 @@ class WorkerConnectionMechanismTest {
             }
         }
 
-        private boolean waitingInReportQueue(Thread loop) {
-            for (StackTraceElement element : loop.getStackTrace()) {
-                if (element.getClassName().endsWith(".FiniteQueue")
-                        && element.getMethodName().equals(
-                                "awaitAndConsume"
-                        )) {
-                    return true;
-                }
-            }
-            return false;
+        private boolean waitingForReportIngress(Thread loop) {
+            return loop.getState() == Thread.State.WAITING;
         }
 
         private ScriptedHttpServer reportServer() {

@@ -30,21 +30,16 @@ one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`, with
 one acceptor EventLoop and a CPU-bounded child EventLoop group
 one `DeliveryCommandProcess` with one private retry queue
 one `DeliveryReportProcess` with one private Result queue and pending batch
-one `AdapterProcessManager` owning the finite Process set and two resident threads
+two resident daemon platform threads owned directly by the Adapter aggregate
 ```
 
-The common Adapter aggregate owns lifecycle and network ordering.
-`AdapterProcessManager` owns Process identity validation, one named daemon
-platform thread per fixed Process, phase-local quiescence and interruption, a
-shared join deadline, and reverse-order finish. The Process set and its two
-threads are fixed for the Adapter lifetime; the Manager exposes no individual
-stop operation and knows nothing about the network or HTTP. The Command
-Process owns the unified remote Command path, delivery/rotation, expiry,
-retry backoff, and one local queue. The Report Process owns the unified Result
-path, local Result acceptance, one pending batch, failure backoff, and one
-local queue. Each `FiniteQueue` is
-business-neutral process infrastructure and owns only thread-safe FIFO storage
-with soft-capacity ingress; it is never passed between owners. The stateless
+The common Adapter aggregate owns lifecycle, network ordering, the fixed
+Command and Report Processes, and their two named resident threads. The
+Command Process owns the unified remote Command path, delivery/rotation,
+expiry, retry backoff, and one thread-confined `ArrayDeque`. The Report Process
+owns the unified Result path, local Result acceptance, one pending batch,
+failure backoff, and one private `FiniteQueue` backed by a
+`LinkedBlockingQueue`. Neither queue crosses its Process owner boundary. The stateless
 inbound Handler only forwards normalized text, inactive, and failure callbacks.
 The shared connection mechanism owns identity
 interpretation, route verification, Command routing, and Result ingress; its
@@ -71,7 +66,7 @@ similarity:
 netty/
   finite public factory + one package-private Adapter aggregate
 netty/internal/process/
-  DeliveryCommandProcess, DeliveryReportProcess, and private FiniteQueues
+  DeliveryCommandProcess, DeliveryReportProcess, and Report-private FiniteQueue
 netty/internal/connection/
   one Netty callback adapter + shared connection semantics + pure route truth
 netty/internal/remote/
@@ -320,8 +315,9 @@ one retry slice before acquiring fresh work, so sustained fresh traffic cannot
 starve retained Commands. An empty response, remote failure, or other
 recoverable iteration failure waits the Command config `interval` as an
 interruptible local backoff. The remote endpoint remains immediate; this is
-not Server long polling. Quiescence stops new acquisition and delivery, and
-the Manager interrupt cancels either the backoff or a synchronous HTTP call.
+not Server long polling. Adapter close submits the Command stop intent and
+interrupts its thread, cancelling either the backoff or a synchronous HTTP
+call without another lifecycle layer.
 
 A remote response containing more Commands than the requested limit is a
 protocol failure and none of that response is dispatched.
@@ -407,14 +403,16 @@ operation. Worker Reports preserve their original encoded JSON. Result queue
 capacity is at least two so the one logical expired-TASK pair is accepted or
 dropped together.
 
-The Report thread blocks inside its private queue when no ingress exists; it
-makes no empty remote call and uses no idle timer. Ingress wakes the consumer.
+The Report thread calls `take()` for the first item and therefore blocks when
+no ingress exists; it makes no empty remote call and uses no idle timer. The
+first accepted Report wakes the consumer, which then calls `drainTo(...)` for
+up to 99 more currently available Reports.
 
 ```text
 pending batch exists -> retry that exact batch first
-otherwise            -> block, then drain at most 100 Reports from the queue
+otherwise            -> take one, then drain up to the 100-Report batch limit
 success               -> clear pending and continue immediately
-protocol rejection    -> drop that batch and continue immediately
+protocol rejection    -> drop that batch and wait interruptible backoff
 remote unavailable    -> retain pending and wait interruptible retry backoff
 ```
 
@@ -433,13 +431,15 @@ The fixed remote batch limit remains 100 and is independent of queue capacity.
 While the remote owner accepts batches, the resident loop continuously drains
 without a configured per-cycle limit. Remote unavailability retains the exact
 failed batch and prevents later Reports from passing it. After the loop has
-stopped, normal close retries an existing pending batch once; if that no longer
-blocks ordering, it may submit at most one additional 100-Report batch. It then
-drops the local remainder rather than unboundedly draining during shutdown.
+stopped, close drops its pending batch and local queue. Adapter shutdown does
+not make another synchronous remote submission.
 
-Both queues are finite, soft-capacity, and private to their Process. Adapter
-failure can lose queued commands or results; there is no ACK, persistent
-pending queue, or exactly-once claim.
+Both queues are finite, soft-capacity, and private to their Process. The
+Command queue is consumer-thread confined. The multi-producer Report queue
+uses a short admission gate only to accept or reject each whole ingress batch;
+its `LinkedBlockingQueue.take()` owns idle blocking and thread interrupt owns
+shutdown wakeup. Adapter failure can lose queued commands or results; there is
+no ACK, persistent pending queue, or exactly-once claim.
 
 A physical Channel close is a reconnectable network fact. It does not tell the
 Worker to end its current run. Only a delivered
@@ -451,22 +451,20 @@ Start:
 
 ```text
 bind listener
+-> start the fixed Report and Command daemon platform threads
 -> state RUNNING
--> AdapterProcessManager starts one resident daemon platform thread per Process
 ```
 
 Close:
 
 ```text
 state STOPPING
--> AdapterProcessManager quiesces BEFORE_NETWORK_CLOSE processes
+-> stop and interrupt the Command loop
 -> close listener and every pre-identity, pending-verification, or bound Channel
 -> clear the remaining per-Worker route state; closed Channels release their metadata
--> AdapterProcessManager quiesces AFTER_NETWORK_CLOSE processes
--> AdapterProcessManager interrupts all Process threads and joins them against
-   one shared deadline
--> only after every thread stops, finish processes exactly once in reverse order,
-   including the bounded final Result flush
+-> stop Report ingress and interrupt the Report loop
+-> join both consumer threads against one shared deadline
+-> drop any remaining Command retry and Report pending/queued data
 -> state CLOSED
 ```
 
@@ -480,14 +478,10 @@ Channels, child EventLoop group, and acceptor EventLoop; timeout initiates
 remaining closes without waiting again and reports `SHUTDOWN_TIMEOUT (21004)`.
 The Adapter Process threads then share one separate deadline: every thread is
 interrupted first, and sequential joins consume only the same deadline's
-remainder. A Process thread that misses that budget prevents every finish hook,
-including the potentially blocking final Report flush; the Result queue has
-already stopped accepting and shutdown returns `SHUTDOWN_TIMEOUT (21004)`.
-On the normal path, the final flush remains best effort and is bounded to one
-retry of the exact pending batch plus at most one additional 100-Report batch.
-Consequently close is bounded by the physical Server budget, the one shared
-Process join budget, and at most two HTTP request timeouts rather than an
-unbounded queue drain.
+remainder. A Process thread that misses that budget returns
+`SHUTDOWN_TIMEOUT (21004)`. There is no close-thread Result flush, so Adapter
+close is bounded by the physical Server budget and the one shared consumer
+join budget rather than a queue drain or additional HTTP request.
 
 The WebSocket protocol accepts text only and normalizes
 `TextWebSocketFrame <-> String`. Socket uses

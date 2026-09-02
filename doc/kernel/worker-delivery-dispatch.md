@@ -426,14 +426,13 @@ the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
 
-One finite construction factory returns only the public Adapter contract. It
-instantiates one package-private Adapter scheduling mechanism per endpoint and
+One finite construction factory returns only the public Adapter contract and
 selects one complete WebSocket or line-Socket physical Server. Every instance
-independently owns three layers: the Adapter aggregate owns lifecycle,
-network shutdown sequencing, and an `AdapterProcessManager`. The Manager owns
-the finite scheduled Process list, its one same-lifetime scheduler, phase-local
-quiescence, round isolation, and reverse finish; the Command and Report
-Processes each own one private finite queue and one owner-local Remote API.
+independently owns three layers: the Adapter aggregate owns lifecycle, network
+shutdown sequencing, the fixed Command and Report Processes, and their two
+resident daemon platform threads; the Command Process owns one thread-confined
+retry queue, while the Report Process owns one thread-safe finite queue and one
+pending batch. Each Process uses one owner-local Remote API.
 Source priority is decided by Server before the Command response is created.
 The Command Remote owns the unified command path and wire
 decoding, the Report Remote owns result paths and wire validation, and the

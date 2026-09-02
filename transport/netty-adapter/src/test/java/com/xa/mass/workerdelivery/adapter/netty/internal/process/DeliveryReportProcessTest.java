@@ -49,7 +49,7 @@ class DeliveryReportProcessTest {
     }
 
     @Test
-    void residentLoopContinuouslyDrainsBeyondTheOldRoundBudget()
+    void residentLoopContinuouslyDrainsBeyondThePreviousBatchCap()
             throws Exception {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(
@@ -70,6 +70,31 @@ class DeliveryReportProcessTest {
                                 100, 100, 100, 100, 100,
                                 100
                         );
+            } finally {
+                stop(process, loop);
+            }
+        }
+    }
+
+    @Test
+    void remoteBatchLimitDoesNotShrinkWithSoftQueueCapacity()
+            throws Exception {
+        try (ReportPeer peer = new ReportPeer()) {
+            DeliveryReportProcess process = process(
+                    peer,
+                    2,
+                    Duration.ofSeconds(1)
+            );
+            assertThat(process.ingress(List.of("one"))).isEqualTo(ACCEPTED);
+            assertThat(process.ingress(List.of("two", "three")))
+                    .isEqualTo(ACCEPTED);
+
+            Thread loop = start(process);
+            try {
+                awaitAttempts(peer, 1);
+                assertThat(peer.attempts).containsExactly(
+                        List.of("one", "two", "three")
+                );
             } finally {
                 stop(process, loop);
             }
@@ -115,13 +140,16 @@ class DeliveryReportProcessTest {
             DeliveryReportProcess process = process(
                     peer,
                     4,
-                    Duration.ofSeconds(1)
+                    Duration.ofMillis(300)
             );
             Thread loop = start(process);
             try {
                 process.ingress(List.of("bad-report"));
                 awaitAttempts(peer, 1);
                 process.ingress(List.of("next-report"));
+
+                Thread.sleep(100);
+                assertThat(peer.attempts).hasSize(1);
                 awaitAttempts(peer, 2);
 
                 assertThat(peer.attempts).containsExactly(
@@ -180,7 +208,7 @@ class DeliveryReportProcessTest {
     }
 
     @Test
-    void interruptedHttpPreservesPendingForBoundedFinish()
+    void interruptedHttpDropsPendingWithoutShutdownRetry()
             throws Exception {
         try (BlockingReportPeer peer = new BlockingReportPeer()) {
             DeliveryReportProcess process = new DeliveryReportProcess(
@@ -199,23 +227,20 @@ class DeliveryReportProcessTest {
                     TimeUnit.SECONDS
             )).isTrue();
 
-            process.quiesce();
+            process.stop();
             loop.interrupt();
             loop.join(2_000);
             assertThat(loop.isAlive()).isFalse();
 
             peer.releaseFirst.countDown();
-            process.finishAfterLoopStop();
-            awaitAttempts(peer.attempts, 2);
-            assertThat(peer.attempts).containsExactly(
-                    List.of("in-flight"),
-                    List.of("in-flight")
-            );
+            Thread.sleep(100);
+            assertThat(peer.attempts).containsExactly(List.of("in-flight"));
+            assertThat(process.ingress(List.of("late"))).isEqualTo(CLOSED);
         }
     }
 
     @Test
-    void completedCloseRejectsLateReportsAndFlushesOnce() {
+    void stopRejectsLateReportsAndDropsQueuedReports() throws Exception {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(
                     peer,
@@ -224,65 +249,13 @@ class DeliveryReportProcessTest {
             );
             process.ingress(List.of("report-1", "system-report"));
 
-            process.quiesce();
+            process.stop();
             assertThat(process.ingress(List.of("late")))
                     .isEqualTo(CLOSED);
-            process.finishAfterLoopStop();
-            process.finishAfterLoopStop();
-
-            assertThat(peer.attempts).containsExactly(
-                    List.of("report-1", "system-report")
-            );
-        }
-    }
-
-    @Test
-    void closePerformsOnlyOneBoundedFinalSubmission() {
-        try (ReportPeer peer = new ReportPeer()) {
-            DeliveryReportProcess process = process(
-                    peer,
-                    1_000,
-                    Duration.ofSeconds(1)
-            );
-            process.ingress(reports(205));
-
-            process.finishAfterLoopStop();
-
-            assertThat(peer.attempts)
-                    .extracting(List::size)
-                    .containsExactly(100);
-        }
-    }
-
-    @Test
-    void closeRetriesPendingThenSubmitsOnlyOneAdditionalBatch()
-            throws Exception {
-        try (ReportPeer peer = new ReportPeer()) {
-            peer.responses.add(new Response(503, "{}"));
-            DeliveryReportProcess process = process(
-                    peer,
-                    1_000,
-                    Duration.ofSeconds(1)
-            );
-            process.ingress(reports(150));
             Thread loop = start(process);
-            awaitAttempts(peer, 1);
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(2).toNanos();
-            while (System.nanoTime() < deadline
-                    && loop.getState() != Thread.State.TIMED_WAITING) {
-                Thread.onSpinWait();
-            }
-            assertThat(loop.getState()).isEqualTo(
-                    Thread.State.TIMED_WAITING
-            );
-
-            stop(process, loop);
-            process.finishAfterLoopStop();
-
-            assertThat(peer.attempts)
-                    .extracting(List::size)
-                    .containsExactly(100, 100, 50);
+            loop.join(2_000);
+            assertThat(loop.isAlive()).isFalse();
+            assertThat(peer.attempts).isEmpty();
         }
     }
 
@@ -312,7 +285,7 @@ class DeliveryReportProcessTest {
             DeliveryReportProcess process,
             Thread loop
     ) throws InterruptedException {
-        process.quiesce();
+        process.stop();
         loop.interrupt();
         loop.join(2_000);
         assertThat(loop.isAlive()).isFalse();

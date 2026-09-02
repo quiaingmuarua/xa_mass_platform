@@ -9,10 +9,9 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRe
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Resident Result ingress process for one Adapter instance. */
-public final class DeliveryReportProcess implements AdapterProcess {
+public final class DeliveryReportProcess {
 
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportProcess.class.getName()
@@ -22,7 +21,6 @@ public final class DeliveryReportProcess implements AdapterProcess {
     private final DeliveryReportRemoteApi remoteApi;
     private final String adapterId;
     private final long retryBackoffMillis;
-    private final AtomicBoolean finishStarted = new AtomicBoolean();
     private List<String> pendingBatch;
     private volatile boolean loopStopped;
 
@@ -62,70 +60,50 @@ public final class DeliveryReportProcess implements AdapterProcess {
         reportQueue = new FiniteQueue<>(queueCapacity);
     }
 
-    @Override
     public void runLoop() {
-        while (!loopStopped && !Thread.currentThread().isInterrupted()) {
-            List<String> batch = pendingBatch;
-            if (batch == null) {
+        try {
+            while (!loopStopped
+                    && !Thread.currentThread().isInterrupted()) {
                 try {
-                    batch = reportQueue.awaitAndConsume(
-                            maximumRemoteBatchSize()
-                    );
+                    if (pendingBatch == null) {
+                        pendingBatch = reportQueue.takeBatch(
+                                MAX_RESULTS_PER_APPEND
+                        );
+                    }
+                    if (loopStopped) {
+                        return;
+                    }
+                    remoteApi.append(adapterId, pendingBatch);
+                    pendingBatch = null;
                 } catch (InterruptedException error) {
                     Thread.currentThread().interrupt();
                     return;
+                } catch (RuntimeException error) {
+                    if (loopStopped
+                            || Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
+                    WorkerDeliveryAdapterException failure = classify(error);
+                    logSubmissionFailure(failure);
+                    if (failure.errorCode()
+                            == WorkerDeliveryAdapterErrorCode
+                            .REMOTE_API_PROTOCOL_ERROR) {
+                        pendingBatch = null;
+                    }
+                    if (!awaitRetryBackoff()) {
+                        return;
+                    }
                 }
-                if (batch.isEmpty()) {
-                    return;
-                }
-                pendingBatch = batch;
             }
-            if (loopStopped) {
-                return;
-            }
-
-            SubmissionOutcome outcome = submit(batch);
-            if (outcome != SubmissionOutcome.RETRY) {
-                pendingBatch = null;
-                continue;
-            }
-            if (!awaitRetryBackoff()) {
-                return;
-            }
+        } finally {
+            pendingBatch = null;
+            reportQueue.clear();
         }
     }
 
-    @Override
-    public void quiesce() {
+    public void stop() {
         loopStopped = true;
         reportQueue.stopIngress();
-    }
-
-    @Override
-    public void finishAfterLoopStop() {
-        if (!finishStarted.compareAndSet(false, true)) {
-            return;
-        }
-        quiesce();
-
-        if (pendingBatch != null) {
-            SubmissionOutcome outcome = submit(pendingBatch);
-            if (outcome != SubmissionOutcome.RETRY) {
-                pendingBatch = null;
-            }
-        }
-        if (pendingBatch == null) {
-            List<String> remaining = reportQueue.consume(
-                    maximumRemoteBatchSize()
-            );
-            if (!remaining.isEmpty()
-                    && submit(remaining) == SubmissionOutcome.RETRY) {
-                pendingBatch = remaining;
-            }
-        }
-        // No resident loop exists after this bounded best-effort close attempt.
-        pendingBatch = null;
-        reportQueue.clear();
     }
 
     public ReportIngressStatus ingress(List<String> encodedReports) {
@@ -149,33 +127,17 @@ public final class DeliveryReportProcess implements AdapterProcess {
         }
     }
 
-    private int maximumRemoteBatchSize() {
-        return Math.min(reportQueue.capacity(), MAX_RESULTS_PER_APPEND);
-    }
-
-    private SubmissionOutcome submit(List<String> batch) {
-        try {
-            remoteApi.append(adapterId, batch);
-            return SubmissionOutcome.SUCCESS;
-        } catch (RuntimeException error) {
-            WorkerDeliveryAdapterException failure = classify(error);
-            if (!Thread.currentThread().isInterrupted()) {
-                LOGGER.log(
-                        System.Logger.Level.WARNING,
-                        "errorCode={0} operation={1} adapterId={2} "
-                                + "message={3}",
-                        failure.errorCode().code(),
-                        failure.operation(),
-                        adapterId,
-                        failure.getMessage()
-                );
-            }
-            return failure.errorCode()
-                    == WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_PROTOCOL_ERROR
-                    ? SubmissionOutcome.DROP
-                    : SubmissionOutcome.RETRY;
-        }
+    private void logSubmissionFailure(
+            WorkerDeliveryAdapterException failure
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode={0} operation={1} adapterId={2} message={3}",
+                failure.errorCode().code(),
+                failure.operation(),
+                adapterId,
+                failure.getMessage()
+        );
     }
 
     private static long requirePositiveMillis(
@@ -211,9 +173,4 @@ public final class DeliveryReportProcess implements AdapterProcess {
         CLOSED
     }
 
-    private enum SubmissionOutcome {
-        SUCCESS,
-        RETRY,
-        DROP
-    }
 }

@@ -152,7 +152,7 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
-    void quiesceAndInterruptCancelAnActiveHttpCall()
+    void stopAndInterruptCancelAnActiveHttpCall()
             throws Exception {
         try (Fixture fixture = new Fixture(
                 1,
@@ -333,14 +333,8 @@ class DeliveryCommandProcessTest {
         throw new AssertionError("Condition did not become true");
     }
 
-    private static boolean waitingInReportQueue(Thread loop) {
-        for (StackTraceElement element : loop.getStackTrace()) {
-            if (element.getClassName().endsWith(".FiniteQueue")
-                    && element.getMethodName().equals("awaitAndConsume")) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean waitingForReportIngress(Thread loop) {
+        return loop.getState() == Thread.State.WAITING;
     }
 
     private static final class Fixture implements AutoCloseable {
@@ -413,7 +407,7 @@ class DeliveryCommandProcessTest {
         }
 
         private void stopCommandLoop() throws InterruptedException {
-            process.quiesce();
+            process.stop();
             Thread running = commandLoop;
             if (running != null) {
                 running.interrupt();
@@ -431,7 +425,7 @@ class DeliveryCommandProcessTest {
             );
             loop.start();
             await(() -> peer.reportAttempts.get() > previousAttempts);
-            await(() -> waitingInReportQueue(loop));
+            await(() -> waitingForReportIngress(loop));
             loop.interrupt();
             loop.join(2_000);
             assertThat(loop.isAlive()).isFalse();
@@ -465,9 +459,8 @@ class DeliveryCommandProcessTest {
         @Override
         public void close() throws Exception {
             stopCommandLoop();
-            process.finishAfterLoopStop();
             channels.forEach(EmbeddedChannel::finishAndReleaseAll);
-            reportProcess.quiesce();
+            reportProcess.stop();
             peer.releaseCommand.countDown();
             peer.close();
         }

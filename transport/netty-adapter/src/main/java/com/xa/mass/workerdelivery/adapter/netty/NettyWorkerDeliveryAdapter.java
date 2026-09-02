@@ -1,8 +1,5 @@
 package com.xa.mass.workerdelivery.adapter.netty;
 
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase.AFTER_NETWORK_CLOSE;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase.BEFORE_NETWORK_CLOSE;
-
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -10,8 +7,9 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import java.time.Duration;
 import java.util.Objects;
 
 final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
@@ -19,8 +17,12 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     private final String adapterId;
     private final WorkerConnectionInboundHandler connectionInboundHandler;
     private final WorkerConnectionMechanism connectionMechanism;
-    private final AdapterProcessManager processManager;
+    private final DeliveryCommandProcess commandProcess;
+    private final DeliveryReportProcess reportProcess;
     private final NettyWorkerServer networkServer;
+    private final Duration shutdownTimeout;
+    private final Thread commandThread;
+    private final Thread reportThread;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
 
@@ -29,7 +31,9 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             NettyWorkerServer networkServer,
             WorkerConnectionInboundHandler connectionInboundHandler,
             WorkerConnectionMechanism connectionMechanism,
-            AdapterProcessManager processManager
+            DeliveryCommandProcess commandProcess,
+            DeliveryReportProcess reportProcess,
+            Duration shutdownTimeout
     ) {
         this.adapterId = requireAdapterId(adapterId);
         this.networkServer = Objects.requireNonNull(
@@ -44,9 +48,25 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                 connectionMechanism,
                 "connectionMechanism"
         );
-        this.processManager = Objects.requireNonNull(
-                processManager,
-                "processManager"
+        this.commandProcess = Objects.requireNonNull(
+                commandProcess,
+                "commandProcess"
+        );
+        this.reportProcess = Objects.requireNonNull(
+                reportProcess,
+                "reportProcess"
+        );
+        this.shutdownTimeout = requirePositive(
+                shutdownTimeout,
+                "shutdownTimeout"
+        );
+        reportThread = consumerThread(
+                "delivery-report",
+                reportProcess::runLoop
+        );
+        commandThread = consumerThread(
+                "delivery-command",
+                commandProcess::runLoop
         );
     }
 
@@ -72,8 +92,9 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         }
         try {
             networkServer.start(connectionInboundHandler);
+            reportThread.start();
+            commandThread.start();
             state = WorkerDeliveryAdapterState.RUNNING;
-            processManager.start();
         } catch (RuntimeException error) {
             RuntimeException failure = classify(
                     error,
@@ -106,7 +127,8 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                         null
                 )
                 : null;
-        failure = quiesceProcesses(BEFORE_NETWORK_CLOSE, failure);
+        commandProcess.stop();
+        commandThread.interrupt();
         try {
             networkServer.close();
         } catch (RuntimeException error) {
@@ -114,12 +136,9 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         } finally {
             connectionMechanism.clear();
         }
-        failure = quiesceProcesses(AFTER_NETWORK_CLOSE, failure);
-        try {
-            processManager.close();
-        } catch (RuntimeException error) {
-            failure = accumulate(failure, error);
-        }
+        reportProcess.stop();
+        reportThread.interrupt();
+        failure = joinConsumerThreads(failure);
 
         state = WorkerDeliveryAdapterState.CLOSED;
         if (interruptedOnEntry) {
@@ -135,16 +154,77 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         }
     }
 
-    private RuntimeException quiesceProcesses(
-            QuiescePhase phase,
+    private RuntimeException joinConsumerThreads(
             RuntimeException failure
     ) {
-        try {
-            processManager.quiesce(phase);
-        } catch (RuntimeException error) {
-            return accumulate(failure, error);
+        long deadline = System.nanoTime() + shutdownTimeout.toNanos();
+        RuntimeException current = failure;
+        boolean interrupted = false;
+        boolean allStopped = true;
+        for (Thread thread : new Thread[]{commandThread, reportThread}) {
+            if (!thread.isAlive()) {
+                continue;
+            }
+            long remaining = deadline - System.nanoTime();
+            if (remaining > 0) {
+                try {
+                    join(thread, remaining);
+                } catch (InterruptedException error) {
+                    interrupted = true;
+                    current = accumulate(
+                            current,
+                            shutdownInterrupted(error)
+                    );
+                }
+            }
+            if (thread.isAlive()) {
+                allStopped = false;
+            }
         }
-        return failure;
+        if (!allStopped) {
+            current = accumulate(current, shutdownTimeout());
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        return current;
+    }
+
+    private Thread consumerThread(String consumerId, Runnable loop) {
+        Thread thread = new Thread(
+                loop,
+                "worker-delivery-" + adapterId + "-" + consumerId
+        );
+        thread.setDaemon(true);
+        return thread;
+    }
+
+    private static void join(Thread thread, long remainingNanos)
+            throws InterruptedException {
+        long millis = remainingNanos / 1_000_000L;
+        int nanos = (int) (remainingNanos % 1_000_000L);
+        thread.join(millis, nanos);
+    }
+
+    private static WorkerDeliveryAdapterException shutdownTimeout() {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT,
+                "netty.stopConsumerLoops",
+                "Adapter consumer loops did not stop within their shared "
+                        + "shutdown budget",
+                null
+        );
+    }
+
+    private static WorkerDeliveryAdapterException shutdownInterrupted(
+            InterruptedException cause
+    ) {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
+                "netty.stopConsumerLoops",
+                "Adapter consumer loop shutdown was interrupted",
+                cause
+        );
     }
 
     private static WorkerDeliveryAdapterException classify(
@@ -180,5 +260,13 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
         return adapterId;
+    }
+
+    private static Duration requirePositive(Duration value, String name) {
+        Objects.requireNonNull(value, name);
+        if (value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+        return value;
     }
 }
