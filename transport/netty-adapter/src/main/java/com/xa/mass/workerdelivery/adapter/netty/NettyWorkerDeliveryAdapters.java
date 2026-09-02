@@ -12,10 +12,10 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterEventDispatcher;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessEntry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.ScheduledAdapterProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
@@ -154,7 +154,8 @@ public final class NettyWorkerDeliveryAdapters {
         DeliveryReportProcess reportProcess = new DeliveryReportProcess(
                 reportRemoteApi,
                 adapterId,
-                reportConfig.queueCapacity()
+                reportConfig.queueCapacity(),
+                reportConfig.interval()
         );
         WorkerRouteRegistry routes = new WorkerRouteRegistry(routeCacheConfig);
         WorkerConnectionMechanism connectionMechanism =
@@ -183,35 +184,27 @@ public final class NettyWorkerDeliveryAdapters {
                 codec,
                 adapterId,
                 commandConfig.consumeLimit(),
-                commandConfig.queueCapacity()
+                commandConfig.queueCapacity(),
+                commandConfig.interval()
         );
 
-        List<ScheduledAdapterProcess> scheduledProcesses = processConfigs
-                .stream()
-                .map(processConfig -> switch (processConfig) {
-                    case NettyAdapterProcessConfig.DeliveryCommand command ->
-                            new ScheduledAdapterProcess(
+        List<AdapterProcessEntry> processEntries = List.of(
+                new AdapterProcessEntry(
                         DELIVERY_COMMAND_PROCESS_ID,
-                        Duration.ZERO,
-                        command.interval(),
                         BEFORE_NETWORK_CLOSE,
                         commandProcess
-                    );
-                    case NettyAdapterProcessConfig.DeliveryReport report ->
-                            new ScheduledAdapterProcess(
+                ),
+                new AdapterProcessEntry(
                         DELIVERY_REPORT_PROCESS_ID,
-                        report.interval(),
-                        report.interval(),
                         AFTER_NETWORK_CLOSE,
                         reportProcess
-                    );
-                })
-                .toList();
+                )
+        );
 
         AdapterProcessManager processManager = new AdapterProcessManager(
                 adapterId,
                 shutdownTimeout,
-                scheduledProcesses
+                processEntries
         );
         return new NettyWorkerDeliveryAdapter(
                 adapterId,

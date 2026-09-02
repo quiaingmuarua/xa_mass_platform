@@ -17,9 +17,9 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnecti
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessEntry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.ScheduledAdapterProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
@@ -74,7 +74,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
     }
 
     @Test
-    void schedulerTimeoutSkipsAllFinishHooks() throws Exception {
+    void loopTimeoutSkipsAllFinishHooks() throws Exception {
         StubbornProcess stubborn = new StubbornProcess();
         RecordingNetworkServer network = new RecordingNetworkServer(
                 new CopyOnWriteArrayList<>()
@@ -108,7 +108,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
                                     assertThat(failure.operation())
                                             .isEqualTo(
                                                     "adapterProcess."
-                                                            + "stopScheduler"
+                                                            + "stopLoops"
                                             );
                                 }
                         );
@@ -205,7 +205,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
             NettyWorkerServer network,
             ScriptedHttpServer http,
             Duration shutdownTimeout,
-            List<ScheduledAdapterProcess> processes
+            List<AdapterProcessEntry> processes
     ) {
         WorkerDeliveryHttpClient client = new WorkerDeliveryHttpClient(
                 http.baseUri(),
@@ -248,16 +248,14 @@ class NettyWorkerDeliveryAdapterProcessTest {
         );
     }
 
-    private static ScheduledAdapterProcess scheduled(
+    private static AdapterProcessEntry scheduled(
             String id,
             com.xa.mass.workerdelivery.adapter.netty.internal.process
                     .QuiescePhase phase,
             AdapterProcess process
     ) {
-        return new ScheduledAdapterProcess(
+        return new AdapterProcessEntry(
                 id,
-                Duration.ZERO,
-                Duration.ofMillis(5),
                 phase,
                 process
         );
@@ -274,7 +272,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
         }
 
         @Override
-        public void round() {
+        public void runLoop() {
         }
 
         @Override
@@ -283,7 +281,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
         }
 
         @Override
-        public void finishAfterSchedulerStop() {
+        public void finishAfterLoopStop() {
             events.add("finish-" + id);
         }
     }
@@ -295,7 +293,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
         private volatile int finishCalls;
 
         @Override
-        public void round() {
+        public void runLoop() {
             started.countDown();
             boolean interrupted = false;
             while (release.getCount() > 0) {
@@ -315,7 +313,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
         }
 
         @Override
-        public void finishAfterSchedulerStop() {
+        public void finishAfterLoopStop() {
             finishCalls++;
         }
     }

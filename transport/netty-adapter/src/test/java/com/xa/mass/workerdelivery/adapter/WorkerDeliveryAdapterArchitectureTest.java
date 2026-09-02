@@ -147,10 +147,11 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void processOwnersKeepQueuesPrivateWithoutAnotherScheduler()
+    void processOwnersKeepQueuesPrivateAndUseFixedPlatformThreads()
             throws IOException {
         String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
         String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
+        String manager = read(PROCESS.resolve("AdapterProcessManager.java"));
 
         assertThat(command)
                 .contains("FiniteQueue<")
@@ -164,6 +165,13 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("SystemControlProcess")
                 .doesNotContain("ControlOnlyProcess");
+        assertThat(manager)
+                .contains("new Thread(")
+                .contains("thread.setDaemon(true)")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("Executors.")
+                .doesNotContain("Timer")
+                .doesNotContain("startVirtualThread");
     }
 
     @Test

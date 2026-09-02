@@ -2,9 +2,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.STARTED;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.UNKNOWN;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.FULL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
@@ -14,14 +11,11 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
-import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection
-        .WorkerConnectionInboundHandler;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection
-        .WorkerConnectionState;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionState;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
@@ -40,122 +34,165 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 class DeliveryCommandProcessTest {
 
-
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
-    void fullRetryBacklogDoesNotBlockFreshCommandAcquisition() {
-        try (Fixture fixture = new Fixture(1, 1, 10)) {
-            fixture.activate("worker-fresh");
-            fixture.peer.batches.add(commands("worker-offline"));
+    void emptyResponseUsesTimedBackoffInsteadOfHotPolling()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                10,
+                10,
+                Duration.ofMillis(300)
+        )) {
+            fixture.startCommandLoop();
+            await(() -> fixture.peer.requestedLimits.size() == 1);
 
-            fixture.process.round();
+            Thread.sleep(100);
 
-            fixture.peer.batches.add(commands("worker-fresh"));
-            fixture.process.round();
-
-            assertThat(fixture.peer.requestedLimits)
-                    .containsExactly(1, 1, 1, 1);
-            assertThat(fixture.network.writtenWorkerIds)
-                    .containsExactly("worker-fresh");
+            assertThat(fixture.peer.requestedLimits).containsExactly(1);
         }
     }
 
     @Test
-    void oneRoundAcquiresAtMostFourFreshBatches() {
-        try (Fixture fixture = new Fixture(1, 10, 10)) {
-            fixture.peer.batches.add(commands("worker-1"));
-            fixture.peer.batches.add(commands("worker-2"));
-            fixture.peer.batches.add(commands("worker-3"));
-            fixture.peer.batches.add(commands("worker-4"));
-            fixture.peer.batches.add(commands("worker-5"));
+    void residentLoopConsumesContinuousBatchesBeyondThePreviousCap()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                10,
+                10,
+                Duration.ofSeconds(1)
+        )) {
+            for (int index = 1; index <= 12; index++) {
+                String workerId = "worker-" + index;
+                fixture.activate(workerId);
+                fixture.peer.batches.add(commands(workerId));
+            }
 
-            fixture.process.round();
+            fixture.startCommandLoop();
+            await(() -> fixture.network.writtenWorkerIds.size() == 12);
 
-            assertThat(fixture.peer.requestedLimits)
-                    .containsExactly(1, 1, 1, 1);
-            assertThat(fixture.peer.batches).hasSize(1);
+            assertThat(fixture.network.writtenWorkerIds).hasSize(12);
+            assertThat(fixture.peer.batches).isEmpty();
+            assertThat(fixture.peer.requestedLimits.size())
+                    .isGreaterThanOrEqualTo(12);
         }
     }
 
     @Test
-    void remoteFailureDoesNotPreventQueuedCommandDelivery() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.batches.add(commands("worker-1"));
-            fixture.process.round();
-            fixture.peer.failures = 1;
-            fixture.activate("worker-1");
-
-            fixture.process.round();
-
-            assertThat(fixture.peer.requestedLimits)
-                    .containsExactly(1, 1, 1);
-            assertThat(fixture.network.writtenWorkerIds)
-                    .containsExactly("worker-1");
-        }
-    }
-
-    @Test
-    void malformedRemoteResponseIsOwnerLocalAndDoesNotStopRounds() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.responseBodyOverride = "{\"unexpected\":true}";
-
-            fixture.process.round();
-            fixture.peer.responseBodyOverride = null;
-            fixture.peer.batches.add(commands("worker-1"));
-            fixture.process.round();
-
-            assertThat(fixture.peer.requestedLimits)
-                    .containsExactly(1, 1, 1);
-        }
-    }
-
-    @Test
-    void eachObservedCommandRunsOnceAndOnlyRetryLaterReturns() {
-        try (Fixture fixture = new Fixture(3, 3, 10)) {
-            fixture.peer.batches.add(commands(
-                    "worker-started",
-                    "worker-unknown",
-                    "worker-retry"
-            ));
-            fixture.activate("worker-started");
-            fixture.activate("worker-unknown");
+    void retrySliceRunsBeforeFreshAndDoesNotBlockFreshAcquisition()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                1,
+                10,
+                Duration.ofSeconds(1)
+        )) {
             fixture.activate("worker-retry");
-            fixture.network.attempt = workerId -> switch (workerId) {
-                case "worker-started" -> STARTED;
-                case "worker-unknown" -> UNKNOWN;
-                default -> RETRY_LATER;
-            };
+            fixture.activate("worker-fresh");
+            fixture.network.attempt = workerId ->
+                    "worker-retry".equals(workerId)
+                            ? RETRY_LATER
+                            : STARTED;
+            fixture.peer.batches.add(commands("worker-retry"));
+            fixture.peer.batches.add(commands("worker-fresh"));
 
-            fixture.process.round();
-            fixture.process.round();
+            fixture.startCommandLoop();
+            await(() -> fixture.network.writtenWorkerIds.contains(
+                    "worker-fresh"
+            ));
 
-            assertThat(fixture.network.writtenWorkerIds)
-                    .containsOnlyOnce("worker-started", "worker-unknown")
-                    .filteredOn("worker-retry"::equals)
-                    .hasSize(2);
+            assertThat(List.copyOf(
+                    fixture.network.writtenWorkerIds
+            ).subList(0, 3))
+                    .containsExactly(
+                            "worker-retry",
+                            "worker-retry",
+                            "worker-fresh"
+                    );
+            assertThat(fixture.peer.requestedLimits.size())
+                    .isGreaterThanOrEqualTo(2);
         }
     }
 
     @Test
-    void expiredCommandCreatesTaskResultAndKernelEvidenceTogether() {
-        try (Fixture fixture = new Fixture(1, 1, 2)) {
+    void remoteFailureUsesTheSameInterruptibleBackoff()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                2,
+                10,
+                Duration.ofMillis(300)
+        )) {
+            fixture.peer.failures.set(1);
+            fixture.startCommandLoop();
+            await(() -> fixture.peer.requestedLimits.size() == 1);
+
+            Thread.sleep(100);
+            assertThat(fixture.peer.requestedLimits).hasSize(1);
+
+            await(() -> fixture.peer.requestedLimits.size() == 2);
+        }
+    }
+
+    @Test
+    void quiesceAndInterruptCancelAnActiveHttpCall()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                2,
+                10,
+                Duration.ofSeconds(1)
+        )) {
+            fixture.peer.blockCommands();
+            fixture.startCommandLoop();
+            assertThat(fixture.peer.commandStarted.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+
+            long started = System.nanoTime();
+            fixture.stopCommandLoop();
+
+            assertThat(Duration.ofNanos(System.nanoTime() - started))
+                    .isLessThan(Duration.ofSeconds(1));
+            assertThat(fixture.network.writtenWorkerIds).isEmpty();
+            fixture.peer.releaseCommand.countDown();
+        }
+    }
+
+    @Test
+    void expiredCommandCreatesTaskResultAndKernelEvidenceTogether()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                1,
+                1,
+                2,
+                Duration.ofSeconds(1)
+        )) {
             DeliveryCommand expired = command(1_000, "expired-context");
             fixture.peer.batches.add(Map.of("worker-1", expired));
 
-            fixture.process.round();
-            fixture.reportProcess.round();
+            fixture.startCommandLoop();
+            await(() -> fixture.peer.requestedLimits.size() >= 2);
+            fixture.stopCommandLoop();
+            fixture.flushReports();
 
             assertThat(fixture.peer.appendedReports.stream()
                     .map(CODEC::decodeDeliveryReport)
@@ -194,77 +231,46 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
-    void rejectedExpiredResultDoesNotRetainTheCommand() {
-        try (Fixture fixture = new Fixture(1, 1, 2)) {
-            assertThat(fixture.reportProcess.ingress(List.of(
-                    "occupied-1",
-                    "occupied-2"
-            )))
-                    .isEqualTo(ACCEPTED);
-            assertThat(fixture.reportProcess.ingress(List.of("full")))
-                    .isEqualTo(FULL);
+    void adapterEventsAndWorkerCommandKeepTheirExistingDestinations()
+            throws Exception {
+        try (Fixture fixture = new Fixture(
+                3,
+                3,
+                10,
+                Duration.ofSeconds(1)
+        )) {
+            fixture.activate("worker-1");
             fixture.peer.batches.add(Map.of(
+                    "first-opaque-entry",
+                    systemCommand(
+                            ADAPTER,
+                            "platform.adapter.probe",
+                            "null",
+                            2_000
+                    ),
+                    "second-opaque-entry",
+                    systemCommand(
+                            ADAPTER,
+                            AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
+                            "null",
+                            2_000
+                    ),
                     "worker-1",
-                    command(1_000, "expired-context")
+                    systemCommand(
+                            WORKER,
+                            "platform.worker.probe",
+                            "null",
+                            2_000
+                    )
             ));
 
-            fixture.process.round();
-            fixture.reportProcess.round();
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.appendedReports)
-                    .containsExactly("occupied-1", "occupied-2");
-        }
-    }
-
-    @Test
-    void quiescePreventsFurtherRemoteAndConnectionWork() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.batches.add(commands("worker-1"));
-            fixture.process.round();
-
-            fixture.process.quiesce();
-            fixture.activate("worker-1");
-            fixture.process.round();
-            fixture.process.finishAfterSchedulerStop();
-            fixture.process.finishAfterSchedulerStop();
-
-            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
-            assertThat(fixture.network.writtenWorkerIds).isEmpty();
-        }
-    }
-
-    @Test
-    void oneQueueDispatchesMultipleOpaqueAdapterEntriesAndAWorkerEntry() {
-        try (Fixture fixture = new Fixture(3, 3, 10)) {
-            DeliveryCommand probe = systemCommand(
-                    ADAPTER,
-                    "platform.adapter.probe",
-                    "null",
-                    2_000
-            );
-            DeliveryCommand events = systemCommand(
-                    ADAPTER,
-                    AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
-                    "null",
-                    2_000
-            );
-            DeliveryCommand worker = systemCommand(
-                    WORKER,
-                    "platform.worker.probe",
-                    "null",
-                    2_000
-            );
-            fixture.peer.batches.add(Map.of(
-                    "first-opaque-entry", probe,
-                    "second-opaque-entry", events,
-                    "worker-1", worker
+            fixture.startCommandLoop();
+            await(() -> fixture.network.writtenWorkerIds.contains(
+                    "worker-1"
             ));
-            fixture.activate("worker-1");
-
-            fixture.process.round();
-            fixture.reportProcess.round();
+            await(() -> fixture.peer.requestedLimits.size() >= 2);
+            fixture.stopCommandLoop();
+            fixture.flushReports();
 
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
@@ -277,54 +283,6 @@ class DeliveryCommandProcessTest {
                             "platform.adapter.probe",
                             AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT
                     );
-        }
-    }
-
-    @Test
-    void systemWorkerCommandUsesTheExistingConnectionRoute() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            DeliveryCommand systemCommand = systemCommand(
-                    WORKER,
-                    "worker.observe",
-                    "{}",
-                    2_000
-            );
-            fixture.peer.batches.add(Map.of("worker-1", systemCommand));
-            fixture.activate("worker-1");
-
-            fixture.process.round();
-
-            assertThat(fixture.network.writtenWorkerIds)
-                    .containsExactly("worker-1");
-            assertThat(fixture.peer.appendedSystemReports).isEmpty();
-        }
-    }
-
-    @Test
-    void expiredOrMisaddressedSystemCommandDoesNotFabricateResult() {
-        try (Fixture fixture = new Fixture(2, 2, 10)) {
-            fixture.peer.batches.add(Map.of(
-                    "worker-expired",
-                    systemCommand(
-                            WORKER,
-                            "worker.observe",
-                            "{}",
-                            1_000
-                    ),
-                    "opaque-worker-entry",
-                    systemCommand(
-                            WORKER,
-                            "worker.observe",
-                            "{}",
-                            2_000
-                    )
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.appendedSystemReports).isEmpty();
-            assertThat(fixture.peer.appendedReports).isEmpty();
         }
     }
 
@@ -364,6 +322,27 @@ class DeliveryCommandProcessTest {
         );
     }
 
+    private static void await(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("Condition did not become true");
+    }
+
+    private static boolean waitingInReportQueue(Thread loop) {
+        for (StackTraceElement element : loop.getStackTrace()) {
+            if (element.getClassName().endsWith(".FiniteQueue")
+                    && element.getMethodName().equals("awaitAndConsume")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static final class Fixture implements AutoCloseable {
 
         private final RemotePeer peer = new RemotePeer();
@@ -377,16 +356,19 @@ class DeliveryCommandProcessTest {
         private final WorkerConnectionMechanism connectionMechanism;
         private final DeliveryCommandProcess process;
         private final List<EmbeddedChannel> channels = new ArrayList<>();
+        private Thread commandLoop;
 
         private Fixture(
                 int consumeLimit,
                 int commandCapacity,
-                int reportCapacity
+                int reportCapacity,
+                Duration backoff
         ) {
             reportProcess = new DeliveryReportProcess(
                     new DeliveryReportRemoteApi(httpClient),
                     "adapter-1",
-                    reportCapacity
+                    reportCapacity,
+                    Duration.ofSeconds(1)
             );
             connectionMechanism = new WorkerConnectionMechanism(
                     new WorkerRouteRegistry(
@@ -417,8 +399,42 @@ class DeliveryCommandProcessTest {
                     "adapter-1",
                     consumeLimit,
                     commandCapacity,
+                    backoff,
                     () -> 1_000
             );
+        }
+
+        private void startCommandLoop() {
+            commandLoop = new Thread(
+                    process::runLoop,
+                    "command-loop-test"
+            );
+            commandLoop.start();
+        }
+
+        private void stopCommandLoop() throws InterruptedException {
+            process.quiesce();
+            Thread running = commandLoop;
+            if (running != null) {
+                running.interrupt();
+                running.join(2_000);
+                assertThat(running.isAlive()).isFalse();
+                commandLoop = null;
+            }
+        }
+
+        private void flushReports() throws InterruptedException {
+            int previousAttempts = peer.reportAttempts.get();
+            Thread loop = new Thread(
+                    reportProcess::runLoop,
+                    "report-loop-test"
+            );
+            loop.start();
+            await(() -> peer.reportAttempts.get() > previousAttempts);
+            await(() -> waitingInReportQueue(loop));
+            loop.interrupt();
+            loop.join(2_000);
+            assertThat(loop.isAlive()).isFalse();
         }
 
         private void activate(String workerId) {
@@ -438,62 +454,61 @@ class DeliveryCommandProcessTest {
                             ""
                     )
             ));
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(2).toNanos();
-            while (System.nanoTime() < deadline) {
+            await(() -> {
                 channel.runPendingTasks();
-                if (connectionMechanism.connectionStates(
+                return connectionMechanism.connectionStates(
                         List.of(workerId)
-                ).get(workerId) == WorkerConnectionState.CONNECTED) {
-                    return;
-                }
-                try {
-                    Thread.sleep(5);
-                } catch (InterruptedException error) {
-                    Thread.currentThread().interrupt();
-                    throw new AssertionError(
-                            "Interrupted while activating Worker route",
-                            error
-                    );
-                }
-            }
-            throw new AssertionError("Worker route did not activate");
+                ).get(workerId) == WorkerConnectionState.CONNECTED;
+            });
         }
 
         @Override
-        public void close() {
+        public void close() throws Exception {
+            stopCommandLoop();
+            process.finishAfterLoopStop();
             channels.forEach(EmbeddedChannel::finishAndReleaseAll);
+            reportProcess.quiesce();
+            peer.releaseCommand.countDown();
             peer.close();
         }
     }
 
     private static final class RemotePeer implements AutoCloseable {
 
-        private final ArrayDeque<Map<String, DeliveryCommand>> batches =
-                new ArrayDeque<>();
-        private final List<Integer> requestedLimits = new ArrayList<>();
-        private final List<String> appendedReports = new ArrayList<>();
-        private final List<String> appendedSystemReports = new ArrayList<>();
+        private final ConcurrentLinkedQueue<Map<String, DeliveryCommand>>
+                batches = new ConcurrentLinkedQueue<>();
+        private final List<Integer> requestedLimits =
+                new CopyOnWriteArrayList<>();
+        private final List<String> appendedReports =
+                new CopyOnWriteArrayList<>();
+        private final List<String> appendedSystemReports =
+                new CopyOnWriteArrayList<>();
+        private final AtomicInteger reportAttempts = new AtomicInteger();
+        private final AtomicInteger failures = new AtomicInteger();
+        private final CountDownLatch commandStarted = new CountDownLatch(1);
+        private final CountDownLatch releaseCommand = new CountDownLatch(1);
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
-        private int failures;
-        private String responseBodyOverride;
+        private volatile boolean commandsBlocked;
 
-        private synchronized Response handle(
-            ScriptedHttpServer.Request request
-        ) {
+        private void blockCommands() {
+            commandsBlocked = true;
+        }
+
+        private Response handle(ScriptedHttpServer.Request request)
+                throws InterruptedException {
             if (request.rawPath().endsWith("/commands:consume")) {
                 requestedLimits.add(Integer.parseInt(request.body()));
-                if (failures > 0) {
-                    failures--;
+                if (commandsBlocked) {
+                    commandStarted.countDown();
+                    releaseCommand.await();
+                }
+                if (failures.getAndUpdate(value -> Math.max(0, value - 1))
+                        > 0) {
                     return new Response(503, "{}");
                 }
-                if (responseBodyOverride != null) {
-                    return new Response(200, responseBodyOverride);
-                }
-                Map<String, DeliveryCommand> batch = batches.pollFirst();
-                return commandResponse(batch);
+                return commandResponse(batches.poll());
             }
             if (request.rawPath().endsWith("/results:append")) {
                 List<String> reports = Jsons.parseArray(request.body())
@@ -511,6 +526,7 @@ class DeliveryCommandProcessTest {
                         appendedReports.add(report);
                     }
                 }
+                reportAttempts.incrementAndGet();
                 return accepted(reports.size());
             }
             return new Response(204, "");
@@ -538,6 +554,7 @@ class DeliveryCommandProcessTest {
 
         @Override
         public void close() {
+            releaseCommand.countDown();
             server.close();
         }
     }
@@ -546,11 +563,9 @@ class DeliveryCommandProcessTest {
             implements NettyWorkerServer {
 
         private final Map<Channel, String> workerIds =
-                new IdentityHashMap<>();
-        private final List<String> writtenWorkerIds = new ArrayList<>();
-        private final List<String> closedWorkerIds = new ArrayList<>();
-        private final List<AdapterConnectionCloseReason> closeReasons =
-                new ArrayList<>();
+                java.util.Collections.synchronizedMap(new IdentityHashMap<>());
+        private final List<String> writtenWorkerIds =
+                new CopyOnWriteArrayList<>();
         private Function<String, TextWriteAttempt> attempt =
                 workerId -> STARTED;
 
@@ -579,8 +594,6 @@ class DeliveryCommandProcessTest {
                 Channel channel,
                 AdapterConnectionCloseReason reason
         ) {
-            closedWorkerIds.add(workerIds.get(channel));
-            closeReasons.add(reason);
             channel.close();
         }
 

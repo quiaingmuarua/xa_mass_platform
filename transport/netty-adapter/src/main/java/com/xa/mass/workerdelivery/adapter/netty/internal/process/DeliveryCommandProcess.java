@@ -15,16 +15,17 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
-/** Scheduled Command acquisition and delivery process for one Adapter. */
+/** Resident Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
 
-    private static final int MAX_FRESH_BATCHES_PER_ROUND = 4;
     private static final String WORKER_DELIVERY_EXPIRED_EVENT =
             "platform.adapter.worker-delivery.expired";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -47,9 +48,10 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     private final AdapterEventDispatcher adapterEventDispatcher;
     private final String adapterId;
     private final int commandConsumeLimit;
+    private final long backoffMillis;
     private final LongSupplier nowMillis;
-    private volatile boolean roundsStopped;
-    private boolean closeFinished;
+    private final AtomicBoolean finishStarted = new AtomicBoolean();
+    private volatile boolean loopStopped;
 
     public DeliveryCommandProcess(
             DeliveryCommandRemoteApi remoteApi,
@@ -70,6 +72,32 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 adapterId,
                 commandConsumeLimit,
                 retryQueueCapacity,
+                Duration.ofMillis(100),
+                System::currentTimeMillis
+        );
+    }
+
+    public DeliveryCommandProcess(
+            DeliveryCommandRemoteApi remoteApi,
+            WorkerConnectionMechanism connectionMechanism,
+            AdapterEventDispatcher adapterEventDispatcher,
+            DeliveryReportProcess reportProcess,
+            WorkerDeliveryCodec codec,
+            String adapterId,
+            int commandConsumeLimit,
+            int retryQueueCapacity,
+            Duration backoff
+    ) {
+        this(
+                remoteApi,
+                connectionMechanism,
+                adapterEventDispatcher,
+                reportProcess,
+                codec,
+                adapterId,
+                commandConsumeLimit,
+                retryQueueCapacity,
+                backoff,
                 System::currentTimeMillis
         );
     }
@@ -83,6 +111,32 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             String adapterId,
             int commandConsumeLimit,
             int retryQueueCapacity,
+            LongSupplier nowMillis
+    ) {
+        this(
+                remoteApi,
+                connectionMechanism,
+                adapterEventDispatcher,
+                reportProcess,
+                codec,
+                adapterId,
+                commandConsumeLimit,
+                retryQueueCapacity,
+                Duration.ofMillis(100),
+                nowMillis
+        );
+    }
+
+    DeliveryCommandProcess(
+            DeliveryCommandRemoteApi remoteApi,
+            WorkerConnectionMechanism connectionMechanism,
+            AdapterEventDispatcher adapterEventDispatcher,
+            DeliveryReportProcess reportProcess,
+            WorkerDeliveryCodec codec,
+            String adapterId,
+            int commandConsumeLimit,
+            int retryQueueCapacity,
+            Duration backoff,
             LongSupplier nowMillis
     ) {
         this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
@@ -111,29 +165,35 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
         this.adapterId = adapterId;
         this.commandConsumeLimit = commandConsumeLimit;
+        backoffMillis = requirePositiveMillis(
+                backoff,
+                "backoff"
+        );
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
         retryQueue = new FiniteQueue<>(retryQueueCapacity);
     }
 
     @Override
-    public void round() {
-        if (roundsStopped) {
-            return;
-        }
-        dispatchBatch(retryQueue.consume(commandConsumeLimit));
-        if (roundsStopped) {
-            return;
-        }
-
-        for (int index = 0;
-                index < MAX_FRESH_BATCHES_PER_ROUND && !roundsStopped;
-                index++) {
-            List<QueuedCommand> fresh = acquireFreshBatch();
-            if (fresh == null || fresh.isEmpty()) {
-                return;
+    public void runLoop() {
+        while (!loopStopped && !Thread.currentThread().isInterrupted()) {
+            boolean backoff = true;
+            try {
+                dispatchBatch(retryQueue.consume(commandConsumeLimit));
+                if (loopStopped) {
+                    return;
+                }
+                List<QueuedCommand> fresh = acquireFreshBatch();
+                if (fresh != null && !fresh.isEmpty()) {
+                    dispatchBatch(fresh);
+                    backoff = false;
+                }
+            } catch (RuntimeException error) {
+                if (!loopStopped
+                        && !Thread.currentThread().isInterrupted()) {
+                    logIterationFailure(error);
+                }
             }
-            dispatchBatch(fresh);
-            if (fresh.size() < commandConsumeLimit) {
+            if (backoff && !awaitBackoff()) {
                 return;
             }
         }
@@ -146,7 +206,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         long currentTimeMillis = nowMillis.getAsLong();
         ArrayList<QueuedCommand> retryLater = new ArrayList<>();
         for (QueuedCommand queued : observed) {
-            if (roundsStopped) {
+            if (loopStopped) {
                 return;
             }
             DeliveryCommand command = queued.command();
@@ -160,7 +220,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 retryLater.add(queued);
             }
         }
-        if (!roundsStopped && !retryLater.isEmpty()
+        if (!loopStopped && !retryLater.isEmpty()
                 && retryQueue.ingress(retryLater)
                 != FiniteQueue.QueueIngressStatus.ACCEPTED) {
             LOGGER.log(
@@ -178,10 +238,12 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         try {
             acquired = remoteApi.consume(adapterId, commandConsumeLimit);
         } catch (RuntimeException error) {
-            logSourceFailure(error);
+            if (!loopStopped && !Thread.currentThread().isInterrupted()) {
+                logSourceFailure(error);
+            }
             return null;
         }
-        if (acquired.isEmpty() || roundsStopped) {
+        if (acquired.isEmpty() || loopStopped) {
             return List.of();
         }
         ArrayList<QueuedCommand> batch = new ArrayList<>(acquired.size());
@@ -193,18 +255,17 @@ public final class DeliveryCommandProcess implements AdapterProcess {
 
     @Override
     public void quiesce() {
-        roundsStopped = true;
+        loopStopped = true;
         retryQueue.stopIngress();
     }
 
     @Override
-    public synchronized void finishAfterSchedulerStop() {
-        if (closeFinished) {
+    public void finishAfterLoopStop() {
+        if (!finishStarted.compareAndSet(false, true)) {
             return;
         }
         quiesce();
         retryQueue.clear();
-        closeFinished = true;
     }
 
     private WorkerConnectionMechanism.DeliveryAttempt dispatch(
@@ -326,5 +387,51 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 adapterId,
                 failure.getMessage()
         );
+    }
+
+    private void logIterationFailure(RuntimeException error) {
+        WorkerDeliveryAdapterException failure = error
+                instanceof WorkerDeliveryAdapterException classified
+                ? classified
+                : new WorkerDeliveryAdapterException(
+                        WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
+                        "deliveryCommand.runIteration",
+                        "Delivery Command iteration failed",
+                        error
+                );
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode={0} operation={1} adapterId={2} message={3}",
+                failure.errorCode().code(),
+                failure.operation(),
+                adapterId,
+                failure.getMessage()
+        );
+    }
+
+    private boolean awaitBackoff() {
+        if (loopStopped || Thread.currentThread().isInterrupted()) {
+            return false;
+        }
+        try {
+            Thread.sleep(backoffMillis);
+            return !loopStopped;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static long requirePositiveMillis(
+            Duration value,
+            String name
+    ) {
+        Objects.requireNonNull(value, name);
+        if (value.isZero()
+                || value.isNegative()
+                || value.toMillis() <= 0) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+        return value.toMillis();
     }
 }

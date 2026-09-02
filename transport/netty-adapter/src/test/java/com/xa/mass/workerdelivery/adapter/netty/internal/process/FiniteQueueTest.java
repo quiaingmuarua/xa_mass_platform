@@ -13,6 +13,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +67,71 @@ class FiniteQueueTest {
         queue.clear();
         assertThat(queue.consume(2)).isEmpty();
         assertThat(queue.ingress(List.of("still-late"))).isEqualTo(CLOSED);
+    }
+
+    @Test
+    void blockingConsumeWaitsForIngressAndWakesImmediately() throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(2);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<List<String>> consumed = executor.submit(
+                    () -> queue.awaitAndConsume(2)
+            );
+            Thread.sleep(50);
+            assertThat(consumed.isDone()).isFalse();
+
+            assertThat(queue.ingress(List.of("one", "two")))
+                    .isEqualTo(ACCEPTED);
+
+            assertThat(consumed.get(2, TimeUnit.SECONDS))
+                    .containsExactly("one", "two");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void stopIngressWakesAnEmptyBlockingConsumer() throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(2);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<List<String>> consumed = executor.submit(
+                    () -> queue.awaitAndConsume(2)
+            );
+            Thread.sleep(50);
+
+            queue.stopIngress();
+
+            assertThat(consumed.get(2, TimeUnit.SECONDS)).isEmpty();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void blockingConsumeIsInterruptible() throws Exception {
+        FiniteQueue<String> queue = new FiniteQueue<>(2);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        Thread consumer = new Thread(() -> {
+            try {
+                queue.awaitAndConsume(2);
+            } catch (InterruptedException expected) {
+                interrupted.set(true);
+            }
+        });
+        consumer.start();
+        long deadline = System.nanoTime()
+                + java.time.Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline
+                && consumer.getState() != Thread.State.WAITING) {
+            Thread.onSpinWait();
+        }
+
+        consumer.interrupt();
+        consumer.join(2_000);
+
+        assertThat(consumer.isAlive()).isFalse();
+        assertThat(interrupted).isTrue();
     }
 
     @Test

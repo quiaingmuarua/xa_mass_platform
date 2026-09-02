@@ -3,15 +3,13 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Repository-internal owner of one Adapter's fixed Process set and scheduler.
+ * Repository-internal owner of one Adapter's fixed resident Process loops.
  */
 public final class AdapterProcessManager implements AutoCloseable {
 
@@ -21,15 +19,15 @@ public final class AdapterProcessManager implements AutoCloseable {
 
     private final String adapterId;
     private final Duration shutdownTimeout;
-    private final List<ScheduledAdapterProcess> processes;
-    private ScheduledExecutorService scheduler;
+    private final List<AdapterProcessEntry> processes;
+    private List<RunningProcess> runningProcesses = List.of();
     private boolean started;
     private boolean closed;
 
     public AdapterProcessManager(
             String adapterId,
             Duration shutdownTimeout,
-            List<ScheduledAdapterProcess> processes
+            List<AdapterProcessEntry> processes
     ) {
         this.adapterId = requireAdapterId(adapterId);
         this.shutdownTimeout = requirePositive(
@@ -39,7 +37,7 @@ public final class AdapterProcessManager implements AutoCloseable {
         this.processes = requireProcesses(processes);
     }
 
-    /** Starts the one scheduler shared by the fixed Process set. */
+    /** Starts one named daemon platform thread for each fixed Process. */
     public synchronized void start() {
         if (started) {
             throw new IllegalStateException(
@@ -52,85 +50,130 @@ public final class AdapterProcessManager implements AutoCloseable {
             );
         }
         started = true;
-        scheduler = Executors.newScheduledThreadPool(
-                2,
-                daemonThreadFactory(adapterId + "-loop")
+
+        ArrayList<RunningProcess> created = new ArrayList<>(
+                processes.size()
         );
-        for (ScheduledAdapterProcess process : processes) {
-            scheduler.scheduleWithFixedDelay(
-                    () -> runSafely(process),
-                    process.initialDelay().toMillis(),
-                    process.interval().toMillis(),
-                    TimeUnit.MILLISECONDS
+        for (AdapterProcessEntry entry : processes) {
+            Thread thread = new Thread(
+                    () -> runSafely(entry),
+                    threadName(entry.processId())
             );
+            thread.setDaemon(true);
+            created.add(new RunningProcess(thread));
+        }
+        runningProcesses = List.copyOf(created);
+        for (RunningProcess running : runningProcesses) {
+            running.thread().start();
         }
     }
 
-    /** Quiesces all Processes at one network lifecycle cutpoint. */
+    /** Quiesces and interrupts Processes at one network lifecycle cutpoint. */
     public void quiesce(QuiescePhase phase) {
         Objects.requireNonNull(phase, "phase");
+        List<RunningProcess> runningSnapshot;
         synchronized (this) {
             if (closed) {
                 return;
             }
+            runningSnapshot = runningProcesses;
         }
+
         RuntimeException failure = null;
-        for (ScheduledAdapterProcess scheduled : processes) {
-            if (scheduled.quiescePhase() != phase) {
+        for (int index = 0; index < processes.size(); index++) {
+            AdapterProcessEntry entry = processes.get(index);
+            if (entry.quiescePhase() != phase) {
                 continue;
             }
             try {
-                scheduled.process().quiesce();
+                entry.process().quiesce();
             } catch (RuntimeException error) {
                 failure = accumulate(failure, error);
+            } finally {
+                if (index < runningSnapshot.size()) {
+                    runningSnapshot.get(index).thread().interrupt();
+                }
             }
         }
         throwIfPresent(failure);
     }
 
-    /** Stops the shared scheduler and finishes Processes in reverse order. */
+    /** Interrupts all loops, joins on one deadline, then finishes in reverse. */
     @Override
     public void close() {
-        ScheduledExecutorService stoppingScheduler;
+        List<RunningProcess> stopping;
         synchronized (this) {
             if (closed) {
                 return;
             }
             closed = true;
-            stoppingScheduler = scheduler;
-            scheduler = null;
+            stopping = runningProcesses;
         }
 
-        RuntimeException failure = null;
-        boolean schedulerStopped = stoppingScheduler == null;
-        try {
-            stopScheduler(stoppingScheduler);
-            schedulerStopped = true;
-        } catch (RuntimeException error) {
-            failure = error;
-            schedulerStopped = stoppingScheduler != null
-                    && stoppingScheduler.isTerminated();
+        for (RunningProcess running : stopping) {
+            running.thread().interrupt();
         }
-        if (schedulerStopped) {
+
+        StopResult stopResult = stopLoops(stopping);
+        RuntimeException failure = stopResult.failure();
+        if (stopResult.allStopped()) {
             failure = finishProcesses(failure);
         }
         throwIfPresent(failure);
     }
 
-    private void runSafely(ScheduledAdapterProcess scheduledProcess) {
+    private void runSafely(AdapterProcessEntry entry) {
         try {
-            scheduledProcess.process().round();
+            entry.process().runLoop();
         } catch (RuntimeException error) {
-            logRoundFailure(error, scheduledProcess.processId());
+            if (!Thread.currentThread().isInterrupted()) {
+                logLoopFailure(error, entry.processId());
+            }
         }
+    }
+
+    private StopResult stopLoops(List<RunningProcess> stopping) {
+        long deadline = System.nanoTime() + shutdownTimeout.toNanos();
+        RuntimeException failure = null;
+        boolean interrupted = false;
+        boolean allStopped = true;
+
+        for (RunningProcess running : stopping) {
+            Thread thread = running.thread();
+            if (!thread.isAlive()) {
+                continue;
+            }
+            long remaining = deadline - System.nanoTime();
+            if (remaining > 0) {
+                try {
+                    join(thread, remaining);
+                } catch (InterruptedException error) {
+                    interrupted = true;
+                    failure = accumulate(
+                            failure,
+                            shutdownInterrupted(error)
+                    );
+                }
+            }
+            if (thread.isAlive()) {
+                allStopped = false;
+            }
+        }
+
+        if (!allStopped) {
+            failure = accumulate(failure, shutdownTimeout());
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        return new StopResult(allStopped, failure);
     }
 
     private RuntimeException finishProcesses(RuntimeException failure) {
         RuntimeException current = failure;
         for (int index = processes.size() - 1; index >= 0; index--) {
             try {
-                processes.get(index).process()
-                        .finishAfterSchedulerStop();
+                processes.get(index).process().finishAfterLoopStop();
             } catch (RuntimeException error) {
                 current = accumulate(current, error);
             }
@@ -138,48 +181,12 @@ public final class AdapterProcessManager implements AutoCloseable {
         return current;
     }
 
-    private void stopScheduler(
-            ScheduledExecutorService stoppingScheduler
-    ) {
-        if (stoppingScheduler == null) {
-            return;
-        }
-        long deadline = System.nanoTime() + shutdownTimeout.toNanos();
-        stoppingScheduler.shutdown();
-        try {
-            if (!awaitSchedulerUntil(stoppingScheduler, deadline)) {
-                stoppingScheduler.shutdownNow();
-                if (!awaitSchedulerUntil(stoppingScheduler, deadline)) {
-                    throw new WorkerDeliveryAdapterException(
-                            WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT,
-                            "adapterProcess.stopScheduler",
-                            "Adapter process scheduler did not stop within "
-                                    + "its shutdown budget",
-                            null
-                    );
-                }
-            }
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            stoppingScheduler.shutdownNow();
-            throw new WorkerDeliveryAdapterException(
-                    WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
-                    "adapterProcess.stopScheduler",
-                    "Adapter process scheduler shutdown was interrupted",
-                    error
-            );
-        }
-    }
-
-    private void logRoundFailure(
-            RuntimeException error,
-            String processId
-    ) {
+    private void logLoopFailure(RuntimeException error, String processId) {
         WorkerDeliveryAdapterException failure = classify(
                 error,
                 WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
-                "adapterProcess.round",
-                "Adapter process round failed"
+                "adapterProcess.runLoop",
+                "Adapter process loop failed"
         );
         LOGGER.log(
                 System.Logger.Level.WARNING,
@@ -193,23 +200,36 @@ public final class AdapterProcessManager implements AutoCloseable {
         );
     }
 
-    private static boolean awaitSchedulerUntil(
-            ScheduledExecutorService scheduler,
-            long deadline
-    ) throws InterruptedException {
-        if (scheduler.isTerminated()) {
-            return true;
-        }
-        long remaining = deadline - System.nanoTime();
-        return remaining > 0
-                && scheduler.awaitTermination(
-                        remaining,
-                        TimeUnit.NANOSECONDS
-                );
+    private static void join(Thread thread, long remainingNanos)
+            throws InterruptedException {
+        long millis = remainingNanos / 1_000_000L;
+        int nanos = (int) (remainingNanos % 1_000_000L);
+        thread.join(millis, nanos);
     }
 
-    private static List<ScheduledAdapterProcess> requireProcesses(
-            List<ScheduledAdapterProcess> processes
+    private static WorkerDeliveryAdapterException shutdownTimeout() {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT,
+                "adapterProcess.stopLoops",
+                "Adapter process loops did not stop within their shared "
+                        + "shutdown budget",
+                null
+        );
+    }
+
+    private static WorkerDeliveryAdapterException shutdownInterrupted(
+            InterruptedException cause
+    ) {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
+                "adapterProcess.stopLoops",
+                "Adapter process loop shutdown was interrupted",
+                cause
+        );
+    }
+
+    private static List<AdapterProcessEntry> requireProcesses(
+            List<AdapterProcessEntry> processes
     ) {
         Objects.requireNonNull(processes, "processes");
         if (processes.isEmpty()) {
@@ -272,19 +292,16 @@ public final class AdapterProcessManager implements AutoCloseable {
         }
     }
 
-    private static java.util.concurrent.ThreadFactory daemonThreadFactory(
-            String prefix
-    ) {
-        AtomicInteger sequence = new AtomicInteger();
-        return runnable -> {
-            Thread thread = new Thread(
-                    runnable,
-                    "worker-delivery-" + prefix + "-"
-                            + sequence.incrementAndGet()
-            );
-            thread.setDaemon(true);
-            return thread;
-        };
+    private String threadName(String processId) {
+        return "worker-delivery-" + adapterId + "-"
+                + processId.toLowerCase(Locale.ROOT)
+                + "-consumer";
     }
 
+    private record RunningProcess(Thread thread) {}
+
+    private record StopResult(
+            boolean allStopped,
+            RuntimeException failure
+    ) {}
 }

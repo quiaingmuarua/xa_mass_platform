@@ -307,7 +307,8 @@ Rules:
 
 - The aggregate owns lifecycle and network shutdown ordering.
 - `AdapterProcessManager` owns the finite Process list and one same-lifetime
-  scheduler. It exposes no individual Process stop operation.
+  resident daemon platform thread per Process. It exposes no individual
+  Process stop operation.
 - Each Process owns one private thread-safe `FiniteQueue`; queues never cross
   owner boundaries.
 - Owner-local Remote APIs own their paths, wire JSON and status semantics. One

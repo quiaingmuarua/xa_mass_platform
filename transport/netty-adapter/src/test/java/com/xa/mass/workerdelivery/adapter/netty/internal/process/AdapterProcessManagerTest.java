@@ -5,11 +5,13 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiesceP
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -25,55 +27,56 @@ class AdapterProcessManagerTest {
     }
 
     @Test
-    void ownsRoundIsolationPhaseQuiescenceAndReverseFinish()
+    void ownsOnePlatformThreadPerProcessAndPhaseLocalInterrupts()
             throws Exception {
-        AtomicBoolean commandQuiesced = new AtomicBoolean();
-        CountDownLatch commandRounds = new CountDownLatch(2);
-        CountDownLatch reportDuringNetworkClose = new CountDownLatch(1);
-        var finishOrder = new java.util.concurrent.CopyOnWriteArrayList<
-                String>();
+        List<String> finishOrder = new CopyOnWriteArrayList<>();
         RecordingProcess command = new RecordingProcess(
                 "command",
-                commandRounds,
-                commandQuiesced,
-                null,
-                null,
-                finishOrder,
-                true
+                finishOrder
         );
         RecordingProcess report = new RecordingProcess(
                 "report",
-                new CountDownLatch(1),
-                new AtomicBoolean(),
-                commandQuiesced,
-                reportDuringNetworkClose,
-                finishOrder,
-                false
+                finishOrder
         );
         AdapterProcessManager manager = new AdapterProcessManager(
                 "adapter-1",
                 Duration.ofSeconds(1),
                 List.of(
-                        scheduled("command", BEFORE_NETWORK_CLOSE, command),
-                        scheduled("report", AFTER_NETWORK_CLOSE, report)
+                        entry("command", BEFORE_NETWORK_CLOSE, command),
+                        entry("report", AFTER_NETWORK_CLOSE, report)
                 )
         );
         try {
             manager.start();
-            assertThat(commandRounds.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(command.started.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(report.started.await(2, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(command.threadName).isEqualTo(
+                    "worker-delivery-adapter-1-command-consumer"
+            );
+            assertThat(report.threadName).isEqualTo(
+                    "worker-delivery-adapter-1-report-consumer"
+            );
+            assertThat(command.daemon).isTrue();
+            assertThat(report.daemon).isTrue();
+            assertThat(command.virtual).isFalse();
+            assertThat(report.virtual).isFalse();
 
             manager.quiesce(BEFORE_NETWORK_CLOSE);
-            assertThat(command.quiesceCalls.get()).isOne();
-            assertThat(reportDuringNetworkClose.await(
-                    2,
-                    TimeUnit.SECONDS
-            )).isTrue();
+            assertThat(command.exited.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(report.exited.await(
+                    100,
+                    TimeUnit.MILLISECONDS
+            )).isFalse();
+            assertThat(command.quiesceCalls).hasValue(1);
+            assertThat(report.quiesceCalls).hasValue(0);
 
             manager.quiesce(AFTER_NETWORK_CLOSE);
+            assertThat(report.exited.await(2, TimeUnit.SECONDS)).isTrue();
             manager.close();
             manager.close();
 
-            assertThat(report.quiesceCalls.get()).isOne();
+            assertThat(report.quiesceCalls).hasValue(1);
             assertThat(finishOrder).containsExactly("report", "command");
         } finally {
             manager.quiesce(BEFORE_NETWORK_CLOSE);
@@ -82,71 +85,128 @@ class AdapterProcessManagerTest {
         }
     }
 
-    private static ScheduledAdapterProcess scheduled(
+    @Test
+    void closeUsesOneSharedDeadlineAndSkipsAllFinishHooks()
+            throws Exception {
+        StubbornProcess first = new StubbornProcess();
+        StubbornProcess second = new StubbornProcess();
+        AdapterProcessManager manager = new AdapterProcessManager(
+                "adapter-1",
+                Duration.ofMillis(150),
+                List.of(
+                        entry("first", BEFORE_NETWORK_CLOSE, first),
+                        entry("second", AFTER_NETWORK_CLOSE, second)
+                )
+        );
+        manager.start();
+        assertThat(first.started.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(second.started.await(2, TimeUnit.SECONDS)).isTrue();
+
+        long started = System.nanoTime();
+        try {
+            assertThatThrownBy(manager::close)
+                    .isInstanceOfSatisfying(
+                            WorkerDeliveryAdapterException.class,
+                            failure -> {
+                                assertThat(failure.errorCode()).isEqualTo(
+                                        WorkerDeliveryAdapterErrorCode
+                                                .SHUTDOWN_TIMEOUT
+                                );
+                                assertThat(failure.operation()).isEqualTo(
+                                        "adapterProcess.stopLoops"
+                                );
+                            }
+                    );
+            assertThat(Duration.ofNanos(System.nanoTime() - started))
+                    .isLessThan(Duration.ofMillis(260));
+            assertThat(first.finishCalls).hasValue(0);
+            assertThat(second.finishCalls).hasValue(0);
+        } finally {
+            first.release.countDown();
+            second.release.countDown();
+            assertThat(first.exited.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.exited.await(2, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private static AdapterProcessEntry entry(
             String id,
             QuiescePhase phase,
             AdapterProcess process
     ) {
-        return new ScheduledAdapterProcess(
-                id,
-                Duration.ZERO,
-                Duration.ofMillis(5),
-                phase,
-                process
-        );
+        return new AdapterProcessEntry(id, phase, process);
     }
 
     private static final class RecordingProcess implements AdapterProcess {
 
         private final String id;
-        private final CountDownLatch initialRounds;
-        private final AtomicBoolean quiesced;
-        private final AtomicBoolean roundTrigger;
-        private final CountDownLatch roundAfterCommandQuiesce;
         private final List<String> finishOrder;
-        private final boolean failRound;
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch exited = new CountDownLatch(1);
         private final AtomicInteger quiesceCalls = new AtomicInteger();
+        private volatile String threadName;
+        private volatile boolean daemon;
+        private volatile boolean virtual;
 
-        private RecordingProcess(
-                String id,
-                CountDownLatch initialRounds,
-                AtomicBoolean quiesced,
-                AtomicBoolean roundTrigger,
-                CountDownLatch roundAfterCommandQuiesce,
-                List<String> finishOrder,
-                boolean failRound
-        ) {
+        private RecordingProcess(String id, List<String> finishOrder) {
             this.id = id;
-            this.initialRounds = initialRounds;
-            this.quiesced = quiesced;
-            this.roundTrigger = roundTrigger;
-            this.roundAfterCommandQuiesce = roundAfterCommandQuiesce;
             this.finishOrder = finishOrder;
-            this.failRound = failRound;
         }
 
         @Override
-        public void round() {
-            initialRounds.countDown();
-            if (roundAfterCommandQuiesce != null
-                    && roundTrigger.get()) {
-                roundAfterCommandQuiesce.countDown();
-            }
-            if (failRound) {
-                throw new IllegalStateException("round failed");
+        public void runLoop() {
+            Thread current = Thread.currentThread();
+            threadName = current.getName();
+            daemon = current.isDaemon();
+            virtual = current.isVirtual();
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exited.countDown();
             }
         }
 
         @Override
         public void quiesce() {
             quiesceCalls.incrementAndGet();
-            quiesced.set(true);
         }
 
         @Override
-        public void finishAfterSchedulerStop() {
+        public void finishAfterLoopStop() {
             finishOrder.add(id);
         }
     }
 
+    private static final class StubbornProcess implements AdapterProcess {
+
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+        private final CountDownLatch exited = new CountDownLatch(1);
+        private final AtomicInteger finishCalls = new AtomicInteger();
+
+        @Override
+        public void runLoop() {
+            started.countDown();
+            while (release.getCount() > 0) {
+                try {
+                    release.await();
+                } catch (InterruptedException ignored) {
+                    // Deliberately ignore shutdown interruption for the test.
+                }
+            }
+            exited.countDown();
+        }
+
+        @Override
+        public void quiesce() {
+        }
+
+        @Override
+        public void finishAfterLoopStop() {
+            finishCalls.incrementAndGet();
+        }
+    }
 }

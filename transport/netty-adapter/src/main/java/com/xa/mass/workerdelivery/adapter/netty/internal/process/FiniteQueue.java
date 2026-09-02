@@ -38,6 +38,7 @@ final class FiniteQueue<T> {
                 return QueueIngressStatus.FULL;
             }
             items.addAll(batch);
+            notifyAll();
             return QueueIngressStatus.ACCEPTED;
         }
     }
@@ -57,12 +58,24 @@ final class FiniteQueue<T> {
         return List.copyOf(consumed);
     }
 
+    synchronized List<T> awaitAndConsume(int limit)
+            throws InterruptedException {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        while (items.isEmpty() && accepting) {
+            wait();
+        }
+        return consume(limit);
+    }
+
     int capacity() {
         return capacity;
     }
 
     synchronized void stopIngress() {
         accepting = false;
+        notifyAll();
     }
 
     synchronized void clear() {

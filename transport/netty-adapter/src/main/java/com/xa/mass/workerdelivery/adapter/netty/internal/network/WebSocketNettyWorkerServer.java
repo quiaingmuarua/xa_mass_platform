@@ -45,7 +45,8 @@ public final class WebSocketNettyWorkerServer
         implements NettyWorkerServer {
 
     private static final int MAX_FRAME_BYTES = 1_048_576;
-    private static final int MAX_CHILD_EVENT_LOOP_THREADS = 8;
+    private static final int MIN_CHILD_EVENT_LOOP_THREADS = 4;
+    private static final int ACCEPT_BACKLOG = 4_096;
     private static final String WORKER_WEBSOCKET_PATH =
             "/api/v1/worker-delivery/websocket";
 
@@ -111,6 +112,7 @@ public final class WebSocketNettyWorkerServer
                             childEventLoopGroup
                     )
                     .channel(NioServerSocketChannel.class)
+                    .option(ChannelOption.SO_BACKLOG, ACCEPT_BACKLOG)
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
                     .childHandler(new ChannelInitializer<SocketChannel>() {
@@ -532,9 +534,9 @@ public final class WebSocketNettyWorkerServer
     }
 
     private static int defaultChildEventLoopThreads() {
-        return Math.min(
-                MAX_CHILD_EVENT_LOOP_THREADS,
-                Math.max(2, Runtime.getRuntime().availableProcessors())
+        return Math.max(
+                MIN_CHILD_EVENT_LOOP_THREADS,
+                Runtime.getRuntime().availableProcessors() * 2
         );
     }
 

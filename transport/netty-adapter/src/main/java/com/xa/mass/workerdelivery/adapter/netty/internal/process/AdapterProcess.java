@@ -1,11 +1,11 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
-/** Repository-internal lifecycle contract for one scheduled Adapter process. */
+/** Repository-internal lifecycle contract for one resident Adapter process. */
 public interface AdapterProcess {
 
-    void round();
+    void runLoop();
 
     void quiesce();
 
-    void finishAfterSchedulerStop();
+    void finishAfterLoopStop();
 }

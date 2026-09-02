@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
@@ -70,7 +71,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
 
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.evidenceReports).hasSize(1);
             fixture.assertConnectionEvidence(
                     fixture.evidenceReports.get(0),
@@ -97,13 +98,13 @@ class WorkerConnectionMechanismTest {
             replacement.writeInbound(fixture.identity("worker-1"));
             awaitBound(fixture, replacement);
             first.finishAndReleaseAll();
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.evidenceReports).hasSize(1);
 
             replacement.finishAndReleaseAll();
             reconnect.writeInbound(fixture.identity("worker-1"));
             awaitBound(fixture, reconnect);
-            fixture.reportProcess.round();
+            fixture.flushReports();
 
             assertThat(fixture.evidenceReports).hasSize(3);
             fixture.assertConnectionEvidence(
@@ -180,7 +181,7 @@ class WorkerConnectionMechanismTest {
             current.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, current);
-            fixture.reportProcess.round();
+            fixture.flushReports();
             fixture.systemReports.clear();
 
             replacement.writeInbound(fixture.identity("worker-1"));
@@ -215,7 +216,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.taskResult("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.reports).isEmpty();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
@@ -283,7 +284,7 @@ class WorkerConnectionMechanismTest {
         try {
             replacement.writeInbound(fixture.identity("worker-1"));
             oldChannel.writeInbound(result);
-            fixture.reportProcess.round();
+            fixture.flushReports();
 
             assertThat(fixture.reports).containsExactly(result);
             assertThat(fixture.routes.activeChannel("worker-1"))
@@ -330,7 +331,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
-            fixture.reportProcess.round();
+            fixture.flushReports();
 
             fixture.network.nextWriteAttempt = TextWriteAttempt.UNKNOWN;
             DeliveryCommand command = DeliveryCommand.create(
@@ -343,7 +344,7 @@ class WorkerConnectionMechanismTest {
             );
             assertThat(fixture.mechanism.deliver("worker-1", command))
                     .isEqualTo(DeliveryAttempt.UNKNOWN);
-            fixture.reportProcess.round();
+            fixture.flushReports();
 
             assertThat(fixture.routes.activeChannel("worker-1")).isNull();
             assertThat(fixture.evidenceReports).hasSize(2);
@@ -388,7 +389,7 @@ class WorkerConnectionMechanismTest {
                     "worker-1",
                     WorkerConnectionState.DISCONNECTED
             ));
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.evidenceReports).hasSize(1);
             fixture.assertConnectionEvidence(
                     fixture.evidenceReports.get(0),
@@ -460,11 +461,11 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
-            fixture.reportProcess.round();
+            fixture.flushReports();
             fixture.systemReports.clear();
 
             channel.writeInbound(fixture.systemResult("worker-1"));
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.systemReports)
                     .containsExactly(fixture.systemResult("worker-1"));
 
@@ -491,7 +492,7 @@ class WorkerConnectionMechanismTest {
         channel.writeInbound(fixture.identity("worker-1"));
         fixture.remoteApi.currentVerification().complete(null);
         awaitBound(fixture, channel);
-        fixture.reportProcess.round();
+        fixture.flushReports();
         fixture.systemReports.clear();
         assertThat(fixture.reportProcess.ingress(List.of(
                 "occupied-1",
@@ -516,7 +517,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
-            fixture.reportProcess.round();
+            fixture.flushReports();
             fixture.systemReports.clear();
 
             String encoded = fixture.propertiesResult(
@@ -535,7 +536,7 @@ class WorkerConnectionMechanismTest {
                     List.of("worker-1")
             )).containsEntry("worker-1", WorkerConnectionState.CONNECTED);
 
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.systemReports).containsExactly(encoded);
         } finally {
             channel.finishAndReleaseAll();
@@ -551,7 +552,7 @@ class WorkerConnectionMechanismTest {
             first.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, first);
-            fixture.reportProcess.round();
+            fixture.flushReports();
             fixture.systemReports.clear();
             first.writeInbound(fixture.propertiesResult(
                     "worker-1",
@@ -585,7 +586,7 @@ class WorkerConnectionMechanismTest {
             assertThat(snapshot.updatedAtMillis()).isNotNull();
             assertThat(snapshot.properties()).containsEntry("battery", 87L);
 
-            fixture.reportProcess.round();
+            fixture.flushReports();
             assertThat(fixture.systemReports).hasSize(4);
         } finally {
             first.finishAndReleaseAll();
@@ -758,9 +759,13 @@ class WorkerConnectionMechanismTest {
         private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         private final PendingRouteHttpPeer remoteApi =
                 new PendingRouteHttpPeer();
-        private final List<String> reports = new ArrayList<>();
-        private final List<String> systemReports = new ArrayList<>();
-        private final List<String> evidenceReports = new ArrayList<>();
+        private final List<String> reports = new CopyOnWriteArrayList<>();
+        private final List<String> systemReports =
+                new CopyOnWriteArrayList<>();
+        private final List<String> evidenceReports =
+                new CopyOnWriteArrayList<>();
+        private final AtomicInteger completedReportRequests =
+                new AtomicInteger();
         private final ScriptedHttpServer reportServer;
         private final DeliveryReportProcess reportProcess;
         private final WorkerRouteRegistry routes;
@@ -818,6 +823,60 @@ class WorkerConnectionMechanismTest {
             return new EmbeddedChannel(inboundHandler, nextHandler);
         }
 
+        private void flushReports() {
+            int previousRequests = completedReportRequests.get();
+            Thread loop = new Thread(
+                    reportProcess::runLoop,
+                    "connection-report-loop-test"
+            );
+            loop.start();
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < deadline
+                    && completedReportRequests.get() <= previousRequests) {
+                Thread.onSpinWait();
+            }
+            while (System.nanoTime() < deadline
+                    && loop.isAlive()
+                    && !waitingInReportQueue(loop)) {
+                Thread.onSpinWait();
+            }
+            boolean reachedEmptyWait = waitingInReportQueue(loop);
+            loop.interrupt();
+            try {
+                loop.join(2_000);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(
+                        "Interrupted while flushing reports",
+                        error
+                );
+            }
+            if (loop.isAlive()) {
+                throw new AssertionError("Report loop did not stop");
+            }
+            if (completedReportRequests.get() <= previousRequests) {
+                throw new AssertionError("No queued report was submitted");
+            }
+            if (!reachedEmptyWait) {
+                throw new AssertionError(
+                        "Report loop did not reach its empty wait"
+                );
+            }
+        }
+
+        private boolean waitingInReportQueue(Thread loop) {
+            for (StackTraceElement element : loop.getStackTrace()) {
+                if (element.getClassName().endsWith(".FiniteQueue")
+                        && element.getMethodName().equals(
+                                "awaitAndConsume"
+                        )) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private ScriptedHttpServer reportServer() {
             ScriptedHttpServer server = new ScriptedHttpServer(request -> {
                 List<String> batch = Jsons.parseArray(request.body())
@@ -834,6 +893,7 @@ class WorkerConnectionMechanismTest {
                         reports.add(encoded);
                     }
                 }
+                completedReportRequests.incrementAndGet();
                 return new Response(202, Jsons.toJson(Map.of(
                         "acceptedCount", batch.size(),
                         "rejectedCount", 0

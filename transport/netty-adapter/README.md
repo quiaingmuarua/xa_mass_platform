@@ -1,7 +1,7 @@
 # XA Mass Netty Worker Delivery Adapter
 
 Status: Java 21 multi-endpoint Adapter with three explicit Netty-specific
-owners: Adapter scheduling, shared connection mechanism, and complete
+owners: Adapter process lifecycle, shared connection mechanism, and complete
 WebSocket / line-Socket physical Servers.
 
 The production owner cut is frozen. Hardening may refine an owner's local
@@ -30,18 +30,19 @@ one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`, with
 one acceptor EventLoop and a CPU-bounded child EventLoop group
 one `DeliveryCommandProcess` with one private retry queue
 one `DeliveryReportProcess` with one private Result queue and pending batch
-one `AdapterProcessManager` owning the finite Process set and its scheduler
+one `AdapterProcessManager` owning the finite Process set and two resident threads
 ```
 
 The common Adapter aggregate owns lifecycle and network ordering.
-`AdapterProcessManager` owns Process identity validation, its two scheduler
-threads, safe round invocation, phase-local quiescence, and reverse-order
-finish. The Process set is fixed for the Adapter lifetime; the Manager stores
-no per-Process Future and exposes no individual stop operation. It knows
-nothing about the network or HTTP. The Command Process owns the unified remote
-Command path, delivery/rotation, expiry, and one local queue. The Report
-Process owns the unified Result path, local Result acceptance, one pending
-batch, and one local queue. Each `FiniteQueue` is
+`AdapterProcessManager` owns Process identity validation, one named daemon
+platform thread per fixed Process, phase-local quiescence and interruption, a
+shared join deadline, and reverse-order finish. The Process set and its two
+threads are fixed for the Adapter lifetime; the Manager exposes no individual
+stop operation and knows nothing about the network or HTTP. The Command
+Process owns the unified remote Command path, delivery/rotation, expiry,
+retry backoff, and one local queue. The Report Process owns the unified Result
+path, local Result acceptance, one pending batch, failure backoff, and one
+local queue. Each `FiniteQueue` is
 business-neutral process infrastructure and owns only thread-safe FIFO storage
 with soft-capacity ingress; it is never passed between owners. The stateless
 inbound Handler only forwards normalized text, inactive, and failure callbacks.
@@ -115,10 +116,11 @@ endpoint-manager mailboxes.
 
 Do not run competing Adapter instances for the same `endpointManagerId`.
 Each physical Server keeps accept independent from established-connection I/O.
-It owns one acceptor thread and `min(8, max(2, availableProcessors))` child
-EventLoop threads. Netty preserves one Channel's callback order while allowing
-different Worker Channels to progress independently. These are fixed internal
-resource bounds, not Server configuration or Worker execution threads.
+It owns one acceptor thread, an accept backlog of `4096`, and
+`max(4, availableProcessors * 2)` child EventLoop threads. Netty preserves one
+Channel's callback order while allowing different Worker Channels to progress
+independently. The CPU-derived I/O width and listen backlog are internal
+physical-Server policy, not Worker execution threads or per-Worker resources.
 
 ## Connection Protocol
 
@@ -282,7 +284,7 @@ Channel properties result refreshes an entry.
 
 ## Delivery Processes
 
-### Command consumption round
+### Command consumption loop
 
 `DeliveryCommandProcess` owns one private retry queue and one fixed remote path.
 Server may place a bounded prefix from its Adapter Direct FIFO in a
@@ -294,21 +296,32 @@ not local preemption: a full local retry queue never postpones the next Server
 consume, and an already running Worker Handler is unaffected. Sustained
 higher-priority Commands may starve Serviceability acquisition by design.
 
-```text
-consume at most one configured-limit retry slice
-for each retained command exactly once this round
-  -> expired TASK: atomically offer the 23002 TASK Report plus one KERNEL
-     worker-delivery.expired Report, then remove
-  -> any other expired Command: remove without synthetic evidence
-  -> no active writable Worker Channel: return to the retry queue
-  -> physical Server write started: remove
-  -> dst=ADAPTER: ignore the entry key and dispatch through the immutable map
+The Process thread runs one permanent loop. Each iteration first consumes at
+most one configured-limit retry slice and applies these rules:
 
-then consume at most four fresh 1..configured-limit batches
-  -> dispatch each fresh batch immediately with the same rules
-  -> retain only RETRY_LATER Commands in the private retry queue
-  -> empty response, remote failure, quiesce, or the fourth batch ends the round
+```text
+expired TASK
+  -> atomically offer the 23002 TASK Report plus one KERNEL
+     worker-delivery.expired Report, then remove
+any other expired Command
+  -> remove without synthetic evidence
+no active writable Worker Channel
+  -> return to the retry queue
+physical Server write started
+  -> remove
+dst=ADAPTER
+  -> ignore the entry key and dispatch through the immutable map
 ```
+
+After that retry slice, the same iteration calls `commands:consume` once.
+A non-empty response is dispatched immediately, and the next iteration starts
+without a fixed delay or batch-count ceiling. That next iteration again serves
+one retry slice before acquiring fresh work, so sustained fresh traffic cannot
+starve retained Commands. An empty response, remote failure, or other
+recoverable iteration failure waits the Command config `interval` as an
+interruptible local backoff. The remote endpoint remains immediate; this is
+not Server long polling. Quiescence stops new acquisition and delivery, and
+the Manager interrupt cancels either the backoff or a synchronous HTTP call.
 
 A remote response containing more Commands than the requested limit is a
 protocol failure and none of that response is dispatched.
@@ -385,7 +398,7 @@ The current Worker event supplies a complete properties snapshot. There is no
 partial-update, change-notification, or per-property timestamp contract. This
 Adapter observation is never a Kernel write path.
 
-### Result ingress round
+### Result ingress loop
 
 `DeliveryReportProcess` owns one private queue, one pending batch, and the
 single `results:append` path. Qualified Worker TASK/SYSTEM Reports and
@@ -394,30 +407,35 @@ operation. Worker Reports preserve their original encoded JSON. Result queue
 capacity is at least two so the one logical expired-TASK pair is accepted or
 dropped together.
 
+The Report thread blocks inside its private queue when no ingress exists; it
+makes no empty remote call and uses no idle timer. Ingress wakes the consumer.
+
 ```text
-pending batch exists -> retry it first
-otherwise            -> drain at most 100 Reports from the queue
-after success         -> continue, for at most four batches this round
-retry or rejection    -> stop this round without crossing that batch
+pending batch exists -> retry that exact batch first
+otherwise            -> block, then drain at most 100 Reports from the queue
+success               -> clear pending and continue immediately
+protocol rejection    -> drop that batch and continue immediately
+remote unavailable    -> retain pending and wait interruptible retry backoff
 ```
 
 Server selects the receiving owner by Report `dst`: TASK enters Kernel Task
 Result truth, SYSTEM enters the Server-local Direct Call owner, and KERNEL
 enters the Kernel Worker Serviceability result handoff. Owner-local correlation
 then interprets opaque `forward`. Remote unavailability retains the whole mixed
-pending batch; protocol rejection drops it. Normal close performs one bounded
-best-effort final submit. Command and Report rounds remain independent. The
-destinations do not have separate retry policies inside the Adapter: a late
+pending batch; protocol rejection drops it. The Report config `interval` is
+used only as failure retry backoff; an empty queue waits indefinitely for local
+ingress. The Command and Report loops remain independent. The destinations do
+not have separate retry policies inside the Adapter: a late
 DIRECT_CALL Report may be retried with the mixed batch and is then rejected by
 Server after its waiter has ended.
 
-The fixed remote batch limit is independent of Result queue capacity. A queue
-may retain more than 100 Reports, but each scheduler round submits at most four
-sequential 100-Report batches. Remote unavailability retains the exact failed
-batch and prevents later Reports from passing it; protocol rejection drops that
-batch and also ends the round. Normal close retries an existing pending batch
-and may perform one additional at-most-100 best-effort submit. It does not
-unboundedly drain the remaining queue.
+The fixed remote batch limit remains 100 and is independent of queue capacity.
+While the remote owner accepts batches, the resident loop continuously drains
+without a configured per-cycle limit. Remote unavailability retains the exact
+failed batch and prevents later Reports from passing it. After the loop has
+stopped, normal close retries an existing pending batch once; if that no longer
+blocks ordering, it may submit at most one additional 100-Report batch. It then
+drops the local remainder rather than unboundedly draining during shutdown.
 
 Both queues are finite, soft-capacity, and private to their Process. Adapter
 failure can lose queued commands or results; there is no ACK, persistent
@@ -434,7 +452,7 @@ Start:
 ```text
 bind listener
 -> state RUNNING
--> AdapterProcessManager starts its scheduler and every finite Process entry
+-> AdapterProcessManager starts one resident daemon platform thread per Process
 ```
 
 Close:
@@ -445,8 +463,10 @@ state STOPPING
 -> close listener and every pre-identity, pending-verification, or bound Channel
 -> clear the remaining per-Worker route state; closed Channels release their metadata
 -> AdapterProcessManager quiesces AFTER_NETWORK_CLOSE processes
--> AdapterProcessManager closes its scheduler and finishes processes in reverse order,
-   including one bounded final Result flush
+-> AdapterProcessManager interrupts all Process threads and joins them against
+   one shared deadline
+-> only after every thread stops, finish processes exactly once in reverse order,
+   including the bounded final Result flush
 -> state CLOSED
 ```
 
@@ -458,22 +478,23 @@ network and Process shutdown has finished.
 Each physical Server computes one deadline for its listener, all child
 Channels, child EventLoop group, and acceptor EventLoop; timeout initiates
 remaining closes without waiting again and reports `SHUTDOWN_TIMEOUT (21004)`.
-The Adapter Process scheduler then gets
-its own deadline, and `shutdownNow()` may consume only that deadline's
-remainder. A scheduler that misses its budget prevents a potentially blocking
-final Report flush; the Result queue has already stopped accepting and shutdown
-returns the timeout failure after the other cleanup steps. On the normal path,
-the final flush remains best effort and is bounded by the HTTP client request
-timeout. Consequently the normal worst-case close envelope is the sum of the
-physical Server budget, scheduler budget, and one HTTP final-flush request,
-not an unbounded wait.
+The Adapter Process threads then share one separate deadline: every thread is
+interrupted first, and sequential joins consume only the same deadline's
+remainder. A Process thread that misses that budget prevents every finish hook,
+including the potentially blocking final Report flush; the Result queue has
+already stopped accepting and shutdown returns `SHUTDOWN_TIMEOUT (21004)`.
+On the normal path, the final flush remains best effort and is bounded to one
+retry of the exact pending batch plus at most one additional 100-Report batch.
+Consequently close is bounded by the physical Server budget, the one shared
+Process join budget, and at most two HTTP request timeouts rather than an
+unbounded queue drain.
 
 The WebSocket protocol accepts text only and normalizes
 `TextWebSocketFrame <-> String`. Socket uses
 `LineBasedFrameDecoder(1 MiB)`, UTF-8 decoding, and a UNIX `LineEncoder`; it
 accepts LF or CRLF and emits one LF-delimited line. Netty owns TCP
-fragmentation and coalescing. Both use
-`WriteTimeoutHandler`; neither scheduled Process blocks on a `ChannelFuture`.
+fragmentation and coalescing. Both use `WriteTimeoutHandler`; neither resident
+Process blocks on a `ChannelFuture`.
 
 Runtime failures use one `WorkerDeliveryAdapterException` with numeric
 module-local error codes. Logs use `System.Logger` and must not include command
