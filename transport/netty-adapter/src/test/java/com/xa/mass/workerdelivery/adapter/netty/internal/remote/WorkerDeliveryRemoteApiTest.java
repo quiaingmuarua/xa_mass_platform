@@ -2,7 +2,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.remote;
 
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,7 +18,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 class WorkerDeliveryRemoteApiTest {
@@ -27,7 +25,7 @@ class WorkerDeliveryRemoteApiTest {
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
-    void ownsTheThreeFixedPathsAndTheirWireContracts() {
+    void ownsTheTwoFixedPathsAndTheirWireContracts() {
         DeliveryCommand command = command();
         String commandBody = "{\"worker-2\":"
                 + CODEC.encodeDeliveryCommand(command)
@@ -55,11 +53,7 @@ class WorkerDeliveryRemoteApiTest {
                     "adapter/one",
                     List.of("report-1", "report-2")
             );
-            remoteApi.verifyRoute("adapter/one", "worker two")
-                    .toCompletableFuture()
-                    .join();
-
-            assertThat(server.requests()).hasSize(3);
+            assertThat(server.requests()).hasSize(2);
             assertThat(server.requests().get(0)).satisfies(request -> {
                 assertThat(request.rawPath()).isEqualTo(
                         "/api/v1/worker-delivery/endpoint-managers/"
@@ -75,14 +69,6 @@ class WorkerDeliveryRemoteApiTest {
                 assertThat(request.body()).isEqualTo(
                         "[\"report-1\",\"report-2\"]"
                 );
-            });
-            assertThat(server.requests().get(2)).satisfies(request -> {
-                assertThat(request.rawPath()).isEqualTo(
-                        "/api/v1/worker-delivery/endpoint-managers/"
-                                + "adapter%2Fone/workers/"
-                                + "worker%20two:verify-binding"
-                );
-                assertThat(request.body()).isEmpty();
             });
         }
     }
@@ -205,21 +191,7 @@ class WorkerDeliveryRemoteApiTest {
     }
 
     @Test
-    void classifiesRouteStatusesAtTheRouteMethod() {
-        try (ScriptedHttpServer server = new ScriptedHttpServer(
-                request -> new Response(404, "{}")
-        )) {
-            WorkerDeliveryRemoteApi remoteApi = remoteApi(server);
-            assertRouteFailure(remoteApi, WORKER_ROUTE_REJECTED);
-            server.handler(request -> new Response(503, "{}"));
-            assertRouteFailure(remoteApi, REMOTE_API_UNAVAILABLE);
-            server.handler(request -> new Response(302, "{}"));
-            assertRouteFailure(remoteApi, REMOTE_API_PROTOCOL_ERROR);
-        }
-    }
-
-    @Test
-    void classifiesSyncAndAsyncNetworkFailuresAsUnavailable() {
+    void classifiesNetworkFailuresAsUnavailable() {
         ScriptedHttpServer server = new ScriptedHttpServer(
                 request -> new Response(204, "")
         );
@@ -239,11 +211,10 @@ class WorkerDeliveryRemoteApiTest {
                 REMOTE_API_UNAVAILABLE,
                 "deliveryReport.submitRemote"
         );
-        assertRouteFailure(remoteApi, REMOTE_API_UNAVAILABLE);
     }
 
     @Test
-    void appliesTheConfiguredTimeoutToSyncAndAsyncRequests() {
+    void appliesTheConfiguredTimeoutToRequests() {
         try (ScriptedHttpServer server = new ScriptedHttpServer(request -> {
             Thread.sleep(500);
             if (request.rawPath().endsWith("commands:consume")) {
@@ -273,7 +244,6 @@ class WorkerDeliveryRemoteApiTest {
                     REMOTE_API_UNAVAILABLE,
                     "deliveryReport.submitRemote"
             );
-            assertRouteFailure(remoteApi, REMOTE_API_UNAVAILABLE);
         }
     }
 
@@ -373,24 +343,4 @@ class WorkerDeliveryRemoteApiTest {
         );
     }
 
-    private static void assertRouteFailure(
-            WorkerDeliveryRemoteApi remoteApi,
-            WorkerDeliveryAdapterErrorCode expectedCode
-    ) {
-        assertThatThrownBy(() -> remoteApi.verifyRoute(
-                "adapter-1",
-                "worker-1"
-        ).toCompletableFuture().join())
-                .isInstanceOf(CompletionException.class)
-                .hasCauseInstanceOf(WorkerDeliveryAdapterException.class)
-                .cause()
-                .satisfies(error -> {
-                    WorkerDeliveryAdapterException classified =
-                            (WorkerDeliveryAdapterException) error;
-                    assertThat(classified.errorCode())
-                            .isEqualTo(expectedCode);
-                    assertThat(classified.operation())
-                            .isEqualTo("workerConnection.verifyRoute");
-                });
-    }
 }

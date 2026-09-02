@@ -626,16 +626,6 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void routeVerificationUsesCurrentBindingOnly() {
-        service.verifyWorkerRoute("endpoint-1", "worker-1");
-
-        verify(bindings).requireCurrentEndpoint(
-                "endpoint-1",
-                "worker-1"
-        );
-    }
-
-    @Test
     void allInvalidItemsDoNotCallTheRuntime() {
         var counts = service.appendAdapterResults(
                 "endpoint-1",

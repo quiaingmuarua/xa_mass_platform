@@ -24,6 +24,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -192,13 +193,13 @@ class WorkerBindingServiceTest {
     @Test
     void currentEndpointManagerIdsUsesOneBoundedOwnerRead() {
         String second = "e54a0f75-a8f3-4b08-9aa0-22fc42ca3ea2";
-        when(registry.getEndpointManagerIds(List.of(
+        when(registry.getEndpointManagerIdsAsync(List.of(
                 WORKER_ID,
                 second
-        ))).thenReturn(linkedBindings(
+        ))).thenReturn(CompletableFuture.completedFuture(linkedBindings(
                 WORKER_ID, "websocket-a",
                 second, null
-        ));
+        )));
 
         assertThat(service.currentEndpointManagerIds(List.of(
                 WORKER_ID,
@@ -207,7 +208,7 @@ class WorkerBindingServiceTest {
                 entry(WORKER_ID, "websocket-a"),
                 entry(second, null)
         );
-        verify(registry).getEndpointManagerIds(List.of(
+        verify(registry).getEndpointManagerIdsAsync(List.of(
                 WORKER_ID,
                 second
         ));

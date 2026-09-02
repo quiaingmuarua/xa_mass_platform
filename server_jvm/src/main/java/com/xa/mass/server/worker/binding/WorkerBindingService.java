@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 
 public final class WorkerBindingService {
 
@@ -194,6 +196,27 @@ public final class WorkerBindingService {
     public Map<String, String> currentEndpointManagerIds(
             List<String> workerIds
     ) {
+        try {
+            return currentEndpointManagerIdsAsync(workerIds)
+                    .toCompletableFuture()
+                    .join();
+        } catch (CompletionException error) {
+            Throwable cause = unwrap(error);
+            if (cause instanceof ServerException serverError) {
+                throw serverError;
+            }
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    "workerBinding.currentEndpointManagerIds",
+                    null,
+                    cause
+            );
+        }
+    }
+
+    public CompletionStage<Map<String, String>> currentEndpointManagerIdsAsync(
+            List<String> workerIds
+    ) {
         String operation = "workerBinding.currentEndpointManagerIds";
         if (workerIds == null
                 || workerIds.isEmpty()
@@ -217,18 +240,32 @@ public final class WorkerBindingService {
                 );
             }
         }
+        CompletionStage<Map<String, String>> loaded;
         try {
-            return Collections.unmodifiableMap(new LinkedHashMap<>(
-                    registry.getEndpointManagerIds(workerIds)
+            loaded = registry.getEndpointManagerIdsAsync(List.copyOf(
+                    workerIds
             ));
         } catch (RuntimeException error) {
-            throw failure(
+            return java.util.concurrent.CompletableFuture.failedFuture(failure(
                     ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
                     operation,
                     null,
                     error
-            );
+            ));
         }
+        return loaded.handle((bindings, error) -> {
+            if (error != null) {
+                throw failure(
+                        ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                        operation,
+                        null,
+                        unwrap(error)
+                );
+            }
+            return Collections.unmodifiableMap(new LinkedHashMap<>(
+                    Objects.requireNonNull(bindings, "bindings")
+            ));
+        });
     }
 
     private static void requireUpsertAccepted(
@@ -289,5 +326,14 @@ public final class WorkerBindingService {
             Throwable cause
     ) {
         return new ServerException(code, operation, message, cause);
+    }
+
+    private static Throwable unwrap(Throwable failure) {
+        Throwable current = failure;
+        while (current instanceof CompletionException
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 }

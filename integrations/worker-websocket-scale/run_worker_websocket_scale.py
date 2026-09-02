@@ -31,7 +31,10 @@ MODULE_ROOT = Path(__file__).resolve().parent
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
 MAXIMUM_NATIVE_THREADS = 512
-MAXIMUM_OPEN_FILE_DESCRIPTORS = 32_768
+MAXIMUM_OPEN_FILE_DESCRIPTORS = {
+    "worker-host": 32_768,
+    "runtime-server": 16_384,
+}
 WORKER_GROUP = "scenario-string-utils-workers"
 ENDPOINT_MANAGER = "scenario-websocket"
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
@@ -543,10 +546,11 @@ def _validate_resource_contract(resources: dict[str, dict[str, int]]) -> None:
                 f"{label} native threads exceeded the "
                 f"<{MAXIMUM_NATIVE_THREADS} contract: {native_threads}"
             )
-        if open_files >= MAXIMUM_OPEN_FILE_DESCRIPTORS:
+        maximum_open_files = MAXIMUM_OPEN_FILE_DESCRIPTORS[owner]
+        if open_files >= maximum_open_files:
             raise RuntimeError(
                 f"{label} open files exceeded the "
-                f"<{MAXIMUM_OPEN_FILE_DESCRIPTORS} contract: {open_files}"
+                f"<{maximum_open_files} contract: {open_files}"
             )
 
 

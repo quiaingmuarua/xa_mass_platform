@@ -42,6 +42,8 @@ xa:
       adapter:
         remote-base-url: http://127.0.0.1:${server.port:18082}
         remote-request-timeout: 5s
+        verification-queue-capacity: 100000
+        verification-timeout: 5s
 
 management:
   endpoints:

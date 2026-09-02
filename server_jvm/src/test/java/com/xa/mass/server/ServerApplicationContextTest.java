@@ -498,9 +498,6 @@ class ServerApplicationContextTest {
                 || path.endsWith("/results:append")) {
             return Set.of("202", "400", "503");
         }
-        if (path.endsWith(":verify-binding")) {
-            return Set.of("204", "400", "503");
-        }
         if (path.endsWith("/commands:consume")) {
             return Set.of("200", "400", "503");
         }

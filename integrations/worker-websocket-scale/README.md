@@ -69,7 +69,8 @@ threshold applies; the connected-and-HOT threshold is re-established with
 three full scans after the Tasks drain.
 
 The Worker Host and Runtime Server must each remain below 512 native Linux
-threads and 32,768 open file descriptors. Virtual threads are not counted as
+threads. The Worker Host must remain below 32,768 open file descriptors, while
+the Runtime Server must remain below 16,384. Virtual threads are not counted as
 native `/proc` threads; the thread guard detects accidental
 one-platform-thread-per-WebSocket behavior. RSS remains recorded evidence
 without a cross-machine threshold. All process resources are sampled every five

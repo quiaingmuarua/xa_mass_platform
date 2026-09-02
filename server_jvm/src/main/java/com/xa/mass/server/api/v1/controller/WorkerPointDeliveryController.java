@@ -117,34 +117,4 @@ public class WorkerPointDeliveryController {
         return ResponseEntity.accepted().build();
     }
 
-    @PostMapping("/workers/{workerId}:verify-binding")
-    @Operation(summary = "Verify one Worker Endpoint Binding")
-    @ApiResponses({
-            @ApiResponse(
-                    responseCode = "204",
-                    description = "Worker Binding was verified",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "400",
-                    description = "Worker Binding verification was rejected",
-                    content = @Content(schema = @Schema(
-                            implementation = ApiErrorResponse.class
-                    ))
-            ),
-            @ApiResponse(
-                    responseCode = "503",
-                    description = "Worker Binding Owner is unavailable",
-                    content = @Content(schema = @Schema(
-                            implementation = ApiErrorResponse.class
-                    ))
-            )
-    })
-    public ResponseEntity<Void> verifyWorkerRoute(
-            @PathVariable @NotBlank String endpointManagerId,
-            @PathVariable @NotBlank String workerId
-    ) {
-        workerDelivery.verifyWorkerRoute(endpointManagerId, workerId);
-        return ResponseEntity.noContent().build();
-    }
 }

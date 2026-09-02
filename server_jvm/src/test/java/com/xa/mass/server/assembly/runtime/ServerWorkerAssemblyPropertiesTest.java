@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
 import com.xa.mass.server.worker.binding.WorkerTransportType;
 import com.xa.mass.server.delivery.adapter
@@ -43,6 +44,10 @@ class ServerWorkerAssemblyPropertiesTest {
                             () -> mock(
                                     WorkerGroupRegistrationService.class
                             )
+                    )
+                    .withBean(
+                            WorkerBindingService.class,
+                            () -> mock(WorkerBindingService.class)
                     )
                     .withBean(WorkerEndpointDirectory.class, () -> {
                         WorkerEndpointDirectory directory = mock(

@@ -2,6 +2,7 @@ package com.xa.mass.server.assembly.runtime;
 
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
+import com.xa.mass.server.delivery.adapter.WorkerRouteVerificationBatcher;
 import java.util.Objects;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
@@ -11,12 +12,14 @@ public final class ServerConfiguredRuntimeLifecycleHost
 
     private final ServerWorkerGroupInitializer groupInitializer;
     private final WorkerDeliveryAdapterManager adapterManager;
+    private final WorkerRouteVerificationBatcher routeVerificationBatcher;
     private boolean started;
     private boolean closed;
 
     public ServerConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
-            WorkerDeliveryAdapterManager adapterManager
+            WorkerDeliveryAdapterManager adapterManager,
+            WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
         this.groupInitializer = Objects.requireNonNull(
                 groupInitializer,
@@ -25,6 +28,10 @@ public final class ServerConfiguredRuntimeLifecycleHost
         this.adapterManager = Objects.requireNonNull(
                 adapterManager,
                 "adapterManager"
+        );
+        this.routeVerificationBatcher = Objects.requireNonNull(
+                routeVerificationBatcher,
+                "routeVerificationBatcher"
         );
     }
 
@@ -47,10 +54,12 @@ public final class ServerConfiguredRuntimeLifecycleHost
         }
 
         try {
+            routeVerificationBatcher.start();
             adapterManager.start();
             started = true;
         } catch (RuntimeException failure) {
             closeAndSuppress(adapterManager, failure);
+            closeAndSuppress(routeVerificationBatcher, failure);
             closed = true;
             throw failure;
         }
@@ -63,7 +72,25 @@ public final class ServerConfiguredRuntimeLifecycleHost
         }
         closed = true;
         started = false;
-        adapterManager.close();
+        routeVerificationBatcher.stopIngress();
+        RuntimeException failure = null;
+        try {
+            adapterManager.close();
+        } catch (RuntimeException error) {
+            failure = error;
+        }
+        try {
+            routeVerificationBatcher.close();
+        } catch (RuntimeException error) {
+            if (failure == null) {
+                failure = error;
+            } else {
+                failure.addSuppressed(error);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     @Override

@@ -60,16 +60,6 @@ public final class WorkerDeliveryService {
         this.serviceability = serviceability;
     }
 
-    public void verifyWorkerRoute(
-            String endpointManagerId,
-            String workerId
-    ) {
-        String operation = "workerDelivery.verifyWorkerRoute";
-        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
-        requireNonBlank(workerId, "workerId", operation);
-        bindings.requireCurrentEndpoint(endpointManagerId, workerId);
-    }
-
     public DeliveryCommand pollWorkerCommand(
             String endpointManagerId,
             String workerId

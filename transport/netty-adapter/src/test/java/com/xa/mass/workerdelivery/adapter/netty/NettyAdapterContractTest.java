@@ -9,6 +9,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decision;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -290,7 +291,8 @@ class NettyAdapterContractTest {
         NettyWorkerDeliveryAdapterFactory factory =
                 new NettyWorkerDeliveryAdapterFactory(
                         remoteApi.server.baseUri(),
-                        Duration.ofSeconds(2)
+                        Duration.ofSeconds(2),
+                        remoteApi::verifyRoute
                 );
         return factory.create(
                 protocol.adapterId,
@@ -620,15 +622,20 @@ class NettyAdapterContractTest {
                         0
                 )));
             }
-            if (request.rawPath().endsWith(":verify-binding")) {
-                verificationCount.incrementAndGet();
-                verifiedWorkerIds.add(workerId(request.rawPath()));
-                return new Response(
-                        verificationStatus,
-                        verificationStatus == 204 ? "" : "{}"
-                );
-            }
             return new Response(404, "{}");
+        }
+
+        private CompletionStage<Decision> verifyRoute(
+                String adapterId,
+                String workerId
+        ) {
+            verificationCount.incrementAndGet();
+            verifiedWorkerIds.add(workerId);
+            return CompletableFuture.completedFuture(
+                    verificationStatus == 204
+                            ? Decision.VERIFIED
+                            : Decision.REJECTED
+            );
         }
 
         private Response commandResponse(
@@ -646,14 +653,5 @@ class NettyAdapterContractTest {
             return new Response(200, Jsons.toJson(encoded));
         }
 
-        private String workerId(String path) {
-            String marker = "/workers/";
-            int start = path.indexOf(marker) + marker.length();
-            int end = path.indexOf(":verify-binding", start);
-            return java.net.URLDecoder.decode(
-                    path.substring(start, end),
-                    StandardCharsets.UTF_8
-            );
-        }
     }
 }

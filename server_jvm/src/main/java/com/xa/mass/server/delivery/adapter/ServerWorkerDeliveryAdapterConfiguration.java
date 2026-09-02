@@ -1,6 +1,7 @@
 package com.xa.mass.server.delivery.adapter;
 
 import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.server.worker.binding.WorkerTransportType;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
@@ -16,16 +17,30 @@ import org.springframework.context.annotation.Configuration;
 public class ServerWorkerDeliveryAdapterConfiguration {
 
     @Bean
+    WorkerRouteVerificationBatcher workerRouteVerificationBatcher(
+            ServerWorkerDeliveryAdapterProperties properties,
+            WorkerBindingService bindings
+    ) {
+        return new WorkerRouteVerificationBatcher(
+                bindings,
+                properties.verificationQueueCapacity(),
+                properties.verificationTimeout()
+        );
+    }
+
+    @Bean
     WorkerDeliveryAdapterManager workerDeliveryAdapterManager(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerEndpointDirectory endpointDirectory
+            WorkerEndpointDirectory endpointDirectory,
+            WorkerRouteVerificationBatcher routeVerifier
     ) {
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
         NettyWorkerDeliveryAdapterFactory factory =
                 new NettyWorkerDeliveryAdapterFactory(
                         properties.remoteBaseUrl(),
-                        properties.remoteRequestTimeout()
+                        properties.remoteRequestTimeout(),
+                        routeVerifier
                 );
         properties.instances().forEach((adapterId, config) -> {
             requireMatchingEndpoint(adapterId, config, endpointDirectory);

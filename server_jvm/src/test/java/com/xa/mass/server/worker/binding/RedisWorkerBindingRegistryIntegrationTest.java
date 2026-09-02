@@ -110,12 +110,12 @@ class RedisWorkerBindingRegistryIntegrationTest {
         registry.bindIfAbsent(sameBucket, "socket-a");
         registry.bindIfAbsent(otherBucket, "websocket-b");
 
-        assertThat(registry.getEndpointManagerIds(List.of(
+        assertThat(registry.getEndpointManagerIdsAsync(List.of(
                 otherBucket,
                 missing,
                 WORKER_ID,
                 sameBucket
-        ))).containsExactly(
+        )).toCompletableFuture().join()).containsExactly(
                 entry(otherBucket, "websocket-b"),
                 entry(missing, null),
                 entry(WORKER_ID, "websocket-a"),

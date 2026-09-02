@@ -539,10 +539,13 @@ reconnect performs no control operation.
 Server owns the Worker Delivery HTTP and owner-provider composition. It
 constructs active Adapters only through the finite public Netty factory.
 
-Each Adapter reaches Server through the same HTTP boundary used by external
-Workers. There is no in-process or Redis shortcut. Adapter lifecycle,
-scheduler, queues, current route registry and physical Channels remain owned by
-`transport/netty-adapter`.
+Adapter Command consume and Report append use the loopback Worker Delivery HTTP
+boundary. First route verification uses a Server-injected asynchronous port:
+one bounded Server queue is drained by one resident virtual thread, and current
+Endpoint Bindings are read in batches of at most 100 before the individual
+Adapter requests are completed. The queue is transient coordination, not Route
+or Binding truth. Adapter lifecycle, schedulers, queues, current route registry
+and physical Channels remain owned by `transport/netty-adapter`.
 
 Long-lived Worker identity carries `workerId` in the Report source and exact
 `null` payload. Adapter routing and retained verification use only workerId;
@@ -580,6 +583,11 @@ connection state remains a separate
 `platform.adapter.worker-connections.snapshot` call; Server does not join the
 two projections. The Adapter does not automatically request Worker properties
 or turn its cache into a KERNEL Report.
+
+Server-level route verification defaults to a `100000` request queue and a
+`5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner
+failure completes affected verification requests exceptionally; Server does
+not retry them. Worker connection retry remains the recovery owner.
 
 ### Worker And Scenario Assembly
 

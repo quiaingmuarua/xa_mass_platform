@@ -3,8 +3,10 @@ package com.xa.mass.workerdelivery.adapter.netty;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decision;
 import java.net.URI;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
@@ -68,7 +70,11 @@ class NettyWorkerDeliveryAdapterConfigTest {
         NettyWorkerDeliveryAdapterFactory factory =
                 new NettyWorkerDeliveryAdapterFactory(
                         URI.create("http://127.0.0.1:18082"),
-                        Duration.ofSeconds(1)
+                        Duration.ofSeconds(1),
+                        (adapterId, workerId) ->
+                                CompletableFuture.completedFuture(
+                                        Decision.VERIFIED
+                                )
                 );
         ConfigValues values = new ConfigValues();
 

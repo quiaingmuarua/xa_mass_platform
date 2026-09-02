@@ -86,18 +86,13 @@ class WorkerPointDeliveryControllerTest {
     }
 
     @Test
-    void routeVerificationUsesWorkerBindingAddress() throws Exception {
+    void removedRouteVerificationPathIsNotExposed() throws Exception {
         mockMvc.perform(post(
                         "/api/v1/worker-delivery/endpoint-managers/"
                                 + "endpoint-1/workers/"
                                 + "worker-1:verify-binding"
                 ))
-                .andExpect(status().isNoContent());
-
-        verify(service).verifyWorkerRoute(
-                "endpoint-1",
-                "worker-1"
-        );
+                .andExpect(status().isNotFound());
     }
 
     @Test

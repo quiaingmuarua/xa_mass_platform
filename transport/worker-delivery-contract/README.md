@@ -105,11 +105,11 @@ WebSocket and line Socket send a direct `DeliveryReport` as their first value:
 
 The Adapter consumes this Adapter-directed Report locally and takes the opaque
 route identity from `sourceId`; the payload is exactly `null`. The first
-workerId occurrence in one Adapter process is passed to Server route
-verification at
-`/endpoint-managers/{adapterId}/workers/{workerId}:verify-binding`; success is
-cached process-locally, so later physical reconnects for that workerId activate
-a replacement Channel without another Server read. There is no ACK.
+workerId occurrence in one Adapter process is passed through the injected
+Server route-verification port. Server may batch those single-item requests
+when reading current Endpoint Bindings. Success is cached process-locally, so
+later physical reconnects for that workerId activate a replacement Channel
+without another Server read. There is no ACK or verification HTTP route.
 Polling sends no identity Report; Server verifies its persisted
 `system-polling` route on each point request.
 Identity reporting does not create or update Endpoint Binding and is not

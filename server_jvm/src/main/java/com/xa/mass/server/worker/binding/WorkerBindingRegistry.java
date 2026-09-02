@@ -2,6 +2,7 @@ package com.xa.mass.server.worker.binding;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 interface WorkerBindingRegistry {
 
@@ -9,5 +10,7 @@ interface WorkerBindingRegistry {
 
     String getEndpointManagerId(String workerId);
 
-    Map<String, String> getEndpointManagerIds(List<String> workerIds);
+    CompletionStage<Map<String, String>> getEndpointManagerIdsAsync(
+            List<String> workerIds
+    );
 }

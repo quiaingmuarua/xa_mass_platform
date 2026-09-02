@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record ServerWorkerDeliveryAdapterProperties(
         @DefaultValue("http://127.0.0.1:18082") URI remoteBaseUrl,
         @DefaultValue("5s") Duration remoteRequestTimeout,
+        @DefaultValue("100000") int verificationQueueCapacity,
+        @DefaultValue("5s") Duration verificationTimeout,
         @DefaultValue Map<String, NettyWorkerDeliveryAdapterConfig> instances
 ) {
 
@@ -36,6 +38,18 @@ public record ServerWorkerDeliveryAdapterProperties(
                 || remoteRequestTimeout.isNegative()) {
             throw new IllegalArgumentException(
                     "remote-request-timeout must be positive"
+            );
+        }
+        if (verificationQueueCapacity <= 0) {
+            throw new IllegalArgumentException(
+                    "verification-queue-capacity must be positive"
+            );
+        }
+        if (verificationTimeout == null
+                || verificationTimeout.isZero()
+                || verificationTimeout.isNegative()) {
+            throw new IllegalArgumentException(
+                    "verification-timeout must be positive"
             );
         }
         if (instances == null) {

@@ -9,15 +9,18 @@ shared Server base, Session, Bridge, or protocol-extension framework.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
-batch API through one `WorkerDeliveryRemoteApi`. All Adapter instances share
-one process-lifetime JDK `HttpClient` for physical HTTP resources.
+Command and Report batch APIs through one `WorkerDeliveryRemoteApi`. First
+route verification uses the injected `WorkerRouteVerifier` application port.
+All Adapter instances share one process-lifetime JDK `HttpClient` for physical
+HTTP resources.
 
 ## Instance Boundary
 
 Server creates one process-scoped `NettyWorkerDeliveryAdapterFactory` from
-the Remote API base URI and request timeout. The Factory owns one immutable
-`WorkerDeliveryRemoteApi` and one codec, and creates the two finite physical
-protocol variants from a complete `NettyWorkerDeliveryAdapterConfig`. It
+the Remote API base URI, request timeout, and one `WorkerRouteVerifier`. The
+Factory owns one immutable `WorkerDeliveryRemoteApi` and one codec, and creates
+the two finite physical protocol variants from a complete
+`NettyWorkerDeliveryAdapterConfig`. It
 returns only the public `WorkerDeliveryAdapter` contract. Both variants
 instantiate the same
 package-private `NettyWorkerDeliveryAdapter`; every instance independently
@@ -60,7 +63,7 @@ or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
-`NettyWorkerDeliveryAdapterConfig`, and
+`WorkerRouteVerifier`, `NettyWorkerDeliveryAdapterConfig`, and
 `NettyWorkerDeliveryAdapterFactory`. The config is one flat, complete Adapter
 construction value; the Factory destructures it and passes each internal owner
 only its own primitive values. Java types
@@ -90,25 +93,24 @@ contracts, and Server is guarded from importing them.
 `WorkerConnectionInboundHandler` has only one dependency: the connection
 mechanism. It owns no codec, route, verification, Result, or physical network
 behavior. The shared connection mechanism exposes a concrete `deliver(...)`
-owner operation and depends only
-on `WorkerDeliveryRemoteApi` plus the Report `BatchDispatcher`. It sees normalized
-strings and Netty Channels as route addresses, but all physical write/close
-operations return through `NettyWorkerServer`; it does not see WebSocket
+owner operation and depends only on `WorkerRouteVerifier` plus the Report
+`BatchDispatcher`. It sees normalized strings and Netty Channels as route
+addresses, but all physical write/close operations return through
+`NettyWorkerServer`; it does not see WebSocket
 frames, Socket lines, handshake types, listener resources, or Pipeline
 mutation.
 
-`WorkerDeliveryRemoteApi` owns the three fixed Command consume, Report append,
-and Route verification methods, including their paths, wire JSON, expected
-HTTP statuses, and method-specific failure classification. One instance is
+`WorkerDeliveryRemoteApi` owns the two fixed Command consume and Report append
+methods, including their paths, wire JSON, expected HTTP statuses, and
+method-specific failure classification. One instance is
 created per process Factory and keeps only its immutable base URI, request
 timeout, and codec; every Adapter created by that Factory uses the same facade.
 Its process-level static JDK `HttpClient` keeps shared connection resources,
 uses HTTP/1.1, carries no Adapter configuration, and has no Adapter lifecycle.
-Its explicit process-level virtual-thread executor owns HTTP execution so a
-route-verification burst cannot expand the JDK client's default cached platform
-thread pool. Each request receives the Factory-owned facade's timeout.
-Processes and connection mechanism never see the Client, URL, status, or HTTP
-JSON contract.
+Its explicit process-level virtual-thread executor owns HTTP execution without
+restoring the JDK client's default cached platform-thread pool. Each request
+receives the Factory-owned facade's timeout. Processes and connection mechanism
+never see the Client, URL, status, or HTTP JSON contract.
 
 WebSocket and Socket keep complete, separately understandable physical Server
 implementations. Parameterized tests constrain their common physical contract
@@ -158,19 +160,18 @@ Every physical connection sends this identity first. Adapter requires
 `src=WORKER`, a non-blank opaque `sourceId`, and exact `null` payload. It does
 not parse the workerId format.
 
-Each Adapter process verifies a workerId remotely when it has no current route
-or retained verification evidence. The first Channel atomically claims the
-single pending Route entry; another initial Channel for the same workerId is
-physically closed. Server confirms that the workerId's current Endpoint Binding
+Each Adapter process submits a single route-verification request when it has no
+current route or retained verification evidence. The first Channel atomically
+claims the single pending Route entry; another initial Channel for the same
+workerId is physically closed. Server confirms that the workerId's current Endpoint Binding
 points to this Adapter's `endpointManagerId`. Successful verification
 atomically turns that same entry into `workerId -> current Channel` without an
 identity ACK. No WorkerGroup metadata is stored on the Channel or route. A
-definite Server 4xx
-rejection causes the Adapter to write
+`WorkerRouteVerifier.REJECTED` decision causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
-and close the physical Channel after the write flushes. Remote API unavailability
-or a 5xx response only closes the physical Channel, allowing the Worker Client
-to consume its current-Endpoint reconnect budget.
+and close the physical Channel after the write flushes. An exceptional
+verification completion only closes the physical Channel, allowing the Worker
+Client to consume its current-Endpoint reconnect budget.
 
 An unverified Channel is never visible to `DeliveryCommandProcess`. Reads stay
 enabled during asynchronous verification, but every later frame is released and

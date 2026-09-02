@@ -12,6 +12,8 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
 import com.github.benmanes.caffeine.cache.Ticker;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decision;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
@@ -37,7 +39,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -64,7 +65,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.routes.hasVerificationEvidence("worker-1"))
                     .isFalse();
 
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
 
             assertThat(fixture.routes.hasVerificationEvidence("worker-1"))
@@ -86,6 +87,56 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
+    void rejectedVerificationSendsTerminalCloseBeforeClosingChannel() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(
+                    Decision.REJECTED
+            );
+            channel.runPendingTasks();
+
+            assertThat(channel.isActive()).isFalse();
+            assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+            assertThat(fixture.network.writtenMessages).hasSize(1);
+            DeliveryCommand close = fixture.codec.decodeDeliveryCommand(
+                    fixture.network.writtenMessages.get(0)
+            );
+            assertThat(close.messageType()).isEqualTo(
+                    "worker.connection.close"
+            );
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void unavailableVerificationOnlyClosesThePhysicalConnection() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification()
+                    .completeExceptionally(new IllegalStateException(
+                            "binding unavailable"
+                    ));
+            channel.runPendingTasks();
+
+            assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+            assertThat(fixture.network.writtenMessages).isEmpty();
+            assertThat(fixture.network.closedChannels).containsExactly(
+                    channel
+            );
+            assertThat(fixture.network.closeReasons).containsExactly(
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            );
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void disconnectedReconnectReportsOnlyExactAvailabilityTransitions() {
         Fixture fixture = new Fixture();
         EmbeddedChannel first = fixture.channel();
@@ -93,7 +144,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel reconnect = fixture.channel();
         try {
             first.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, first);
 
             replacement.writeInbound(fixture.identity("worker-1"));
@@ -123,7 +174,7 @@ class WorkerConnectionMechanismTest {
                     "worker-1",
                     "CONNECTED"
             );
-            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+            assertThat(fixture.routeVerifier.verificationCalls).isEqualTo(1);
         } finally {
             if (first.isOpen()) {
                 first.finishAndReleaseAll();
@@ -148,7 +199,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
 
             assertThat(channel.isActive()).isTrue();
@@ -169,7 +220,7 @@ class WorkerConnectionMechanismTest {
             ));
 
             assertThat(channel.isActive()).isFalse();
-            assertThat(fixture.remoteApi.verificationCalls).isZero();
+            assertThat(fixture.routeVerifier.verificationCalls).isZero();
         } finally {
             channel.finishAndReleaseAll();
         }
@@ -182,7 +233,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel replacement = fixture.channel();
         try {
             current.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, current);
             fixture.flushReports();
             fixture.systemReports.clear();
@@ -192,7 +243,7 @@ class WorkerConnectionMechanismTest {
             assertThat(replacement.isActive()).isTrue();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(replacement);
-            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+            assertThat(fixture.routeVerifier.verificationCalls).isEqualTo(1);
             assertThat(fixture.systemReports).isEmpty();
 
             replacement.finishAndReleaseAll();
@@ -217,7 +268,7 @@ class WorkerConnectionMechanismTest {
         try {
             channel.writeInbound(fixture.identity("worker-1"));
             channel.writeInbound(fixture.taskResult("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
             assertThat(fixture.reports).isEmpty();
@@ -236,7 +287,7 @@ class WorkerConnectionMechanismTest {
         first.writeInbound(fixture.identity("worker-1"));
         second.writeInbound(fixture.identity("worker-1"));
 
-        awaitVerificationCalls(fixture.remoteApi, 1);
+        awaitVerificationCalls(fixture.routeVerifier, 1);
         assertThat(second.isActive()).isFalse();
         second.finishAndReleaseAll();
         first.finishAndReleaseAll();
@@ -244,8 +295,8 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel retry = fixture.channel();
         try {
             retry.writeInbound(fixture.identity("worker-1"));
-            awaitVerificationCalls(fixture.remoteApi, 2);
-            fixture.remoteApi.currentVerification().complete(null);
+            awaitVerificationCalls(fixture.routeVerifier, 2);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, retry);
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(retry);
@@ -261,14 +312,14 @@ class WorkerConnectionMechanismTest {
         channel.writeInbound(fixture.identity("worker-1"));
         channel.finishAndReleaseAll();
 
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         channel.runPendingTasks();
 
         assertThat(fixture.routes.activeChannel("worker-1")).isNull();
         EmbeddedChannel retry = fixture.channel();
         try {
             retry.writeInbound(fixture.identity("worker-1"));
-            awaitVerificationCalls(fixture.remoteApi, 2);
+            awaitVerificationCalls(fixture.routeVerifier, 2);
         } finally {
             retry.finishAndReleaseAll();
         }
@@ -279,7 +330,7 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture();
         EmbeddedChannel oldChannel = fixture.channel();
         oldChannel.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, oldChannel);
 
         EmbeddedChannel replacement = fixture.channel();
@@ -304,7 +355,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
 
             DeliveryCommand command = DeliveryCommand.create(
@@ -332,7 +383,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
 
@@ -428,7 +479,7 @@ class WorkerConnectionMechanismTest {
             }
         });
         channel.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, channel);
 
         channel.finishAndReleaseAll();
@@ -442,7 +493,7 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         channel.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, channel);
 
         IllegalStateException failure = new IllegalStateException("boom");
@@ -462,7 +513,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
             fixture.systemReports.clear();
@@ -493,7 +544,7 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture(2);
         EmbeddedChannel channel = fixture.channel();
         channel.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, channel);
         fixture.flushReports();
         fixture.systemReports.clear();
@@ -520,7 +571,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
             fixture.systemReports.clear();
@@ -555,7 +606,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel replacement = fixture.channel();
         try {
             first.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, first);
             fixture.flushReports();
             fixture.systemReports.clear();
@@ -604,7 +655,7 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         channel.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
+        fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, channel);
         channel.writeInbound(fixture.propertiesResult(
                 "worker-1",
@@ -633,7 +684,7 @@ class WorkerConnectionMechanismTest {
         ).get("worker-1");
         assertThat(reconnected.updatedAtMillis()).isEqualTo(updatedAtMillis);
         assertThat(reconnected.properties()).containsEntry("battery", 87L);
-        assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+        assertThat(fixture.routeVerifier.verificationCalls).isEqualTo(1);
 
         fixture.mechanism.clear();
         var cleared = fixture.mechanism.workerProperties(
@@ -660,7 +711,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             channel.writeInbound(fixture.propertiesResult(
                     "worker-1",
@@ -697,7 +748,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel reconnect = null;
         try {
             first.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, first);
             first.writeInbound(fixture.propertiesResult(
                     "worker-1",
@@ -709,14 +760,14 @@ class WorkerConnectionMechanismTest {
 
             reconnect = fixture.channel();
             reconnect.writeInbound(fixture.identity("worker-1"));
-            awaitVerificationCalls(fixture.remoteApi, 2);
+            awaitVerificationCalls(fixture.routeVerifier, 2);
             WorkerPropertiesObservation unknown =
                     fixture.mechanism.workerProperties(
                             List.of("worker-1")
                     ).get("worker-1");
             assertThat(unknown.updatedAtMillis()).isNull();
             assertThat(unknown.properties()).isNull();
-            fixture.remoteApi.currentVerification().complete(null);
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, reconnect);
         } finally {
             if (first.isOpen()) {
@@ -746,13 +797,14 @@ class WorkerConnectionMechanismTest {
     }
 
     private static void awaitVerificationCalls(
-            PendingRouteHttpPeer remoteApi,
+            PendingRouteVerifier routeVerifier,
             int expected
     ) {
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (System.nanoTime() < deadline) {
-            if (remoteApi.verificationCalls >= expected) {
-                assertThat(remoteApi.verificationCalls).isEqualTo(expected);
+            if (routeVerifier.verificationCalls >= expected) {
+                assertThat(routeVerifier.verificationCalls)
+                        .isEqualTo(expected);
                 return;
             }
             Thread.onSpinWait();
@@ -763,8 +815,8 @@ class WorkerConnectionMechanismTest {
     private final class Fixture {
 
         private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        private final PendingRouteHttpPeer remoteApi =
-                new PendingRouteHttpPeer();
+        private final PendingRouteVerifier routeVerifier =
+                new PendingRouteVerifier();
         private final List<String> reports = new CopyOnWriteArrayList<>();
         private final List<String> systemReports =
                 new CopyOnWriteArrayList<>();
@@ -814,7 +866,7 @@ class WorkerConnectionMechanismTest {
             mechanism = new WorkerConnectionMechanism(
                         routes,
                         network,
-                        remoteApi(remoteApi.server),
+                        routeVerifier,
                         codec,
                         reportDispatcher,
                         "adapter-1",
@@ -994,34 +1046,28 @@ class WorkerConnectionMechanismTest {
         );
     }
 
-    private final class PendingRouteHttpPeer {
+    private static final class PendingRouteVerifier
+            implements WorkerRouteVerifier {
 
-        private volatile CompletableFuture<Void> verification;
+        private volatile CompletableFuture<Decision> verification;
         private volatile int verificationCalls;
-        private final ScriptedHttpServer server;
 
-        private PendingRouteHttpPeer() {
-            server = new ScriptedHttpServer(this::handle);
-            httpServers.add(server);
-        }
-
-        private Response handle(ScriptedHttpServer.Request request) {
-            CompletableFuture<Void> current = new CompletableFuture<>();
+        @Override
+        public CompletableFuture<Decision> verify(
+                String adapterId,
+                String workerId
+        ) {
+            CompletableFuture<Decision> current = new CompletableFuture<>();
             verification = current;
             verificationCalls++;
-            try {
-                current.join();
-                return new Response(204, "");
-            } catch (CompletionException error) {
-                return new Response(503, "{}");
-            }
+            return current;
         }
 
-        private CompletableFuture<Void> currentVerification() {
+        private CompletableFuture<Decision> currentVerification() {
             long deadline = System.nanoTime()
                     + Duration.ofSeconds(2).toNanos();
             while (System.nanoTime() < deadline) {
-                CompletableFuture<Void> current = verification;
+                CompletableFuture<Decision> current = verification;
                 if (current != null && !current.isDone()) {
                     return current;
                 }

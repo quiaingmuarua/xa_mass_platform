@@ -1,6 +1,7 @@
 package com.xa.mass.server.assembly.runtime;
 
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.delivery.adapter.WorkerRouteVerificationBatcher;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.springframework.boot.context.properties
@@ -36,11 +37,13 @@ public class ServerWorkerAssemblyConfiguration {
     ServerConfiguredRuntimeLifecycleHost
     serverConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
-            WorkerDeliveryAdapterManager adapterManager
+            WorkerDeliveryAdapterManager adapterManager,
+            WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
         return new ServerConfiguredRuntimeLifecycleHost(
                 groupInitializer,
-                adapterManager
+                adapterManager,
+                routeVerificationBatcher
         );
     }
 }

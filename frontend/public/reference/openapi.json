@@ -1615,55 +1615,6 @@
         "tags" : [ "Worker Delivery" ]
       }
     },
-    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/workers/{workerId}:verify-binding" : {
-      "post" : {
-        "operationId" : "verifyWorkerRoute",
-        "parameters" : [ {
-          "in" : "path",
-          "name" : "endpointManagerId",
-          "required" : true,
-          "schema" : {
-            "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "in" : "path",
-          "name" : "workerId",
-          "required" : true,
-          "schema" : {
-            "minLength" : 1,
-            "type" : "string"
-          }
-        } ],
-        "responses" : {
-          "204" : {
-            "description" : "Worker Binding was verified"
-          },
-          "400" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Worker Binding verification was rejected"
-          },
-          "503" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Worker Binding Owner is unavailable"
-          }
-        },
-        "summary" : "Verify one Worker Endpoint Binding",
-        "tags" : [ "Worker Delivery" ]
-      }
-    },
     "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties" : {
       "patch" : {
         "operationId" : "patchPlatformProperties",

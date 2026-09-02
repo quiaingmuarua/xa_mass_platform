@@ -514,6 +514,11 @@ class ServerArchitectureBoundaryTest {
     void serverOnlyComposesAdapterAndBuiltInWorkerMechanisms()
             throws IOException {
         String host = readSources(DELIVERY_ADAPTER_HOST);
+        String routeVerificationBatcher = Files.readString(
+                DELIVERY_ADAPTER_HOST.resolve(
+                        "WorkerRouteVerificationBatcher.java"
+                )
+        );
         assertThat(host)
                 .contains("WorkerDeliveryAdapterManager")
                 .contains("NettyWorkerDeliveryAdapterFactory")
@@ -533,14 +538,27 @@ class ServerArchitectureBoundaryTest {
                         "workerdelivery.protocol.WorkerDeliveryProtocol"
                                 + ".DeliveryReport"
                 )
-                .doesNotContain("\"23002\"")
-                .doesNotContain("ArrayBlockingQueue");
+                .doesNotContain("\"23002\"");
+        assertThat(routeVerificationBatcher)
+                .contains("ArrayBlockingQueue")
+                .contains("Thread.ofVirtual()")
+                .contains("MAX_BATCH_SIZE = 100")
+                .doesNotContain("io.netty")
+                .doesNotContain("Channel")
+                .doesNotContain("WorkerRouteRegistry")
+                .doesNotContain("RedisWorkerBindingRegistry");
+        assertThat(host.replace(routeVerificationBatcher, ""))
+                .doesNotContain("ArrayBlockingQueue")
+                .doesNotContain("Thread.ofVirtual()");
 
         String assembly = readSources(WORKER_ASSEMBLY);
         assertThat(assembly)
                 .contains("groupInitializer.initialize()")
+                .contains("routeVerificationBatcher.start()")
                 .contains("adapterManager.start()")
+                .contains("routeVerificationBatcher.stopIngress()")
                 .contains("adapterManager.close()")
+                .contains("routeVerificationBatcher.close()")
                 .contains("WorkerGroupRegistrationService")
                 .contains("properties.groupConfigJson()")
                 .doesNotContain("ScenarioWorkers")

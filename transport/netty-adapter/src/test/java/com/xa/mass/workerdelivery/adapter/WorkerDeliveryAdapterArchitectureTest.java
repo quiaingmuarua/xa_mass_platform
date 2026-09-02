@@ -146,7 +146,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains(".executor(HTTP_EXECUTOR)")
                 .contains("commands:consume")
                 .contains("results:append")
-                .contains("verify-binding")
+                .doesNotContain("verify-binding")
                 .doesNotContain("Executors.newCachedThreadPool");
     }
 

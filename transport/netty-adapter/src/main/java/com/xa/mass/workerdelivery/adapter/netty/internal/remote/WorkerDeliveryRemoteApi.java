@@ -19,9 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
@@ -50,8 +47,6 @@ public final class WorkerDeliveryRemoteApi {
             "deliveryReport.encodeRemoteRequest";
     private static final String REPORT_DECODE_OPERATION =
             "deliveryReport.decodeRemoteResponse";
-    private static final String ROUTE_OPERATION =
-            "workerConnection.verifyRoute";
     private static final Set<String> APPEND_FIELDS = Set.of(
             "acceptedCount",
             "rejectedCount"
@@ -108,34 +103,6 @@ public final class WorkerDeliveryRemoteApi {
         );
     }
 
-    public CompletionStage<Void> verifyRoute(
-            String adapterId,
-            String workerId
-    ) {
-        CompletionStage<HttpResponse<String>> request;
-        try {
-            request = postEmptyAsync(
-                    routePath(adapterId, workerId),
-                    ROUTE_OPERATION,
-                    "Worker route verification failed"
-            );
-        } catch (RuntimeException error) {
-            return CompletableFuture.failedFuture(
-                    unavailable(
-                            ROUTE_OPERATION,
-                            "Worker route verification failed",
-                            error
-                    )
-            );
-        }
-        return request.thenApply(response -> {
-            if (response.statusCode() != 204) {
-                throw routeStatusFailure(response.statusCode());
-            }
-            return null;
-        });
-    }
-
     private HttpResponse<String> postJson(
             String relativePath,
             String jsonBody,
@@ -171,29 +138,6 @@ public final class WorkerDeliveryRemoteApi {
                     error
             );
         }
-    }
-
-    private CompletionStage<HttpResponse<String>> postEmptyAsync(
-            String relativePath,
-            String operation,
-            String failureMessage
-    ) {
-        HttpRequest request = request(relativePath)
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build();
-        return HTTP_CLIENT.sendAsync(
-                request,
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-        ).handle((response, failure) -> {
-            if (failure != null) {
-                throw unavailable(
-                        operation,
-                        failureMessage,
-                        unwrap(failure)
-                );
-            }
-            return response;
-        });
     }
 
     private String encodeConsumeRequest(int limit) {
@@ -310,17 +254,6 @@ public final class WorkerDeliveryRemoteApi {
                 + "/results:append";
     }
 
-    private static String routePath(
-            String adapterId,
-            String workerId
-    ) {
-        return "/api/v1/worker-delivery/endpoint-managers/"
-                + encodePathSegment(adapterId)
-                + "/workers/"
-                + encodePathSegment(workerId)
-                + ":verify-binding";
-    }
-
     private static String responseBody(HttpResponse<String> response) {
         return response.body() == null ? "" : response.body();
     }
@@ -385,28 +318,6 @@ public final class WorkerDeliveryRemoteApi {
         );
     }
 
-    private static WorkerDeliveryAdapterException routeStatusFailure(
-            int statusCode
-    ) {
-        WorkerDeliveryAdapterErrorCode errorCode;
-        if (statusCode >= 400 && statusCode < 500) {
-            errorCode = WorkerDeliveryAdapterErrorCode
-                    .WORKER_ROUTE_REJECTED;
-        } else if (statusCode >= 500) {
-            errorCode = WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_UNAVAILABLE;
-        } else {
-            errorCode = WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_PROTOCOL_ERROR;
-        }
-        return new WorkerDeliveryAdapterException(
-                errorCode,
-                ROUTE_OPERATION,
-                "Worker route verification failed with HTTP " + statusCode,
-                null
-        );
-    }
-
     private static WorkerDeliveryAdapterException unavailable(
             String operation,
             String message,
@@ -463,15 +374,6 @@ public final class WorkerDeliveryRemoteApi {
             );
         }
         return value;
-    }
-
-    private static Throwable unwrap(Throwable failure) {
-        Throwable current = failure;
-        while (current instanceof CompletionException
-                && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
     }
 
 }

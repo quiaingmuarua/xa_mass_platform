@@ -12,12 +12,12 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decision;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletionException;
 
 /**
  * Shared Netty connection mechanism for one Adapter instance.
@@ -59,7 +58,7 @@ public final class WorkerConnectionMechanism {
     private final WorkerRouteRegistry routes;
     private final WorkerPropertiesCache propertiesCache;
     private final NettyWorkerServer networkServer;
-    private final WorkerDeliveryRemoteApi remoteApi;
+    private final WorkerRouteVerifier routeVerifier;
     private final WorkerDeliveryCodec codec;
     private final BatchDispatcher<String> reportDispatcher;
     private final String adapterId;
@@ -68,7 +67,7 @@ public final class WorkerConnectionMechanism {
     public WorkerConnectionMechanism(
             WorkerRouteRegistry routes,
             NettyWorkerServer networkServer,
-            WorkerDeliveryRemoteApi remoteApi,
+            WorkerRouteVerifier routeVerifier,
             WorkerDeliveryCodec codec,
             BatchDispatcher<String> reportDispatcher,
             String adapterId,
@@ -83,9 +82,9 @@ public final class WorkerConnectionMechanism {
                 networkServer,
                 "networkServer"
         );
-        this.remoteApi = Objects.requireNonNull(
-                remoteApi,
-                "remoteApi"
+        this.routeVerifier = Objects.requireNonNull(
+                routeVerifier,
+                "routeVerifier"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportDispatcher = Objects.requireNonNull(
@@ -300,38 +299,42 @@ public final class WorkerConnectionMechanism {
             String workerId
     ) {
         try {
-            remoteApi.verifyRoute(adapterId, workerId)
-                    .whenComplete((ignored, failure) ->
+            routeVerifier.verify(adapterId, workerId)
+                    .whenComplete((decision, failure) ->
                             context.executor().execute(() ->
                                     finishVerification(
                                             context,
                                             workerId,
+                                            decision,
                                             failure
                                     )
                             )
                     );
         } catch (RuntimeException error) {
-            finishVerification(context, workerId, error);
+            finishVerification(context, workerId, null, error);
         }
     }
 
     private void finishVerification(
             ChannelHandlerContext context,
             String workerId,
+            Decision decision,
             Throwable failure
     ) {
         Channel channel = context.channel();
-        if (failure != null) {
+        if (failure != null || decision == null) {
             if (!routes.cancelVerification(workerId, channel)) {
                 return;
             }
-            if (isDefiniteRouteRejection(failure)) {
+            networkServer.closeConnection(
+                    channel,
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            );
+            return;
+        }
+        if (decision == Decision.REJECTED) {
+            if (routes.cancelVerification(workerId, channel)) {
                 writeTerminalClose(channel);
-            } else {
-                networkServer.closeConnection(
-                        channel,
-                        AdapterConnectionCloseReason.VERIFICATION_FAILED
-                );
             }
             return;
         }
@@ -603,22 +606,6 @@ public final class WorkerConnectionMechanism {
                 && "200".equals(report.outcomeCode())
                 && "null".equals(report.payload())
                 && report.forward().isEmpty();
-    }
-
-    private static boolean isDefiniteRouteRejection(Throwable failure) {
-        Throwable cause = unwrap(failure);
-        return cause instanceof WorkerDeliveryAdapterException classified
-                && classified.errorCode()
-                == WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED;
-    }
-
-    private static Throwable unwrap(Throwable failure) {
-        Throwable current = failure;
-        while (current instanceof CompletionException
-                && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
     }
 
     public enum DeliveryAttempt {

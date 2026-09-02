@@ -21,10 +21,6 @@ public enum WorkerDeliveryAdapterErrorCode {
             22002,
             "Worker Delivery remote API response is invalid"
     ),
-    WORKER_ROUTE_REJECTED(
-            22003,
-            "Worker route was rejected"
-    ),
     DELIVERY_INTERRUPTED(
             23001,
             "Worker command delivery was interrupted"

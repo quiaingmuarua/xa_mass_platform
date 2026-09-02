@@ -350,16 +350,17 @@ WebSocket and line Socket first receive a strict identity `DeliveryReport`:
 
 Every physical connection sends identity first. When one Adapter process sees a
 workerId for the first time, exactly one Channel becomes its pending verification
-owner and asks Server through
-`/endpoint-managers/{adapterId}/workers/{workerId}:verify-binding` whether its
-persisted Worker Binding points to this Adapter. Another initial Channel for the
-same workerId is physically closed. Only successful route verification installs
-the active Channel; no ACK is sent. WorkerGroup is absent from the identity,
-Channel metadata, and Adapter route state.
-Adapter does not invoke Kernel Worker upsert. A definite 4xx rejection emits
+owner and calls the Server-injected `WorkerRouteVerifier`. Server admits that
+single request to a bounded queue; one resident virtual thread reads at most
+100 current Endpoint Bindings per batch and completes each request separately.
+Another initial Channel for the same workerId is physically closed. Only a
+`VERIFIED` decision installs the active Channel; no ACK is sent. WorkerGroup is
+absent from the identity, Channel metadata, and Adapter route state.
+Adapter does not invoke Kernel Worker upsert. A `REJECTED` decision emits
 `ADAPTER/worker.connection.close` and closes the physical connection after
-flush. Remote API unavailability or 5xx only closes the physical connection, so
-the Worker Client may reconnect to the same Endpoint.
+flush. Queue rejection, timeout, shutdown, or Binding-owner failure completes
+verification exceptionally and only closes the physical connection, so the
+Worker Client may reconnect to the same Endpoint.
 
 Ordinary disconnect removes only the exact active Channel. The verified route
 remains in that Adapter process, so the next identity for the same workerId
@@ -439,12 +440,15 @@ remote batch per outer iteration, while the Report Dispatcher is both the
 thread-safe ingress and single consumer. Command and Report Processes handle
 one supplied batch once. Remote priority is decided by Server before the
 Command response is created.
-The Factory-owned Remote API owns the fixed Command consume, Report append, and
-Route verification methods, including their paths, wire JSON and
-method-specific status classification. Its process-shared JDK HTTP client owns
+The Factory-owned Remote API owns the fixed Command consume and Report append
+methods, including their paths, wire JSON and method-specific status
+classification. Its process-shared JDK HTTP client owns
 connection and HTTP execution resources plus raw request mechanics. The client
 carries no Adapter configuration or lifecycle; the immutable facade retains
 the process Factory's base URI, request timeout and codec.
+Route verification is a separate single-item Adapter application port. Its
+Server implementation owns bounded admission, batch acquisition, timeout, and
+Binding reads; it owns no Channel, Route entry, or Worker Properties.
 One callback Handler adapts Netty events without becoming another owner. One
 common connection mechanism and pure Registry own identity, verification,
 route selection, and Result ingress; the concrete physical Server owns its listener, EventLoop,

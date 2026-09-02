@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
 import java.net.URI;
 import java.nio.file.Path;
@@ -26,7 +27,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         List<String> properties = new ArrayList<>(List.of(
                 "xa.mass.worker-delivery.adapter.remote-base-url="
                         + "http://127.0.0.1:19082",
-                "xa.mass.worker-delivery.adapter.remote-request-timeout=20ms"
+                "xa.mass.worker-delivery.adapter.remote-request-timeout=20ms",
+                "xa.mass.worker-delivery.adapter."
+                        + "verification-queue-capacity=321",
+                "xa.mass.worker-delivery.adapter.verification-timeout=30ms"
         ));
         properties.addAll(adapterProperties(
                 "websocket-1",
@@ -48,6 +52,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                     assertThat(bound.remoteRequestTimeout()).isEqualTo(
                             Duration.ofMillis(20)
                     );
+                    assertThat(bound.verificationQueueCapacity())
+                            .isEqualTo(321);
+                    assertThat(bound.verificationTimeout())
+                            .isEqualTo(Duration.ofMillis(30));
                     assertThat(bound.instances())
                             .containsOnlyKeys("websocket-1", "socket-1");
                     NettyWorkerDeliveryAdapterConfig websocket =
@@ -110,21 +118,43 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
                 URI.create("file:///not-http"),
                 Duration.ofSeconds(1),
+                100_000,
+                Duration.ofSeconds(5),
                 Map.of()
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTP");
         assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
                 URI.create("http://127.0.0.1:18082?owner=other"),
                 Duration.ofSeconds(1),
+                100_000,
+                Duration.ofSeconds(5),
                 Map.of()
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("query or fragment");
         assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
                 URI.create("http://127.0.0.1:18082"),
                 Duration.ZERO,
+                100_000,
+                Duration.ofSeconds(5),
                 Map.of()
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("remote-request-timeout");
+        assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
+                URI.create("http://127.0.0.1:18082"),
+                Duration.ofSeconds(1),
+                0,
+                Duration.ofSeconds(5),
+                Map.of()
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("verification-queue-capacity");
+        assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
+                URI.create("http://127.0.0.1:18082"),
+                Duration.ofSeconds(1),
+                100_000,
+                Duration.ZERO,
+                Map.of()
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("verification-timeout");
     }
 
     @Test
@@ -201,7 +231,11 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                             org.mockito.ArgumentMatchers.any()
                     )).thenReturn(endpointMatches);
                     return directory;
-                });
+                })
+                .withBean(
+                        WorkerBindingService.class,
+                        () -> mock(WorkerBindingService.class)
+                );
     }
 
     private static List<String> adapterProperties(

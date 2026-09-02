@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
+import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
@@ -30,16 +31,22 @@ public final class NettyWorkerDeliveryAdapterFactory {
 
     private final WorkerDeliveryCodec codec;
     private final WorkerDeliveryRemoteApi remoteApi;
+    private final WorkerRouteVerifier routeVerifier;
 
     public NettyWorkerDeliveryAdapterFactory(
             URI remoteBaseUrl,
-            Duration remoteRequestTimeout
+            Duration remoteRequestTimeout,
+            WorkerRouteVerifier routeVerifier
     ) {
         codec = new WorkerDeliveryCodec();
         remoteApi = new WorkerDeliveryRemoteApi(
                 remoteBaseUrl,
                 remoteRequestTimeout,
                 codec
+        );
+        this.routeVerifier = Objects.requireNonNull(
+                routeVerifier,
+                "routeVerifier"
         );
     }
 
@@ -82,7 +89,7 @@ public final class NettyWorkerDeliveryAdapterFactory {
                 new WorkerConnectionMechanism(
                         routes,
                         networkServer,
-                        remoteApi,
+                        routeVerifier,
                         codec,
                         reportDispatcher,
                         requiredAdapterId,

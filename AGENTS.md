@@ -318,8 +318,9 @@ Rules:
   both non-blocking multi-producer ingress and its single consumer. Queues do
   not cross Dispatcher boundaries.
 - One process-scoped Adapter Factory owns the immutable Remote API facade and
-  codec used by every Adapter it creates. The facade owns the three fixed
-  paths, wire JSON and method-specific status semantics. Its process-shared
+  codec used by every Adapter it creates. The facade owns the fixed Command
+  consume and Report append paths, wire JSON and method-specific status
+  semantics. Its process-shared
   JDK HTTP client and explicit virtual-thread executor own raw HTTP resources
   only and carry no Adapter configuration or lifecycle. Do not restore the
   JDK client's default cached platform-thread executor.
@@ -334,6 +335,10 @@ Rules:
   Reports without a final synchronous flush.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
+- First verification crosses only the injected single-item
+  `WorkerRouteVerifier` port. Its Server batch owner may coordinate a bounded
+  queue and read at most 100 Bindings per batch, but neither side may expose
+  Channel or Route state through that port. Verification has no HTTP endpoint.
 - Registry keeps one atomic pending, connected or disconnected Route entry per
   workerId; do not split route and verification facts across parallel Maps.
 - Only disconnected verification evidence may be TTL/capacity cached. Active

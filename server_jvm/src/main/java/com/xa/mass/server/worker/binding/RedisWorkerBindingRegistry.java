@@ -17,6 +17,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 final class RedisWorkerBindingRegistry
         implements WorkerBindingRegistry, AutoCloseable {
@@ -52,13 +54,15 @@ final class RedisWorkerBindingRegistry
     }
 
     @Override
-    public Map<String, String> getEndpointManagerIds(
+    public CompletionStage<Map<String, String>> getEndpointManagerIdsAsync(
             List<String> workerIds
     ) {
         requireBatch(workerIds);
         if (workerIds.isEmpty()) {
-            return Map.of();
+            return CompletableFuture.completedFuture(Map.of());
         }
+
+        List<String> orderedWorkerIds = List.copyOf(workerIds);
 
         Map<String, List<String>> idsByKey = new LinkedHashMap<>();
         for (String workerId : workerIds) {
@@ -76,22 +80,27 @@ final class RedisWorkerBindingRegistry
                 async.hmget(key, ids.toArray(String[]::new))
         ));
 
-        Map<String, String> loadedByWorker = new LinkedHashMap<>();
-        futures.forEach((key, future) -> {
-            for (KeyValue<String, String> row
-                    : future.toCompletableFuture().join()) {
-                loadedByWorker.put(
-                        row.getKey(),
-                        row.hasValue() ? row.getValue() : null
-                );
-            }
+        CompletableFuture<?>[] pending = futures.values().stream()
+                .map(RedisFuture::toCompletableFuture)
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(pending).thenApply(ignored -> {
+            Map<String, String> loadedByWorker = new LinkedHashMap<>();
+            futures.values().forEach(future -> {
+                for (KeyValue<String, String> row
+                        : future.toCompletableFuture().join()) {
+                    loadedByWorker.put(
+                            row.getKey(),
+                            row.hasValue() ? row.getValue() : null
+                    );
+                }
+            });
+            Map<String, String> ordered = new LinkedHashMap<>();
+            orderedWorkerIds.forEach(workerId -> ordered.put(
+                    workerId,
+                    loadedByWorker.get(workerId)
+            ));
+            return Collections.unmodifiableMap(ordered);
         });
-        Map<String, String> ordered = new LinkedHashMap<>();
-        workerIds.forEach(workerId -> ordered.put(
-                workerId,
-                loadedByWorker.get(workerId)
-        ));
-        return Collections.unmodifiableMap(ordered);
     }
 
     String bindingKey(String workerId) {

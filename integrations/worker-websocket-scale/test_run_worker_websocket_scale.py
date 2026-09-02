@@ -92,13 +92,14 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
             },
             "runtime-server": {
                 "maximumNativeThreads": 511,
-                "maximumOpenFileDescriptors": 32_767,
+                "maximumOpenFileDescriptors": 16_383,
             },
         })
 
         for owner, field, value in (
             ("worker-host", "maximumNativeThreads", 512),
-            ("runtime-server", "maximumOpenFileDescriptors", 32_768),
+            ("worker-host", "maximumOpenFileDescriptors", 32_768),
+            ("runtime-server", "maximumOpenFileDescriptors", 16_384),
         ):
             resources = {
                 "worker-host": {
