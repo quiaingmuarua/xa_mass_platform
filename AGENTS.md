@@ -196,9 +196,10 @@ kernel_jvm`.
   provide unconditional eventual convergence.
 - `WorkerCandidateSelectionPolicy` owns due HOT pool observation, exact hold,
   priority/count/unique selection, cached renewal and endpoint-bearing
-  candidate assembly. Allocation and Dispatch policies publish bounded
-  identity-only Match Demands, hold an admitted pool, and consume evidence
-  through `WorkerMatchRuntime` only while that exact clean hold remains active.
+  candidate assembly. Allocation and Dispatch policies exact-hold a bounded
+  due pool before publishing identity-only Match Demands containing only the
+  successfully held Worker IDs. They consume evidence through
+  `WorkerMatchRuntime` only while that exact clean hold remains active.
   Unmatched and unselected holds expire naturally; do not compensate-release
   them or add a pending lease registry.
   They must not read Rule or Properties data or interpret constraint syntax.

@@ -66,6 +66,11 @@ class AssignmentPacersTest {
         ));
         when(selection.observeDueCandidates("group-1"))
                 .thenReturn(Map.of("worker-2", 102L));
+        when(selection.holdObservedCandidates(
+                "group-1",
+                Map.of("worker-2", 102L),
+                6_000L
+        )).thenReturn(Map.of("worker-2", 202L));
         when(matches.offerTaskDemands(any())).thenReturn(Map.of(
                 "task-1", DemandOfferStatus.OFFERED
         ));
@@ -107,7 +112,7 @@ class AssignmentPacersTest {
     }
 
     @Test
-    void allocationWithoutEvidenceOnlyPublishesBoundedDemand() {
+    void allocationPublishesOnlyTheSuccessfullyHeldWorkerPool() {
         WorkerCandidateSelectionPolicy selection = mock(
                 WorkerCandidateSelectionPolicy.class
         );
@@ -118,7 +123,15 @@ class AssignmentPacersTest {
         when(matches.takeTaskEvidence(List.of("task-1")))
                 .thenReturn(Map.of());
         when(selection.observeDueCandidates("group-1"))
-                .thenReturn(Map.of("worker-1", 101L));
+                .thenReturn(Map.of(
+                        "worker-1", 101L,
+                        "worker-2", 102L
+                ));
+        when(selection.holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L, "worker-2", 102L),
+                6_000L
+        )).thenReturn(Map.of("worker-2", 202L));
         when(matches.offerTaskDemands(any())).thenReturn(Map.of(
                 "task-1", DemandOfferStatus.OFFERED
         ));
@@ -140,19 +153,19 @@ class AssignmentPacersTest {
                 any(), any(), any(), any(), any(Integer.class)
         );
         verify(matches).offerTaskDemands(argThat(demands ->
-                demands.getFirst().heldWorkerIds().equals(List.of("worker-1"))
+                demands.getFirst().heldWorkerIds().equals(List.of("worker-2"))
                         && demands.getFirst().holdUntilMillis() == 6_000L));
         InOrder order = org.mockito.Mockito.inOrder(matches, selection);
-        order.verify(matches).offerTaskDemands(any());
         order.verify(selection).holdObservedCandidates(
                 "group-1",
-                Map.of("worker-1", 101L),
+                Map.of("worker-1", 101L, "worker-2", 102L),
                 6_000L
         );
+        order.verify(matches).offerTaskDemands(any());
     }
 
     @Test
-    void rejectedDemandDoesNotHoldTheObservedWorkerPool() {
+    void failedHoldDoesNotPublishAMatchDemand() {
         WorkerCandidateSelectionPolicy selection = mock(
                 WorkerCandidateSelectionPolicy.class
         );
@@ -164,9 +177,11 @@ class AssignmentPacersTest {
                 .thenReturn(Map.of());
         when(selection.observeDueCandidates("group-1"))
                 .thenReturn(Map.of("worker-1", 101L));
-        when(matches.offerTaskDemands(any())).thenReturn(Map.of(
-                "task-1", DemandOfferStatus.CAPACITY
-        ));
+        when(selection.holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
+        )).thenReturn(Map.of());
 
         assertEquals(0, new TaskWorkerAllocationPolicy(
                 selection,
@@ -182,9 +197,12 @@ class AssignmentPacersTest {
                 new TaskWorkerAllocationConfig(5_000)
         ));
 
-        verify(selection, never()).holdObservedCandidates(
-                any(), any(), any(Long.class)
+        verify(selection).holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
         );
+        verify(matches, never()).offerTaskDemands(any());
     }
 
     @Test
@@ -303,6 +321,11 @@ class AssignmentPacersTest {
         )).thenReturn(Map.of("message-1", List.of()));
         when(selection.observeDueCandidates("group-1"))
                 .thenReturn(Map.of("worker-1", 101L));
+        when(selection.holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
+        )).thenReturn(Map.of("worker-1", 201L));
         ItemMatchKey key = new ItemMatchKey("task-1", "message-1");
         when(matches.offerItemDemands(any())).thenReturn(Map.of(
                 key, DemandOfferStatus.OFFERED
@@ -336,6 +359,13 @@ class AssignmentPacersTest {
                 Map.of("worker-1", 101L),
                 6_000L
         );
+        InOrder order = org.mockito.Mockito.inOrder(selection, matches);
+        order.verify(selection).holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
+        );
+        order.verify(matches).offerItemDemands(any());
     }
 
     @Test

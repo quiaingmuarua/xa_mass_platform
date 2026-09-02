@@ -109,38 +109,42 @@ class JavaWorkerPlatformTest {
                     platform,
                     "httpClient"
             )).dispatcher().executorService();
-            for (int index = 0; index < connectionCount; index++) {
-                TextMessageClient client = platform.textClient(
-                        WorkerTransportType.WEBSOCKET,
-                        endpoint,
-                        Duration.ofSeconds(5),
-                        TextMessageReconnectPolicy.defaults()
-                );
-                clients.add(client);
-                client.start(new TextMessageClient.Listener() {
-                    @Override
-                    public void onOpen() {
-                        virtualCallbacks.add(
-                                Thread.currentThread().isVirtual()
-                        );
-                        opened.countDown();
-                    }
+            try {
+                for (int index = 0; index < connectionCount; index++) {
+                    TextMessageClient client = platform.textClient(
+                            WorkerTransportType.WEBSOCKET,
+                            endpoint,
+                            Duration.ofSeconds(5),
+                            TextMessageReconnectPolicy.defaults()
+                    );
+                    clients.add(client);
+                    client.start(new TextMessageClient.Listener() {
+                        @Override
+                        public void onOpen() {
+                            virtualCallbacks.add(
+                                    Thread.currentThread().isVirtual()
+                            );
+                            opened.countDown();
+                        }
 
-                    @Override
-                    public void onMessage(String message) {
-                    }
+                        @Override
+                        public void onMessage(String message) {
+                        }
 
-                    @Override
-                    public void onEndpointTerminated() {
-                    }
-                });
+                        @Override
+                        public void onEndpointTerminated() {
+                        }
+                    });
+                }
+
+                assertTrue(opened.await(30, TimeUnit.SECONDS));
+                assertEquals(connectionCount, virtualCallbacks.size());
+                assertTrue(virtualCallbacks.stream().allMatch(Boolean::valueOf));
+                clients.get(0).close();
+                assertTrue(clients.get(1).send("remaining-client-is-open"));
+            } finally {
+                clients.forEach(TextMessageClient::close);
             }
-
-            assertTrue(opened.await(30, TimeUnit.SECONDS));
-            assertEquals(connectionCount, virtualCallbacks.size());
-            assertTrue(virtualCallbacks.stream().allMatch(Boolean::valueOf));
-            clients.get(0).close();
-            assertTrue(clients.get(1).send("remaining-client-is-open"));
         }
         assertTrue(webSocketExecutor.isShutdown());
     }

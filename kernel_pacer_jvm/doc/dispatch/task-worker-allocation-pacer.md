@@ -14,8 +14,8 @@ Due PRECOMPUTED Tasks
   -> consume Task Match Evidence
   -> confirm exact active holds and schedule matched Worker IDs
   -> append selected hold evidence to Candidate Cache
-  -> publish new Match Demands for remaining deficits
-  -> exact-hold the admitted bounded Worker pool
+  -> exact-hold a bounded Worker pool for remaining deficits
+  -> publish new Match Demands for successfully held Worker IDs
 ```
 
 ## Input
@@ -40,8 +40,8 @@ Receiving an ON_DEMAND Task is a caller error.
 8. Load minimal Worker delivery descriptors and append Candidate entries with
    the observed hold score.
 9. Observe one bounded due HOT pool per WorkerGroup for remaining deficits.
-10. Offer Task Match Demands and, when at least one is admitted, exact-hold the
-    observed pool until the shared deadline.
+10. Exact-hold the observed pool until the shared deadline and offer Task Match
+    Demands containing only the successfully held Worker IDs.
 
 The first round for a new deficit normally publishes Demand. A later round
 consumes Evidence. Neither policy waits for Matching.
@@ -56,11 +56,11 @@ TaskRuleMatchDemand
   holdUntilMillis
 ```
 
-Kernel obtains one bounded due HOT Worker set for each WorkerGroup and places
-it in each admitted Task Demand for that group. It then exact-holds that pool.
-Worker Matching may only filter these IDs using its persistent Task Rule and
-Worker facts. Evidence carries the same hold deadline, and Kernel accepts a
-match only while that exact hold remains active.
+Kernel obtains one bounded due HOT Worker set for each WorkerGroup and
+exact-holds it. It places only successfully held Worker IDs in each Task Demand
+for that group. Worker Matching may only filter these IDs using its persistent
+Task Rule and Worker facts. Evidence carries the same hold deadline, and Kernel
+accepts a match only while that exact hold remains active.
 
 Demand and Worker pools are capped at 100. Requested count remains in Kernel's
 Task deficit and selection policy; it is not a Matching input. Queue capacity,

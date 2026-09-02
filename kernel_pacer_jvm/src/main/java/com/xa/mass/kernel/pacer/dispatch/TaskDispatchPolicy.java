@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchDemand;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchEvidence;
@@ -278,25 +277,23 @@ final class TaskDispatchPolicy {
             Map<String, Long> observed = candidateSelection
                     .observeDueCandidates(task.descriptor().workerGroupId());
             if (!observed.isEmpty()) {
-                List<String> workerIds = List.copyOf(observed.keySet());
-                List<ItemRuleMatchDemand> demands = missingEvidence.stream()
-                        .map(messageId -> new ItemRuleMatchDemand(
-                                new ItemMatchKey(task.taskId(), messageId),
-                                task.descriptor().workerGroupId(),
-                                workerIds,
-                                leaseUntilMillis
-                        ))
-                        .toList();
-                Map<ItemMatchKey, DemandOfferStatus> statuses =
-                        workerMatches.offerItemDemands(demands);
-                if (statuses.values().stream().anyMatch(
-                        status -> status == DemandOfferStatus.OFFERED
-                )) {
-                    candidateSelection.holdObservedCandidates(
+                Map<String, Long> held = candidateSelection
+                        .holdObservedCandidates(
                             task.descriptor().workerGroupId(),
                             observed,
                             leaseUntilMillis
-                    );
+                        );
+                if (!held.isEmpty()) {
+                    List<String> workerIds = List.copyOf(held.keySet());
+                    List<ItemRuleMatchDemand> demands = missingEvidence.stream()
+                            .map(messageId -> new ItemRuleMatchDemand(
+                                    new ItemMatchKey(task.taskId(), messageId),
+                                    task.descriptor().workerGroupId(),
+                                    workerIds,
+                                    leaseUntilMillis
+                            ))
+                            .toList();
+                    workerMatches.offerItemDemands(demands);
                 }
             }
         }

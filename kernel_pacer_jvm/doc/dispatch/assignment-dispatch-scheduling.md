@@ -32,8 +32,8 @@ Properties and Rules but cannot rank, lease, claim or dispatch.
 
 ```text
 Kernel Pacer
-  -> offer Task or Item Match Demand
-  -> exact-hold the admitted bounded due HOT Worker pool
+  -> exact-hold a bounded due HOT Worker pool
+  -> offer Task or Item Match Demand for successfully held Worker IDs
 Worker Matching
   -> load persistent Rule and facts for the supplied pool
   -> evaluate constraints
@@ -77,7 +77,7 @@ Main selects due PRECOMPUTED Tasks
   -> Kernel confirms active holds and applies priority/count/unique selection
   -> Kernel loads minimal Worker delivery descriptors
   -> selected exact holds enter Candidate Cache
-  -> remaining deficits publish Task Match Demands and hold their Worker pool
+  -> remaining deficits hold a Worker pool and publish Task Match Demands
 ```
 
 A Task Demand contains the current bounded due HOT Worker IDs for its fixed
@@ -100,7 +100,7 @@ Task Dispatch observes claimable Items
   -> consume available Item Evidence
   -> Kernel confirms active holds and applies priority/round uniqueness
   -> exact claim and Delivery Command publication
-  -> unassigned Items publish Item Match Demands and hold their Worker pool
+  -> unassigned Items hold a Worker pool and publish Item Match Demands
 ```
 
 Matching evaluates only the bounded Worker IDs supplied in each Item Demand.
@@ -111,8 +111,8 @@ disappear on Server restart; persistent Rules and facts do not.
 
 `WorkerCandidateSelectionPolicy` owns only scheduling operations:
 
-- observe a bounded due HOT identity pool and exact-hold it after Demand
-  admission;
+- observe a bounded due HOT identity pool and exact-hold it before Demand
+  publication;
 - order Candidate requests by priority and stable candidate identity;
 - enforce one Worker per Candidate assignment and one use per Pacer round;
 - confirm the exact hold for matched evidence and renew cached Worker leases;

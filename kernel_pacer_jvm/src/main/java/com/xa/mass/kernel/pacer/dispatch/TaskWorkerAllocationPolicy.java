@@ -3,7 +3,6 @@ package com.xa.mass.kernel.pacer.dispatch;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchEvidence;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -202,7 +201,16 @@ final class TaskWorkerAllocationPolicy {
                     now,
                     config.workerLeaseDurationMillis()
             );
-            List<String> workerIds = List.copyOf(observed.keySet());
+            Map<String, Long> held = candidateSelection
+                    .holdObservedCandidates(
+                            group.getKey(),
+                            observed,
+                            holdUntil
+                    );
+            if (held.isEmpty()) {
+                continue;
+            }
+            List<String> workerIds = List.copyOf(held.keySet());
             List<TaskRuleMatchDemand> demands = group.getValue().stream()
                     .map(task -> new TaskRuleMatchDemand(
                             task.taskId(),
@@ -211,17 +219,7 @@ final class TaskWorkerAllocationPolicy {
                             holdUntil
                     ))
                     .toList();
-            Map<String, DemandOfferStatus> statuses =
-                    workerMatches.offerTaskDemands(demands);
-            if (statuses.values().stream().anyMatch(
-                    status -> status == DemandOfferStatus.OFFERED
-            )) {
-                candidateSelection.holdObservedCandidates(
-                        group.getKey(),
-                        observed,
-                        holdUntil
-                );
-            }
+            workerMatches.offerTaskDemands(demands);
         }
     }
 

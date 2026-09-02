@@ -13,8 +13,8 @@ It does not select or lease a Worker.
 Server writes Worker facts and Task/Item rules
   -> WorkerMatchingCatalog persistent truth
 
-Kernel Pacer offers identity-only Match Demand
-  -> Kernel exact-holds the admitted bounded Worker pool
+Kernel Pacer exact-holds a bounded due Worker pool
+  -> offers identity-only Match Demand for the successfully held IDs
   -> WorkerMatchingRuntime evaluates only that pool against facts and rules
   -> identity-only Match Evidence
   -> Kernel confirms the exact hold, applies priority and uniqueness, and claims
@@ -78,11 +78,11 @@ Evidence expires with the Kernel hold, currently five seconds in the
 production dispatch configuration.
 
 PRECOMPUTED Task and ON_DEMAND Item Demands both contain a bounded Worker pool
-observed by Kernel score policy. Matching loads facts only for those supplied
-IDs, applies the persistent Task or Item Rule, and returns every match in that
-pool. Requested counts, Task priority and cross-Task uniqueness remain Kernel
-inputs and never enter Matching. There is no Group facts scan, Item cursor,
-Properties index or matching-result cache in this cut.
+successfully held by Kernel score policy. Matching loads facts only for those
+supplied IDs, applies the persistent Task or Item Rule, and returns every match
+in that pool. Requested counts, Task priority and cross-Task uniqueness remain
+Kernel inputs and never enter Matching. There is no Group facts scan, Item
+cursor, Properties index or matching-result cache in this cut.
 
 Catalog runtime failures release pending Demand ownership without publishing
 Evidence. A later Pacer round may offer the Demand again. An unexpected

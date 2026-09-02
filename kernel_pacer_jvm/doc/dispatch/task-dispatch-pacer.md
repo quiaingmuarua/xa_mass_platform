@@ -54,16 +54,16 @@ claimable taskId + messageId keys
   -> confirm exact active HOT holds
   -> Kernel priority and round-unique selection
   -> pair Worker with Item
+  -> exact-hold a bounded Worker pool for unassigned Items
   -> publish Item Match Demand for every unassigned Item
-  -> exact-hold the admitted bounded Worker pool
 ```
 
 An Item Evidence contains its key, fixed WorkerGroup, matched Worker IDs and
 the hold deadline copied from its Demand. It has no Rule, Properties, Score or
 endpoint. Expired, wrong-Group or no-longer-held evidence is treated as empty.
 
-Kernel observes a bounded due HOT pool, offers the Item Demands and exact-holds
-that pool when at least one Demand is admitted. Worker Matching reads the
+Kernel observes and exact-holds a bounded due HOT pool, then offers Item Demands
+containing only the successfully held Worker IDs. Worker Matching reads the
 create-only Item Rules and only the facts for those supplied Worker IDs. It
 returns all matches in the pool; requested count and cross-Task uniqueness are
 applied later by Kernel.
