@@ -64,6 +64,24 @@ final class ConvergenceWorkload {
             Map<String, Map<String, Object>> rulesByGroup,
             Checkpoint checkpoint
     ) {
+        return submitWave(wave, rulesByGroup, checkpoint, false);
+    }
+
+    List<Batch> submitCheckpointWave(
+            String wave,
+            Map<String, Map<String, Object>> rulesByGroup,
+            Checkpoint checkpoint
+    ) {
+        java.util.Objects.requireNonNull(checkpoint, "checkpoint");
+        return submitWave(wave, rulesByGroup, checkpoint, true);
+    }
+
+    private List<Batch> submitWave(
+            String wave,
+            Map<String, Map<String, Object>> rulesByGroup,
+            Checkpoint checkpoint,
+            boolean applyRuleToWholeBatch
+    ) {
         if (wave == null || wave.isBlank()
                 || batches.stream().anyMatch(batch -> batch.wave().equals(wave))) {
             throw new IllegalArgumentException("wave must be new and non-blank");
@@ -75,7 +93,8 @@ final class ConvergenceWorkload {
                     wave,
                     group,
                     rulesByGroup.getOrDefault(group.groupId(), Map.of()),
-                    checkpoint
+                    checkpoint,
+                    applyRuleToWholeBatch
             );
             Map<String, CallStatus> statuses = runtime.callItems(
                     taskId,
@@ -189,7 +208,8 @@ final class ConvergenceWorkload {
             String wave,
             GroupWorkload group,
             Map<String, Object> allocationRule,
-            Checkpoint checkpoint
+            Checkpoint checkpoint,
+            boolean applyRuleToWholeBatch
     ) {
         List<TaskItem> items = new ArrayList<>();
         for (int index = 1; index <= ITEMS_PER_GROUP_PER_WAVE; index++) {
@@ -226,7 +246,8 @@ final class ConvergenceWorkload {
                             + "-" + String.format("%03d", index),
                     eventCode,
                     payload,
-                    index == 1 ? allocationRule : Map.of()
+                    applyRuleToWholeBatch || index == 1
+                            ? allocationRule : Map.of()
             ));
         }
         return List.copyOf(items);

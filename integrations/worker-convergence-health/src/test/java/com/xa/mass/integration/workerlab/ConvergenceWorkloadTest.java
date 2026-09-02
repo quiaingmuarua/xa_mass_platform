@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class ConvergenceWorkloadTest {
 
     @Test
-    void offersTwoFiftyItemBatchesWithWitnessesAndInvalidInputs()
+    void scopesOrdinaryAndCheckpointWaveAllocationRules()
             throws Exception {
         List<Request> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(
@@ -72,9 +72,51 @@ class ConvergenceWorkloadTest {
             assertThat(requests).hasSize(2);
             assertBatch(requests.get(0), false);
             assertBatch(requests.get(1), true);
+
+            Map<String, Object> checkpointRule = Map.of(
+                    "workerId", Map.of("$in", List.of("target", "backup")),
+                    "worker.labSlot", Map.of("$eq", 1L)
+            );
+            workload.submitCheckpointWave(
+                    "wave-2",
+                    Map.of(
+                            WorkerLabConvergenceSupport.STRING_GROUP,
+                            checkpointRule
+                    ),
+                    new ConvergenceWorkload.Checkpoint("checkpoint-token")
+            );
+
+            assertThat(requests).hasSize(4);
+            assertBatch(requests.get(2), false);
+            assertCheckpointBatch(requests.get(3), checkpointRule);
         } finally {
             server.stop(0);
         }
+    }
+
+    private static void assertCheckpointBatch(
+            Request request,
+            Map<String, Object> expectedRule
+    ) {
+        List<Object> items = JsonValues.array(
+                request.body().get("items"),
+                "items"
+        );
+        assertThat(items).hasSize(50);
+        items.forEach(raw -> assertThat(JsonValues.object(
+                JsonValues.object(raw, "item").get("allocationRule"),
+                "allocationRule"
+        )).containsExactlyEntriesOf(expectedRule));
+        Map<String, Object> first = JsonValues.object(items.get(0), "item");
+        assertThat(first).containsEntry(
+                "eventCode",
+                WorkerLabConvergenceSupport.CHECKPOINT_EVENT
+        );
+        assertThat(JsonValues.object(first.get("payload"), "payload"))
+                .containsExactlyEntriesOf(Map.of(
+                        "checkpointToken",
+                        "checkpoint-token"
+                ));
     }
 
     private static void assertBatch(Request request, boolean stringGroup) {

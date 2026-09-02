@@ -95,7 +95,7 @@ final class WorkerTaskFaultConvergence {
                             "worker.labSlot", Map.of("$eq", TARGET_LAB_SLOT)
                     )
             );
-            List<Batch> faultWave = workload.submitWave(
+            List<Batch> faultWave = workload.submitCheckpointWave(
                     "wave-2",
                     targetRule,
                     new ConvergenceWorkload.Checkpoint(token)

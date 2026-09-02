@@ -92,10 +92,11 @@ FAIL background pattern, for three offered Items of each kind. The checkpoint
 remains Item one and is the only execution Item promoted to a named oracle.
 
 1. Baseline 100 connected/HOT Workers and complete both wave-one witnesses.
-2. Arm one Scenario-only String checkpoint. Its witness rule names target and
-   backup as the finite candidate set and requires the target's current
-   `labSlot`; submit wave two and wait until the uniquely matched Handler enters
-   it.
+2. Arm one Scenario-only String checkpoint. The complete wave-two String batch
+   names target and backup as its finite candidate set and requires the target's
+   current `labSlot`. Only the target initially matches; wait until its first
+   Handler enters the checkpoint before killing the Host. This keeps unrelated
+   String executions out of the process-loss boundary.
 3. Kill Scenario Host, then require the 100-worker world to become disconnected
    and leave serviceable HOT state.
 4. While Host is down, change one backup Worker's `labSlot`; restart 99 Workers

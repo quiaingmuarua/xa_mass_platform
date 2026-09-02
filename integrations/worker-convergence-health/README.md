@@ -59,10 +59,13 @@ scenario does not require every offered Item to succeed.
 ## In-Flight Loss Convergence
 
 Three waves offer 300 Items with 30 deterministic invalid inputs. During wave
-two, one String Item uses the target and backup worker IDs as its finite
-candidate set plus the mutable `labSlot` condition, and enters the
-Scenario-only checkpoint on the initial target. The runner kills Scenario Host,
-waits for the entire Worker world to become disconnected and unavailable,
+two, the String batch uses the target and backup worker IDs as its finite
+candidate set plus the mutable `labSlot` condition. Only the initial target
+matches before the mutation, and its first Item enters the Scenario-only
+checkpoint. The synchronous connection path prevents the remaining String
+Items from creating unrelated in-flight Worker executions before the runner
+kills Scenario Host. The runner then waits for the entire Worker world to
+become disconnected and unavailable,
 changes one stopped backup Worker's `labSlot`, then restarts 99 Workers while
 excluding the original target. The original checkpoint witness must finish on
 the recovered world: all 99 identities must reconnect unchanged, while the
