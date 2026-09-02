@@ -33,7 +33,7 @@ class ScenarioWorkerLabTest {
     }
 
     @Test
-    void missingGroupsInitializeTwoFiveLineInventoriesPerGroup()
+    void missingGroupsInitializeOneFiftyLineInventoryPerGroup()
             throws Exception {
         Path root = labRoot();
         Files.createDirectories(root.resolve("unconfigured-data"));
@@ -50,29 +50,24 @@ class ScenarioWorkerLabTest {
                 ));
 
         assertThat(groups).hasSize(2);
-        assertThat(groups.get(0).workers()).hasSize(10);
-        assertThat(groups.get(1).workers()).hasSize(10);
+        assertThat(groups.get(0).workers()).hasSize(50);
+        assertThat(groups.get(1).workers()).hasSize(50);
         assertThat(groups.get(0).workers())
                 .extracting(ScenarioWorkerStateFile::labWorkerKey)
-                .containsExactly(
-                        "scenario-phone-number-worker-a.jsonl:1",
-                        "scenario-phone-number-worker-a.jsonl:2",
-                        "scenario-phone-number-worker-a.jsonl:3",
-                        "scenario-phone-number-worker-a.jsonl:4",
-                        "scenario-phone-number-worker-a.jsonl:5",
-                        "scenario-phone-number-worker-b.jsonl:1",
-                        "scenario-phone-number-worker-b.jsonl:2",
-                        "scenario-phone-number-worker-b.jsonl:3",
-                        "scenario-phone-number-worker-b.jsonl:4",
-                        "scenario-phone-number-worker-b.jsonl:5"
-                );
-        assertThat(groups.get(0).workers().get(5).workerProperties())
+                .startsWith("workers-000.jsonl:1")
+                .endsWith("workers-000.jsonl:50");
+        assertThat(Files.readAllLines(
+                root.resolve(PHONE_GROUP).resolve("workers-000.jsonl"),
+                StandardCharsets.UTF_8
+        )).hasSize(50);
+        assertThat(groups.get(0).workers().get(49).workerProperties())
                 .containsEntry(
                         "labInventoryKey",
-                        "scenario-phone-number-worker-b.jsonl"
+                        "workers-000.jsonl"
                 )
-                .containsEntry("labInventoryLine", 1L)
-                .containsEntry("labSlot", 6L);
+                .containsEntry("labInventoryLine", 50L)
+                .containsEntry("labSlot", 50L)
+                .containsEntry("convergenceSlot", "A");
         assertThat(root.resolve("unconfigured-data/preserved.txt"))
                 .content().isEqualTo("preserved");
     }
@@ -115,7 +110,7 @@ class ScenarioWorkerLabTest {
                         List.of(group(PHONE_GROUP), group(STRING_GROUP))
                 );
 
-        assertThat(groups.get(0).workers()).hasSize(10);
+        assertThat(groups.get(0).workers()).hasSize(50);
         assertThat(groups.get(1).workers())
                 .extracting(ScenarioWorkerStateFile::labWorkerKey)
                 .containsExactly("custom.jsonl:1");

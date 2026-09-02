@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,6 +33,10 @@ class ScenarioWorkersTest {
     private static final URI RUNTIME_API =
             URI.create("http://127.0.0.1:18082");
     private static final String GROUP = "scenario-group";
+    private static final String PHONE_GROUP =
+            "scenario-phone-number-workers";
+    private static final String STRING_GROUP =
+            "scenario-string-utils-workers";
     @TempDir
     Path temporaryDirectory;
 
@@ -111,6 +116,33 @@ class ScenarioWorkersTest {
                 List.of("client-2.jsonl:1")
         );
         lifecycle.verify(manager).close();
+    }
+
+    @Test
+    void defaultHundredWorkerWorldStartsOneBatchPerGroup() {
+        JavaWorkerManager phone = mock(JavaWorkerManager.class);
+        JavaWorkerManager string = mock(JavaWorkerManager.class);
+        Map<String, JavaWorkerManager> managers = Map.of(
+                PHONE_GROUP, phone,
+                STRING_GROUP, string
+        );
+        ScenarioWorkers workers = workers(
+                defaultWorldConfig(),
+                (runtimeApiBaseUrl, preparedGroup) -> managers.get(
+                        preparedGroup.group().config().workerGroupId()
+                )
+        );
+
+        workers.start();
+        workers.close();
+
+        List<String> expectedKeys = IntStream.rangeClosed(1, 50)
+                .mapToObj(line -> "workers-000.jsonl:" + line)
+                .toList();
+        verify(phone).prepareAndStart(expectedKeys);
+        verify(string).prepareAndStart(expectedKeys);
+        verify(phone).close();
+        verify(string).close();
     }
 
     @Test
@@ -388,6 +420,13 @@ class ScenarioWorkersTest {
         Map<String, Object> groups = new LinkedHashMap<>();
         groups.put("group-1", groupJson());
         groups.put("group-2", groupJson());
+        return Jsons.toJson(groups);
+    }
+
+    private static String defaultWorldConfig() {
+        Map<String, Object> groups = new LinkedHashMap<>();
+        groups.put(PHONE_GROUP, groupJson());
+        groups.put(STRING_GROUP, groupJson());
         return Jsons.toJson(groups);
     }
 

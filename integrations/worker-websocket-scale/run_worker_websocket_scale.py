@@ -20,6 +20,13 @@ import uuid
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
+    materialize_inventory,
+)
+
+
 MODULE_ROOT = Path(__file__).resolve().parent
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
@@ -265,37 +272,20 @@ def _build_artifacts() -> None:
 
 
 def _generate_inventory(sandbox: Path, workers: int) -> None:
-    group_directory = sandbox / WORKER_GROUP
-    group_directory.mkdir(parents=True, exist_ok=False)
-    remaining = workers
-    file_index = 0
-    worker_index = 0
-    while remaining:
-        count = min(100, remaining)
-        filename = f"scale-workers-{file_index:03d}.jsonl"
-        lines: list[str] = []
-        for line_number in range(1, count + 1):
-            worker_index += 1
-            lines.append(
-                json.dumps(
-                    {
-                        "schemaVersion": 2,
-                        "workerProperties": {
-                            "runtime": "java",
-                            "capability": "string-utils",
-                            "region": "scale-ci",
-                            "scaleIndex": worker_index,
-                            "labInventoryKey": filename,
-                            "labInventoryLine": line_number,
-                        },
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
+    materialize_inventory(
+        sandbox,
+        {
+            WORKER_GROUP: tuple(
+                {
+                    "runtime": "java",
+                    "capability": "string-utils",
+                    "region": "scale-ci",
+                    "scaleIndex": worker_index,
+                }
+                for worker_index in range(1, workers + 1)
             )
-        _write_text(group_directory / filename, "\n".join(lines) + "\n")
-        remaining -= count
-        file_index += 1
+        },
+    )
 
 
 def _capability_assembly() -> dict[str, object]:

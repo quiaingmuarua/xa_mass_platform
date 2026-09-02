@@ -6,10 +6,10 @@ These scenarios prevent Scale, Topology, Chaos and Workload dimensions from
 forming a Cartesian product. Each scale tier fixes the other dimensions and
 owns one primary claim.
 
-## Correctness: 20 Workers, 100 Items
+## Correctness: 100 Workers, 100 Items
 
 ```text
-World       2 Groups x 10 Workers
+World       2 Groups x 50 Workers
 Topology    WebSocket, one Adapter, heterogeneous fixed Properties
 Workload    2 managed items:call batches, 50 Items per Group
 Mutation    one graceful Scenario Host restart
@@ -18,7 +18,7 @@ Oracle      exact identity/route/extension/Result closure
 
 Initial phase:
 
-1. Discover exactly 20 Lab addresses and 20 unique Server-issued worker IDs.
+1. Discover exactly 100 Lab addresses and 100 unique Server-issued worker IDs.
 2. Relate each identity to Runtime Preview, connected Adapter route,
    Properties projection and one Direct Call.
 3. Submit two 50-Item batch calls. Each Group's three Event Names receive
@@ -30,7 +30,7 @@ Restart phase:
 
 1. Stop only Scenario Host gracefully; retain Server, Redis and Lab files.
 2. Restart the same Host.
-3. Require all 20 Lab addresses to resolve to their original worker IDs and
+3. Require all 100 Lab addresses to resolve to their original worker IDs and
    re-establish the same route/probe relations.
 
 Capability-specific output values remain Owner-test claims.
@@ -38,7 +38,8 @@ Capability-specific output values remain Owner-test claims.
 ## Convergence Health: 100 Workers, 1000 Items
 
 Both scenarios use 2 Groups x 50 Workers, one WebSocket Adapter and isolated
-Redis/Lab state.
+Redis/Lab state. They begin from the exact same canonical Inventory as
+Correctness, then apply lane-owned mutations and capability additions.
 
 Their Scenario assembly gives each current Endpoint a bounded 600-attempt,
 500-millisecond reconnect budget. This exists so one deliberate Server restart
@@ -161,12 +162,13 @@ Mutation    one Runtime Server restart; Host retained
 Oracle      >= 9,900 connected-and-HOT plus Linux resources
 ```
 
-The lane generates 100 JSONL files of 100 Workers, prepares all 10,000
+The shared Inventory materializer generates 100 JSONL files of 100 Workers,
+then the lane prepares all 10,000
 identities, holds the threshold for a stable window, restarts Server once and
 re-establishes it without another Prepare. It records worker-ID digest, RSS,
 native thread and file-descriptor evidence.
 
-This is a resource/capacity claim. It does not repeat the 20-Worker correctness
+This is a resource/capacity claim. It does not repeat the 100-Worker correctness
 oracle, inject the 100-Worker fault matrix, or claim Task throughput.
 
 ## Excluded Products

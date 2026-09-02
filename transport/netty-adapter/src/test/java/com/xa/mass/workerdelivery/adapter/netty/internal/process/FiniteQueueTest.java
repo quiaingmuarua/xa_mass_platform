@@ -26,7 +26,6 @@ class FiniteQueueTest {
                 .isEqualTo(ACCEPTED);
         assertThat(queue.ingress(List.of("three", "four")))
                 .isEqualTo(ACCEPTED);
-        assertThat(queue.estimatedSize()).isEqualTo(4);
         assertThat(queue.ingress(List.of("five"))).isEqualTo(FULL);
 
         assertThat(queue.consume(2)).containsExactly("one", "two");
@@ -64,7 +63,7 @@ class FiniteQueueTest {
         assertThat(queue.ingress(List.of("late"))).isEqualTo(CLOSED);
         assertThat(queue.consume(1)).containsExactly("one");
         queue.clear();
-        assertThat(queue.estimatedSize()).isZero();
+        assertThat(queue.consume(2)).isEmpty();
         assertThat(queue.ingress(List.of("still-late"))).isEqualTo(CLOSED);
     }
 
@@ -96,7 +95,6 @@ class FiniteQueueTest {
         }
 
         assertThat(accepted.get()).isEqualTo(capacity);
-        assertThat(queue.estimatedSize()).isEqualTo(capacity);
         assertThat(queue.consume(capacity)).hasSize(capacity);
     }
 

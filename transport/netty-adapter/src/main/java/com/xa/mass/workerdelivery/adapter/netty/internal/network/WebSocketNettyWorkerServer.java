@@ -45,6 +45,7 @@ public final class WebSocketNettyWorkerServer
         implements NettyWorkerServer {
 
     private static final int MAX_FRAME_BYTES = 1_048_576;
+    private static final int MAX_CHILD_EVENT_LOOP_THREADS = 8;
     private static final String WORKER_WEBSOCKET_PATH =
             "/api/v1/worker-delivery/websocket";
 
@@ -54,7 +55,8 @@ public final class WebSocketNettyWorkerServer
     private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
     private final Set<Channel> childChannels = ConcurrentHashMap.newKeySet();
-    private EventLoopGroup eventLoopGroup;
+    private EventLoopGroup acceptorEventLoopGroup;
+    private EventLoopGroup childEventLoopGroup;
     private Channel listener;
     private volatile boolean closed;
 
@@ -81,52 +83,66 @@ public final class WebSocketNettyWorkerServer
     @Override
     public synchronized void start(ChannelHandler sharedConnectionHandler) {
         requireSharable(sharedConnectionHandler);
-        if (eventLoopGroup != null || listener != null || closed) {
+        if (acceptorEventLoopGroup != null
+                || childEventLoopGroup != null
+                || listener != null
+                || closed) {
             throw new IllegalStateException(
                     "WebSocket Worker server cannot be started again"
             );
         }
 
-        eventLoopGroup = new MultiThreadIoEventLoopGroup(
-                1,
-                daemonThreadFactory(adapterId + "-websocket-netty"),
-                NioIoHandler.newFactory()
-        );
-        ServerBootstrap bootstrap = new ServerBootstrap()
-                .group(eventLoopGroup)
-                .channel(NioServerSocketChannel.class)
-                .childOption(ChannelOption.TCP_NODELAY, true)
-                .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel channel) {
-                        track(channel);
-                        channel.pipeline()
-                                .addLast(new HttpServerCodec())
-                                .addLast(new WriteTimeoutHandler(
-                                        sendTimeLimit.toMillis(),
-                                        TimeUnit.MILLISECONDS
-                                ))
-                                .addLast(new HttpObjectAggregator(
-                                        MAX_FRAME_BYTES
-                                ))
-                                .addLast(new WebSocketServerProtocolHandler(
-                                        WORKER_WEBSOCKET_PATH,
-                                        null,
-                                        false,
-                                        MAX_FRAME_BYTES,
-                                        false,
-                                        false
-                                ))
-                                .addLast(new UnmatchedRequestHandler())
-                                .addLast(new WebSocketStringCodec(
-                                        WebSocketNettyWorkerServer.this
-                                ))
-                                .addLast(sharedConnectionHandler);
-                    }
-                });
-
         try {
+            acceptorEventLoopGroup = new MultiThreadIoEventLoopGroup(
+                    1,
+                    daemonThreadFactory(
+                            adapterId + "-websocket-acceptor"
+                    ),
+                    NioIoHandler.newFactory()
+            );
+            childEventLoopGroup = new MultiThreadIoEventLoopGroup(
+                    defaultChildEventLoopThreads(),
+                    daemonThreadFactory(adapterId + "-websocket-io"),
+                    NioIoHandler.newFactory()
+            );
+            ServerBootstrap bootstrap = new ServerBootstrap()
+                    .group(
+                            acceptorEventLoopGroup,
+                            childEventLoopGroup
+                    )
+                    .channel(NioServerSocketChannel.class)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel channel) {
+                            track(channel);
+                            channel.pipeline()
+                                    .addLast(new HttpServerCodec())
+                                    .addLast(new WriteTimeoutHandler(
+                                            sendTimeLimit.toMillis(),
+                                            TimeUnit.MILLISECONDS
+                                    ))
+                                    .addLast(new HttpObjectAggregator(
+                                            MAX_FRAME_BYTES
+                                    ))
+                                    .addLast(
+                                            new WebSocketServerProtocolHandler(
+                                                    WORKER_WEBSOCKET_PATH,
+                                                    null,
+                                                    false,
+                                                    MAX_FRAME_BYTES,
+                                                    false,
+                                                    false
+                                            )
+                                    )
+                                    .addLast(new UnmatchedRequestHandler())
+                                    .addLast(new WebSocketStringCodec(
+                                            WebSocketNettyWorkerServer.this
+                                    ))
+                                    .addLast(sharedConnectionHandler);
+                        }
+                    });
             listener = bootstrap.bind(new InetSocketAddress(
                     listenHost,
                     listenPort
@@ -224,16 +240,19 @@ public final class WebSocketNettyWorkerServer
 
     @Override
     public void close() {
-        EventLoopGroup stoppingGroup;
+        EventLoopGroup stoppingChildGroup;
+        EventLoopGroup stoppingAcceptorGroup;
         Channel stoppingListener;
         synchronized (this) {
             if (closed) {
                 return;
             }
             closed = true;
-            stoppingGroup = eventLoopGroup;
+            stoppingChildGroup = childEventLoopGroup;
+            stoppingAcceptorGroup = acceptorEventLoopGroup;
             stoppingListener = listener;
-            eventLoopGroup = null;
+            childEventLoopGroup = null;
+            acceptorEventLoopGroup = null;
             listener = null;
         }
 
@@ -241,7 +260,18 @@ public final class WebSocketNettyWorkerServer
         RuntimeException failure = null;
         failure = closeListener(stoppingListener, deadline, failure);
         failure = closeChildChannels(deadline, failure);
-        failure = stopEventLoop(stoppingGroup, deadline, failure);
+        failure = stopEventLoop(
+                stoppingChildGroup,
+                deadline,
+                failure,
+                "WebSocket Worker child EventLoop"
+        );
+        failure = stopEventLoop(
+                stoppingAcceptorGroup,
+                deadline,
+                failure,
+                "WebSocket Worker acceptor EventLoop"
+        );
         if (failure != null) {
             throw failure;
         }
@@ -314,7 +344,8 @@ public final class WebSocketNettyWorkerServer
     private RuntimeException stopEventLoop(
             EventLoopGroup group,
             long deadline,
-            RuntimeException failure
+            RuntimeException failure,
+            String resource
     ) {
         if (group == null) {
             return failure;
@@ -332,7 +363,7 @@ public final class WebSocketNettyWorkerServer
                         failure,
                         shutdownTimeout(
                                 "netty.stopEventLoop",
-                                "WebSocket Worker EventLoop"
+                                resource
                         )
                 );
             }
@@ -498,6 +529,13 @@ public final class WebSocketNettyWorkerServer
             thread.setDaemon(true);
             return thread;
         };
+    }
+
+    private static int defaultChildEventLoopThreads() {
+        return Math.min(
+                MAX_CHILD_EVENT_LOOP_THREADS,
+                Math.max(2, Runtime.getRuntime().availableProcessors())
+        );
     }
 
     private record CloseDescription(int code, String message) {

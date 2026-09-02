@@ -114,18 +114,44 @@ class DeliveryReportProcessTest {
     }
 
     @Test
-    void remoteSubmissionUsesFixedBatchesIndependentOfQueueCapacity() {
+    void oneRoundDrainsAtMostFourFixedRemoteBatches() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 1_000);
 
-            assertThat(process.ingress(reports(205))).isEqualTo(ACCEPTED);
-            process.round();
-            process.round();
+            assertThat(process.ingress(reports(501))).isEqualTo(ACCEPTED);
             process.round();
 
             assertThat(peer.attempts)
                     .extracting(List::size)
-                    .containsExactly(100, 100, 5);
+                    .containsExactly(100, 100, 100, 100);
+
+            process.round();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100, 100, 100, 100, 100, 1);
+        }
+    }
+
+    @Test
+    void failedBatchStopsTheRoundAndRetriesBeforeLaterReports() {
+        try (ReportPeer peer = new ReportPeer()) {
+            peer.responses.add(accepted(100));
+            peer.responses.add(new Response(503, "{}"));
+            DeliveryReportProcess process = process(peer, 1_000);
+            process.ingress(reports(205));
+
+            process.round();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100, 100);
+
+            process.round();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100, 100, 100, 5);
         }
     }
 
@@ -197,6 +223,13 @@ class DeliveryReportProcessTest {
             reports.add("report-" + index);
         }
         return List.copyOf(reports);
+    }
+
+    private static Response accepted(int count) {
+        return new Response(202, Jsons.toJson(Map.of(
+                "acceptedCount", count,
+                "rejectedCount", 0
+        )));
     }
 
     private static final class ReportPeer implements AutoCloseable {

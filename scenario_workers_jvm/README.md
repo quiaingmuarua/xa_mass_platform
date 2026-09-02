@@ -70,13 +70,13 @@ The optional startup plan is validated completely before any replica starts:
   "initialWorkers": [
     {
       "workerGroupId": "scenario-string-utils-workers",
-      "labWorkerKey": "scenario-string-utils-worker-a.jsonl:1"
+      "labWorkerKey": "workers-000.jsonl:1"
     }
   ],
   "scheduledStops": [
     {
       "workerGroupId": "scenario-string-utils-workers",
-      "labWorkerKey": "scenario-string-utils-worker-a.jsonl:1",
+      "labWorkerKey": "workers-000.jsonl:1",
       "delayMillis": 5000
     }
   ]
@@ -95,11 +95,9 @@ One standalone Host process exclusively owns this writable local directory:
 ```text
 data/scenario-workers/
 ├── scenario-phone-number-workers/
-│   ├── scenario-phone-number-worker-a.jsonl
-│   └── scenario-phone-number-worker-b.jsonl
+│   └── workers-000.jsonl
 └── scenario-string-utils-workers/
-    ├── scenario-string-utils-worker-a.jsonl
-    └── scenario-string-utils-worker-b.jsonl
+    └── workers-000.jsonl
 ```
 
 Initialization is decided independently for each configured WorkerGroup:
@@ -125,6 +123,11 @@ watcher, or multi-process lock. The only file-schema transition is the bounded
 reset obtained by deleting a configured Group directory or the complete Lab
 root; old Worker file layouts are not migrated.
 
+The checked default world is two Groups with 50 records each. Each Group is
+seeded as one `workers-000.jsonl` file, so initial Batch Prepare runs as one
+50-record request per Group. Existing local Group directories are intentionally
+not upgraded; delete `data/scenario-workers` to opt into the new default world.
+
 The Lab root must end in `data/scenario-workers` and must not pass through a
 symbolic link. Only direct, non-symlink `*.jsonl` children of configured
 Group directories are discovered. Files are sorted by name; each group is
@@ -139,8 +142,8 @@ used by the control API; it is not `clientWorkerKey` or a general Transport
 identity field. The parent directory supplies the configured `workerGroupId`:
 
 ```json
-{"schemaVersion":2,"workerProperties":{"labInventoryKey":"scenario-string-utils-worker-a.jsonl","labInventoryLine":1,"runtime":"java","labSlot":1}}
-{"schemaVersion":2,"workerProperties":{"labInventoryKey":"scenario-string-utils-worker-a.jsonl","labInventoryLine":2,"runtime":"java","labSlot":2}}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":1,"runtime":"java","capability":"string-utils","region":"local","labSlot":1,"convergenceSlot":"A"}}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":2,"runtime":"java","capability":"string-utils","region":"local","labSlot":2,"convergenceSlot":"A"}}
 ```
 
 Blank lines, comments, multi-line objects, missing `workerProperties`, schema
@@ -273,7 +276,7 @@ Scenario Worker Host. Server owns the Java Kernel Pacer applications and its
 configured Adapter; each proof runner owns the Worker Host process:
 
 - [`worker-correctness`](../integrations/worker-correctness/) proves the exact
-  two-by-ten topology, Lab-coordinate identity mapping, Adapter routes,
+  two-by-fifty topology, Lab-coordinate identity mapping, Adapter routes,
   extension reachability, 100 final Results and identity reuse across a real
   Host restart;
 - [`worker-convergence-health`](../integrations/worker-convergence-health/)

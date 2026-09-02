@@ -18,7 +18,7 @@ Worker worlds are in
 | --- | ---: | --- |
 | Owner Test | minimal | One Owner algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
-| Worker Correctness | 2 Groups x 10 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
+| Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
 | Worker Convergence Health | 2 Groups x 50 Workers, 1000 Items | Finite-time convergence after deterministic state, process and Server faults |
 | Worker Capacity | 10,000 Workers | Connection, thread, file-descriptor, memory and reconnect capacity |
 
@@ -35,6 +35,11 @@ work, then asserts independent Network/Scheduling mutations and named witness
 convergence. `NOT_OBSERVED` is not treated as failure, `FAILED` is not counted
 as a successful witness, and non-witness Items do not carry a success-count or
 execution-count oracle.
+
+Correctness and Convergence materialize the same canonical 100-Worker
+Inventory into isolated Lab roots. Capacity uses the same materialization
+contract at 10,000 Workers; only topology, capability assembly and proof oracle
+change between lanes.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. High-level Worker proofs use `results:load` only for named

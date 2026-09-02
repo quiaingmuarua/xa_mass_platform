@@ -55,17 +55,37 @@ class DeliveryCommandProcessTest {
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
-    void softCapacityAllowsOneRemoteBatchOfRedundancy() {
-        try (Fixture fixture = new Fixture(2, 3, 10)) {
-            fixture.peer.batches.add(commands("worker-1", "worker-2"));
-            fixture.peer.batches.add(commands("worker-3", "worker-4"));
+    void fullRetryBacklogDoesNotBlockFreshCommandAcquisition() {
+        try (Fixture fixture = new Fixture(1, 1, 10)) {
+            fixture.activate("worker-fresh");
+            fixture.peer.batches.add(commands("worker-offline"));
+
+            fixture.process.round();
+
+            fixture.peer.batches.add(commands("worker-fresh"));
+            fixture.process.round();
+
+            assertThat(fixture.peer.requestedLimits)
+                    .containsExactly(1, 1, 1, 1);
+            assertThat(fixture.network.writtenWorkerIds)
+                    .containsExactly("worker-fresh");
+        }
+    }
+
+    @Test
+    void oneRoundAcquiresAtMostFourFreshBatches() {
+        try (Fixture fixture = new Fixture(1, 10, 10)) {
+            fixture.peer.batches.add(commands("worker-1"));
+            fixture.peer.batches.add(commands("worker-2"));
+            fixture.peer.batches.add(commands("worker-3"));
+            fixture.peer.batches.add(commands("worker-4"));
             fixture.peer.batches.add(commands("worker-5"));
 
             fixture.process.round();
-            fixture.process.round();
-            fixture.process.round();
 
-            assertThat(fixture.peer.requestedLimits).containsExactly(2, 2);
+            assertThat(fixture.peer.requestedLimits)
+                    .containsExactly(1, 1, 1, 1);
+            assertThat(fixture.peer.batches).hasSize(1);
         }
     }
 
@@ -79,7 +99,8 @@ class DeliveryCommandProcessTest {
 
             fixture.process.round();
 
-            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
+            assertThat(fixture.peer.requestedLimits)
+                    .containsExactly(1, 1, 1);
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
         }
@@ -95,7 +116,8 @@ class DeliveryCommandProcessTest {
             fixture.peer.batches.add(commands("worker-1"));
             fixture.process.round();
 
-            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
+            assertThat(fixture.peer.requestedLimits)
+                    .containsExactly(1, 1, 1);
         }
     }
 
@@ -208,7 +230,7 @@ class DeliveryCommandProcessTest {
             fixture.process.finishAfterSchedulerStop();
             fixture.process.finishAfterSchedulerStop();
 
-            assertThat(fixture.peer.requestedLimits).containsExactly(1);
+            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
             assertThat(fixture.network.writtenWorkerIds).isEmpty();
         }
     }

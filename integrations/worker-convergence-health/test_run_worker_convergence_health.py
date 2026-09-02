@@ -93,7 +93,7 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
     def test_offline_property_replace_preserves_state_document(self):
         with tempfile.TemporaryDirectory() as temporary:
             sandbox = Path(temporary)
-            PROOF._write_convergence_inventory(sandbox)
+            PROOF.materialize_inventory(sandbox, PROOF.CANONICAL_WORLD)
             filename = PROOF.FAULT_BACKUP[1].rsplit(":", 1)[0]
             path = sandbox / PROOF.STRING_GROUP / filename
 

@@ -26,11 +26,15 @@ platform TaskRunner threads fails the lane even when all connections recover.
 
 ## Ownership
 
-The Python runner owns processes, generated JSONL inventory, the exact Redis
+The Python runner owns processes, the exact Redis
 test scope, one Server restart, Linux `/proc` sampling, and safe evidence
 packaging. The Java Harness uses only the loopback Lab API and public Runtime
 APIs. It pages existing Network and Scheduling observations in groups of 100;
 it does not widen Server APIs or read Redis.
+
+Inventory is produced by the same strict materializer used by the 100-Worker
+Correctness and Convergence lanes. This lane supplies one 10,000-record scale
+world; the materializer alone owns deterministic 100-record JSONL splitting.
 
 The generated Host assembly contains only the existing
 `extension.worker.string.md5` capability. One hundred JSONL files contain one

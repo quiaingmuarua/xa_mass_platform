@@ -1,34 +1,1010 @@
 {
   "scenario-phone-number-workers": {
-    "scenario-phone-number-worker-a.jsonl": [
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":1}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":2}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":3}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":4}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":5}}
-    ],
-    "scenario-phone-number-worker-b.jsonl": [
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":6}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":7}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":8}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":9}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local","labSlot":10}}
+    "workers-000.jsonl": [
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 1,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 2,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 3,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 4,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 5,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 6,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 7,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 8,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 9,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 10,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 11,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 12,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 13,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 14,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 15,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 16,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 17,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 18,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 19,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 20,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 21,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 22,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 23,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 24,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 25,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 26,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 27,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 28,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 29,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 30,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 31,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 32,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 33,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 34,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 35,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 36,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 37,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 38,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 39,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 40,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 41,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 42,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 43,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 44,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 45,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 46,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 47,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 48,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 49,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "libphonenumber",
+          "region": "local",
+          "labSlot": 50,
+          "convergenceSlot": "A"
+        }
+      }
     ]
   },
   "scenario-string-utils-workers": {
-    "scenario-string-utils-worker-a.jsonl": [
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":1}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":2}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":3}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":4}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":5}}
-    ],
-    "scenario-string-utils-worker-b.jsonl": [
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":6}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":7}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":8}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":9}},
-      {"schemaVersion":2,"workerProperties":{"runtime":"java","capability":"string-utils","region":"local","labSlot":10}}
+    "workers-000.jsonl": [
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 1,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 2,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 3,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 4,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 5,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 6,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 7,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 8,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 9,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 10,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 11,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 12,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 13,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 14,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 15,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 16,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 17,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 18,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 19,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 20,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 21,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 22,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 23,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 24,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 25,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 26,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 27,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 28,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 29,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 30,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 31,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 32,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 33,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 34,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 35,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 36,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 37,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 38,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 39,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 40,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 41,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 42,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 43,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 44,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 45,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 46,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 47,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 48,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 49,
+          "convergenceSlot": "A"
+        }
+      },
+      {
+        "schemaVersion": 2,
+        "workerProperties": {
+          "runtime": "java",
+          "capability": "string-utils",
+          "region": "local",
+          "labSlot": 50,
+          "convergenceSlot": "A"
+        }
+      }
     ]
   }
 }

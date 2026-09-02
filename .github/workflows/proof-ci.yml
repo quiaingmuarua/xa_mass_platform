@@ -99,11 +99,13 @@ jobs:
           :integrations:worker-convergence-health:build
           :integrations:worker-websocket-scale:build
           :distribution:server:verifyPlatformDiagnosticCodes
-      - name: Verify Worker WebSocket scale runner contract
-        run: >-
-          python3 -m unittest discover
-          -s integrations/worker-websocket-scale
-          -p 'test_*.py'
+      - name: Verify Worker inventory and WebSocket scale runner contracts
+        run: |
+          python3 -m unittest \
+            integrations.worker_proof_support.test_scenario_inventory
+          python3 -m unittest discover \
+            -s integrations/worker-websocket-scale \
+            -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()
         run: >-
@@ -253,7 +255,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Worker Correctness:** workers=20, taskItems=100, restartIdentity=matched" \
+            echo "- **Worker Correctness:** workers=100, taskItems=100, restartIdentity=matched" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **Worker Correctness:** failed; inspect evidence and process logs" \

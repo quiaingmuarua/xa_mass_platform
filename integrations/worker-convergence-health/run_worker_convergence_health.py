@@ -20,17 +20,32 @@ import uuid
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
+    PHONE_GROUP,
+    STRING_GROUP,
+    canonical_100_worker_world,
+    inventory_coordinates,
+    materialize_inventory,
+)
+
+
 MODULE_TASK = ":integrations:worker-convergence-health"
 SERVER_CONFIG_DIRECTORY = Path(__file__).with_name("server-config").resolve()
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
 ENDPOINT_MANAGER = "scenario-websocket"
-PHONE_GROUP = "scenario-phone-number-workers"
-STRING_GROUP = "scenario-string-utils-workers"
-PHONE_FILE = "convergence-phone-workers.jsonl"
-STRING_FILE = "convergence-string-workers.jsonl"
-PHONE_WORKERS = tuple((PHONE_GROUP, f"{PHONE_FILE}:{line}") for line in range(1, 51))
-STRING_WORKERS = tuple((STRING_GROUP, f"{STRING_FILE}:{line}") for line in range(1, 51))
+CANONICAL_WORLD = canonical_100_worker_world()
+CANONICAL_COORDINATES = inventory_coordinates(CANONICAL_WORLD)
+PHONE_WORKERS = tuple(
+    (PHONE_GROUP, key)
+    for key in CANONICAL_COORDINATES[PHONE_GROUP]
+)
+STRING_WORKERS = tuple(
+    (STRING_GROUP, key)
+    for key in CANONICAL_COORDINATES[STRING_GROUP]
+)
 CONVERGENCE_WORKERS = PHONE_WORKERS + STRING_WORKERS
 FAULT_TARGET = STRING_WORKERS[0]
 FAULT_BACKUP = STRING_WORKERS[1]
@@ -110,7 +125,7 @@ def _run_scenario(
     evidence = scenario_root / "evidence"
     sandbox = scenario_root / "data" / "scenario-workers"
     evidence.mkdir(parents=True)
-    _write_convergence_inventory(sandbox)
+    materialize_inventory(sandbox, CANONICAL_WORLD)
     scope = "test_worker_convergence_{}_{}".format(
         scenario.replace("-", "_"),
         uuid.uuid4().hex[:12],
@@ -424,53 +439,6 @@ def _startup_plan(
             for worker, delay in scheduled_stops
         ],
     }
-
-
-def _write_convergence_inventory(sandbox: Path) -> None:
-    _write_group_inventory(
-        sandbox,
-        PHONE_GROUP,
-        PHONE_FILE,
-        "libphonenumber",
-    )
-    _write_group_inventory(
-        sandbox,
-        STRING_GROUP,
-        STRING_FILE,
-        "string-utils",
-    )
-
-
-def _write_group_inventory(
-    sandbox: Path,
-    worker_group_id: str,
-    filename: str,
-    capability: str,
-) -> None:
-    lines: list[str] = []
-    for line in range(1, 51):
-        lines.append(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "workerProperties": {
-                        "labInventoryKey": filename,
-                        "labInventoryLine": line,
-                        "runtime": "java",
-                        "capability": capability,
-                        "region": "local",
-                        "labSlot": line,
-                        "convergenceSlot": "A",
-                    },
-                },
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-        )
-    _atomic_write_text(
-        sandbox / worker_group_id / filename,
-        "\n".join(lines) + "\n",
-    )
 
 
 def _replace_worker_lab_slot(

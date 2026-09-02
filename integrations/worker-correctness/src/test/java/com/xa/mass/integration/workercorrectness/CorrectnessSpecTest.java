@@ -15,14 +15,14 @@ class CorrectnessSpecTest {
     Path temporaryDirectory;
 
     @Test
-    void checkedSpecDeclaresTwoGroupsAndTwentyReplicas() throws Exception {
+    void checkedSpecDeclaresTwoGroupsAndOneHundredReplicas() throws Exception {
         CorrectnessSpec spec = CorrectnessSpec.load(Path.of("correctness-spec.json"));
 
         assertEquals("scenario-websocket", spec.endpointManagerId());
         assertEquals(2, spec.labWorkerKeysByGroup().size());
-        assertEquals(20, spec.allLabWorkerKeys().size());
+        assertEquals(100, spec.allLabWorkerKeys().size());
         spec.labWorkerKeysByGroup().values().forEach(keys ->
-                assertEquals(10, keys.size()));
+                assertEquals(50, keys.size()));
     }
 
     @Test

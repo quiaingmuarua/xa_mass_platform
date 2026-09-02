@@ -24,6 +24,7 @@ import java.util.function.LongSupplier;
 /** Scheduled Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
 
+    private static final int MAX_FRESH_BATCHES_PER_ROUND = 4;
     private static final String WORKER_DELIVERY_EXPIRED_EVENT =
             "platform.adapter.worker-delivery.expired";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -38,7 +39,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             DeliveryCommandProcess.class.getName()
     );
 
-    private final FiniteQueue<QueuedCommand> commandQueue;
+    private final FiniteQueue<QueuedCommand> retryQueue;
     private final DeliveryCommandRemoteApi remoteApi;
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
@@ -58,7 +59,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             WorkerDeliveryCodec codec,
             String adapterId,
             int commandConsumeLimit,
-            int queueCapacity
+            int retryQueueCapacity
     ) {
         this(
                 remoteApi,
@@ -68,7 +69,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 codec,
                 adapterId,
                 commandConsumeLimit,
-                queueCapacity,
+                retryQueueCapacity,
                 System::currentTimeMillis
         );
     }
@@ -81,7 +82,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             WorkerDeliveryCodec codec,
             String adapterId,
             int commandConsumeLimit,
-            int queueCapacity,
+            int retryQueueCapacity,
             LongSupplier nowMillis
     ) {
         this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
@@ -102,16 +103,16 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
         if (commandConsumeLimit <= 0
-                || queueCapacity < commandConsumeLimit) {
+                || retryQueueCapacity < commandConsumeLimit) {
             throw new IllegalArgumentException(
                     "commandConsumeLimit must be between 1 and command "
-                            + "queue capacity"
+                            + "retry queue capacity"
             );
         }
         this.adapterId = adapterId;
         this.commandConsumeLimit = commandConsumeLimit;
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
-        commandQueue = new FiniteQueue<>(queueCapacity);
+        retryQueue = new FiniteQueue<>(retryQueueCapacity);
     }
 
     @Override
@@ -119,14 +120,26 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         if (roundsStopped) {
             return;
         }
-        refillBelowSoftCapacity();
+        dispatchBatch(retryQueue.consume(commandConsumeLimit));
         if (roundsStopped) {
             return;
         }
 
-        List<QueuedCommand> observed = commandQueue.consume(
-                commandQueue.capacity()
-        );
+        for (int index = 0;
+                index < MAX_FRESH_BATCHES_PER_ROUND && !roundsStopped;
+                index++) {
+            List<QueuedCommand> fresh = acquireFreshBatch();
+            if (fresh == null || fresh.isEmpty()) {
+                return;
+            }
+            dispatchBatch(fresh);
+            if (fresh.size() < commandConsumeLimit) {
+                return;
+            }
+        }
+    }
+
+    private void dispatchBatch(List<QueuedCommand> observed) {
         if (observed.isEmpty()) {
             return;
         }
@@ -148,7 +161,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             }
         }
         if (!roundsStopped && !retryLater.isEmpty()
-                && commandQueue.ingress(retryLater)
+                && retryQueue.ingress(retryLater)
                 != FiniteQueue.QueueIngressStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
@@ -160,10 +173,28 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
+    private List<QueuedCommand> acquireFreshBatch() {
+        Map<String, DeliveryCommand> acquired;
+        try {
+            acquired = remoteApi.consume(adapterId, commandConsumeLimit);
+        } catch (RuntimeException error) {
+            logSourceFailure(error);
+            return null;
+        }
+        if (acquired.isEmpty() || roundsStopped) {
+            return List.of();
+        }
+        ArrayList<QueuedCommand> batch = new ArrayList<>(acquired.size());
+        acquired.forEach((entryKey, command) -> batch.add(
+                new QueuedCommand(entryKey, command)
+        ));
+        return List.copyOf(batch);
+    }
+
     @Override
     public void quiesce() {
         roundsStopped = true;
-        commandQueue.stopIngress();
+        retryQueue.stopIngress();
     }
 
     @Override
@@ -172,7 +203,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             return;
         }
         quiesce();
-        commandQueue.clear();
+        retryQueue.clear();
         closeFinished = true;
     }
 
@@ -190,37 +221,6 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
         logInvalidTarget(queued.entryKey(), command);
         return WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
-    }
-
-    private void refillBelowSoftCapacity() {
-        if (commandQueue.estimatedSize() >= commandQueue.capacity()) {
-            return;
-        }
-
-        Map<String, DeliveryCommand> acquired;
-        try {
-            acquired = remoteApi.consume(adapterId, commandConsumeLimit);
-        } catch (RuntimeException error) {
-            logSourceFailure(error);
-            return;
-        }
-        if (acquired.isEmpty() || roundsStopped) {
-            return;
-        }
-        ArrayList<QueuedCommand> batch = new ArrayList<>(acquired.size());
-        acquired.forEach((entryKey, command) -> batch.add(
-                new QueuedCommand(entryKey, command)
-        ));
-        if (commandQueue.ingress(batch)
-                != FiniteQueue.QueueIngressStatus.ACCEPTED) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "adapterId={0} commandCount={1} message={2}",
-                    adapterId,
-                    batch.size(),
-                    "Consumed Adapter Commands were dropped"
-            );
-        }
     }
 
     private void offerExpiredTaskResult(

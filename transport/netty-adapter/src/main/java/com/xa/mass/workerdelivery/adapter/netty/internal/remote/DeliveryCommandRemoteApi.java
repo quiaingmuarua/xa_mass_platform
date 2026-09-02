@@ -46,7 +46,7 @@ public final class DeliveryCommandRemoteApi {
         } catch (WorkerDeliveryHttpClient.RequestFailure error) {
             throw unavailable("Delivery Command acquisition failed", error);
         }
-        return decodeConsumeResponse(body);
+        return decodeConsumeResponse(body, limit);
     }
 
     private String encodeConsumeRequest(int limit) {
@@ -59,10 +59,14 @@ public final class DeliveryCommandRemoteApi {
     }
 
     private Map<String, DeliveryCommand> decodeConsumeResponse(
-            String value
+            String value,
+            int limit
     ) {
         try {
             Map<String, Object> commands = Jsons.parseObject(value);
+            if (commands.size() > limit) {
+                throw malformed("Delivery Command batch size");
+            }
             Map<String, DeliveryCommand> decoded = new LinkedHashMap<>();
             commands.forEach((entryKey, encoded) -> {
                 if (entryKey.isBlank() || !(encoded instanceof Map<?, ?>)) {

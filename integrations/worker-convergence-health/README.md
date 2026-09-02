@@ -17,6 +17,10 @@ ON_DEMAND_ITEM_RULE through managed batch items:call
 independent Lab, Network, Scheduling and Task observations
 ```
 
+The runner materializes the same canonical 2x50 Properties Inventory used by
+Worker Correctness, but into a separate Lab root and Redis scope. Capability
+assembly and all mutations remain owned by this convergence lane.
+
 The Integration owns a Server catalog override and Scenario capability
 assembly that add `extension.worker.lab.delay` and
 `extension.worker.lab.fail` only to the existing String Group. Every String

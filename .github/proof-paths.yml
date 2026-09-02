@@ -21,6 +21,7 @@ jvm_contracts:
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
   - '.github/scripts/summarize_junit.py'
+  - 'integrations/worker_proof_support/**'
   - '!**/*.md'
 redis_owner:
   - 'kernel_jvm/**'
@@ -79,6 +80,7 @@ worker_correctness:
   - 'transport/java-worker/build.gradle'
   - 'transport/netty-adapter/src/main/**'
   - 'transport/netty-adapter/build.gradle'
+  - 'integrations/worker_proof_support/**'
   - 'integrations/worker-correctness/**'
   - 'build.gradle'
   - 'settings.gradle'
@@ -108,6 +110,7 @@ worker_convergence_health:
   - 'transport/java-worker/build.gradle'
   - 'transport/netty-adapter/src/main/**'
   - 'transport/netty-adapter/build.gradle'
+  - 'integrations/worker_proof_support/**'
   - 'integrations/worker-convergence-health/**'
   - 'build.gradle'
   - 'settings.gradle'

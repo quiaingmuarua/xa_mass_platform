@@ -198,6 +198,30 @@ class NettyWorkerServerTest {
 
     @ParameterizedTest
     @EnumSource(Protocol.class)
+    void acceptedConnectionsUseIndependentChildEventLoops(
+            Protocol protocol
+    ) throws Exception {
+        int port = availablePort();
+        EventLoopThreadHandler handler = new EventLoopThreadHandler(2);
+        NettyWorkerServer server = protocol.server(
+                port,
+                DEFAULT_TIMEOUT
+        );
+        server.start(handler);
+        try (Peer first = protocol.connect(port);
+                Peer second = protocol.connect(port)) {
+            assertThat(handler.active.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(handler.threadNames)
+                    .hasSize(2)
+                    .doesNotHaveDuplicates()
+                    .allSatisfy(name -> assertThat(name).contains("-io-"));
+        } finally {
+            server.close();
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Protocol.class)
     void ownerShutdownBudgetCannotBecomeAnUnboundedWait(
             Protocol protocol
     ) throws Exception {
@@ -510,6 +534,25 @@ class NettyWorkerServerTest {
 
         @Override
         public void channelActive(ChannelHandlerContext context) {
+            active.countDown();
+            context.fireChannelActive();
+        }
+    }
+
+    @ChannelHandler.Sharable
+    private static final class EventLoopThreadHandler
+            extends ChannelInboundHandlerAdapter {
+
+        private final CountDownLatch active;
+        private final List<String> threadNames = new CopyOnWriteArrayList<>();
+
+        private EventLoopThreadHandler(int expectedConnections) {
+            active = new CountDownLatch(expectedConnections);
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext context) {
+            threadNames.add(Thread.currentThread().getName());
             active.countDown();
             context.fireChannelActive();
         }

@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class SocketNettyWorkerServer implements NettyWorkerServer {
 
     private static final int MAX_FRAME_BYTES = 1_048_576;
+    private static final int MAX_CHILD_EVENT_LOOP_THREADS = 8;
 
     private final String adapterId;
     private final String listenHost;
@@ -39,7 +40,8 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
     private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
     private final Set<Channel> childChannels = ConcurrentHashMap.newKeySet();
-    private EventLoopGroup eventLoopGroup;
+    private EventLoopGroup acceptorEventLoopGroup;
+    private EventLoopGroup childEventLoopGroup;
     private Channel listener;
     private volatile boolean closed;
 
@@ -66,48 +68,58 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
     @Override
     public synchronized void start(ChannelHandler sharedConnectionHandler) {
         requireSharable(sharedConnectionHandler);
-        if (eventLoopGroup != null || listener != null || closed) {
+        if (acceptorEventLoopGroup != null
+                || childEventLoopGroup != null
+                || listener != null
+                || closed) {
             throw new IllegalStateException(
                     "Socket Worker server cannot be started again"
             );
         }
 
-        eventLoopGroup = new MultiThreadIoEventLoopGroup(
-                1,
-                daemonThreadFactory(adapterId + "-socket-netty"),
-                NioIoHandler.newFactory()
-        );
-        ServerBootstrap bootstrap = new ServerBootstrap()
-                .group(eventLoopGroup)
-                .channel(NioServerSocketChannel.class)
-                .childOption(ChannelOption.TCP_NODELAY, true)
-                .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel channel) {
-                        track(channel);
-                        channel.pipeline()
-                                .addLast(new LineBasedFrameDecoder(
-                                        MAX_FRAME_BYTES,
-                                        true,
-                                        true
-                                ))
-                                .addLast(new StringDecoder(
-                                        StandardCharsets.UTF_8
-                                ))
-                                .addLast(new LineEncoder(
-                                        LineSeparator.UNIX,
-                                        StandardCharsets.UTF_8
-                                ))
-                                .addLast(new WriteTimeoutHandler(
-                                        sendTimeLimit.toMillis(),
-                                        TimeUnit.MILLISECONDS
-                                ))
-                                .addLast(sharedConnectionHandler);
-                    }
-                });
-
         try {
+            acceptorEventLoopGroup = new MultiThreadIoEventLoopGroup(
+                    1,
+                    daemonThreadFactory(adapterId + "-socket-acceptor"),
+                    NioIoHandler.newFactory()
+            );
+            childEventLoopGroup = new MultiThreadIoEventLoopGroup(
+                    defaultChildEventLoopThreads(),
+                    daemonThreadFactory(adapterId + "-socket-io"),
+                    NioIoHandler.newFactory()
+            );
+            ServerBootstrap bootstrap = new ServerBootstrap()
+                    .group(
+                            acceptorEventLoopGroup,
+                            childEventLoopGroup
+                    )
+                    .channel(NioServerSocketChannel.class)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel channel) {
+                            track(channel);
+                            channel.pipeline()
+                                    .addLast(new LineBasedFrameDecoder(
+                                            MAX_FRAME_BYTES,
+                                            true,
+                                            true
+                                    ))
+                                    .addLast(new StringDecoder(
+                                            StandardCharsets.UTF_8
+                                    ))
+                                    .addLast(new LineEncoder(
+                                            LineSeparator.UNIX,
+                                            StandardCharsets.UTF_8
+                                    ))
+                                    .addLast(new WriteTimeoutHandler(
+                                            sendTimeLimit.toMillis(),
+                                            TimeUnit.MILLISECONDS
+                                    ))
+                                    .addLast(sharedConnectionHandler);
+                        }
+                    });
             listener = bootstrap.bind(new InetSocketAddress(
                     listenHost,
                     listenPort
@@ -201,16 +213,19 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
 
     @Override
     public void close() {
-        EventLoopGroup stoppingGroup;
+        EventLoopGroup stoppingChildGroup;
+        EventLoopGroup stoppingAcceptorGroup;
         Channel stoppingListener;
         synchronized (this) {
             if (closed) {
                 return;
             }
             closed = true;
-            stoppingGroup = eventLoopGroup;
+            stoppingChildGroup = childEventLoopGroup;
+            stoppingAcceptorGroup = acceptorEventLoopGroup;
             stoppingListener = listener;
-            eventLoopGroup = null;
+            childEventLoopGroup = null;
+            acceptorEventLoopGroup = null;
             listener = null;
         }
 
@@ -218,7 +233,18 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
         RuntimeException failure = null;
         failure = closeListener(stoppingListener, deadline, failure);
         failure = closeChildChannels(deadline, failure);
-        failure = stopEventLoop(stoppingGroup, deadline, failure);
+        failure = stopEventLoop(
+                stoppingChildGroup,
+                deadline,
+                failure,
+                "Socket Worker child EventLoop"
+        );
+        failure = stopEventLoop(
+                stoppingAcceptorGroup,
+                deadline,
+                failure,
+                "Socket Worker acceptor EventLoop"
+        );
         if (failure != null) {
             throw failure;
         }
@@ -291,7 +317,8 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
     private RuntimeException stopEventLoop(
             EventLoopGroup group,
             long deadline,
-            RuntimeException failure
+            RuntimeException failure,
+            String resource
     ) {
         if (group == null) {
             return failure;
@@ -309,7 +336,7 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
                         failure,
                         shutdownTimeout(
                                 "netty.stopEventLoop",
-                                "Socket Worker EventLoop"
+                                resource
                         )
                 );
             }
@@ -428,5 +455,12 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
             thread.setDaemon(true);
             return thread;
         };
+    }
+
+    private static int defaultChildEventLoopThreads() {
+        return Math.min(
+                MAX_CHILD_EVENT_LOOP_THREADS,
+                Math.max(2, Runtime.getRuntime().availableProcessors())
+        );
     }
 }

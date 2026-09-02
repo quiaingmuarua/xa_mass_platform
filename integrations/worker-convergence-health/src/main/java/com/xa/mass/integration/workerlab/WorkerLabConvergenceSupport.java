@@ -27,11 +27,11 @@ final class WorkerLabConvergenceSupport {
 
     static final List<WorkerRef> PHONE_WORKERS = workers(
             PHONE_GROUP,
-            "convergence-phone-workers.jsonl"
+            "workers-000.jsonl"
     );
     static final List<WorkerRef> STRING_WORKERS = workers(
             STRING_GROUP,
-            "convergence-string-workers.jsonl"
+            "workers-000.jsonl"
     );
     static final List<WorkerRef> CONVERGENCE_WORKERS = java.util.stream.Stream
             .concat(PHONE_WORKERS.stream(), STRING_WORKERS.stream())

@@ -61,13 +61,13 @@ stable repository-wide identity.
 ## worker_correctness
 
 - **Primary owner:** `:integrations:worker-correctness`.
-- **Claim:** the fixed 2x10 Scenario world has exact Lab-to-worker identity,
+- **Claim:** the fixed 2x50 Scenario world has exact Lab-to-worker identity,
   Adapter route and Properties relationships; six extension names are
-  reachable; 100 batch-call Items succeed; graceful Host restart preserves all 20
+  reachable; 100 batch-call Items succeed; graceful Host restart preserves all 100
   worker IDs.
 - **Failure model:** missing/duplicate identity, route mismatch, unreachable
   extension, missing/duplicate Result or restart identity drift.
-- **World:** 2 Groups x 10 Workers, one WebSocket Adapter, one Server and one
+- **World:** 2 Groups x 50 Workers, one WebSocket Adapter, one Server and one
   Scenario Host.
 - **Workload:** one managed `items:call` batch per Group, 50 Items each; Event
   distribution per Group is `17/17/16`.
@@ -123,6 +123,10 @@ stable repository-wide identity.
   aggregate Proof Gate result.
 - **CI cost:** medium per scenario; high when run locally through `all`.
 
+Correctness and Convergence independently materialize the same canonical
+100-Worker Properties world. They share initialization mechanics, not Redis,
+processes, mutations or evidence.
+
 ## worker_websocket_scale
 
 - **Primary owner:** `:integrations:worker-websocket-scale` and its separate
@@ -142,6 +146,10 @@ stable repository-wide identity.
   concurrency, topology breadth and soak.
 - **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** very high; nightly/manual only.
+
+The 10k lane uses the same strict Inventory materializer and 100-record JSONL
+boundary as the 100-Worker lanes. Its scale capability and resource oracle are
+lane-owned additions rather than a second initialization path.
 
 ## android_host
 

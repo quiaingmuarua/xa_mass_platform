@@ -12,6 +12,7 @@ import java.util.Objects;
 /** Scheduled Result ingress process for one Adapter instance. */
 public final class DeliveryReportProcess implements AdapterProcess {
 
+    private static final int MAX_BATCHES_PER_ROUND = 4;
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportProcess.class.getName()
     );
@@ -46,7 +47,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
         if (roundsStopped || closeFinished) {
             return;
         }
-        submitAtMostOneBatch();
+        submitBoundedBatches();
     }
 
     @Override
@@ -91,16 +92,32 @@ public final class DeliveryReportProcess implements AdapterProcess {
         };
     }
 
-    private void submitAtMostOneBatch() {
-        List<String> batch = pendingBatch;
-        if (batch == null) {
-            batch = reportQueue.consume(maximumRemoteBatchSize());
+    private void submitBoundedBatches() {
+        for (int index = 0;
+                index < MAX_BATCHES_PER_ROUND && !roundsStopped;
+                index++) {
+            List<String> batch = pendingBatch;
+            if (batch == null) {
+                batch = reportQueue.consume(maximumRemoteBatchSize());
+            }
+            if (batch.isEmpty()) {
+                return;
+            }
+            if (roundsStopped) {
+                pendingBatch = batch;
+                return;
+            }
+
+            SubmissionOutcome outcome = submit(batch);
+            if (outcome == SubmissionOutcome.RETRY) {
+                pendingBatch = batch;
+                return;
+            }
+            pendingBatch = null;
+            if (outcome == SubmissionOutcome.DROP) {
+                return;
+            }
         }
-        if (batch.isEmpty()) {
-            return;
-        }
-        SubmissionOutcome outcome = submit(batch);
-        pendingBatch = outcome == SubmissionOutcome.RETRY ? batch : null;
     }
 
     private int maximumRemoteBatchSize() {

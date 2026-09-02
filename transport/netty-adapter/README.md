@@ -26,8 +26,9 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one `WorkerConnectionMechanism`, `WorkerRouteRegistry`, and properties cache
 one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
-one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
-one `DeliveryCommandProcess` with one private Command queue
+one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`, with
+one acceptor EventLoop and a CPU-bounded child EventLoop group
+one `DeliveryCommandProcess` with one private retry queue
 one `DeliveryReportProcess` with one private Result queue and pending batch
 one `AdapterProcessManager` owning the finite Process set and its scheduler
 ```
@@ -49,9 +50,10 @@ interpretation, route verification, Command routing, and Result ingress; its
 Registry alone owns
 the single per-Worker route truth. Each claimed Channel carries only its Worker
 identity as Adapter-local Netty metadata for inbound correlation. The selected
-physical Server owns its listener, EventLoop, all child Channels, complete
-Pipeline, framing, physical writes, asynchronous write failures, and close
-behavior. These are internal owners, not a public SPI or transport-kind branch.
+physical Server owns its listener, acceptor EventLoop, child EventLoop group,
+all child Channels, complete Pipeline, framing, physical writes, asynchronous
+write failures, and close behavior. These are internal owners, not a public SPI
+or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
@@ -112,8 +114,11 @@ meaningful only when they use different listener endpoints and different
 endpoint-manager mailboxes.
 
 Do not run competing Adapter instances for the same `endpointManagerId`.
-Throughput for one endpoint is controlled by consume limit, command queue
-capacity, and loop intervals.
+Each physical Server keeps accept independent from established-connection I/O.
+It owns one acceptor thread and `min(8, max(2, availableProcessors))` child
+EventLoop threads. Netty preserves one Channel's callback order while allowing
+different Worker Channels to progress independently. These are fixed internal
+resource bounds, not Server configuration or Worker execution threads.
 
 ## Connection Protocol
 
@@ -279,31 +284,34 @@ Channel properties result refreshes an entry.
 
 ### Command consumption round
 
-`DeliveryCommandProcess` owns one private queue and one fixed remote path.
+`DeliveryCommandProcess` owns one private retry queue and one fixed remote path.
 Server may place a bounded prefix from its Adapter Direct FIFO in a
 `commands:consume` response. Remaining capacity first comes from one consume of
 the shared Worker Command Hash, whose fields may contain TASK or SYSTEM
 Commands. If capacity still remains, Server may add one bounded Kernel
 Serviceability Adapter snapshot Command. This is remote acquisition priority,
-not local preemption: commands already present in the Adapter FIFO remain
-ahead, a full local queue postpones the next Server consume, and an already
-running Worker Handler is unaffected. Sustained higher-priority Commands may
-starve Serviceability acquisition by design.
+not local preemption: a full local retry queue never postpones the next Server
+consume, and an already running Worker Handler is unaffected. Sustained
+higher-priority Commands may starve Serviceability acquisition by design.
 
 ```text
-while the queue is below its soft capacity
-  -> consume at most the configured limit from commands:consume
-  -> ingress the complete bounded batch
-
-consume one queue snapshot
-for each command exactly once this round
+consume at most one configured-limit retry slice
+for each retained command exactly once this round
   -> expired TASK: atomically offer the 23002 TASK Report plus one KERNEL
      worker-delivery.expired Report, then remove
   -> any other expired Command: remove without synthetic evidence
-  -> no active writable Worker Channel: rotate to queue tail
+  -> no active writable Worker Channel: return to the retry queue
   -> physical Server write started: remove
   -> dst=ADAPTER: ignore the entry key and dispatch through the immutable map
+
+then consume at most four fresh 1..configured-limit batches
+  -> dispatch each fresh batch immediately with the same rules
+  -> retain only RETRY_LATER Commands in the private retry queue
+  -> empty response, remote failure, quiesce, or the fourth batch ends the round
 ```
+
+A remote response containing more Commands than the requested limit is a
+protocol failure and none of that response is dispatched.
 
 TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SYSTEM -> WORKER` or
 `SYSTEM -> ADAPTER`. Worker Serviceability uses only `KERNEL -> ADAPTER` with
@@ -311,9 +319,11 @@ TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SYSTEM -> WORKER` or
 event is rejected. A Worker Command entry key is its workerId; an Adapter
 Command entry key is opaque and ignored. No active Channel is temporary while
 the deadline remains live. DIRECT_CALL expiry creates no synthetic result;
-the Server waiter owns timeout. The queue has no workerId index, and its soft
-capacity is a backpressure target rather than delivery truth. Adapter does not
-read Worker score or interpret Serviceability policy.
+the Server waiter owns timeout. The retry queue has no workerId index, and its
+soft capacity is a backpressure target rather than delivery truth. When full,
+a newly retryable batch is dropped best effort; it cannot create cross-Worker
+head-of-line blocking for fresh Commands. Adapter does not read Worker score or
+interpret Serviceability policy.
 
 The composition root installs a finite immutable Adapter event map. This is an
 execution surface, not a public registry or Server whitelist:
@@ -387,7 +397,8 @@ dropped together.
 ```text
 pending batch exists -> retry it first
 otherwise            -> drain at most 100 Reports from the queue
-submit one 1..100 mixed encoded-result batch to results:append
+after success         -> continue, for at most four batches this round
+retry or rejection    -> stop this round without crossing that batch
 ```
 
 Server selects the receiving owner by Report `dst`: TASK enters Kernel Task
@@ -401,14 +412,16 @@ DIRECT_CALL Report may be retried with the mixed batch and is then rejected by
 Server after its waiter has ended.
 
 The fixed remote batch limit is independent of Result queue capacity. A queue
-may retain more than 100 Reports, but each scheduler round submits at most 100;
-later rounds continue draining it. Normal close retries an existing pending
-batch and may perform one additional at-most-100 best-effort submit. It does
-not unboundedly drain the remaining queue.
+may retain more than 100 Reports, but each scheduler round submits at most four
+sequential 100-Report batches. Remote unavailability retains the exact failed
+batch and prevents later Reports from passing it; protocol rejection drops that
+batch and also ends the round. Normal close retries an existing pending batch
+and may perform one additional at-most-100 best-effort submit. It does not
+unboundedly drain the remaining queue.
 
-Both queues are finite, soft-capacity, and private to their Process.
-`estimatedSize` is advisory. Adapter failure can lose queued commands or
-results; there is no ACK, persistent pending queue, or exactly-once claim.
+Both queues are finite, soft-capacity, and private to their Process. Adapter
+failure can lose queued commands or results; there is no ACK, persistent
+pending queue, or exactly-once claim.
 
 A physical Channel close is a reconnectable network fact. It does not tell the
 Worker to end its current run. Only a delivered
@@ -443,8 +456,9 @@ network and Process shutdown has finished.
 
 `shutdownTimeout` is an owner-local budget, not one Adapter-wide deadline.
 Each physical Server computes one deadline for its listener, all child
-Channels, and EventLoop; timeout initiates remaining closes without waiting
-again and reports `SHUTDOWN_TIMEOUT (21004)`. The Adapter Process scheduler then gets
+Channels, child EventLoop group, and acceptor EventLoop; timeout initiates
+remaining closes without waiting again and reports `SHUTDOWN_TIMEOUT (21004)`.
+The Adapter Process scheduler then gets
 its own deadline, and `shutdownNow()` may consume only that deadline's
 remainder. A scheduler that misses its budget prevents a potentially blocking
 final Report flush; the Result queue has already stopped accepting and shutdown

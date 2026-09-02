@@ -20,6 +20,10 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
             RUNNER._generate_inventory(sandbox, 205)
 
             files = sorted((sandbox / RUNNER.WORKER_GROUP).glob("*.jsonl"))
+            self.assertEqual(
+                ["workers-000.jsonl", "workers-001.jsonl", "workers-002.jsonl"],
+                [path.name for path in files],
+            )
             self.assertEqual([100, 100, 5], [len(path.read_text().splitlines()) for path in files])
             observed = 0
             for path in files:
@@ -31,6 +35,15 @@ class WorkerWebSocketScaleRunnerTest(unittest.TestCase):
                     self.assertEqual(line_number, properties["labInventoryLine"])
                     observed += 1
             self.assertEqual(205, observed)
+
+    def test_ten_thousand_workers_use_one_hundred_inventory_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sandbox = Path(directory) / "scenario-workers"
+            RUNNER._generate_inventory(sandbox, 10_000)
+
+            files = sorted((sandbox / RUNNER.WORKER_GROUP).glob("*.jsonl"))
+            self.assertEqual(100, len(files))
+            self.assertTrue(all(len(path.read_text().splitlines()) == 100 for path in files))
 
     def test_capability_assembly_keeps_only_the_existing_md5_capability(self):
         assembly = RUNNER._capability_assembly()

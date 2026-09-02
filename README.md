@@ -145,8 +145,9 @@ those owners.
   acceptance driver.
 - [`integrations/`](integrations/) contains external proof clients; it owns no
   Kernel, Server or Transport mechanism. Worker Correctness owns the exact
-  2x10 identity, extension, 100-call success and Host-restart closure. Worker
-  Convergence Health relates deterministic 2x50 mutations and named Task
+  2x50 identity, extension, 100-call success and Host-restart closure. Worker
+  Convergence Health starts from the same isolated 2x50 Inventory and relates
+  deterministic mutations and named Task
   witnesses to Adapter and Kernel convergence through public HTTP boundaries;
   its 1000 Items are offered load rather than an all-success claim. The independent Worker
   WebSocket Scale lane offers

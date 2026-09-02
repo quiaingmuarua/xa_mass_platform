@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the isolated 20-Worker correctness proof."""
+"""Run the isolated 100-Worker correctness proof."""
 
 from __future__ import annotations
 
@@ -17,6 +17,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
+    canonical_100_worker_world,
+    materialize_inventory,
+)
+
+
 MODULE = ":integrations:worker-correctness"
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_API = "http://127.0.0.1:18086"
@@ -41,6 +49,7 @@ def main() -> int:
     sandbox = output / "data" / "scenario-workers"
     evidence.mkdir(parents=True)
     sandbox.parent.mkdir(parents=True)
+    materialize_inventory(sandbox, canonical_100_worker_world())
 
     scope = "test_worker_correctness_" + uuid.uuid4().hex[:12]
     proof_id = "worker-correctness-" + scope[-12:]

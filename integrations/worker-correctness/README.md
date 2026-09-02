@@ -9,7 +9,7 @@ does not import Worker, Adapter, Server or Kernel implementations.
 The fixed world is:
 
 ```text
-2 WorkerGroups x 10 Workers
+2 WorkerGroups x 50 Workers
 one WebSocket Adapter
 two managed items:call batches x 50 Items
 one graceful Scenario Host restart
@@ -17,7 +17,7 @@ one graceful Scenario Host restart
 
 The initial phase proves:
 
-- exactly 20 checked Lab addresses map to 20 unique Server-issued worker IDs;
+- exactly 100 checked Lab addresses map to 100 unique Server-issued worker IDs;
 - Runtime Preview, Adapter Network, Properties observation and one Direct Call
   close over the same identities;
 - each Group's three existing Event Names receive `17/17/16` Items;
@@ -25,7 +25,7 @@ The initial phase proves:
   statuses are `SUCCEEDED`.
 
 The restart phase stops and restarts only Scenario Host while Server, Redis and
-Lab files remain. All 20 Lab addresses must map to their original worker IDs
+Lab files remain. All 100 Lab addresses must map to their original worker IDs
 and re-establish the same live relationships.
 
 Capability-specific Result payloads remain opaque here; their values belong to
@@ -44,7 +44,9 @@ python -m pip install -r .github/scripts/requirements.txt
 ```
 
 The one-shot runner builds and owns Server, Scenario Host, isolated Lab state,
-a unique `test_*` scope and safe evidence:
+a unique `test_*` scope and safe evidence. It explicitly materializes the
+shared canonical 100-Worker Inventory rather than depending on Scenario default
+seeding:
 
 ```powershell
 python integrations/worker-correctness/run_worker_correctness.py `

@@ -50,6 +50,8 @@ jobs:
             :transport:java-worker:test \
             :scenario_workers_jvm:test \
             :integrations:worker-websocket-scale:test
+          python -m unittest \
+            integrations.worker_proof_support.test_scenario_inventory
           python -m unittest discover \
             -s integrations/worker-websocket-scale \
             -p 'test_*.py'

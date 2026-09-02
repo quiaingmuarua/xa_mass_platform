@@ -112,7 +112,16 @@
         "jvm_contracts",
         "worker_correctness"
       ],
-      "reason": "Worker correctness owns the 20-Worker identity, extension reachability and 100-Item exact closure claim."
+      "reason": "Worker correctness owns the canonical 100-Worker identity, extension reachability and 100-Item exact closure claim."
+    },
+    {
+      "path": "integrations/worker_proof_support/scenario_inventory.py",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_convergence_health"
+      ],
+      "reason": "The shared 100-Worker materializer defines the common Correctness and Convergence initial world; the separate 10k workflow retains its own capacity execution."
     },
     {
       "path": "integrations/worker-convergence-health/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",

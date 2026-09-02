@@ -79,6 +79,31 @@ class DeliveryCommandRemoteApiTest {
         }
     }
 
+    @Test
+    void rejectsARemoteBatchThatExceedsTheRequestedLimit() {
+        DeliveryCommand command = DeliveryCommand.create(
+                TASK,
+                WORKER,
+                "test.observe",
+                1234,
+                "{}",
+                "forward-1"
+        );
+        String body = "{\"worker-1\":"
+                + CODEC.encodeDeliveryCommand(command)
+                + ",\"worker-2\":"
+                + CODEC.encodeDeliveryCommand(command)
+                + "}";
+        try (ScriptedHttpServer server = new ScriptedHttpServer(
+                request -> new Response(200, body)
+        )) {
+            assertFailure(
+                    () -> remoteApi(server).consume("adapter-1", 1),
+                    REMOTE_API_PROTOCOL_ERROR
+            );
+        }
+    }
+
     private static DeliveryCommandRemoteApi remoteApi(
             ScriptedHttpServer server
     ) {

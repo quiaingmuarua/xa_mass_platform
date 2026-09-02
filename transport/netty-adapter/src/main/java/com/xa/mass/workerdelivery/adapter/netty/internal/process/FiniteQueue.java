@@ -61,10 +61,6 @@ final class FiniteQueue<T> {
         return capacity;
     }
 
-    synchronized int estimatedSize() {
-        return items.size();
-    }
-
     synchronized void stopIngress() {
         accepting = false;
     }
