@@ -18,6 +18,7 @@ rootProject.name = 'xa-mass-platform'
 
 include ':kernel_jvm'
 include ':kernel_pacer_jvm'
+include ':worker_matching_jvm'
 include ':scenario_workers_jvm'
 include ':server_jvm'
 include ':transport:worker-delivery-contract'

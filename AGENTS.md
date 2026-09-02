@@ -12,6 +12,8 @@ agents change the repository; it is not the canonical mechanism narrative.
   score/resource mechanisms.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
+- `worker_matching_jvm/` owns Worker/Platform Properties, Task/Item rules,
+  constraint interpretation and bounded Worker-ID evidence.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
@@ -22,6 +24,7 @@ The stable authority rule is:
 
 ```text
 Kernel    decides and converges scheduling
+Matching  interprets Worker facts and rules into bounded identity evidence
 Server    exposes, validates, routes and correlates
 Transport delivers and executes local events
 ```
@@ -151,13 +154,13 @@ architectures.
   event ports must have an explicit fixed Pacer caller and compose existing
   mechanical owners without adding Redis state or a second truth path.
 - Missing operations fail with `KernelOperationNotImplementedException`.
-- Java Redis operations live in the matching owner package.
+- Java Redis operations live in their owning module and package.
 - Server connection/health packages must not own Redis keys.
 - Candidate Cache remains a stable mechanical owner here;
   Pacer policy and loop code do not.
-- Task Owner enforces Task versus TaskItem rule location and JSON-safe finite
-  persistence only. It must not interpret Match Property names or operators;
-  stored rule semantics belong to the Pacer Matcher.
+- Task Owner stores only scheduling descriptors and TaskItem execution data.
+  It must not store or interpret allocation Rules, Match Property names or
+  operators; persistent Rules and their semantics belong to Worker Matching.
 - TaskRuntime owns the Task-scoped self-describing Result HASH. Each value
   contains `code + non-empty opaqueResultPayload`; exact `200` is success.
   Success replaces an earlier failed value, while terminal failed storage uses
@@ -191,18 +194,18 @@ kernel_jvm`.
   replace failed and request promotion of the existing score to
   `FINAL_SUCCESS`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
-- `WorkerCandidateSelectionPolicy` owns the three fixed source operations:
-  shared HOT acquisition for Task-rule precomputation, cached candidate
-  renewal, and Item-rule on-demand acquisition. It also owns Score eligibility,
-  priority/count/unique selection and exact lease. There is no generic
-  acquisition Strategy or cached-to-on-demand fallback. The
-  package-private `WorkerCandidateMatcher` owns one call-local Match Plan,
-  rule-derived Worker identity ranges, canonical Rule Match and original-pair
-  post-lease rematch. Selection must not interpret Property names or Constraint
-  operators; Matcher must not read Score, Candidate Cache, workflow labels or
-  selection policy. `WorkerAllocationMechanism` is a fixed Producer workflow
-  label, not a Matcher mode; Task and TaskItem rule workflows are mutually
-  exclusive and do not exchange Candidate Cache entries.
+- `WorkerCandidateSelectionPolicy` owns due HOT pool observation, exact hold,
+  priority/count/unique selection, cached renewal and endpoint-bearing
+  candidate assembly. Allocation and Dispatch policies publish bounded
+  identity-only Match Demands, hold an admitted pool, and consume evidence
+  through `WorkerMatchRuntime` only while that exact clean hold remains active.
+  Unmatched and unselected holds expire naturally; do not compensate-release
+  them or add a pending lease registry.
+  They must not read Rule or Properties data or interpret constraint syntax.
+  There is no generic acquisition Strategy or cached-to-on-demand fallback.
+  `WorkerAllocationMechanism` is a fixed Producer workflow label; Task-rule
+  precomputation and Item-rule on-demand workflows are mutually exclusive and
+  do not exchange Candidate Cache entries.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
@@ -212,9 +215,10 @@ kernel_jvm`.
 
 ## Server JVM
 
-`server_jvm/` controllers and services depend on `kernel_jvm` owner contracts;
-Spring assembly additionally depends only on the public
-`kernel_pacer_jvm` runtime entry. Provider selection belongs only to assembly.
+`server_jvm/` controllers and services depend on `kernel_jvm` and
+`worker_matching_jvm` owner contracts; Spring assembly additionally depends
+only on the public `kernel_pacer_jvm` runtime entry. Provider selection belongs
+only to assembly.
 
 Server may own:
 
@@ -226,6 +230,10 @@ Server may own:
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter and Scenario startup.
+
+Server coordinates cross-owner creation in a fixed order: persistent Matching
+facts or Rules first, then Kernel scheduling metadata. It may compose Runtime
+Views from both owners, but it does not interpret Rules or select Workers.
 
 Within the versioned HTTP Contract, use a direct JSON scalar, collection or
 Map when that is the complete body. Add a named DTO only for a combined
@@ -249,7 +257,7 @@ reading Redis directly or adding failed/all modes.
 
 Server must not own:
 
-- candidate matching or Worker selection;
+- Rule/Properties interpretation, candidate matching or Worker selection;
 - scheduling lease, Item claim, retry, recovery or Task finality;
 - Adapter queues, Channels or current route selection;
 - Worker business handlers or Worker lifecycle;

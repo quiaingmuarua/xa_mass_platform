@@ -49,6 +49,28 @@
       "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
     },
     {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/WorkerMatchingRuntime.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
+    },
+    {
+      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/WorkerMatchingRuntimeTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Matching test-only changes stay on deterministic owner, Redis and runtime contract lanes."
+    },
+    {
       "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
       "lanes": [
         "jvm_contracts",

@@ -100,7 +100,6 @@ class TaskIdleSettlementTest {
                         "group-1",
                         WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                         TaskIdleDisposition.PARK_WHEN_IDLE,
-                        null,
                         Map.of(
                                 "priority", "0",
                                 "maximumCandidateWorkers", "1",

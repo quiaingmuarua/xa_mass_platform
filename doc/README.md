@@ -20,6 +20,7 @@ Status: current repository document index.
 - [Java Kernel authority](kernel/README.md)
 - [Kernel mechanical owners](../kernel_jvm/README.md)
 - [Kernel Pacer policy](../kernel_pacer_jvm/README.md)
+- [Worker Matching owner](../worker_matching_jvm/README.md)
 - [Runtime API Server](../server_jvm/README.md)
 - [Transport](../transport/README.md)
 - [Transport Platform Event Catalog](../transport/EVENTS.md)

@@ -35,30 +35,24 @@ public interface WorkerRuntime {
     record WorkerDeclaration(
             String workerId,
             String workerGroupId,
-            String endpointManagerId,
-            Map<String, Object> workerProperties
+            String endpointManagerId
     ) {
         public WorkerDeclaration {
             requireNonBlank(workerId, "workerId");
             requireNonBlank(workerGroupId, "workerGroupId");
             requireNonBlank(endpointManagerId, "endpointManagerId");
-            workerProperties = immutableMap(workerProperties);
         }
     }
 
     record WorkerDescriptor(
             String workerId,
             String workerGroupId,
-            String endpointManagerId,
-            Map<String, Object> workerProperties,
-            Map<String, Object> platformProperties
+            String endpointManagerId
     ) {
         public WorkerDescriptor {
             requireNonBlank(workerId, "workerId");
             requireNonBlank(workerGroupId, "workerGroupId");
             requireNonBlank(endpointManagerId, "endpointManagerId");
-            workerProperties = immutableMap(workerProperties);
-            platformProperties = immutableMap(platformProperties);
         }
     }
 

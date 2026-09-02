@@ -5,39 +5,39 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class WorkerResourceCommandServiceTest {
 
-    private WorkerResourceCatalog workerCatalog;
+    private WorkerMatchingCatalog matchingCatalog;
     private WorkerResourceCommandService service;
 
     @BeforeEach
     void setUp() {
-        workerCatalog = mock(WorkerResourceCatalog.class);
-        service = new WorkerResourceCommandService(workerCatalog);
+        matchingCatalog = mock(WorkerMatchingCatalog.class);
+        service = new WorkerResourceCommandService(matchingCatalog);
     }
 
     @Test
     void mapsSuccessfulOwnerResultsToActionOutcomes() {
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
-        )).thenReturn(result(WorkerRuntimeStatus.OK));
+        )).thenReturn(result(MutationStatus.APPLIED));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
         )).isEqualTo(ActionOutcome.applied());
 
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
-        )).thenReturn(result(WorkerRuntimeStatus.NOOP));
+        )).thenReturn(result(MutationStatus.UNCHANGED));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).isEqualTo(ActionOutcome.unchanged());
@@ -46,30 +46,22 @@ class WorkerResourceCommandServiceTest {
     @Test
     void mapsOwnerRejectionsWithoutExposingOwnerReason() {
         assertBusinessError(
-                WorkerRuntimeStatus.NOT_FOUND,
+                MutationStatus.NOT_FOUND,
                 ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
         );
         assertBusinessError(
-                WorkerRuntimeStatus.INVALID,
+                MutationStatus.INVALID,
                 ServerErrorCode.INVALID_WORKER_RESOURCE_REQUEST
         );
         assertBusinessError(
-                WorkerRuntimeStatus.CONFLICT,
-                ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
-        );
-        assertBusinessError(
-                WorkerRuntimeStatus.STALE,
-                ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
-        );
-        assertBusinessError(
-                WorkerRuntimeStatus.REJECTED,
+                MutationStatus.CONFLICT,
                 ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
         );
     }
 
     @Test
     void providerFailureIsUnavailable() {
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).thenThrow(new IllegalStateException("Redis detail"));
 
@@ -86,12 +78,12 @@ class WorkerResourceCommandServiceTest {
     }
 
     private void assertBusinessError(
-            WorkerRuntimeStatus status,
+            MutationStatus status,
             ServerErrorCode expectedCode
     ) {
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
-        )).thenReturn(new WorkerRuntimeResult(status, "owner detail"));
+        )).thenReturn(new MutationResult(status, "owner detail"));
 
         assertThatThrownBy(() -> service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of()
@@ -103,7 +95,7 @@ class WorkerResourceCommandServiceTest {
         });
     }
 
-    private static WorkerRuntimeResult result(WorkerRuntimeStatus status) {
-        return new WorkerRuntimeResult(status);
+    private static MutationResult result(MutationStatus status) {
+        return new MutationResult(status);
     }
 }

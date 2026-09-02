@@ -1,12 +1,8 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 record WorkerCandidateRequest(
         int priority,
-        int requestedCount,
-        Map<String, Object> allocationRule
+        int requestedCount
 ) {
     public WorkerCandidateRequest {
         if (priority < 0 || priority > 99) {
@@ -19,11 +15,5 @@ record WorkerCandidateRequest(
                     "requested candidate count must be positive"
             );
         }
-        if (allocationRule == null) {
-            throw new IllegalArgumentException(
-                    "candidate allocation rule must be present"
-            );
-        }
-        allocationRule = Map.copyOf(new LinkedHashMap<>(allocationRule));
     }
 }

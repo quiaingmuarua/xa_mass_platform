@@ -121,8 +121,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 createdAt,
                 Map.of("phoneNumber", "+14155552671"),
                 0,
-                createdAt + 60_000,
-                null
+                createdAt + 60_000
         );
 
         assertThat(runtime.appendItems(
@@ -135,8 +134,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 keyspace.base() + ":task:task-1:items",
                 "message-1"
         )).isEqualTo(
-                "{\"allocationRule\":null,"
-                        + "\"createdAtMillis\":" + createdAt + ","
+                "{\"createdAtMillis\":" + createdAt + ","
                         + "\"eventCode\":\"telecom.phone.inspect\","
                         + "\"expireAtMillis\":" + (createdAt + 60_000) + ","
                         + "\"payload\":{\"phoneNumber\":\"+14155552671\"},"
@@ -328,7 +326,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         );
         assertThat(descriptor.get("task-1").workerGroupId())
                 .isEqualTo("phone-tools");
-        assertThat(descriptor.get("task-1").allocationRule()).isNull();
         assertThat(descriptor).containsEntry("missing", null);
         assertThat(runtime.appendItems(
                 "missing",
@@ -338,8 +335,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         redisTimeMillis(),
                         Map.of(),
                         5,
-                        redisTimeMillis() + 60_000,
-                        Map.of("workerId", Map.of("$eq", "worker-1"))
+                        redisTimeMillis() + 60_000
                 ))
         ).get("message-1").status()).isEqualTo(
                 TaskItemAppendStatus.NOT_FOUND
@@ -347,33 +343,28 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void allocationRuleIsPersistedWithoutJvmDslInterpretation() {
-        long createdAt = redisTimeMillis();
-        storeTask("task-1", "ON_DEMAND_ITEM_RULE");
-        TaskItem item = new TaskItem(
-                "message-invalid",
-                "event",
-                createdAt,
-                Map.of(),
-                5,
-                createdAt + 60_000,
-                Map.of("workerId", Map.of("$like", "worker-*"))
-        );
+    void legacyRuleFieldsAreRejectedAtTheKernelStorageBoundary() {
+        storeTask("legacy-task", "ON_DEMAND_ITEM_RULE");
+        String descriptorKey = keyspace.base()
+                + ":task:legacy-task:descriptor";
+        redis.hset(descriptorKey, "allocationRuleJson", "{}");
 
-        assertThat(runtime.appendItems(
-                "task-1",
-                List.of(item)
-        ).get("message-invalid").status()).isEqualTo(
-                TaskItemAppendStatus.APPENDED
+        assertThatThrownBy(() -> catalog.loadTaskAllocationDescriptors(
+                List.of("legacy-task")
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessage("Task descriptor is corrupt");
+
+        redis.hset(
+                keyspace.base() + ":task:legacy-task:items",
+                "legacy-message",
+                "{\"eventCode\":\"event\",\"payload\":{},"
+                        + "\"priority\":1,\"createdAtMillis\":1,"
+                        + "\"expireAtMillis\":2,\"allocationRule\":{}}"
         );
-        assertThat(redis.hget(
-                keyspace.base() + ":task:task-1:items",
-                "message-invalid"
-        )).contains("\"$like\":\"worker-*\"");
-        assertThat(redis.zscore(
-                keyspace.base() + ":task:task-1:item_score",
-                "message-invalid"
-        )).isNotNull();
+        assertThat(runtime.loadTaskItems(
+                "legacy-task",
+                List.of("legacy-message")
+        )).containsEntry("legacy-message", null);
     }
 
     @Test
@@ -388,7 +379,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "workerGroupId", "phone-tools",
                 "workerAllocationMechanism", "ON_DEMAND_ITEM_RULE",
                 "idleDisposition", "PARK_WHEN_IDLE",
-                "allocationRuleJson", "null",
                 "configJson", "{\"maxRetryTimes\":\"3\","
                         + "\"maximumCandidateWorkers\":\"1\","
                         + "\"priority\":\"7\"}"
@@ -430,8 +420,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 now,
                 Map.of("value", "abc"),
                 5,
-                now + 60_000,
-                Map.of("workerId", Map.of("$eq", "worker-1"))
+                now + 60_000
         );
         var submitted = callSubmission.submit(
                 "task-commands",
@@ -464,7 +453,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void createRecoversScoreOnlyInterruptionAndPersistsOpaqueTaskRules() {
+    void createRecoversScoreOnlyInterruption() {
         assertThat(scoreCore.initializeScore("score-only", 1, 3_000)
                 .status()).isEqualTo(
                         TaskScoreBandCore.TaskScoreTransitionStatus
@@ -475,31 +464,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(runtime.createTask(descriptor("score-only", 3)).status())
                 .isEqualTo(TaskCreationStatus.CONFLICT);
 
-        Map<String, Object> opaqueRule = Map.of(
-                "worker.region", Map.of("$like", "cn-*"),
-                "worker.capacity", Map.of(
-                        "$range",
-                        List.of(1, 5)
-                )
-        );
-        TaskDescriptor taskWithOpaqueRule = new TaskDescriptor(
-                "opaque-rule",
-                "phone-tools",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                opaqueRule,
-                config(3)
-        );
-        assertThat(runtime.createTask(taskWithOpaqueRule).status())
-                .isEqualTo(TaskCreationStatus.CREATED);
-        assertThat(redis.hget(
-                keyspace.base() + ":task:opaque-rule:descriptor",
-                "allocationRuleJson"
-        )).contains("\"$like\":\"cn-*\"")
-                .contains("\"$range\":[1,5]");
-        assertThat(catalog.loadTaskAllocationDescriptors(
-                List.of("opaque-rule")
-        ).get("opaque-rule").allocationRule()).isEqualTo(opaqueRule);
     }
 
     @Test
@@ -563,8 +527,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 now,
                 Map.of("value", "abc"),
                 5,
-                now + 60_000,
-                Map.of("workerId", Map.of("$eq", "worker-1"))
+                now + 60_000
         );
 
         var submitted = new DefaultTaskCallItemSubmission(
@@ -1090,7 +1053,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "phone-tools",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of(),
                 config(2)
         ));
 
@@ -1107,7 +1069,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "phone-tools",
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 config(priority)
         );
     }
@@ -1141,9 +1102,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         "workerGroupId", "phone-tools",
                         "workerAllocationMechanism", allocationMechanism,
                         "idleDisposition", "PARK_WHEN_IDLE",
-                        "allocationRuleJson",
-                        "PRECOMPUTED_TASK_RULE".equals(allocationMechanism)
-                                ? "{}" : "null",
                         "configJson",
                         "{\"maxRetryTimes\":\"3\","
                                 + "\"maximumCandidateWorkers\":\"1\","

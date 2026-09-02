@@ -1,100 +1,91 @@
 # Task Worker Allocation Policy
 
-Status: active Kernel mechanism contract.
+Status: active Kernel PRECOMPUTED allocation contract.
 
 ## Purpose
 
-`TaskWorkerAllocationPolicy` fills disposable Candidate evidence for a bounded,
-already-verified due `RUNNING_VISIBLE` Task batch:
+`TaskWorkerAllocationPolicy` fills Candidate Cache deficits for a bounded,
+Main-selected set of `PRECOMPUTED_TASK_RULE` Tasks. It neither discovers Tasks
+nor interprets their allocation rules.
 
 ```text
-PRECOMPUTED_TASK_RULE DueTaskObservation[]
-  -> read current Candidate cache counts
-  -> compute each Task deficit
-  -> group requests by workerGroupId
-  -> acquire and exactly lease bounded HOT Workers
-  -> append expiring CandidateWorker entries
+Due PRECOMPUTED Tasks
+  -> observe Candidate Cache counts
+  -> consume Task Match Evidence
+  -> confirm exact active holds and schedule matched Worker IDs
+  -> append selected hold evidence to Candidate Cache
+  -> publish new Match Demands for remaining deficits
+  -> exact-hold the admitted bounded Worker pool
 ```
 
-The policy does not discover or classify Tasks, read or rewrite Task score,
-activate Tasks, dispatch Items, or maintain a retry/warmup queue.
-`ON_DEMAND_ITEM_RULE` Tasks are excluded by the Main Scheduler because they
-acquire Workers only while dispatching their Items. Receiving one here is an
-internal caller error.
+## Input
 
-## Input Boundary
+Each `DueTaskObservation` contains the Task ID, an opaque observed Task score
+and a minimal `TaskDescriptor`. The descriptor has no Rule. It supplies the
+fixed WorkerGroup, priority and `maximumCandidateWorkers`.
 
-The Task Score Owner supplies the bounded taskId-to-score map and identifies
-the INITIAL subset. `DispatchMainScheduler` loads NORMAL Descriptors, selects
-only `PRECOMPUTED_TASK_RULE`, and supplies an immutable `DueTaskObservation`
-containing:
+Receiving an ON_DEMAND Task is a caller error.
+
+## One Round
+
+1. Read Candidate Cache counts for all supplied Task IDs.
+2. Take each available Task Evidence exactly once.
+3. Reject expired evidence or a WorkerGroup mismatch.
+4. Group usable evidence by WorkerGroup.
+5. Build requests from Task priority and current deficit.
+6. Confirm each matched Worker still has the exact clean HOT hold named by its
+   Evidence.
+7. Let Kernel selection enforce priority, requested count and cross-Task
+   Worker uniqueness.
+8. Load minimal Worker delivery descriptors and append Candidate entries with
+   the observed hold score.
+9. Observe one bounded due HOT pool per WorkerGroup for remaining deficits.
+10. Offer Task Match Demands and, when at least one is admitted, exact-hold the
+    observed pool until the shared deadline.
+
+The first round for a new deficit normally publishes Demand. A later round
+consumes Evidence. Neither policy waits for Matching.
+
+## Demand
 
 ```text
-taskId
-observedTaskScore (opaque pass-through value)
-TaskDescriptor
+TaskRuleMatchDemand
+  taskId
+  workerGroupId
+  heldWorkerIds
+  holdUntilMillis
 ```
 
-The observation is best-effort round evidence, not a lease. Candidate
-acquisition still uses exact Worker Score operations, and later Task Dispatch
-uses exact Item claims.
+Kernel obtains one bounded due HOT Worker set for each WorkerGroup and places
+it in each admitted Task Demand for that group. It then exact-holds that pool.
+Worker Matching may only filter these IDs using its persistent Task Rule and
+Worker facts. Evidence carries the same hold deadline, and Kernel accepts a
+match only while that exact hold remains active.
 
-## Candidate Request
+Demand and Worker pools are capped at 100. Requested count remains in Kernel's
+Task deficit and selection policy; it is not a Matching input. Queue capacity,
+missing evidence, empty matches and hold contention leave the deficit visible
+for a later round. Unmatched or unselected holds are not compensated; they
+expire naturally and their newer score position lets later due Workers enter
+subsequent bounded pools.
 
-For each `PRECOMPUTED_TASK_RULE` Task:
+## Candidate Cache
+
+The cache stores only:
 
 ```text
-candidateId = taskId
-requestedCount = maximumCandidateWorkers - cachedCandidateCount
-priority = int(descriptor.config["priority"])
-allocationRule = descriptor.allocationRule
+workerId
+workerGroupId
+exact workerLeaseScore
 ```
 
-Zero deficits and missing rules produce no request. Requests never cross a
-WorkerGroup. The policy publishes only non-empty acquisition results, and the
-Candidate expiry equals the Worker lease deadline.
+Entries expire with the Worker hold. It stores no Rule, Properties or
+endpoint. Dispatch renewal resolves the current minimal Worker descriptor after
+the exact score fence succeeds.
 
-Redis remains:
+## Ownership
 
-```text
-xa_mass:<scope>:dispatch:candidate:<taskId>:workers
-```
-
-There is no Candidate scheduling index. If a Task needs more candidates, its
-unchanged due RUNNING score causes a later Main Scheduler round to expose it
-again. If Dispatch advances or parks/closes the Task first, stale Candidate
-evidence simply expires.
-
-## Configuration
-
-```python
-TaskWorkerAllocationConfig(
-    worker_lease_duration_millis,
-)
-```
-
-The Main Scheduler Task Source owns the fixed batch limit of 100. For each
-WorkerGroup, Allocation asks `WorkerCandidateSelectionPolicy` for one bounded
-HOT pool shared by all Task Candidate rules. Selection asks
-`WorkerCandidateMatcher` to prepare one Match Plan, canonical-match that shared
-pool, and rematch the original successful lease pairs with the same Plan.
-Selection applies Task priority, deficit/requested count and unique-Worker
-policy between those Matcher calls. The Allocation Policy reads bounded
-Candidate counts directly from `CandidateWorkerCache`, then asks
-`WorkerScoreCore` to reobserve the selected Worker IDs at the expected lease
-slot before it publishes the still-valid subset.
-
-## Guardrails
-
-- Use `taskId` as the stable Task-rule precomputation CandidateId.
-- Do not rediscover or revalidate Tasks inside this policy.
-- Do not mutate Task score or introduce a Candidate retry index.
-- Keep deficit, priority/count/unique selection and exact lease in Policy. Keep
-  rule preparation, rule-derived identity range and both canonical Rule Match
-  reads inside the Matcher. Matcher must not know HOT/Cache scheduling Source,
-  Score, lease or selection parameters. Direct bounded Score/Cache Owner calls
-  are intentional; raw scores are correlation values and must not be decoded
-  or calculated in Pacer code.
-- Keep Candidate Cache disposable; it owns no Task or Worker truth.
-- Do not release unmatched or publication-failed Worker leases; expiry is the
-  recovery mechanism.
+Allocation owns deficit computation and the timing of Task Demand publication.
+Kernel selection owns priority, unique selection and lease. Matching owns Rule
+and Properties interpretation. No part of this policy owns Task score
+transition, Item claim, Delivery Command or matching persistence.

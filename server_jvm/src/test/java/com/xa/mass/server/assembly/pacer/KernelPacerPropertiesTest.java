@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
@@ -27,6 +28,10 @@ class KernelPacerPropertiesTest {
                     .withBean(
                             CandidateWorkerCache.class,
                             () -> mock(CandidateWorkerCache.class)
+                    )
+                    .withBean(
+                            WorkerMatchRuntime.class,
+                            () -> mock(WorkerMatchRuntime.class)
                     )
                     .withBean(
                             WorkerCommandRuntime.class,

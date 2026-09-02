@@ -32,7 +32,7 @@ public final class TaskItemMapper {
                     "finite TaskItem forbids allocationRule"
             );
         }
-        return item(request, createdAtMillis, null);
+        return item(request, createdAtMillis);
     }
 
     public TaskItem onDemandItem(
@@ -44,17 +44,12 @@ public final class TaskItemMapper {
                     "WorkerGroup Task Call requires allocationRule"
             );
         }
-        return item(
-                request,
-                createdAtMillis,
-                request.allocationRule()
-        );
+        return item(request, createdAtMillis);
     }
 
     private static TaskItem item(
             TaskItemRequest request,
-            long createdAtMillis,
-            java.util.Map<String, Object> allocationRule
+            long createdAtMillis
     ) {
         Objects.requireNonNull(request, "request");
         Long expireAtMillis = null;
@@ -77,8 +72,7 @@ public final class TaskItemMapper {
                 createdAtMillis,
                 request.payload(),
                 request.priority(),
-                expireAtMillis,
-                allocationRule
+                expireAtMillis
         );
     }
 }

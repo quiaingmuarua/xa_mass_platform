@@ -11,13 +11,18 @@ kernel_jvm
 kernel_pacer_jvm
   scheduling Policy, convergence loops and finite lifecycle
 
+worker_matching_jvm
+  Worker facts, allocation rules and bounded identity evidence
+
 server_jvm
   Spring assembly and public Runtime API
 ```
 
-Only the first two modules decide or converge scheduling. Server validates,
-routes and exposes those owners; Transport delivers already-targeted Commands
-and executes endpoint-local handlers.
+Only Kernel chooses resources or converges scheduling. Worker Matching
+interprets Worker facts and rules but returns evidence rather than a decision.
+Server validates, coordinates writes, assembles lifecycles and exposes those
+owners; Transport delivers already-targeted Commands and executes
+endpoint-local handlers.
 
 ## Trust Order
 
@@ -45,6 +50,7 @@ Mechanical Owner documents:
 - [Task Result Redis Shape](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
 - [Worker Runtime Redis Shape](../../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md)
 - [Worker Serviceability Redis Shape](../../kernel_jvm/doc/runtime-redis/worker-serviceability-runtime-redis-shape.md)
+- [Worker Matching Owner](../../worker_matching_jvm/README.md)
 
 Policy and lifecycle documents:
 
@@ -68,7 +74,9 @@ Cross-module documents:
 - Task, TaskItem and Worker score truth are independent.
 - A Score is an opaque scheduling coordinate, not a resource write lock.
 - Mechanical Owners define legal state transitions and exact fences.
-- Policy owns bounded selection, priority, deficits, matching and cadence.
+- Policy owns bounded Demand, priority, deficits, Score validation, unique
+  selection, lease and cadence. Worker Matching owns Rule/Properties
+  interpretation and bounded candidate evidence.
 - Result Policy parses and groups delivery evidence, then publishes finite
   semantic events to the owning Task or Worker mechanism.
 - Result Convergence and Dispatch Convergence are the only production Pacer

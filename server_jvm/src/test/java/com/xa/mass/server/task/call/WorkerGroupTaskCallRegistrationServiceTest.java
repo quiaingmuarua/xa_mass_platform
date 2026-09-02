@@ -113,7 +113,6 @@ class WorkerGroupTaskCallRegistrationServiceTest {
                 "phone-tools",
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 Map.of(
                         "priority", "1",
                         "maximumCandidateWorkers", "1",
@@ -240,7 +239,6 @@ class WorkerGroupTaskCallRegistrationServiceTest {
                 "phone-tools",
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

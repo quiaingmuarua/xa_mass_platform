@@ -2,6 +2,8 @@ package com.xa.mass.server.api.v1.controller;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,6 +33,8 @@ import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService.SchedulingState;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +57,7 @@ class RuntimeViewControllerTest {
     private TaskResourceCatalog taskCatalog;
     private TaskScoreBandCore taskScores;
     private WorkerSchedulingService workerScheduling;
+    private WorkerMatchingCatalog matchingCatalog;
     private WorkerNetworkObservationService workerNetwork;
     private MockMvc mockMvc;
 
@@ -62,7 +67,25 @@ class RuntimeViewControllerTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskScores = mock(TaskScoreBandCore.class);
         workerScheduling = mock(WorkerSchedulingService.class);
+        matchingCatalog = mock(WorkerMatchingCatalog.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
+        when(matchingCatalog.loadTaskRules(anyList())).thenReturn(Map.of());
+        when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
+                .thenAnswer(invocation -> {
+                    String workerGroupId = invocation.getArgument(0);
+                    List<String> workerIds = invocation.getArgument(1);
+                    var facts = new LinkedHashMap<String, WorkerFacts>();
+                    workerIds.forEach(workerId -> facts.put(
+                            workerId,
+                            new WorkerFacts(
+                                    workerId,
+                                    workerGroupId,
+                                    Map.of("runtime", "java"),
+                                    Map.of("region", "local")
+                            )
+                    ));
+                    return facts;
+                });
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -72,7 +95,8 @@ class RuntimeViewControllerTest {
                                         workerCatalog,
                                         taskCatalog,
                                         taskScores,
-                                        workerScheduling
+                                        workerScheduling,
+                                        matchingCatalog
                                 ),
                                 workerNetwork
                         )
@@ -181,6 +205,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
+        verify(matchingCatalog, never()).loadTaskRules(anyList());
     }
 
     @Test
@@ -195,7 +220,7 @@ class RuntimeViewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries").isEmpty());
 
-        verifyNoInteractions(taskCatalog, workerCatalog);
+        verifyNoInteractions(taskCatalog, workerCatalog, matchingCatalog);
     }
 
     @Test
@@ -789,9 +814,7 @@ class RuntimeViewControllerTest {
         return new WorkerDescriptor(
                 workerId,
                 workerGroupId,
-                "endpoint-1",
-                Map.of("runtime", "java"),
-                Map.of("region", "local")
+                "endpoint-1"
         );
     }
 
@@ -804,7 +827,6 @@ class RuntimeViewControllerTest {
                 workerGroupId,
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

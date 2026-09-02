@@ -1,5 +1,10 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchDemand;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchEvidence;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
@@ -24,6 +29,7 @@ final class TaskDispatchPolicy {
     private final TaskAssignmentDispatcher assignmentDispatcher;
     private final TaskIdleSettlement idleSettlement;
     private final WorkerCandidateSelectionPolicy candidateSelection;
+    private final WorkerMatchRuntime workerMatches;
     private final LongSupplier currentTimeMillis;
 
     TaskDispatchPolicy(
@@ -32,7 +38,8 @@ final class TaskDispatchPolicy {
             TaskRuntime taskRuntime,
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
-            WorkerCandidateSelectionPolicy candidateSelection
+            WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerMatchRuntime workerMatches
     ) {
         this(
                 taskScores,
@@ -41,6 +48,7 @@ final class TaskDispatchPolicy {
                 assignmentDispatcher,
                 idleSettlement,
                 candidateSelection,
+                workerMatches,
                 System::currentTimeMillis
         );
     }
@@ -52,6 +60,7 @@ final class TaskDispatchPolicy {
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
             WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerMatchRuntime workerMatches,
             LongSupplier currentTimeMillis
     ) {
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
@@ -68,6 +77,10 @@ final class TaskDispatchPolicy {
         this.candidateSelection = Objects.requireNonNull(
                 candidateSelection,
                 "candidateSelection"
+        );
+        this.workerMatches = Objects.requireNonNull(
+                workerMatches,
+                "workerMatches"
         );
         this.currentTimeMillis = Objects.requireNonNull(
                 currentTimeMillis,
@@ -143,8 +156,8 @@ final class TaskDispatchPolicy {
                         assignments(
                                 task,
                                 claimableIds,
-                                items,
                                 claimUntilMillis,
+                                dispatchTimeMillis,
                                 roundWorkerIds
                         );
                 LinkedHashMap<String, TaskItem> assignedItems =
@@ -179,8 +192,8 @@ final class TaskDispatchPolicy {
     private Map<String, AcquiredWorkerCandidate> assignments(
             DueTaskObservation task,
             List<String> messageIds,
-            Map<String, TaskItem> items,
             long leaseUntilMillis,
+            long observedAtMillis,
             Set<String> roundWorkerIds
     ) {
         int priority = Integer.parseInt(
@@ -193,10 +206,7 @@ final class TaskDispatchPolicy {
                     task.descriptor().workerGroupId(),
                     Map.of(task.taskId(), new WorkerCandidateRequest(
                             priority,
-                            messageIds.size(),
-                            Objects.requireNonNull(
-                                    task.descriptor().allocationRule()
-                            )
+                            messageIds.size()
                     )),
                     leaseUntilMillis
             );
@@ -207,22 +217,47 @@ final class TaskDispatchPolicy {
             );
         }
 
+        List<ItemMatchKey> matchKeys = messageIds.stream()
+                .map(messageId -> new ItemMatchKey(task.taskId(), messageId))
+                .toList();
+        Map<ItemMatchKey, ItemRuleMatchEvidence> evidence =
+                workerMatches.takeItemEvidence(matchKeys);
         LinkedHashMap<String, WorkerCandidateRequest> requests =
                 new LinkedHashMap<>();
-        messageIds.forEach(messageId -> requests.put(
-                messageId,
-                new WorkerCandidateRequest(
-                        priority,
-                        1,
-                        Objects.requireNonNull(
-                                items.get(messageId).allocationRule()
-                        )
-                )
-        ));
-        acquired = candidateSelection.acquireOnDemandCandidates(
+        LinkedHashMap<String, List<String>> matched = new LinkedHashMap<>();
+        LinkedHashMap<String, Long> holdUntilByMessageId =
+                new LinkedHashMap<>();
+        for (String messageId : messageIds) {
+            ItemMatchKey key = new ItemMatchKey(task.taskId(), messageId);
+            ItemRuleMatchEvidence itemEvidence = evidence.get(key);
+            requests.put(messageId, new WorkerCandidateRequest(priority, 1));
+            matched.put(
+                    messageId,
+                    itemEvidence != null
+                            && itemEvidence.holdUntilMillis()
+                                    > observedAtMillis
+                            && task.descriptor().workerGroupId().equals(
+                                    itemEvidence.workerGroupId()
+                            )
+                            ? itemEvidence.matchedWorkerIds().stream()
+                                    .filter(workerId ->
+                                            !roundWorkerIds.contains(workerId))
+                                    .toList()
+                            : List.of()
+            );
+            if (itemEvidence != null) {
+                holdUntilByMessageId.put(
+                        messageId,
+                        itemEvidence.holdUntilMillis()
+                );
+            }
+        }
+        acquired = candidateSelection.selectHeldCandidates(
                 task.descriptor().workerGroupId(),
                 requests,
-                leaseUntilMillis
+                matched,
+                holdUntilByMessageId,
+                WorkerCandidateSelectionPolicy.MAX_UNIQUE_WORKERS_PER_ROUND
         );
         LinkedHashMap<String, AcquiredWorkerCandidate> result =
                 new LinkedHashMap<>();
@@ -234,6 +269,35 @@ final class TaskDispatchPolicy {
             if (!workers.isEmpty()
                     && roundWorkerIds.add(workers.get(0).workerId())) {
                 result.put(messageId, workers.get(0));
+            }
+        }
+        List<String> missingEvidence = messageIds.stream()
+                .filter(messageId -> !result.containsKey(messageId))
+                .toList();
+        if (!missingEvidence.isEmpty()) {
+            Map<String, Long> observed = candidateSelection
+                    .observeDueCandidates(task.descriptor().workerGroupId());
+            if (!observed.isEmpty()) {
+                List<String> workerIds = List.copyOf(observed.keySet());
+                List<ItemRuleMatchDemand> demands = missingEvidence.stream()
+                        .map(messageId -> new ItemRuleMatchDemand(
+                                new ItemMatchKey(task.taskId(), messageId),
+                                task.descriptor().workerGroupId(),
+                                workerIds,
+                                leaseUntilMillis
+                        ))
+                        .toList();
+                Map<ItemMatchKey, DemandOfferStatus> statuses =
+                        workerMatches.offerItemDemands(demands);
+                if (statuses.values().stream().anyMatch(
+                        status -> status == DemandOfferStatus.OFFERED
+                )) {
+                    candidateSelection.holdObservedCandidates(
+                            task.descriptor().workerGroupId(),
+                            observed,
+                            leaseUntilMillis
+                    );
+                }
             }
         }
         return java.util.Collections.unmodifiableMap(result);

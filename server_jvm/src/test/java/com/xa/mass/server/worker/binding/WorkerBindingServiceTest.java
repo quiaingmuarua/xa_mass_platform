@@ -20,6 +20,9 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.binding.WorkerBindingProperties.EndpointProperties;
 import com.xa.mass.server.worker.identity.WorkerIdentityService;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +39,7 @@ class WorkerBindingServiceTest {
     private WorkerBindingRegistry registry;
     private WorkerIdentityService identities;
     private WorkerRuntime workerRuntime;
+    private WorkerMatchingCatalog matchingCatalog;
     private WorkerBindingService service;
 
     @BeforeEach
@@ -43,12 +47,16 @@ class WorkerBindingServiceTest {
         registry = mock(WorkerBindingRegistry.class);
         identities = mock(WorkerIdentityService.class);
         workerRuntime = mock(WorkerRuntime.class);
+        matchingCatalog = mock(WorkerMatchingCatalog.class);
         service = new WorkerBindingService(
                 registry,
                 endpointDirectory(),
                 identities,
-                workerRuntime
+                workerRuntime,
+                matchingCatalog
         );
+        when(matchingCatalog.upsertWorkerFacts(any(), any(), any()))
+                .thenReturn(new MutationResult(MutationStatus.APPLIED));
         when(workerRuntime.upsertWorker(any())).thenReturn(result(
                 WorkerRuntimeStatus.OK
         ));
@@ -85,9 +93,13 @@ class WorkerBindingServiceTest {
         assertThat(declaration.getValue()).isEqualTo(new WorkerDeclaration(
                 WORKER_ID,
                 "group-1",
-                "websocket-a",
-                properties("local")
+                "websocket-a"
         ));
+        verify(matchingCatalog).upsertWorkerFacts(
+                WORKER_ID,
+                "group-1",
+                properties("local")
+        );
     }
 
     @Test
@@ -109,16 +121,14 @@ class WorkerBindingServiceTest {
 
         assertThat(binding.endpointManagerId()).isEqualTo("websocket-a");
         verify(registry, never()).bindIfAbsent(any(), any());
-        ArgumentCaptor<WorkerDeclaration> declaration =
-                ArgumentCaptor.forClass(WorkerDeclaration.class);
-        verify(workerRuntime).upsertWorker(declaration.capture());
-        assertThat(declaration.getValue().workerProperties())
-                .isEqualTo(Map.of(
-                        "clientWorkerKey",
-                        "installation-1",
-                        "version",
-                        2
-                ));
+        verify(matchingCatalog).upsertWorkerFacts(
+                WORKER_ID,
+                "group-1",
+                Map.of(
+                        "clientWorkerKey", "installation-1",
+                        "version", 2
+                )
+        );
     }
 
     @Test

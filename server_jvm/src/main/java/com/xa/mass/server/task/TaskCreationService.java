@@ -10,6 +10,8 @@ import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,17 +23,23 @@ public final class TaskCreationService {
     private static final String OPERATION = "taskCreation.create";
 
     private final WorkerResourceCatalog workerCatalog;
+    private final WorkerMatchingCatalog matchingCatalog;
     private final TaskRuntime taskRuntime;
     private final TaskIdGenerator taskIds;
 
     public TaskCreationService(
             WorkerResourceCatalog workerCatalog,
+            WorkerMatchingCatalog matchingCatalog,
             TaskRuntime taskRuntime,
             TaskIdGenerator taskIds
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
+        );
+        this.matchingCatalog = Objects.requireNonNull(
+                matchingCatalog,
+                "matchingCatalog"
         );
         this.taskRuntime = Objects.requireNonNull(taskRuntime, "taskRuntime");
         this.taskIds = Objects.requireNonNull(taskIds, "taskIds");
@@ -40,12 +48,12 @@ public final class TaskCreationService {
     public TaskCreateResponse create(TaskCreateRequest request) {
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
+        createTaskRule(taskId, request);
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
                 request.workerGroupId(),
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                request.allocationRule(),
                 Map.of(
                         "priority", Integer.toString(request.priority()),
                         "maximumCandidateWorkers",
@@ -79,6 +87,43 @@ public final class TaskCreationService {
             );
             case RETRYABLE -> throw unavailable(null);
         };
+    }
+
+    private void createTaskRule(
+            String taskId,
+            TaskCreateRequest request
+    ) {
+        MutationResult result;
+        try {
+            result = matchingCatalog.createTaskRule(
+                    taskId,
+                    request.workerGroupId(),
+                    request.allocationRule()
+            );
+        } catch (RuntimeException error) {
+            throw unavailable(error);
+        }
+        if (result == null) {
+            throw unavailable(null);
+        }
+        switch (result.status()) {
+            case APPLIED, UNCHANGED -> {
+                return;
+            }
+            case INVALID -> throw new ServerException(
+                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    OPERATION,
+                    result.reason(),
+                    null
+            );
+            case CONFLICT -> throw new ServerException(
+                    ServerErrorCode.TASK_STATE_CONFLICT,
+                    OPERATION,
+                    result.reason(),
+                    null
+            );
+            case NOT_FOUND -> throw unavailable(null);
+        }
     }
 
     private void requireWorkerGroup(String workerGroupId) {

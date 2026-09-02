@@ -271,9 +271,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         return new WorkerDescriptor(
                 workerId,
                 "group-1",
-                endpointManagerId,
-                Map.of(),
-                Map.of()
+                endpointManagerId
         );
     }
 

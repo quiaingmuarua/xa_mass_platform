@@ -21,6 +21,7 @@ REQUIRED_DOCS = {
     "doc/kernel/README.md": "Status: current",
     "kernel_jvm/README.md": "Status: stable",
     "kernel_pacer_jvm/README.md": "Status: Kernel-owned",
+    "worker_matching_jvm/README.md": "Status: current",
     "server_jvm/README.md": "Status: current",
     "transport/README.md": "Status: repository-local",
 }

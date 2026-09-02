@@ -57,8 +57,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "workerGroupId", ARGV[1],
               "workerAllocationMechanism", ARGV[2],
               "idleDisposition", ARGV[3],
-              "allocationRuleJson", ARGV[4],
-              "configJson", ARGV[5]
+              "configJson", ARGV[4]
             )
             return 1
             """;
@@ -240,15 +239,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private Map<String, String> descriptorFields(
             TaskDescriptor descriptor
     ) throws JacksonException {
-        if (descriptor.allocationRule() != null) {
-            rejectNonFiniteNumbers(descriptor.allocationRule());
-        }
         rejectNonFiniteNumbers(descriptor.config());
-        String allocationRuleJson = descriptor.allocationRule() == null
-                ? "null"
-                : mapper.writeValueAsString(normalizeJsonValue(
-                        descriptor.allocationRule()
-                ));
         String configJson = mapper.writeValueAsString(
                 new TreeMap<>(descriptor.config())
         );
@@ -262,7 +253,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 "idleDisposition",
                 descriptor.idleDisposition().name()
         );
-        fields.put("allocationRuleJson", allocationRuleJson);
         fields.put("configJson", configJson);
         return fields;
     }
@@ -278,7 +268,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 fields.get("workerGroupId"),
                 fields.get("workerAllocationMechanism"),
                 fields.get("idleDisposition"),
-                fields.get("allocationRuleJson"),
                 fields.get("configJson")
         );
         return result != null && result == 1L;
@@ -612,9 +601,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private MaterializedItem materialize(TaskItem item, long nowMillis) {
         rejectNonFiniteNumbers(item.payload());
-        if (item.allocationRule() != null) {
-            rejectNonFiniteNumbers(item.allocationRule());
-        }
         long expiry;
         if (item.expireAtMillis() == null) {
             try {
@@ -643,17 +629,20 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         payload.put("priority", record.priority());
         payload.put("createdAtMillis", record.createdAtMillis());
         payload.put("expireAtMillis", item.expireAtMillis());
-        payload.put(
-                "allocationRule",
-                normalizeJsonValue(record.allocationRule())
-        );
         return mapper.writeValueAsString(payload);
     }
 
     private TaskItem decodeTaskItem(String messageId, String encoded) {
         try {
             JsonNode item = mapper.readTree(encoded);
-            if (item == null || !item.isObject()) {
+            if (item == null || !item.isObject()
+                    || !Set.copyOf(item.propertyNames()).equals(Set.of(
+                            "eventCode",
+                            "payload",
+                            "priority",
+                            "createdAtMillis",
+                            "expireAtMillis"
+                    ))) {
                 return null;
             }
             JsonNode eventCode = item.get("eventCode");
@@ -661,15 +650,11 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             JsonNode priority = item.get("priority");
             JsonNode createdAt = item.get("createdAtMillis");
             JsonNode expireAt = item.get("expireAtMillis");
-            JsonNode allocation = item.get("allocationRule");
             if (eventCode == null || !eventCode.isTextual()
                     || payload == null || !payload.isObject()
                     || priority == null || !priority.isIntegralNumber()
                     || createdAt == null || !createdAt.isIntegralNumber()
-                    || expireAt == null || !expireAt.isIntegralNumber()
-                    || allocation != null
-                    && !allocation.isNull()
-                    && !allocation.isObject()) {
+                    || expireAt == null || !expireAt.isIntegralNumber()) {
                 return null;
             }
             Map<String, Object> payloadMap = mapper.convertValue(
@@ -677,22 +662,13 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     new TypeReference<>() {
                     }
             );
-            Map<String, Object> allocationRule = allocation == null
-                    || allocation.isNull()
-                    ? null
-                    : mapper.convertValue(
-                            allocation,
-                            new TypeReference<>() {
-                            }
-                    );
             return new TaskItem(
                     messageId,
                     eventCode.textValue(),
                     createdAt.longValue(),
                     payloadMap,
                     priority.intValue(),
-                    expireAt.longValue(),
-                    allocationRule
+                    expireAt.longValue()
             );
         } catch (JacksonException | IllegalArgumentException error) {
             return null;

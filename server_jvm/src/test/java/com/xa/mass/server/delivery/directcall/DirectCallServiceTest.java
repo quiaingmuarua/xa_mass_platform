@@ -394,9 +394,7 @@ class DirectCallServiceTest {
         return new WorkerDescriptor(
                 workerId,
                 GROUP_ID,
-                ADAPTER_ID,
-                Map.of(),
-                Map.of()
+                ADAPTER_ID
         );
     }
 

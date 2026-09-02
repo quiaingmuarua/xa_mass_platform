@@ -96,35 +96,26 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void matcherDoesNotOwnSelectionOrScoreMechanics()
-            throws IOException {
-        String matcher = Files.readString(
-                ROOT.resolve("WorkerCandidateMatcher.java")
-        );
-        for (String forbidden : List.of(
-                "limitMatches",
-                "uniqueMatches",
-                "WorkerScoreCore",
-                "CandidateWorkerCache",
-                "WorkerCandidateRequest",
-                "AcquiredWorkerCandidate",
-                "WorkerAllocationMechanism",
-                "PRECOMPUTED_TASK_RULE",
-                "ON_DEMAND_ITEM_RULE",
-                "filterCandidateWorkerIds",
-                "matchLeasedWorkerCandidates",
-                "matchExplicitWorkerIds",
-                "workerLeaseScore",
-                "priority",
-                "requestedCount",
-                "Lease",
-                "encodedScore()"
-        )) {
-            assertFalse(
-                    matcher.contains(forbidden),
-                    () -> "WorkerCandidateMatcher must not contain "
-                            + forbidden
-            );
+    void matchingImplementationStaysOutsidePacer() throws IOException {
+        assertFalse(Files.exists(ROOT.resolve("WorkerCandidateMatcher.java")));
+        assertFalse(Files.exists(ROOT.resolve("ConstraintEvaluator.java")));
+        try (var files = Files.walk(ROOT)) {
+            for (Path file : files.filter(path -> path.toString()
+                    .endsWith(".java")).toList()) {
+                String source = Files.readString(file);
+                for (String forbidden : List.of(
+                        "workerProperties",
+                        "platformProperties",
+                        "allocationRule()",
+                        "ConstraintEvaluator",
+                        "WorkerCandidateMatcher"
+                )) {
+                    assertFalse(
+                            source.contains(forbidden),
+                            () -> file + " must not contain " + forbidden
+                    );
+                }
+            }
         }
     }
 
@@ -150,6 +141,8 @@ class DispatchMechanismBoundaryTest {
             );
         }
         assertFalse(selection.contains("acquireWorkerCandidates("));
+        assertFalse(selection.contains("releaseScoreHolds("));
+        assertFalse(selection.contains("releaseCompletedHotScoreHolds("));
     }
 
     @Test

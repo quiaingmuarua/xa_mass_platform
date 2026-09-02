@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -49,6 +50,7 @@ class KernelOwnerContractManifestTest {
                     "CandidateWorkerCache",
                     CandidateWorkerCache.class
             ),
+            Map.entry("WorkerMatchRuntime", WorkerMatchRuntime.class),
             Map.entry(
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
@@ -68,6 +70,18 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "DeliveryReport",
                     WorkerDeliveryProtocol.DeliveryReport.class
+            ),
+            Map.entry(
+                    "ItemMatchKey",
+                    WorkerMatchRuntime.ItemMatchKey.class
+            ),
+            Map.entry(
+                    "ItemRuleMatchDemand",
+                    WorkerMatchRuntime.ItemRuleMatchDemand.class
+            ),
+            Map.entry(
+                    "ItemRuleMatchEvidence",
+                    WorkerMatchRuntime.ItemRuleMatchEvidence.class
             ),
             Map.entry(
                     "TaskCreationResult",
@@ -108,6 +122,14 @@ class KernelOwnerContractManifestTest {
                     TaskScoreBandCore.TaskScoreTransitionResult.class
             ),
             Map.entry(
+                    "TaskRuleMatchDemand",
+                    WorkerMatchRuntime.TaskRuleMatchDemand.class
+            ),
+            Map.entry(
+                    "TaskRuleMatchEvidence",
+                    WorkerMatchRuntime.TaskRuleMatchEvidence.class
+            ),
+            Map.entry(
                     "DeliveryCommand",
                     WorkerDeliveryProtocol.DeliveryCommand.class
             ),
@@ -139,6 +161,10 @@ class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
+                    Map.entry(
+                            "DemandOfferStatus",
+                            WorkerMatchRuntime.DemandOfferStatus.class
+                    ),
                     Map.entry(
                             "DeliveryReportOutcomeClass",
                             WorkerDeliveryProtocol
@@ -341,6 +367,7 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
+                "WorkerMatchRuntime", WorkerMatchRuntime.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         var expected = new TreeMap<String, Map<String, Long>>();
@@ -371,6 +398,7 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
+                "WorkerMatchRuntime", WorkerMatchRuntime.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         @SuppressWarnings("unchecked")

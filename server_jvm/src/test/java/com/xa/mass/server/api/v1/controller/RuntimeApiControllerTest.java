@@ -61,6 +61,9 @@ import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,6 +85,7 @@ class RuntimeApiControllerTest {
     private WorkerIdentityService workerIdentity;
     private WorkerBindingService workerBinding;
     private WorkerResourceCatalog workerCatalog;
+    private WorkerMatchingCatalog matchingCatalog;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
@@ -94,6 +98,7 @@ class RuntimeApiControllerTest {
         workerIdentity = mock(WorkerIdentityService.class);
         workerBinding = mock(WorkerBindingService.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
+        matchingCatalog = mock(WorkerMatchingCatalog.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
@@ -138,11 +143,28 @@ class RuntimeApiControllerTest {
                         WorkerTransportType.WEBSOCKET,
                         URI.create("ws://127.0.0.1:18083/connect")
                 ));
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
                 any(),
                 any()
-        )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        )).thenReturn(new MutationResult(MutationStatus.APPLIED));
+        when(matchingCatalog.createTaskRule(any(), any(), any()))
+                .thenReturn(new MutationResult(MutationStatus.APPLIED));
+        when(matchingCatalog.createItemRules(anyList()))
+                .thenAnswer(invocation -> {
+                    List<WorkerMatchingCatalog.ItemRule> rules =
+                            invocation.getArgument(0);
+                    var results = new LinkedHashMap<
+                            com.xa.mass.kernel.assignment.WorkerMatchRuntime
+                                    .ItemMatchKey,
+                            MutationResult
+                            >();
+                    rules.forEach(rule -> results.put(
+                            rule.key(),
+                            new MutationResult(MutationStatus.APPLIED)
+                    ));
+                    return results;
+                });
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -242,6 +264,7 @@ class RuntimeApiControllerTest {
                 taskCallSubmission,
                 taskRuntime,
                 taskCatalog,
+                matchingCatalog,
                 taskRpcRegistry,
                 taskItems,
                 rpcProperties
@@ -255,12 +278,15 @@ class RuntimeApiControllerTest {
                 );
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
+                matchingCatalog,
                 taskRuntime,
                 new TaskIdGenerator()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                new WorkerResourceCommandService(workerCatalog)
+                                new WorkerResourceCommandService(
+                                        matchingCatalog
+                                )
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
@@ -488,10 +514,10 @@ class RuntimeApiControllerTest {
 
     @Test
     void workerPropertiesPatchUsesResourceBusinessErrors() throws Exception {
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "phone-tools", "missing-worker", Map.of("pool", "batch")
-        )).thenReturn(new WorkerRuntimeResult(
-                WorkerRuntimeStatus.NOT_FOUND,
+        )).thenReturn(new MutationResult(
+                MutationStatus.NOT_FOUND,
                 "private owner detail"
         ));
 
@@ -511,9 +537,9 @@ class RuntimeApiControllerTest {
     @Test
     void workerPropertiesPatchReturnsUnchangedForOwnerNoop()
             throws Exception {
-        when(workerCatalog.patchWorkerPlatformProperties(
+        when(matchingCatalog.patchWorkerPlatformProperties(
                 "phone-tools", "worker-1", Map.of("pool", "batch")
-        )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP));
+        )).thenReturn(new MutationResult(MutationStatus.UNCHANGED));
 
         mockMvc.perform(patch(
                                 "/api/v1/worker-groups/phone-tools/workers/"
@@ -1197,7 +1223,6 @@ class RuntimeApiControllerTest {
                 scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                scenarioRpc ? null : Map.of(),
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

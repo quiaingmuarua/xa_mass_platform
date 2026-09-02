@@ -670,7 +670,7 @@
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Worker acquisition</div>
-            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 先预计算Task级候选、Dispatch再续租缓存候选；<strong>ON_DEMAND_ITEM_RULE</strong> 在Item调度时按需获取Worker。两者共用同一Matcher，Idle行为独立选择立即关闭或Kernel私有park。</div>
+            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 与 <strong>ON_DEMAND_ITEM_RULE</strong> 都由Kernel发布有界Match Demand；Worker Matching解释Rule与Properties并返回WorkerId证据，Kernel再按Score、priority、唯一性和exact lease形成调度决定。</div>
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Lease & claim</div>
@@ -847,7 +847,7 @@ DeliveryReport
           <p>
             <code>kernel_jvm</code>拥有稳定的机械Owner与Redis转换，
             <code>kernel_pacer_jvm</code>拥有变化更快的Policy、Convergence与线程生命周期；
-            Server只完成Spring装配和公开API。
+            <code>worker_matching_jvm</code>拥有Worker事实与Rule解释；Server只完成跨Owner API编排与Spring装配。
           </p>
         </div>
 
@@ -866,6 +866,11 @@ DeliveryReport
             <span class="owner">KERNEL_PACER_JVM</span>
             <h3>Policy & lifecycle</h3>
             <p><code>KernelPacerRuntime</code>是唯一公开生产入口，固定装配Result Convergence与Dispatch Convergence。</p>
+          </article>
+          <article class="card worker">
+            <span class="owner">WORKER_MATCHING_JVM</span>
+            <h3>Facts & rule interpretation</h3>
+            <p>持久化Worker/Platform Properties和Task/Item Rule，消费有界Demand并返回短期WorkerId证据；不读取Score、不Lease或Claim。</p>
           </article>
           <article class="card server">
             <span class="owner">SERVER_JVM</span>
@@ -931,7 +936,7 @@ Proof
             <h3>稳定owner cut</h3>
             <ul>
               <li>Task、TaskItem、Worker三条独立score轴</li>
-              <li>两类Worker acquisition workflow与同一Matcher</li>
+              <li>两类Worker acquisition workflow与同一Demand/Evidence边界</li>
               <li>一个KernelPacerRuntime、两个Convergence Application</li>
               <li>Kernel / Server / Transport authority</li>
               <li>Adapter与Worker三层结构</li>
@@ -965,9 +970,9 @@ Proof
 
         <div class="grid-3" style="margin-top: 14px">
           <article class="card"><h3>Owner & Boundary</h3><p>JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime Boundary证明相邻Owner和协议拓扑。</p></article>
-          <article class="card"><h3>Worker Correctness</h3><p>2 Groups × 10 Workers、100 Items全部成功，并闭合Identity、Route、Extension、Result与Host restart。</p></article>
+          <article class="card"><h3>Worker Correctness</h3><p>2 Groups × 50 Workers、100 Items全部成功，并闭合Identity、Route、Extension、Result与Host restart。</p></article>
           <article class="card"><h3>Convergence Health</h3><p>2 Groups × 50 Workers、1000 offered Items；固定mutation与named witnesses，不把所有offered work声明为成功。</p></article>
-          <article class="card"><h3>Worker Capacity</h3><p>10,000 offered WebSocket Workers、至少9,900 connected + HOT，并检查Server restart和native resource边界。</p></article>
+          <article class="card"><h3>Worker Capacity</h3><p>15,000个Prepare身份建立连接余量，收缩到10,000个活跃Worker后执行双轮有界负载，并检查Server restart和native resource边界。</p></article>
           <article class="card"><h3>Android Worker Proof</h3><p>API 33单App正确性与进程丢失恢复，加三App同Group的局部故障隔离；Android不是Java Worker的重复见证。</p></article>
           <article class="card"><h3>Finite Product Lanes</h3><p>Android Host、Frontend、Runtime Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。</p></article>
         </div>

@@ -38,6 +38,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_PACER_ASSEMBLY = KERNEL_PACER.resolve(
             "KernelPacerAssembly.java"
     );
+    private static final Path MATCHING_ASSEMBLY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/assembly/matching"
+    );
     private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/delivery/"
                     + "WorkerDeliveryOwnerAssemblyConfiguration.java"
@@ -220,6 +223,7 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
+                .contains("implementation project(':worker_matching_jvm')")
                 .doesNotContain("scenario_workers_jvm")
                 .doesNotContain("scenario_rpc_jvm")
                 .contains("implementation project(':transport:netty-adapter')")
@@ -258,6 +262,7 @@ class ServerArchitectureBoundaryTest {
                 SERVER_SOURCE,
                 SHARED_REDIS,
                 KERNEL_ASSEMBLY,
+                MATCHING_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
                 WORKER_IDENTITY,
                 WORKER_BINDING
@@ -300,7 +305,6 @@ class ServerArchitectureBoundaryTest {
                 .contains("RedisKeyspace")
                 .contains(":worker:groups")
                 .contains(":worker:metadata:")
-                .contains(":worker:properties:")
                 .contains(":worker:id_owners")
                 .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:")

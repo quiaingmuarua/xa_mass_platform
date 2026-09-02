@@ -1,10 +1,10 @@
 package com.xa.mass.server.worker.resource;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -16,14 +16,14 @@ public final class WorkerResourceCommandService {
     private static final String PATCH_OPERATION =
             "workerResource.patchPlatformProperties";
 
-    private final WorkerResourceCatalog workerCatalog;
+    private final WorkerMatchingCatalog matchingCatalog;
 
     public WorkerResourceCommandService(
-            WorkerResourceCatalog workerCatalog
+            WorkerMatchingCatalog matchingCatalog
     ) {
-        this.workerCatalog = Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
+        this.matchingCatalog = Objects.requireNonNull(
+                matchingCatalog,
+                "matchingCatalog"
         );
     }
 
@@ -37,9 +37,9 @@ public final class WorkerResourceCommandService {
         if (properties == null) {
             throw failure(ServerErrorCode.INVALID_WORKER_RESOURCE_REQUEST);
         }
-        WorkerRuntimeResult result;
+        MutationResult result;
         try {
-            result = workerCatalog.patchWorkerPlatformProperties(
+            result = matchingCatalog.patchWorkerPlatformProperties(
                     workerGroupId,
                     workerId,
                     properties
@@ -56,15 +56,15 @@ public final class WorkerResourceCommandService {
             throw failure(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE);
         }
         return switch (result.status()) {
-            case OK -> ActionOutcome.applied();
-            case NOOP -> ActionOutcome.unchanged();
+            case APPLIED -> ActionOutcome.applied();
+            case UNCHANGED -> ActionOutcome.unchanged();
             case NOT_FOUND -> throw failure(
                     ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
             );
             case INVALID -> throw failure(
                     ServerErrorCode.INVALID_WORKER_RESOURCE_REQUEST
             );
-            case REJECTED, STALE, CONFLICT -> throw failure(
+            case CONFLICT -> throw failure(
                     ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
             );
         };

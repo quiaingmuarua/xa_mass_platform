@@ -18,6 +18,7 @@ The visual projection is available in
 | Layer | Owns | Must not own |
 | --- | --- | --- |
 | Kernel | Task, TaskItem and Worker scheduling truth; selection; lease; claim; retry, recovery and result disposition | HTTP, physical connections, endpoint handlers and request waiters |
+| Worker Matching | Worker/Platform Properties, Task/Item allocation rules, rule interpretation and bounded Worker-ID evidence | Score, priority, lease, claim, retry and finality |
 | Server | Runtime API; provider assembly; bounded use cases; Worker identity and Binding; Command-source routing; Result destination routing and correlation | Candidate selection, Worker lease, Item claim, retry policy and Task finality |
 | Adapter | Command acquisition, current verified route, physical delivery and Adapter-local handlers | Scheduling eligibility, Task priority, Worker selection and result truth |
 | Worker | Local full Event Name resolution, execution and Result evidence | Task lifecycle, scheduling policy and Adapter routing |
@@ -41,7 +42,11 @@ Network delivery and local invocation belong to Transport.
 TASK follows:
 
 ```text
-API -> Kernel Task/Item truth -> assignment dispatch -> targeted Command
+API -> Server writes Matching Rule + Kernel Task/Item truth
+    -> Kernel publishes bounded Match Demand
+    -> Kernel exact-holds the admitted due Worker pool
+    -> Worker Matching returns Worker-ID evidence
+    -> Kernel confirms the hold and assignment dispatches a targeted Command
     -> Server authority routing -> Adapter -> Worker -> Result
     -> Server TASK owner -> Kernel result routing
 ```
@@ -94,7 +99,8 @@ recovery limits are current Kernel policy, not cross-module contracts.
 The Adapter may also retain the latest explicitly observed Worker properties
 as a process-local timestamped projection. It is queried through an Adapter
 DIRECT_CALL and is deliberately not copied into Server or Kernel truth.
-Canonical Worker Properties are refreshed only by Prepare; an ordinary
+Canonical Worker Properties are Matching-owner facts refreshed only by
+Prepare; an ordinary
 explicit Worker start performs one request, while a Java Manager may explicitly
 batch up to 100 stopped replicas before injecting their prepared coordinates.
 Prepare items have an optional Worker kind. `CLIENT_KEY` is the default for
@@ -125,6 +131,10 @@ those owners.
   owners, direct bounded Owner calls and the two package-private exact Dispatch
   closures. The stability order is `kernel_jvm > kernel_pacer_jvm >
   server_jvm`.
+- [`worker_matching_jvm/`](worker_matching_jvm/) owns persistent Worker and
+  Platform Properties, Task and Item allocation rules, constraint evaluation
+  and the single bounded Demand/Evidence consumer. It returns identity-only
+  evidence and never reads Score, leases Workers or claims Items.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server adapts the one
   Kernel Pacer Runtime lifecycle to Spring and owns Worker Identity,
@@ -150,9 +160,9 @@ those owners.
   deterministic mutations and named Task
   witnesses to Adapter and Kernel convergence through public HTTP boundaries;
   its 1000 Items are offered load rather than an all-success claim. The independent Worker
-  WebSocket Scale lane offers
-  10,000 Java Worker connections and checks a 9,900 connected-and-HOT threshold
-  across one Server restart without claiming Task throughput.
+  WebSocket Scale lane prepares 15,000 Java Workers, retains a 10,000-Worker
+  loaded fleet and checks a 9,900 connected-and-HOT threshold across one
+  Server restart without claiming throughput or latency.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture

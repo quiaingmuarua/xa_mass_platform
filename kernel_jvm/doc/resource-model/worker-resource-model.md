@@ -1,245 +1,94 @@
 # Worker Resource Model
 
-Status: active Java Kernel Worker resource Owner contract and production Redis
-write path.
+Status: active Java Kernel Worker scheduling metadata contract.
 
-## Core Identity
+## Owner Boundary
 
-```text
-WorkerGroup = one plugin/package capability bucket
-            + one scheduling namespace
-
-Worker      = one logical execution slot in exactly one WorkerGroup
-```
-
-A WorkerGroup is close to a deployable plugin or package identity and provides
-a stable bucket for Workers with broadly shared capabilities. Its `eventCodes`
-are create-only catalog metadata used for display and future Server
-recommendation. They may lag the definitions currently running in Workers and
-are not Kernel scheduling truth. A WorkerGroup is not an Adapter identity,
-tenant, or transport connection.
-
-Task creation fixes one `workerGroupId`. Candidate rules only narrow Workers
-inside that group. `eventCode` is delivered to the chosen Worker and resolved
-there; Kernel dispatch does not validate it against WorkerGroup catalog
-metadata.
-
-One `workerId` is one scheduler-visible serial slot. A process that executes
-multiple Items concurrently exposes multiple WorkerIds. Connection state is a
-delivery concern and does not change this identity.
-
-## WorkerGroupDescriptor
-
-```python
-WorkerGroupDescriptor(
-    worker_group_id: str,
-    attributes: Mapping[str, JsonValue],
-    event_codes: frozenset[str],
-)
-```
-
-An explicit WorkerGroup registration atomically establishes one complete
-declaration. An equivalent declaration is a no-op; a different declaration
-conflicts and never replaces the stored value. Correcting a Lab declaration
-therefore requires explicit data cleanup and registration. Registration does
-not move Workers, change scores, or assert that running Worker definitions
-already match the control-plane catalog.
-
-WorkerGroup does not declare matching indexes, providers, or supported
-operators. Candidate sources remain separate scheduling policy: a shared HOT
-pool, Candidate Cache entries, or Matcher-derived explicit IDs for item-rule
-on-demand acquisition supplies a bounded set inside the Task's fixed Group.
-Matching only validates canonical properties for those supplied Worker IDs. It
-does not choose a source, lease a Worker, apply requested counts, or allocate
-one Worker between competing Candidates.
-
-## Two Property Sources
-
-Worker metadata has exactly two source domains:
+Kernel stores only the identity and delivery coordinates needed after a Worker
+has already been selected:
 
 ```text
-worker.*    Worker-reported facts
-platform.*  Platform-owned facts
+WorkerDescriptor
+  workerId
+  workerGroupId
+  endpointManagerId
 ```
 
-They are ownership domains, not freshness claims.
-
-### Worker Properties
-
-```python
-WorkerDeclaration(
-    worker_id: str,
-    worker_group_id: str,
-    endpoint_manager_id: str,
-    worker_properties: Mapping[str, JsonValue],
-)
-```
-
-`WorkerRuntime.upsert_worker` receives this declaration from the Server Prepare
-use case after identity coordinates are resolved and an endpoint is persisted.
-First upsert creates the
-Worker metadata, stores the complete `workerProperties` snapshot, and
-initializes a missing score. A compatible repeated Prepare replaces the complete
-Worker-owned snapshot. Upsert is a resource refresh operation, not durable
-connectivity or activation evidence. The Platform cannot patch the
-Worker-owned snapshot.
-
-Prepare is the only external refresh path for canonical Worker Properties. A
-running Worker may answer an explicit properties snapshot Command for
-observation, but Adapter-local observation does not write this owner. Changes
-in the Host provider reach canonical Properties only on a later explicit
-Worker start and Prepare.
-
-The external Worker identity registry is not part of this Kernel contract. It
-extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to
-a long-lived Worker ID. A separate Server Binding registry maps that Worker ID
-to an Endpoint Manager. The public Prepare use case composes those two Server
-owners with this Kernel upsert; their internal separation remains intact.
-Kernel receives only the resulting declaration and
-does not interpret the client key, public endpoint URI, or connection check.
-
-Worker identity coordinates are immutable:
+Kernel does not store or interpret Worker or Platform Properties. Canonical
+matching facts live in `worker_matching_jvm` and are joined by Server only for
+public runtime views.
 
 ```text
-workerId
-workerGroupId
-endpointManagerId
+Server Worker Prepare
+  -> resolve or register workerId
+  -> persist endpoint binding
+  -> upsert complete Worker facts in WorkerMatchingCatalog
+  -> upsert minimal Worker scheduling metadata in Kernel
+  -> initialize or retain Worker score
 ```
 
-The first accepted WorkerId also fixes its WorkerGroup owner. Conflicting
-identity declarations do not alter the descriptor or score.
+The write sequence is intentionally not transactional across owners. A facts
+record without a Kernel Worker is an inert orphan: Matching can return evidence
+only after Kernel publishes a bounded demand, and Kernel still checks current
+score and takes an exact lease before dispatch.
 
-Kernel resource consumers that receive Worker-id-only evidence may resolve one
-bounded explicit Worker set through:
+## Identity
 
-```python
-get_worker_group_ids(worker_ids) -> worker_id/worker_group_id map
+One `workerId` is one scheduler-visible execution slot and belongs to exactly
+one `workerGroupId`. `endpointManagerId` is the delivery address selected by
+Server binding; connection state remains Adapter evidence rather than Worker
+resource truth.
+
+`WorkerGroup.eventCodes` are create-only catalog metadata. They do not prove
+that a live Worker loaded a Handler and they are not consulted by Kernel
+matching or dispatch.
+
+## Commands
+
+```java
+WorkerRuntime.upsertWorker(new WorkerDeclaration(
+        workerId,
+        workerGroupId,
+        endpointManagerId
+));
 ```
 
-The lookup reads immutable ownership established by Worker upsert. Missing
-entries remain missing; it does not discover Workers, scan Groups, prove that a
-descriptor or score exists, or expose a Transport requirement. In particular,
-Worker and Adapter messages continue to use the globally unique `workerId`
-without carrying `workerGroupId` for routing.
+An equivalent declaration is idempotent. A declaration that changes the fixed
+WorkerGroup conflicts. Updating the endpoint manager changes only the delivery
+coordinate; it does not change Properties or matching evidence.
 
-### Platform Properties
+Platform Properties patching is not a Kernel command. Server sends that
+operation to `WorkerMatchingCatalog`, where Worker-reported and
+Platform-reported namespaces are owned and combined for matching.
 
-The query projection is:
+## Reads
 
-```python
-WorkerDescriptor(
-    worker_id: str,
-    worker_group_id: str,
-    endpoint_manager_id: str,
-    worker_properties: Mapping[str, JsonValue],
-    platform_properties: Mapping[str, JsonValue],
-)
-```
-
-`platformProperties` is patched by field. A `null` patch value deletes the
-field. Worker upsert preserves the current Platform snapshot because metadata
-and Worker Properties are stored independently. Platform patch uses a bounded
-compare-and-set on metadata; Worker snapshot replacement writes only the
-Worker Properties row, so the two source writers cannot overwrite each other.
-
-Properties are intended for bounded views, diagnostics, and low-frequency
-matching facts. They are not transport reachability, score, lease, assignment,
-or execution truth.
-
-## Rule Matching
-
-Matcher context is fixed:
-
-```json
-{
-  "workerId": "worker-1",
-  "worker": {"arch": "arm64", "region": "cn-east"},
-  "platform": {"pool": "batch", "load": "42"}
-}
-```
-
-Only the first dot separates domain from property name. Supported coordinates
-are `workerId`, `worker.*`, and `platform.*`. The removed `index.*` namespace
-is rejected as an invalid allocation rule and never falls back to a same-named
-canonical property.
-
-### Item-Rule On-Demand Acquisition
-
-For an empty Item rule, on-demand acquisition uses one bounded due-HOT score
-query in the explicit WorkerGroup. Matcher prepares one call-local rule Plan.
-The current fixed source derivation resolves `workerId $eq/$equal/$in` into a bounded
-request-local identity range; a different non-empty rule has no source and
-fails closed. Selection point-observes the explicit identities,
-then Matcher evaluates every `worker.*`, `platform.*` and Worker identity
-condition over the bounded canonical descriptors. Every leased original pair
-is fully rematched with the same Plan.
-
-Item-rule on-demand acquisition does not use `CandidateWorkerCache`, globally
-scan Worker descriptors, or fall back to cached candidate renewal. A future
-Property index may add
-another internal Matcher source for bounded Worker identities;
-ordinary canonical property reads still do not discover candidates.
-
-One on-demand acquisition round admits at most 100 unique WorkerIds across all
-Item candidates in `(priority, candidateId)` order. A WorkerId already admitted
-may be reused by a later Item without consuming the budget again. New ids after
-the budget is exhausted wait for a later round; they do not trigger a scan or
-fallback.
-
-### Cached Candidate Renewal
-
-Cached candidate renewal consumes bounded WorkerIds from
-`CandidateWorkerCache`, validates the exact score fences, and rematches the
-complete Task rule. Task-rule precomputation is the separate Allocation
-Producer step that populated those entries from a shared HOT pool.
-
-For each rule field:
+Kernel reads expose only the minimal descriptor. Public Worker runtime views
+are Server projections:
 
 ```text
-worker.*     -> read workerProperties
-platform.*   -> read platformProperties
-workerId     -> built-in identity
+Kernel Worker descriptor
+  + WorkerMatchingCatalog facts
+  + Adapter network and observation projections
+  + Kernel score projection
+  = public Runtime Worker view
 ```
 
-The matcher builds one context for each existing candidate and evaluates the
-complete rule in memory. Invalid stored rules produce one safe aggregate
-diagnostic per matcher call; the log does not contain rule or property values.
+No component may infer Properties from score or connection state.
 
-Rules currently contain only required conditions. Priority or preference
-terms are a future rule-model change and must not be simulated by unsupported
-on-demand predicates.
+## Redis Shape
 
-## Lifecycle Boundaries
+The Kernel Worker catalog stores exact minimal metadata. Legacy
+`workerProperties` and `platformProperties` fields are rejected rather than
+silently retained. Matching facts use the independent keyspace documented by
+[`worker_matching_jvm`](../../../worker_matching_jvm/README.md).
 
-Resource metadata, scheduling serviceability, binding, connectivity, and
-execution remain separate axes:
+## Non-Owners
 
-```text
-Resource        WorkerGroup plus Worker metadata/properties
-Scheduling      Worker score polarity, lease, recovery, dirty fence
-Binding         immutable endpointManagerId route declaration
-Registration    external client coordinate to long-lived workerId
-Prepare         identity resolution plus persisted Binding and Worker upsert
-Connectivity    Adapter-local active connection evidence
-Execution       TaskItem claim and Worker result evidence
-```
+Kernel Worker resource code does not own:
 
-Worker upsert initializes a missing HOT score, including retry recovery after a
-partial first Prepare. If a score already exists, upsert preserves its polarity,
-coordinate, dirty bit, and lease exactly. Property writes do not read or mutate
-score or release a lease. Attribute changes do not revoke an
-already claimed Item or a command already delivered to a Worker.
-
-Physical Worker removal, disable/drain, ordered update versions, new bounded
-candidate sources, numeric/range matching, and preference ranking remain
-separate milestones.
-
-## Owner Guardrails
-
-- Do not let Platform writes modify `workerProperties`.
-- Do not accept `index.*` as a matching coordinate.
-- Do not use Properties as connectivity evidence.
-- Do not scan descriptors to satisfy item-rule on-demand acquisition.
-- Do not infer physical truth from the latest canonical Properties snapshot.
-- Do not put score, lease, connection, or Task assignment state in a Worker
-  descriptor.
+- Worker or Platform Properties;
+- allocation rules or constraint operators;
+- connection truth or route verification;
+- candidate enumeration;
+- Worker selection policy, lease cadence, or result interpretation.

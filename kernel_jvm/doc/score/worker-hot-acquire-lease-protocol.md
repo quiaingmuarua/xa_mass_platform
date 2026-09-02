@@ -16,11 +16,13 @@ allocation through dispatch and result disposition:
 
 ```text
 due HOT observation
-  -> exact allocation lease and dirty clear
-  -> Worker matcher validation
+  -> bounded identity-only Match Demand
+  -> exact bounded pool hold and dirty clear
+  -> Worker Matching Rule/Properties evidence
+  -> exact active-hold confirmation and Kernel selection
   -> CandidateWorkerEntry(workerLeaseScore)
   -> optional CandidateWorkerCache handoff
-  -> cached candidate exact renewal and rematch
+  -> cached candidate exact renewal
   -> ResultContext(workerLeaseScore)
   -> result exact release
 ```
@@ -42,7 +44,7 @@ multiple Item claim fences behind one Worker lease, or release the slot early.
 ## HOT-Pool And On-Demand Acquisition Lease
 
 ```text
-acquire_hot_acquire_candidates(
+observe_due_hot_score_candidates(
     workerGroupId,
     hotEligibilityFloorMillis?,
     limit
@@ -72,41 +74,37 @@ Kernel process's HOT eligibility floor. With no Serviceability configuration,
 the optional floor is absent and the original full positive range remains.
 
 `WorkerCandidateSelectionPolicy` calls the bounded observation and exact-fence
-Owner operations directly while keeping Candidate Source, canonical Match,
-Selection and Lease as explicit stages:
+Owner operations directly. A Demand is offered before the pool hold so queue
+rejection does not reserve Worker capacity. Once at least one Demand is
+admitted, Kernel immediately exact-holds the observed pool. Worker Matching is
+a separate facts/rule owner and returns only short-lived WorkerId evidence:
 
 ```text
-acquire_shared_hot_candidates
-  one bounded HOT scan shared by Task-level Candidate rules
-  canonical shared-pool match, then priority/count/unique selection
+Task-rule precomputation
+  Kernel supplies and holds one bounded due HOT WorkerId set
+  Worker Matching filters it against the Task Rule and canonical facts
+  Kernel confirms the hold and applies priority/count/unique selection
 
 Item-rule on-demand acquisition
-  Matcher prepares one rule Plan and derives each Worker identity range
-  unrestricted rule: one bounded due-HOT WorkerGroup score query
-  resolved rule: point-observe bounded IDs inside the Task WorkerGroup
-  unresolved rule: no scheduling source and fail closed
-  canonical match over each Candidate's own source range
-  exact lease at most requestedCount Workers per request
-  canonical rematch of only the original successful Candidate/Worker pairs
+  Kernel supplies and holds one bounded due HOT WorkerId set
+  Worker Matching filters it independently for each Item Rule
+  Kernel confirms the hold and selects at most requestedCount per request
 ```
 
 Shared HOT and item-rule on-demand observation do not read Candidate Cache;
 cached candidate renewal does.
-Allocation cache publication reobserves the selected Worker IDs through the
-Score Owner at the expected lease slot, then appends only the still-active
+Allocation cache publication confirms the selected Worker IDs through the
+Score Owner at the expected hold slot, then appends only the still-active
 subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
-Policy first matches and selects bounded Worker IDs, then exact-leases only
-those Workers. The Pacer-internal Matcher depends only on the Worker Resource
-Catalog and its concrete Constraint Evaluator. It prepares one call-local
-Match Plan and does not know priority, requested count,
-uniqueness, Score, Cache or Lease. Its post-lease call reuses that Plan and
-reloads canonical descriptors only for the original Candidate/Worker pairs
-whose lease succeeded; Policy uses that descriptor's current endpoint to
-assemble the terminal Candidate.
+Policy selects only the bounded identities in Evidence whose exact clean hold
+is still active. It then loads the minimal Kernel Worker descriptor to obtain
+the current endpoint. Matching does not receive score, priority, count, cache
+or endpoint data; the opaque hold score remains inside Kernel.
 
-Pre-match failures do not receive a lease. Post-lease mismatches and candidate
-publication failures are not actively released; their short leases expire
-naturally, preventing immediate hot-loop rematching from the same evidence.
+Empty or stale Evidence cannot consume a hold. Unmatched, unselected and
+candidate-publication-failed Workers are not actively released; their short
+holds expire naturally. Moving each admitted pool to a newer score position
+also lets later due Workers enter subsequent bounded observations.
 
 ## Cached Candidate Renewal
 
@@ -121,8 +119,8 @@ renew_active_hot_score_leases(
 ```
 
 All accepted observations are submitted in one score-owner batch for the
-call's explicit WorkerGroup; matching remains request-local so cached evidence
-cannot silently change its CandidateId meaning.
+call's explicit WorkerGroup. Candidate Cache identity is already scoped to the
+Task and is not rematched against Properties during renewal.
 
 Rules:
 
@@ -136,10 +134,9 @@ lease covers target          -> exact NOOP + observedScore
 lease needs extension        -> exact CAS + renewedScore
 ```
 
-Only a `TRANSITIONED` or exact `NOOP` result carrying a score is rematched
-against the current request. A successful rematch may proceed to Item claim.
-The returned fence, unchanged or renewed, is written into
-`forward`.
+Only a `TRANSITIONED` or exact `NOOP` result carrying a score may proceed to
+minimal descriptor loading and Item claim. The returned fence, unchanged or
+renewed, is written into `forward`.
 
 Cached miss or rejected evidence never falls back to item-rule on-demand
 acquisition. `TaskDispatchPolicy` chooses one path from the fixed
@@ -156,15 +153,16 @@ Dirty means only:
 
 ```text
 an active Worker lease exists
-and metadata used by its match may have changed
+and a score-owner caller has explicitly invalidated renewal of that fence
 ```
 
 It is not scheduling-serviceability polarity, metadata version, global Worker
 status, or an
 attribute update lock. Non-lease owners may set dirty but never clear it.
-Allocation may clear dirty only while acquiring a due Worker before fresh
-matching. Active dispatch validation rejects dirty and forces a later fresh
-allocation/match.
+Allocation may clear dirty only while acquiring a due Worker. Worker Matching
+facts updates do not write Worker score and do not set dirty in this cut.
+Active cached renewal rejects dirty and forces later allocation to obtain new
+matching evidence and a new lease.
 
 ## Result Disposition
 
@@ -225,9 +223,9 @@ classification lag is allowed.
 
 | Stage | Evidence | Action |
 | --- | --- | --- |
-| Allocation | lease CAS lost | exclude Worker |
+| Match admission | hold CAS lost | exclude Worker from later Evidence use |
 | Allocation | unmatched or publication failure | retain short lease until expiry |
-| Cached candidate renewal | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
+| Cached candidate renewal | dirty/recovery/expired/stale fence or missing descriptor | consume candidate, do not claim Item |
 | Item dispatch | Item absent or claim lost | no release; leases expire |
 | Task Dispatch | mailbox residue replaced | publish the new lease-backed Seed; optional bounded residue metric |
 | Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
@@ -247,10 +245,10 @@ cross-owner transaction.
 | Owner | Responsibility | Refusal |
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
-| WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateMatcher | one call-local Match Plan, rule-derived Worker identity range, shared-pool or Candidate-scoped canonical Rule Match and original-pair post-lease rematch | no HOT/Cache scheduling Source, priority, count, uniqueness, Score, lease or Candidate Cache access |
-| WorkerCandidateSelectionPolicy | shared HOT, cached renewal and item-rule on-demand scheduling Sources; Score eligibility; request priority/count/unique selection; exact lease/renew; Matcher invocation; terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
-| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, reobserve active lease fences, and publish Candidate evidence | no Task discovery, Task-score write or result handling |
+| WorkerRuntime | minimal declaration validation, endpoint metadata and first score initialization | no Properties, matching, heartbeat or dispatch ownership |
+| WorkerMatchingRuntime | persistent Rule/Properties interpretation and bounded identity-only Evidence | no HOT/Cache scheduling source, priority, uniqueness, Score, lease, endpoint or Candidate Cache access |
+| WorkerCandidateSelectionPolicy | due HOT identity source, exact Match hold and confirmation, cached renewal, request priority/count/unique selection and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
+| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, consume held Match evidence and publish the next held Demand pool | no Task discovery, Task-score write or result handling |
 | TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
 | TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
 | TaskDispatchPolicy | bounded Task/Item observation, expiry/exhaustion, pairing, per-Task limit, ordinary pacing and idle-disposition choice | no Score decoding, construction or arithmetic |

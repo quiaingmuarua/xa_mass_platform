@@ -54,7 +54,7 @@ public final class KernelPacerAssembly
 
     @Override
     public int getPhase() {
-        return Integer.MIN_VALUE;
+        return Integer.MIN_VALUE + 1;
     }
 
     public Snapshot snapshot() {

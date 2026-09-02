@@ -7,6 +7,8 @@ configured Server runtime host.
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
+- ordered writes and Runtime View composition over the independent
+  `worker_matching_jvm` facts/rule owner;
 - fixed Pacer preset selection, Spring lifecycle delegation and Health
   projection for the
   single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
@@ -16,16 +18,21 @@ configured Server runtime host.
 - configured WorkerGroup seed and Adapter startup order.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
-retry, recovery, Task finality, Adapter connection routing or Worker event
-execution. See the root [architecture entrypoint](../README.md).
+retry, recovery, Task finality, allocation-rule interpretation, Adapter
+connection routing or Worker event execution. See the root
+[architecture entrypoint](../README.md).
 
 ## Runtime Shape
 
 ```text
 Public API
   -> Controller and Server use-case service
-  -> kernel_jvm owner contract
+  -> kernel_jvm or worker_matching_jvm owner contract
   -> owner-local Java Redis provider
+
+WorkerMatchingAssembly
+  -> persistent Worker/Platform facts and Task/Item rules
+  -> one bounded Demand/Evidence consumer
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
@@ -58,8 +65,8 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | JVM owner contracts with Java Redis Task providers |
-| Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
+| Task create, approve, close and Task Call Item submission | Server writes Matching rules before minimal Kernel Task/Item records; lifecycle remains Kernel-owned |
+| Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and optional Adapter Evidence lanes over Java owners |
 | Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
@@ -67,7 +74,7 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | `kernel_pacer_jvm` allocation, Task initialization and Task dispatch over bounded Kernel owners |
+| Assignment Dispatch | `kernel_pacer_jvm` publishes bounded Match Demand, consumes identity evidence, then owns priority, Score, lease and claim |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -227,8 +234,8 @@ immediately observed succeeded or failed entries.
 Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
-Neither route selects a Worker; the Item allocation rule remains Kernel
-scheduling input.
+Neither route selects a Worker; Server persists the Item allocation rule in
+Worker Matching before appending the minimal Kernel TaskItem record.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
@@ -275,7 +282,8 @@ POST /api/v1/worker-groups/{workerGroupId}:register
 An equivalent `attributes + eventCodes` declaration with an exact approved
 Task Call returns `already_registered`; a different Group declaration returns
 `400/15006` and never updates the stored Group. Attributes and Event Names are
-directory metadata, not Matcher, Dispatch, or per-Worker capability truth.
+directory metadata, not Worker Matching facts, Dispatch evidence, or
+per-Worker capability truth.
 
 Runtime View offers bounded explicit-coordinate and preview reads:
 
@@ -324,8 +332,8 @@ identity. A batch body is the direct array of `1..100` ordered Prepare items,
 all of which must share one kind and transport type. Both HTTP routes enter the
 same Server `prepareAll` path;
 the single route supplies a one-item list. Server validates the batch shape and
-every registration coordinate before side effects, then invokes the same
-identity, Binding, and Properties owners sequentially.
+every registration coordinate before side effects, then invokes Identity,
+Binding, Matching Facts and minimal Kernel Worker owners sequentially.
 The response is an ordered list of the ordinary Prepare response DTO. Only a
 complete response returns `200`; completed side effects are not rolled back,
 so callers may retry through the same derived coordinates.
@@ -340,10 +348,11 @@ identity data before using the new contract.
 
 `CLIENT_KEY` Prepare requires an existing Group and a non-blank
 `workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
-Worker identity, selects or reuses the persistent Endpoint Binding, upserts the
-complete Worker Properties snapshot and initializes missing scheduling truth.
-These are separate owners and Redis keys, not one transaction; a repeated
-Prepare converges interrupted stages. Ordinary Workers retain only their
+Worker identity, selects or reuses the persistent Endpoint Binding, replaces
+the complete Matching-owner Worker Properties snapshot, and initializes
+missing Kernel scheduling metadata and Score. These are separate owners and
+Redis keys, not one transaction; a repeated Prepare converges interrupted
+stages. Ordinary Workers retain only their
 Group/client key coordinate and never send a Worker ID hint. Transparent
 reconnect reuses the current in-memory identity and Endpoint without preparing
 again.
@@ -360,7 +369,8 @@ PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properti
 Pause, resume and Properties patch return `{"status":"applied"}` when the
 requested mutation changes owner state and `{"status":"unchanged"}` when the
 resource is already at the requested value. A Properties patch still accepts
-the direct JSON Properties object.
+the direct JSON Properties object; it mutates Matching facts and never writes
+Worker Score.
 Missing resources, invalid changes and state conflicts use the public
 `15008..15010` business codes and never expose the Kernel Owner reason.
 Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
@@ -529,10 +539,11 @@ Provider selection stays in Server assembly. The shared `assembly.redis`
 package owns connection and health only; Redis key operations live in
 owner-local provider packages.
 
-Worker Prepare composes Server-owned identity resolution and Endpoint Binding
-with the Kernel Worker upsert. The owners and registries remain separate.
-Prepare is the sole canonical Properties refresh; a transparent Client
-reconnect performs no control operation.
+Worker Prepare composes Server-owned identity resolution and Endpoint Binding,
+complete Matching-owner Worker Facts replacement, and minimal Kernel Worker
+metadata/Score initialization in that order. The owners and registries remain
+separate. Prepare is the sole canonical Worker Properties refresh; a
+transparent Client reconnect performs no control operation.
 
 ### Worker Delivery
 
@@ -713,11 +724,12 @@ GET /actuator/health/liveness
 GET /actuator/health/readiness
 ```
 
-Liveness covers the JVM process. Readiness requires Result Convergence,
-Dispatch Convergence and Kernel Redis to remain available. The optional
-Serviceability lane is part of Dispatch Convergence rather than a separate
-lifecycle. The `kernel` health contributor exposes only the aggregate lifecycle
-and the two Java convergence-application states.
+Liveness covers the JVM process. Readiness requires Worker Matching, Result
+Convergence, Dispatch Convergence and Kernel Redis to remain available. The
+optional Serviceability lane is part of Dispatch Convergence rather than a
+separate lifecycle. The `kernel` health contributor exposes only the aggregate
+lifecycle and the two Java convergence-application states; `workerMatching`
+reports its bounded consumer state separately.
 
 ## Verification
 

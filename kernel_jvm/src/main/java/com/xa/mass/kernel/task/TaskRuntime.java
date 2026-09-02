@@ -102,8 +102,7 @@ public interface TaskRuntime {
             long createdAtMillis,
             Map<String, Object> payload,
             int priority,
-            @Nullable Long expireAtMillis,
-            @Nullable Map<String, Object> allocationRule
+            @Nullable Long expireAtMillis
     ) {
         public TaskItem {
             requireNonBlank(messageId, "messageId");
@@ -126,9 +125,6 @@ public interface TaskRuntime {
                 );
             }
             payload = immutableObjectMap(payload);
-            allocationRule = allocationRule == null
-                    ? null
-                    : immutableObjectMap(allocationRule);
         }
     }
 
@@ -137,7 +133,6 @@ public interface TaskRuntime {
             String workerGroupId,
             WorkerAllocationMechanism workerAllocationMechanism,
             TaskIdleDisposition idleDisposition,
-            @Nullable Map<String, Object> allocationRule,
             Map<String, String> config
     ) {
         public TaskDescriptor {
@@ -149,20 +144,6 @@ public interface TaskRuntime {
             );
             Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
-            if (workerAllocationMechanism
-                    == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                    && allocationRule == null) {
-                throw new IllegalArgumentException(
-                        "PRECOMPUTED_TASK_RULE requires allocationRule"
-                );
-            }
-            if (workerAllocationMechanism
-                    == WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
-                    && allocationRule != null) {
-                throw new IllegalArgumentException(
-                        "ON_DEMAND_ITEM_RULE forbids allocationRule"
-                );
-            }
             if (!config.keySet().equals(CONFIG_KEYS)) {
                 throw new IllegalArgumentException(
                         "config must contain exactly the declared keys"
@@ -189,9 +170,6 @@ public interface TaskRuntime {
                         "maxRetryTimes must be in 0..98"
                 );
             }
-            allocationRule = allocationRule == null
-                    ? null
-                    : immutableObjectMap(allocationRule);
             config = Collections.unmodifiableMap(
                     new LinkedHashMap<>(config)
             );

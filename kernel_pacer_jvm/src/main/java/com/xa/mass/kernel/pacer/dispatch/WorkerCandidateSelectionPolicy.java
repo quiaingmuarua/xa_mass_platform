@@ -5,6 +5,7 @@ import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,22 +15,22 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
+/** Kernel selection over identity-only matching evidence. */
 final class WorkerCandidateSelectionPolicy {
 
-    static final int MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND = 100;
+    static final int MAX_UNIQUE_WORKERS_PER_ROUND = 100;
 
     private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
-    private final WorkerCandidateMatcher matcher;
+    private final WorkerResourceCatalog workerCatalog;
     private final int workerScanLimit;
     private final Long hotEligibilityFloorMillis;
 
     WorkerCandidateSelectionPolicy(
             WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
-            WorkerCandidateMatcher matcher,
+            WorkerResourceCatalog workerCatalog,
             int workerScanLimit,
             Long hotEligibilityFloorMillis
     ) {
@@ -41,14 +42,55 @@ final class WorkerCandidateSelectionPolicy {
                 candidateCache,
                 "candidateCache"
         );
-        this.matcher = Objects.requireNonNull(matcher, "matcher");
-        if (workerScanLimit < 1) {
+        this.workerCatalog = Objects.requireNonNull(
+                workerCatalog,
+                "workerCatalog"
+        );
+        if (workerScanLimit < 1
+                || workerScanLimit > MAX_UNIQUE_WORKERS_PER_ROUND) {
             throw new IllegalArgumentException(
-                    "worker scan limit must be positive"
+                    "workerScanLimit must be in 1.."
+                            + MAX_UNIQUE_WORKERS_PER_ROUND
             );
         }
         this.workerScanLimit = workerScanLimit;
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
+    }
+
+    Map<String, Long> observeDueCandidates(String workerGroupId) {
+        return workerScores.observeDueHotScoreCandidates(
+                workerGroupId,
+                hotEligibilityFloorMillis,
+                workerScanLimit
+        );
+    }
+
+    Map<String, Long> holdObservedCandidates(
+            String workerGroupId,
+            Map<String, Long> observedScores,
+            long holdUntilMillis
+    ) {
+        Objects.requireNonNull(observedScores, "observedScores");
+        if (observedScores.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, WorkerScoreTransitionResult> transitions =
+                workerScores.acquireObservedHotScoreLeases(
+                        workerGroupId,
+                        observedScores,
+                        holdUntilMillis
+                );
+        LinkedHashMap<String, Long> held = new LinkedHashMap<>();
+        observedScores.keySet().forEach(workerId -> {
+            WorkerScoreTransitionResult result = transitions.get(workerId);
+            if (result != null
+                    && result.status()
+                            == WorkerScoreTransitionStatus.TRANSITIONED
+                    && result.score() != null) {
+                held.put(workerId, result.score());
+            }
+        });
+        return Collections.unmodifiableMap(held);
     }
 
     Map<String, List<AcquiredWorkerCandidate>> renewCachedCandidates(
@@ -57,245 +99,108 @@ final class WorkerCandidateSelectionPolicy {
             long leaseUntilMillis
     ) {
         Map<String, WorkerCandidateRequest> validated = validate(requests);
-        if (validated.isEmpty()) {
-            return empty(validated);
-        }
-        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
-                workerGroupId,
-                validated
-        );
-        return renewCachedCandidates(
-                workerGroupId,
-                validated,
-                matchPlan,
-                leaseUntilMillis
-        );
-    }
-
-    Map<String, List<AcquiredWorkerCandidate>> acquireSharedHotCandidates(
-            String workerGroupId,
-            Map<String, WorkerCandidateRequest> requests,
-            long leaseUntilMillis
-    ) {
-        Map<String, WorkerCandidateRequest> validated = validate(requests);
-        if (validated.isEmpty()) {
-            return empty(validated);
-        }
-        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
-                workerGroupId,
-                validated
-        );
-        if (!matchPlan.hasValidCandidates()) {
-            return empty(validated);
-        }
-        Map<String, Long> observed = workerScores
-                .acquireHotAcquireCandidates(
-                        workerGroupId,
-                        hotEligibilityFloorMillis,
-                        workerScanLimit
-                );
-        if (observed.isEmpty()) {
-            return empty(validated);
-        }
-        Map<String, List<WorkerDescriptor>> matched =
-                matcher.matchSharedWorkerPool(
-                        workerGroupId,
-                        List.copyOf(observed.keySet()),
-                        matchPlan
-                );
-        return selectLeaseAndRematch(
-                workerGroupId,
-                observed,
-                matched,
-                matchPlan,
-                validated,
-                leaseUntilMillis,
-                false,
-                workerScanLimit
-        );
-    }
-
-    Map<String, List<AcquiredWorkerCandidate>> acquireOnDemandCandidates(
-            String workerGroupId,
-            Map<String, WorkerCandidateRequest> requests,
-            long leaseUntilMillis
-    ) {
-        Map<String, WorkerCandidateRequest> validated = validate(requests);
-        if (validated.isEmpty()) {
-            return empty(validated);
-        }
-        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
-                workerGroupId,
-                validated
-        );
-        return acquireOnDemandCandidates(
-                workerGroupId,
-                validated,
-                matchPlan,
-                leaseUntilMillis
-        );
-    }
-
-    private Map<String, List<AcquiredWorkerCandidate>> renewCachedCandidates(
-            String workerGroupId,
-            Map<String, WorkerCandidateRequest> requests,
-            WorkerCandidateMatcher.MatchPlan matchPlan,
-            long leaseUntilMillis
-    ) {
-        LinkedHashMap<String, Long> observed =
+        LinkedHashMap<String, List<String>> candidateIds =
                 new LinkedHashMap<>();
-        LinkedHashMap<String, List<String>> candidateWorkerIds =
-                new LinkedHashMap<>();
+        LinkedHashMap<String, Long> observed = new LinkedHashMap<>();
         for (Map.Entry<String, WorkerCandidateRequest> request
-                : ordered(requests)) {
-            if (!matchPlan.isValid(request.getKey())) {
-                continue;
-            }
-            Map<String, Long> cached = consumeCachedCandidates(
-                    request.getKey(),
-                    workerGroupId,
-                    request.getValue().requestedCount()
-            );
-            candidateWorkerIds.put(
-                    request.getKey(),
-                    List.copyOf(cached.keySet())
-            );
-            cached.forEach(observed::putIfAbsent);
-        }
-        if (observed.isEmpty()) {
-            return empty(requests);
-        }
-        Map<String, List<String>> boundedCandidateWorkerIds =
-                intersectWithObserved(
-                        candidateWorkerIds,
-                        observed.keySet()
-                );
-        Map<String, List<WorkerDescriptor>> matched =
-                matcher.matchCandidateScopedWorkerIds(
-                        workerGroupId,
-                        boundedCandidateWorkerIds,
-                        matchPlan
-                );
-        return selectLeaseAndRematch(
-                workerGroupId,
-                observed,
-                matched,
-                matchPlan,
-                requests,
-                leaseUntilMillis,
-                true,
-                Integer.MAX_VALUE
-        );
-    }
-
-    private Map<String, List<AcquiredWorkerCandidate>>
-            acquireOnDemandCandidates(
-                    String workerGroupId,
-                    Map<String, WorkerCandidateRequest> requests,
-                    WorkerCandidateMatcher.MatchPlan matchPlan,
-                    long leaseUntilMillis
-            ) {
-        Set<String> unrestricted = matcher.unrestrictedCandidateIds(
-                matchPlan
-        );
-        Map<String, List<String>> explicitByCandidate =
-                matcher.explicitWorkerIdsByCandidate(
-                        matchPlan,
-                        MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
-                );
-        Map<String, Long> broad = unrestricted.isEmpty()
-                ? Map.of()
-                : workerScores.acquireHotAcquireCandidates(
-                        workerGroupId,
-                        hotEligibilityFloorMillis,
-                        Math.min(
-                                workerScanLimit,
-                                MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
-                        )
-                );
-        LinkedHashSet<String> explicitIds = new LinkedHashSet<>();
-        LinkedHashMap<String, List<String>> candidateWorkerIds =
-                new LinkedHashMap<>();
-        for (Map.Entry<String, WorkerCandidateRequest> request
-                : ordered(requests)) {
-            List<String> workerIds = unrestricted.contains(request.getKey())
-                    ? List.copyOf(broad.keySet())
-                    : explicitByCandidate.getOrDefault(
+                : ordered(validated)) {
+            List<CandidateWorkerEntry> cached =
+                    candidateCache.consumeCandidateWorkers(
                             request.getKey(),
-                            List.of()
+                            request.getValue().requestedCount()
                     );
-            candidateWorkerIds.put(request.getKey(), workerIds);
-            if (explicitByCandidate.containsKey(request.getKey())) {
-                explicitIds.addAll(workerIds);
+            List<String> ids = new ArrayList<>();
+            for (CandidateWorkerEntry entry : cached) {
+                if (workerGroupId.equals(entry.workerGroupId())) {
+                    ids.add(entry.workerId());
+                    observed.putIfAbsent(
+                            entry.workerId(),
+                            entry.workerLeaseScore()
+                    );
+                }
             }
+            candidateIds.put(request.getKey(), List.copyOf(ids));
         }
-        List<String> boundedExplicitIds = List.copyOf(explicitIds).subList(
-                0,
-                Math.min(
-                        explicitIds.size(),
-                        MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
-                )
-        );
-        Map<String, Long> explicit =
-                boundedExplicitIds.isEmpty()
-                        ? Map.of()
-                        : workerScores.observeDueHotScores(
-                                workerGroupId,
-                                boundedExplicitIds,
-                                hotEligibilityFloorMillis
-                        );
-        LinkedHashMap<String, Long> observed =
-                new LinkedHashMap<>(broad);
-        explicit.forEach(observed::putIfAbsent);
-        if (observed.isEmpty()) {
-            return empty(requests);
-        }
-        Map<String, List<String>> boundedCandidateWorkerIds =
-                intersectWithObserved(
-                        candidateWorkerIds,
-                        observed.keySet()
-                );
-        Map<String, List<WorkerDescriptor>> matched =
-                matcher.matchCandidateScopedWorkerIds(
-                        workerGroupId,
-                        boundedCandidateWorkerIds,
-                        matchPlan
-                );
-        return selectLeaseAndRematch(
+        return leaseSelected(
                 workerGroupId,
+                validated,
+                candidateIds,
                 observed,
-                matched,
-                matchPlan,
-                requests,
                 leaseUntilMillis,
-                false,
-                MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
+                MAX_UNIQUE_WORKERS_PER_ROUND
         );
     }
 
-    private Map<String, List<AcquiredWorkerCandidate>>
-            selectLeaseAndRematch(
-                    String workerGroupId,
-                    Map<String, Long> observed,
-                    Map<String, List<WorkerDescriptor>> matched,
-                    WorkerCandidateMatcher.MatchPlan matchPlan,
-                    Map<String, WorkerCandidateRequest> requests,
-                    long leaseUntilMillis,
-                    boolean renewal,
-                    int maximumUniqueWorkers
-            ) {
-        if (maximumUniqueWorkers < 1) {
-            throw new IllegalArgumentException(
-                    "maximumUniqueWorkers must be positive"
-            );
-        }
+    Map<String, List<AcquiredWorkerCandidate>> selectHeldCandidates(
+            String workerGroupId,
+            Map<String, WorkerCandidateRequest> requests,
+            Map<String, List<String>> matchedWorkerIds,
+            Map<String, Long> holdUntilByCandidateId,
+            int maximumUniqueWorkers
+    ) {
+        Map<String, WorkerCandidateRequest> validated = validate(requests);
+        Objects.requireNonNull(matchedWorkerIds, "matchedWorkerIds");
+        Objects.requireNonNull(
+                holdUntilByCandidateId,
+                "holdUntilByCandidateId"
+        );
+        LinkedHashMap<Long, LinkedHashSet<String>> idsByHoldUntil =
+                new LinkedHashMap<>();
+        validated.keySet().forEach(candidateId -> {
+            Long holdUntil = holdUntilByCandidateId.get(candidateId);
+            if (holdUntil == null) {
+                return;
+            }
+            idsByHoldUntil.computeIfAbsent(
+                    holdUntil,
+                    ignored -> new LinkedHashSet<>()
+            ).addAll(matchedWorkerIds.getOrDefault(candidateId, List.of()));
+        });
+        LinkedHashMap<String, Long> active = new LinkedHashMap<>();
+        idsByHoldUntil.forEach((holdUntil, workerIds) -> {
+            if (!workerIds.isEmpty()) {
+                workerScores.observeActiveHotScoreLeases(
+                        workerGroupId,
+                        List.copyOf(workerIds),
+                        holdUntil
+                ).forEach(active::putIfAbsent);
+            }
+        });
+        LinkedHashMap<String, List<String>> activeMatches =
+                new LinkedHashMap<>();
+        validated.keySet().forEach(candidateId -> activeMatches.put(
+                candidateId,
+                matchedWorkerIds.getOrDefault(candidateId, List.of()).stream()
+                        .filter(active::containsKey)
+                        .toList()
+        ));
         Map<String, List<String>> selected = selectUniqueWorkerIds(
-                matched,
+                activeMatches,
+                validated,
+                maximumUniqueWorkers
+        );
+        return describeSelected(
+                workerGroupId,
+                validated,
+                selected,
+                active
+        );
+    }
+
+    private Map<String, List<AcquiredWorkerCandidate>> leaseSelected(
+            String workerGroupId,
+            Map<String, WorkerCandidateRequest> requests,
+            Map<String, List<String>> candidateIds,
+            Map<String, Long> observed,
+            long leaseUntilMillis,
+            int maximumUniqueWorkers
+    ) {
+        Map<String, List<String>> selected = selectUniqueWorkerIds(
+                candidateIds,
                 requests,
                 maximumUniqueWorkers
         );
-        LinkedHashMap<String, Long> selectedScores =
-                new LinkedHashMap<>();
+        LinkedHashMap<String, Long> selectedScores = new LinkedHashMap<>();
         for (Map.Entry<String, WorkerCandidateRequest> request
                 : ordered(requests)) {
             for (String workerId : selected.getOrDefault(
@@ -311,25 +216,20 @@ final class WorkerCandidateSelectionPolicy {
         if (selectedScores.isEmpty()) {
             return empty(requests);
         }
-        Map<String, WorkerScoreTransitionResult> transitions = renewal
-                ? workerScores.renewActiveHotScoreLeases(
-                        workerGroupId,
-                        selectedScores,
-                        leaseUntilMillis
-                )
-                : workerScores.acquireObservedHotScoreLeases(
+        Map<String, WorkerScoreTransitionResult> transitions =
+                workerScores.renewActiveHotScoreLeases(
                         workerGroupId,
                         selectedScores,
                         leaseUntilMillis
                 );
         LinkedHashMap<String, Long> leased = new LinkedHashMap<>();
-        selectedScores.keySet().forEach(workerId -> {
+        selectedScores.forEach((workerId, ignored) -> {
             WorkerScoreTransitionResult result = transitions.get(workerId);
             if (result != null
                     && result.score() != null
                     && (result.status()
                             == WorkerScoreTransitionStatus.TRANSITIONED
-                    || renewal && result.status()
+                    || result.status()
                             == WorkerScoreTransitionStatus.NOOP)) {
                 leased.put(workerId, result.score());
             }
@@ -337,162 +237,107 @@ final class WorkerCandidateSelectionPolicy {
         if (leased.isEmpty()) {
             return empty(requests);
         }
-        Map<String, List<String>> leasedWorkerIdsByCandidate =
-                retainLeasedWorkerIds(selected, leased.keySet());
-        Map<String, List<WorkerDescriptor>> rematched =
-                matcher.matchCandidateScopedWorkerIds(
-                        workerGroupId,
-                        leasedWorkerIdsByCandidate,
-                        matchPlan
-                );
-        return acquiredCandidates(
-                workerGroupId,
-                leased,
-                rematched,
-                requests
-        );
+        return describeSelected(workerGroupId, requests, selected, leased);
     }
 
-    private Map<String, Long> consumeCachedCandidates(
-            String candidateId,
+    private Map<String, List<AcquiredWorkerCandidate>> describeSelected(
             String workerGroupId,
-            int limit
-    ) {
-        List<CandidateWorkerEntry> cached =
-                candidateCache.consumeCandidateWorkers(candidateId, limit);
-        LinkedHashMap<String, Long> observed = new LinkedHashMap<>();
-        for (CandidateWorkerEntry entry : cached) {
-            if (workerGroupId.equals(entry.workerGroupId())) {
-                observed.putIfAbsent(
-                        entry.workerId(),
-                        entry.workerLeaseScore()
-                );
-            }
-        }
-        return Collections.unmodifiableMap(observed);
-    }
-
-    private static Map<String, List<String>> intersectWithObserved(
-            Map<String, List<String>> candidateWorkerIds,
-            Set<String> observedWorkerIds
-    ) {
-        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
-        candidateWorkerIds.forEach((candidateId, workerIds) -> {
-            LinkedHashSet<String> bounded = new LinkedHashSet<>();
-            for (String workerId : workerIds) {
-                if (observedWorkerIds.contains(workerId)) {
-                    bounded.add(workerId);
-                }
-            }
-            result.put(candidateId, List.copyOf(bounded));
-        });
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static Map<String, List<String>> selectUniqueWorkerIds(
-            Map<String, List<WorkerDescriptor>> matched,
             Map<String, WorkerCandidateRequest> requests,
-            int maximumUniqueWorkers
+            Map<String, List<String>> selected,
+            Map<String, Long> leased
     ) {
-        LinkedHashMap<String, List<String>> selected = new LinkedHashMap<>();
-        requests.keySet().forEach(candidateId -> selected.put(
-                candidateId,
-                List.of()
-        ));
-        LinkedHashSet<String> usedWorkerIds = new LinkedHashSet<>();
-        for (Map.Entry<String, WorkerCandidateRequest> request
-                : ordered(requests)) {
-            List<String> matches = new ArrayList<>();
-            for (WorkerDescriptor descriptor : matched.getOrDefault(
-                    request.getKey(),
-                    List.of()
-            )) {
-                String workerId = descriptor.workerId();
-                if (usedWorkerIds.contains(workerId)) {
-                    continue;
-                }
-                if (usedWorkerIds.size() >= maximumUniqueWorkers) {
-                    break;
-                }
-                usedWorkerIds.add(workerId);
-                matches.add(workerId);
-                if (matches.size() >= request.getValue().requestedCount()) {
-                    break;
-                }
-            }
-            selected.put(request.getKey(), List.copyOf(matches));
+        if (leased.isEmpty()) {
+            return empty(requests);
         }
-        return Collections.unmodifiableMap(selected);
-    }
-
-    private static Map<String, List<String>> retainLeasedWorkerIds(
-            Map<String, List<String>> selectedWorkerIds,
-            Set<String> leasedWorkerIds
-    ) {
-        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
-        selectedWorkerIds.forEach((candidateId, workerIds) -> {
-            List<String> retained = workerIds.stream()
-                    .filter(leasedWorkerIds::contains)
-                    .toList();
-            result.put(candidateId, retained);
-        });
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static Map<String, List<AcquiredWorkerCandidate>>
-            acquiredCandidates(
-                    String workerGroupId,
-                    Map<String, Long> leasedScores,
-                    Map<String, List<WorkerDescriptor>> rematched,
-                    Map<String, WorkerCandidateRequest> requests
-            ) {
+        Map<String, WorkerDescriptor> descriptors =
+                workerCatalog.getWorkerDescriptors(
+                        workerGroupId,
+                        List.copyOf(leased.keySet())
+                );
         LinkedHashMap<String, List<AcquiredWorkerCandidate>> result =
                 new LinkedHashMap<>();
         requests.keySet().forEach(candidateId -> {
-            List<AcquiredWorkerCandidate> candidates = rematched.getOrDefault(
+            List<AcquiredWorkerCandidate> candidates = selected.getOrDefault(
                     candidateId,
                     List.of()
-            ).stream().map(descriptor -> new AcquiredWorkerCandidate(
-                    descriptor.workerId(),
-                    workerGroupId,
-                    descriptor.endpointManagerId(),
-                    Objects.requireNonNull(
-                            leasedScores.get(descriptor.workerId()),
-                            "workerLeaseScore"
-                    )
-            )).toList();
+            ).stream().filter(leased::containsKey).map(descriptors::get)
+                    .filter(Objects::nonNull)
+                    .map(descriptor -> new AcquiredWorkerCandidate(
+                            descriptor.workerId(),
+                            descriptor.workerGroupId(),
+                            descriptor.endpointManagerId(),
+                            Objects.requireNonNull(
+                                    leased.get(descriptor.workerId()),
+                                    "workerLeaseScore"
+                            )
+                    )).toList();
             result.put(candidateId, candidates);
         });
         return Collections.unmodifiableMap(result);
     }
 
-    private WorkerCandidateMatcher.MatchPlan prepareMatchPlan(
-            String workerGroupId,
-            Map<String, WorkerCandidateRequest> requests
+    private static Map<String, List<String>> selectUniqueWorkerIds(
+            Map<String, List<String>> candidates,
+            Map<String, WorkerCandidateRequest> requests,
+            int maximumUniqueWorkers
     ) {
-        LinkedHashMap<String, Map<String, Object>> rules =
-                new LinkedHashMap<>();
-        requests.forEach((candidateId, request) -> rules.put(
+        Objects.requireNonNull(candidates, "matchedWorkerIds");
+        if (maximumUniqueWorkers < 1
+                || maximumUniqueWorkers > MAX_UNIQUE_WORKERS_PER_ROUND) {
+            throw new IllegalArgumentException(
+                    "maximumUniqueWorkers must be in 1.."
+                            + MAX_UNIQUE_WORKERS_PER_ROUND
+            );
+        }
+        LinkedHashSet<String> used = new LinkedHashSet<>();
+        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
+        requests.keySet().forEach(candidateId -> result.put(
                 candidateId,
-                request.allocationRule()
+                List.of()
         ));
-        return matcher.prepare(workerGroupId, rules);
+        for (Map.Entry<String, WorkerCandidateRequest> request
+                : ordered(requests)) {
+            List<String> selected = new ArrayList<>();
+            for (String workerId : candidates.getOrDefault(
+                    request.getKey(),
+                    List.of()
+            )) {
+                if (workerId == null || workerId.isBlank()
+                        || used.contains(workerId)) {
+                    continue;
+                }
+                if (used.size() >= maximumUniqueWorkers) {
+                    break;
+                }
+                used.add(workerId);
+                selected.add(workerId);
+                if (selected.size()
+                        >= request.getValue().requestedCount()) {
+                    break;
+                }
+            }
+            result.put(request.getKey(), List.copyOf(selected));
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     private static Map<String, WorkerCandidateRequest> validate(
             Map<String, WorkerCandidateRequest> source
     ) {
-        if (source == null) {
-            throw new IllegalArgumentException(
-                    "candidateRequests must be present"
-            );
-        }
+        Objects.requireNonNull(source, "candidateRequests");
         LinkedHashMap<String, WorkerCandidateRequest> result =
                 new LinkedHashMap<>();
-        source.forEach((candidateId, request) -> result.put(
-                candidateId,
-                Objects.requireNonNull(request, "request")
-        ));
+        source.forEach((candidateId, request) -> {
+            if (candidateId == null || candidateId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "candidateId must be non-blank"
+                );
+            }
+            result.put(
+                    candidateId,
+                    Objects.requireNonNull(request, "request")
+            );
+        });
         return Collections.unmodifiableMap(result);
     }
 

@@ -270,8 +270,7 @@ class DefaultTaskCommandsTest {
                 1,
                 Map.of("value", "abc"),
                 5,
-                10_000L,
-                null
+                10_000L
         );
     }
 
@@ -281,7 +280,6 @@ class DefaultTaskCommandsTest {
                 "workers",
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 Map.of(
                         "priority", Integer.toString(priority),
                         "maximumCandidateWorkers", "1",

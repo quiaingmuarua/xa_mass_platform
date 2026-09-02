@@ -300,7 +300,6 @@ class TaskResultsExportServiceTest {
                 "group-1",
                 mechanism,
                 disposition,
-                allocationRule,
                 Map.of(
                         "priority", "50",
                         "maximumCandidateWorkers", "10",

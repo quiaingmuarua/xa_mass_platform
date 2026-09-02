@@ -10,12 +10,16 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.ItemRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +33,7 @@ public final class TaskRpcCallService {
     private final TaskCallItemSubmission taskCallSubmission;
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
+    private final WorkerMatchingCatalog matchingCatalog;
     private final TaskRpcWaitRegistry registry;
     private final TaskItemMapper taskItems;
     private final long defaultWaitTimeoutMillis;
@@ -38,6 +43,7 @@ public final class TaskRpcCallService {
             TaskCallItemSubmission taskCallSubmission,
             TaskRuntime taskRuntime,
             TaskResourceCatalog taskCatalog,
+            WorkerMatchingCatalog matchingCatalog,
             TaskRpcWaitRegistry registry,
             TaskItemMapper taskItems,
             TaskRpcProperties properties
@@ -45,6 +51,7 @@ public final class TaskRpcCallService {
         this.taskCallSubmission = taskCallSubmission;
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
+        this.matchingCatalog = matchingCatalog;
         this.registry = registry;
         this.taskItems = taskItems;
         this.defaultWaitTimeoutMillis =
@@ -56,7 +63,7 @@ public final class TaskRpcCallService {
             String taskId,
             TaskRpcCallRequest request
     ) {
-        requireCallableTask(taskId);
+        TaskDescriptor descriptor = requireCallableTask(taskId);
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         LinkedHashMap<String, TaskItemRequest> requestedItems = latestItems(
                 request.items()
@@ -76,6 +83,7 @@ public final class TaskRpcCallService {
                     error
             );
         }
+        createItemRules(taskId, descriptor, requestedItems);
 
         TaskCallSubmissionResult submission;
         try {
@@ -126,7 +134,7 @@ public final class TaskRpcCallService {
         return deferred;
     }
 
-    private void requireCallableTask(String taskId) {
+    private TaskDescriptor requireCallableTask(String taskId) {
         TaskDescriptor descriptor;
         try {
             descriptor = taskCatalog.loadTaskAllocationDescriptors(
@@ -158,6 +166,74 @@ public final class TaskRpcCallService {
                     "Task does not support synchronous Item Call",
                     null
             );
+        }
+        return descriptor;
+    }
+
+    private void createItemRules(
+            String taskId,
+            TaskDescriptor descriptor,
+            LinkedHashMap<String, TaskItemRequest> requestedItems
+    ) {
+        List<ItemRule> rules = requestedItems.values().stream()
+                .map(item -> new ItemRule(
+                        new ItemMatchKey(taskId, item.messageId()),
+                        descriptor.workerGroupId(),
+                        item.allocationRule()
+                ))
+                .toList();
+        Map<ItemMatchKey, MutationResult> results;
+        try {
+            results = matchingCatalog.createItemRules(rules);
+        } catch (RuntimeException error) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.createItemRules",
+                    null,
+                    error
+            );
+        }
+        if (results == null || results.size() != rules.size()) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.createItemRules",
+                    "Matching Owner omitted an Item rule result",
+                    null
+            );
+        }
+        for (ItemRule rule : rules) {
+            MutationResult result = results.get(rule.key());
+            if (result == null) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                        "taskRpc.createItemRules",
+                        "Matching Owner omitted an Item rule result",
+                        null
+                );
+            }
+            switch (result.status()) {
+                case APPLIED, UNCHANGED -> {
+                    // Continue validating the bounded rule write.
+                }
+                case INVALID -> throw new ServerException(
+                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                        "taskRpc.createItemRules",
+                        result.reason(),
+                        null
+                );
+                case CONFLICT -> throw new ServerException(
+                        ServerErrorCode.TASK_STATE_CONFLICT,
+                        "taskRpc.createItemRules",
+                        result.reason(),
+                        null
+                );
+                case NOT_FOUND -> throw new ServerException(
+                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                        "taskRpc.createItemRules",
+                        result.reason(),
+                        null
+                );
+            }
         }
     }
 

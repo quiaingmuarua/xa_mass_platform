@@ -1,145 +1,80 @@
 # Worker Runtime Redis Shape
 
-Status: active Java Kernel Worker Runtime Redis ABI.
+Status: active Worker metadata, matching facts and Server identity Redis ABI.
 
 ## Namespace And Owners
 
-```text
-xa_mass:<scope>:worker:...
-```
-
-`xa_mass` is the fixed root namespace. `scope` is the validated data-isolation
-boundary (`profile_*` for a runtime profile, `test_*` for one proof run).
-The Redis DB number is only a connection coordinate. `workerGroupId` is the
-Worker home bucket and score partition. Redis structures are owned separately:
+Every key is rooted at the validated `xa_mass:<scope>` base. Worker data is
+split by owner:
 
 ```text
-WorkerResourceCatalog      WorkerGroup descriptors plus Worker metadata/properties
-WorkerRuntime              Worker metadata establishment and snapshot refresh
-WorkerScoreCore            Worker scheduling score ZSET
+Kernel WorkerResourceCatalog  WorkerGroup catalog and minimal Worker metadata
+Kernel WorkerScoreCore        scheduling score
+WorkerMatchingCatalog         Worker/Platform facts and allocation rules
+Server Identity/Binding       external identity and endpoint address
 ```
 
-Delivery mailboxes, Worker results, and optional serviceability evidence use
-the `delivery`, `result`, and Worker-local `serviceability` domains under the
-same root and scope. Task assignment, connection state, and execution truth
-never enter the Worker resource keys. Keys do not use Redis Cluster hash tags;
-Cluster support requires a separate design.
+No owner reads another owner's Redis key directly.
 
-## WorkerGroup Descriptors
+## Kernel Worker Resources
 
 ```text
 xa_mass:<scope>:worker:groups
   HASH field = workerGroupId
   value       = canonical WorkerGroupDescriptor JSON
-```
 
-Example:
-
-```json
-{
-  "attributes": {"runtime": "java"},
-  "eventCodes": ["telecom.phone.inspect"],
-  "workerGroupId": "phone-workers"
-}
-```
-
-Keys are emitted in stable order, sets are sorted, and JSON is compact.
-
-Registration behavior:
-
-```text
-HSETNX establishes WorkerGroup
-identical descriptor -> NOOP
-changed attributes and/or eventCodes -> CONFLICT, stored value unchanged
-stored descriptor identity mismatch -> INVALID
-damaged stored descriptor -> INVALID
-```
-
-`workerGroupId` is the stable HASH field and scheduling partition identity.
-`attributes` and `eventCodes` form one create-only control-plane declaration.
-They are not read by Matcher or Dispatch and do not assert the Handler set
-currently installed on every Worker.
-
-## Worker Metadata And Properties
-
-```text
 xa_mass:<scope>:worker:metadata:<workerGroupId>
   HASH field = workerId
-  value       = canonical WorkerMetadata JSON
-
-xa_mass:<scope>:worker:properties:<workerGroupId>
-  HASH field = workerId
-  value       = canonical workerProperties JSON object
+  value       = {
+    "endpointManagerId": "...",
+    "workerGroupId": "...",
+    "workerId": "..."
+  }
 
 xa_mass:<scope>:worker:id_owners
   HASH field = workerId
   value       = workerGroupId
 ```
 
-Example metadata:
+WorkerGroup registration is create-only: equal declarations are idempotent and
+different declarations conflict. The ID-owner Hash is an immutable
+cross-Group fence for bounded explicit-ID reads; it is not a global discovery
+index.
 
-```json
-{
-  "endpointManagerId": "system-polling",
-  "platformProperties": {"poolLabel": "default"},
-  "workerGroupId": "phone-workers",
-  "workerId": "phone-worker-1"
-}
-```
+Worker upsert validates Group existence and identity ownership, then creates or
+updates only the endpoint coordinate. The exact metadata field set rejects
+legacy Properties fields.
 
-Example Worker Properties row:
-
-```json
-{"arch":"arm64","region":"cn-east"}
-```
-
-The `worker:id_owners` HASH is the immutable identity fence and backs only the bounded
-explicit-ID `get_worker_group_ids` owner read. It is not a global query catalog,
-Worker discovery source, or Transport routing structure.
-
-Worker upsert intentionally remains multi-stage:
+## Matching Facts
 
 ```text
-require WorkerGroup descriptor
--> HSETNX workerId owner
--> establish or validate immutable Worker metadata coordinates
--> replace the complete workerProperties row
--> initialize HOT_ACQUIRE only when Worker score is missing
--> preserve every existing Worker score byte-for-byte
+xa_mass:<scope>:matching:worker:facts:<workerGroupId>
+  HASH field = workerId
+  value       = complete canonical Worker Properties JSON
+
+xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
+  HASH field = workerId
+  value       = complete canonical Platform Properties JSON
+
+xa_mass:<scope>:matching:task:rules
+  HASH field = taskId
+  value       = {"workerGroupId":"...","allocationRule":{...}}
+
+xa_mass:<scope>:matching:task:<taskId>:item-rules
+  HASH field = messageId
+  value       = {"workerGroupId":"...","allocationRule":{...}}
 ```
 
-Interrupted stages converge on retry. The operation is not wrapped in a
-cross-key transaction.
+Worker Prepare replaces the complete Worker-owned facts row and preserves the
+separate Platform row. Platform patch requires an existing Worker facts row,
+applies nullable field updates and uses bounded compare-and-set retries.
 
-Repeated compatible upsert writes the latest complete `workerProperties` row
-and never accesses an existing score. Platform property patch performs a
-bounded metadata read, applies field updates, removes `null` values, and CAS
-writes one canonical metadata row. Because the two property sources use
-different HASHes, Worker snapshot replacement and Platform patch cannot
-restore a stale value owned by the other source. Platform patch may return
-`STALE` under sustained metadata contention and never changes
-`workerProperties` or score.
+Task and Item Rules are create-only. Equal content is unchanged; different
+content conflicts. Orphan facts or Rules are inert because Matching evaluates
+only a bounded Demand published by Kernel scheduling.
 
-The Server-owned identity and endpoint Binding registries use a separate
-namespace:
-
-```text
-xa_mass:<scope>:worker:identity:<workerGroupId>
-  HASH field = clientWorkerKey
-  value       = canonical UUID workerId
-
-xa_mass:<scope>:worker:binding:<00..ff>
-  HASH field = canonical UUID workerId
-  value       = endpointManagerId
-```
-
-Identity registration establishes long-lived external identity. Binding
-establishes the persistent delivery route used to project `endpointManagerId`
-into Kernel Worker metadata. The public Worker Prepare use case composes these
-Server owners with Worker upsert, but does not merge their Redis ownership.
-The 256 bucket suffix is the first SHA-256 byte of the canonical workerId and
-only limits HASH size. Neither registry is a Kernel owner key, candidate
-catalog, authentication record, or connectivity truth.
+ON_DEMAND enumeration uses `HSCAN` within one explicit WorkerGroup. The cursor
+is held only in the process-local Matching Runtime and is not persisted.
 
 ## Worker Score
 
@@ -149,65 +84,62 @@ xa_mass:<scope>:worker:score:<workerGroupId>
   score       = opaque Worker score encoding
 ```
 
-Only `WorkerScoreCore` interprets or mutates score values. Positive values are
-HOT_ACQUIRE scheduling-serviceability; negative values are RECOVERY_RECHECK.
-Time, lane rank, dirty fence, exact compare-and-set, lease, hold, recovery, and
-release semantics are defined in
-[Worker Score Band Scheduling](../score/worker-score-band-scheduling.md).
+Only `WorkerScoreCore` interprets or mutates this score. Worker upsert
+initializes HOT_ACQUIRE only when the score is absent and preserves every
+existing score byte-for-byte. Matching facts and Rules never read or write the
+score.
 
-Java implements the complete production caller closure for candidate reads,
-exact lease acquisition/renewal, Serviceability polarity/recovery operations,
-and Result release. Worker upsert still calls only get/initialize. Real Redis
-proof guards the shared bytes and transitions.
-
-Resource writes do not require a Worker lease and do not mutate an existing
-score. A future explicit lifecycle operation must own any
-RECOVERY_RECHECK-to-HOT_ACQUIRE transition.
-
-## Bounded Reads
-
-Catalog reads are caller-bounded:
+## Server Identity And Binding
 
 ```text
-get_worker_group_descriptors(explicit WorkerGroupIds)
-sample_worker_group_descriptors(sampleLimit <= 100)
-get_worker_descriptors(one WorkerGroupId, explicit WorkerIds)
-sample_worker_descriptors(one WorkerGroupId, sampleLimit <= 100)
+xa_mass:<scope>:worker:identity:<workerGroupId>
+  HASH field = typed registration-key output
+  value       = server-issued workerId
+
+xa_mass:<scope>:worker:binding:<00..ff>
+  HASH field = workerId
+  value       = endpointManagerId
 ```
 
-WorkerGroup preview performs exactly one positive-count
-`HRANDFIELD ... WITHVALUES` against the Group HASH. It is an unordered,
-unstable, incomplete sample with no cursor, total, or completeness claim.
-Unreadable JSON and field/descriptor identity mismatch are returned as
-`workerGroupId -> None`.
+Identity registration establishes long-lived external identity. The Worker
+kind selects only the Server-owned registration-key algorithm and never enters
+the Redis key address. Binding establishes the persistent delivery route.
+Neither is connection truth or a Kernel scheduling decision.
 
-Worker preview samples metadata with one positive-count
-`HRANDFIELD ... WITHVALUES`, then loads the corresponding properties rows. It
-is an unordered incomplete sample with no cursor, total, stability, or
-completeness claim. A missing or unreadable row on either side is returned as
-`workerId -> None`.
+## Prepare Composition
 
-Runtime View exposes random WorkerGroup and Worker descriptor samples plus the
-existing explicit-ID reads. It does not join score, mailbox, connection, or
-Task assignment data.
+```text
+resolve/register identity
+  -> persist endpoint binding
+  -> upsert WorkerMatchingCatalog facts
+  -> upsert minimal Kernel Worker metadata
+  -> initialize score when absent
+```
 
-## Consistency And Guardrails
+These owner writes are ordered but not transactional. Retrying the complete
+Prepare converges idempotently. A partial Matching record cannot schedule work
+without a Kernel Demand, current score and exact lease.
 
-Strong stale-state protection is reserved for score compare-and-set and
-identity ownership. WorkerGroup registration is atomic create-only;
-Worker-property writes use bounded eventual convergence.
+## Reads And Runtime Views
 
-- Do not add legacy key readers or dual writes; deployments use a new scope for
-  this ABI change and old keys remain untouched.
-- Keep each Worker Properties value as the complete canonical JSON Map; do not
-  wrap it in an update-time envelope or add timestamp arbitration.
-- Do not store score or decoded score coordinates in Worker metadata or
-  Properties HASH values.
-- Do not scan Worker descriptors for item-rule on-demand matching.
-- Reject `index.*` allocation requirements rather than adding a hidden
-  projection store.
-- Do not use the `worker:id_owners` HASH for global enumeration.
-- Do not let Adapter, Worker, or Server controller code write Worker score
-  directly.
-- Do not add broad locks, global repair scans, or transactions without a named
-  invariant and bounded proof.
+Kernel catalog reads remain caller-bounded and return only minimal descriptors.
+Matching reads are independently bounded by explicit Worker IDs or one Group
+scan page. Server builds the public Worker view by joining:
+
+```text
+Kernel descriptor
+  + Matching facts
+  + score/network projections requested by that API
+```
+
+The join is a projection, not a new truth record and not an atomic snapshot
+across owners.
+
+## Guardrails
+
+- Do not restore `worker:properties` or Properties inside Kernel metadata.
+- Do not place Task or Item Rules in Kernel Task JSON.
+- Do not use identity ownership for Worker discovery.
+- Do not let Matching interpret Score or let Kernel interpret Properties.
+- Do not add dual reads or migration aliases for the retired layout.
+- Do not infer Adapter connectivity from Binding, facts or score.

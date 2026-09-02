@@ -3,8 +3,6 @@ package com.xa.mass.kernel.worker.redis;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
-import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -15,15 +13,6 @@ import java.util.Set;
 import java.util.TreeMap;
 
 final class WorkerRedisSupport {
-
-    private static final String COMPARE_AND_SET_HASH_FIELD_SCRIPT = """
-            local current = redis.call('HGET', KEYS[1], ARGV[1])
-            if not current or current ~= ARGV[2] then
-                return 0
-            end
-            redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
-            return 1
-            """;
 
     private WorkerRedisSupport() {
     }
@@ -39,33 +28,8 @@ final class WorkerRedisSupport {
         return keyspace.base() + ":worker:metadata:" + workerGroupId;
     }
 
-    static String workerPropertiesKey(
-            RedisKeyspace keyspace,
-            String workerGroupId
-    ) {
-        return keyspace.base() + ":worker:properties:" + workerGroupId;
-    }
-
     static String workerIdOwnersKey(RedisKeyspace keyspace) {
         return keyspace.base() + ":worker:id_owners";
-    }
-
-    static boolean compareAndSetHashField(
-            RedisCommands<String, String> commands,
-            String key,
-            String field,
-            String observed,
-            String replacement
-    ) {
-        Number result = commands.eval(
-                COMPARE_AND_SET_HASH_FIELD_SCRIPT,
-                ScriptOutputType.INTEGER,
-                new String[]{key},
-                field,
-                observed,
-                replacement
-        );
-        return result != null && result.longValue() == 1;
     }
 
     static String encodeWorkerGroup(WorkerGroupDescriptor descriptor) {
@@ -89,19 +53,7 @@ final class WorkerRedisSupport {
                     "endpointManagerId",
                     metadata.endpointManagerId()
             );
-            payload.put(
-                    "platformProperties",
-                    metadata.platformProperties()
-            );
             return encodeCanonical(payload);
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
-    }
-
-    static String encodeWorkerProperties(Map<String, Object> properties) {
-        try {
-            return encodeCanonical(properties);
         } catch (IllegalArgumentException error) {
             return null;
         }
@@ -142,27 +94,14 @@ final class WorkerRedisSupport {
                     Set.of(
                             "workerId",
                             "workerGroupId",
-                            "endpointManagerId",
-                            "platformProperties"
+                            "endpointManagerId"
                     )
             );
             return new WorkerMetadata(
                     requireString(payload.get("workerId")),
                     requireString(payload.get("workerGroupId")),
-                    requireString(payload.get("endpointManagerId")),
-                    objectMap(payload.get("platformProperties"))
+                    requireString(payload.get("endpointManagerId"))
             );
-        } catch (IllegalArgumentException | ClassCastException error) {
-            return null;
-        }
-    }
-
-    static Map<String, Object> decodeWorkerProperties(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        try {
-            return objectMap(Jsons.parseObject(raw));
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
         }
@@ -171,14 +110,12 @@ final class WorkerRedisSupport {
     record WorkerMetadata(
             String workerId,
             String workerGroupId,
-            String endpointManagerId,
-            Map<String, Object> platformProperties
+            String endpointManagerId
     ) {
         WorkerMetadata {
             requireString(workerId);
             requireString(workerGroupId);
             requireString(endpointManagerId);
-            platformProperties = Map.copyOf(platformProperties);
         }
     }
 

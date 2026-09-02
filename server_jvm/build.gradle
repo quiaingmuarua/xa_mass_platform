@@ -28,6 +28,7 @@ dependencies {
     implementation 'com.scalar.maven:scalar-webmvc:0.6.60'
     implementation project(':kernel_jvm')
     implementation project(':kernel_pacer_jvm')
+    implementation project(':worker_matching_jvm')
     implementation project(':transport:netty-adapter')
     implementation project(':transport:worker-delivery-contract')
 

@@ -29,6 +29,9 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -403,10 +406,29 @@ class TaskRpcCallServiceTest {
                         invocation.getArgument(0),
                         invocation.getArgument(1)
                 ));
+        WorkerMatchingCatalog matchingCatalog = mock(
+                WorkerMatchingCatalog.class
+        );
+        when(matchingCatalog.createItemRules(anyList()))
+                .thenAnswer(invocation -> {
+                    List<WorkerMatchingCatalog.ItemRule> rules =
+                            invocation.getArgument(0);
+                    var results = new LinkedHashMap<
+                            com.xa.mass.kernel.assignment.WorkerMatchRuntime
+                                    .ItemMatchKey,
+                            MutationResult
+                            >();
+                    rules.forEach(rule -> results.put(
+                            rule.key(),
+                            new MutationResult(MutationStatus.APPLIED)
+                    ));
+                    return results;
+                });
         return new TaskRpcCallService(
                 submission,
                 taskRuntime,
                 taskCatalog,
+                matchingCatalog,
                 registry,
                 taskItems,
                 properties
@@ -419,7 +441,6 @@ class TaskRpcCallServiceTest {
                 "group-1",
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

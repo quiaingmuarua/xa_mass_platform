@@ -11,6 +11,7 @@ The dependency direction is fixed:
 
 ```text
 server_jvm -> kernel_pacer_jvm -> kernel_jvm
+server_jvm -> worker_matching_jvm -> kernel_jvm
 ```
 
 ## Public Boundary
@@ -84,8 +85,11 @@ Score point recheck; exact downstream transitions reject stale observations.
 A busy Producer skips the current source snapshot without storing a pending
 hint.
 
-Dispatch policies own selection, priority, matching, deficits, retry cadence
-and Group rotation. Package-private mechanisms in this module protect raw
+Dispatch policies own Match Demand publication, bounded due-pool observation,
+exact hold, selection, priority, deficits, retry cadence and Group rotation.
+They consume identity-only evidence through `WorkerMatchRuntime` and accept it
+only against the named active hold; they do not load Rules, Properties or
+interpret constraints. Package-private mechanisms in this module protect raw
 Score fences and cross-owner claim/Command sequences. Policy directly calls a
 bounded Owner when the operation already belongs to that policy decision—for
 example Candidate count observation and Adapter Probe request offer. This is
@@ -116,8 +120,9 @@ per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
 or fallback path.
 
 Spring assembly belongs to `server_jvm`. Candidate Cache, ResultContextCodec
-and all Redis providers remain in `kernel_jvm`; dispatch-only mechanisms remain
-package-private here.
+and Kernel Redis providers remain in `kernel_jvm`; persistent matching facts,
+rules and the resident matching consumer remain in `worker_matching_jvm`;
+dispatch-only mechanisms remain package-private here.
 
 Build:
 

@@ -1,4 +1,4 @@
-package com.xa.mass.kernel.pacer.dispatch;
+package com.xa.mass.workermatching;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;

@@ -175,28 +175,24 @@ dirty = 0
   clean relative to the current hot score lease / assignment continuation
 
 dirty = 1
-  a validation dependency used by a persisted task-worker assignment plan or
-  hot score lease continuation may have changed enough to invalidate cached
-  match facts; the assignment owner must revalidate before continuing
+  a score-owner caller has invalidated renewal of the current lease fence
 ```
 
 The dirty bit is not a metadata hash, not a counter, not a lifecycle state, not
-a global worker state, and not a version. Platform policy owns the critical
-scheduling signature definition. The full signature or hash lives in
-worker-runtime metadata/evidence; score `dirty` only tells a real persisted
-assignment continuation that its cached match / admission facts may be stale.
+a global worker state, and not a version. Worker Matching facts do not write
+Worker score. No current Properties update path sets dirty.
 
 HOT candidate acquisition is a bounded read-only range query. It returns
-`(workerId, observedScore)` pairs to the allocation pacer, which keeps each
-opaque score in a private sidecar and submits an exact-score lease batch before
-matching. Only lease-success Worker ids cross the matcher boundary. Concurrent
-rounds may observe the same due Worker, but only one can win the
-compare-and-write. Unmatched leases remain held until bounded expiry; allocation
-does not release them.
+`(workerId, observedScore)` pairs to Kernel policy. PRECOMPUTED allocation
+publishes a bounded identity set for external Rule/Properties interpretation,
+then point-observes current scores and submits an exact-score lease only for
+returned evidence. ON_DEMAND matching also returns identities before Kernel
+point-observes and leases them. Concurrent rounds may observe the same due
+Worker, but only one exact compare-and-write succeeds.
 
 Worker score is not a Worker resource mutation lease. Worker upsert
 establishes the initial HOT_ACQUIRE score with `laneRank=0`, but
-later Platform/Worker property or index writes,
+later Platform/Worker Properties writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
 truth without acquiring or renewing worker score. HOT admission scheduling is
 the only routine writer of acquired HOT scores; recovery scheduling is the only
@@ -204,15 +200,8 @@ routine writer of acquired RECOVERY_RECHECK scores. Explicit owner commands may
 hold/release or perform verified polarity transitions, but cannot become a
 generic score-refresh path.
 
-Scheduling-critical metadata may include worker group membership, approved
-scheduling attributes, slot admission profile, dispatch gate generation, admission
-policy, or other platform-defined fields that affect worker selection or
-admission. It must not include transport heartbeat, session id, latency sample,
-connection id, trace fields, diagnostic details, or high-frequency load
-counters.
-
-Reason codes, reconnect source, operator notes, owner-reset policy, and
-diagnostics stay in worker-runtime evidence, trace, or optional diagnostics.
+Rule and Properties interpretation belongs to Worker Matching. Score remains a
+separate scheduling coordinate and does not mirror those facts.
 Score laneRank may bound scheduling/recheck work. Dirty only marks that a
 persisted assignment continuation needs metadata revalidation; it must not
 become a hidden reason owner.
@@ -338,10 +327,10 @@ polarity move writes HOT_ACQUIRE.
 
 ## Acquire Queries
 
-Hot worker acquisition:
+Due HOT candidate observation:
 
 ```text
-acquire_hot_acquire_candidates(
+observe_due_hot_score_candidates(
   homeBucketId,
   hotEligibilityFloorMillis?,
   limit
@@ -459,24 +448,19 @@ or trim an observed score.
 
 ## Candidate Validation
 
-Acquired workers are candidates only. After acquire, worker-runtime validates:
+Matching Evidence is only a bounded identity proposal. Kernel validates:
 
 ```text
-worker declaration exists
-worker belongs to homeBucketId / workerGroupId
-worker belongs to the Task-selected WorkerGroup scheduling partition
-approved scheduling metadata is current enough
-if dirty == 1 and the caller is continuing from a persisted assignment plan /
-hot score lease continuation, assignment owner discards / rematches or
-revalidates through the allowed hot lease transition
-dispatch gate permits scheduling
-Adapter/serviceability evidence is acceptable by policy
-the logical slot is due and admission is allowed
-selection policy still wants this worker
+Evidence WorkerGroup equals the Task-selected WorkerGroup
+current Worker score is the exact clean HOT hold named by Evidence
+priority and round uniqueness still select this WorkerId
+minimal Kernel Worker descriptor still exists in that WorkerGroup
 ```
 
-Only after validation and admission may worker-runtime return a selected worker
-handle to assignment-dispatch.
+Only after those checks may selection return an endpoint-bearing candidate to
+assignment-dispatch. Kernel does not reload or reinterpret Properties after
+the hold; Evidence expiry and exact Score hold confirmation are the accepted
+stale-snapshot boundary in this cut.
 
 ## Transition Rules
 
@@ -817,55 +801,18 @@ immediately due in HOT_ACQUIRE.
 
 ### Dirty Lease Fence
 
-Worker scheduling metadata can change without any connection observation. Worker-runtime
-owns a platform-defined scheduling signature over critical worker fields. The
-signature definition is built into platform policy, not supplied by external
-events or arbitrary business callers.
+Dirty remains an encoded score fence. Worker Matching Properties and Rules are
+independent facts and do not set, clear or interpret it. There is currently no
+production Properties-signature protocol attached to this bit.
 
-The score encoding and Redis primitives for mark, lease-clear, stale renewal,
-polarity preservation, cold park, and exact release are implemented. Dirty is
-useful only when it protects a real scheduling continuation object:
-
-```text
-idle / no persisted reservation:
-  metadata update does not need a score dirty write; the next scheduling
-  candidate validation reads current metadata
-
-already dispatched work is running:
-  do not interrupt through dirty; wait for result / timeout / lease expiry
-  path and validate current metadata before the next assignment
-
-persisted task-worker assignment plan / hot score lease continuation:
-  metadata update commits independently, then may mark dirty = 1 so that the assignment owner cannot
-  continue from cached candidate facts without revalidation
-```
-
-Dirty marking is an additional bounded stale-fence write, never a precondition
-for the metadata update. A stale, failed, or skipped dirty mark must not reject,
-roll back, or delay resource truth. If that best-effort rule is insufficient for
-a named continuation invariant, the continuation owner needs a stronger
-owner-local protocol; the resource update still must not acquire the worker
-score as a global lock.
-
-If the runtime has no persisted assignment plan or active score-lease
-continuation, there is no dirty consumer to protect. Do not invoke the marker or
-invent a score lease merely because the bit exists. The remaining deferred
-work is owner policy and end-to-end continuation use, not score representation
-or Redis primitive implementation.
-
-`WorkerScoreCore` does not expose a generic dirty clear method. It exposes one
-bounded HOT observation query, one observed-score lease batch, one active
-renewal primitive, and one dirty marker:
+`WorkerScoreCore` exposes bounded HOT observation and exact lease operations:
 
 ```text
 mark_current_lease_dirty(homeBucketId, workerId)
-  reads the current score
-  if dirty == 0, writes dirty = 1
-  preserves polarity, timeSlot, and laneRank
-  already-dirty scores are no-op
-  applies to both due and future scores
+  declared mechanical operation; current Redis implementation reports
+  not-implemented and no production caller depends on it
 
-acquire_hot_acquire_candidates(homeBucketId, hotEligibilityFloorMillis?, limit)
+observe_due_hot_score_candidates(homeBucketId, hotEligibilityFloorMillis?, limit)
   reads positive due HOT_ACQUIRE scores at or above the optional floor
   returns at most limit workerId -> observedScore entries
   does not expose score order as a caller contract
@@ -901,7 +848,7 @@ renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   if the observed lease already covers targetTimeSlot, exact validation returns
     NOOP plus the observed score
   otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
-  dirty entries return STALE and caller must discard / rematch
+  dirty entries return STALE and caller must discard the cached continuation
 
 ```
 
@@ -914,84 +861,10 @@ validation must first move the worker back to HOT_ACQUIRE through owner-validate
 polarity transition.
 
 Dirty clear is only available as part of a hot score lease transition. There is
-no standalone `clear_dirty` operation. A future-held score may become dirty
-while an assignment plan exists; active lease renewal must treat dirty as STALE,
-discard the plan, and force a fresh worker match. If no owner is occupying or
-extending that score, the dirty bit has no independent scheduling meaning.
-
-Typical signature inputs:
-
-```text
-worker group membership
-approved scheduling attributes
-slot admission profile id
-dispatch gate generation
-admission policy id
-placement / home-bucket fields that affect candidate validity
-```
-
-Excluded inputs:
-
-```text
-heartbeat
-session id
-connection id
-latency sample
-trace / diagnostic fields
-high-frequency load counters
-display-only worker fields
-```
-
-When platform-owned scheduling-critical metadata changes while a persisted
-task-worker assignment plan / hot score lease continuation exists:
-
-```text
-stored signature hash changes in worker metadata/evidence
-non-lease owner may only set score dirty = 1
-polarity is preserved
-laneRank is preserved
-timeSlot is preserved unless the owner policy also writes an allowed hold
-```
-
-Dirty clear is stricter:
-
-```text
-only successful observed-score lease CAS may write dirty = 0 through
-`acquire_observed_hot_score_leases`
-active hot lease renewal must not clear dirty; dirty active renewal returns
-STALE and forces a fresh match
-the allocation pacer batch-leases before matcher validation; a relevant
-metadata change during or after matching may mark the future-held score dirty
-non-lease owners must never clear dirty
-```
-
-If dirty is already `1`, further metadata changes keep it at `1`. Dirty is an
-assignment-continuation stale hint, not a change counter. The metadata
-signature/hash is the fact that prevents incorrectly clearing newer changes.
-
-Dirty should be written only when all of these are true:
-
-```text
-1. a task-worker assignment plan or hot score lease continuation still exists
-2. the changed field is part of that continuation's validationDependencySet
-3. the changed value invalidates, or may invalidate, the recorded
-   candidate constraint / matcher validation evidence
-```
-
-If the changed attribute is not referenced by the continuation's
-candidate `allocation_rule`, matcher validation, group membership check, gate,
-slot admission profile, or other owner-approved validation dependency, it should not
-mark dirty. If the worker is already executing dispatched work and the hot score
-lease remains active, dirty should not interrupt execution; result, timeout,
-lease expiry, and the next scheduling round handle the new facts.
-
-`validationDependencySet` is conceptual first-slice evidence, not a public DTO
-and not a new interface. It records which Worker Properties / indexed projections /
-policy facts were used to validate the match so an attribute update handler can
-decide whether dirty is necessary. If an implementation cannot cheaply prove a
-changed dependency still satisfies the recorded query, it may conservatively
-mark dirty. If it can prove the dependency remains valid, no dirty write is
-needed.
+no standalone `clear_dirty` operation. Active cached renewal treats a dirty
+score as stale. Any future producer for dirty must define its own score-local
+continuation invariant; Properties updates must not acquire Worker score as a
+global resource lock.
 
 ## Transition Matrix
 
@@ -1017,18 +890,17 @@ Worker score-band participates in assignment-dispatch like this:
 
 ```text
 task score acquires due task candidate
-assignment-dispatch builds WorkerCandidateRequests from the WorkerAllocationMechanism-owned rule location
-Task-rule precomputation scans HOT; Item-rule on-demand acquisition uses one
-bounded Group HOT query for `{}` or point-observes rule-supplied Worker ids
-candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
-allocation pacer may publish Task-rule results into CandidateWorkerCache
-cached candidate renewal exact-validates/renews and rematches Task rules
+assignment-dispatch publishes bounded identity-only Match Demands
+Worker Matching interprets persistent Task/Item Rules and Worker facts
+Kernel consumes short-lived WorkerId Evidence
+candidate selection point-observes current HOT Score and exact-CAS leases
+allocation pacer may publish leased Task-rule candidates into CandidateWorkerCache
+cached candidate renewal exact-validates/renews only the score fence
 Task dispatch resolves the WorkerAllocationMechanism acquisition path
 and keeps CandidateId-to-Item bindings
-TaskRuntime loads the selected TaskItem record
+Kernel loads the minimal Worker endpoint descriptor and selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch
-worker-runtime rewrites worker scores only through owner/admission rules
 ```
 
 Worker score-band does not:
@@ -1051,16 +923,15 @@ assignment-dispatch worker selection path.
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
 | hot candidate observation | no | bounded due range read with scores |
-| hot Worker allocation lease | yes | exact observed-score CAS before bounded matching |
+| hot Worker allocation lease | yes | point-observe Evidence identities, then exact observed-score CAS |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | slot contention / cooldown | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
-| platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
-| platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| Worker upsert during Server Prepare | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; replace Worker Properties and preserve every existing score exactly |
-| assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
-| assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
+| Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
+| Worker upsert during Server Prepare | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; preserve every existing score exactly |
+| assignment owner leases matched HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear after Evidence |
+| assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard cached evidence |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
 | bounded-age Adapter Route evidence | yes | Adapter Evidence Batch policy orders within one batch, then uses current-score read plus exact CAS; there is no cross-batch evidence fence, so delayed evidence may cause a temporary polarity regression before later evidence repairs it |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
@@ -1212,8 +1083,8 @@ slot registry redesign
   or assign independent Items concurrently to one WorkerId.
 - Worker Candidate Selection Policy may call bounded HOT observation and exact
   lease operations directly. A raw score may be retained, associated by
-  WorkerId, exact-compared and returned to this Owner; Policy and Matcher must
-  not decode, construct, print or calculate score coordinates.
+  WorkerId, exact-compared and returned to this Owner; Policy and Worker
+  Matching must not decode, construct, print or calculate score coordinates.
 - Where an operation explicitly requires `observedScore`, do not trim it to
   time/laneRank/dirty. It remains the full signed score and callers must not
   construct or decode it.

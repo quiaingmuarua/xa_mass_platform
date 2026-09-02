@@ -3,6 +3,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,52 +12,67 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchEvidence;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchEvidence;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionResult;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import org.mockito.InOrder;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class AssignmentPacersTest {
 
     @Test
-    void allocationCachesOnlyOwnerReobservedActiveLeaseScores() {
+    void allocationConsumesHeldEvidenceThenCachesAndReservesNextPool() {
         WorkerCandidateSelectionPolicy selection = mock(
                 WorkerCandidateSelectionPolicy.class
         );
-        WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         CandidateWorkerCache candidateCache = mock(
                 CandidateWorkerCache.class
         );
-        AcquiredWorkerCandidate candidate = worker("worker-1", 101L);
+        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
         when(candidateCache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.acquireSharedHotCandidates(
+        when(matches.takeTaskEvidence(List.of("task-1"))).thenReturn(Map.of(
+                "task-1",
+                new TaskRuleMatchEvidence(
+                        "task-1",
+                        "group-1",
+                        List.of("worker-1"),
+                        2_000L
+                )
+        ));
+        when(selection.selectHeldCandidates(
                 eq("group-1"),
                 any(),
-                eq(6_000L)
-        )).thenReturn(Map.of("task-1", List.of(candidate)));
-        when(workerScores.observeActiveHotScoreLeases(
-                "group-1",
-                List.of("worker-1"),
-                6_000L
-        )).thenReturn(Map.of("worker-1", 987_654_321L));
+                eq(Map.of("task-1", List.of("worker-1"))),
+                eq(Map.of("task-1", 2_000L)),
+                eq(100)
+        )).thenReturn(Map.of(
+                "task-1",
+                List.of(worker("worker-1", 101L))
+        ));
+        when(selection.observeDueCandidates("group-1"))
+                .thenReturn(Map.of("worker-2", 102L));
+        when(matches.offerTaskDemands(any())).thenReturn(Map.of(
+                "task-1", DemandOfferStatus.OFFERED
+        ));
         TaskWorkerAllocationPolicy policy = new TaskWorkerAllocationPolicy(
                 selection,
-                workerScores,
                 candidateCache,
+                matches,
                 () -> 1_000L
         );
 
@@ -73,36 +89,44 @@ class AssignmentPacersTest {
                 List.of(new CandidateWorkerEntry(
                         "worker-1",
                         "group-1",
-                        987_654_321L
+                        101L
                 )),
+                2_000L
+        );
+        verify(matches).offerTaskDemands(argThat(demands ->
+                demands.size() == 1
+                        && demands.getFirst().taskId().equals("task-1")
+                        && demands.getFirst().heldWorkerIds()
+                                .equals(List.of("worker-2"))
+                        && demands.getFirst().holdUntilMillis() == 6_000L));
+        verify(selection).holdObservedCandidates(
+                "group-1",
+                Map.of("worker-2", 102L),
                 6_000L
         );
     }
 
     @Test
-    void allocationDoesNotPublishWhenLeaseReobservationIsEmpty() {
+    void allocationWithoutEvidenceOnlyPublishesBoundedDemand() {
         WorkerCandidateSelectionPolicy selection = mock(
                 WorkerCandidateSelectionPolicy.class
         );
-        WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
-        CandidateWorkerCache candidateCache = mock(
-                CandidateWorkerCache.class
-        );
-        when(candidateCache.candidateWorkerCounts(List.of("task-1")))
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
+        when(cache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.acquireSharedHotCandidates(
-                eq("group-1"), any(), eq(6_000L)
-        )).thenReturn(Map.of(
-                "task-1", List.of(worker("worker-1", 101L))
+        when(matches.takeTaskEvidence(List.of("task-1")))
+                .thenReturn(Map.of());
+        when(selection.observeDueCandidates("group-1"))
+                .thenReturn(Map.of("worker-1", 101L));
+        when(matches.offerTaskDemands(any())).thenReturn(Map.of(
+                "task-1", DemandOfferStatus.OFFERED
         ));
-        when(workerScores.observeActiveHotScoreLeases(
-                "group-1", List.of("worker-1"), 6_000L
-        )).thenReturn(Map.of());
 
         assertEquals(0, new TaskWorkerAllocationPolicy(
                 selection,
-                workerScores,
-                candidateCache,
+                cache,
+                matches,
                 () -> 1_000L
         ).allocateCandidateWorkers(
                 List.of(due(
@@ -112,14 +136,63 @@ class AssignmentPacersTest {
                 )),
                 new TaskWorkerAllocationConfig(5_000)
         ));
+        verify(selection, never()).selectHeldCandidates(
+                any(), any(), any(), any(), any(Integer.class)
+        );
+        verify(matches).offerTaskDemands(argThat(demands ->
+                demands.getFirst().heldWorkerIds().equals(List.of("worker-1"))
+                        && demands.getFirst().holdUntilMillis() == 6_000L));
+        InOrder order = org.mockito.Mockito.inOrder(matches, selection);
+        order.verify(matches).offerTaskDemands(any());
+        order.verify(selection).holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
+        );
     }
 
     @Test
-    void allocationRejectsTasksOutsideTheMainSchedulerInputSet() {
+    void rejectedDemandDoesNotHoldTheObservedWorkerPool() {
+        WorkerCandidateSelectionPolicy selection = mock(
+                WorkerCandidateSelectionPolicy.class
+        );
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
+        when(cache.candidateWorkerCounts(List.of("task-1")))
+                .thenReturn(Map.of("task-1", 0));
+        when(matches.takeTaskEvidence(List.of("task-1")))
+                .thenReturn(Map.of());
+        when(selection.observeDueCandidates("group-1"))
+                .thenReturn(Map.of("worker-1", 101L));
+        when(matches.offerTaskDemands(any())).thenReturn(Map.of(
+                "task-1", DemandOfferStatus.CAPACITY
+        ));
+
+        assertEquals(0, new TaskWorkerAllocationPolicy(
+                selection,
+                cache,
+                matches,
+                () -> 1_000L
+        ).allocateCandidateWorkers(
+                List.of(due(
+                        "task-1",
+                        WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                        TaskIdleDisposition.CLOSE_WHEN_IDLE
+                )),
+                new TaskWorkerAllocationConfig(5_000)
+        ));
+
+        verify(selection, never()).holdObservedCandidates(
+                any(), any(), any(Long.class)
+        );
+    }
+
+    @Test
+    void allocationRejectsOnDemandTasks() {
         TaskWorkerAllocationPolicy policy = new TaskWorkerAllocationPolicy(
                 mock(WorkerCandidateSelectionPolicy.class),
-                mock(WorkerScoreCore.class),
                 mock(CandidateWorkerCache.class),
+                mock(WorkerMatchRuntime.class),
                 () -> 1_000L
         );
 
@@ -127,16 +200,16 @@ class AssignmentPacersTest {
                 policy.allocateCandidateWorkers(
                         List.of(due(
                                 "task-1",
-                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
+                                WorkerAllocationMechanism
+                                        .ON_DEMAND_ITEM_RULE,
                                 TaskIdleDisposition.PARK_WHEN_IDLE
                         )),
                         new TaskWorkerAllocationConfig(5_000)
-                )
-        );
+                ));
     }
 
     @Test
-    void dispatchUsesRawItemScoreAndAlwaysPacesAfterAttempt() {
+    void onDemandDispatchUsesEvidenceThenClaimsAndDispatches() {
         TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
@@ -146,8 +219,9 @@ class AssignmentPacersTest {
         WorkerCandidateSelectionPolicy selection = mock(
                 WorkerCandidateSelectionPolicy.class
         );
-        TaskIdleSettlement idle = mock(TaskIdleSettlement.class);
+        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
         TaskItem item = item("message-1");
+        ItemMatchKey key = new ItemMatchKey("task-1", "message-1");
         when(itemScores.acquireItemScoreCandidates("task-1", 100))
                 .thenReturn(Map.of(
                         "message-1",
@@ -156,10 +230,21 @@ class AssignmentPacersTest {
         when(taskRuntime.loadTaskItems(
                 "task-1", List.of("message-1")
         )).thenReturn(Map.of("message-1", item));
-        when(selection.acquireOnDemandCandidates(
+        when(matches.takeItemEvidence(List.of(key))).thenReturn(Map.of(
+                key,
+                new ItemRuleMatchEvidence(
+                        key,
+                        "group-1",
+                        List.of("worker-1"),
+                        2_000L
+                )
+        ));
+        when(selection.selectHeldCandidates(
                 eq("group-1"),
                 any(),
-                eq(6_000L)
+                eq(Map.of("message-1", List.of("worker-1"))),
+                eq(Map.of("message-1", 2_000L)),
+                eq(100)
         )).thenReturn(Map.of(
                 "message-1", List.of(worker("worker-1", 101L))
         ));
@@ -170,55 +255,66 @@ class AssignmentPacersTest {
                 any(),
                 eq(6_000L)
         )).thenReturn(1);
-        DueTaskObservation task = due(
-                "task-1",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE
-        );
 
-        assertEquals(1, new TaskDispatchPolicy(
+        assertEquals(1, dispatch(
                 taskScores,
                 itemScores,
                 taskRuntime,
                 dispatcher,
-                idle,
                 selection,
-                () -> 1_000L
-        ).dispatchTasks(List.of(task), new TaskDispatchConfig(100, 5_000)));
+                matches
+        ).dispatchTasks(
+                List.of(due(
+                        "task-1",
+                        WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
+                        TaskIdleDisposition.PARK_WHEN_IDLE
+                )),
+                new TaskDispatchConfig(100, 5_000)
+        ));
         verify(taskScores).rewriteSameBandTimeMillis(
                 "task-1",
                 TaskScoreBand.RUNNING_VISIBLE,
                 1_000L
         );
+        verify(matches, never()).offerItemDemands(any());
     }
 
     @Test
-    void noClaimableItemUsesIdleSettlementWithObservedTaskScore() {
+    void missingOnDemandEvidencePublishesNextDemandWithoutDispatch() {
         TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
-        TaskIdleSettlement idle = new TaskIdleSettlement(
-                taskScores,
-                itemScores
+        WorkerCandidateSelectionPolicy selection = mock(
+                WorkerCandidateSelectionPolicy.class
         );
+        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
+        TaskItem item = item("message-1");
         when(itemScores.acquireItemScoreCandidates("task-1", 100))
-                .thenReturn(Map.of());
-        when(itemScores.hasActiveItems(List.of("task-1")))
-                .thenReturn(Map.of("task-1", false));
-        when(taskScores.parkObservedIdleTask("task-1", 777_777_777L))
-                .thenReturn(new TaskScoreTransitionResult(
-                        TaskScoreTransitionStatus.STALE,
-                        null
+                .thenReturn(Map.of(
+                        "message-1",
+                        new TaskItemScoreObservation(101L, 1)
                 ));
+        when(taskRuntime.loadTaskItems(
+                "task-1", List.of("message-1")
+        )).thenReturn(Map.of("message-1", item));
+        when(matches.takeItemEvidence(any())).thenReturn(Map.of());
+        when(selection.selectHeldCandidates(
+                eq("group-1"), any(), any(), any(), eq(100)
+        )).thenReturn(Map.of("message-1", List.of()));
+        when(selection.observeDueCandidates("group-1"))
+                .thenReturn(Map.of("worker-1", 101L));
+        ItemMatchKey key = new ItemMatchKey("task-1", "message-1");
+        when(matches.offerItemDemands(any())).thenReturn(Map.of(
+                key, DemandOfferStatus.OFFERED
+        ));
 
-        assertEquals(0, new TaskDispatchPolicy(
+        assertEquals(0, dispatch(
                 taskScores,
                 itemScores,
                 taskRuntime,
                 mock(TaskAssignmentDispatcher.class),
-                idle,
-                mock(WorkerCandidateSelectionPolicy.class),
-                () -> 1_000L
+                selection,
+                matches
         ).dispatchTasks(
                 List.of(due(
                         "task-1",
@@ -227,54 +323,53 @@ class AssignmentPacersTest {
                 )),
                 new TaskDispatchConfig(100, 5_000)
         ));
-        verify(taskScores).parkObservedIdleTask(
-                "task-1",
-                777_777_777L
+        verify(matches).offerItemDemands(argThat(demands ->
+                demands.size() == 1
+                        && demands.getFirst().key().equals(
+                                new ItemMatchKey("task-1", "message-1")
+                        )
+                        && demands.getFirst().heldWorkerIds()
+                                .equals(List.of("worker-1"))
+                        && demands.getFirst().holdUntilMillis() == 6_000L));
+        verify(selection).holdObservedCandidates(
+                "group-1",
+                Map.of("worker-1", 101L),
+                6_000L
         );
     }
 
     @Test
-    void dispatchStoresBudgetAndTtlFailuresBeforeFinalScorePromotion() {
+    void failedResultWriteStillPrecedesFinalScorePromotion() {
         TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
-        TaskIdleSettlement idle = mock(TaskIdleSettlement.class);
-        var observed = new LinkedHashMap<
-                String,
-                TaskItemScoreObservation
-                >();
-        observed.put(
-                "message-budget",
-                new TaskItemScoreObservation(101L, 0)
-        );
-        observed.put(
-                "message-expired",
-                new TaskItemScoreObservation(102L, 1)
-        );
+        LinkedHashMap<String, TaskItemScoreObservation> observed =
+                new LinkedHashMap<>();
+        observed.put("message-budget", new TaskItemScoreObservation(101L, 0));
+        observed.put("message-expired", new TaskItemScoreObservation(102L, 1));
         when(itemScores.acquireItemScoreCandidates("task-1", 100))
                 .thenReturn(observed);
-        TaskItem expired = new TaskItem(
-                "message-expired",
-                "event.demo",
-                0,
-                Map.of(),
-                0,
-                999L,
-                Map.of()
-        );
         when(taskRuntime.loadTaskItems(
-                "task-1",
-                List.of("message-expired")
-        )).thenReturn(Map.of("message-expired", expired));
+                "task-1", List.of("message-expired")
+        )).thenReturn(Map.of(
+                "message-expired",
+                new TaskItem(
+                        "message-expired",
+                        "event.demo",
+                        0,
+                        Map.of(),
+                        0,
+                        999L
+                )
+        ));
 
-        assertEquals(0, new TaskDispatchPolicy(
+        assertEquals(0, dispatch(
                 taskScores,
                 itemScores,
                 taskRuntime,
                 mock(TaskAssignmentDispatcher.class),
-                idle,
                 mock(WorkerCandidateSelectionPolicy.class),
-                () -> 1_000L
+                mock(WorkerMatchRuntime.class)
         ).dispatchTasks(
                 List.of(due(
                         "task-1",
@@ -284,15 +379,12 @@ class AssignmentPacersTest {
                 new TaskDispatchConfig(100, 5_000)
         ));
 
-        InOrder terminalOrder = org.mockito.Mockito.inOrder(
-                taskRuntime,
-                itemScores
-        );
-        terminalOrder.verify(taskRuntime).storeTaskItemFailedResults(
+        InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
+        order.verify(taskRuntime).storeTaskItemFailedResults(
                 "task-1",
                 List.of("message-budget", "message-expired")
         );
-        terminalOrder.verify(itemScores).promoteItemOutcomes(
+        order.verify(itemScores).promoteItemOutcomes(
                 "task-1",
                 List.of("message-budget", "message-expired"),
                 TaskItemScoreBandCore.TaskItemScoreBand.FINAL_FAILED,
@@ -300,48 +392,23 @@ class AssignmentPacersTest {
         );
     }
 
-    @Test
-    void failedResultWritePreventsFinalScorePromotion() {
-        TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
-        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
-        TaskRuntime taskRuntime = mock(TaskRuntime.class);
-        when(itemScores.acquireItemScoreCandidates("task-1", 100))
-                .thenReturn(Map.of(
-                        "message-budget",
-                        new TaskItemScoreObservation(101L, 0)
-                ));
-        org.mockito.Mockito.doThrow(
-                new IllegalStateException("result owner unavailable")
-        ).when(taskRuntime).storeTaskItemFailedResults(
-                "task-1",
-                List.of("message-budget")
-        );
-        TaskDispatchPolicy policy = new TaskDispatchPolicy(
+    private static TaskDispatchPolicy dispatch(
+            TaskScoreBandCore taskScores,
+            TaskItemScoreBandCore itemScores,
+            TaskRuntime taskRuntime,
+            TaskAssignmentDispatcher dispatcher,
+            WorkerCandidateSelectionPolicy selection,
+            WorkerMatchRuntime matches
+    ) {
+        return new TaskDispatchPolicy(
                 taskScores,
                 itemScores,
                 taskRuntime,
-                mock(TaskAssignmentDispatcher.class),
+                dispatcher,
                 mock(TaskIdleSettlement.class),
-                mock(WorkerCandidateSelectionPolicy.class),
+                selection,
+                matches,
                 () -> 1_000L
-        );
-
-        assertThrows(IllegalStateException.class, () ->
-                policy.dispatchTasks(
-                        List.of(due(
-                                "task-1",
-                                WorkerAllocationMechanism
-                                        .ON_DEMAND_ITEM_RULE,
-                                TaskIdleDisposition.PARK_WHEN_IDLE
-                        )),
-                        new TaskDispatchConfig(100, 5_000)
-                )
-        );
-        verify(itemScores, never()).promoteItemOutcomes(
-                eq("task-1"),
-                eq(List.of("message-budget")),
-                eq(TaskItemScoreBandCore.TaskItemScoreBand.FINAL_FAILED),
-                eq(1_000L)
         );
     }
 
@@ -367,9 +434,6 @@ class AssignmentPacersTest {
                 "group-1",
                 mechanism,
                 idle,
-                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                        ? Map.of()
-                        : null,
                 Map.of(
                         "priority", "10",
                         "maximumCandidateWorkers", "2",
@@ -385,8 +449,7 @@ class AssignmentPacersTest {
                 0,
                 Map.of(),
                 0,
-                null,
-                Map.of()
+                null
         );
     }
 

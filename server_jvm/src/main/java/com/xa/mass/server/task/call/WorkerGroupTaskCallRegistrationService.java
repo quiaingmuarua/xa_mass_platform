@@ -229,7 +229,6 @@ public final class WorkerGroupTaskCallRegistrationService {
                 workerGroupId,
                 WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                null,
                 TASK_CONFIG
         );
     }

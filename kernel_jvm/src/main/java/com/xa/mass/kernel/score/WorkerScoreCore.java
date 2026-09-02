@@ -33,7 +33,7 @@ public interface WorkerScoreCore {
             List<String> workerIds
     );
 
-    Map<String, Long> acquireHotAcquireCandidates(
+    Map<String, Long> observeDueHotScoreCandidates(
             String homeBucketId,
             @Nullable Long hotEligibilityFloorMillis,
             int limit

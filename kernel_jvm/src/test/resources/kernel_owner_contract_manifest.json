@@ -49,6 +49,10 @@
       "MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT": 100,
       "MAX_WORKER_GROUP_LOOKUP_LIMIT": 100
     },
+    "WorkerMatchRuntime": {
+      "MAX_BATCH_SIZE": 100,
+      "MAX_MATCHED_WORKERS": 100
+    },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
       "HOT_ACQUIRE_POLARITY": 1,
@@ -131,11 +135,16 @@
       "consume_worker_commands",
       "offer_worker_commands"
     ],
+    "WorkerMatchRuntime": [
+      "offer_item_demands",
+      "offer_task_demands",
+      "take_item_evidence",
+      "take_task_evidence"
+    ],
     "WorkerResourceCatalog": [
         "get_worker_descriptors",
         "get_worker_group_descriptors",
         "get_worker_group_ids",
-        "patch_worker_platform_properties",
         "register_worker_group",
         "sample_worker_descriptors",
         "sample_worker_group_descriptors"
@@ -144,7 +153,6 @@
       "upsert_worker"
     ],
     "WorkerScoreCore": [
-      "acquire_hot_acquire_candidates",
       "acquire_hot_candidates_before",
       "acquire_observed_hot_score_leases",
       "acquire_recovery_recheck_candidates",
@@ -156,6 +164,7 @@
       "initialize_hot_acquire_score",
       "mark_current_lease_dirty",
       "observe_active_hot_score_leases",
+      "observe_due_hot_score_candidates",
       "observe_due_hot_scores",
       "release_completed_hot_score_holds",
       "release_score_holds",
@@ -179,6 +188,22 @@
       "payload",
       "forward"
     ],
+    "ItemMatchKey": [
+      "task_id",
+      "message_id"
+    ],
+    "ItemRuleMatchDemand": [
+      "key",
+      "worker_group_id",
+      "held_worker_ids",
+      "hold_until_millis"
+    ],
+    "ItemRuleMatchEvidence": [
+      "key",
+      "worker_group_id",
+      "matched_worker_ids",
+      "hold_until_millis"
+    ],
     "TaskCreationResult": [
       "status",
       "reason"
@@ -188,7 +213,6 @@
       "worker_group_id",
       "worker_allocation_mechanism",
       "idle_disposition",
-      "allocation_rule",
       "config"
     ],
     "TaskItem": [
@@ -197,8 +221,7 @@
       "created_at_millis",
       "payload",
       "priority",
-      "expire_at_millis",
-      "allocation_rule"
+      "expire_at_millis"
     ],
     "TaskItemAppendResult": [
       "status",
@@ -233,6 +256,18 @@
       "status",
       "score"
     ],
+    "TaskRuleMatchDemand": [
+      "task_id",
+      "worker_group_id",
+      "held_worker_ids",
+      "hold_until_millis"
+    ],
+    "TaskRuleMatchEvidence": [
+      "task_id",
+      "worker_group_id",
+      "matched_worker_ids",
+      "hold_until_millis"
+    ],
     "DeliveryCommand": [
       "src",
       "dst",
@@ -244,15 +279,12 @@
     "WorkerDeclaration": [
       "worker_id",
       "worker_group_id",
-      "endpoint_manager_id",
-      "worker_properties"
+      "endpoint_manager_id"
     ],
     "WorkerDescriptor": [
       "worker_id",
       "worker_group_id",
-      "endpoint_manager_id",
-      "worker_properties",
-      "platform_properties"
+      "endpoint_manager_id"
     ],
     "WorkerGroupDescriptor": [
       "worker_group_id",
@@ -277,6 +309,11 @@
     ]
   },
   "enums": {
+    "DemandOfferStatus": [
+      "OFFERED",
+      "ALREADY_PENDING",
+      "CAPACITY"
+    ],
     "DeliveryReportOutcomeClass": [
       "SUCCESS",
       "WORKER_FAILURE",

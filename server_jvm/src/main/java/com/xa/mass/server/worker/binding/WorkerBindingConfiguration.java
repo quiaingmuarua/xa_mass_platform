@@ -3,6 +3,7 @@ package com.xa.mass.server.worker.binding;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.worker.identity.WorkerIdentityService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import io.lettuce.core.RedisClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -35,13 +36,15 @@ public class WorkerBindingConfiguration {
             WorkerBindingRegistry registry,
             WorkerEndpointDirectory endpoints,
             WorkerIdentityService identities,
-            WorkerRuntime workerRuntime
+            WorkerRuntime workerRuntime,
+            WorkerMatchingCatalog matchingCatalog
     ) {
         return new WorkerBindingService(
                 registry,
                 endpoints,
                 identities,
-                workerRuntime
+                workerRuntime,
+                matchingCatalog
         );
     }
 }

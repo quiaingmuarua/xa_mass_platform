@@ -335,9 +335,6 @@ class DispatchConvergenceApplicationTest {
                 workerGroupId,
                 mechanism,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                        ? Map.of()
-                        : null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

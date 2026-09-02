@@ -11,7 +11,6 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
-import java.util.Map;
 
 public final class RedisWorkerRuntime
         implements WorkerRuntime, AutoCloseable {
@@ -50,15 +49,6 @@ public final class RedisWorkerRuntime
                     "invalid worker declaration"
             );
         }
-        String encodedProperties = WorkerRedisSupport.encodeWorkerProperties(
-                declaration.workerProperties()
-        );
-        if (encodedProperties == null) {
-            return result(
-                    WorkerRuntimeStatus.INVALID,
-                    "invalid workerProperties json"
-            );
-        }
         if (commands().hget(
                 WorkerRedisSupport.groupsKey(keyspace),
                 declaration.workerGroupId()
@@ -89,8 +79,7 @@ public final class RedisWorkerRuntime
         WorkerMetadata metadata = new WorkerMetadata(
                 declaration.workerId(),
                 declaration.workerGroupId(),
-                declaration.endpointManagerId(),
-                Map.of()
+                declaration.endpointManagerId()
         );
         String encodedMetadata = WorkerRedisSupport.encodeWorkerMetadata(
                 metadata
@@ -127,25 +116,6 @@ public final class RedisWorkerRuntime
                         "worker identity declaration is immutable"
                 );
             }
-        }
-
-        String propertiesKey = WorkerRedisSupport.workerPropertiesKey(
-                keyspace,
-                declaration.workerGroupId()
-        );
-        String currentProperties = commands().hget(
-                propertiesKey,
-                declaration.workerId()
-        );
-        boolean propertiesChanged = !encodedProperties.equals(
-                currentProperties
-        );
-        if (propertiesChanged) {
-            commands().hset(
-                    propertiesKey,
-                    declaration.workerId(),
-                    encodedProperties
-            );
         }
 
         WorkerScoreState scoreState = scoreCore.getScoreStates(
@@ -191,7 +161,6 @@ public final class RedisWorkerRuntime
 
         if (ownerCreated
                 || metadataCreated
-                || propertiesChanged
                 || scoreCreated) {
             return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
         }

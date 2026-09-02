@@ -4,6 +4,7 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -19,6 +20,9 @@ import com.xa.mass.server.api.v1.contract.runtimeview.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.TaskRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,17 +53,20 @@ public final class RuntimeViewService {
     private final TaskResourceCatalog taskCatalog;
     private final TaskScoreBandCore taskScores;
     private final WorkerSchedulingService workerScheduling;
+    private final WorkerMatchingCatalog matchingCatalog;
 
     public RuntimeViewService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
             TaskScoreBandCore taskScores,
-            WorkerSchedulingService workerScheduling
+            WorkerSchedulingService workerScheduling,
+            WorkerMatchingCatalog matchingCatalog
     ) {
         this.workerCatalog = workerCatalog;
         this.taskCatalog = taskCatalog;
         this.taskScores = taskScores;
         this.workerScheduling = workerScheduling;
+        this.matchingCatalog = matchingCatalog;
     }
 
     public TaskPreviewResponse previewTasks(
@@ -77,13 +84,22 @@ public final class RuntimeViewService {
                     ? Map.of()
                     : taskCatalog.loadTaskAllocationDescriptors(taskIds);
             var workerGroupIds = new LinkedHashSet<String>();
+            var taskRuleIds = new ArrayList<String>();
             for (String taskId : taskIds) {
                 TaskDescriptor task = tasks.get(taskId);
                 validateTaskIdentity(taskId, task);
                 if (task != null) {
                     workerGroupIds.add(task.workerGroupId());
+                    if (task.workerAllocationMechanism()
+                            == WorkerAllocationMechanism
+                            .PRECOMPUTED_TASK_RULE) {
+                        taskRuleIds.add(taskId);
+                    }
                 }
             }
+            Map<String, TaskRule> taskRules = taskRuleIds.isEmpty()
+                    ? Map.of()
+                    : matchingCatalog.loadTaskRules(taskRuleIds);
             Map<String, WorkerGroupDescriptor> groups = workerGroupIds.isEmpty()
                     ? Map.of()
                     : workerCatalog.getWorkerGroupDescriptors(
@@ -104,7 +120,12 @@ public final class RuntimeViewService {
                 entries.add(new TaskPreviewEntry(
                         scoreState.taskId(),
                         taskScoreView(scoreState),
-                        task == null ? null : toView(task),
+                        task == null
+                                ? null
+                                : toView(
+                                        task,
+                                        taskRules.get(task.taskId())
+                                ),
                         group == null ? null : toView(group)
                 ));
             }
@@ -202,14 +223,24 @@ public final class RuntimeViewService {
                             workerGroupId,
                             sampleLimit
                     );
+            Map<String, WorkerFacts> facts = sampled.isEmpty()
+                    ? Map.of()
+                    : matchingCatalog.loadWorkerFacts(
+                            workerGroupId,
+                            List.copyOf(sampled.keySet())
+                    );
             var workers = new ArrayList<WorkerView>();
             int unreadableCount = 0;
-            for (WorkerDescriptor descriptor : sampled.values()) {
-                if (descriptor == null) {
+            for (Map.Entry<String, WorkerDescriptor> entry
+                    : sampled.entrySet()) {
+                WorkerDescriptor descriptor = entry.getValue();
+                WorkerFacts workerFacts = facts.get(entry.getKey());
+                if (descriptor == null || workerFacts == null) {
                     unreadableCount++;
                     continue;
                 }
-                workers.add(toView(descriptor));
+                validateWorkerFacts(descriptor, workerFacts);
+                workers.add(toView(descriptor, workerFacts));
             }
             return new WorkerPreviewResponse(
                     workerGroupId,
@@ -314,29 +345,61 @@ public final class RuntimeViewService {
         );
     }
 
-    private static TaskView toView(TaskDescriptor descriptor) {
+    private static TaskView toView(
+            TaskDescriptor descriptor,
+            TaskRule rule
+    ) {
+        Map<String, Object> allocationRule = null;
+        if (descriptor.workerAllocationMechanism()
+                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
+            if (rule == null
+                    || !descriptor.taskId().equals(rule.taskId())
+                    || !descriptor.workerGroupId().equals(
+                            rule.workerGroupId()
+                    )) {
+                throw new IllegalStateException(
+                        "Task matching rule is missing or inconsistent"
+                );
+            }
+            allocationRule = immutableMap(rule.allocationRule());
+        }
         return new TaskView(
                 descriptor.taskId(),
                 descriptor.workerGroupId(),
                 descriptor.workerAllocationMechanism().name(),
                 descriptor.idleDisposition().name(),
-                descriptor.allocationRule() == null
-                        ? null
-                        : immutableMap(descriptor.allocationRule()),
+                allocationRule,
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
                 )
         );
     }
 
-    private static WorkerView toView(WorkerDescriptor descriptor) {
+    private static WorkerView toView(
+            WorkerDescriptor descriptor,
+            WorkerFacts facts
+    ) {
         return new WorkerView(
                 descriptor.workerId(),
                 descriptor.workerGroupId(),
                 descriptor.endpointManagerId(),
-                immutableMap(descriptor.workerProperties()),
-                immutableMap(descriptor.platformProperties())
+                immutableMap(facts.workerProperties()),
+                immutableMap(facts.platformProperties())
         );
+    }
+
+    private static void validateWorkerFacts(
+            WorkerDescriptor descriptor,
+            WorkerFacts facts
+    ) {
+        if (!descriptor.workerId().equals(facts.workerId())
+                || !descriptor.workerGroupId().equals(
+                        facts.workerGroupId()
+                )) {
+            throw new IllegalStateException(
+                    "Worker matching facts identity mismatch"
+            );
+        }
     }
 
     private static List<String> sorted(Set<String> values) {

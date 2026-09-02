@@ -50,6 +50,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -77,6 +78,9 @@ class ServerApplicationContextTest {
 
     @Autowired
     private ApplicationContext applicationContext;
+
+    @Autowired
+    private HealthEndpointGroups healthEndpointGroups;
 
     @LocalServerPort
     private int port;
@@ -171,6 +175,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 ServerConfiguredRuntimeLifecycleHost.class
         )).isNotNull();
+        assertThat(healthEndpointGroups.get("readiness")
+                .isMember("workerMatching")).isTrue();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

@@ -12,6 +12,7 @@ import io.lettuce.core.codec.StringCodec;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -67,6 +68,16 @@ public final class RedisTaskResourceCatalog
             Map<String, String> fields
     ) {
         try {
+            if (!fields.keySet().equals(Set.of(
+                    "workerGroupId",
+                    "workerAllocationMechanism",
+                    "idleDisposition",
+                    "configJson"
+            ))) {
+                throw new IllegalArgumentException(
+                        "Task descriptor fields are invalid"
+                );
+            }
             String workerGroupId = required(
                     fields,
                     "workerGroupId"
@@ -81,17 +92,6 @@ public final class RedisTaskResourceCatalog
                             fields,
                             "idleDisposition"
                     ));
-            JsonNode allocationNode = mapper.readTree(required(
-                    fields,
-                    "allocationRuleJson"
-            ));
-            Map<String, Object> allocationRule = allocationNode.isNull()
-                    ? null
-                    : mapper.convertValue(
-                            allocationNode,
-                            new TypeReference<>() {
-                            }
-                    );
             Map<String, String> config = mapper.readValue(
                     required(fields, "configJson"),
                     new TypeReference<>() {
@@ -102,7 +102,6 @@ public final class RedisTaskResourceCatalog
                     workerGroupId,
                     allocationMechanism,
                     idleDisposition,
-                    allocationRule,
                     config
             );
         } catch (JacksonException | IllegalArgumentException error) {

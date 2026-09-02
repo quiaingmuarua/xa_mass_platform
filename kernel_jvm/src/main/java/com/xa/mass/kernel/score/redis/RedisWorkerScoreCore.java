@@ -284,7 +284,7 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public Map<String, Long> acquireHotAcquireCandidates(
+    public Map<String, Long> observeDueHotScoreCandidates(
             String homeBucketId,
             Long hotEligibilityFloorMillis,
             int limit

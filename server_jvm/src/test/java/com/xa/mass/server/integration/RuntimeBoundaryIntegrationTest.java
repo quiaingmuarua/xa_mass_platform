@@ -631,12 +631,12 @@ class RuntimeBoundaryIntegrationTest {
         WorkerScoreState after = awaitWorkerScore(
                 workerGroupId,
                 workerId,
-                WorkerScorePolarity.HOT_ACQUIRE
+                WorkerScorePolarity.HOT_ACQUIRE,
+                Duration.ofSeconds(10)
         );
-        // Dispatch advances the exact RECOVERY check coordinate and retry
-        // rank before publishing the snapshot request. CONNECTED evidence
-        // restores only polarity and therefore preserves that held absolute
-        // coordinate.
+        // The unmatched demand may hold this Worker for one 5-second
+        // allocation window. Serviceability observes it only after that
+        // exact hold becomes due, then advances the RECOVERY coordinate.
         assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );
@@ -663,8 +663,22 @@ class RuntimeBoundaryIntegrationTest {
             String workerId,
             WorkerScorePolarity expectedPolarity
     ) throws InterruptedException {
+        return awaitWorkerScore(
+                workerGroupId,
+                workerId,
+                expectedPolarity,
+                Duration.ofSeconds(5)
+        );
+    }
+
+    private WorkerScoreState awaitWorkerScore(
+            String workerGroupId,
+            String workerId,
+            WorkerScorePolarity expectedPolarity,
+            Duration maximumWait
+    ) throws InterruptedException {
         long deadline = System.nanoTime()
-                + Duration.ofSeconds(5).toNanos();
+                + maximumWait.toNanos();
         while (System.nanoTime() < deadline) {
             WorkerScoreState state = workerScores.getScoreStates(
                     workerGroupId,

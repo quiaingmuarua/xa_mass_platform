@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
@@ -61,6 +62,7 @@ public final class DispatchConvergenceRuntime {
             TaskRuntime taskRuntime,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
+            WorkerMatchRuntime workerMatches,
             ResultContextCodec resultContextCodec
     ) {
         Objects.requireNonNull(preset, "preset");
@@ -81,7 +83,7 @@ public final class DispatchConvergenceRuntime {
                 new WorkerCandidateSelectionPolicy(
                         workerScores,
                         candidateCache,
-                        new WorkerCandidateMatcher(workerCatalog),
+                        workerCatalog,
                         AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
                         serviceabilityConfig.enabled()
                                 ? serviceabilityConfig
@@ -91,8 +93,8 @@ public final class DispatchConvergenceRuntime {
         TaskWorkerAllocationPolicy allocation =
                 new TaskWorkerAllocationPolicy(
                         candidateSelection,
-                        workerScores,
-                        candidateCache
+                        candidateCache,
+                        workerMatches
                 );
         TaskInitializationCheck initialization =
                 new DueActiveItemInitializationCheck(
@@ -116,7 +118,8 @@ public final class DispatchConvergenceRuntime {
                 taskRuntime,
                 assignmentDispatcher,
                 idleSettlement,
-                candidateSelection
+                candidateSelection,
+                workerMatches
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 new WorkerServiceabilityDispatchPolicy(

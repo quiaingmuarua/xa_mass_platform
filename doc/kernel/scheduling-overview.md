@@ -136,9 +136,14 @@ TaskItemScoreBandCore
   owns Item initialization, bounded ACTIVE acquisition, observed same-tag
   claim/retry rewrites, and monotonic final outcome promotion
 
-WorkerScoreCore and worker-runtime
-  own Worker acquisition/recovery coordinates, exact leases, dirty fence,
-  canonical resource Properties and candidate validation
+WorkerScoreCore and WorkerRuntime
+  own Worker acquisition/recovery coordinates, exact leases, dirty fence and
+  minimal identity/delivery metadata
+
+WorkerMatchingCatalog / WorkerMatchingRuntime
+  own canonical Worker and Platform Properties, Task and Item rules,
+  constraint interpretation, bounded supplied-pool filtering and short-lived
+  identity-only Match Evidence; they never read Score or choose a Worker
 
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
@@ -148,12 +153,11 @@ DispatchMainScheduler
   its INITIAL subset, loads Descriptors only for the NORMAL complement, and
   plans the complete root input of four fixed single-flight Resource Producers
 
-WorkerCandidateMatcher
-  owns one call-local Match Plan, rule-derived Worker identity ranges,
-  canonical Rule Match over shared or Candidate-scoped Worker IDs and
-  original-pair post-lease rematch; Selection owns HOT/Cache scheduling source,
-  Score eligibility, priority/count/unique assignment, exact lease and final
-  endpoint-bearing Candidate assembly
+WorkerCandidateSelectionPolicy
+  consumes identity-only Match Evidence and owns HOT/Cache scheduling source,
+  due-pool observation, exact hold confirmation, priority/count/unique
+  assignment, cached renewal and final endpoint-bearing Candidate assembly;
+  it never interprets Rule or Properties
 
 TaskAssignmentDispatcher / TaskIdleSettlement
   protect the two real cross-Owner Task Dispatch closures: Worker renew before
@@ -224,12 +228,13 @@ Worker Delivery Dispatch
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | Task-rule HOT-pool precomputation, Item-rule bounded Group-or-point on-demand lease-match, cached candidate exact renewal/rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
+| Worker HOT_ACQUIRE lease protocol | Task-rule evidence lease, Item-rule evidence lease, cached candidate exact renewal, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
 | Worker serviceability | Process-local HOT eligibility floor, exact pre-Probe Score hold/Recovery advance, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and time-fenced polarity-only Result convergence implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
-| Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through direct bounded Candidate Cache and Worker Score Owner calls; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
-| Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item-rule on-demand acquisition including `{}` as Group-unrestricted, stable Item binding, failed-result-before-`FINAL_FAILED` exhaustion/TTL closure, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
+| Worker matching | Implemented by the independent persistent Facts/Rule owner and one bounded resident Demand consumer; it filters only Kernel-supplied held IDs and returns identity evidence | Secondary indexes, facts revisions and stronger stale-evidence fencing |
+| Worker allocation | Implemented as a Main-planned PRECOMPUTED Producer that admits and holds bounded due pools, consumes Task Match Evidence, confirms holds, applies deficit/priority/unique selection, then fills Candidate Cache | Candidate ranking beyond bounded due order and explicit priority |
+| Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item Match Evidence, stable Item binding, failed-result-before-`FINAL_FAILED` exhaustion/TTL closure, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; SUCCESS stores the unified Item Result before separately requesting `FINAL_SUCCESS`, while retryable FAILURE mutates only the correlated Worker lease; ordered calls are not a cross-owner transaction | Failure reason/history, pending/ack queue reliability and Result-to-Score reconciliation require separate owners and invariants |
 
