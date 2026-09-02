@@ -8,7 +8,7 @@ import static org.mockito.Mockito.verify;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -16,8 +16,8 @@ class DeliveryReportProcessTest {
 
     @Test
     void submitsExactlyTheReceivedBatchAndCompletesIt() {
-        DeliveryReportRemoteApi remoteApi = mock(
-                DeliveryReportRemoteApi.class
+        WorkerDeliveryRemoteApi remoteApi = mock(
+                WorkerDeliveryRemoteApi.class
         );
         DeliveryReportProcess process = new DeliveryReportProcess(
                 remoteApi,
@@ -29,18 +29,18 @@ class DeliveryReportProcessTest {
                 BatchProcessResult.completed()
         );
 
-        verify(remoteApi).append("adapter-1", batch);
+        verify(remoteApi).appendReports("adapter-1", batch);
     }
 
     @Test
     void leavesTransientFailureClassificationToTheDispatcher() {
-        DeliveryReportRemoteApi remoteApi = mock(
-                DeliveryReportRemoteApi.class
+        WorkerDeliveryRemoteApi remoteApi = mock(
+                WorkerDeliveryRemoteApi.class
         );
         WorkerDeliveryAdapterException failure = failure(
                 WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE
         );
-        doThrow(failure).when(remoteApi).append(
+        doThrow(failure).when(remoteApi).appendReports(
                 "adapter-1",
                 List.of("one")
         );
@@ -55,13 +55,13 @@ class DeliveryReportProcessTest {
 
     @Test
     void leavesProtocolFailureClassificationToTheDispatcher() {
-        DeliveryReportRemoteApi remoteApi = mock(
-                DeliveryReportRemoteApi.class
+        WorkerDeliveryRemoteApi remoteApi = mock(
+                WorkerDeliveryRemoteApi.class
         );
         WorkerDeliveryAdapterException failure = failure(
                 WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR
         );
-        doThrow(failure).when(remoteApi).append(
+        doThrow(failure).when(remoteApi).appendReports(
                 "adapter-1",
                 List.of("bad")
         );

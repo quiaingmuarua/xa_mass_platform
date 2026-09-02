@@ -3,7 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.time.Duration;
@@ -21,7 +21,7 @@ public final class AdapterProcessManager {
 
     public AdapterProcessManager(
             String adapterId,
-            DeliveryCommandRemoteApi commandRemoteApi,
+            WorkerDeliveryRemoteApi remoteApi,
             WorkerConnectionMechanism connectionMechanism,
             AdapterEventDispatcher adapterEventDispatcher,
             BatchDispatcher<String> reportDispatcher,
@@ -39,7 +39,7 @@ public final class AdapterProcessManager {
                         commandConsumeLimit,
                         commandBackoff,
                         () -> acquireCommands(
-                                commandRemoteApi,
+                                remoteApi,
                                 adapterId,
                                 commandConsumeLimit
                         ),
@@ -139,11 +139,11 @@ public final class AdapterProcessManager {
     }
 
     private static List<DeliveryCommandItem> acquireCommands(
-            DeliveryCommandRemoteApi remoteApi,
+            WorkerDeliveryRemoteApi remoteApi,
             String adapterId,
             int consumeLimit
     ) {
-        Map<String, DeliveryCommand> acquired = remoteApi.consume(
+        Map<String, DeliveryCommand> acquired = remoteApi.consumeCommands(
                 adapterId,
                 consumeLimit
         );

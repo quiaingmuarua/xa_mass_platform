@@ -437,12 +437,12 @@ remote batch per outer iteration, while the Report Dispatcher is both the
 thread-safe ingress and single consumer. Command and Report Processes handle
 one supplied batch once. Remote priority is decided by Server before the
 Command response is created.
-The Command Remote owns the unified command path and wire
-decoding, the Report Remote owns result paths and wire validation, and the
-route Remote owns verification status classification. A concrete
-Adapter-private HTTP client is shared only by those three Remote APIs and owns
-connection resources plus raw request mechanics; it does not form another
-delivery owner and is never passed to a Process or connection mechanism.
+One Adapter Remote API owns the fixed Command consume, Report append, and Route
+verification methods, including their paths, wire JSON and method-specific
+status classification. Its process-shared JDK HTTP client owns connection and
+HTTP execution resources plus raw request mechanics. The client carries no
+Adapter configuration or lifecycle; each Remote API instance retains its own
+base URI, request timeout and codec.
 One callback Handler adapts Netty events without becoming another owner. One
 common connection mechanism and pure Registry own identity, verification,
 route selection, and Result ingress; the concrete physical Server owns its listener, EventLoop,

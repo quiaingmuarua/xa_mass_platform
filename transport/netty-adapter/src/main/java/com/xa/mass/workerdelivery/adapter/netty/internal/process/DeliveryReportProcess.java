@@ -1,6 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import java.util.List;
 import java.util.Objects;
 
@@ -8,11 +8,11 @@ import java.util.Objects;
 public final class DeliveryReportProcess
         implements AdapterBatchProcessor<String> {
 
-    private final DeliveryReportRemoteApi remoteApi;
+    private final WorkerDeliveryRemoteApi remoteApi;
     private final String adapterId;
 
     public DeliveryReportProcess(
-            DeliveryReportRemoteApi remoteApi,
+            WorkerDeliveryRemoteApi remoteApi,
             String adapterId
     ) {
         this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
@@ -25,7 +25,7 @@ public final class DeliveryReportProcess
     @Override
     public BatchProcessResult process(List<String> batch) {
         List<String> encodedReports = List.copyOf(batch);
-        remoteApi.append(adapterId, encodedReports);
+        remoteApi.appendReports(adapterId, encodedReports);
         return BatchProcessResult.completed();
     }
 }

@@ -23,9 +23,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnec
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.CloseCurrentOutcome;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -813,13 +811,13 @@ class WorkerConnectionMechanismTest {
                     invocation.getArgument(0)
             )).when(reportDispatcher).tryDispatch(anyList());
             reportProcess = new DeliveryReportProcess(
-                    new DeliveryReportRemoteApi(client(reportServer)),
+                    remoteApi(reportServer),
                     "adapter-1"
             );
             mechanism = new WorkerConnectionMechanism(
                         routes,
                         network,
-                        new WorkerRouteRemoteApi(client(remoteApi.server)),
+                        remoteApi(remoteApi.server),
                         codec,
                         reportDispatcher,
                         "adapter-1",
@@ -991,12 +989,13 @@ class WorkerConnectionMechanismTest {
         }
     }
 
-    private static WorkerDeliveryHttpClient client(
+    private static WorkerDeliveryRemoteApi remoteApi(
             ScriptedHttpServer server
     ) {
-        return new WorkerDeliveryHttpClient(
+        return new WorkerDeliveryRemoteApi(
                 server.baseUri(),
-                Duration.ofSeconds(2)
+                Duration.ofSeconds(2),
+                new WorkerDeliveryCodec()
         );
     }
 

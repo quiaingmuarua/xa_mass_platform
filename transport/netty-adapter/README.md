@@ -9,8 +9,8 @@ shared Server base, Session, Bridge, or protocol-extension framework.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
-batch API through three owner-local Remote APIs backed by one Adapter-private
-`WorkerDeliveryHttpClient`.
+batch API through one `WorkerDeliveryRemoteApi`. All Adapter instances share
+one process-lifetime JDK `HttpClient` for physical HTTP resources.
 
 ## Instance Boundary
 
@@ -30,6 +30,7 @@ one acceptor EventLoop and a CPU-bounded child EventLoop group
 one fixed `AdapterProcessManager` with Command and Report Batch Dispatchers
 one retry-only Command Queue and one multi-producer Report Queue
 one pure `DeliveryCommandProcess` and one pure `DeliveryReportProcess`
+one `WorkerDeliveryRemoteApi` with immutable base URI, request timeout, and codec
 two resident daemon platform threads, one owned by each Batch Dispatcher
 ```
 
@@ -74,7 +75,7 @@ netty/internal/process/
 netty/internal/connection/
   one Netty callback adapter + shared connection semantics + pure route truth
 netty/internal/remote/
-  three owner-local Remote APIs + one Adapter-private mechanical HTTP client
+  one fixed Remote API + one process-shared JDK HTTP client
 netty/internal/network/
   internal Server contract + complete WebSocket and Socket physical owners
 ```
@@ -86,19 +87,20 @@ contracts, and Server is guarded from importing them.
 mechanism. It owns no codec, route, verification, Result, or physical network
 behavior. The shared connection mechanism exposes a concrete `deliver(...)`
 owner operation and depends only
-on `WorkerRouteRemoteApi` plus the Report `BatchDispatcher`. It sees normalized
+on `WorkerDeliveryRemoteApi` plus the Report `BatchDispatcher`. It sees normalized
 strings and Netty Channels as route addresses, but all physical write/close
 operations return through `NettyWorkerServer`; it does not see WebSocket
 frames, Socket lines, handshake types, listener resources, or Pipeline
 mutation.
 
-`DeliveryCommandRemoteApi`, `DeliveryReportRemoteApi`, and
-`WorkerRouteRemoteApi` own their specific path, wire JSON, expected HTTP status,
-and owner failure classification. `WorkerDeliveryHttpClient` is created once
-inside each Adapter and shared only by those three Remote APIs. It owns the JDK
-HTTP client, base URI, request timeout, headers, path encoding, raw request,
-and expected-status enforcement; it imports no Delivery DTO or owner HTTP
-codec. Processes and connection mechanism never see the Client, URL, status,
+`WorkerDeliveryRemoteApi` owns the three fixed Command consume, Report append,
+and Route verification methods, including their paths, wire JSON, expected
+HTTP statuses, and method-specific failure classification. One instance is
+created per Adapter and keeps only its immutable base URI, request timeout,
+and codec. Its process-level static JDK `HttpClient` keeps shared connection
+and HTTP execution resources, uses HTTP/1.1, carries no Adapter configuration,
+and has no Adapter lifecycle. Each request receives the owning instance's
+timeout. Processes and connection mechanism never see the Client, URL, status,
 or HTTP JSON contract.
 
 WebSocket and Socket keep complete, separately understandable physical Server

@@ -75,7 +75,6 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(connection)
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("DeliveryReportProcess")
-                .doesNotContain("WorkerDeliveryHttpClient")
                 .doesNotContain("java.net.http")
                 .doesNotContain("io.netty.bootstrap")
                 .doesNotContain("io.netty.handler.codec.http")
@@ -86,7 +85,6 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("internal.remote")
                 .doesNotContain("WorkerDeliveryCodec");
         assertThat(process)
-                .doesNotContain("WorkerDeliveryHttpClient")
                 .doesNotContain("java.net.http")
                 .doesNotContain("java.net.URI")
                 .doesNotContain("io.netty")
@@ -115,7 +113,7 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(handler)
                 .contains("private final WorkerConnectionMechanism mechanism")
                 .doesNotContain("WorkerRouteRegistry")
-                .doesNotContain("WorkerRouteRemoteApi")
+                .doesNotContain("internal.remote")
                 .doesNotContain("WorkerDeliveryCodec")
                 .doesNotContain("DeliveryReportProcess")
                 .doesNotContain("NettyWorkerServer")
@@ -124,25 +122,27 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void remoteApisHideHttpFromProcessesAndConnection()
+    void remoteApiKeepsHttpMechanicsOutOfProcessesAndConnection()
             throws IOException {
+        String aggregate = read(NETTY.resolve(
+                "NettyWorkerDeliveryAdapter.java"
+        )) + read(NETTY.resolve("NettyWorkerDeliveryAdapters.java"));
         String process = readSources(PROCESS);
         String connection = readSources(CONNECTION);
-        String http = read(REMOTE.resolve("WorkerDeliveryHttpClient.java"));
+        String network = readSources(NETWORK);
+        String remote = read(REMOTE.resolve("WorkerDeliveryRemoteApi.java"));
 
-        assertThat(process + connection)
-                .doesNotContain("WorkerDeliveryHttpClient")
+        assertThat(aggregate + process + connection + network)
                 .doesNotContain("java.net.http")
                 .doesNotContain("statusCode")
                 .doesNotContain("commands:consume")
                 .doesNotContain("results:append")
                 .doesNotContain("verify-binding");
-        assertThat(http)
-                .doesNotContain("DeliveryCommand")
-                .doesNotContain("DeliveryReport")
-                .doesNotContain("WorkerDeliveryCodec")
-                .doesNotContain("acceptedCount")
-                .doesNotContain("verify-binding");
+        assertThat(remote)
+                .contains("java.net.http")
+                .contains("commands:consume")
+                .contains("results:append")
+                .contains("verify-binding");
     }
 
     @Test

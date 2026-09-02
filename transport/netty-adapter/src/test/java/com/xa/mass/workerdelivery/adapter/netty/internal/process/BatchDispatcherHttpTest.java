@@ -2,8 +2,8 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -22,11 +22,10 @@ class BatchDispatcherHttpTest {
             throws Exception {
         try (BlockingReportPeer peer = new BlockingReportPeer()) {
             DeliveryReportProcess processor = new DeliveryReportProcess(
-                    new DeliveryReportRemoteApi(
-                            new WorkerDeliveryHttpClient(
-                                    peer.server.baseUri(),
-                                    Duration.ofSeconds(2)
-                            )
+                    new WorkerDeliveryRemoteApi(
+                            peer.server.baseUri(),
+                            Duration.ofSeconds(2),
+                            new WorkerDeliveryCodec()
                     ),
                     "adapter-1"
             );

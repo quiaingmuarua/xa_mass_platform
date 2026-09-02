@@ -317,8 +317,9 @@ Rules:
   batch is processed directly after each retry slice. The Report Dispatcher is
   both non-blocking multi-producer ingress and its single consumer. Queues do
   not cross Dispatcher boundaries.
-- Owner-local Remote APIs own their paths, wire JSON and status semantics. One
-  private HTTP client owns raw HTTP mechanics only.
+- One Adapter Remote API owns the three fixed paths, wire JSON and
+  method-specific status semantics. Its process-shared JDK HTTP client owns
+  raw HTTP resources only and carries no Adapter configuration or lifecycle.
 - Result queue capacity is only a local soft memory bound. The Report Processor
   submits fixed `1..100` remote batches once; classified remote unavailability
   appends that batch to the Queue tail. Shutdown drops current and queued

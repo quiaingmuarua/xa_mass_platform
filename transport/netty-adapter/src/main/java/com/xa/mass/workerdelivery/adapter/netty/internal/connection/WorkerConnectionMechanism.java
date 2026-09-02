@@ -18,7 +18,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnecti
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -60,7 +60,7 @@ public final class WorkerConnectionMechanism {
     private final WorkerRouteRegistry routes;
     private final WorkerPropertiesCache propertiesCache;
     private final NettyWorkerServer networkServer;
-    private final WorkerRouteRemoteApi routeRemoteApi;
+    private final WorkerDeliveryRemoteApi remoteApi;
     private final WorkerDeliveryCodec codec;
     private final BatchDispatcher<String> reportDispatcher;
     private final String adapterId;
@@ -69,7 +69,7 @@ public final class WorkerConnectionMechanism {
     public WorkerConnectionMechanism(
             WorkerRouteRegistry routes,
             NettyWorkerServer networkServer,
-            WorkerRouteRemoteApi routeRemoteApi,
+            WorkerDeliveryRemoteApi remoteApi,
             WorkerDeliveryCodec codec,
             BatchDispatcher<String> reportDispatcher,
             String adapterId,
@@ -82,9 +82,9 @@ public final class WorkerConnectionMechanism {
                 networkServer,
                 "networkServer"
         );
-        this.routeRemoteApi = Objects.requireNonNull(
-                routeRemoteApi,
-                "routeRemoteApi"
+        this.remoteApi = Objects.requireNonNull(
+                remoteApi,
+                "remoteApi"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportDispatcher = Objects.requireNonNull(
@@ -299,7 +299,7 @@ public final class WorkerConnectionMechanism {
             String workerId
     ) {
         try {
-            routeRemoteApi.verify(adapterId, workerId)
+            remoteApi.verifyRoute(adapterId, workerId)
                     .whenComplete((ignored, failure) ->
                             context.executor().execute(() ->
                                     finishVerification(
