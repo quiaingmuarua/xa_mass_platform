@@ -4,11 +4,11 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import java.util.Objects;
 
 /** Command plus its Worker-address-bearing remote entry key. */
-record DeliveryCommandItem(
+public record DeliveryCommandItem(
         String entryKey,
         DeliveryCommand command
 ) {
-    DeliveryCommandItem {
+    public DeliveryCommandItem {
         if (entryKey == null || entryKey.isBlank()) {
             throw new IllegalArgumentException("entryKey must be non-blank");
         }

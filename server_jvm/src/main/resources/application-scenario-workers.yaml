@@ -11,19 +11,16 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
-            route-cache:
-              reconnect-verification-retention: 10m
-              maximum-disconnected-workers: 100000
-            properties-cache:
-              maximum-encoded-bytes: 67108864
-            processes:
-              - type: DELIVERY_COMMAND
-                interval: 100ms
-                consume-limit: 100
-                queue-capacity: 1000
-              - type: DELIVERY_REPORT
-                interval: 1s
-                queue-capacity: 1000
+            command-backoff: 100ms
+            command-consume-limit: 100
+            command-retry-capacity: 1000
+            report-backoff: 1s
+            report-queue-capacity: 1000
+            reconnect-verification-retention: 10m
+            maximum-disconnected-workers: 100000
+            maximum-encoded-properties-bytes: 67108864
+            send-time-limit: 5s
+            shutdown-timeout: 5s
     worker-binding:
       endpoints:
         scenario-websocket:

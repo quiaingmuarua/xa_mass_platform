@@ -13,7 +13,6 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -74,10 +73,12 @@ public final class WorkerConnectionMechanism {
             BatchDispatcher<String> reportDispatcher,
             String adapterId,
             Duration sendTimeLimit,
-            NettyWorkerPropertiesCacheConfig propertiesCacheConfig
+            long maximumEncodedPropertiesBytes
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
-        propertiesCache = new WorkerPropertiesCache(propertiesCacheConfig);
+        propertiesCache = new WorkerPropertiesCache(
+                maximumEncodedPropertiesBytes
+        );
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"

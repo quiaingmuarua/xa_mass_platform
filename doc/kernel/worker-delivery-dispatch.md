@@ -426,8 +426,10 @@ the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
 
-One finite construction factory returns only the public Adapter contract and
-selects one complete WebSocket or line-Socket physical Server. Every instance
+One process-scoped construction factory owns one immutable Remote API facade
+and codec, accepts one complete flat Adapter config, returns only the public
+Adapter contract, and selects one complete WebSocket or line-Socket physical
+Server. Every instance
 independently owns three layers: the Adapter aggregate owns lifecycle and
 network shutdown sequencing; one fixed Process Manager owns two generic Batch
 Dispatchers and their shared join deadline; each Dispatcher owns one resident
@@ -437,12 +439,12 @@ remote batch per outer iteration, while the Report Dispatcher is both the
 thread-safe ingress and single consumer. Command and Report Processes handle
 one supplied batch once. Remote priority is decided by Server before the
 Command response is created.
-One Adapter Remote API owns the fixed Command consume, Report append, and Route
-verification methods, including their paths, wire JSON and method-specific
-status classification. Its process-shared JDK HTTP client owns connection and
-HTTP execution resources plus raw request mechanics. The client carries no
-Adapter configuration or lifecycle; each Remote API instance retains its own
-base URI, request timeout and codec.
+The Factory-owned Remote API owns the fixed Command consume, Report append, and
+Route verification methods, including their paths, wire JSON and
+method-specific status classification. Its process-shared JDK HTTP client owns
+connection and HTTP execution resources plus raw request mechanics. The client
+carries no Adapter configuration or lifecycle; the immutable facade retains
+the process Factory's base URI, request timeout and codec.
 One callback Handler adapts Netty events without becoming another owner. One
 common connection mechanism and pure Registry own identity, verification,
 route selection, and Result ingress; the concrete physical Server owns its listener, EventLoop,

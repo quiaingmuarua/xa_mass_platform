@@ -4,9 +4,9 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import com.github.benmanes.caffeine.cache.Ticker;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -30,24 +30,29 @@ public final class WorkerRouteRegistry {
     private final long reconnectVerificationRetentionNanos;
     private final Ticker ticker;
 
-    public WorkerRouteRegistry(NettyWorkerRouteCacheConfig config) {
-        this(config, Ticker.systemTicker());
+    public WorkerRouteRegistry(
+            Duration reconnectVerificationRetention,
+            long maximumDisconnectedWorkers
+    ) {
+        this(
+                reconnectVerificationRetention,
+                maximumDisconnectedWorkers,
+                Ticker.systemTicker()
+        );
     }
 
     WorkerRouteRegistry(
-            NettyWorkerRouteCacheConfig config,
+            Duration reconnectVerificationRetention,
+            long maximumDisconnectedWorkers,
             Ticker ticker
     ) {
-        NettyWorkerRouteCacheConfig requiredConfig = Objects.requireNonNull(
-                config,
-                "config"
-        );
         this.ticker = Objects.requireNonNull(ticker, "ticker");
-        reconnectVerificationRetentionNanos = requiredConfig
-                .reconnectVerificationRetention()
-                .toNanos();
+        reconnectVerificationRetentionNanos = Objects.requireNonNull(
+                reconnectVerificationRetention,
+                "reconnectVerificationRetention"
+        ).toNanos();
         routesByWorkerId = Caffeine.newBuilder()
-                .maximumWeight(requiredConfig.maximumDisconnectedWorkers())
+                .maximumWeight(maximumDisconnectedWorkers)
                 .weigher((String ignored, RouteEntry route) ->
                         route.isDisconnectedCache() ? 1 : 0)
                 .expireAfter(new RouteExpiry(

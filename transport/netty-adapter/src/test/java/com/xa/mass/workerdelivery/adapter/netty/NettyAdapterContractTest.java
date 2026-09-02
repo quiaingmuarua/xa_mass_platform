@@ -287,53 +287,34 @@ class NettyAdapterContractTest {
             int port,
             TestRemoteApi remoteApi
     ) {
-        List<NettyAdapterProcessConfig> processes = List.of(
-                new NettyAdapterProcessConfig.DeliveryCommand(
+        NettyWorkerDeliveryAdapterFactory factory =
+                new NettyWorkerDeliveryAdapterFactory(
+                        remoteApi.server.baseUri(),
+                        Duration.ofSeconds(2)
+                );
+        return factory.create(
+                protocol.adapterId,
+                new NettyWorkerDeliveryAdapterConfig(
+                        switch (protocol) {
+                            case WEBSOCKET -> NettyWorkerDeliveryAdapterConfig
+                                    .Type.WEBSOCKET;
+                            case SOCKET -> NettyWorkerDeliveryAdapterConfig
+                                    .Type.SOCKET;
+                        },
+                        "127.0.0.1",
+                        port,
                         Duration.ofMillis(10),
                         100,
-                        1000
-                ),
-                new NettyAdapterProcessConfig.DeliveryReport(
+                        1000,
                         Duration.ofMillis(10),
-                        1000
+                        1000,
+                        Duration.ofMinutes(10),
+                        100_000L,
+                        64L * 1024L * 1024L,
+                        Duration.ofSeconds(1),
+                        Duration.ofSeconds(1)
                 )
         );
-        return switch (protocol) {
-            case WEBSOCKET -> NettyWorkerDeliveryAdapters.webSocket(
-                    protocol.adapterId,
-                    remoteApi.server.baseUri(),
-                    Duration.ofSeconds(2),
-                    "127.0.0.1",
-                    port,
-                    processes,
-                    new NettyWorkerRouteCacheConfig(
-                            Duration.ofMinutes(10),
-                            100_000L
-                    ),
-                    new NettyWorkerPropertiesCacheConfig(
-                            64L * 1024L * 1024L
-                    ),
-                    Duration.ofSeconds(1),
-                    Duration.ofSeconds(1)
-            );
-            case SOCKET -> NettyWorkerDeliveryAdapters.socket(
-                    protocol.adapterId,
-                    remoteApi.server.baseUri(),
-                    Duration.ofSeconds(2),
-                    "127.0.0.1",
-                    port,
-                    processes,
-                    new NettyWorkerRouteCacheConfig(
-                            Duration.ofMinutes(10),
-                            100_000L
-                    ),
-                    new NettyWorkerPropertiesCacheConfig(
-                            64L * 1024L * 1024L
-                    ),
-                    Duration.ofSeconds(1),
-                    Duration.ofSeconds(1)
-            );
-        };
     }
 
     private static WorkerPeer connect(

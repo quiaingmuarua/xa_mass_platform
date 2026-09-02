@@ -18,10 +18,10 @@ import org.springframework.test.context.DynamicPropertySource;
 @ActiveProfiles("test")
 @SpringBootTest(
         properties = {
-                "xa.mass.worker-delivery.adapter.http-client"
-                        + ".base-url=http://127.0.0.1:1",
-                "xa.mass.worker-delivery.adapter.http-client"
-                        + ".request-timeout=10ms"
+                "xa.mass.worker-delivery.adapter"
+                        + ".remote-base-url=http://127.0.0.1:1",
+                "xa.mass.worker-delivery.adapter"
+                        + ".remote-request-timeout=10ms"
         }
 )
 class ServerEmbeddedWorkerDeliveryAdapterContextTest {
@@ -45,22 +45,39 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 () -> Integer.toString(ADAPTER_PORT)
         );
         registry.add(
-                prefix + ".processes[0].type",
-                () -> "DELIVERY_COMMAND"
+                prefix + ".command-backoff",
+                () -> "1h"
         );
-        registry.add(prefix + ".processes[0].interval", () -> "1h");
         registry.add(
-                prefix + ".processes[0].queue-capacity",
+                prefix + ".command-consume-limit",
+                () -> "100"
+        );
+        registry.add(
+                prefix + ".command-retry-capacity",
                 () -> "1000"
         );
         registry.add(
-                prefix + ".processes[1].type",
-                () -> "DELIVERY_REPORT"
+                prefix + ".report-backoff",
+                () -> "1s"
         );
         registry.add(
-                prefix + ".processes[1].queue-capacity",
+                prefix + ".report-queue-capacity",
                 () -> "1000"
         );
+        registry.add(
+                prefix + ".reconnect-verification-retention",
+                () -> "10m"
+        );
+        registry.add(
+                prefix + ".maximum-disconnected-workers",
+                () -> "100000"
+        );
+        registry.add(
+                prefix + ".maximum-encoded-properties-bytes",
+                () -> "67108864"
+        );
+        registry.add(prefix + ".send-time-limit", () -> "5s");
+        registry.add(prefix + ".shutdown-timeout", () -> "5s");
         String endpoint = "xa.mass.worker-binding.endpoints"
                 + ".embedded-websocket";
         registry.add(endpoint + ".transport-type", () -> "WEBSOCKET");

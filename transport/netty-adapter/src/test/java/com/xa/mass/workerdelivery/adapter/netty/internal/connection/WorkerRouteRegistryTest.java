@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.benmanes.caffeine.cache.Ticker;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
@@ -304,7 +303,8 @@ class WorkerRouteRegistryTest {
             Ticker ticker
     ) {
         return new WorkerRouteRegistry(
-                new NettyWorkerRouteCacheConfig(RETENTION, capacity),
+                RETENTION,
+                capacity,
                 ticker
         );
     }

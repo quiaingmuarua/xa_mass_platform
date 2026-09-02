@@ -167,7 +167,7 @@ class ServerApplicationContextTest {
         )).hasSize(1);
         assertThat(applicationContext.getBean(
                 ServerWorkerDeliveryAdapterProperties.class
-        ).instanceConfigs()).isEmpty();
+        ).instances()).isEmpty();
         assertThat(applicationContext.getBean(
                 ServerConfiguredRuntimeLifecycleHost.class
         )).isNotNull();

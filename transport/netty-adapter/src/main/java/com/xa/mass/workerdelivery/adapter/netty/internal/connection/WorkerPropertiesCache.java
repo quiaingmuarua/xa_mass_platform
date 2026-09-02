@@ -2,7 +2,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -16,25 +15,23 @@ final class WorkerPropertiesCache {
     private final Cache<String, CachedProperties> propertiesByWorkerId;
     private final LongSupplier wallClockMillis;
 
-    WorkerPropertiesCache(NettyWorkerPropertiesCacheConfig config) {
+    WorkerPropertiesCache(long maximumEncodedBytes) {
         this(
-                config,
+                maximumEncodedBytes,
                 System::currentTimeMillis
         );
     }
 
     WorkerPropertiesCache(
-            NettyWorkerPropertiesCacheConfig config,
+            long maximumEncodedBytes,
             LongSupplier wallClockMillis
     ) {
-        NettyWorkerPropertiesCacheConfig requiredConfig =
-                Objects.requireNonNull(config, "config");
         this.wallClockMillis = Objects.requireNonNull(
                 wallClockMillis,
                 "wallClockMillis"
         );
         propertiesByWorkerId = Caffeine.newBuilder()
-                .maximumWeight(requiredConfig.maximumEncodedBytes())
+                .maximumWeight(maximumEncodedBytes)
                 .weigher((String workerId, CachedProperties cached) ->
                         encodedWeight(workerId, cached.encodedProperties()))
                 .executor(Runnable::run)

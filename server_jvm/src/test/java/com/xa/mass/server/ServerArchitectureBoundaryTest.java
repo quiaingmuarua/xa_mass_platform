@@ -516,7 +516,7 @@ class ServerArchitectureBoundaryTest {
         String host = readSources(DELIVERY_ADAPTER_HOST);
         assertThat(host)
                 .contains("WorkerDeliveryAdapterManager")
-                .contains("NettyWorkerDeliveryAdapters")
+                .contains("NettyWorkerDeliveryAdapterFactory")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("adapter.netty.internal")

@@ -126,7 +126,9 @@ class WorkerDeliveryAdapterArchitectureTest {
             throws IOException {
         String aggregate = read(NETTY.resolve(
                 "NettyWorkerDeliveryAdapter.java"
-        )) + read(NETTY.resolve("NettyWorkerDeliveryAdapters.java"));
+        )) + read(NETTY.resolve(
+                "NettyWorkerDeliveryAdapterFactory.java"
+        ));
         String process = readSources(PROCESS);
         String connection = readSources(CONNECTION);
         String network = readSources(NETWORK);
@@ -288,6 +290,9 @@ class WorkerDeliveryAdapterArchitectureTest {
         ))).isFalse();
         assertThat(Files.exists(NETTY.resolve(
                 "NettyWorkerPropertiesCacheConfig.java"
+        ))).isFalse();
+        assertThat(Files.exists(NETTY.resolve(
+                "NettyWorkerDeliveryAdapterConfig.java"
         ))).isTrue();
     }
 

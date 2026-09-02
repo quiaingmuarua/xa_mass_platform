@@ -2,14 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /** Fixed lifecycle owner for the Command and Report batch dispatchers. */
@@ -20,43 +13,6 @@ public final class AdapterProcessManager {
     private final Duration shutdownTimeout;
 
     public AdapterProcessManager(
-            String adapterId,
-            WorkerDeliveryRemoteApi remoteApi,
-            WorkerConnectionMechanism connectionMechanism,
-            AdapterEventDispatcher adapterEventDispatcher,
-            BatchDispatcher<String> reportDispatcher,
-            WorkerDeliveryCodec codec,
-            int commandConsumeLimit,
-            int commandRetryCapacity,
-            Duration commandBackoff,
-            Duration shutdownTimeout
-    ) {
-        this(
-                BatchDispatcher.pulling(
-                        adapterId,
-                        "delivery-command",
-                        commandRetryCapacity,
-                        commandConsumeLimit,
-                        commandBackoff,
-                        () -> acquireCommands(
-                                remoteApi,
-                                adapterId,
-                                commandConsumeLimit
-                        ),
-                        new DeliveryCommandProcess(
-                                connectionMechanism,
-                                adapterEventDispatcher,
-                                reportDispatcher,
-                                codec,
-                                adapterId
-                        )
-                ),
-                reportDispatcher,
-                shutdownTimeout
-        );
-    }
-
-    AdapterProcessManager(
             BatchDispatcher<DeliveryCommandItem> commandDispatcher,
             BatchDispatcher<String> reportDispatcher,
             Duration shutdownTimeout
@@ -136,27 +92,6 @@ public final class AdapterProcessManager {
 
     Thread reportThread() {
         return reportDispatcher.thread();
-    }
-
-    private static List<DeliveryCommandItem> acquireCommands(
-            WorkerDeliveryRemoteApi remoteApi,
-            String adapterId,
-            int consumeLimit
-    ) {
-        Map<String, DeliveryCommand> acquired = remoteApi.consumeCommands(
-                adapterId,
-                consumeLimit
-        );
-        if (acquired.isEmpty()) {
-            return List.of();
-        }
-        ArrayList<DeliveryCommandItem> batch = new ArrayList<>(
-                acquired.size()
-        );
-        acquired.forEach((entryKey, command) -> batch.add(
-                new DeliveryCommandItem(entryKey, command)
-        ));
-        return List.copyOf(batch);
     }
 
     private static WorkerDeliveryAdapterException shutdownTimeout() {

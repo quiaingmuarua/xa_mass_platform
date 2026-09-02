@@ -3,7 +3,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -134,12 +133,6 @@ class WorkerPropertiesCacheTest {
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test
-    void cacheConfigurationMustBePositive() {
-        assertThatThrownBy(() -> new NettyWorkerPropertiesCacheConfig(0L))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
     private static void assertUnknown(WorkerPropertiesObservation value) {
         assertThat(value.updatedAtMillis()).isNull();
         assertThat(value.properties()).isNull();
@@ -150,7 +143,7 @@ class WorkerPropertiesCacheTest {
             java.util.function.LongSupplier wallClock
     ) {
         return new WorkerPropertiesCache(
-                new NettyWorkerPropertiesCacheConfig(budget),
+                budget,
                 wallClock
         );
     }

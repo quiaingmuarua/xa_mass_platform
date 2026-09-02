@@ -40,9 +40,8 @@ xa:
       max-pending-calls: 10000
     worker-delivery:
       adapter:
-        http-client:
-          base-url: http://127.0.0.1:${server.port:18082}
-          request-timeout: 5s
+        remote-base-url: http://127.0.0.1:${server.port:18082}
+        remote-request-timeout: 5s
 
 management:
   endpoints:

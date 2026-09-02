@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
-/** Fixed Server HTTP boundary used by one Adapter instance. */
+/** Immutable Server HTTP facade shared by one Adapter process factory. */
 public final class WorkerDeliveryRemoteApi {
 
     public static final int MAX_RESULTS_PER_APPEND = 100;

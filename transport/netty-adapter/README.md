@@ -14,9 +14,12 @@ one process-lifetime JDK `HttpClient` for physical HTTP resources.
 
 ## Instance Boundary
 
-Server constructs the two finite physical protocol variants through
-`NettyWorkerDeliveryAdapters`, which returns only the public
-`WorkerDeliveryAdapter` contract. Both variants instantiate the same
+Server creates one process-scoped `NettyWorkerDeliveryAdapterFactory` from
+the Remote API base URI and request timeout. The Factory owns one immutable
+`WorkerDeliveryRemoteApi` and one codec, and creates the two finite physical
+protocol variants from a complete `NettyWorkerDeliveryAdapterConfig`. It
+returns only the public `WorkerDeliveryAdapter` contract. Both variants
+instantiate the same
 package-private `NettyWorkerDeliveryAdapter`; every instance independently
 owns:
 
@@ -30,7 +33,6 @@ one acceptor EventLoop and a CPU-bounded child EventLoop group
 one fixed `AdapterProcessManager` with Command and Report Batch Dispatchers
 one retry-only Command Queue and one multi-producer Report Queue
 one pure `DeliveryCommandProcess` and one pure `DeliveryReportProcess`
-one `WorkerDeliveryRemoteApi` with immutable base URI, request timeout, and codec
 two resident daemon platform threads, one owned by each Batch Dispatcher
 ```
 
@@ -58,8 +60,10 @@ or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
-`NettyAdapterProcessConfig`, `NettyWorkerRouteCacheConfig`,
-`NettyWorkerPropertiesCacheConfig`, and `NettyWorkerDeliveryAdapters`. Java types
+`NettyWorkerDeliveryAdapterConfig`, and
+`NettyWorkerDeliveryAdapterFactory`. The config is one flat, complete Adapter
+construction value; the Factory destructures it and passes each internal owner
+only its own primitive values. Java types
 under `netty.internal` are `public` only where repository packages must
 collaborate without JPMS; they are repository-internal and carry no external
 compatibility promise.
@@ -69,13 +73,13 @@ similarity:
 
 ```text
 netty/
-  finite public factory + one package-private Adapter aggregate
+  one complete public config + process factory + package-private aggregate
 netty/internal/process/
   fixed Process Manager + generic Batch Dispatcher + two pure Processors
 netty/internal/connection/
   one Netty callback adapter + shared connection semantics + pure route truth
 netty/internal/remote/
-  one fixed Remote API + one process-shared JDK HTTP client
+  one Factory-owned Remote API facade + one process-shared JDK HTTP client
 netty/internal/network/
   internal Server contract + complete WebSocket and Socket physical owners
 ```
@@ -96,12 +100,13 @@ mutation.
 `WorkerDeliveryRemoteApi` owns the three fixed Command consume, Report append,
 and Route verification methods, including their paths, wire JSON, expected
 HTTP statuses, and method-specific failure classification. One instance is
-created per Adapter and keeps only its immutable base URI, request timeout,
-and codec. Its process-level static JDK `HttpClient` keeps shared connection
-and HTTP execution resources, uses HTTP/1.1, carries no Adapter configuration,
-and has no Adapter lifecycle. Each request receives the owning instance's
-timeout. Processes and connection mechanism never see the Client, URL, status,
-or HTTP JSON contract.
+created per process Factory and keeps only its immutable base URI, request
+timeout, and codec; every Adapter created by that Factory uses the same facade.
+Its process-level static JDK `HttpClient` keeps shared connection and HTTP
+execution resources, uses HTTP/1.1, carries no Adapter configuration, and has
+no Adapter lifecycle. Each request receives the Factory-owned facade's timeout.
+Processes and connection mechanism never see the Client, URL, status, or HTTP
+JSON contract.
 
 WebSocket and Socket keep complete, separately understandable physical Server
 implementations. Parameterized tests constrain their common physical contract
@@ -325,7 +330,7 @@ directly and does not enter or depend on retry Queue capacity. It continues
 immediately,
 without a fixed delay or batch-count ceiling, so sustained fresh traffic cannot
 starve retained Commands. An empty response or a supplier/Processor
-`RuntimeException` waits the Command config `interval` as an interruptible
+`RuntimeException` waits `commandBackoff` as an interruptible
 local backoff. An unexpected Processor exception drops that current batch
 rather than replaying Commands after a possible partial physical delivery;
 normal `RETRY_LATER` still appends only the selected items to the Queue tail.
@@ -441,7 +446,7 @@ Result truth, SYSTEM enters the Server-local Direct Call owner, and KERNEL
 enters the Kernel Worker Serviceability result handoff. Owner-local correlation
 then interprets opaque `forward`. Remote unavailability appends the whole mixed
 batch to the Queue tail; Reports already queued may therefore pass it. Protocol
-rejection drops it. The Report config `interval` is
+rejection drops it. `reportBackoff` is
 used only as failure retry backoff; an empty queue waits indefinitely for local
 ingress. The Command and Report loops remain independent. The destinations do
 not have separate retry policies inside the Adapter: a late

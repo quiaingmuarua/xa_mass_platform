@@ -14,8 +14,6 @@ import static org.mockito.Mockito.mock;
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -654,7 +652,8 @@ class WorkerConnectionMechanismTest {
         MutableTicker ticker = new MutableTicker();
         Duration retention = Duration.ofMinutes(10);
         WorkerRouteRegistry routes = new WorkerRouteRegistry(
-                new NettyWorkerRouteCacheConfig(retention, 100_000L),
+                retention,
+                100_000L,
                 ticker
         );
         Fixture fixture = new Fixture(10, routes);
@@ -791,10 +790,8 @@ class WorkerConnectionMechanismTest {
             this(
                     reportCapacity,
                     new WorkerRouteRegistry(
-                            new NettyWorkerRouteCacheConfig(
-                                    Duration.ofMinutes(10),
-                                    100_000L
-                            )
+                            Duration.ofMinutes(10),
+                            100_000L
                     )
             );
         }
@@ -822,9 +819,7 @@ class WorkerConnectionMechanismTest {
                         reportDispatcher,
                         "adapter-1",
                         Duration.ofSeconds(1),
-                        new NettyWorkerPropertiesCacheConfig(
-                                64L * 1024L * 1024L
-                        )
+                        64L * 1024L * 1024L
                 );
             inboundHandler = new WorkerConnectionInboundHandler(mechanism);
         }

@@ -135,11 +135,11 @@ class RuntimeBoundaryIntegrationTest {
                 () -> Integer.toString(SERVER_PORT)
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.http-client.base-url",
+                "xa.mass.worker-delivery.adapter.remote-base-url",
                 () -> "http://127.0.0.1:" + SERVER_PORT
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.http-client.request-timeout",
+                "xa.mass.worker-delivery.adapter.remote-request-timeout",
                 () -> "2s"
         );
         registry.add(
@@ -1308,7 +1308,7 @@ class RuntimeBoundaryIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        addAdapterProcesses(registry, prefix);
+        addAdapterConfig(registry, prefix);
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(
@@ -1335,7 +1335,7 @@ class RuntimeBoundaryIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        addAdapterProcesses(registry, prefix);
+        addAdapterConfig(registry, prefix);
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(
@@ -1348,32 +1348,29 @@ class RuntimeBoundaryIntegrationTest {
         );
     }
 
-    private static void addAdapterProcesses(
+    private static void addAdapterConfig(
             DynamicPropertyRegistry registry,
             String prefix
     ) {
+        registry.add(prefix + ".command-backoff", () -> "20ms");
+        registry.add(prefix + ".command-consume-limit", () -> "100");
+        registry.add(prefix + ".command-retry-capacity", () -> "1000");
+        registry.add(prefix + ".report-backoff", () -> "20ms");
+        registry.add(prefix + ".report-queue-capacity", () -> "1000");
         registry.add(
-                prefix + ".processes[0].type",
-                () -> "DELIVERY_COMMAND"
-        );
-        registry.add(prefix + ".processes[0].interval", () -> "20ms");
-        registry.add(
-                prefix + ".processes[0].consume-limit",
-                () -> "100"
-        );
-        registry.add(
-                prefix + ".processes[0].queue-capacity",
-                () -> "1000"
+                prefix + ".reconnect-verification-retention",
+                () -> "10m"
         );
         registry.add(
-                prefix + ".processes[1].type",
-                () -> "DELIVERY_REPORT"
+                prefix + ".maximum-disconnected-workers",
+                () -> "100000"
         );
-        registry.add(prefix + ".processes[1].interval", () -> "20ms");
         registry.add(
-                prefix + ".processes[1].queue-capacity",
-                () -> "1000"
+                prefix + ".maximum-encoded-properties-bytes",
+                () -> "67108864"
         );
+        registry.add(prefix + ".send-time-limit", () -> "5s");
+        registry.add(prefix + ".shutdown-timeout", () -> "5s");
     }
 
     private interface RunningWorker extends AutoCloseable {

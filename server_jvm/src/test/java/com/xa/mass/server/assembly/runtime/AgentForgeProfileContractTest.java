@@ -44,7 +44,16 @@ class AgentForgeProfileContractTest {
         assertThat(adapterIds(sources))
                 .containsExactly("agentforge-websocket");
         assertThat(allPropertyNames(sources))
-                .noneMatch(name -> name.contains("scenario-websocket"));
+                .contains(
+                        "xa.mass.worker-delivery.adapter.instances."
+                                + "agentforge-websocket.command-backoff",
+                        "xa.mass.worker-delivery.adapter.instances."
+                                + "agentforge-websocket.report-queue-capacity",
+                        "xa.mass.worker-delivery.adapter.instances."
+                                + "agentforge-websocket.shutdown-timeout"
+                )
+                .noneMatch(name -> name.contains("scenario-websocket"))
+                .noneMatch(name -> name.contains(".processes["));
     }
 
     private static Set<String> adapterIds(List<PropertySource<?>> sources) {
