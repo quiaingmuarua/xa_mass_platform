@@ -160,6 +160,7 @@ android_emulator:
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/controller/WorkerPointDeliveryController.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/delivery/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/task/TaskItemRequest.java'
+  - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/task/TaskItemResult*.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/task/TaskRpcCall*.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/worker/WorkerGroupRegister*.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/worker/WorkerPreparation*.java'

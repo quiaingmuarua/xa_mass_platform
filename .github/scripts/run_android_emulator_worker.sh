@@ -75,9 +75,12 @@ stop_process() {
 
 clear_scope() {
     local scope=$1
-    python3 "$workspace/.github/scripts/cleanup_redis_test_scope.py" \
-        --redis-url redis://127.0.0.1:6379/15 \
-        --scope "$scope"
+    if ! python3 "$workspace/.github/scripts/cleanup_redis_test_scope.py" \
+            --redis-url redis://127.0.0.1:6379/15 \
+            --scope "$scope" \
+            --best-effort; then
+        echo "Redis cleanup could not run for $scope" >&2
+    fi
 }
 
 cleanup() {

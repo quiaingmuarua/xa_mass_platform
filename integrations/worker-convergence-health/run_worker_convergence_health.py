@@ -121,7 +121,6 @@ def _run_scenario(
     environment["XA_MASS_REDIS_SCOPE"] = scope
     server: subprocess.Popen[str] | None = None
     host: subprocess.Popen[str] | None = None
-    failure: BaseException | None = None
     try:
         server = _start_server(scenario_root, environment)
         _wait_http(
@@ -217,12 +216,16 @@ def _run_scenario(
             _stop_process(host, force=True)
             host = None
             _run_task_fault_phase(
-                "finality", options, proof_id, evidence, phase_state, environment
+                "result-retention",
+                options,
+                proof_id,
+                evidence,
+                phase_state,
+                environment,
             )
         else:
             raise ValueError(f"Unsupported scenario: {scenario}")
     except BaseException as error:
-        failure = error
         _write_runner_failure(evidence, scenario, proof_id, error)
         raise
     finally:
@@ -233,10 +236,8 @@ def _run_scenario(
         try:
             _cleanup_scope(options.redis_url, scope)
         except BaseException as cleanup_error:
-            if failure is None:
-                raise
             print(
-                f"Redis cleanup also failed for {scope}: {cleanup_error}",
+                f"Redis cleanup could not run for {scope}: {cleanup_error}",
                 file=sys.stderr,
             )
 
@@ -626,6 +627,7 @@ def _cleanup_scope(redis_url: str, scope: str) -> None:
             redis_url,
             "--scope",
             scope,
+            "--best-effort",
         ],
         cwd=REPOSITORY_ROOT,
     )

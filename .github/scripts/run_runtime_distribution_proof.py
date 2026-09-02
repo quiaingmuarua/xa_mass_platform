@@ -215,8 +215,9 @@ def _clean_scope(
             redis_url,
             "--scope",
             scope,
+            "--best-effort",
         ],
-        check=True,
+        check=False,
     )
 
 

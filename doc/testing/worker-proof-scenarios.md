@@ -105,8 +105,9 @@ remains Item one and is the only execution Item promoted to a named oracle.
    does not require every recovered Worker to be simultaneously HOT while due
    work is present. Finish the original in-flight checkpoint witness, submit
    wave three and complete its two named witnesses.
-6. Kill Host again and prove the checkpoint Result remains final. Fix `300
-   offered / 30 invalid`, not 300 successful Results.
+6. Kill Host again and prove the checkpoint's successful Result remains
+   observable through `results:load`. This is Result retention, not TaskItem
+   Score finality. Fix `300 offered / 30 invalid`, not 300 successful Results.
 
 PRECOMPUTED task-rule and WebSocket/Socket/Polling combinations remain Primary
 Proof claims of Runtime Boundary. `results:export` remains an Owner/boundary and

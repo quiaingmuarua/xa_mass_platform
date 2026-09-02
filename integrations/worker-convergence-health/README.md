@@ -69,8 +69,9 @@ the recovered world: all 99 identities must reconnect unchanged, while the
 canonical backup Property and that explicitly targeted backup's HOT state are
 checked before the checkpoint closes. The recovery-wave witnesses must then
 succeed. The proof does not require all 99 Workers to be simultaneously HOT
-while due work is present. A second Host loss must not revoke the checkpoint
-Result.
+while due work is present. After a second Host loss, the checkpoint's successful
+Result must remain observable through `results:load`; this does not prove
+TaskItem Score finality.
 
 Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,

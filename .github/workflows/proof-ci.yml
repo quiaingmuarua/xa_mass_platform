@@ -15,6 +15,10 @@ concurrency:
   group: proof-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  XA_MASS_PYTHON_EXECUTABLE: python3
+  XA_MASS_REDIS_EPHEMERAL: "true"
+
 jobs:
   changes:
     name: Select proof lanes
@@ -40,9 +44,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
-          python3 -m unittest discover \
-            -s .github/scripts \
-            -p 'test_*.py'
+          python3 .github/scripts/test_check_proof_selection.py
           python3 .github/scripts/check_proof_selection.py
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             proof_base="$PR_BASE_SHA"
@@ -107,6 +109,7 @@ jobs:
         run: >-
           python3 .github/scripts/summarize_junit.py
           --label "JVM Contracts"
+          --require-reports
           "**/build/test-results/test/TEST-*.xml"
       - name: Upload JVM failure reports
         if: failure()
@@ -154,6 +157,7 @@ jobs:
         run: >-
           python3 .github/scripts/summarize_junit.py
           --label "Redis Owner"
+          --require-reports
           "server_jvm/build/test-results/redisOwnerIntegrationTest/TEST-*.xml"
       - name: Upload Redis failure reports
         if: failure()
@@ -192,9 +196,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.13"
       - name: Verify Java-owned Runtime boundary
         run: >-
           ./gradlew --no-daemon
@@ -202,8 +203,9 @@ jobs:
       - name: Summarize Runtime proof
         if: always()
         run: >-
-          python .github/scripts/summarize_junit.py
+          python3 .github/scripts/summarize_junit.py
           --label "Runtime Boundary"
+          --require-reports
           "server_jvm/build/test-results/runtimeBoundaryIntegrationTest/TEST-*.xml"
       - name: Upload Runtime failure evidence
         if: failure()
@@ -242,16 +244,9 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.x"
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
-      - name: Install Python proof dependencies
-        run: python -m pip install -r .github/scripts/requirements.txt
       - name: Prove Worker correctness
         run: >-
-          python integrations/worker-correctness/run_worker_correctness.py
+          python3 integrations/worker-correctness/run_worker_correctness.py
           --redis-url redis://127.0.0.1:6379/15
           --output-root "$GITHUB_WORKSPACE/build/worker-correctness-proof"
       - name: Summarize Worker correctness proof
@@ -305,16 +300,9 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.x"
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
-      - name: Install Python proof dependencies
-        run: python -m pip install -r .github/scripts/requirements.txt
       - name: Prove Worker convergence health
         run: >-
-          python integrations/worker-convergence-health/run_worker_convergence_health.py
+          python3 integrations/worker-convergence-health/run_worker_convergence_health.py
           --scenario "${{ matrix.scenario }}"
           --redis-url redis://127.0.0.1:6379/15
           --output-root "$GITHUB_WORKSPACE/build/worker-convergence-health-proof"
@@ -353,9 +341,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.13"
       - name: Verify Android Worker and demo host
         run: >-
           ./gradlew --no-daemon --continue
@@ -370,8 +355,9 @@ jobs:
       - name: Summarize Android proof
         if: always()
         run: >-
-          python .github/scripts/summarize_junit.py
+          python3 .github/scripts/summarize_junit.py
           --label "Android Host"
+          --require-reports
           "**/build/test-results/testDebugUnitTest/TEST-*.xml"
           "integrations/android-worker-proof/build/test-results/test/TEST-*.xml"
       - name: Upload Android failure reports
@@ -481,13 +467,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
-      - name: Install Python dependencies
-        run: python -m pip install -r .github/scripts/requirements.txt
       - name: Download Android Worker Demo APK
         uses: actions/download-artifact@v8.0.0
         with:
@@ -606,13 +585,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.11.3"
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
-      - name: Install Python dependencies
-        run: python -m pip install -r .github/scripts/requirements.txt
       - uses: pnpm/action-setup@v6.0.10
         with:
           version: 11.9.0

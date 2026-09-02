@@ -78,7 +78,6 @@ def main() -> int:
     processes: dict[str, subprocess.Popen[str]] = {}
     sampler = _ProcessSampler(output_root / "process-resources.jsonl")
     sampler.start()
-    failure: BaseException | None = None
     try:
         server = _start_server(output_root, environment, "runtime-server-1.log")
         processes["runtime-server"] = server
@@ -191,7 +190,6 @@ def main() -> int:
         )
         return 0
     except BaseException as error:
-        failure = error
         _write_failure_summary(evidence_root, proof_id, options, error)
         raise
     finally:
@@ -202,9 +200,7 @@ def main() -> int:
         try:
             _cleanup_scope(options.redis_url, scope)
         except BaseException as cleanup_error:
-            if failure is None:
-                raise
-            print(f"Redis cleanup also failed: {cleanup_error}", file=sys.stderr)
+            print(f"Redis cleanup could not run: {cleanup_error}", file=sys.stderr)
 
 
 def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespace) -> None:
@@ -589,6 +585,7 @@ def _cleanup_scope(redis_url: str, scope: str) -> None:
             redis_url,
             "--scope",
             scope,
+            "--best-effort",
         ],
         cwd=REPOSITORY_ROOT,
     )

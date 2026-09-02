@@ -154,6 +154,14 @@ def validate() -> list[str]:
         errors.append(
             "proof-ci.yml must verify selection before invoking paths-filter"
         )
+    if "python3 .github/scripts/test_check_proof_selection.py" not in workflow:
+        errors.append(
+            "proof-ci.yml must run the focused proof-selection tests"
+        )
+    if "-s .github/scripts" in workflow:
+        errors.append(
+            "proof-ci.yml must not discover unrelated helper tests before selection"
+        )
     if "explain_proof_selection.py --base HEAD" in workflow:
         errors.append(
             "proof-ci.yml must explain the event diff, not the empty HEAD...HEAD diff"

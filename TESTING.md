@@ -50,8 +50,10 @@ Use the lowest-cost proof that owns the changed claim:
    corresponding Boundary Proof in addition to focused Owner tests.
 3. Worker identity, Prepare, long-lived delivery, extensions, Scenario Host or
    Worker-facing Server behavior changes: run Worker Correctness.
-4. Kernel/Pacer scheduling, serviceability, finality, Runtime projections or
-   Worker fault convergence changes: run Worker Convergence Health.
+4. Kernel/Pacer scheduling, serviceability, Runtime projections or Worker fault
+   convergence changes: run Worker Convergence Health. TaskItem finality remains
+   an Owner and Runtime Boundary claim; Convergence may be selected only as a
+   downstream witness.
 5. Java Worker connection resource ownership changes: run focused Java Worker
    tests; the 10k lane remains nightly/manual unless the capacity claim itself
    must be re-established.
@@ -127,10 +129,12 @@ boundaries even if their happy paths overlap.
 
 ## Shared Infrastructure
 
-Real Redis proofs use unique `test_*` scopes. Cleanup uses bounded `SCAN` and
-`UNLINK` for only that exact scope; it never uses `KEYS`, `FLUSHDB` or
-`FLUSHALL`. A proof that needs a Server or Scenario Host owns those process
-lifecycles and stops all writers before cleanup.
+Real Redis proofs use unique `test_*` scopes; the scope is the isolation
+contract. Cleanup is best-effort resource hygiene for persistent local Redis,
+uses bounded `SCAN` and `UNLINK` for only that exact scope, and never changes a
+Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
+Service container. A proof that needs a Server or Scenario Host owns those
+process lifecycles and stops all writers before a local cleanup attempt.
 
 The Runtime Boundary starts one Java Server context. Worker Correctness and
 Worker Convergence Health start Server and Scenario Host as independent

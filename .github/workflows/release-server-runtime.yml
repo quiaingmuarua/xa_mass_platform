@@ -29,6 +29,8 @@ jobs:
           --health-retries 10
     env:
       GH_TOKEN: ${{ github.token }}
+      XA_MASS_PYTHON_EXECUTABLE: python3
+      XA_MASS_REDIS_EPHEMERAL: "true"
       XA_MASS_REDIS_URL: redis://127.0.0.1:6379/15
     steps:
       - uses: actions/checkout@v7.0.1
@@ -56,13 +58,6 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: '3.11.3'
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
-      - name: Install Python dependencies
-        run: python -m pip install -r .github/scripts/requirements.txt
       - uses: pnpm/action-setup@v6.0.10
         with:
           version: 11.9.0

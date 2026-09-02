@@ -166,6 +166,19 @@
       "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
     },
     {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/task/TaskItemResultResponse.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "The Task Result response contract is strictly consumed by Worker correctness, convergence and the Android emulator proof."
+    },
+    {
       "path": "integrations/android-worker-proof/src/main/java/com/xa/mass/integration/androidworkerproof/AndroidWorkerCorrectnessMain.java",
       "lanes": [
         "android_host",

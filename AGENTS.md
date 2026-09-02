@@ -509,8 +509,11 @@ Adapter connectivity, Kernel state or schedulability.
 - One-shot Python proof runners may own process orchestration, but not database
   protocols. Redis scope cleanup uses
   `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a
-  lane-local RESP client. Keep one runner entrypoint per high-level proof lane
-  rather than hiding distinct failure sequences in a generic scenario runner.
+  lane-local RESP client. Unique `test_*` scope is the proof isolation
+  boundary; cleanup is best-effort local resource hygiene and must not replace
+  the proof outcome. GitHub jobs with disposable Redis Services explicitly
+  skip it. Keep one runner entrypoint per high-level proof lane rather than
+  hiding distinct failure sequences in a generic scenario runner.
 - Worker Convergence Health may combine the loopback Lab API with independent
   Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
   record identities and projected states but never business payload. Failed or

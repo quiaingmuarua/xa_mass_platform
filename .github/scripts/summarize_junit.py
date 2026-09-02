@@ -12,6 +12,7 @@ def main() -> None:
         description="Summarize Gradle JUnit XML reports for GitHub Actions."
     )
     parser.add_argument("--label", required=True)
+    parser.add_argument("--require-reports", action="store_true")
     parser.add_argument("patterns", nargs="+")
     args = parser.parse_args()
 
@@ -46,6 +47,10 @@ def main() -> None:
     if summary_path:
         with Path(summary_path).open("a", encoding="utf-8") as summary:
             summary.write(line + "\n")
+    if args.require_reports and not report_paths:
+        raise SystemExit(
+            f"{args.label}: no JUnit XML reports were produced"
+        )
 
 
 if __name__ == "__main__":

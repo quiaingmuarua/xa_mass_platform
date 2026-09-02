@@ -85,13 +85,13 @@ stable repository-wide identity.
 ## worker_convergence_health
 
 - **Primary owner:** `:integrations:worker-convergence-health`.
-- **Claim:** Adapter, Kernel scheduling and Task finality converge within a
-  bounded wait after established Worker mutations, one Server restart and one
-  execution-time Host loss.
+- **Claim:** Adapter and Kernel scheduling converge within a bounded wait after
+  established Worker mutations, one Server restart and one execution-time Host
+  loss; named successful Results remain observable across a later Host loss.
 - **Failure model:** stopped Worker remains HOT, restored Worker stays
   unavailable, changed Properties do not affect matching, Group outage leaks,
-  Server restart loses due work, in-flight loss never recovers or final state
-  is revoked.
+  Server restart loses due work, in-flight loss never recovers or an observed
+  successful Result disappears after a later Worker loss.
 - **World:** two isolated scenarios, each 2 Groups x 50 Workers and one
   WebSocket Adapter.
 - **Workload:** ON_DEMAND managed batch calls only. State/server offers 700
@@ -108,13 +108,15 @@ stable repository-wide identity.
   witnesses. Host-loss recovery requires all 99 active identities to reconnect
   unchanged and the explicitly targeted backup to become canonical and HOT; it
   does not require all 99 to be simultaneously HOT while due work exists.
-  Non-witness outcomes and Result payloads are not assertions.
+  Non-witness outcomes and Result payloads are not assertions. The retained
+  Result projection is not evidence of TaskItem Score finality.
 - **Prerequisites:** Redis 7, Server and Scenario Host; each scenario owns an
   isolated scope and Lab root.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
-  background fault Result status or execution count, executing Worker, random
-  coverage, throughput and soak.
+  background fault Result status or execution count, TaskItem Score finality
+  across the interruption window, executing Worker, random coverage,
+  throughput and soak.
 - **Command:** `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15`.
 - **CI execution:** `state` and `task-fault` run as independent matrix jobs with
   isolated Redis services, scopes and artifacts; the job ID exposes one
@@ -173,8 +175,9 @@ stable repository-wide identity.
   same-Group identity isolation, identity-bounded Property matching and partial
   process outage.
 - **Failure model:** Handler failure terminates a run, physical route loss or
-  Android process death loses Task finality, endpoint loss auto-restarts, one
-  App loss degrades its peers, serviceability remains stale, or identity drifts.
+  Android process death permanently loses the in-flight successful Result,
+  endpoint loss auto-restarts, one App loss degrades its peers, serviceability
+  remains stale, or identity drifts.
 - **World:** one KVM Android Emulator with cached-app freezing disabled, Redis,
   Server, one Debug APK and three Debug-derived Lab APKs in the same
   WorkerGroup.
@@ -191,10 +194,10 @@ stable repository-wide identity.
   execution does not wait for Android Host tests unless that lane is selected
   independently.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
-  attempts, transient Score sequence, UI behavior, arbitrary replica counts,
-  dynamic Properties re-Prepare end to end, multi-device compatibility,
-  cached-process survival, Doze/OEM policy and physical-device background
-  behavior.
+  attempts, transient Score sequence, TaskItem Score finality across the
+  process-loss window, UI behavior, arbitrary replica counts, dynamic
+  Properties re-Prepare end to end, multi-device compatibility, cached-process
+  survival, Doze/OEM policy and physical-device background behavior.
 - **Command:** `Android Worker Proof` in Proof CI.
 - **CI cost:** high.
 

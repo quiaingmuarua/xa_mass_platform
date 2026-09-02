@@ -12,6 +12,9 @@ concurrency:
   group: worker-websocket-scale
   cancel-in-progress: false
 
+env:
+  XA_MASS_REDIS_EPHEMERAL: "true"
+
 jobs:
   worker-websocket-scale:
     name: Java WebSocket 10k Workers

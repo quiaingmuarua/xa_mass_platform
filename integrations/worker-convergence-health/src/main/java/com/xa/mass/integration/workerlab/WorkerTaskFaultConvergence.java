@@ -290,7 +290,7 @@ final class WorkerTaskFaultConvergence {
         }
     }
 
-    static void verifyFinality(
+    static void verifyResultRetention(
             WorkerLabHarnessOptions options,
             Path phaseStatePath
     ) throws Exception {
@@ -308,7 +308,7 @@ final class WorkerTaskFaultConvergence {
         RuntimeApiClient runtime = options.runtimeClient();
         try {
             WorkerLabConvergenceSupport.awaitNetworkState(
-                    "recovery-worker-disconnected-after-finality",
+                    "recovery-worker-disconnected-before-result-retention",
                     options.maximumWait(),
                     runtime,
                     options.endpointManagerId(),
@@ -321,12 +321,17 @@ final class WorkerTaskFaultConvergence {
                             List.of(state.checkpointMessageId())
                     ).get(state.checkpointMessageId())
                             == RuntimeApiClient.CallStatus.SUCCEEDED,
-                    "Checkpoint witness disappeared after Worker loss"
+                    "Checkpoint successful Result was not retained after "
+                            + "Worker loss"
             );
-            evidence.record("finality", "results-remained-final", Map.of(
-                    "checkpointMessageId", state.checkpointMessageId(),
-                    "hostState", "offline"
-            ));
+            evidence.record(
+                    "result-retention",
+                    "successful-result-retained",
+                    Map.of(
+                            "checkpointMessageId", state.checkpointMessageId(),
+                            "hostState", "offline"
+                    )
+            );
             evidence.writeSummary("succeeded", Map.of(
                     "targetWorkerId", state.targetWorkerId(),
                     "recoveredWorkerId", state.recoveredWorkerId(),
@@ -337,10 +342,10 @@ final class WorkerTaskFaultConvergence {
                     "convergedWitnessCount", 5,
                     "checkpointMessageId", state.checkpointMessageId(),
                     "executionFaultObserved", true,
-                    "finalityRetainedAfterWorkerLoss", true
+                    "successfulResultRetainedAfterWorkerLoss", true
             ));
         } catch (RuntimeException error) {
-            writeFailure(evidence, "finality", error);
+            writeFailure(evidence, "result-retention", error);
             throw error;
         }
     }

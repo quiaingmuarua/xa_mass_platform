@@ -37,12 +37,12 @@ public final class WorkerTaskFaultConvergenceMain {
                     options,
                     phaseState
             );
-            case "finality" -> WorkerTaskFaultConvergence.verifyFinality(
+            case "result-retention" -> WorkerTaskFaultConvergence.verifyResultRetention(
                     options,
                     phaseState
             );
             default -> throw new IllegalArgumentException(
-                    "phase must be arm, down, recover or finality"
+                    "phase must be arm, down, recover or result-retention"
             );
         }
     }

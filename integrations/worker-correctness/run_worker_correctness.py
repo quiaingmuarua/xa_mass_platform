@@ -58,7 +58,6 @@ def main() -> int:
 
     server: subprocess.Popen[str] | None = None
     host: subprocess.Popen[str] | None = None
-    failure: BaseException | None = None
     try:
         server = _start_server(output, environment)
         _wait_http(
@@ -95,9 +94,6 @@ def main() -> int:
             options,
             environment,
         )
-    except BaseException as error:
-        failure = error
-        raise
     finally:
         if host is not None:
             _stop_process(host, force=False)
@@ -111,11 +107,10 @@ def main() -> int:
                 options.redis_url,
                 "--scope",
                 scope,
+                "--best-effort",
             ], environment)
         except BaseException as cleanup_error:
-            if failure is None:
-                raise
-            print(f"Redis cleanup also failed: {cleanup_error}", file=sys.stderr)
+            print(f"Redis cleanup could not run: {cleanup_error}", file=sys.stderr)
     return 0
 
 
