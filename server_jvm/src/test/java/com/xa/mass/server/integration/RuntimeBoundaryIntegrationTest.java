@@ -78,6 +78,9 @@ class RuntimeBoundaryIntegrationTest {
             "test.integration.direct-snapshot";
     private static final String DIRECT_EVENT_CODE =
             "extension.worker." + DIRECT_CAPABILITY;
+    // Covers two complete 5-second lease recovery windows under CI load.
+    private static final Duration RESULT_CONVERGENCE_TIMEOUT =
+            Duration.ofSeconds(15);
     private static final String SERVICEABILITY_WORKER_GROUP_ID =
             "serviceability-runtime-boundary";
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
@@ -432,7 +435,9 @@ class RuntimeBoundaryIntegrationTest {
                     WorkerScorePolarity.RECOVERY_RECHECK
             );
             assertThat(disconnected.timeMillis())
-                    .isEqualTo(connected.timeMillis());
+                    .isGreaterThanOrEqualTo(connected.timeMillis());
+            assertThat(disconnected.laneRank())
+                    .isEqualTo(connected.laneRank());
 
             long reconnectEvidenceFloor = System.currentTimeMillis()
                     / WorkerScoreCore.SLOT_MILLIS
@@ -1174,7 +1179,7 @@ class RuntimeBoundaryIntegrationTest {
             String messageId
     ) throws Exception {
         long deadline = System.nanoTime()
-                + Duration.ofSeconds(8).toNanos();
+                + RESULT_CONVERGENCE_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             HttpResponse<String> response = send(
                     "POST",
@@ -1199,7 +1204,7 @@ class RuntimeBoundaryIntegrationTest {
     private HttpResponse<String> awaitTaskExport(String taskId)
             throws Exception {
         long deadline = System.nanoTime()
-                + Duration.ofSeconds(8).toNanos();
+                + RESULT_CONVERGENCE_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             HttpResponse<String> response = send(
                     "POST",

@@ -24,6 +24,8 @@ import okhttp3.internal.concurrent.TaskRunner;
 /** Owns network and control resources for one Java Worker assembly. */
 final class JavaWorkerPlatform implements AutoCloseable {
 
+    private static final long HTTP_SHUTDOWN_TIMEOUT_MILLIS = 5_000;
+
     private final OkHttpClient httpClient;
     private final ExecutorService controlExecutor;
     private final ScheduledExecutorService networkScheduler;
@@ -92,6 +94,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
         ScheduledExecutorService network = null;
         ExecutorService sockets = null;
         ExecutorService webSockets = null;
+        TaskRunner taskRunner = null;
         TaskRunner.RealBackend httpTasks = null;
         OkHttpClient http = null;
         try {
@@ -128,7 +131,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
                             .name(prefix + "-okhttp-task-", 1)
                             .factory()
             );
-            TaskRunner taskRunner = new TaskRunner(
+            taskRunner = new TaskRunner(
                     httpTasks,
                     TaskRunner.Companion.getLogger()
             );
@@ -145,7 +148,11 @@ final class JavaWorkerPlatform implements AutoCloseable {
             );
         } catch (RuntimeException | Error failure) {
             closeHttp(http);
-            closeTaskBackend(httpTasks);
+            closeTaskBackend(
+                    http == null ? taskRunner
+                            : http.getTaskRunner$okhttp(),
+                    httpTasks
+            );
             if (http == null) {
                 shutdown(webSockets);
             }
@@ -239,7 +246,10 @@ final class JavaWorkerPlatform implements AutoCloseable {
         networkScheduler.shutdownNow();
         controlExecutor.shutdownNow();
         closeHttp(httpClient);
-        closeTaskBackend(httpTaskBackend);
+        closeTaskBackend(
+                httpClient.getTaskRunner$okhttp(),
+                httpTaskBackend
+        );
     }
 
     private void requireOpen() {
@@ -274,7 +284,9 @@ final class JavaWorkerPlatform implements AutoCloseable {
         }
         client.dispatcher().cancelAll();
         client.connectionPool().evictAll();
-        client.dispatcher().executorService().shutdownNow();
+        ExecutorService executor = client.dispatcher().executorService();
+        executor.shutdownNow();
+        awaitTermination(executor);
     }
 
     private static void shutdown(ExecutorService executor) {
@@ -283,9 +295,43 @@ final class JavaWorkerPlatform implements AutoCloseable {
         }
     }
 
-    private static void closeTaskBackend(TaskRunner.RealBackend backend) {
-        if (backend != null) {
-            backend.shutdown();
+    private static void closeTaskBackend(
+            TaskRunner taskRunner,
+            TaskRunner.RealBackend backend
+    ) {
+        if (backend == null) {
+            return;
+        }
+        if (taskRunner != null) {
+            synchronized (taskRunner) {
+                taskRunner.cancelAll();
+            }
+            long deadline = System.nanoTime()
+                    + TimeUnit.MILLISECONDS.toNanos(
+                            HTTP_SHUTDOWN_TIMEOUT_MILLIS
+                    );
+            while (!taskRunner.activeQueues().isEmpty()
+                    && System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        backend.shutdown();
+        awaitTermination(backend.getExecutor());
+    }
+
+    private static void awaitTermination(ExecutorService executor) {
+        try {
+            executor.awaitTermination(
+                    HTTP_SHUTDOWN_TIMEOUT_MILLIS,
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

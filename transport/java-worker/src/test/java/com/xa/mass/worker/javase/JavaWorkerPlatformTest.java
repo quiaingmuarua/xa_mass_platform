@@ -53,6 +53,7 @@ class JavaWorkerPlatformTest {
                         platform,
                         "httpTaskBackend"
                 );
+        TaskRunner taskRunner = httpClient.getTaskRunner$okhttp();
 
         assertEquals(4, ((ThreadPoolExecutor) control).getCorePoolSize());
         assertEquals(8, httpClient.dispatcher().getMaxRequests());
@@ -73,6 +74,7 @@ class JavaWorkerPlatformTest {
         assertTrue(sockets.isShutdown());
         assertTrue(webSockets.isShutdown());
         assertTrue(httpTasks.getExecutor().isShutdown());
+        assertTrue(taskRunner.activeQueues().isEmpty());
         assertThrows(
                 RejectedExecutionException.class,
                 () -> control.execute(() -> {
