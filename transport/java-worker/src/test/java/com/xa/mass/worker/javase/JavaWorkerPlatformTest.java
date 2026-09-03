@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import okhttp3.OkHttpClient;
+import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okhttp3.internal.concurrent.TaskRunner;
 import org.junit.jupiter.api.Test;
@@ -97,6 +98,14 @@ class JavaWorkerPlatformTest {
             for (int index = 0; index < connectionCount; index++) {
                 server.enqueue(new MockResponse.Builder()
                         .webSocketUpgrade(new WebSocketListener() {
+                            @Override
+                            public void onClosing(
+                                    WebSocket webSocket,
+                                    int code,
+                                    String reason
+                            ) {
+                                webSocket.close(code, reason);
+                            }
                         })
                         .build());
             }
