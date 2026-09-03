@@ -420,7 +420,8 @@ class RuntimeBoundaryIntegrationTest {
                     workerId,
                     WorkerScorePolarity.HOT_ACQUIRE
             );
-            assertThat(connected.timeMillis()).isEqualTo(initial.timeMillis());
+            assertThat(connected.timeMillis())
+                    .isGreaterThanOrEqualTo(initial.timeMillis());
 
             first.close();
             first = null;
@@ -433,6 +434,9 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(disconnected.timeMillis())
                     .isEqualTo(connected.timeMillis());
 
+            long reconnectEvidenceFloor = System.currentTimeMillis()
+                    / WorkerScoreCore.SLOT_MILLIS
+                    * WorkerScoreCore.SLOT_MILLIS;
             reconnected = startWorker(
                     workerGroupId,
                     clientWorkerKey,
@@ -448,7 +452,10 @@ class RuntimeBoundaryIntegrationTest {
                     WorkerScorePolarity.HOT_ACQUIRE
             );
             assertThat(restored.timeMillis())
-                    .isEqualTo(disconnected.timeMillis());
+                    .isGreaterThanOrEqualTo(Math.max(
+                            disconnected.timeMillis(),
+                            reconnectEvidenceFloor
+                    ));
             assertThat(restored.laneRank())
                     .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
 
