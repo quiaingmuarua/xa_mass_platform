@@ -1,410 +1,376 @@
 package com.xa.mass.workermatching;
 
-import static com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus.CAPACITY;
-import static com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus.OFFERED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchEvidence;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchEvidence;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.ItemRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.TaskRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.Nullable;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
 class WorkerMatchingRuntimeTest {
 
     @Test
-    void taskDemandFiltersOnlySuppliedScoreEligibleWorkers() throws Exception {
-        FakeCatalog catalog = new FakeCatalog();
-        catalog.taskRules.put(
-                "task-1",
-                new TaskRule(
-                        "task-1",
-                        "group-1",
-                        Map.of("worker.region", Map.of("$eq", "cn"))
-                )
-        );
-        catalog.addWorker("worker-1", "cn");
-        catalog.addWorker("worker-2", "us");
-        catalog.addWorker("worker-3", "cn");
+    void writesCandidatesInPacerTaskAndWorkerOrder() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a", "worker-b");
+        catalog.rules.put("task-first", rule("task-first", Map.of()));
+        catalog.rules.put("task-second", rule("task-second", Map.of()));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, 8, 8)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
             runtime.start();
-            TaskRuleMatchDemand demand = taskDemand(
-                    "task-1",
-                    List.of("worker-2", "worker-3", "worker-1")
-            );
+            assertTrue(runtime.offerTaskDemand(demand(
+                    "group-1",
+                    List.of(
+                            new TaskCandidateNeed("task-first", 1),
+                            new TaskCandidateNeed("task-second", 7)
+                    ),
+                    linkedScores("worker-a", 101L, "worker-b", 202L)
+            )));
 
+            await(() -> cache.appends.size() == 2);
             assertEquals(
-                    OFFERED,
-                    runtime.offerTaskDemands(List.of(demand)).get("task-1")
+                    "task-first",
+                    cache.appends.get(0).candidateId()
             );
-            TaskRuleMatchEvidence evidence = awaitTaskEvidence(
-                    runtime,
-                    "task-1"
-            );
-
-            assertEquals(List.of("worker-3", "worker-1"),
-                    evidence.matchedWorkerIds());
-            assertTrue(runtime.takeTaskEvidence(List.of("task-1")).isEmpty());
-        }
-    }
-
-    @Test
-    void itemDemandFiltersOnlySuppliedHeldWorkersAndReturnsAllMatches()
-            throws Exception {
-        FakeCatalog catalog = new FakeCatalog();
-        ItemMatchKey key = new ItemMatchKey("task-1", "message-1");
-        catalog.itemRules.put(
-                key,
-                new ItemRule(
-                        key,
-                        "group-1",
-                        Map.of("worker.slot", Map.of("$eq", "target"))
-                )
-        );
-        catalog.workers.put("worker-1", facts("worker-1", "other"));
-        catalog.workers.put("worker-2", facts("worker-2", "target"));
-        catalog.workers.put("worker-3", facts("worker-3", "target"));
-
-        try (WorkerMatchingRuntime runtime = runtime(catalog, 8, 8)) {
-            runtime.start();
-            ItemRuleMatchDemand demand = itemDemand(
-                    key,
-                    List.of("worker-1", "worker-3", "worker-2")
-            );
-
-            assertEquals(OFFERED,
-                    runtime.offerItemDemands(List.of(demand)).get(key));
+            assertEquals(1, cache.appends.get(0).maximum());
             assertEquals(
-                    List.of("worker-3", "worker-2"),
-                    awaitItemEvidence(runtime, key).matchedWorkerIds()
+                    List.of(
+                            new CandidateWorkerEntry("worker-a", 101L),
+                            new CandidateWorkerEntry("worker-b", 202L)
+                    ),
+                    cache.appends.get(0).candidates()
+            );
+            assertEquals(
+                    "task-second",
+                    cache.appends.get(1).candidateId()
+            );
+            assertEquals(7, cache.appends.get(1).maximum());
+            assertEquals(
+                    List.of(new CandidateWorkerEntry("worker-b", 202L)),
+                    cache.appends.get(1).candidates()
             );
         }
     }
 
     @Test
-    void demandsSharingAHeldPoolLoadFactsOnce() throws Exception {
-        FakeCatalog catalog = new FakeCatalog();
-        ItemMatchKey first = new ItemMatchKey("task-1", "message-1");
-        ItemMatchKey second = new ItemMatchKey("task-1", "message-2");
-        catalog.itemRules.put(first, new ItemRule(first, "group-1", Map.of()));
-        catalog.itemRules.put(second, new ItemRule(second, "group-1", Map.of()));
-        catalog.workers.put("worker-1", facts("worker-1", "target"));
-        catalog.workers.put("worker-2", facts("worker-2", "target"));
-        List<String> held = List.of("worker-1", "worker-2");
+    void cacheRejectionLeavesWorkerAvailableForLaterTask() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a");
+        catalog.rules.put("task-full", rule("task-full", Map.of()));
+        catalog.rules.put("task-next", rule("task-next", Map.of()));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+        cache.rejectCandidates.add("task-full");
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, 8, 8)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
             runtime.start();
-            runtime.offerItemDemands(List.of(
-                    itemDemand(first, held),
-                    itemDemand(second, held)
+            runtime.offerTaskDemand(demand(
+                    "group-1",
+                    List.of(
+                            new TaskCandidateNeed("task-full", 1),
+                            new TaskCandidateNeed("task-next", 1)
+                    ),
+                    Map.of("worker-a", 101L)
             ));
 
-            assertEquals(held, awaitItemEvidence(runtime, first)
-                    .matchedWorkerIds());
-            assertEquals(held, awaitItemEvidence(runtime, second)
-                    .matchedWorkerIds());
-            assertEquals(1, catalog.workerLoadCalls.get());
-        }
-    }
-
-    @Test
-    void demandQueueAndEvidenceCapacityRemainIndependentAndBounded()
-            throws Exception {
-        FakeCatalog blocked = new FakeCatalog();
-        blocked.taskRules.put("task-1", emptyRule("task-1"));
-        blocked.taskRules.put("task-2", emptyRule("task-2"));
-        blocked.taskRules.put("task-3", emptyRule("task-3"));
-        blocked.addWorker("worker-1", "cn");
-        blocked.blockTaskLoads();
-
-        try (WorkerMatchingRuntime runtime = runtime(blocked, 1, 1)) {
-            runtime.start();
-            assertEquals(OFFERED, runtime.offerTaskDemands(List.of(
-                    taskDemand("task-1", List.of("worker-1"))
-            )).get("task-1"));
-            assertTrue(blocked.taskLoadEntered.await(2, TimeUnit.SECONDS));
-
-            assertEquals(OFFERED, runtime.offerTaskDemands(List.of(
-                    taskDemand("task-2", List.of("worker-1"))
-            )).get("task-2"));
-            assertEquals(CAPACITY, runtime.offerTaskDemands(List.of(
-                    taskDemand("task-3", List.of("worker-1"))
-            )).get("task-3"));
-            blocked.releaseTaskLoads.countDown();
-
-            awaitTaskEvidence(runtime, "task-1");
-            awaitCondition(() -> runtime.snapshot().pendingDemands() == 0);
-            assertTrue(runtime.takeTaskEvidence(List.of("task-2")).isEmpty());
-
-            assertEquals(OFFERED, runtime.offerTaskDemands(List.of(
-                    taskDemand("task-2", List.of("worker-1"))
-            )).get("task-2"));
-            awaitTaskEvidence(runtime, "task-2");
-        }
-    }
-
-    @Test
-    void catalogFailureReleasesPendingForALaterDemand() throws Exception {
-        FakeCatalog catalog = new FakeCatalog();
-        catalog.taskRules.put("task-1", emptyRule("task-1"));
-        catalog.addWorker("worker-1", "cn");
-        catalog.remainingTaskLoadFailures.set(1);
-
-        try (WorkerMatchingRuntime runtime = runtime(catalog, 8, 8)) {
-            runtime.start();
-            TaskRuleMatchDemand demand = taskDemand(
-                    "task-1",
-                    List.of("worker-1")
-            );
-            assertEquals(OFFERED,
-                    runtime.offerTaskDemands(List.of(demand)).get("task-1"));
-            awaitCondition(() -> catalog.taskLoadCalls.get() == 1
-                    && runtime.snapshot().pendingDemands() == 0);
-            assertTrue(runtime.takeTaskEvidence(List.of("task-1")).isEmpty());
-
-            assertEquals(OFFERED,
-                    runtime.offerTaskDemands(List.of(demand)).get("task-1"));
+            await(() -> cache.appends.size() == 2);
             assertEquals(
-                    List.of("worker-1"),
-                    awaitTaskEvidence(runtime, "task-1").matchedWorkerIds()
+                    List.of(new CandidateWorkerEntry("worker-a", 101L)),
+                    cache.appends.get(1).candidates()
             );
-            assertTrue(runtime.isRunning());
         }
     }
 
     @Test
-    void expiredEvidenceIsDiscardedAndUnexpectedErrorFailsRuntime()
-            throws Exception {
-        FakeCatalog expiringCatalog = new FakeCatalog();
-        expiringCatalog.taskRules.put("task-1", emptyRule("task-1"));
-        expiringCatalog.addWorker("worker-1", "cn");
-        try (WorkerMatchingRuntime runtime = new WorkerMatchingRuntime(
-                expiringCatalog,
-                8,
-                8
-        )) {
+    void missingOrInvalidRuleDoesNotConsumeWorkers() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a");
+        catalog.rules.put(
+                "task-invalid",
+                rule(
+                        "task-invalid",
+                        Map.of("worker.region", Map.of("$bad", 1))
+                )
+        );
+        catalog.rules.put("task-valid", rule("task-valid", Map.of()));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
             runtime.start();
-            runtime.offerTaskDemands(List.of(new TaskRuleMatchDemand(
-                    "task-1",
+            runtime.offerTaskDemand(demand(
                     "group-1",
-                    List.of("worker-1"),
-                    System.currentTimeMillis() + 20
-            )));
-            awaitCondition(() -> runtime.snapshot().availableEvidence() == 1);
-            Thread.sleep(50);
-            assertTrue(runtime.takeTaskEvidence(List.of("task-1")).isEmpty());
-        }
+                    List.of(
+                            new TaskCandidateNeed("task-missing", 1),
+                            new TaskCandidateNeed("task-invalid", 1),
+                            new TaskCandidateNeed("task-valid", 1)
+                    ),
+                    Map.of("worker-a", 101L)
+            ));
 
-        FakeCatalog failedCatalog = new FakeCatalog();
-        failedCatalog.taskLoadError = new AssertionError("unexpected");
-        try (WorkerMatchingRuntime runtime = runtime(
-                failedCatalog,
-                8,
-                8
-        )) {
-            runtime.start();
-            runtime.offerTaskDemands(List.of(taskDemand(
-                    "task-failed",
-                    List.of("worker-1")
-            )));
-            awaitCondition(() -> runtime.snapshot().state()
-                    == WorkerMatchingRuntime.State.FAILED);
-            assertFalse(runtime.isRunning());
-            assertThrows(IllegalStateException.class, () ->
-                    runtime.offerTaskDemands(List.of(taskDemand(
-                            "task-later",
-                            List.of("worker-1")
-                    ))));
+            await(() -> cache.appends.size() == 1);
+            assertEquals(
+                    "task-valid",
+                    cache.appends.get(0).candidateId()
+            );
         }
     }
 
     @Test
-    void stopClearsTransientStateAndAllowsAnExplicitRestart()
-            throws Exception {
-        FakeCatalog catalog = new FakeCatalog();
-        catalog.taskRules.put("task-1", emptyRule("task-1"));
-        catalog.addWorker("worker-1", "cn");
-        WorkerMatchingRuntime runtime = runtime(catalog, 8, 8);
-        try {
+    void admissionIsSingleFlightPerGroupAndQueueBounded() throws Exception {
+        FakeCatalog catalog = catalogWithWorkers(
+                "worker-a",
+                "worker-b",
+                "worker-c"
+        );
+        catalog.rules.put("task-a", rule("task-a", Map.of()));
+        catalog.rules.put("task-b", new CandidateRule(
+                "task-b",
+                "group-2",
+                Map.of()
+        ));
+        catalog.rules.put("task-c", new CandidateRule(
+                "task-c",
+                "group-3",
+                Map.of()
+        ));
+        catalog.blockLoads.set(true);
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 1)) {
             runtime.start();
-            runtime.offerTaskDemands(List.of(taskDemand(
-                    "task-1",
-                    List.of("worker-1")
+            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-1", "task-a", "worker-a"
             )));
-            awaitCondition(() -> runtime.snapshot().availableEvidence() == 1);
-
-            runtime.stop(2_000);
-            assertEquals(
-                    new WorkerMatchingRuntime.Snapshot(
-                            WorkerMatchingRuntime.State.STOPPED,
-                            0,
-                            0,
-                            0
-                    ),
-                    runtime.snapshot()
-            );
-
-            runtime.start();
-            runtime.offerTaskDemands(List.of(taskDemand(
-                    "task-1",
-                    List.of("worker-1")
+            assertTrue(catalog.loadEntered.await(1, TimeUnit.SECONDS));
+            assertFalse(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-1", "task-a", "worker-a"
             )));
-            assertEquals(
-                    List.of("worker-1"),
-                    awaitTaskEvidence(runtime, "task-1").matchedWorkerIds()
-            );
-
-            runtime.close();
-            assertEquals(
-                    WorkerMatchingRuntime.State.CLOSED,
-                    runtime.snapshot().state()
-            );
-            assertThrows(IllegalStateException.class, runtime::start);
-        } finally {
-            runtime.close();
+            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-2", "task-b", "worker-b"
+            )));
+            assertFalse(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-3", "task-c", "worker-c"
+            )));
+            catalog.releaseLoads.countDown();
+            await(() -> runtime.snapshot().pendingDemands() == 0);
         }
+    }
+
+    @Test
+    void processingFailureClearsGroupAdmissionForLaterDemand() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a");
+        catalog.rules.put("task-a", rule("task-a", Map.of()));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+        cache.failNext.set(true);
+
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 2)) {
+            runtime.start();
+            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-1", "task-a", "worker-a"
+            )));
+            await(() -> runtime.snapshot().pendingDemands() == 0);
+            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+                    "group-1", "task-a", "worker-a"
+            )));
+            await(() -> cache.appends.size() == 2);
+        }
+    }
+
+    @Test
+    void lifecycleAndExpiredDemandAreExplicit() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a");
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchingRuntime runtime = runtime(catalog, cache, 1);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> runtime.offerTaskDemand(singleTaskDemand(
+                        "group-1", "task-a", "worker-a"
+                ))
+        );
+        runtime.start();
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> runtime.offerTaskDemand(new TaskRuleMatchDemand(
+                        "group-1",
+                        List.of(new TaskCandidateNeed("task-a", 1)),
+                        Map.of("worker-a", 101L),
+                        1L
+                ))
+        );
+        runtime.stop(2_000);
+        assertEquals(
+                WorkerMatchingRuntime.State.STOPPED,
+                runtime.snapshot().state()
+        );
+        runtime.close();
+        assertEquals(
+                WorkerMatchingRuntime.State.CLOSED,
+                runtime.snapshot().state()
+        );
+        assertThrows(IllegalStateException.class, runtime::start);
     }
 
     private static WorkerMatchingRuntime runtime(
-            WorkerMatchingCatalog catalog,
-            int demandCapacity,
-            int evidenceCapacity
+            FakeCatalog catalog,
+            RecordingCandidateCache cache,
+            int capacity
     ) {
-        return new WorkerMatchingRuntime(
-                catalog,
-                demandCapacity,
-                evidenceCapacity
-        );
+        return new WorkerMatchingRuntime(catalog, cache, capacity);
     }
 
-    private static TaskRule emptyRule(String taskId) {
-        return new TaskRule(taskId, "group-1", Map.of());
-    }
-
-    private static TaskRuleMatchDemand taskDemand(
-            String taskId,
-            List<String> workers
-    ) {
-        return new TaskRuleMatchDemand(
-                taskId,
-                "group-1",
-                workers,
-                System.currentTimeMillis() + 5_000
-        );
-    }
-
-    private static ItemRuleMatchDemand itemDemand(
-            ItemMatchKey key,
-            List<String> workers
-    ) {
-        return new ItemRuleMatchDemand(
-                key,
-                "group-1",
-                workers,
-                System.currentTimeMillis() + 5_000
-        );
-    }
-
-    private static WorkerFacts facts(String workerId, String slot) {
-        return new WorkerFacts(
-                workerId,
-                "group-1",
-                Map.of("slot", slot),
-                Map.of()
-        );
-    }
-
-    private static TaskRuleMatchEvidence awaitTaskEvidence(
-            WorkerMatchingRuntime runtime,
-            String taskId
-    ) throws Exception {
-        final TaskRuleMatchEvidence[] evidence = new TaskRuleMatchEvidence[1];
-        awaitCondition(() -> {
-            evidence[0] = runtime.takeTaskEvidence(List.of(taskId)).get(taskId);
-            return evidence[0] != null;
-        });
-        return evidence[0];
-    }
-
-    private static ItemRuleMatchEvidence awaitItemEvidence(
-            WorkerMatchingRuntime runtime,
-            ItemMatchKey key
-    ) throws Exception {
-        final ItemRuleMatchEvidence[] evidence =
-                new ItemRuleMatchEvidence[1];
-        awaitCondition(() -> {
-            evidence[0] = runtime.takeItemEvidence(List.of(key)).get(key);
-            return evidence[0] != null;
-        });
-        return evidence[0];
-    }
-
-    private static void awaitCondition(CheckedCondition condition)
-            throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (!condition.test()) {
-            if (System.nanoTime() >= deadline) {
-                throw new AssertionError("condition did not converge");
-            }
-            Thread.sleep(5);
-        }
-    }
-
-    @FunctionalInterface
-    private interface CheckedCondition {
-        boolean test() throws Exception;
-    }
-
-    private static final class FakeCatalog implements WorkerMatchingCatalog {
-
-        private final Map<String, WorkerFacts> workers =
-                new ConcurrentHashMap<>();
-        private final Map<String, TaskRule> taskRules =
-                new ConcurrentHashMap<>();
-        private final Map<ItemMatchKey, ItemRule> itemRules =
-                new ConcurrentHashMap<>();
-        private final AtomicInteger workerLoadCalls = new AtomicInteger();
-        private final AtomicInteger taskLoadCalls = new AtomicInteger();
-        private final AtomicInteger remainingTaskLoadFailures =
-                new AtomicInteger();
-        private volatile @Nullable AssertionError taskLoadError;
-        private volatile CountDownLatch taskLoadEntered =
-                new CountDownLatch(0);
-        private volatile CountDownLatch releaseTaskLoads =
-                new CountDownLatch(0);
-
-        void addWorker(String workerId, String region) {
-            workers.put(workerId, new WorkerFacts(
+    private static FakeCatalog catalogWithWorkers(String... workerIds) {
+        FakeCatalog catalog = new FakeCatalog();
+        for (String workerId : workerIds) {
+            catalog.facts.put(workerId, new WorkerFacts(
                     workerId,
                     "group-1",
-                    Map.of("region", region),
+                    Map.of("region", "local"),
                     Map.of()
             ));
         }
+        return catalog;
+    }
 
-        void blockTaskLoads() {
-            taskLoadEntered = new CountDownLatch(1);
-            releaseTaskLoads = new CountDownLatch(1);
+    private static CandidateRule rule(
+            String candidateId,
+            Map<String, Object> allocationRule
+    ) {
+        return new CandidateRule(
+                candidateId,
+                "group-1",
+                allocationRule
+        );
+    }
+
+    private static TaskRuleMatchDemand singleTaskDemand(
+            String workerGroupId,
+            String candidateId,
+            String workerId
+    ) {
+        return demand(
+                workerGroupId,
+                List.of(new TaskCandidateNeed(candidateId, 1)),
+                Map.of(workerId, 101L)
+        );
+    }
+
+    private static TaskRuleMatchDemand demand(
+            String workerGroupId,
+            List<TaskCandidateNeed> needs,
+            Map<String, Long> scores
+    ) {
+        return new TaskRuleMatchDemand(
+                workerGroupId,
+                needs,
+                scores,
+                System.currentTimeMillis() + 10_000
+        );
+    }
+
+    private static Map<String, Long> linkedScores(
+            String firstId,
+            long firstScore,
+            String secondId,
+            long secondScore
+    ) {
+        LinkedHashMap<String, Long> scores = new LinkedHashMap<>();
+        scores.put(firstId, firstScore);
+        scores.put(secondId, secondScore);
+        return scores;
+    }
+
+    private static void await(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("condition was not satisfied");
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
         }
+    }
+
+    private record Append(
+            String candidateId,
+            int maximum,
+            List<CandidateWorkerEntry> candidates
+    ) {
+    }
+
+    private static final class RecordingCandidateCache
+            implements CandidateWorkerCache {
+        private final List<Append> appends = Collections.synchronizedList(
+                new ArrayList<>()
+        );
+        private final Set<String> rejectCandidates =
+                java.util.concurrent.ConcurrentHashMap.newKeySet();
+        private final AtomicBoolean failNext = new AtomicBoolean();
+
+        @Override
+        public List<String> appendCandidateWorkers(
+                String candidateId,
+                int maximumCandidateWorkers,
+                List<CandidateWorkerEntry> candidates,
+                long expiresAtMillis
+        ) {
+            appends.add(new Append(
+                    candidateId,
+                    maximumCandidateWorkers,
+                    List.copyOf(candidates)
+            ));
+            if (failNext.compareAndSet(true, false)) {
+                throw new IllegalStateException("offline");
+            }
+            return rejectCandidates.contains(candidateId)
+                    ? List.of()
+                    : candidates.stream()
+                            .limit(maximumCandidateWorkers)
+                            .map(CandidateWorkerEntry::workerId)
+                            .toList();
+        }
+
+        @Override
+        public Map<String, Integer> candidateWorkerCounts(
+                List<String> candidateIds
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<CandidateWorkerEntry> consumeCandidateWorkers(
+                String candidateId,
+                int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static final class FakeCatalog implements WorkerMatchingCatalog {
+        private final Map<String, CandidateRule> rules =
+                new LinkedHashMap<>();
+        private final Map<String, WorkerFacts> facts = new LinkedHashMap<>();
+        private final AtomicBoolean blockLoads = new AtomicBoolean();
+        private final CountDownLatch loadEntered = new CountDownLatch(1);
+        private final CountDownLatch releaseLoads = new CountDownLatch(1);
 
         @Override
         public MutationResult upsertWorkerFacts(
@@ -412,16 +378,16 @@ class WorkerMatchingRuntimeTest {
                 String workerGroupId,
                 Map<String, Object> workerProperties
         ) {
-            return new MutationResult(MutationStatus.APPLIED);
+            throw new UnsupportedOperationException();
         }
 
         @Override
         public MutationResult patchWorkerPlatformProperties(
                 String workerGroupId,
                 String workerId,
-                Map<String, @Nullable Object> properties
+                Map<String, Object> properties
         ) {
-            return new MutationResult(MutationStatus.APPLIED);
+            throw new UnsupportedOperationException();
         }
 
         @Override
@@ -429,67 +395,41 @@ class WorkerMatchingRuntimeTest {
                 String workerGroupId,
                 List<String> workerIds
         ) {
-            workerLoadCalls.incrementAndGet();
             LinkedHashMap<String, WorkerFacts> result = new LinkedHashMap<>();
-            workerIds.forEach(workerId -> result.put(
-                    workerId,
-                    workers.get(workerId)
-            ));
-            return Collections.unmodifiableMap(result);
+            workerIds.forEach(workerId ->
+                    result.put(workerId, facts.get(workerId)));
+            return result;
         }
 
         @Override
-        public MutationResult createTaskRule(
-                String taskId,
+        public MutationResult createCandidateRule(
+                String candidateId,
                 String workerGroupId,
                 Map<String, Object> allocationRule
         ) {
-            return new MutationResult(MutationStatus.APPLIED);
+            throw new UnsupportedOperationException();
         }
 
         @Override
-        public Map<String, TaskRule> loadTaskRules(List<String> taskIds) {
-            taskLoadCalls.incrementAndGet();
-            taskLoadEntered.countDown();
-            try {
-                if (!releaseTaskLoads.await(2, TimeUnit.SECONDS)) {
-                    throw new IllegalStateException("blocked test load timed out");
+        public Map<String, CandidateRule> loadCandidateRules(
+                List<String> candidateIds
+        ) {
+            if (blockLoads.get()) {
+                loadEntered.countDown();
+                try {
+                    releaseLoads.await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
                 }
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
             }
-            AssertionError error = taskLoadError;
-            if (error != null) {
-                throw error;
-            }
-            if (remainingTaskLoadFailures.getAndUpdate(value ->
-                    Math.max(0, value - 1)) > 0) {
-                throw new IllegalStateException("temporary catalog failure");
-            }
-            LinkedHashMap<String, TaskRule> result = new LinkedHashMap<>();
-            taskIds.forEach(taskId -> result.put(
-                    taskId,
-                    taskRules.get(taskId)
-            ));
-            return Collections.unmodifiableMap(result);
-        }
-
-        @Override
-        public Map<ItemMatchKey, MutationResult> createItemRules(
-                List<ItemRule> rules
-        ) {
-            return Map.of();
-        }
-
-        @Override
-        public Map<ItemMatchKey, ItemRule> loadItemRules(
-                List<ItemMatchKey> keys
-        ) {
-            LinkedHashMap<ItemMatchKey, ItemRule> result =
+            LinkedHashMap<String, CandidateRule> result =
                     new LinkedHashMap<>();
-            keys.forEach(key -> result.put(key, itemRules.get(key)));
-            return Collections.unmodifiableMap(result);
+            candidateIds.forEach(candidateId -> result.put(
+                    candidateId,
+                    rules.get(candidateId)
+            ));
+            return result;
         }
     }
 }

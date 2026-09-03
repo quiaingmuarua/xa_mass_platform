@@ -24,7 +24,7 @@ const config = useRuntimeViewerConfig();
 const taskCallDebug = useTaskCallDebugStore();
 const eventName = ref("");
 const payloadText = ref("{}");
-const allocationRuleText = ref("{}");
+const workerSelectorText = ref("[]");
 const waitTimeoutMillis = ref(DEFAULT_TASK_CALL_TIMEOUT_MILLIS);
 const validationError = ref<TaskCallDebugErrorPresentation>();
 const historyViewport = ref<HTMLElement>();
@@ -67,7 +67,7 @@ async function send(): Promise<void> {
       workerGroupId: props.entry.task?.workerGroupId ?? "",
       eventName: eventName.value,
       payloadText: payloadText.value,
-      allocationRuleText: allocationRuleText.value,
+      workerSelectorText: workerSelectorText.value,
       waitTimeoutMillis: waitTimeoutMillis.value
     });
   } catch (cause) {
@@ -92,7 +92,7 @@ function clearHistory(): void {
 function resetDraft(): void {
   eventName.value = props.entry.workerGroup?.eventCodes[0] ?? "";
   payloadText.value = "{}";
-  allocationRuleText.value = "{}";
+  workerSelectorText.value = "[]";
   waitTimeoutMillis.value = DEFAULT_TASK_CALL_TIMEOUT_MILLIS;
   validationError.value = undefined;
 }
@@ -124,7 +124,7 @@ async function scrollToLatest(): Promise<void> {
     <div class="worker-direct-debug__heading task-call-debug__heading">
       <div>
         <h2>Task Call Debug</h2>
-        <p>提交一个携带 Item Allocation Rule 的普通 TaskItem</p>
+        <p>提交一个携带有限 Worker Selector 的普通 TaskItem</p>
       </div>
       <el-tag effect="plain" type="success" size="small">
         THROUGH KERNEL SCHEDULING
@@ -175,7 +175,7 @@ async function scrollToLatest(): Promise<void> {
         class="worker-direct-debug__empty task-call-debug__empty"
       >
         <span>暂无调用记录</span>
-        <small>选择 Event、填写 Payload 与 Allocation Rule 后发送一个 Item。</small>
+        <small>选择 Event、填写 Payload 与 Worker Selector 后发送一个 Item。</small>
       </div>
 
       <article
@@ -192,8 +192,8 @@ async function scrollToLatest(): Promise<void> {
           </div>
           <small>Payload</small>
           <pre>{{ item.payloadText }}</pre>
-          <small>Allocation Rule</small>
-          <pre>{{ item.allocationRuleText }}</pre>
+          <small>Worker Selector</small>
+          <pre>{{ item.workerSelectorText }}</pre>
           <code>{{ item.messageId }}</code>
         </div>
 
@@ -326,15 +326,15 @@ async function scrollToLatest(): Promise<void> {
       </label>
 
       <label>
-        <span>Item Allocation Rule · JSON Object</span>
+        <span>Worker Selector · JSON Array</span>
         <textarea
-          v-model="allocationRuleText"
+          v-model="workerSelectorText"
           rows="5"
           spellcheck="false"
           :disabled="!availability.enabled || busy"
         />
         <small>
-          空对象表示不增加 Item 级 Worker 限制；浏览器不解释 Matcher DSL。
+          [] 表示任意可服务 Worker；也可使用 workerId 的 $eq 或 $in 指令。
         </small>
       </label>
 

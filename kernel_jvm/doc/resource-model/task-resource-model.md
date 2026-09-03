@@ -5,7 +5,8 @@ Status: active Java Kernel Task scheduling metadata contract.
 ## Owner Boundary
 
 Kernel stores Task and TaskItem state required for scheduling, claim, retry and
-finality. It does not store or interpret allocation rules.
+finality. It does not store or interpret PRECOMPUTED allocation rules. It does
+own the closed ON_DEMAND Worker Selector syntax and normalized Worker IDs.
 
 ```text
 TaskDescriptor
@@ -16,21 +17,21 @@ TaskDescriptor
   config
 
 TaskItem
-  taskId
   messageId
   eventCode
+  createdAtMillis
   payload
-  forward
+  priority
   expireAtMillis
+  targetWorkerIds
 ```
 
-Rule ownership is selected by `workerAllocationMechanism` but the rule itself
-lives in `worker_matching_jvm`:
+`workerAllocationMechanism` selects two deliberately separate inputs:
 
-| Mechanism | Matching rule key | Kernel workflow |
+| Mechanism | Input owner | Kernel workflow |
 | --- | --- | --- |
-| `PRECOMPUTED_TASK_RULE` | `taskId` | publish Task Match Demand, lease evidence, fill Candidate Cache |
-| `ON_DEMAND_ITEM_RULE` | `taskId + messageId` | publish Item Match Demand, lease evidence immediately before claim |
+| `PRECOMPUTED_TASK_RULE` | Matching Candidate Rule at `candidateId` | hold due Workers, publish ordered Candidate Demand, consume Candidate Cache |
+| `ON_DEMAND_ITEM_RULE` | Kernel finite `workerSelector` parser | persist normalized explicit Worker IDs or ANY, then acquire directly before claim |
 
 The mechanism is a fixed scheduling workflow label. It is not a rule parser or
 a generic strategy extension point.
@@ -41,19 +42,19 @@ Server preserves the public Task API while directing each fact to its owner:
 
 ```text
 PRECOMPUTED Task creation
-  -> create-only Task Rule in WorkerMatchingCatalog
+  -> create-only Candidate Rule in WorkerMatchingCatalog
   -> create Kernel Task descriptor without Rule
 
 ON_DEMAND Item append or items:call
-  -> create-only Item Rules in WorkerMatchingCatalog
-  -> append Kernel TaskItems without Rule
+  -> Kernel validates workerSelector and returns normalized target Worker IDs
+  -> append Kernel TaskItems without Rule syntax
 ```
 
-Equivalent rule writes are idempotent; conflicting content is rejected. The
-two owner writes are not transactional. A persisted Rule without a matching
-Kernel Task or Item is inert and may remain as a lazy orphan. Kernel cannot
-discover it without a bounded scheduling demand for the corresponding
-identity.
+Equivalent Candidate Rule writes are idempotent; conflicting content is
+rejected. The PRECOMPUTED cross-owner writes are not transactional. A
+persisted Candidate Rule without a matching Kernel Task is inert and may
+remain as a lazy orphan. Kernel cannot discover it without a bounded
+scheduling demand for the corresponding address.
 
 ## Config
 
@@ -68,33 +69,36 @@ Task config remains a finite map of string values:
 Adding a config key requires a named scheduling consumer. Config must not be
 used to smuggle rule syntax or Worker facts back into Kernel.
 
-## Scheduling Evidence
+## Scheduling Handoffs
 
-Kernel publishes identity-only, bounded demands through `WorkerMatchRuntime`.
-After Demand admission Kernel exact-holds the supplied due HOT pool. Matching
-loads its Rule and only those Worker Facts, interprets constraints, and returns
-bounded WorkerId evidence. Kernel then remains responsible for exact hold
-confirmation, priority, cross-Task uniqueness, cached renewal, TaskItem claim,
-command construction, retry and finality.
+For PRECOMPUTED Tasks, Kernel orders current deficits, exact-holds a bounded
+due HOT pool, and publishes one Group Demand through `WorkerMatchRuntime`.
+Matching loads Candidate Rules and only the supplied Worker Facts, then
+appends matches directly through the Kernel-owned Candidate Cache operation
+while carrying held scores opaquely. Kernel later consumes the Candidate
+bucket and owns
+final exact renewal, round uniqueness, TaskItem claim, Command construction,
+retry, and finality.
 
-Evidence is a short-lived facts snapshot associated with a Kernel hold, not a
-scheduling decision. Properties may change after matching; a stale or
-no-longer-held Worker fails exact hold confirmation. Consumed or expired
-evidence causes a later Pacer round to publish another demand.
+For ON_DEMAND Items, Kernel accepts only `[]`, `workerId/$eq`, and
+`workerId/$in` Selector arrays. `TaskItem` stores the normalized identity list,
+not the raw Selector; an empty list means ANY. Kernel directly observes and
+exact-holds eligible Workers when dispatching the Item. No Item Demand, Match
+Evidence, or Matching persistence exists.
 
 ## Redis Shape
 
 Kernel Task descriptors and TaskItems use exact JSON field sets matching the
-records above. Legacy `allocationRule` fields are rejected at the Kernel Redis
-boundary. Rules use the independent Matching keyspace documented by
+records above. Rule maps remain rejected at the Kernel Redis boundary. Rules
+use the independent Matching keyspace documented by
 [`worker_matching_jvm`](../../../worker_matching_jvm/README.md).
 
 ## Non-Owners
 
 Task resource code does not own:
 
-- allocation-rule persistence or validation;
+- PRECOMPUTED allocation-rule persistence or validation;
 - Worker Properties or constraint evaluation;
-- candidate enumeration or match-result caching;
+- Candidate-rule evaluation or ownership of Candidate Cache state;
 - Worker score interpretation or lease policy;
 - Adapter delivery, Result routing, or public runtime-view joins.

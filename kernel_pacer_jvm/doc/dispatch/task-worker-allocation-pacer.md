@@ -6,86 +6,91 @@ Status: active Kernel PRECOMPUTED allocation contract.
 
 `TaskWorkerAllocationPolicy` fills Candidate Cache deficits for a bounded,
 Main-selected set of `PRECOMPUTED_TASK_RULE` Tasks. It neither discovers Tasks
-nor interprets their allocation rules.
+nor interprets allocation Rules.
 
 ```text
 Due PRECOMPUTED Tasks
   -> observe Candidate Cache counts
-  -> consume Task Match Evidence
-  -> confirm exact active holds and schedule matched Worker IDs
-  -> append selected hold evidence to Candidate Cache
-  -> exact-hold a bounded Worker pool for remaining deficits
-  -> publish new Match Demands for successfully held Worker IDs
+  -> order incomplete Tasks by priority then taskId inside each WorkerGroup
+  -> calculate current deficits
+  -> observe and exact-hold one bounded due HOT Worker pool
+  -> publish one ordered Group Match Demand
+  -> Worker Matching filters the held pool and appends Candidate Cache entries
 ```
 
 ## Input
 
-Each `DueTaskObservation` contains the Task ID, an opaque observed Task score
+Each `DueTaskObservation` contains the Task ID, an opaque observed Task score,
 and a minimal `TaskDescriptor`. The descriptor has no Rule. It supplies the
-fixed WorkerGroup, priority and `maximumCandidateWorkers`.
-
-Receiving an ON_DEMAND Task is a caller error.
+fixed WorkerGroup, priority, and `maximumCandidateWorkers`. Receiving an
+ON_DEMAND Task is a caller error.
 
 ## One Round
 
-1. Read Candidate Cache counts for all supplied Task IDs.
-2. Take each available Task Evidence exactly once.
-3. Reject expired evidence or a WorkerGroup mismatch.
-4. Group usable evidence by WorkerGroup.
-5. Build requests from Task priority and current deficit.
-6. Confirm each matched Worker still has the exact clean HOT hold named by its
-   Evidence.
-7. Let Kernel selection enforce priority, requested count and cross-Task
-   Worker uniqueness.
-8. Load minimal Worker delivery descriptors and append Candidate entries with
-   the observed hold score.
-9. Observe one bounded due HOT pool per WorkerGroup for remaining deficits.
-10. Exact-hold the observed pool until the shared deadline and offer Task Match
-    Demands containing only the successfully held Worker IDs.
+For each WorkerGroup, one allocation round:
 
-The first round for a new deficit normally publishes Demand. A later round
-consumes Evidence. Neither policy waits for Matching.
+1. Reads Candidate Cache counts for all supplied PRECOMPUTED Task IDs.
+2. Omits Tasks whose cache already reaches `maximumCandidateWorkers`.
+3. Sorts remaining Tasks by ascending priority and then taskId.
+4. Limits the ordered Task list and total deficit to 100.
+5. Observes at most that total deficit from the due HOT Worker pool.
+6. Exact-holds the observed Workers until one common deadline.
+7. Offers one `TaskRuleMatchDemand` containing only successful holds.
+
+Matching processes the supplied Task order and may append accepted candidates
+directly to each Candidate bucket. Allocation never waits for that work. A later
+Pacer round reads actual Cache counts and computes the remaining deficit.
 
 ## Demand
 
 ```text
 TaskRuleMatchDemand
-  taskId
   workerGroupId
-  heldWorkerIds
+  orderedTaskNeeds[]
+    candidateId
+    maximumCandidateWorkers
+  heldWorkerLeaseScores
+    workerId -> opaque exact held score
   holdUntilMillis
 ```
 
-Kernel obtains one bounded due HOT Worker set for each WorkerGroup and
-exact-holds it. It places only successfully held Worker IDs in each Task Demand
-for that group. Worker Matching may only filter these IDs using its persistent
-Task Rule and Worker facts. Evidence carries the same hold deadline, and Kernel
-accepts a match only while that exact hold remains active.
+The Task list and held Worker map each contain at most 100 entries. The static
+maximum lets Candidate Cache atomically reject entries when a concurrent or
+earlier write has filled the Task. The current deficit is a Pacer-local input:
+it controls how many Workers are observed and held but is not copied into the
+Demand.
 
-Demand and Worker pools are capped at 100. Requested count remains in Kernel's
-Task deficit and selection policy; it is not a Matching input. Queue capacity,
-missing evidence, empty matches and hold contention leave the deficit visible
-for a later round. Unmatched or unselected holds are not compensated; they
-expire naturally and their newer score position lets later due Workers enter
-subsequent bounded pools.
+Only one Demand per WorkerGroup may be pending. A busy Group or full Demand
+queue rejects the offer without blocking. The Pacer does not retry inside the
+round and does not release the already-created holds. They expire naturally.
+Unrelated Groups remain independent.
 
 ## Candidate Cache
 
-The cache stores only:
+Worker Matching calls the Kernel-owned atomic append operation:
 
 ```text
-workerId
-workerGroupId
-exact workerLeaseScore
+candidateId
+maximumCandidateWorkers
+CandidateWorkerEntry[] = workerId + heldWorkerLeaseScore
+expiresAtMillis = holdUntilMillis
 ```
 
-Entries expire with the Worker hold. It stores no Rule, Properties or
-endpoint. Dispatch renewal resolves the current minimal Worker descriptor after
-the exact score fence succeeds.
+The Cache first removes expired entries and then accepts only the capacity
+remaining under the Candidate maximum. It returns exactly the Worker IDs written by
+that call. Matching removes only those accepted IDs from the current Demand's
+available pool, so a Cache-rejected Worker may still match a later Task in the
+same ordered Demand.
+
+Candidate entries contain no WorkerGroup, Rule, Properties, or endpoint.
+Dispatch obtains the Task's Group from its descriptor, loads the current Worker
+delivery descriptor, and exact-renews the cached held score immediately before
+Item claim.
 
 ## Ownership
 
-Allocation owns deficit computation and the timing of Task Demand publication.
-Kernel selection owns priority, unique selection and lease. Matching owns Rule
-and Properties interpretation. No part of this policy owns Task score
-transition, Item claim, Delivery Command or matching persistence.
+Allocation owns Task ordering, deficit computation, bounded Worker observation,
+exact initial hold, and Demand timing. Matching owns Rule and Properties
+interpretation. Candidate Cache owns atomic Candidate-address capacity. Dispatch owns final
+exact renewal, round uniqueness, Item claim, and Command publication. No
+failure path compensates by releasing an unmatched or unaccepted hold.

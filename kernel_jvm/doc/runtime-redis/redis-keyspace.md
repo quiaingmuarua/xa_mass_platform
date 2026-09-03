@@ -49,8 +49,7 @@ Adapter evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 
 Matching Worker facts xa_mass:<scope>:matching:worker:facts:<workerGroupId>
 Matching Platform     xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
-Matching Task rules   xa_mass:<scope>:matching:task:rules
-Matching Item rules   xa_mass:<scope>:matching:task:<taskId>:item-rules
+Matching Candidate    xa_mass:<scope>:matching:candidate:rules
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>
 Result routing        xa_mass:<scope>:result:routing:<outcomeClass>

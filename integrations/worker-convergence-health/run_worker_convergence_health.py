@@ -204,7 +204,6 @@ def _run_scenario(
             _run_task_fault_phase(
                 "down", options, proof_id, evidence, phase_state, environment
             )
-            _replace_worker_lab_slot(sandbox, FAULT_BACKUP, 1)
             host = _start_host(
                 scenario_root,
                 sandbox,
@@ -439,41 +438,6 @@ def _startup_plan(
             for worker, delay in scheduled_stops
         ],
     }
-
-
-def _replace_worker_lab_slot(
-    sandbox: Path,
-    worker: tuple[str, str],
-    lab_slot: int,
-) -> None:
-    filename, separator, raw_line_number = worker[1].rpartition(":")
-    if separator != ":" or not filename.endswith(".jsonl"):
-        raise RuntimeError(f"Worker key is not filename:line: {worker[1]}")
-    try:
-        line_number = int(raw_line_number)
-    except ValueError as error:
-        raise RuntimeError(
-            f"Worker key has an invalid line number: {worker[1]}"
-        ) from error
-    if line_number < 1:
-        raise RuntimeError(f"Worker key has an invalid line number: {worker[1]}")
-
-    path = sandbox / worker[0] / filename
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if line_number > len(lines):
-        raise RuntimeError(f"Worker state line does not exist: {worker[1]}")
-    value = json.loads(lines[line_number - 1])
-    if set(value) != {"schemaVersion", "workerProperties"}:
-        raise RuntimeError(f"Worker state line has unexpected fields: {worker[1]}")
-    if value["schemaVersion"] != 2 or not isinstance(
-        value["workerProperties"], dict
-    ):
-        raise RuntimeError(f"Worker state line is invalid: {worker[1]}")
-    value["workerProperties"]["labSlot"] = lab_slot
-    lines[line_number - 1] = json.dumps(
-        value, separators=(",", ":"), sort_keys=True
-    )
-    _atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def _atomic_write_json(path: Path, value: object) -> None:

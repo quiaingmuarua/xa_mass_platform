@@ -96,8 +96,9 @@ data sandboxes and Host ports while joining the same `android-demo-workers`
 Group and WebSocket Adapter.
 
 Triad Correctness closes three distinct worker IDs and one DELAY Item per
-application. Each ON_DEMAND rule uses the known `workerId` as its candidate
-address and requires the matching `worker.packageName` Property. Triad
+application. Each ON_DEMAND rule uses the known `workerId` as its exact target;
+the independently observed `worker.packageName` Property proves the App-to-
+Worker relation but is not part of the Item Worker Selector. Triad
 Convergence force-stops only `lab2`, proves
 that `lab1` and `lab3` remain connected, schedulable, and executable, then
 restarts `lab2` and requires its original worker ID to return. The Triad does

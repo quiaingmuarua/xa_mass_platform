@@ -31,8 +31,8 @@ Public API
   -> owner-local Java Redis provider
 
 WorkerMatchingAssembly
-  -> persistent Worker/Platform facts and Task/Item rules
-  -> one bounded Demand/Evidence consumer
+  -> persistent Worker/Platform facts and PRECOMPUTED Candidate rules
+  -> one bounded PRECOMPUTED Demand consumer writing Candidate Cache
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
@@ -65,7 +65,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server writes Matching rules before minimal Kernel Task/Item records; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND Item selectors are normalized by Kernel before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and optional Adapter Evidence lanes over Java owners |
@@ -74,7 +74,7 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | `kernel_pacer_jvm` publishes bounded Match Demand, consumes identity evidence, then owns priority, Score, lease and claim |
+| Assignment Dispatch | `kernel_pacer_jvm` orders and holds PRECOMPUTED demand or directly acquires normalized ON_DEMAND targets, then owns Score renewal, uniqueness, lease and claim |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -219,9 +219,9 @@ stream closes, including failure paths.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
-derives the absolute expiry. Finite Task append forbids an Item allocation
-rule; managed Task Call requires an allocation-rule object, where `{}` means no
-Worker restriction inside the Group.
+derives the absolute expiry. Finite Task append omits `workerSelector`;
+managed Task Call requires a finite Selector array, where `[]` means no Worker
+restriction inside the Group and `$eq`/`$in` can name explicit Worker IDs.
 
 `items:call` accepts `1..100` Items, submits the bounded batch once and
 synchronously waits within the caller's `waitTimeoutMillis`. The response is a
@@ -234,8 +234,10 @@ immediately observed succeeded or failed entries.
 Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
-Neither route selects a Worker; Server persists the Item allocation rule in
-Worker Matching before appending the minimal Kernel TaskItem record.
+Neither route selects a Worker. Server passes the finite Item
+`workerSelector` to the Kernel parser, then appends a TaskItem containing only
+explicit target Worker IDs or an empty ANY target. Worker Matching is not
+called by this ON_DEMAND path.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
@@ -263,7 +265,7 @@ assuming every non-2xx response means no execution occurred.
       "eventCode": "extension.worker.string.md5",
       "payload": {"value": "hello"},
       "ttlMillis": 30000,
-      "allocationRule": {}
+      "workerSelector": []
     }
   ],
   "waitTimeoutMillis": 30000

@@ -41,7 +41,7 @@ export class HttpTaskCallDebugClient implements TaskCallDebugClient {
               eventCode: request.eventName,
               payload: request.payload,
               priority: 5,
-              allocationRule: request.allocationRule
+              workerSelector: request.workerSelector
             }
           ],
           waitTimeoutMillis: request.waitTimeoutMillis

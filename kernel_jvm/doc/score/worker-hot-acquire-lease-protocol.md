@@ -16,13 +16,11 @@ allocation through dispatch and result disposition:
 
 ```text
 due HOT observation
-  -> bounded identity-only Match Demand
   -> exact bounded pool hold and dirty clear
-  -> Worker Matching Rule/Properties evidence
-  -> exact active-hold confirmation and Kernel selection
-  -> CandidateWorkerEntry(workerLeaseScore)
-  -> optional CandidateWorkerCache handoff
-  -> cached candidate exact renewal
+  -> PRECOMPUTED: ordered Match Demand and direct Candidate Cache append
+     or ON_DEMAND: direct normalized Worker-ID selection
+  -> CandidateWorkerEntry(heldWorkerLeaseScore), when PRECOMPUTED
+  -> final exact Worker lease renewal
   -> ResultContext(workerLeaseScore)
   -> result exact release
 ```
@@ -74,41 +72,39 @@ Kernel process's HOT eligibility floor. With no Serviceability configuration,
 the optional floor is absent and the original full positive range remains.
 
 `WorkerCandidateSelectionPolicy` calls the bounded observation and exact-fence
-Owner operations directly. A Demand is offered before the pool hold so queue
-rejection does not reserve Worker capacity. Once at least one Demand is
-admitted, Kernel immediately exact-holds the observed pool. Worker Matching is
-a separate facts/rule owner and returns only short-lived WorkerId evidence:
+Owner operations directly. Kernel exact-holds the observed pool before it
+offers a PRECOMPUTED Demand. Queue rejection therefore leaves real short-lived
+holds, which expire naturally. Worker Matching is a separate facts/rule owner:
 
 ```text
-Task-rule precomputation
+Candidate-rule precomputation
   Kernel supplies and holds one bounded due HOT WorkerId set
-  Worker Matching filters it against the Task Rule and canonical facts
-  Kernel confirms the hold and applies priority/count/unique selection
+  Kernel supplies ordered Candidate addresses and opaque exact held scores
+  Worker Matching filters in that order against canonical facts
+  Worker Matching atomically appends accepted entries to Candidate Cache
+  Kernel later consumes and exact-renews the cached score before claim
 
-Item-rule on-demand acquisition
-  Kernel supplies and holds one bounded due HOT WorkerId set
-  Worker Matching filters it independently for each Item Rule
-  Kernel confirms the hold and selects at most requestedCount per request
+Item Worker Selector on-demand acquisition
+  Kernel validates the Selector into explicit Worker IDs or ANY at write
+  Kernel observes eligible targets and exact-holds one Worker per Item
+  Kernel exact-renews that held score before claim
 ```
 
-Shared HOT and item-rule on-demand observation do not read Candidate Cache;
-cached candidate renewal does.
-Allocation cache publication confirms the selected Worker IDs through the
-Score Owner at the expected hold slot, then appends only the still-active
-subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
-Policy selects only the bounded identities in Evidence whose exact clean hold
-is still active. It then loads the minimal Kernel Worker descriptor to obtain
-the current endpoint. Matching does not receive score, priority, count, cache
-or endpoint data; the opaque hold score remains inside Kernel.
+ON_DEMAND does not use Candidate Cache. PRECOMPUTED Matching receives the raw
+held score only to carry it unchanged into a Cache entry; it cannot decode,
+compare, construct, renew, or release Score. It also receives no endpoint or
+TaskItem state. Candidate Cache is the atomic Candidate-address capacity owner and returns
+the IDs actually accepted. Matching removes only those IDs from the current
+Demand pool, preventing one accepted hold from entering two Candidate buckets.
 
-Empty or stale Evidence cannot consume a hold. Unmatched, unselected and
-candidate-publication-failed Workers are not actively released; their short
-holds expire naturally. Moving each admitted pool to a newer score position
-also lets later due Workers enter subsequent bounded observations.
+Unmatched, unselected, Cache-rejected, and Demand-rejected Workers are not
+actively released. Their short holds expire naturally. Moving each observed
+pool to a newer score position lets other due Workers enter subsequent bounded
+observations.
 
 ## Cached Candidate Renewal
 
-The cached renewal path consumes bounded cache evidence and calls:
+The cached renewal path consumes bounded Candidate Cache entries and calls:
 
 ```text
 renew_active_hot_score_leases(
@@ -138,7 +134,7 @@ Only a `TRANSITIONED` or exact `NOOP` result carrying a score may proceed to
 minimal descriptor loading and Item claim. The returned fence, unchanged or
 renewed, is written into `forward`.
 
-Cached miss or rejected evidence never falls back to item-rule on-demand
+Cached miss or rejected candidate never falls back to Worker Selector on-demand
 acquisition. `TaskDispatchPolicy` chooses one path from the fixed
 `TaskDescriptor.workerAllocationMechanism`: cached candidate renewal for
 Task-owned rules or on-demand acquisition for Item-owned rules. Both paths
@@ -161,8 +157,8 @@ status, or an
 attribute update lock. Non-lease owners may set dirty but never clear it.
 Allocation may clear dirty only while acquiring a due Worker. Worker Matching
 facts updates do not write Worker score and do not set dirty in this cut.
-Active cached renewal rejects dirty and forces later allocation to obtain new
-matching evidence and a new lease.
+Active cached renewal rejects dirty and forces later allocation to create a new
+held match and Cache entry.
 
 ## Result Disposition
 
@@ -246,9 +242,9 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | minimal declaration validation, endpoint metadata and first score initialization | no Properties, matching, heartbeat or dispatch ownership |
-| WorkerMatchingRuntime | persistent Rule/Properties interpretation and bounded identity-only Evidence | no HOT/Cache scheduling source, priority, uniqueness, Score, lease, endpoint or Candidate Cache access |
-| WorkerCandidateSelectionPolicy | due HOT identity source, exact Match hold and confirmation, cached renewal, request priority/count/unique selection and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
-| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, consume held Match evidence and publish the next held Demand pool | no Task discovery, Task-score write or result handling |
+| WorkerMatchingRuntime | persistent Candidate Rule/Properties interpretation and ordered append through the Candidate Cache owner API | no Score interpretation/transition, Cache read/consume, priority, Item Selector, Item claim, endpoint or ON_DEMAND runtime work |
+| WorkerCandidateSelectionPolicy | due HOT identity source, exact initial hold and final renewal, ON_DEMAND target selection, round uniqueness and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
+| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, sort Task needs, hold a bounded Worker pool and publish one Group Demand | no Task discovery, Rule interpretation, Task-score write or result handling |
 | TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
 | TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
 | TaskDispatchPolicy | bounded Task/Item observation, expiry/exhaustion, pairing, per-Task limit, ordinary pacing and idle-disposition choice | no Score decoding, construction or arithmetic |
@@ -269,7 +265,7 @@ payload.
 - Do not lease negative `RECOVERY_RECHECK` scores through HOT primitives.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
-- Do not let cached candidate renewal fall back to item-rule on-demand acquisition.
+- Do not let cached candidate renewal fall back to Worker Selector on-demand acquisition.
 - Do not let `TaskDispatchPolicy` bypass `WorkerCandidateSelectionPolicy` to
   access Worker Score or Candidate Cache, or bypass `TaskAssignmentDispatcher`
   to claim Items and publish Commands. Direct bounded Owner calls inside the

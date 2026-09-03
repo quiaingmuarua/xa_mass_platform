@@ -48,7 +48,7 @@ public final class TaskCreationService {
     public TaskCreateResponse create(TaskCreateRequest request) {
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
-        createTaskRule(taskId, request);
+        createCandidateRule(taskId, request);
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
                 request.workerGroupId(),
@@ -89,14 +89,14 @@ public final class TaskCreationService {
         };
     }
 
-    private void createTaskRule(
-            String taskId,
+    private void createCandidateRule(
+            String candidateId,
             TaskCreateRequest request
     ) {
         MutationResult result;
         try {
-            result = matchingCatalog.createTaskRule(
-                    taskId,
+            result = matchingCatalog.createCandidateRule(
+                    candidateId,
                     request.workerGroupId(),
                     request.allocationRule()
             );

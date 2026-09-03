@@ -1,6 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
@@ -25,7 +24,7 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Redis persistence for Worker facts and allocation rules. */
+/** Redis persistence for Worker facts and PRECOMPUTED Candidate Rules. */
 public final class RedisWorkerMatchingCatalog
         implements WorkerMatchingCatalog, AutoCloseable {
 
@@ -198,134 +197,52 @@ public final class RedisWorkerMatchingCatalog
     }
 
     @Override
-    public MutationResult createTaskRule(
-            String taskId,
+    public MutationResult createCandidateRule(
+            String candidateId,
             String workerGroupId,
             Map<String, Object> allocationRule
     ) {
-        TaskRule rule;
+        CandidateRule rule;
         String encoded;
         try {
-            rule = new TaskRule(taskId, workerGroupId, allocationRule);
+            rule = new CandidateRule(
+                    candidateId,
+                    workerGroupId,
+                    allocationRule
+            );
             encoded = encodeRule(rule.workerGroupId(), rule.allocationRule());
         } catch (IllegalArgumentException error) {
-            return result(MutationStatus.INVALID, "invalid Task rule");
+            return result(MutationStatus.INVALID, "invalid Candidate rule");
         }
-        return createOnly(taskRulesKey(), rule.taskId(), encoded);
+        return createOnly(
+                candidateRulesKey(),
+                rule.candidateId(),
+                encoded
+        );
     }
 
     @Override
-    public Map<String, @Nullable TaskRule> loadTaskRules(
-            List<String> taskIds
+    public Map<String, @Nullable CandidateRule> loadCandidateRules(
+            List<String> candidateIds
     ) {
-        List<String> ids = boundedUnique(taskIds, "taskIds");
+        List<String> ids = boundedUnique(candidateIds, "candidateIds");
         if (ids.isEmpty()) {
             return Map.of();
         }
         List<KeyValue<String, String>> values = commands().hmget(
-                taskRulesKey(),
+                candidateRulesKey(),
                 ids.toArray(String[]::new)
         );
-        LinkedHashMap<String, TaskRule> result = new LinkedHashMap<>();
+        LinkedHashMap<String, CandidateRule> result = new LinkedHashMap<>();
         for (int index = 0; index < ids.size(); index++) {
-            String taskId = ids.get(index);
+            String candidateId = ids.get(index);
             String raw = values.get(index).getValueOrElse(null);
             result.put(
-                    taskId,
-                    raw == null ? null : decodeTaskRule(taskId, raw)
+                    candidateId,
+                    raw == null
+                            ? null
+                            : decodeCandidateRule(candidateId, raw)
             );
-        }
-        return immutableNullableMap(result);
-    }
-
-    @Override
-    public Map<ItemMatchKey, MutationResult> createItemRules(
-            List<ItemRule> rules
-    ) {
-        Objects.requireNonNull(rules, "rules");
-        if (rules.isEmpty() || rules.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "rules must contain 1.." + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<ItemMatchKey> unique = new LinkedHashSet<>();
-        LinkedHashMap<ItemMatchKey, MutationResult> results =
-                new LinkedHashMap<>();
-        for (ItemRule rule : rules) {
-            Objects.requireNonNull(rule, "rule");
-            if (!unique.add(rule.key())) {
-                throw new IllegalArgumentException(
-                        "rules must not contain duplicate Item keys"
-                );
-            }
-            String encoded;
-            try {
-                encoded = encodeRule(
-                        rule.workerGroupId(),
-                        rule.allocationRule()
-                );
-            } catch (IllegalArgumentException error) {
-                results.put(
-                        rule.key(),
-                        result(MutationStatus.INVALID, "invalid Item rule")
-                );
-                continue;
-            }
-            results.put(
-                    rule.key(),
-                    createOnly(
-                            itemRulesKey(rule.key().taskId()),
-                            rule.key().messageId(),
-                            encoded
-                    )
-            );
-        }
-        return Collections.unmodifiableMap(results);
-    }
-
-    @Override
-    public Map<ItemMatchKey, @Nullable ItemRule> loadItemRules(
-            List<ItemMatchKey> keys
-    ) {
-        Objects.requireNonNull(keys, "keys");
-        if (keys.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "keys must contain at most " + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<ItemMatchKey> unique = new LinkedHashSet<>();
-        LinkedHashMap<String, List<ItemMatchKey>> byTask =
-                new LinkedHashMap<>();
-        for (ItemMatchKey key : keys) {
-            Objects.requireNonNull(key, "key");
-            if (!unique.add(key)) {
-                throw new IllegalArgumentException(
-                        "keys must not contain duplicates"
-                );
-            }
-            byTask.computeIfAbsent(
-                    key.taskId(),
-                    ignored -> new ArrayList<>()
-            ).add(key);
-        }
-        LinkedHashMap<ItemMatchKey, ItemRule> result = new LinkedHashMap<>();
-        RedisCommands<String, String> commands = commands();
-        for (Map.Entry<String, List<ItemMatchKey>> task : byTask.entrySet()) {
-            List<ItemMatchKey> taskKeys = task.getValue();
-            List<KeyValue<String, String>> values = commands.hmget(
-                    itemRulesKey(task.getKey()),
-                    taskKeys.stream()
-                            .map(ItemMatchKey::messageId)
-                            .toArray(String[]::new)
-            );
-            for (int index = 0; index < taskKeys.size(); index++) {
-                ItemMatchKey key = taskKeys.get(index);
-                String raw = values.get(index).getValueOrElse(null);
-                result.put(
-                        key,
-                        raw == null ? null : decodeItemRule(key, raw)
-                );
-            }
         }
         return immutableNullableMap(result);
     }
@@ -357,12 +274,8 @@ public final class RedisWorkerMatchingCatalog
                 + workerGroupId;
     }
 
-    private String taskRulesKey() {
-        return keyspace.base() + ":matching:task:rules";
-    }
-
-    private String itemRulesKey(String taskId) {
-        return keyspace.base() + ":matching:task:" + taskId + ":item-rules";
+    private String candidateRulesKey() {
+        return keyspace.base() + ":matching:candidate:rules";
     }
 
     private RedisCommands<String, String> commands() {
@@ -408,32 +321,18 @@ public final class RedisWorkerMatchingCatalog
         ));
     }
 
-    private TaskRule decodeTaskRule(String taskId, String raw) {
+    private CandidateRule decodeCandidateRule(
+            String candidateId,
+            String raw
+    ) {
         try {
             Map<String, Object> object = decodeObject(raw);
             requireExactFields(
                     object,
                     Set.of("workerGroupId", "allocationRule")
             );
-            return new TaskRule(
-                    taskId,
-                    requireString(object.get("workerGroupId")),
-                    requireObject(object.get("allocationRule"))
-            );
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
-    }
-
-    private ItemRule decodeItemRule(ItemMatchKey key, String raw) {
-        try {
-            Map<String, Object> object = decodeObject(raw);
-            requireExactFields(
-                    object,
-                    Set.of("workerGroupId", "allocationRule")
-            );
-            return new ItemRule(
-                    key,
+            return new CandidateRule(
+                    candidateId,
                     requireString(object.get("workerGroupId")),
                     requireObject(object.get("allocationRule"))
             );

@@ -12,7 +12,7 @@ kernel_pacer_jvm
   scheduling Policy, convergence loops and finite lifecycle
 
 worker_matching_jvm
-  Worker facts, allocation rules and bounded identity evidence
+  Worker facts, PRECOMPUTED Candidate Rules and bounded identity evidence
 
 server_jvm
   Spring assembly and public Runtime API
@@ -75,8 +75,9 @@ Cross-module documents:
 - A Score is an opaque scheduling coordinate, not a resource write lock.
 - Mechanical Owners define legal state transitions and exact fences.
 - Policy owns bounded Demand, priority, deficits, Score validation, unique
-  selection, lease and cadence. Worker Matching owns Rule/Properties
-  interpretation and bounded candidate evidence.
+  selection, lease and cadence. Worker Matching owns PRECOMPUTED Candidate
+  Rule/Properties interpretation and ordered Candidate publication. Kernel
+  owns the finite ON_DEMAND Worker Selector and persists only normalized IDs.
 - Result Policy parses and groups delivery evidence, then publishes finite
   semantic events to the owning Task or Worker mechanism.
 - Result Convergence and Dispatch Convergence are the only production Pacer

@@ -102,7 +102,8 @@ public interface TaskRuntime {
             long createdAtMillis,
             Map<String, Object> payload,
             int priority,
-            @Nullable Long expireAtMillis
+            @Nullable Long expireAtMillis,
+            List<String> targetWorkerIds
     ) {
         public TaskItem {
             requireNonBlank(messageId, "messageId");
@@ -125,6 +126,22 @@ public interface TaskRuntime {
                 );
             }
             payload = immutableObjectMap(payload);
+            Objects.requireNonNull(targetWorkerIds, "targetWorkerIds");
+            if (targetWorkerIds.size() > 100) {
+                throw new IllegalArgumentException(
+                        "targetWorkerIds must contain at most 100 workers"
+                );
+            }
+            LinkedHashSet<String> uniqueTargets = new LinkedHashSet<>();
+            for (String workerId : targetWorkerIds) {
+                requireNonBlank(workerId, "target workerId");
+                if (!uniqueTargets.add(workerId)) {
+                    throw new IllegalArgumentException(
+                            "targetWorkerIds must not contain duplicates"
+                    );
+                }
+            }
+            targetWorkerIds = List.copyOf(uniqueTargets);
         }
     }
 

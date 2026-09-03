@@ -184,10 +184,10 @@ Worker score. No current Properties update path sets dirty.
 
 HOT candidate acquisition is a bounded read-only range query. It returns
 `(workerId, observedScore)` pairs to Kernel policy. PRECOMPUTED allocation
-publishes a bounded identity set for external Rule/Properties interpretation,
-then point-observes current scores and submits an exact-score lease only for
-returned evidence. ON_DEMAND matching also returns identities before Kernel
-point-observes and leases them. Concurrent rounds may observe the same due
+exact-holds a bounded identity set, then publishes the held IDs and opaque
+scores for external Rule/Properties interpretation and Candidate Cache append.
+ON_DEMAND point-observes Kernel-normalized explicit Worker IDs or a bounded ANY
+pool and exact-holds directly. Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
 Worker score is not a Worker resource mutation lease. Worker upsert
@@ -363,9 +363,9 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form preserves the bounded caller-supplied Worker universe and is used
-after ON_DEMAND_ITEM_RULE extracts request-local WorkerIds from its allocation rule.
-Assignment-dispatch may pass a Worker into bounded matching only after an exact
-observed-score lease succeeds.
+after Kernel normalizes an ON_DEMAND Worker Selector into TaskItem Worker IDs.
+Assignment-dispatch may pass a Worker into PRECOMPUTED matching
+only after an exact observed-score lease succeeds.
 
 When optional Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
@@ -890,14 +890,14 @@ Worker score-band participates in assignment-dispatch like this:
 
 ```text
 task score acquires due task candidate
-assignment-dispatch publishes bounded identity-only Match Demands
-Worker Matching interprets persistent Task/Item Rules and Worker facts
-Kernel consumes short-lived WorkerId Evidence
-candidate selection point-observes current HOT Score and exact-CAS leases
-allocation pacer may publish leased Task-rule candidates into CandidateWorkerCache
-cached candidate renewal exact-validates/renews only the score fence
+PRECOMPUTED allocation orders deficits, observes due HOT Workers and exact-holds
+Worker Matching interprets persistent Candidate Rules and supplied Worker facts
+Worker Matching carries opaque held scores into CandidateWorkerCache
+ON_DEMAND dispatch observes normalized explicit Worker IDs or an ANY pool
+candidate selection exact-holds and enforces round uniqueness
 Task dispatch resolves the WorkerAllocationMechanism acquisition path
-and keeps CandidateId-to-Item bindings
+and keeps Task-or-Item-to-Worker bindings
+final candidate renewal exact-validates/renews only the score fence
 Kernel loads the minimal Worker endpoint descriptor and selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch
@@ -923,15 +923,15 @@ assignment-dispatch worker selection path.
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
 | hot candidate observation | no | bounded due range read with scores |
-| hot Worker allocation lease | yes | point-observe Evidence identities, then exact observed-score CAS |
+| hot Worker allocation lease | yes | bounded due observation or explicit-ID point observation, then exact observed-score CAS |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | slot contention / cooldown | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
 | Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
 | Worker upsert during Server Prepare | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; preserve every existing score exactly |
-| assignment owner leases matched HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear after Evidence |
-| assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard cached evidence |
+| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before PRECOMPUTED Demand or ON_DEMAND claim |
+| assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard the candidate |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
 | bounded-age Adapter Route evidence | yes | Adapter Evidence Batch policy orders within one batch, then uses current-score read plus exact CAS; there is no cross-batch evidence fence, so delayed evidence may cause a temporary polarity regression before later evidence repairs it |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |

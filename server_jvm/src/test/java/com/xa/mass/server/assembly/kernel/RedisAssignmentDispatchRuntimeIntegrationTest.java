@@ -19,6 +19,8 @@ import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -70,20 +72,19 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     }
 
     @Test
-    void candidateEvidenceIsBoundedExpiringAndDestructivelyConsumed() {
+    void candidateCacheIsBoundedExpiringAndDestructivelyConsumed() {
         long nowMillis = redisTimeMillis();
         CandidateWorkerEntry first = new CandidateWorkerEntry(
                 "worker-1",
-                "group-1",
                 101L
         );
         CandidateWorkerEntry second = new CandidateWorkerEntry(
                 "worker-2",
-                "group-1",
                 102L
         );
         candidateCache.appendCandidateWorkers(
                 "candidate-1",
+                2,
                 List.of(first, second),
                 nowMillis + 60_000
         );
@@ -142,6 +143,57 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     }
 
     @Test
+    void candidateAppendOnlyFillsRemainingAddressCapacityInInputOrder() {
+        long expiresAtMillis = redisTimeMillis() + 60_000;
+        assertThat(candidateCache.appendCandidateWorkers(
+                "task-capacity",
+                10,
+                candidateEntries(1, 7),
+                expiresAtMillis
+        )).containsExactly(
+                "worker-1",
+                "worker-2",
+                "worker-3",
+                "worker-4",
+                "worker-5",
+                "worker-6",
+                "worker-7"
+        );
+
+        assertThat(candidateCache.appendCandidateWorkers(
+                "task-capacity",
+                10,
+                candidateEntries(8, 12),
+                expiresAtMillis
+        )).containsExactly("worker-8", "worker-9", "worker-10");
+        assertThat(candidateCache.candidateWorkerCounts(
+                List.of("task-capacity")
+        )).containsEntry("task-capacity", 10);
+    }
+
+    @Test
+    void concurrentCandidateAppendsCannotExceedAddressCapacity() {
+        long expiresAtMillis = redisTimeMillis() + 60_000;
+        CountDownLatch start = new CountDownLatch(1);
+        CompletableFuture<List<String>> first = CompletableFuture.supplyAsync(
+                () -> appendAfter(start, "task-concurrent", 10,
+                        candidateEntries(1, 10), expiresAtMillis)
+        );
+        CompletableFuture<List<String>> second = CompletableFuture.supplyAsync(
+                () -> appendAfter(start, "task-concurrent", 10,
+                        candidateEntries(11, 20), expiresAtMillis)
+        );
+
+        start.countDown();
+        int acceptedCount = first.join().size() + second.join().size();
+
+        assertThat(acceptedCount).isEqualTo(10);
+        assertThat(candidateCache.candidateWorkerCounts(
+                List.of("task-concurrent")
+        )).containsEntry("task-concurrent", 10);
+    }
+
+    @Test
     void authoritativeTaskAppendReplacesAnUnconsumedDirectCommand() {
         long deadline = redisTimeMillis() + 60_000;
         DeliveryCommand direct = DeliveryCommand.create(
@@ -192,6 +244,39 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
                 "adapter-2",
                 "worker-1"
         )).isEqualTo(task);
+    }
+
+    private List<String> appendAfter(
+            CountDownLatch start,
+            String taskId,
+            int maximumCandidateWorkers,
+            List<CandidateWorkerEntry> entries,
+            long expiresAtMillis
+    ) {
+        try {
+            start.await();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(error);
+        }
+        return candidateCache.appendCandidateWorkers(
+                taskId,
+                maximumCandidateWorkers,
+                entries,
+                expiresAtMillis
+        );
+    }
+
+    private static List<CandidateWorkerEntry> candidateEntries(
+            int first,
+            int last
+    ) {
+        return java.util.stream.IntStream.rangeClosed(first, last)
+                .mapToObj(index -> new CandidateWorkerEntry(
+                        "worker-" + index,
+                        100L + index
+                ))
+                .toList();
     }
 
     private long redisTimeMillis() {

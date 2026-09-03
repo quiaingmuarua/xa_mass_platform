@@ -90,24 +90,6 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
         self.assertNotIn('"extension.worker.lab.delay"', phone)
         self.assertIn('"extension.worker.lab.delay"', string)
 
-    def test_offline_property_replace_preserves_state_document(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            sandbox = Path(temporary)
-            PROOF.materialize_inventory(sandbox, PROOF.CANONICAL_WORLD)
-            filename = PROOF.FAULT_BACKUP[1].rsplit(":", 1)[0]
-            path = sandbox / PROOF.STRING_GROUP / filename
-
-            PROOF._replace_worker_lab_slot(sandbox, PROOF.FAULT_BACKUP, 9)
-
-            lines = path.read_text(encoding="utf-8").splitlines()
-            first = json.loads(lines[0])
-            second = json.loads(lines[1])
-            self.assertEqual(50, len(lines))
-            self.assertEqual(1, first["workerProperties"]["labSlot"])
-            self.assertEqual(2, second["schemaVersion"])
-            self.assertEqual("java", second["workerProperties"]["runtime"])
-            self.assertEqual(9, second["workerProperties"]["labSlot"])
-
     def test_redis_cleanup_rejects_non_test_scope_before_connecting(self):
         with self.assertRaisesRegex(ValueError, "exact test_\\* scope"):
             PROOF._cleanup_scope("redis://127.0.0.1:1/0", "production")

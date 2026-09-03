@@ -19,7 +19,9 @@ record StateConvergencePhaseState(
         String proofId,
         Instant startedAt,
         Map<String, String> workerIdsByCoordinate,
-        List<Batch> batches
+        List<Batch> batches,
+        String propertyWitnessTaskId,
+        String propertyWitnessMessageId
 ) {
 
     private static final Set<String> FIELDS = Set.of(
@@ -27,7 +29,9 @@ record StateConvergencePhaseState(
             "proofId",
             "startedAt",
             "workerIdsByCoordinate",
-            "batches"
+            "batches",
+            "propertyWitnessTaskId",
+            "propertyWitnessMessageId"
     );
 
     StateConvergencePhaseState {
@@ -35,7 +39,11 @@ record StateConvergencePhaseState(
                 || startedAt == null
                 || workerIdsByCoordinate == null
                 || workerIdsByCoordinate.size() != 100
-                || batches == null || batches.size() != 12) {
+                || batches == null || batches.size() != 12
+                || propertyWitnessTaskId == null
+                || propertyWitnessTaskId.isBlank()
+                || propertyWitnessMessageId == null
+                || propertyWitnessMessageId.isBlank()) {
             throw new IllegalArgumentException(
                     "State convergence phase state is incomplete"
             );
@@ -61,7 +69,7 @@ record StateConvergencePhaseState(
         }
         if (!FIELDS.equals(value.keySet())
                 || !(value.get("schemaVersion") instanceof Number version)
-                || version.longValue() != 2L) {
+                || version.longValue() != 3L) {
             throw new IllegalStateException(
                     "State convergence phase state is invalid"
             );
@@ -85,7 +93,9 @@ record StateConvergencePhaseState(
                 JsonValues.requiredString(value, "proofId"),
                 Instant.parse(JsonValues.requiredString(value, "startedAt")),
                 workerIds,
-                batches
+                batches,
+                JsonValues.requiredString(value, "propertyWitnessTaskId"),
+                JsonValues.requiredString(value, "propertyWitnessMessageId")
         );
     }
 
@@ -100,11 +110,13 @@ record StateConvergencePhaseState(
             Files.createDirectories(parent);
             temporary = Files.createTempFile(parent, ".worker-state-", ".tmp");
             Map<String, Object> value = new LinkedHashMap<>();
-            value.put("schemaVersion", 2);
+            value.put("schemaVersion", 3);
             value.put("proofId", proofId);
             value.put("startedAt", startedAt.toString());
             value.put("workerIdsByCoordinate", workerIdsByCoordinate);
             value.put("batches", batches.stream().map(Batch::toMap).toList());
+            value.put("propertyWitnessTaskId", propertyWitnessTaskId);
+            value.put("propertyWitnessMessageId", propertyWitnessMessageId);
             Files.writeString(
                     temporary,
                     Jsons.toJson(value) + System.lineSeparator(),

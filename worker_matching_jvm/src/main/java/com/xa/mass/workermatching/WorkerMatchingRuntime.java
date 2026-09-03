@@ -1,20 +1,15 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.DemandOfferStatus;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemRuleMatchEvidence;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchEvidence;
 import com.xa.mass.workermatching.ConstraintEvaluator.Condition;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.ItemRule;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.TaskRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,15 +18,11 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * One bounded resident consumer that turns persisted matching facts into
- * identity-only evidence for Kernel scheduling.
- */
+/** Resolves ordered Candidate demands into bounded Candidate Cache entries. */
 public final class WorkerMatchingRuntime
         implements WorkerMatchRuntime, AutoCloseable {
 
     public static final int DEFAULT_DEMAND_CAPACITY = 10_000;
-    public static final int DEFAULT_EVIDENCE_CAPACITY = 10_000;
     private static final System.Logger LOGGER = System.getLogger(
             WorkerMatchingRuntime.class.getName()
     );
@@ -47,65 +38,44 @@ public final class WorkerMatchingRuntime
     public record Snapshot(
             State state,
             int queuedDemands,
-            int pendingDemands,
-            int availableEvidence
+            int pendingDemands
     ) {
-    }
-
-    private sealed interface Work permits TaskWork, ItemWork {
-    }
-
-    private record TaskWork(TaskRuleMatchDemand demand) implements Work {
-    }
-
-    private record ItemWork(ItemRuleMatchDemand demand) implements Work {
-    }
-
-    private record CandidatePool(String workerGroupId, List<String> workerIds) {
     }
 
     private final Object lifecycleGate = new Object();
     private final WorkerMatchingCatalog catalog;
+    private final CandidateWorkerCache candidateCache;
     private final ConstraintEvaluator evaluator;
-    private final BlockingQueue<Work> demands;
-    private final int evidenceCapacity;
-    private final Set<String> pendingTasks = ConcurrentHashMap.newKeySet();
-    private final Set<ItemMatchKey> pendingItems =
+    private final BlockingQueue<TaskRuleMatchDemand> demands;
+    private final Set<String> pendingWorkerGroups =
             ConcurrentHashMap.newKeySet();
-    private final Map<String, TaskRuleMatchEvidence> taskEvidence =
-            new ConcurrentHashMap<>();
-    private final Map<ItemMatchKey, ItemRuleMatchEvidence> itemEvidence =
-            new ConcurrentHashMap<>();
     private volatile State state = State.STOPPED;
     private volatile Thread workerThread;
 
-    public WorkerMatchingRuntime(WorkerMatchingCatalog catalog) {
-        this(
-                catalog,
-                DEFAULT_DEMAND_CAPACITY,
-                DEFAULT_EVIDENCE_CAPACITY
-        );
+    public WorkerMatchingRuntime(
+            WorkerMatchingCatalog catalog,
+            CandidateWorkerCache candidateCache
+    ) {
+        this(catalog, candidateCache, DEFAULT_DEMAND_CAPACITY);
     }
 
     public WorkerMatchingRuntime(
             WorkerMatchingCatalog catalog,
-            int demandCapacity,
-            int evidenceCapacity
+            CandidateWorkerCache candidateCache,
+            int demandCapacity
     ) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.candidateCache = Objects.requireNonNull(
+                candidateCache,
+                "candidateCache"
+        );
         this.evaluator = new ConstraintEvaluator();
         if (demandCapacity < 1) {
             throw new IllegalArgumentException(
                     "demandCapacity must be positive"
             );
         }
-        if (evidenceCapacity < 1) {
-            throw new IllegalArgumentException(
-                    "evidenceCapacity must be positive"
-            );
-        }
         this.demands = new ArrayBlockingQueue<>(demandCapacity);
-        this.evidenceCapacity = evidenceCapacity;
     }
 
     public void start() {
@@ -167,131 +137,48 @@ public final class WorkerMatchingRuntime
         return new Snapshot(
                 state,
                 demands.size(),
-                pendingTasks.size() + pendingItems.size(),
-                taskEvidence.size() + itemEvidence.size()
+                pendingWorkerGroups.size()
         );
     }
 
     @Override
-    public Map<String, DemandOfferStatus> offerTaskDemands(
-            List<TaskRuleMatchDemand> offered
-    ) {
-        List<TaskRuleMatchDemand> bounded = boundedUniqueTaskDemands(offered);
-        requireRunning();
-        long now = System.currentTimeMillis();
-        LinkedHashMap<String, DemandOfferStatus> result =
-                new LinkedHashMap<>();
-        for (TaskRuleMatchDemand demand : bounded) {
-            if (demand.holdUntilMillis() <= now) {
-                throw new IllegalArgumentException(
-                        "Task demand must not already be expired"
-                );
-            }
-            discardExpiredTaskEvidence(demand.taskId(), now);
-            if (taskEvidence.containsKey(demand.taskId())
-                    || !pendingTasks.add(demand.taskId())) {
-                result.put(
-                        demand.taskId(),
-                        DemandOfferStatus.ALREADY_PENDING
-                );
-                continue;
-            }
-            if (!demands.offer(new TaskWork(demand))) {
-                pendingTasks.remove(demand.taskId());
-                result.put(demand.taskId(), DemandOfferStatus.CAPACITY);
-                continue;
-            }
-            result.put(demand.taskId(), DemandOfferStatus.OFFERED);
+    public boolean offerTaskDemand(TaskRuleMatchDemand demand) {
+        Objects.requireNonNull(demand, "demand");
+        if (demand.holdUntilMillis() <= System.currentTimeMillis()) {
+            throw new IllegalArgumentException(
+                    "Task demand must not already be expired"
+            );
         }
-        return Collections.unmodifiableMap(result);
-    }
-
-    @Override
-    public Map<String, TaskRuleMatchEvidence> takeTaskEvidence(
-            List<String> taskIds
-    ) {
-        List<String> bounded = boundedUniqueStrings(taskIds, "taskIds");
-        long now = System.currentTimeMillis();
-        LinkedHashMap<String, TaskRuleMatchEvidence> result =
-                new LinkedHashMap<>();
-        for (String taskId : bounded) {
-            TaskRuleMatchEvidence evidence = taskEvidence.remove(taskId);
-            if (evidence != null && evidence.holdUntilMillis() > now) {
-                result.put(taskId, evidence);
+        synchronized (lifecycleGate) {
+            requireRunning();
+            if (!pendingWorkerGroups.add(demand.workerGroupId())) {
+                return false;
             }
+            if (!demands.offer(demand)) {
+                pendingWorkerGroups.remove(demand.workerGroupId());
+                return false;
+            }
+            return true;
         }
-        return Collections.unmodifiableMap(result);
-    }
-
-    @Override
-    public Map<ItemMatchKey, DemandOfferStatus> offerItemDemands(
-            List<ItemRuleMatchDemand> offered
-    ) {
-        List<ItemRuleMatchDemand> bounded = boundedUniqueItemDemands(offered);
-        requireRunning();
-        long now = System.currentTimeMillis();
-        LinkedHashMap<ItemMatchKey, DemandOfferStatus> result =
-                new LinkedHashMap<>();
-        for (ItemRuleMatchDemand demand : bounded) {
-            if (demand.holdUntilMillis() <= now) {
-                throw new IllegalArgumentException(
-                        "Item demand must not already be expired"
-                );
-            }
-            discardExpiredItemEvidence(demand.key(), now);
-            if (itemEvidence.containsKey(demand.key())
-                    || !pendingItems.add(demand.key())) {
-                result.put(
-                        demand.key(),
-                        DemandOfferStatus.ALREADY_PENDING
-                );
-                continue;
-            }
-            if (!demands.offer(new ItemWork(demand))) {
-                pendingItems.remove(demand.key());
-                result.put(demand.key(), DemandOfferStatus.CAPACITY);
-                continue;
-            }
-            result.put(demand.key(), DemandOfferStatus.OFFERED);
-        }
-        return Collections.unmodifiableMap(result);
-    }
-
-    @Override
-    public Map<ItemMatchKey, ItemRuleMatchEvidence> takeItemEvidence(
-            List<ItemMatchKey> keys
-    ) {
-        List<ItemMatchKey> bounded = boundedUniqueItemKeys(keys);
-        long now = System.currentTimeMillis();
-        LinkedHashMap<ItemMatchKey, ItemRuleMatchEvidence> result =
-                new LinkedHashMap<>();
-        for (ItemMatchKey key : bounded) {
-            ItemRuleMatchEvidence evidence = itemEvidence.remove(key);
-            if (evidence != null && evidence.holdUntilMillis() > now) {
-                result.put(key, evidence);
-            }
-        }
-        return Collections.unmodifiableMap(result);
     }
 
     private void runLoop() {
         try {
             while (state == State.RUNNING) {
-                Work first = demands.take();
-                List<Work> batch = new ArrayList<>(MAX_BATCH_SIZE);
-                batch.add(first);
-                demands.drainTo(batch, MAX_BATCH_SIZE - 1);
+                TaskRuleMatchDemand demand = demands.take();
                 try {
-                    processBatch(batch);
+                    processDemand(demand);
                 } catch (RuntimeException failure) {
-                    releasePending(batch);
                     LOGGER.log(
                             System.Logger.Level.WARNING,
-                            "operation=workerMatching.processBatch "
-                                    + "demands=" + batch.size()
+                            "operation=workerMatching.processDemand "
+                                    + "workerGroupId="
+                                    + demand.workerGroupId()
                                     + " failure="
                                     + failure.getClass().getSimpleName()
                     );
+                } finally {
+                    pendingWorkerGroups.remove(demand.workerGroupId());
                 }
             }
         } catch (InterruptedException interrupted) {
@@ -313,137 +200,65 @@ public final class WorkerMatchingRuntime
         }
     }
 
-    private void processBatch(List<Work> batch) {
-        List<TaskRuleMatchDemand> taskDemands = batch.stream()
-                .filter(TaskWork.class::isInstance)
-                .map(TaskWork.class::cast)
-                .map(TaskWork::demand)
+    private void processDemand(TaskRuleMatchDemand demand) {
+        if (demand.holdUntilMillis() <= System.currentTimeMillis()) {
+            return;
+        }
+        List<String> candidateIds = demand.orderedTaskNeeds().stream()
+                .map(TaskCandidateNeed::candidateId)
                 .toList();
-        List<ItemRuleMatchDemand> itemDemands = batch.stream()
-                .filter(ItemWork.class::isInstance)
-                .map(ItemWork.class::cast)
-                .map(ItemWork::demand)
-                .toList();
-        if (!taskDemands.isEmpty()) {
-            processTaskDemands(taskDemands);
-        }
-        if (!itemDemands.isEmpty()) {
-            processItemDemands(itemDemands);
-        }
-    }
-
-    private void processTaskDemands(List<TaskRuleMatchDemand> batch) {
-        Map<String, TaskRule> rules = catalog.loadTaskRules(
-                batch.stream().map(TaskRuleMatchDemand::taskId).toList()
+        Map<String, CandidateRule> rules = catalog.loadCandidateRules(
+                candidateIds
         );
-        Map<CandidatePool, Map<String, WorkerFacts>> factsByPool =
-                loadCandidatePools(batch.stream()
-                        .map(demand -> new CandidatePool(
-                                demand.workerGroupId(),
-                                demand.heldWorkerIds()
-                        ))
-                        .toList());
-        long now = System.currentTimeMillis();
-        for (TaskRuleMatchDemand demand : batch) {
-            try {
-                if (demand.holdUntilMillis() <= now) {
-                    continue;
-                }
-                TaskRule rule = rules.get(demand.taskId());
-                boolean usableRule = rule != null
-                        && demand.workerGroupId().equals(
-                                rule.workerGroupId()
-                        );
-                if (!usableRule) {
-                    logUnavailableRule("task", demand.taskId());
-                }
-                List<String> matches = usableRule
-                        ? matchWorkers(
-                                demand.heldWorkerIds(),
-                                factsByPool.get(new CandidatePool(
-                                        demand.workerGroupId(),
-                                        demand.heldWorkerIds()
-                                )),
-                                rule.allocationRule()
-                        )
-                        : List.of();
-                publishTaskEvidence(demand, matches, now);
-            } catch (IllegalArgumentException invalidRule) {
-                logInvalidRule("task", demand.taskId());
-                publishTaskEvidence(demand, List.of(), now);
-            } finally {
-                pendingTasks.remove(demand.taskId());
-            }
-        }
-    }
-
-    private void processItemDemands(List<ItemRuleMatchDemand> batch) {
-        Map<ItemMatchKey, ItemRule> rules = catalog.loadItemRules(
-                batch.stream().map(ItemRuleMatchDemand::key).toList()
+        Map<String, WorkerFacts> facts = catalog.loadWorkerFacts(
+                demand.workerGroupId(),
+                List.copyOf(demand.heldWorkerLeaseScores().keySet())
         );
-        Map<CandidatePool, Map<String, WorkerFacts>> factsByPool =
-                loadCandidatePools(batch.stream()
-                        .map(demand -> new CandidatePool(
-                                demand.workerGroupId(),
-                                demand.heldWorkerIds()
-                        ))
-                        .toList());
-        long now = System.currentTimeMillis();
-        for (ItemRuleMatchDemand demand : batch) {
-            try {
-                if (demand.holdUntilMillis() <= now) {
-                    continue;
-                }
-                ItemRule rule = rules.get(demand.key());
-                boolean usableRule = rule != null
-                        && demand.workerGroupId().equals(
-                                rule.workerGroupId()
-                        );
-                if (!usableRule) {
-                    logUnavailableRule("item", demand.key().toString());
-                }
-                List<String> matches = usableRule
-                        ? matchWorkers(
-                                demand.heldWorkerIds(),
-                                factsByPool.get(new CandidatePool(
-                                        demand.workerGroupId(),
-                                        demand.heldWorkerIds()
-                                )),
-                                rule.allocationRule()
-                        )
-                        : List.of();
-                publishItemEvidence(demand, matches, now);
-            } catch (IllegalArgumentException invalidRule) {
-                logInvalidRule("item", demand.key().toString());
-                publishItemEvidence(demand, List.of(), now);
-            } finally {
-                pendingItems.remove(demand.key());
+        LinkedHashMap<String, Long> available = new LinkedHashMap<>(
+                demand.heldWorkerLeaseScores()
+        );
+        for (TaskCandidateNeed need : demand.orderedTaskNeeds()) {
+            if (available.isEmpty()
+                    || demand.holdUntilMillis()
+                            <= System.currentTimeMillis()) {
+                return;
             }
+            CandidateRule rule = rules.get(need.candidateId());
+            if (rule == null
+                    || !demand.workerGroupId().equals(rule.workerGroupId())) {
+                logUnavailableRule(need.candidateId());
+                continue;
+            }
+            List<CandidateWorkerEntry> matches;
+            try {
+                matches = matchCandidates(available, facts, rule);
+            } catch (IllegalArgumentException invalidRule) {
+                logInvalidRule(need.candidateId());
+                continue;
+            }
+            if (matches.isEmpty()) {
+                continue;
+            }
+            List<String> accepted = candidateCache.appendCandidateWorkers(
+                    need.candidateId(),
+                    need.maximumCandidateWorkers(),
+                    matches,
+                    demand.holdUntilMillis()
+            );
+            accepted.forEach(available::remove);
         }
     }
 
-    private Map<CandidatePool, Map<String, WorkerFacts>> loadCandidatePools(
-            List<CandidatePool> pools
-    ) {
-        LinkedHashMap<CandidatePool, Map<String, WorkerFacts>> result =
-                new LinkedHashMap<>();
-        for (CandidatePool pool : pools) {
-            result.computeIfAbsent(pool, ignored -> catalog.loadWorkerFacts(
-                    pool.workerGroupId(),
-                    pool.workerIds()
-            ));
-        }
-        return Collections.unmodifiableMap(result);
-    }
-
-    private List<String> matchWorkers(
-            List<String> workerIds,
+    private List<CandidateWorkerEntry> matchCandidates(
+            LinkedHashMap<String, Long> available,
             Map<String, WorkerFacts> facts,
-            Map<String, Object> allocationRule
+            CandidateRule rule
     ) {
-        List<Condition> conditions = evaluator.normalize(allocationRule);
-        LinkedHashSet<String> matches = new LinkedHashSet<>();
-        for (String workerId : workerIds) {
+        List<Condition> conditions = evaluator.normalize(
+                rule.allocationRule()
+        );
+        List<CandidateWorkerEntry> matches = new ArrayList<>();
+        available.forEach((workerId, heldScore) -> {
             WorkerFacts worker = facts.get(workerId);
             if (worker != null && evaluator.matches(
                     conditions,
@@ -451,74 +266,10 @@ public final class WorkerMatchingRuntime
                     worker.workerProperties(),
                     worker.platformProperties()
             )) {
-                matches.add(workerId);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    private void publishTaskEvidence(
-            TaskRuleMatchDemand demand,
-            List<String> matches,
-            long now
-    ) {
-        if (demand.holdUntilMillis() <= now || !reserveEvidenceCapacity()) {
-            return;
-        }
-        taskEvidence.put(demand.taskId(), new TaskRuleMatchEvidence(
-                demand.taskId(),
-                demand.workerGroupId(),
-                matches,
-                demand.holdUntilMillis()
-        ));
-    }
-
-    private void publishItemEvidence(
-            ItemRuleMatchDemand demand,
-            List<String> matches,
-            long now
-    ) {
-        if (demand.holdUntilMillis() <= now || !reserveEvidenceCapacity()) {
-            return;
-        }
-        itemEvidence.put(demand.key(), new ItemRuleMatchEvidence(
-                demand.key(),
-                demand.workerGroupId(),
-                matches,
-                demand.holdUntilMillis()
-        ));
-    }
-
-    private boolean reserveEvidenceCapacity() {
-        discardExpiredEvidence(System.currentTimeMillis());
-        return taskEvidence.size() + itemEvidence.size() < evidenceCapacity;
-    }
-
-    private void discardExpiredEvidence(long now) {
-        taskEvidence.entrySet().removeIf(entry ->
-                entry.getValue().holdUntilMillis() <= now);
-        itemEvidence.entrySet().removeIf(entry ->
-                entry.getValue().holdUntilMillis() <= now);
-    }
-
-    private void discardExpiredTaskEvidence(String taskId, long now) {
-        taskEvidence.computeIfPresent(taskId, (ignored, evidence) ->
-                evidence.holdUntilMillis() <= now ? null : evidence);
-    }
-
-    private void discardExpiredItemEvidence(ItemMatchKey key, long now) {
-        itemEvidence.computeIfPresent(key, (ignored, evidence) ->
-                evidence.holdUntilMillis() <= now ? null : evidence);
-    }
-
-    private void releasePending(List<Work> batch) {
-        batch.forEach(work -> {
-            if (work instanceof TaskWork task) {
-                pendingTasks.remove(task.demand().taskId());
-            } else if (work instanceof ItemWork item) {
-                pendingItems.remove(item.demand().key());
+                matches.add(new CandidateWorkerEntry(workerId, heldScore));
             }
         });
+        return List.copyOf(matches);
     }
 
     private void requireRunning() {
@@ -545,10 +296,7 @@ public final class WorkerMatchingRuntime
 
     private void clearTransientState() {
         demands.clear();
-        pendingTasks.clear();
-        pendingItems.clear();
-        taskEvidence.clear();
-        itemEvidence.clear();
+        pendingWorkerGroups.clear();
     }
 
     @Override
@@ -590,108 +338,19 @@ public final class WorkerMatchingRuntime
         }
     }
 
-    private static List<TaskRuleMatchDemand> boundedUniqueTaskDemands(
-            List<TaskRuleMatchDemand> values
-    ) {
-        Objects.requireNonNull(values, "demands");
-        if (values.isEmpty() || values.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "demands must contain 1.." + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<String> keys = new LinkedHashSet<>();
-        for (TaskRuleMatchDemand value : values) {
-            Objects.requireNonNull(value, "demand");
-            if (!keys.add(value.taskId())) {
-                throw new IllegalArgumentException(
-                        "demands must not contain duplicate Task ids"
-                );
-            }
-        }
-        return List.copyOf(values);
-    }
-
-    private static List<ItemRuleMatchDemand> boundedUniqueItemDemands(
-            List<ItemRuleMatchDemand> values
-    ) {
-        Objects.requireNonNull(values, "demands");
-        if (values.isEmpty() || values.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "demands must contain 1.." + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<ItemMatchKey> keys = new LinkedHashSet<>();
-        for (ItemRuleMatchDemand value : values) {
-            Objects.requireNonNull(value, "demand");
-            if (!keys.add(value.key())) {
-                throw new IllegalArgumentException(
-                        "demands must not contain duplicate Item keys"
-                );
-            }
-        }
-        return List.copyOf(values);
-    }
-
-    private static List<ItemMatchKey> boundedUniqueItemKeys(
-            List<ItemMatchKey> values
-    ) {
-        Objects.requireNonNull(values, "keys");
-        if (values.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "keys must contain at most " + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<ItemMatchKey> unique = new LinkedHashSet<>();
-        for (ItemMatchKey value : values) {
-            Objects.requireNonNull(value, "key");
-            if (!unique.add(value)) {
-                throw new IllegalArgumentException(
-                        "keys must not contain duplicates"
-                );
-            }
-        }
-        return List.copyOf(values);
-    }
-
-    private static List<String> boundedUniqueStrings(
-            List<String> values,
-            String name
-    ) {
-        Objects.requireNonNull(values, name);
-        if (values.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    name + " must contain at most " + MAX_BATCH_SIZE + " entries"
-            );
-        }
-        LinkedHashSet<String> unique = new LinkedHashSet<>();
-        for (String value : values) {
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException(
-                        name + " entries must be non-blank"
-                );
-            }
-            if (!unique.add(value)) {
-                throw new IllegalArgumentException(
-                        name + " must not contain duplicates"
-                );
-            }
-        }
-        return List.copyOf(values);
-    }
-
-    private static void logInvalidRule(String kind, String key) {
+    private static void logInvalidRule(String candidateId) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
-                "operation=workerMatching.evaluate invalidRuleKind="
-                        + kind + " key=" + key
+                "operation=workerMatching.evaluate invalidRuleKind=candidate "
+                        + "key=" + candidateId
         );
     }
 
-    private static void logUnavailableRule(String kind, String key) {
+    private static void logUnavailableRule(String candidateId) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
-                "operation=workerMatching.evaluate unavailableRuleKind="
-                        + kind + " key=" + key
+                "operation=workerMatching.evaluate "
+                        + "unavailableRuleKind=candidate key=" + candidateId
         );
     }
 }

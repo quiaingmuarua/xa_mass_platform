@@ -109,24 +109,18 @@ final class AndroidRuntimeApiClientTest {
     }
 
     @Test
-    void submitsOneBatchWithCallerOwnedAllocationRules() {
+    void submitsOneBatchWithCallerOwnedWorkerSelectors() {
         List<AndroidRuntimeApiClient.TaskCall> calls = client.callItems(
                 List.of(
                         new AndroidRuntimeApiClient.TaskItemCall(
                                 AndroidWorkerProofConstants.DELAY_EVENT,
                                 Map.of("delayMillis", 100L),
-                                Map.of(
-                                        "worker.packageName",
-                                        Map.of("$eq", "app.lab1")
-                                )
+                                List.of("workerId", "$eq", "worker-lab1")
                         ),
                         new AndroidRuntimeApiClient.TaskItemCall(
                                 AndroidWorkerProofConstants.DELAY_EVENT,
                                 Map.of("delayMillis", 100L),
-                                Map.of(
-                                        "worker.packageName",
-                                        Map.of("$eq", "app.lab2")
-                                )
+                                List.of("workerId", "$eq", "worker-lab2")
                         )
                 ),
                 1_000L
@@ -140,25 +134,19 @@ final class AndroidRuntimeApiClientTest {
         List<Object> items = JsonValues.array(request.get("items"), "items");
         assertEquals(2, items.size());
         assertEquals(
-                Map.of(
-                        "worker.packageName",
-                        Map.of("$eq", "app.lab1")
-                ),
-                JsonValues.object(
+                List.of("workerId", "$eq", "worker-lab1"),
+                JsonValues.array(
                         JsonValues.object(items.get(0), "item")
-                                .get("allocationRule"),
-                        "allocationRule"
+                                .get("workerSelector"),
+                        "workerSelector"
                 )
         );
         assertEquals(
-                Map.of(
-                        "worker.packageName",
-                        Map.of("$eq", "app.lab2")
-                ),
-                JsonValues.object(
+                List.of("workerId", "$eq", "worker-lab2"),
+                JsonValues.array(
                         JsonValues.object(items.get(1), "item")
-                                .get("allocationRule"),
-                        "allocationRule"
+                                .get("workerSelector"),
+                        "workerSelector"
                 )
         );
     }

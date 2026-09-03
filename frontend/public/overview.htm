@@ -670,7 +670,7 @@
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Worker acquisition</div>
-            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 与 <strong>ON_DEMAND_ITEM_RULE</strong> 都由Kernel发布有界Match Demand；Worker Matching解释Rule与Properties并返回WorkerId证据，Kernel再按Score、priority、唯一性和exact lease形成调度决定。</div>
+            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 由Kernel排序并hold有界Worker池，Matching解释Candidate Rule与Properties后写Candidate Cache；<strong>ON_DEMAND_ITEM_RULE</strong> 由Kernel把有限Worker Selector规范化为WorkerId目标，再按Score、唯一性和exact lease形成调度决定。</div>
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Lease & claim</div>
@@ -870,7 +870,7 @@ DeliveryReport
           <article class="card worker">
             <span class="owner">WORKER_MATCHING_JVM</span>
             <h3>Facts & rule interpretation</h3>
-            <p>持久化Worker/Platform Properties和Task/Item Rule，消费有界Demand并返回短期WorkerId证据；不读取Score、不Lease或Claim。</p>
+            <p>持久化Worker/Platform Properties和PRECOMPUTED Candidate Rule，消费有界Demand并写入短期WorkerId候选；ON_DEMAND Worker Selector由Kernel规范化，不经过Matching。</p>
           </article>
           <article class="card server">
             <span class="owner">SERVER_JVM</span>
@@ -936,7 +936,7 @@ Proof
             <h3>稳定owner cut</h3>
             <ul>
               <li>Task、TaskItem、Worker三条独立score轴</li>
-              <li>两类Worker acquisition workflow与同一Demand/Evidence边界</li>
+              <li>PRECOMPUTED有序Demand与ON_DEMAND身份直选</li>
               <li>一个KernelPacerRuntime、两个Convergence Application</li>
               <li>Kernel / Server / Transport authority</li>
               <li>Adapter与Worker三层结构</li>

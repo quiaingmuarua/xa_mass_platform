@@ -26,7 +26,6 @@ class TaskFaultStateTest {
                 "backup-coordinate",
                 "checkpoint-1",
                 "checkpoint-message-1",
-                1L,
                 ConvergenceTestData.batches(2),
                 null
         );
@@ -45,7 +44,7 @@ class TaskFaultStateTest {
     @Test
     void rejectsUnknownStateShape() throws Exception {
         Path path = temporaryDirectory.resolve("invalid.json");
-        Files.writeString(path, "{\"schemaVersion\":3}");
+        Files.writeString(path, "{\"schemaVersion\":4}");
 
         assertThatThrownBy(() -> TaskFaultState.load(path))
                 .isInstanceOf(IllegalStateException.class);

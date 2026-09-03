@@ -14,7 +14,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
 | `worker` | Minimal Worker scheduling metadata, catalog, opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
-| `assignment` | Candidate Worker Cache owner plus the identity-only Match Demand/Evidence port |
+| `assignment` | Candidate Worker Cache owner plus the ordered PRECOMPUTED Match Demand port |
 | `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe/evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
@@ -22,8 +22,8 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 Candidate Cache stays here because it is a bounded, disposable Kernel
 mechanism with its own Redis shape. Allocation policy, result disposition,
 serviceability policy, Pacer loops and thread lifecycle belong to
-[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, allocation rules and
-constraint evaluation belong to
+[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, PRECOMPUTED Candidate
+Rules and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
 The three Result event interfaces are stable semantic Mechanism ports rather

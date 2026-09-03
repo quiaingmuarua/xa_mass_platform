@@ -17,6 +17,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResultPage;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.RedisClient;
@@ -302,8 +303,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return Map.of();
         }
 
-        Integer maxRetryTimes = loadMaxRetryTimes(taskId);
-        if (maxRetryTimes == null) {
+        TaskAppendPolicy appendPolicy = loadAppendPolicy(taskId);
+        if (appendPolicy == null) {
             return uniformResults(
                     orderedItems.keySet(),
                     TaskItemAppendStatus.NOT_FOUND
@@ -315,7 +316,11 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         var results = new LinkedHashMap<String, TaskItemAppendResult>();
         orderedItems.forEach((messageId, item) -> {
             try {
-                MaterializedItem materialized = materialize(item, nowMillis);
+                MaterializedItem materialized = materialize(
+                        item,
+                        nowMillis,
+                        appendPolicy.workerAllocationMechanism()
+                );
                 records.put(messageId, encodeItem(materialized));
                 dueMillis.put(messageId, initialDueMillis(materialized));
             } catch (IllegalArgumentException | JacksonException error) {
@@ -346,7 +351,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             itemScoreBand.initializeItemScores(
                     taskId,
                     dueMillis,
-                    maxRetryTimes
+                    appendPolicy.maxRetryTimes()
             ).forEach((messageId, result) -> results.put(
                     messageId,
                     switch (result.status()) {
@@ -566,16 +571,26 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         }
     }
 
-    private Integer loadMaxRetryTimes(String taskId) {
-        String rawConfig = commands().hget(
+    private TaskAppendPolicy loadAppendPolicy(String taskId) {
+        List<KeyValue<String, String>> fields = commands().hmget(
                 taskDescriptorKey(taskId),
+                "workerAllocationMechanism",
                 "configJson"
         );
-        if (rawConfig == null) {
+        if (fields.stream().allMatch(field -> !field.hasValue())) {
             return null;
         }
         try {
-            JsonNode config = mapper.readTree(rawConfig);
+            if (fields.stream().anyMatch(field -> !field.hasValue())) {
+                throw new IllegalArgumentException(
+                        "Task append policy fields are incomplete"
+                );
+            }
+            WorkerAllocationMechanism mechanism =
+                    WorkerAllocationMechanism.valueOf(
+                            fields.get(0).getValue()
+                    );
+            JsonNode config = mapper.readTree(fields.get(1).getValue());
             JsonNode value = config.get("maxRetryTimes");
             if (value == null
                     || !value.isTextual()
@@ -590,7 +605,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                         "maxRetryTimes must be in 0..98"
                 );
             }
-            return decoded;
+            return new TaskAppendPolicy(mechanism, decoded);
         } catch (JacksonException | IllegalArgumentException error) {
             throw new IllegalStateException(
                     "Task scheduling declaration is corrupt",
@@ -599,7 +614,17 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         }
     }
 
-    private MaterializedItem materialize(TaskItem item, long nowMillis) {
+    private MaterializedItem materialize(
+            TaskItem item,
+            long nowMillis,
+            WorkerAllocationMechanism mechanism
+    ) {
+        if (mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                && !item.targetWorkerIds().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "PRECOMPUTED TaskItem must not contain target workers"
+            );
+        }
         rejectNonFiniteNumbers(item.payload());
         long expiry;
         if (item.expireAtMillis() == null) {
@@ -629,6 +654,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         payload.put("priority", record.priority());
         payload.put("createdAtMillis", record.createdAtMillis());
         payload.put("expireAtMillis", item.expireAtMillis());
+        payload.put("targetWorkerIds", record.targetWorkerIds());
         return mapper.writeValueAsString(payload);
     }
 
@@ -641,7 +667,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                             "payload",
                             "priority",
                             "createdAtMillis",
-                            "expireAtMillis"
+                            "expireAtMillis",
+                            "targetWorkerIds"
                     ))) {
                 return null;
             }
@@ -650,11 +677,14 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             JsonNode priority = item.get("priority");
             JsonNode createdAt = item.get("createdAtMillis");
             JsonNode expireAt = item.get("expireAtMillis");
+            JsonNode targetWorkerIds = item.get("targetWorkerIds");
             if (eventCode == null || !eventCode.isTextual()
                     || payload == null || !payload.isObject()
                     || priority == null || !priority.isIntegralNumber()
                     || createdAt == null || !createdAt.isIntegralNumber()
-                    || expireAt == null || !expireAt.isIntegralNumber()) {
+                    || expireAt == null || !expireAt.isIntegralNumber()
+                    || targetWorkerIds == null
+                    || !targetWorkerIds.isArray()) {
                 return null;
             }
             Map<String, Object> payloadMap = mapper.convertValue(
@@ -662,13 +692,23 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     new TypeReference<>() {
                     }
             );
+            List<String> targetIds = new ArrayList<>();
+            for (JsonNode target : targetWorkerIds) {
+                if (!target.isTextual()) {
+                    throw new IllegalArgumentException(
+                            "target workerId must be text"
+                    );
+                }
+                targetIds.add(target.textValue());
+            }
             return new TaskItem(
                     messageId,
                     eventCode.textValue(),
                     createdAt.longValue(),
                     payloadMap,
                     priority.intValue(),
-                    expireAt.longValue()
+                    expireAt.longValue(),
+                    targetIds
             );
         } catch (JacksonException | IllegalArgumentException error) {
             return null;
@@ -853,6 +893,12 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private record MaterializedItem(
             TaskItem record,
             long expireAtMillis
+    ) {
+    }
+
+    private record TaskAppendPolicy(
+            WorkerAllocationMechanism workerAllocationMechanism,
+            int maxRetryTimes
     ) {
     }
 }

@@ -10,13 +10,13 @@ Status: active Kernel Task dispatch contract.
 observe due Item scores
   -> load minimal TaskItems
   -> settle expired or exhausted Items
-  -> obtain leased Worker candidates
-  -> exact claim and publish Commands
-  -> pace, close or park the Task
+  -> obtain held Worker candidates by the Task's fixed mechanism
+  -> exact-renew Worker, claim Item, and publish Command
+  -> pace, close, or park the Task
 ```
 
-Kernel owns scheduling and finality. Worker Matching supplies only short-lived
-identity evidence for ON_DEMAND Items.
+Kernel owns scheduling and finality. Worker Matching does not participate in
+the ON_DEMAND dispatch loop.
 
 ## Common Item Flow
 
@@ -26,65 +26,69 @@ For each Task, the policy:
 2. loads the corresponding minimal TaskItems;
 3. stores the fixed failed Result before promoting exhausted or expired Items
    to `FINAL_FAILED`;
-4. identifies claimable Items;
+4. identifies claimable Items in observation order;
 5. obtains Worker candidates through the Task's fixed allocation mechanism;
-6. delegates the exact Worker-renew, Item-claim and Command-publication closure;
+6. delegates exact Worker renewal, Item claim, and Command publication;
 7. rewrites ordinary Task pacing in a `finally` boundary.
 
-If no claimable Item remains, `TaskIdleSettlement` performs the complete
-ACTIVE recheck and exact close or private idle park.
+If no claimable Item remains, `TaskIdleSettlement` performs the complete ACTIVE
+recheck and exact close or private idle park.
 
 ## PRECOMPUTED
 
 ```text
-Candidate Cache consume
-  -> exact renew cached Worker lease score
-  -> load current minimal Worker descriptor
-  -> pair leased Workers with claimable Items
+consume Candidate Cache entries for candidateId
+  -> load current minimal Worker descriptors for the Task WorkerGroup
+  -> pair candidates with claimable Items in bounded order
+  -> final exact renewal through TaskAssignmentDispatcher
 ```
 
-A cache miss is a bounded no-op. Dispatch does not publish Item Match Demand
-and does not fall back to ON_DEMAND matching.
+Each Cache entry carries the exact opaque score produced by the earlier
+allocation hold. Candidate consumption does not renew early. A missing
+descriptor, expired entry, changed score, or Cache miss is a bounded no-op.
+Dispatch never falls back to ON_DEMAND acquisition.
 
 ## ON_DEMAND
 
+Each ON_DEMAND TaskItem stores only a normalized target list:
+
 ```text
-claimable taskId + messageId keys
-  -> take Item Match Evidence
-  -> confirm exact active HOT holds
-  -> Kernel priority and round-unique selection
-  -> pair Worker with Item
-  -> exact-hold a bounded Worker pool for unassigned Items
-  -> publish Item Match Demand for every unassigned Item
+[]                         -> ANY due HOT Worker in the Task WorkerGroup
+[worker-a]                 -> explicit $eq target
+[worker-a, worker-b, ...]  -> ordered explicit $in targets, at most 100
 ```
 
-An Item Evidence contains its key, fixed WorkerGroup, matched Worker IDs and
-the hold deadline copied from its Demand. It has no Rule, Properties, Score or
-endpoint. Expired, wrong-Group or no-longer-held evidence is treated as empty.
+For claimable Items in order, Kernel:
 
-Kernel observes and exact-holds a bounded due HOT pool, then offers Item Demands
-containing only the successfully held Worker IDs. Worker Matching reads the
-create-only Item Rules and only the facts for those supplied Worker IDs. It
-returns all matches in the pool; requested count and cross-Task uniqueness are
-applied later by Kernel.
+```text
+explicit targets -> observe due HOT scores only for those Worker IDs
+ANY targets      -> observe a bounded due HOT WorkerGroup pool
+                  -> exclude Workers already used in this dispatch round
+                  -> exact-hold selected Workers
+                  -> load current minimal delivery descriptors
+                  -> final exact renewal, Item claim, and Command publication
+```
+
+Kernel validates the public finite Worker Selector and persists only its
+normalized Worker IDs. The raw Selector is not persisted or projected. There
+is no Item Rule, Item Match Demand, Evidence queue, matching cursor, or
+Candidate Cache path for ON_DEMAND.
 
 ## Round Uniqueness
 
-One dispatch round keeps a WorkerId set shared across Tasks. A Worker can back
-at most one Item assignment in that round. Task priority is applied by Kernel
-candidate selection; Matching does not know the priority.
-
-An inactive hold or claim failure returns partial progress. The policy does
-not refill inside the same Item assignment attempt. Unmatched and unselected
-holds are not released; expiry restores unused capacity and their newer score
-position allows other due Workers to enter later bounded pools.
+One dispatch round keeps a Worker-ID set shared across Tasks. A Worker can back
+at most one Item assignment in that round. Explicit targets are considered in
+Item and target order; ANY Items use the Score Owner's bounded due order.
+Exact-hold contention or a missing descriptor yields partial progress. The
+policy does not refill or release inside the same assignment attempt; unused
+holds recover through expiry.
 
 ## Assignment And Result Boundary
 
-`TaskAssignmentDispatcher` alone constructs the Delivery Command after:
+`TaskAssignmentDispatcher` alone constructs a Delivery Command after:
 
 ```text
-exact Worker lease renewal
+exact Worker lease renewal against the carried score
   -> exact Item claim
   -> mailbox append
 ```
@@ -97,18 +101,18 @@ Properties.
 
 - Missing Item records are ignored for the current observation.
 - Invalid stored Kernel records fail at their owner boundary.
-- Demand capacity, missing Evidence and empty matches leave Items due.
-- A changed Worker Score prevents exact hold confirmation and therefore
-  dispatch.
-- A Properties change does not revoke already emitted Evidence; Evidence TTL,
-  single consumption and exact Score lease bound the stale window.
-- Matching runtime failure prevents new evidence and is exposed through Server
-  readiness; Kernel does not install a fallback matcher.
+- Empty or stale candidate observations leave Items due.
+- A changed Worker score prevents exact hold or renewal and therefore dispatch.
+- Matching runtime failure blocks new PRECOMPUTED Cache fills but does not
+  create an ON_DEMAND fallback.
+- Properties changes do not revoke existing PRECOMPUTED Cache entries; Cache
+  expiry and exact score renewal bound their stale window.
 
 ## Guardrails
 
-- Do not add allocation rules to `TaskItem`.
-- Do not let Matching lease, rank, claim or publish Commands.
-- Do not infer Item failure from missing Evidence.
-- Do not add an ON_DEMAND result cache or Candidate Cache fallback.
+- Do not add allocation Rule maps or raw Selector arrays to `TaskItem`; only
+  normalized Worker IDs are permitted for ON_DEMAND.
+- Do not let Matching lease, rank, claim, or publish Commands.
+- Do not infer Item failure from absent candidates.
+- Do not add an ON_DEMAND Candidate Cache or Matching runtime round trip.
 - Do not treat Result observation as TaskItem finality.

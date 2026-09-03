@@ -910,9 +910,9 @@ class RuntimeBoundaryIntegrationTest {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "payload": {"value": "input"},
-                            "allocationRule": {
-                              "workerId": {"$eq": "%s"}
-                            }
+                            "workerSelector": [
+                              "workerId", "$eq", "%s"
+                            ]
                           }],
                           "waitTimeoutMillis": 10000
                         }

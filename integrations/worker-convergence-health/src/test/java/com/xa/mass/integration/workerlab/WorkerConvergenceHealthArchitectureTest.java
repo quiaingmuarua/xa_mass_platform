@@ -39,10 +39,6 @@ class WorkerConvergenceHealthArchitectureTest {
                 .doesNotContain("seed")
                 .doesNotContain("rounds")
                 .doesNotContain("/results:export")
-                .doesNotContain("PRECOMPUTED")
-                .doesNotContain("createTask(")
-                .doesNotContain("appendItems(")
-                .doesNotContain("approveTask(")
                 .doesNotContain("uniqueResultCount");
     }
 

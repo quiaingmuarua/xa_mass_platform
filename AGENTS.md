@@ -12,8 +12,9 @@ agents change the repository; it is not the canonical mechanism narrative.
   score/resource mechanisms.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
-- `worker_matching_jvm/` owns Worker/Platform Properties, Task/Item rules,
-  constraint interpretation and bounded Worker-ID evidence.
+- `worker_matching_jvm/` owns Worker/Platform Properties, PRECOMPUTED
+  Candidate Rules, constraint interpretation and ordered candidate
+  publication.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
@@ -159,8 +160,10 @@ architectures.
 - Candidate Cache remains a stable mechanical owner here;
   Pacer policy and loop code do not.
 - Task Owner stores only scheduling descriptors and TaskItem execution data.
-  It must not store or interpret allocation Rules, Match Property names or
-  operators; persistent Rules and their semantics belong to Worker Matching.
+  It must not store or interpret PRECOMPUTED allocation Rules, Match Property
+  names or constraint operators; persistent Candidate Rules and their
+  semantics belong to Worker Matching. It does own the closed ON_DEMAND
+  `workerSelector` instruction and persists only normalized Worker IDs.
 - TaskRuntime owns the Task-scoped self-describing Result HASH. Each value
   contains `code + non-empty opaqueResultPayload`; exact `200` is success.
   Success replaces an earlier failed value, while terminal failed storage uses
@@ -197,16 +200,19 @@ kernel_jvm`.
 - `WorkerCandidateSelectionPolicy` owns due HOT pool observation, exact hold,
   priority/count/unique selection, cached renewal and endpoint-bearing
   candidate assembly. Allocation and Dispatch policies exact-hold a bounded
-  due pool before publishing identity-only Match Demands containing only the
-  successfully held Worker IDs. They consume evidence through
-  `WorkerMatchRuntime` only while that exact clean hold remains active.
-  Unmatched and unselected holds expire naturally; do not compensate-release
-  them or add a pending lease registry.
+  due pool before publishing an ordered PRECOMPUTED Match Demand containing
+  only successfully held Worker IDs and their opaque exact scores. Matching
+  may filter that pool and append accepted entries directly to the
+  Kernel-owned Candidate Cache; final dispatch exact-renews the cached score.
+  ON_DEMAND TaskItems contain only normalized explicit Worker-ID targets or an
+  empty ANY target and acquire from Worker Score directly without a Matching
+  runtime round trip. Unmatched and unselected holds expire naturally; do not
+  compensate-release them or add a pending lease registry.
   They must not read Rule or Properties data or interpret constraint syntax.
   There is no generic acquisition Strategy or cached-to-on-demand fallback.
-  `WorkerAllocationMechanism` is a fixed Producer workflow label; Task-rule
-  precomputation and Item-rule on-demand workflows are mutually exclusive and
-  do not exchange Candidate Cache entries.
+  `WorkerAllocationMechanism` is a fixed Producer workflow label;
+  PRECOMPUTED Candidate Rule matching and ON_DEMAND Worker Selector workflows
+  are mutually exclusive and do not exchange Candidate Cache entries.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,

@@ -69,7 +69,8 @@ class RuntimeViewControllerTest {
         workerScheduling = mock(WorkerSchedulingService.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(matchingCatalog.loadTaskRules(anyList())).thenReturn(Map.of());
+        when(matchingCatalog.loadCandidateRules(anyList()))
+                .thenReturn(Map.of());
         when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
                 .thenAnswer(invocation -> {
                     String workerGroupId = invocation.getArgument(0);
@@ -205,7 +206,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
-        verify(matchingCatalog, never()).loadTaskRules(anyList());
+        verify(matchingCatalog, never()).loadCandidateRules(anyList());
     }
 
     @Test

@@ -29,9 +29,6 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -379,6 +376,94 @@ class TaskRpcCallServiceTest {
         }
     }
 
+    @Test
+    void normalizedWorkerTargetsArePersistedWithTheSubmittedItem() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = properties(10);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        when(submission.submit(eq("task-1"), anyList()))
+                .thenReturn(submitted("message-1"));
+        when(taskRuntime.loadTaskItemResults(
+                "task-1",
+                List.of("message-1")
+        )).thenReturn(Map.of(
+                "message-1",
+                TaskItemResult.succeeded("opaque")
+        ));
+
+        service(
+                submission,
+                taskRuntime,
+                registry,
+                properties
+        ).call(
+                "task-1",
+                new TaskRpcCallRequest(
+                        List.of(new TaskItemRequest(
+                                "message-1",
+                                "event",
+                                Map.of(),
+                                5,
+                                1_000L,
+                                List.of(
+                                        "workerId",
+                                        "$in",
+                                        List.of("worker-b", "worker-a")
+                                )
+                        )),
+                        1_000L
+                )
+        );
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItem>> items = ArgumentCaptor.forClass(
+                List.class
+        );
+        verify(submission).submit(eq("task-1"), items.capture());
+        assertThat(items.getValue()).singleElement().satisfies(item ->
+                assertThat(item.targetWorkerIds()).containsExactly(
+                        "worker-b",
+                        "worker-a"
+                )
+        );
+        registry.shutdown();
+    }
+
+    @Test
+    void invalidWorkerSelectorIsRejectedBeforeTaskItemSubmission() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = properties(10);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+
+        assertThatThrownBy(() -> service(
+                submission,
+                taskRuntime,
+                registry,
+                properties
+        ).call(
+                "task-1",
+                new TaskRpcCallRequest(
+                        List.of(new TaskItemRequest(
+                                "message-1",
+                                "event",
+                                Map.of(),
+                                5,
+                                1_000L,
+                                List.of("worker.region", "$eq", "local")
+                        )),
+                        1_000L
+                )
+        )).isInstanceOfSatisfying(ServerException.class, error ->
+                assertThat(error.errorCode()).isEqualTo(
+                        ServerErrorCode.INVALID_TASK_DATA_REQUEST
+                )
+        );
+        verify(submission, never()).submit(anyString(), anyList());
+        registry.shutdown();
+    }
+
     private static TaskRpcCallService service(
             TaskCallItemSubmission submission,
             TaskRuntime taskRuntime,
@@ -401,34 +486,17 @@ class TaskRpcCallServiceTest {
                 });
         TaskItemMapper taskItems = mock(TaskItemMapper.class);
         when(taskItems.nowMillis()).thenReturn(1_000L);
-        when(taskItems.onDemandItem(any(TaskItemRequest.class), eq(1_000L)))
-                .thenAnswer(invocation -> new TaskItemMapper().onDemandItem(
-                        invocation.getArgument(0),
-                        invocation.getArgument(1)
-                ));
-        WorkerMatchingCatalog matchingCatalog = mock(
-                WorkerMatchingCatalog.class
-        );
-        when(matchingCatalog.createItemRules(anyList()))
-                .thenAnswer(invocation -> {
-                    List<WorkerMatchingCatalog.ItemRule> rules =
-                            invocation.getArgument(0);
-                    var results = new LinkedHashMap<
-                            com.xa.mass.kernel.assignment.WorkerMatchRuntime
-                                    .ItemMatchKey,
-                            MutationResult
-                            >();
-                    rules.forEach(rule -> results.put(
-                            rule.key(),
-                            new MutationResult(MutationStatus.APPLIED)
-                    ));
-                    return results;
-                });
+        when(taskItems.onDemandItem(
+                any(TaskItemRequest.class), eq(1_000L), anyList()
+        )).thenAnswer(invocation -> new TaskItemMapper().onDemandItem(
+                invocation.getArgument(0),
+                invocation.getArgument(1),
+                invocation.getArgument(2)
+        ));
         return new TaskRpcCallService(
                 submission,
                 taskRuntime,
                 taskCatalog,
-                matchingCatalog,
                 registry,
                 taskItems,
                 properties
@@ -459,7 +527,7 @@ class TaskRpcCallServiceTest {
                 payload,
                 5,
                 1_000L,
-                Map.of()
+                List.of()
         );
     }
 

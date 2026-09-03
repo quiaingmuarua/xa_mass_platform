@@ -1,141 +1,97 @@
 package com.xa.mass.kernel.assignment;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Bounded identity-only handoff between Kernel scheduling and Worker matching.
- */
+/** Bounded handoff from Kernel scheduling to Worker matching. */
 public interface WorkerMatchRuntime {
 
-    int MAX_BATCH_SIZE = 100;
-    int MAX_MATCHED_WORKERS = 100;
+    int MAX_TASKS_PER_DEMAND = 100;
+    int MAX_HELD_WORKERS_PER_DEMAND = 100;
 
-    Map<String, DemandOfferStatus> offerTaskDemands(
-            List<TaskRuleMatchDemand> demands
-    );
+    boolean offerTaskDemand(TaskRuleMatchDemand demand);
 
-    Map<String, TaskRuleMatchEvidence> takeTaskEvidence(
-            List<String> taskIds
-    );
-
-    Map<ItemMatchKey, DemandOfferStatus> offerItemDemands(
-            List<ItemRuleMatchDemand> demands
-    );
-
-    Map<ItemMatchKey, ItemRuleMatchEvidence> takeItemEvidence(
-            List<ItemMatchKey> keys
-    );
-
-    enum DemandOfferStatus {
-        OFFERED,
-        ALREADY_PENDING,
-        CAPACITY
-    }
-
-    record ItemMatchKey(String taskId, String messageId) {
-        public ItemMatchKey {
-            requireNonBlank(taskId, "taskId");
-            requireNonBlank(messageId, "messageId");
+    record TaskCandidateNeed(
+            String candidateId,
+            int maximumCandidateWorkers
+    ) {
+        public TaskCandidateNeed {
+            requireNonBlank(candidateId, "candidateId");
+            if (maximumCandidateWorkers <= 0) {
+                throw new IllegalArgumentException(
+                        "maximumCandidateWorkers must be positive"
+                );
+            }
         }
     }
 
     record TaskRuleMatchDemand(
-            String taskId,
             String workerGroupId,
-            List<String> heldWorkerIds,
+            List<TaskCandidateNeed> orderedTaskNeeds,
+            Map<String, Long> heldWorkerLeaseScores,
             long holdUntilMillis
     ) {
         public TaskRuleMatchDemand {
-            requireNonBlank(taskId, "taskId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            heldWorkerIds = immutableWorkerIds(
-                    heldWorkerIds,
-                    "heldWorkerIds"
+            orderedTaskNeeds = immutableTaskNeeds(orderedTaskNeeds);
+            heldWorkerLeaseScores = immutableHeldScores(
+                    heldWorkerLeaseScores
             );
-            requirePositiveHold(holdUntilMillis);
-        }
-    }
-
-    record ItemRuleMatchDemand(
-            ItemMatchKey key,
-            String workerGroupId,
-            List<String> heldWorkerIds,
-            long holdUntilMillis
-    ) {
-        public ItemRuleMatchDemand {
-            Objects.requireNonNull(key, "key");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            heldWorkerIds = immutableWorkerIds(heldWorkerIds, "heldWorkerIds");
-            requirePositiveHold(holdUntilMillis);
-        }
-    }
-
-    record TaskRuleMatchEvidence(
-            String taskId,
-            String workerGroupId,
-            List<String> matchedWorkerIds,
-            long holdUntilMillis
-    ) {
-        public TaskRuleMatchEvidence {
-            requireNonBlank(taskId, "taskId");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            matchedWorkerIds = immutableWorkerIds(
-                    matchedWorkerIds,
-                    "matchedWorkerIds"
-            );
-            requirePositiveHold(holdUntilMillis);
-        }
-    }
-
-    record ItemRuleMatchEvidence(
-            ItemMatchKey key,
-            String workerGroupId,
-            List<String> matchedWorkerIds,
-            long holdUntilMillis
-    ) {
-        public ItemRuleMatchEvidence {
-            Objects.requireNonNull(key, "key");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            matchedWorkerIds = immutableWorkerIds(
-                    matchedWorkerIds,
-                    "matchedWorkerIds"
-            );
-            requirePositiveHold(holdUntilMillis);
-        }
-    }
-
-    private static List<String> immutableWorkerIds(
-            List<String> workerIds,
-            String name
-    ) {
-        Objects.requireNonNull(workerIds, name);
-        if (workerIds.size() > MAX_MATCHED_WORKERS) {
-            throw new IllegalArgumentException(
-                    name + " must contain at most " + MAX_MATCHED_WORKERS
-                            + " workers"
-            );
-        }
-        LinkedHashSet<String> unique = new LinkedHashSet<>();
-        for (String workerId : workerIds) {
-            requireNonBlank(workerId, "workerId");
-            if (!unique.add(workerId)) {
+            if (holdUntilMillis < 1) {
                 throw new IllegalArgumentException(
-                        name + " must not contain duplicate workers"
+                        "holdUntilMillis must be positive"
                 );
             }
         }
-        return List.copyOf(unique);
     }
 
-    private static void requirePositiveHold(long holdUntilMillis) {
-        if (holdUntilMillis < 1) {
+    private static List<TaskCandidateNeed> immutableTaskNeeds(
+            List<TaskCandidateNeed> values
+    ) {
+        Objects.requireNonNull(values, "orderedTaskNeeds");
+        if (values.isEmpty() || values.size() > MAX_TASKS_PER_DEMAND) {
             throw new IllegalArgumentException(
-                    "holdUntilMillis must be positive"
+                    "orderedTaskNeeds must contain 1.."
+                            + MAX_TASKS_PER_DEMAND + " tasks"
             );
         }
+        LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
+        for (TaskCandidateNeed value : values) {
+            Objects.requireNonNull(value, "candidate need");
+            if (!candidateIds.add(value.candidateId())) {
+                throw new IllegalArgumentException(
+                        "orderedTaskNeeds must not contain duplicate "
+                                + "candidateIds"
+                );
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private static Map<String, Long> immutableHeldScores(
+            Map<String, Long> values
+    ) {
+        Objects.requireNonNull(values, "heldWorkerLeaseScores");
+        if (values.isEmpty()
+                || values.size() > MAX_HELD_WORKERS_PER_DEMAND) {
+            throw new IllegalArgumentException(
+                    "heldWorkerLeaseScores must contain 1.."
+                            + MAX_HELD_WORKERS_PER_DEMAND + " workers"
+            );
+        }
+        LinkedHashMap<String, Long> result = new LinkedHashMap<>();
+        values.forEach((workerId, score) -> {
+            requireNonBlank(workerId, "workerId");
+            result.put(
+                    workerId,
+                    Objects.requireNonNull(score, "heldWorkerLeaseScore")
+            );
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     private static void requireNonBlank(String value, String name) {
@@ -143,5 +99,4 @@ public interface WorkerMatchRuntime {
             throw new IllegalArgumentException(name + " must be non-blank");
         }
     }
-
 }

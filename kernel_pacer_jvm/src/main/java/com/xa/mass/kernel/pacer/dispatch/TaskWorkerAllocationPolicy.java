@@ -1,13 +1,13 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
+import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchEvidence;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,123 +77,41 @@ final class TaskWorkerAllocationPolicy {
             return 0;
         }
 
-        List<String> taskIds = precomputedTasks.stream()
+        List<String> candidateIds = precomputedTasks.stream()
                 .map(DueTaskObservation::taskId)
                 .toList();
-        Map<String, Integer> candidateCounts = new LinkedHashMap<>(
-                candidateCache.candidateWorkerCounts(taskIds)
-        );
-        Map<String, TaskRuleMatchEvidence> evidence =
-                workerMatches.takeTaskEvidence(taskIds);
-        long now = currentTimeMillis.getAsLong();
-        LinkedHashMap<String, LinkedHashMap<String, WorkerCandidateRequest>>
-                requestsByGroup = new LinkedHashMap<>();
-        LinkedHashMap<String, LinkedHashMap<String, List<String>>>
-                matchesByGroup = new LinkedHashMap<>();
-        LinkedHashMap<String, LinkedHashMap<String, Long>>
-                holdUntilByGroup = new LinkedHashMap<>();
-        for (DueTaskObservation task : precomputedTasks) {
-            TaskDescriptor descriptor = task.descriptor();
-            int requested = deficit(descriptor, candidateCounts, task.taskId());
-            TaskRuleMatchEvidence matched = evidence.get(task.taskId());
-            if (requested == 0 || matched == null
-                    || matched.holdUntilMillis() <= now
-                    || !descriptor.workerGroupId().equals(
-                            matched.workerGroupId()
-                    )) {
-                continue;
-            }
-            requestsByGroup.computeIfAbsent(
-                    descriptor.workerGroupId(),
-                    ignored -> new LinkedHashMap<>()
-            ).put(task.taskId(), new WorkerCandidateRequest(
-                    priority(descriptor),
-                    requested
-            ));
-            matchesByGroup.computeIfAbsent(
-                    descriptor.workerGroupId(),
-                    ignored -> new LinkedHashMap<>()
-            ).put(task.taskId(), matched.matchedWorkerIds());
-            holdUntilByGroup.computeIfAbsent(
-                    descriptor.workerGroupId(),
-                    ignored -> new LinkedHashMap<>()
-            ).put(task.taskId(), matched.holdUntilMillis());
-        }
-
-        int published = 0;
-        for (Map.Entry<String, LinkedHashMap<String, WorkerCandidateRequest>>
-                group : requestsByGroup.entrySet()) {
-            Map<String, List<AcquiredWorkerCandidate>> acquired =
-                    candidateSelection.selectHeldCandidates(
-                            group.getKey(),
-                            group.getValue(),
-                            matchesByGroup.get(group.getKey()),
-                            holdUntilByGroup.get(group.getKey()),
-                            WorkerCandidateSelectionPolicy
-                                    .MAX_UNIQUE_WORKERS_PER_ROUND
-                    );
-            for (Map.Entry<String, List<AcquiredWorkerCandidate>> candidate
-                    : acquired.entrySet()) {
-                List<String> workerIds = candidate.getValue().stream()
-                        .map(AcquiredWorkerCandidate::workerId)
-                        .toList();
-                if (workerIds.isEmpty()) {
-                    continue;
-                }
-                List<CandidateWorkerEntry> entries = candidate.getValue()
-                        .stream()
-                        .map(worker -> new CandidateWorkerEntry(
-                                worker.workerId(),
-                                worker.workerGroupId(),
-                                worker.workerLeaseScore()
-                        ))
-                        .toList();
-                if (entries.isEmpty()) {
-                    continue;
-                }
-                candidateCache.appendCandidateWorkers(
-                        candidate.getKey(),
-                        entries,
-                        holdUntilByGroup.get(group.getKey())
-                                .get(candidate.getKey())
-                );
-                candidateCounts.merge(
-                        candidate.getKey(),
-                        entries.size(),
-                        Integer::sum
-                );
-                published++;
-            }
-        }
-
-        publishDemands(precomputedTasks, candidateCounts, now, config);
-        return published;
-    }
-
-    private void publishDemands(
-            List<DueTaskObservation> tasks,
-            Map<String, Integer> candidateCounts,
-            long now,
-            TaskWorkerAllocationConfig config
-    ) {
-        LinkedHashMap<String, List<DueTaskObservation>> byGroup =
+        Map<String, Integer> candidateCounts =
+                candidateCache.candidateWorkerCounts(candidateIds);
+        LinkedHashMap<String, List<DueTaskObservation>> tasksByGroup =
                 new LinkedHashMap<>();
-        for (DueTaskObservation task : tasks) {
-            if (deficit(
-                    task.descriptor(),
-                    candidateCounts,
-                    task.taskId()
-            ) > 0) {
-                byGroup.computeIfAbsent(
+        for (DueTaskObservation task : precomputedTasks) {
+            if (deficit(task, candidateCounts) > 0) {
+                tasksByGroup.computeIfAbsent(
                         task.descriptor().workerGroupId(),
                         ignored -> new ArrayList<>()
                 ).add(task);
             }
         }
+
+        long now = currentTimeMillis.getAsLong();
+        int offered = 0;
         for (Map.Entry<String, List<DueTaskObservation>> group
-                : byGroup.entrySet()) {
-            Map<String, Long> observed =
-                    candidateSelection.observeDueCandidates(group.getKey());
+                : tasksByGroup.entrySet()) {
+            List<DueTaskObservation> ordered = group.getValue().stream()
+                    .sorted(Comparator
+                            .comparingInt(TaskWorkerAllocationPolicy::priority)
+                            .thenComparing(DueTaskObservation::taskId))
+                    .limit(WorkerMatchRuntime.MAX_TASKS_PER_DEMAND)
+                    .toList();
+            int requestedWorkers = requestedWorkers(
+                    ordered,
+                    candidateCounts
+            );
+            if (requestedWorkers == 0) {
+                continue;
+            }
+            Map<String, Long> observed = candidateSelection
+                    .observeDueCandidates(group.getKey(), requestedWorkers);
             if (observed.isEmpty()) {
                 continue;
             }
@@ -210,31 +128,62 @@ final class TaskWorkerAllocationPolicy {
             if (held.isEmpty()) {
                 continue;
             }
-            List<String> workerIds = List.copyOf(held.keySet());
-            List<TaskRuleMatchDemand> demands = group.getValue().stream()
-                    .map(task -> new TaskRuleMatchDemand(
+            List<TaskCandidateNeed> needs = ordered.stream()
+                    .map(task -> new TaskCandidateNeed(
                             task.taskId(),
-                            group.getKey(),
-                            workerIds,
-                            holdUntil
+                            maximumCandidates(task.descriptor())
                     ))
                     .toList();
-            workerMatches.offerTaskDemands(demands);
+            if (workerMatches.offerTaskDemand(new TaskRuleMatchDemand(
+                    group.getKey(),
+                    needs,
+                    held,
+                    holdUntil
+            ))) {
+                offered++;
+            }
         }
+        return offered;
+    }
+
+    private static int requestedWorkers(
+            List<DueTaskObservation> tasks,
+            Map<String, Integer> candidateCounts
+    ) {
+        int requested = 0;
+        for (DueTaskObservation task : tasks) {
+            int remaining = WorkerMatchRuntime.MAX_HELD_WORKERS_PER_DEMAND
+                    - requested;
+            requested += Math.min(
+                    remaining,
+                    deficit(task, candidateCounts)
+            );
+            if (requested
+                    == WorkerMatchRuntime.MAX_HELD_WORKERS_PER_DEMAND) {
+                break;
+            }
+        }
+        return requested;
     }
 
     private static int deficit(
-            TaskDescriptor descriptor,
-            Map<String, Integer> candidateCounts,
-            String taskId
+            DueTaskObservation task,
+            Map<String, Integer> candidateCounts
     ) {
-        int maximum = Integer.parseInt(
-                descriptor.config().get("maximumCandidateWorkers")
+        return Math.max(
+                0,
+                maximumCandidates(task.descriptor())
+                        - candidateCounts.getOrDefault(task.taskId(), 0)
         );
-        return Math.max(0, maximum - candidateCounts.getOrDefault(taskId, 0));
     }
 
-    private static int priority(TaskDescriptor descriptor) {
-        return Integer.parseInt(descriptor.config().get("priority"));
+    private static int maximumCandidates(TaskDescriptor descriptor) {
+        return Integer.parseInt(
+                descriptor.config().get("maximumCandidateWorkers")
+        );
+    }
+
+    private static int priority(DueTaskObservation task) {
+        return Integer.parseInt(task.descriptor().config().get("priority"));
     }
 }

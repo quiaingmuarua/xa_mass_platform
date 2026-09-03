@@ -21,14 +21,14 @@ import type {
 } from "@/task-call-debug/types";
 
 describe("Task Call Debug request model", () => {
-  it("accepts custom Events and parses only JSON Object inputs", () => {
+  it("accepts custom Events and finite Worker Selectors", () => {
     const validated = validateTaskCallDebugDraft(
       draft({
         taskId: " task-1 ",
         workerGroupId: " group-a ",
         eventName: " extension.worker.custom ",
         payloadText: '  {"value":"hello"}  ',
-        allocationRuleText: '{"workerProperties.region":{"$eq":"cn"}}'
+        workerSelectorText: '["workerId","$eq","worker-a"]'
       })
     );
 
@@ -37,20 +37,28 @@ describe("Task Call Debug request model", () => {
       workerGroupId: "group-a",
       eventName: "extension.worker.custom",
       payload: { value: "hello" },
-      allocationRule: { "workerProperties.region": { $eq: "cn" } }
+      workerSelector: ["workerId", "$eq", "worker-a"]
     });
     expect(validated.payloadText).toBe('  {"value":"hello"}  ');
   });
 
-  it("rejects non-object Payloads, non-object rules, blank Events, and bad timeouts", () => {
+  it("rejects malformed Payloads and Worker Selectors", () => {
     for (const payloadText of ["null", "[]", '"value"', "1"]) {
       expect(() => validateTaskCallDebugDraft(draft({ payloadText }))).toThrow(
         "Payload"
       );
     }
-    for (const allocationRuleText of ["null", "[]", "true", "{"]) {
-      expect(() => validateTaskCallDebugDraft(draft({ allocationRuleText }))).toThrow(
-        "Allocation Rule"
+    for (const workerSelectorText of [
+      "null",
+      "{}",
+      "true",
+      "{",
+      '["region","$eq","local"]',
+      '["workerId","$in",[]]',
+      '["workerId","$in",["worker-a","worker-a"]]'
+    ]) {
+      expect(() => validateTaskCallDebugDraft(draft({ workerSelectorText }))).toThrow(
+        "Worker Selector"
       );
     }
     expect(() => validateTaskCallDebugDraft(draft({ eventName: "  " }))).toThrow(
@@ -127,7 +135,7 @@ describe("HttpTaskCallDebugClient", () => {
             eventCode: "extension.worker.custom",
             payload: { value: "hello" },
             priority: 5,
-            allocationRule: { region: { $eq: "cn" } }
+            workerSelector: ["workerId", "$eq", "worker-a"]
           }
         ],
         waitTimeoutMillis: 3_000
@@ -266,7 +274,7 @@ describe("Task Call Debug browser-memory store", () => {
       messageId: "task-debug-1787644800123-1",
       state: "sending",
       payloadText: '{"value":"hello"}',
-      allocationRuleText: "{}"
+      workerSelectorText: "[]"
     });
 
     pending.resolve({
@@ -465,7 +473,7 @@ function draft(overrides: Partial<TaskCallDebugDraft> = {}): TaskCallDebugDraft 
     workerGroupId: "group-a",
     eventName: "extension.worker.custom",
     payloadText: '{"value":"hello"}',
-    allocationRuleText: "{}",
+    workerSelectorText: "[]",
     waitTimeoutMillis: 3_000,
     ...overrides
   };
@@ -479,7 +487,7 @@ function clientRequest(
     messageId: "message-1",
     eventName: "extension.worker.custom",
     payload: { value: "hello" },
-    allocationRule: { region: { $eq: "cn" } },
+    workerSelector: ["workerId", "$eq", "worker-a"],
     waitTimeoutMillis: 3_000,
     ...overrides
   };

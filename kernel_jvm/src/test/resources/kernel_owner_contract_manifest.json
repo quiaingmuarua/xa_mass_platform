@@ -50,8 +50,8 @@
       "MAX_WORKER_GROUP_LOOKUP_LIMIT": 100
     },
     "WorkerMatchRuntime": {
-      "MAX_BATCH_SIZE": 100,
-      "MAX_MATCHED_WORKERS": 100
+      "MAX_HELD_WORKERS_PER_DEMAND": 100,
+      "MAX_TASKS_PER_DEMAND": 100
     },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
@@ -136,10 +136,7 @@
       "offer_worker_commands"
     ],
     "WorkerMatchRuntime": [
-      "offer_item_demands",
-      "offer_task_demands",
-      "take_item_evidence",
-      "take_task_evidence"
+      "offer_task_demand"
     ],
     "WorkerResourceCatalog": [
         "get_worker_descriptors",
@@ -176,8 +173,7 @@
   "dtos": {
     "CandidateWorkerEntry": [
       "worker_id",
-      "worker_group_id",
-      "worker_lease_score"
+      "held_worker_lease_score"
     ],
     "DeliveryReport": [
       "src",
@@ -187,22 +183,6 @@
       "outcome_code",
       "payload",
       "forward"
-    ],
-    "ItemMatchKey": [
-      "task_id",
-      "message_id"
-    ],
-    "ItemRuleMatchDemand": [
-      "key",
-      "worker_group_id",
-      "held_worker_ids",
-      "hold_until_millis"
-    ],
-    "ItemRuleMatchEvidence": [
-      "key",
-      "worker_group_id",
-      "matched_worker_ids",
-      "hold_until_millis"
     ],
     "TaskCreationResult": [
       "status",
@@ -221,7 +201,8 @@
       "created_at_millis",
       "payload",
       "priority",
-      "expire_at_millis"
+      "expire_at_millis",
+      "target_worker_ids"
     ],
     "TaskItemAppendResult": [
       "status",
@@ -256,16 +237,14 @@
       "status",
       "score"
     ],
-    "TaskRuleMatchDemand": [
-      "task_id",
-      "worker_group_id",
-      "held_worker_ids",
-      "hold_until_millis"
+    "TaskCandidateNeed": [
+      "candidate_id",
+      "maximum_candidate_workers"
     ],
-    "TaskRuleMatchEvidence": [
-      "task_id",
+    "TaskRuleMatchDemand": [
       "worker_group_id",
-      "matched_worker_ids",
+      "ordered_task_needs",
+      "held_worker_lease_scores",
       "hold_until_millis"
     ],
     "DeliveryCommand": [
@@ -309,11 +288,6 @@
     ]
   },
   "enums": {
-    "DemandOfferStatus": [
-      "OFFERED",
-      "ALREADY_PENDING",
-      "CAPACITY"
-    ],
     "DeliveryReportOutcomeClass": [
       "SUCCESS",
       "WORKER_FAILURE",

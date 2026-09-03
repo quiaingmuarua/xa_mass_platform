@@ -21,6 +21,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -207,7 +208,8 @@ class TaskAssignmentDispatcherTest {
                 0,
                 Map.of("z", 2, "a", 1),
                 0,
-                null
+                null,
+                List.of()
         );
     }
 

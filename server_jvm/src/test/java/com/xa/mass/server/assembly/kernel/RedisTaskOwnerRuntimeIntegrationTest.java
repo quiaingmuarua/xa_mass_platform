@@ -121,7 +121,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 createdAt,
                 Map.of("phoneNumber", "+14155552671"),
                 0,
-                createdAt + 60_000
+                createdAt + 60_000,
+                List.of()
         );
 
         assertThat(runtime.appendItems(
@@ -138,7 +139,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         + "\"eventCode\":\"telecom.phone.inspect\","
                         + "\"expireAtMillis\":" + (createdAt + 60_000) + ","
                         + "\"payload\":{\"phoneNumber\":\"+14155552671\"},"
-                        + "\"priority\":0}"
+                        + "\"priority\":0,\"targetWorkerIds\":[]}"
         );
         double score = redis.zscore(
                 keyspace.base() + ":task:task-1:item_score",
@@ -201,6 +202,51 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         TaskItemResult.succeeded("{\"valid\":true}")
                 )
         );
+    }
+
+    @Test
+    void taskItemTargetsAreOwnedByOnDemandTasksOnly() {
+        long createdAt = redisTimeMillis();
+        storeTask("on-demand-targets", "ON_DEMAND_ITEM_RULE");
+        TaskItem targeted = new TaskItem(
+                "message-targeted",
+                "event",
+                createdAt,
+                Map.of(),
+                0,
+                createdAt + 60_000,
+                List.of("worker-b", "worker-a")
+        );
+
+        assertThat(runtime.appendItems(
+                "on-demand-targets",
+                List.of(targeted)
+        ).get("message-targeted").status()).isEqualTo(
+                TaskItemAppendStatus.APPENDED
+        );
+        assertThat(runtime.loadTaskItems(
+                "on-demand-targets",
+                List.of("message-targeted")
+        )).containsEntry("message-targeted", targeted);
+
+        storeTask("precomputed-targets", "PRECOMPUTED_TASK_RULE");
+        assertThat(runtime.appendItems(
+                "precomputed-targets",
+                List.of(new TaskItem(
+                        "message-invalid",
+                        "event",
+                        createdAt,
+                        Map.of(),
+                        0,
+                        createdAt + 60_000,
+                        List.of("worker-a")
+                ))
+        ).get("message-invalid").status()).isEqualTo(
+                TaskItemAppendStatus.INVALID
+        );
+        assertThat(redis.hlen(
+                keyspace.base() + ":task:precomputed-targets:items"
+        )).isZero();
     }
 
     @Test
@@ -335,7 +381,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         redisTimeMillis(),
                         Map.of(),
                         5,
-                        redisTimeMillis() + 60_000
+                        redisTimeMillis() + 60_000,
+                        List.of()
                 ))
         ).get("message-1").status()).isEqualTo(
                 TaskItemAppendStatus.NOT_FOUND
@@ -420,7 +467,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 now,
                 Map.of("value", "abc"),
                 5,
-                now + 60_000
+                now + 60_000,
+                List.of()
         );
         var submitted = callSubmission.submit(
                 "task-commands",
@@ -527,7 +575,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 now,
                 Map.of("value", "abc"),
                 5,
-                now + 60_000
+                now + 60_000,
+                List.of()
         );
 
         var submitted = new DefaultTaskCallItemSubmission(

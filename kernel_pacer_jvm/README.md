@@ -87,16 +87,20 @@ hint.
 
 Dispatch policies own Match Demand publication, bounded due-pool observation,
 exact hold, selection, priority, deficits, retry cadence and Group rotation.
-They consume identity-only evidence through `WorkerMatchRuntime` and accept it
-only against the named active hold; they do not load Rules, Properties or
+For PRECOMPUTED Tasks they publish an ordered Group Demand containing the
+successfully held Worker IDs and opaque exact scores; Matching filters that
+pool and directly appends accepted entries to Candidate Cache. Dispatch later
+consumes and exact-renews those entries. ON_DEMAND Items carry normalized
+explicit Worker IDs or ANY and acquire due HOT Workers directly without a
+Matching runtime round trip. Pacer code does not load Rules, Properties or
 interpret constraints. Package-private mechanisms in this module protect raw
 Score fences and cross-owner claim/Command sequences. Policy directly calls a
-bounded Owner when the operation already belongs to that policy decision—for
+bounded Owner when the operation already belongs to that policy decision, for
 example Candidate count observation and Adapter Probe request offer. This is
 not a generic Mechanism layer. Task, Item and Worker score correlations remain
-opaque. Producers may discover TaskItems, Workers or Candidate evidence only
-under identities supplied by the Main Scheduler. Serviceability retains sweep
-hints only for Groups visible in the current bounded Task batch.
+opaque. Producers may discover TaskItems and Workers only under identities
+supplied by the Main Scheduler. Serviceability retains sweep hints only for
+Groups visible in the current bounded Task batch.
 
 The production load model is intentionally a small bounded active Task set,
 many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The

@@ -7,7 +7,8 @@ import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.STRI
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.STRING_WORKERS;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.await;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.awaitConnected;
-import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.numberEquals;
+import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.awaitNetworkState;
+import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.awaitUnavailableScheduling;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.require;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.safeMessage;
 
@@ -27,7 +28,6 @@ import java.util.UUID;
 final class WorkerTaskFaultConvergence {
 
     static final String LANE = "in-flight-loss-convergence";
-    static final long TARGET_LAB_SLOT = 1L;
     static final WorkerRef TARGET = STRING_WORKERS.get(0);
     static final WorkerRef BACKUP = STRING_WORKERS.get(1);
 
@@ -76,6 +76,13 @@ final class WorkerTaskFaultConvergence {
                     workload.submitWave("wave-1", Map.of(), null),
                     options
             );
+            stopBackupBeforeCheckpoint(
+                    options,
+                    lab,
+                    runtime,
+                    identities,
+                    evidence
+            );
 
             String token = "checkpoint-" + UUID.randomUUID();
             lab.armCommandCheckpoint(
@@ -85,19 +92,20 @@ final class WorkerTaskFaultConvergence {
                     Math.min(120_000L, options.maximumWaitMillis())
             );
             checkpointArmed = true;
-            Map<String, Map<String, Object>> targetRule = Map.of(
+            Map<String, List<Object>> targetSelector = Map.of(
                     STRING_GROUP,
-                    Map.of(
-                            "workerId", Map.of("$in", List.of(
+                    List.of(
+                            "workerId",
+                            "$in",
+                            List.of(
                                     requireWorkerId(identities, TARGET),
                                     requireWorkerId(identities, BACKUP)
-                            )),
-                            "worker.labSlot", Map.of("$eq", TARGET_LAB_SLOT)
+                            )
                     )
             );
             List<Batch> faultWave = workload.submitCheckpointWave(
                     "wave-2",
-                    targetRule,
+                    targetSelector,
                     new ConvergenceWorkload.Checkpoint(token)
             );
             Batch checkpointBatch = workload.requireBatch(
@@ -126,7 +134,6 @@ final class WorkerTaskFaultConvergence {
                     BACKUP.coordinate(),
                     token,
                     checkpointBatch.witnessMessageId(),
-                    TARGET_LAB_SLOT,
                     workload.batches(),
                     null
             ).save(phaseStatePath);
@@ -218,18 +225,6 @@ final class WorkerTaskFaultConvergence {
             ));
             String backupWorkerId = identities.get(BACKUP);
             require(backupWorkerId != null, "Backup Worker was not started");
-            await(
-                    "backup-properties-observed",
-                    options.maximumWait(),
-                    () -> runtime.previewWorkers(STRING_GROUP)
-                            .get(BACKUP.labWorkerKey()),
-                    worker -> worker != null
-                            && backupWorkerId.equals(worker.workerId())
-                            && numberEquals(
-                            worker.workerProperties().get("labSlot"),
-                            state.labSlot()
-                    )
-            );
             awaitHot(
                     "backup-hot",
                     options,
@@ -376,15 +371,43 @@ final class WorkerTaskFaultConvergence {
                                 && "RUNNING".equals(snapshot.runtimeState())),
                 "All task-fault Workers must be running at baseline"
         );
-        require(
-                numberEquals(
-                        lab.worker(TARGET.groupId(), TARGET.labWorkerKey())
-                                .requireWorkerProperties()
-                                .get("labSlot"),
-                        TARGET_LAB_SLOT
-                ),
-                "Task-fault target does not own labSlot 1"
+    }
+
+    private static void stopBackupBeforeCheckpoint(
+            WorkerLabHarnessOptions options,
+            WorkerLabControlClient lab,
+            RuntimeApiClient runtime,
+            Map<WorkerRef, String> identities,
+            ConvergenceEvidence evidence
+    ) {
+        String backupWorkerId = requireWorkerId(identities, BACKUP);
+        lab.stop(BACKUP.groupId(), BACKUP.labWorkerKey());
+        await(
+                "checkpoint-backup-local-stop",
+                options.maximumWait(),
+                () -> lab.worker(BACKUP.groupId(), BACKUP.labWorkerKey()),
+                WorkerLabConvergenceSupport::isStopped
         );
+        String networkState = awaitNetworkState(
+                "checkpoint-backup-network-stop",
+                options.maximumWait(),
+                runtime,
+                options.endpointManagerId(),
+                backupWorkerId,
+                "disconnected"
+        );
+        String schedulingState = awaitUnavailableScheduling(
+                "checkpoint-backup-scheduling-stop",
+                options.maximumWait(),
+                runtime,
+                BACKUP,
+                backupWorkerId
+        );
+        evidence.record("arm", "checkpoint-backup-stopped", Map.of(
+                "workerId", backupWorkerId,
+                "networkState", networkState,
+                "schedulingState", schedulingState
+        ));
     }
 
     private static void awaitAllUnavailable(

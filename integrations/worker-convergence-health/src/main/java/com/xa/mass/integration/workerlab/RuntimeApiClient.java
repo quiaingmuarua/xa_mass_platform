@@ -158,16 +158,16 @@ final class RuntimeApiClient {
         }
         List<Map<String, Object>> encoded = new ArrayList<>();
         for (TaskItem item : items) {
-            if (item.allocationRule() == null) {
+            if (item.workerSelector() == null) {
                 throw new IllegalArgumentException(
-                        "managed Task call Item requires allocationRule"
+                        "managed Task call Item requires workerSelector"
                 );
             }
             encoded.add(Map.of(
                     "messageId", item.messageId(),
                     "eventCode", item.eventCode(),
                     "payload", item.payload(),
-                    "allocationRule", item.allocationRule()
+                    "workerSelector", item.workerSelector()
             ));
         }
         JsonHttpClient.Response response = http.send(
@@ -237,6 +237,80 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(statuses);
     }
 
+    PrecomputedWitness submitPrecomputedWitness(
+            String workerGroupId,
+            Map<String, Object> allocationRule,
+            String messageId,
+            String eventCode,
+            Map<String, Object> payload
+    ) {
+        if (workerGroupId == null || workerGroupId.isBlank()
+                || allocationRule == null
+                || messageId == null || messageId.isBlank()
+                || eventCode == null || eventCode.isBlank()
+                || payload == null) {
+            throw new IllegalArgumentException(
+                    "Precomputed witness inputs are invalid"
+            );
+        }
+        JsonHttpClient.Response created = http.send(
+                "POST",
+                "/api/v1/tasks",
+                Map.of(
+                        "workerGroupId", workerGroupId,
+                        "allocationRule", allocationRule,
+                        "priority", 50,
+                        "maximumCandidateWorkers", 1,
+                        "maxRetryTimes", 3
+                )
+        );
+        requireStatus(created, 200, "create precomputed witness Task");
+        String taskId = JsonValues.requiredString(created.body(), "taskId");
+
+        JsonHttpClient.Response appended = http.send(
+                "POST",
+                "/api/v1/tasks/" + segment(taskId) + "/items",
+                List.of(Map.of(
+                        "messageId", messageId,
+                        "eventCode", eventCode,
+                        "payload", payload
+                ))
+        );
+        requireStatus(appended, 200, "append precomputed witness Item");
+        Map<String, Object> appendOutcome = JsonValues.object(
+                appended.body().get(messageId),
+                "precomputed witness append outcome"
+        );
+        String appendStatus = JsonValues.requiredString(
+                appendOutcome,
+                "status"
+        );
+        if (!"applied".equals(appendStatus)
+                && !"unchanged".equals(appendStatus)) {
+            throw JsonValues.invalid(
+                    "Precomputed witness Item was not accepted"
+            );
+        }
+
+        JsonHttpClient.Response approved = http.send(
+                "POST",
+                "/api/v1/tasks/" + segment(taskId) + "/approve",
+                null
+        );
+        requireStatus(approved, 200, "approve precomputed witness Task");
+        String approvalStatus = JsonValues.requiredString(
+                approved.body(),
+                "status"
+        );
+        if (!"applied".equals(approvalStatus)
+                && !"unchanged".equals(approvalStatus)) {
+            throw JsonValues.invalid(
+                    "Precomputed witness Task was not approved"
+            );
+        }
+        return new PrecomputedWitness(taskId, messageId);
+    }
+
     static String managedTaskId(String workerGroupId) {
         if (workerGroupId == null || workerGroupId.isBlank()) {
             throw new IllegalArgumentException("workerGroupId must be non-blank");
@@ -289,21 +363,26 @@ final class RuntimeApiClient {
     record WorkerView(String workerId, Map<String, Object> workerProperties) {
     }
 
+    record PrecomputedWitness(String taskId, String messageId) {
+        PrecomputedWitness {
+            if (taskId == null || taskId.isBlank()
+                    || messageId == null || messageId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Precomputed witness identities must be non-blank"
+                );
+            }
+        }
+    }
+
     record TaskItem(
             String messageId,
             String eventCode,
             Map<String, Object> payload,
-            Map<String, Object> allocationRule
+            List<Object> workerSelector
     ) {
-        TaskItem(String messageId, String eventCode, Map<String, Object> payload) {
-            this(messageId, eventCode, payload, null);
-        }
-
         TaskItem {
             payload = Map.copyOf(payload);
-            allocationRule = allocationRule == null
-                    ? null
-                    : Map.copyOf(allocationRule);
+            workerSelector = List.copyOf(workerSelector);
         }
     }
 

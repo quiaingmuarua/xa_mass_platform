@@ -3,11 +3,9 @@ package com.xa.mass.server.assembly.matching;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.ItemRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -109,63 +107,37 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
 
     @Test
-    void taskAndItemRulesAreCreateOnlyAndContentIdempotent() {
+    void candidateRulesAreCreateOnlyAndContentIdempotent() {
         Map<String, Object> rule = Map.of(
                 "worker.region",
                 Map.of("$eq", "cn")
         );
-        assertThat(catalog.createTaskRule(
+        assertThat(catalog.createCandidateRule(
                 "task-1",
                 "group-1",
                 rule
         ).status()).isEqualTo(MutationStatus.APPLIED);
-        assertThat(catalog.createTaskRule(
+        assertThat(catalog.createCandidateRule(
                 "task-1",
                 "group-1",
                 rule
         ).status()).isEqualTo(MutationStatus.UNCHANGED);
-        assertThat(catalog.createTaskRule(
+        assertThat(catalog.createCandidateRule(
                 "task-1",
                 "group-1",
                 Map.of("worker.region", Map.of("$eq", "us"))
         ).status()).isEqualTo(MutationStatus.CONFLICT);
-        assertThat(catalog.loadTaskRules(List.of("task-1", "missing")))
+        assertThat(catalog.loadCandidateRules(List.of(
+                "task-1",
+                "missing"
+        )))
                 .containsEntry("missing", null);
-        assertThat(catalog.loadTaskRules(List.of("task-1"))
+        assertThat(catalog.loadCandidateRules(List.of("task-1"))
                 .get("task-1").allocationRule()).isEqualTo(rule);
-
-        ItemMatchKey firstKey = new ItemMatchKey("task-1", "message-1");
-        ItemMatchKey secondKey = new ItemMatchKey("task-1", "message-2");
-        List<ItemRule> itemRules = List.of(
-                new ItemRule(firstKey, "group-1", rule),
-                new ItemRule(secondKey, "group-1", Map.of())
-        );
-        assertThat(catalog.createItemRules(itemRules).values())
-                .extracting(result -> result.status())
-                .containsExactly(
-                        MutationStatus.APPLIED,
-                        MutationStatus.APPLIED
-                );
-        assertThat(catalog.createItemRules(itemRules).values())
-                .extracting(result -> result.status())
-                .containsExactly(
-                        MutationStatus.UNCHANGED,
-                        MutationStatus.UNCHANGED
-                );
-        assertThat(catalog.createItemRules(List.of(new ItemRule(
-                firstKey,
-                "group-1",
-                Map.of("worker.region", Map.of("$eq", "us"))
-        ))).get(firstKey).status()).isEqualTo(MutationStatus.CONFLICT);
-        assertThat(catalog.loadItemRules(List.of(firstKey, secondKey)))
-                .extractingByKeys(firstKey, secondKey)
-                .extracting(ItemRule::allocationRule)
-                .containsExactly(rule, Map.of());
     }
 
     @Test
     void persistentFactsAndRulesSurviveCatalogInstanceReplacement() {
-        ItemMatchKey itemKey = new ItemMatchKey("task-1", "message-1");
         Map<String, Object> rule = Map.of(
                 "worker.region",
                 Map.of("$eq", "cn")
@@ -180,12 +152,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 "worker-1",
                 Map.of("network", "wifi")
         );
-        catalog.createTaskRule("task-1", "group-1", rule);
-        catalog.createItemRules(List.of(new ItemRule(
-                itemKey,
-                "group-1",
-                rule
-        )));
+        catalog.createCandidateRule("task-1", "group-1", rule);
 
         catalog.close();
         catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace);
@@ -201,9 +168,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 ));
         assertThat(facts.platformProperties())
                 .containsExactlyEntriesOf(Map.of("network", "wifi"));
-        assertThat(catalog.loadTaskRules(List.of("task-1"))
+        assertThat(catalog.loadCandidateRules(List.of("task-1"))
                 .get("task-1").allocationRule()).isEqualTo(rule);
-        assertThat(catalog.loadItemRules(List.of(itemKey))
-                .get(itemKey).allocationRule()).isEqualTo(rule);
     }
 }

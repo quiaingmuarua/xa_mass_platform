@@ -72,6 +72,16 @@ class RuntimeApiClientTest {
                         "message-1", Map.of("status", "succeeded"),
                         "message-2", Map.of("status", "not_observed")
                 ));
+            } else if (path.equals("/api/v1/tasks")) {
+                respondJson(exchange, 200, Map.of(
+                        "taskId", "precomputed-1"
+                ));
+            } else if (path.endsWith("/precomputed-1/items")) {
+                respondJson(exchange, 200, Map.of(
+                        "property-message", Map.of("status", "applied")
+                ));
+            } else if (path.endsWith("/precomputed-1/approve")) {
+                respondJson(exchange, 200, Map.of("status", "applied"));
             } else if (path.endsWith("/results:load")) {
                 respondJson(exchange, 200, Map.of(
                         "message-1",
@@ -112,13 +122,13 @@ class RuntimeApiClientTest {
                             "message-1",
                             "event.one",
                             Map.of(),
-                            Map.of()
+                            List.of()
                     ),
                     new TaskItem(
                             "message-2",
                             "event.one",
                             Map.of(),
-                            Map.of("worker.slot", Map.of("$eq", "B"))
+                            List.of("workerId", "$eq", "worker-1")
                     )
             ), 250L)).containsExactly(
                     Map.entry(
@@ -130,6 +140,16 @@ class RuntimeApiClientTest {
                             RuntimeApiClient.CallStatus.NOT_OBSERVED
                     )
             );
+            assertThat(client.submitPrecomputedWitness(
+                    "group-1",
+                    Map.of("worker.slot", Map.of("$eq", "C")),
+                    "property-message",
+                    "event.one",
+                    Map.of("value", "property")
+            )).isEqualTo(new RuntimeApiClient.PrecomputedWitness(
+                    "precomputed-1",
+                    "property-message"
+            ));
             assertThat(client.loadResultStatuses(
                     "task-1",
                     List.of("message-1", "message-2", "message-3")
@@ -172,6 +192,15 @@ class RuntimeApiClientTest {
                                 "message-1",
                                 "message-2",
                                 "message-3"
+                        );
+            });
+            assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).isEqualTo("/api/v1/tasks");
+                assertThat(Jsons.parseObject(request.body()))
+                        .containsEntry("workerGroupId", "group-1")
+                        .containsEntry(
+                                "allocationRule",
+                                Map.of("worker.slot", Map.of("$eq", "C"))
                         );
             });
         } finally {

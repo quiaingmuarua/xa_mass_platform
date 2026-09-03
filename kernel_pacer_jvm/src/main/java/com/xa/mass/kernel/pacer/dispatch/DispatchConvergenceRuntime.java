@@ -118,8 +118,7 @@ public final class DispatchConvergenceRuntime {
                 taskRuntime,
                 assignmentDispatcher,
                 idleSettlement,
-                candidateSelection,
-                workerMatches
+                candidateSelection
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 new WorkerServiceabilityDispatchPolicy(

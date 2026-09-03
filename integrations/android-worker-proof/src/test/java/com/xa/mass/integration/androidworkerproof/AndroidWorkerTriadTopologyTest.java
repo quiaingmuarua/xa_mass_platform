@@ -3,7 +3,7 @@ package com.xa.mass.integration.androidworkerproof;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.net.URI;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -31,19 +31,10 @@ final class AndroidWorkerTriadTopologyTest {
     }
 
     @Test
-    void targetsOneApplicationThroughWorkerProperties() {
+    void targetsOneApplicationThroughItsServerWorkerIdentity() {
         assertEquals(
-                Map.of(
-                        "workerId",
-                        Map.of("$eq", "worker-lab1"),
-                        "worker.packageName",
-                        Map.of(
-                                "$eq",
-                                "com.xa.mass.integration.androidworker.lab1"
-                        )
-                ),
-                AndroidWorkerTriadTopology.allocationRule(
-                        AndroidWorkerTriadTopology.WORKERS.get(0),
+                List.of("workerId", "$eq", "worker-lab1"),
+                AndroidWorkerTriadTopology.workerSelector(
                         "worker-lab1"
                 )
         );

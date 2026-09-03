@@ -1,6 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.ItemMatchKey;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,20 +28,14 @@ public interface WorkerMatchingCatalog {
             List<String> workerIds
     );
 
-    MutationResult createTaskRule(
-            String taskId,
+    MutationResult createCandidateRule(
+            String candidateId,
             String workerGroupId,
             Map<String, Object> allocationRule
     );
 
-    Map<String, @Nullable TaskRule> loadTaskRules(List<String> taskIds);
-
-    Map<ItemMatchKey, MutationResult> createItemRules(
-            List<ItemRule> rules
-    );
-
-    Map<ItemMatchKey, @Nullable ItemRule> loadItemRules(
-            List<ItemMatchKey> keys
+    Map<String, @Nullable CandidateRule> loadCandidateRules(
+            List<String> candidateIds
     );
 
     enum MutationStatus {
@@ -77,25 +70,13 @@ public interface WorkerMatchingCatalog {
         }
     }
 
-    record TaskRule(
-            String taskId,
+    record CandidateRule(
+            String candidateId,
             String workerGroupId,
             Map<String, Object> allocationRule
     ) {
-        public TaskRule {
-            requireNonBlank(taskId, "taskId");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            allocationRule = immutableMap(allocationRule);
-        }
-    }
-
-    record ItemRule(
-            ItemMatchKey key,
-            String workerGroupId,
-            Map<String, Object> allocationRule
-    ) {
-        public ItemRule {
-            Objects.requireNonNull(key, "key");
+        public CandidateRule {
+            requireNonBlank(candidateId, "candidateId");
             requireNonBlank(workerGroupId, "workerGroupId");
             allocationRule = immutableMap(allocationRule);
         }

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class ConvergenceWorkloadTest {
 
     @Test
-    void scopesOrdinaryAndCheckpointWaveAllocationRules()
+    void scopesOrdinaryAndCheckpointWaveWorkerSelectors()
             throws Exception {
         List<Request> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(
@@ -55,7 +55,7 @@ class ConvergenceWorkloadTest {
                     "wave-1",
                     Map.of(
                             WorkerLabConvergenceSupport.STRING_GROUP,
-                            Map.of("worker.convergenceSlot", Map.of("$eq", "B"))
+                            List.of("workerId", "$eq", "worker-b")
                     ),
                     null
             );
@@ -73,22 +73,23 @@ class ConvergenceWorkloadTest {
             assertBatch(requests.get(0), false);
             assertBatch(requests.get(1), true);
 
-            Map<String, Object> checkpointRule = Map.of(
-                    "workerId", Map.of("$in", List.of("target", "backup")),
-                    "worker.labSlot", Map.of("$eq", 1L)
+            List<Object> checkpointSelector = List.of(
+                    "workerId",
+                    "$in",
+                    List.of("target", "backup")
             );
             workload.submitCheckpointWave(
                     "wave-2",
                     Map.of(
                             WorkerLabConvergenceSupport.STRING_GROUP,
-                            checkpointRule
+                            checkpointSelector
                     ),
                     new ConvergenceWorkload.Checkpoint("checkpoint-token")
             );
 
             assertThat(requests).hasSize(4);
             assertBatch(requests.get(2), false);
-            assertCheckpointBatch(requests.get(3), checkpointRule);
+            assertCheckpointBatch(requests.get(3), checkpointSelector);
         } finally {
             server.stop(0);
         }
@@ -96,17 +97,17 @@ class ConvergenceWorkloadTest {
 
     private static void assertCheckpointBatch(
             Request request,
-            Map<String, Object> expectedRule
+            List<Object> expectedSelector
     ) {
         List<Object> items = JsonValues.array(
                 request.body().get("items"),
                 "items"
         );
         assertThat(items).hasSize(50);
-        items.forEach(raw -> assertThat(JsonValues.object(
-                JsonValues.object(raw, "item").get("allocationRule"),
-                "allocationRule"
-        )).containsExactlyEntriesOf(expectedRule));
+        items.forEach(raw -> assertThat(JsonValues.array(
+                JsonValues.object(raw, "item").get("workerSelector"),
+                "workerSelector"
+        )).containsExactlyElementsOf(expectedSelector));
         Map<String, Object> first = JsonValues.object(items.get(0), "item");
         assertThat(first).containsEntry(
                 "eventCode",
@@ -160,18 +161,22 @@ class ConvergenceWorkloadTest {
             }
         }
         Map<String, Object> first = JsonValues.object(items.get(0), "item");
-        Map<String, Object> rule = JsonValues.object(
-                first.get("allocationRule"),
-                "allocationRule"
+        List<Object> selector = JsonValues.array(
+                first.get("workerSelector"),
+                "workerSelector"
         );
         if (stringGroup) {
-            assertThat(rule).containsKey("worker.convergenceSlot");
+            assertThat(selector).containsExactly(
+                    "workerId",
+                    "$eq",
+                    "worker-b"
+            );
         } else {
-            assertThat(rule).isEmpty();
+            assertThat(selector).isEmpty();
         }
-        items.stream().skip(1).forEach(raw -> assertThat(JsonValues.object(
-                JsonValues.object(raw, "item").get("allocationRule"),
-                "allocationRule"
+        items.stream().skip(1).forEach(raw -> assertThat(JsonValues.array(
+                JsonValues.object(raw, "item").get("workerSelector"),
+                "workerSelector"
         )).isEmpty());
     }
 

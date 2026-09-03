@@ -26,7 +26,7 @@ export interface TaskCallDebugHistoryItem {
   messageId: string;
   eventName: string;
   payloadText: string;
-  allocationRuleText: string;
+  workerSelectorText: string;
   sentAt: string;
   state: TaskCallDebugHistoryState;
   opaqueResultPayload?: string;
@@ -74,7 +74,7 @@ export function createTaskCallDebugStore(
         messageId,
         eventName: validated.eventName,
         payloadText: validated.payloadText,
-        allocationRuleText: validated.allocationRuleText,
+        workerSelectorText: validated.workerSelectorText,
         sentAt: sentAtValue.toISOString(),
         state: "sending"
       };
@@ -92,7 +92,7 @@ export function createTaskCallDebugStore(
           messageId,
           eventName: validated.eventName,
           payload: validated.payload,
-          allocationRule: validated.allocationRule,
+          workerSelector: validated.workerSelector,
           waitTimeoutMillis: validated.waitTimeoutMillis
         });
         item.state = outcome.status;

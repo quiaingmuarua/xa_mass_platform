@@ -5,7 +5,11 @@ import type {
 } from "@/runtime-viewer/types";
 
 import { taskCallDebugConfigurationError } from "./errors";
-import type { TaskCallDebugDraft, ValidatedTaskCallDebugDraft } from "./types";
+import type {
+  TaskCallDebugDraft,
+  TaskItemWorkerSelector,
+  ValidatedTaskCallDebugDraft
+} from "./types";
 
 export const DEFAULT_TASK_CALL_TIMEOUT_MILLIS = 3_000;
 export const MAX_TASK_CALL_TIMEOUT_MILLIS = 60_000;
@@ -40,7 +44,7 @@ export function taskCallDebugAvailability(
   if (entry.task.workerAllocationMechanism !== "ON_DEMAND_ITEM_RULE") {
     return {
       enabled: false,
-      reason: "该 Task 不接受 Item 级 Allocation Rule。"
+      reason: "该 Task 不接受 Item Worker Selector。"
     };
   }
   if (entry.task.idleDisposition !== "PARK_WHEN_IDLE") {
@@ -72,10 +76,10 @@ export function validateTaskCallDebugDraft(
     workerGroupId,
     eventName,
     payloadText: draft.payloadText,
-    allocationRuleText: draft.allocationRuleText,
+    workerSelectorText: draft.workerSelectorText,
     waitTimeoutMillis: draft.waitTimeoutMillis,
     payload: parseJsonObject(draft.payloadText, "Payload"),
-    allocationRule: parseJsonObject(draft.allocationRuleText, "Allocation Rule")
+    workerSelector: parseWorkerSelector(draft.workerSelectorText)
   };
 }
 
@@ -99,6 +103,50 @@ function parseJsonObject(text: string, label: string): Record<string, JsonValue>
     throw taskCallDebugConfigurationError(`${label} 必须是 JSON Object。`);
   }
   return parsed as Record<string, JsonValue>;
+}
+
+function parseWorkerSelector(text: string): TaskItemWorkerSelector {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw taskCallDebugConfigurationError(
+      "Worker Selector 必须是合法 JSON Array。"
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw invalidWorkerSelector();
+  }
+  if (parsed.length === 0) return [];
+  if (parsed.length !== 3 || parsed[0] !== "workerId") {
+    throw invalidWorkerSelector();
+  }
+  if (parsed[1] === "$eq" && isNonBlankString(parsed[2])) {
+    return ["workerId", "$eq", parsed[2]];
+  }
+  if (parsed[1] === "$in" && Array.isArray(parsed[2])) {
+    const workerIds = parsed[2];
+    if (
+      workerIds.length >= 1 &&
+      workerIds.length <= 100 &&
+      workerIds.every(isNonBlankString) &&
+      new Set(workerIds).size === workerIds.length
+    ) {
+      return ["workerId", "$in", [...workerIds]];
+    }
+  }
+  throw invalidWorkerSelector();
+}
+
+function invalidWorkerSelector(): Error {
+  return taskCallDebugConfigurationError(
+    'Worker Selector 必须是 []、["workerId","$eq","id"] 或 ' +
+      '["workerId","$in",["id"]]。'
+  );
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function requireNonBlank(value: string, label: string): string {

@@ -72,18 +72,6 @@ class KernelOwnerContractManifestTest {
                     WorkerDeliveryProtocol.DeliveryReport.class
             ),
             Map.entry(
-                    "ItemMatchKey",
-                    WorkerMatchRuntime.ItemMatchKey.class
-            ),
-            Map.entry(
-                    "ItemRuleMatchDemand",
-                    WorkerMatchRuntime.ItemRuleMatchDemand.class
-            ),
-            Map.entry(
-                    "ItemRuleMatchEvidence",
-                    WorkerMatchRuntime.ItemRuleMatchEvidence.class
-            ),
-            Map.entry(
                     "TaskCreationResult",
                     TaskRuntime.TaskCreationResult.class
             ),
@@ -122,12 +110,12 @@ class KernelOwnerContractManifestTest {
                     TaskScoreBandCore.TaskScoreTransitionResult.class
             ),
             Map.entry(
-                    "TaskRuleMatchDemand",
-                    WorkerMatchRuntime.TaskRuleMatchDemand.class
+                    "TaskCandidateNeed",
+                    WorkerMatchRuntime.TaskCandidateNeed.class
             ),
             Map.entry(
-                    "TaskRuleMatchEvidence",
-                    WorkerMatchRuntime.TaskRuleMatchEvidence.class
+                    "TaskRuleMatchDemand",
+                    WorkerMatchRuntime.TaskRuleMatchDemand.class
             ),
             Map.entry(
                     "DeliveryCommand",
@@ -161,10 +149,6 @@ class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
-                    Map.entry(
-                            "DemandOfferStatus",
-                            WorkerMatchRuntime.DemandOfferStatus.class
-                    ),
                     Map.entry(
                             "DeliveryReportOutcomeClass",
                             WorkerDeliveryProtocol

@@ -21,7 +21,7 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.TaskRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -84,7 +84,7 @@ public final class RuntimeViewService {
                     ? Map.of()
                     : taskCatalog.loadTaskAllocationDescriptors(taskIds);
             var workerGroupIds = new LinkedHashSet<String>();
-            var taskRuleIds = new ArrayList<String>();
+            var candidateIds = new ArrayList<String>();
             for (String taskId : taskIds) {
                 TaskDescriptor task = tasks.get(taskId);
                 validateTaskIdentity(taskId, task);
@@ -93,13 +93,13 @@ public final class RuntimeViewService {
                     if (task.workerAllocationMechanism()
                             == WorkerAllocationMechanism
                             .PRECOMPUTED_TASK_RULE) {
-                        taskRuleIds.add(taskId);
+                        candidateIds.add(taskId);
                     }
                 }
             }
-            Map<String, TaskRule> taskRules = taskRuleIds.isEmpty()
+            Map<String, CandidateRule> candidateRules = candidateIds.isEmpty()
                     ? Map.of()
-                    : matchingCatalog.loadTaskRules(taskRuleIds);
+                    : matchingCatalog.loadCandidateRules(candidateIds);
             Map<String, WorkerGroupDescriptor> groups = workerGroupIds.isEmpty()
                     ? Map.of()
                     : workerCatalog.getWorkerGroupDescriptors(
@@ -124,7 +124,7 @@ public final class RuntimeViewService {
                                 ? null
                                 : toView(
                                         task,
-                                        taskRules.get(task.taskId())
+                                        candidateRules.get(task.taskId())
                                 ),
                         group == null ? null : toView(group)
                 ));
@@ -347,18 +347,18 @@ public final class RuntimeViewService {
 
     private static TaskView toView(
             TaskDescriptor descriptor,
-            TaskRule rule
+            CandidateRule rule
     ) {
         Map<String, Object> allocationRule = null;
         if (descriptor.workerAllocationMechanism()
                 == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
             if (rule == null
-                    || !descriptor.taskId().equals(rule.taskId())
+                    || !descriptor.taskId().equals(rule.candidateId())
                     || !descriptor.workerGroupId().equals(
                             rule.workerGroupId()
                     )) {
                 throw new IllegalStateException(
-                        "Task matching rule is missing or inconsistent"
+                        "Task Candidate rule is missing or inconsistent"
                 );
             }
             allocationRule = immutableMap(rule.allocationRule());

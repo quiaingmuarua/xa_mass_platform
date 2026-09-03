@@ -23,7 +23,6 @@ final class WorkerMatchingHealthIndicator implements HealthIndicator {
                 .withDetail("state", snapshot.state().name())
                 .withDetail("queuedDemands", snapshot.queuedDemands())
                 .withDetail("pendingDemands", snapshot.pendingDemands())
-                .withDetail("availableEvidence", snapshot.availableEvidence())
                 .build();
     }
 }

@@ -19,115 +19,118 @@ Resource Producers:
 | Producer | Main input | Decision | Output |
 | --- | --- | --- | --- |
 | Task initialization | INITIAL RUNNING Tasks | Does the Task have due ACTIVE work? | exact INITIAL to NORMAL transition |
-| Worker allocation | PRECOMPUTED NORMAL Tasks | Is Candidate Cache below its target? | Match Demand or leased Candidate entries |
-| Task dispatch | NORMAL Tasks | Which Item may claim which leased Worker? | Delivery Commands and Task pacing |
+| Worker allocation | PRECOMPUTED NORMAL Tasks | Is Candidate Cache below its target? | ordered Match Demand for exact-held Workers |
+| Task dispatch | NORMAL Tasks | Which Item may claim which held Worker? | Delivery Commands and Task pacing |
 | Worker serviceability | demanded WorkerGroups | Which Routes need a Probe? | best-effort serviceability evidence |
 
 Kernel remains the only scheduling authority. Worker Matching interprets
-Properties and Rules but cannot rank, lease, claim or dispatch.
-
-## Match Demand And Evidence
-
-`WorkerMatchRuntime` is an identity-only bounded handoff:
-
-```text
-Kernel Pacer
-  -> exact-hold a bounded due HOT Worker pool
-  -> offer Task or Item Match Demand for successfully held Worker IDs
-Worker Matching
-  -> load persistent Rule and facts for the supplied pool
-  -> evaluate constraints
-  -> publish short-lived WorkerId Evidence
-Kernel Pacer
-  -> take Evidence once
-  -> confirm the exact active hold
-  -> apply priority and round uniqueness
-  -> load minimal delivery descriptor
-```
-
-Demand and Evidence contain no Rule, Properties, Score, Endpoint or Delivery
-DTO. One call and one batch contain at most 100 entries; one Evidence contains
-at most 100 Worker IDs. Offer is non-blocking. Capacity or expired/missing
-Evidence is a bounded no-op and a later Pacer round may publish again.
-
-Evidence is not availability or a scheduling decision. It reflects facts
-observed for a Kernel-supplied held pool before the hold deadline. Kernel
-always confirms the exact clean HOT hold before selection. This cut
-deliberately does not add a facts revision or post-hold Properties rematch.
+Properties and Rules but cannot observe Score, rank Tasks, lease Workers,
+claim Items, or dispatch Commands.
 
 ## Allocation Mechanisms
 
-`WorkerAllocationMechanism` chooses one fixed workflow:
+`WorkerAllocationMechanism` selects one fixed vertical workflow:
 
-| Mechanism | Rule owner | Matching source | Candidate Cache |
+| Mechanism | Persistent Rule owner | Worker acquisition | Candidate Cache |
 | --- | --- | --- | --- |
-| `PRECOMPUTED_TASK_RULE` | Matching Task Rule keyed by taskId | Kernel-supplied held Worker IDs | used |
-| `ON_DEMAND_ITEM_RULE` | Matching Item Rule keyed by taskId + messageId | Kernel-supplied held Worker IDs | forbidden |
+| `PRECOMPUTED_TASK_RULE` | Matching Candidate Rule keyed by candidateId | ordered Group Demand filters a Pacer-held pool | used |
+| `ON_DEMAND_ITEM_RULE` | Kernel finite Worker Selector | Kernel directly observes normalized explicit IDs or ANY | forbidden |
 
-The Task or Item API still accepts an allocation rule. Server stores it in
-Worker Matching before writing the corresponding minimal Kernel resource.
-Kernel descriptors and items never carry the rule.
+Task creation still accepts a PRECOMPUTED allocation Rule, which Server stores
+in Worker Matching before writing the minimal Kernel Task resource. ON_DEMAND
+Item calls instead require a finite `workerSelector` array. Kernel normalizes
+it and stores only the Worker-ID list, where an empty list means ANY.
 
 ## PRECOMPUTED Flow
 
 ```text
 Main selects due PRECOMPUTED Tasks
-  -> Allocation observes Candidate Cache counts
-  -> consumes available Task Evidence
-  -> Kernel confirms active holds and applies priority/count/unique selection
-  -> Kernel loads minimal Worker delivery descriptors
-  -> selected exact holds enter Candidate Cache
-  -> remaining deficits hold a Worker pool and publish Task Match Demands
+  -> Allocation reads Candidate Cache counts
+  -> incomplete Tasks sort by priority then taskId within WorkerGroup
+  -> current deficits bound due HOT observation to at most 100 Workers
+  -> Pacer exact-holds the observed pool
+  -> one ordered TaskRuleMatchDemand is offered for the Group
+  -> Matching reads Candidate Rules and Worker facts
+  -> Matching appends accepted workerId + opaque held score to Candidate buckets
+  -> Dispatch consumes a Candidate bucket and exact-renews before Item claim
 ```
 
-A Task Demand contains the current bounded due HOT Worker IDs for its fixed
-WorkerGroup and their shared hold deadline. Matching filters only that supplied
-set against the persistent Task Rule and canonical Worker/Platform facts.
-
-Candidate Cache remains disposable Task-oriented lease evidence:
+The Demand contains:
 
 ```text
-CandidateId=taskId -> CandidateWorkerEntry[]
-CandidateWorkerEntry = workerId + workerGroupId + exact workerLeaseScore
+workerGroupId
+ordered (candidateId, maximumCandidateWorkers) needs, at most 100
+ordered workerId -> exact held score map, at most 100
+holdUntilMillis
 ```
 
-It contains no Rule, Properties or Endpoint.
+The Task maximum is static; current deficits remain Pacer-local and only bound
+how many Workers are held. Candidate Cache atomically removes expired entries
+and admits no more than each Candidate maximum. Matching follows Pacer Task order
+and removes only Cache-accepted Workers from the local pool, so one held Worker
+enters at most one Candidate bucket per Demand.
+
+Only one Demand may be pending per WorkerGroup. Rejection does not block and
+does not release its holds. Missing matches, Cache rejection, partial failures,
+and unselected holds recover through lease expiry. Other WorkerGroups are not
+serialized behind that Group.
+
+Candidate Cache remains disposable address-oriented state:
+
+```text
+candidateId -> CandidateWorkerEntry[]
+CandidateWorkerEntry = workerId + exact heldWorkerLeaseScore
+ZSET score = candidate expiry
+```
+
+It contains no Rule, Properties, WorkerGroup, or endpoint. Matching is a
+bounded writer through the Cache owner API, not the Cache truth owner.
 
 ## ON_DEMAND Flow
 
-```text
-Task Dispatch observes claimable Items
-  -> consume available Item Evidence
-  -> Kernel confirms active holds and applies priority/round uniqueness
-  -> exact claim and Delivery Command publication
-  -> unassigned Items hold a Worker pool and publish Item Match Demands
+Kernel validates only these Item Worker Selectors:
+
+```json
+[]
+["workerId", "$eq", "worker-id"]
+["workerId", "$in", ["worker-a", "worker-b"]]
 ```
 
-Matching evaluates only the bounded Worker IDs supplied in each Item Demand.
-It does not scan a WorkerGroup or retain an Item cursor. Demand and Evidence
-disappear on Server restart; persistent Rules and facts do not.
+Kernel persists normalized target IDs with the TaskItem and dispatches
+directly:
+
+```text
+Task Dispatch observes claimable Items in order
+  -> explicit IDs: observe due HOT scores for those IDs in the Task Group
+  -> empty target: observe a bounded due HOT Group pool
+  -> enforce one Worker use per dispatch round
+  -> exact-hold selected scores
+  -> load current minimal Worker descriptor
+  -> final exact renewal, Item claim, and Delivery Command publication
+```
+
+There is no ON_DEMAND Match Demand, Evidence, resident Matching work, cursor,
+or Candidate Cache fallback. Unsupported Selector names, operators or operands
+are rejected by Kernel before TaskItem creation.
 
 ## Candidate Selection
 
-`WorkerCandidateSelectionPolicy` owns only scheduling operations:
+`WorkerCandidateSelectionPolicy` owns scheduling operations:
 
-- observe a bounded due HOT identity pool and exact-hold it before Demand
-  publication;
-- order Candidate requests by priority and stable candidate identity;
-- enforce one Worker per Candidate assignment and one use per Pacer round;
-- confirm the exact hold for matched evidence and renew cached Worker leases;
-- load minimal `workerId + workerGroupId + endpointManagerId` descriptors
-  after lease success.
+- bounded due HOT observation;
+- exact initial hold and final cached renewal;
+- explicit-target and ANY selection for ON_DEMAND;
+- one Worker use per dispatch round;
+- current `workerId + workerGroupId + endpointManagerId` loading after
+  acquisition.
 
-It does not parse property names or operators. Worker Matching does not read
-scores, priority, Candidate Cache, endpoints or TaskItem state.
-
-Cached renewal consumes Candidate Cache, exact-renews its score fence and loads
-the current endpoint. A miss never falls back to ON_DEMAND matching.
+It does not parse property names or operators. Raw scores remain opaque by
+usage: Pacer may retain and submit them to exact Owner operations but cannot
+decode, construct, or calculate score coordinates.
 
 ## Assignment Closure
 
-After a Worker is leased, `TaskAssignmentDispatcher` preserves:
+After a candidate is selected, `TaskAssignmentDispatcher` preserves:
 
 ```text
 exact Worker lease renewal
@@ -137,33 +140,33 @@ exact Worker lease renewal
 ```
 
 Observation is not claim. If an exact fence fails, no Command is published.
-Unused or publication-failed leases recover through lease expiry.
-
-Task Dispatch separately owns Item expiry/exhaustion, failed-result storage
-before `FINAL_FAILED`, ordinary Task pacing and idle close/park. Result
-routing and finality remain independent owners.
+Unused or publication-failed leases recover through lease expiry. Task
+Dispatch separately owns Item expiry/exhaustion, failed-result-before-
+`FINAL_FAILED`, ordinary Task pacing, and idle close/park. Result routing and
+finality remain independent owners.
 
 ## Failure Semantics
 
 | Failure | Result |
 | --- | --- |
-| Demand queue capacity | skip this offer; later due round retries |
-| Matching catalog failure | pending ownership released; no Evidence |
-| missing or invalid Rule | empty Evidence plus safe diagnostic |
-| expired Evidence | discarded |
-| stale or unavailable Worker score | exact hold confirmation fails |
-| Matching runtime unexpected exit | Matching health DOWN; no silent restart |
-| Server restart | transient Demand/Evidence lost; Pacer republishes |
+| PRECOMPUTED Demand busy or queue full | offer is skipped; hold expires; a later due round recomputes deficit |
+| Matching catalog or Cache failure | pending Group is released; completed Cache writes remain; other holds expire |
+| missing or invalid Candidate Rule | Candidate is skipped inside the Demand; Workers remain available to later needs |
+| Candidate expiry or stale Worker score | Cache entry is dropped or final exact renewal fails |
+| invalid ON_DEMAND Worker Selector | public mutation fails before Kernel TaskItem append |
+| Matching runtime unexpected exit | Matching health DOWN; no silent restart or Pacer fallback |
+| Server restart | transient Demand is lost; persistent facts, Rules, Cache, and Score keep owner semantics |
 
-No failure path lets Server or Matching choose a Worker.
+No failure path lets Server or Matching make the final assignment.
 
 ## Guardrails
 
-- Do not put Rules or Properties back into Kernel descriptors, TaskItems,
-  Candidate Cache or Demand/Evidence.
+- Do not put Rule or Properties maps back into Kernel descriptors, TaskItems,
+  Candidate Cache, or Match Demand.
 - Do not add a Server-side scheduling fallback when Matching is unavailable.
-- Do not turn Evidence into availability, ACK, cache truth or a final
-  scheduling decision.
-- Do not add generic matching SPI, event bus or dynamic Producer registry.
+- Do not let Matching interpret score, consume Cache, renew leases, claim
+  Items, or publish Commands.
+- Do not add ON_DEMAND matching queues, Evidence, Candidate Cache, or general
+  Property operators without a new mechanism design.
+- Do not compensate-release unmatched or unaccepted holds.
 - Do not infer connection state from score or matching facts.
-- Do not add cached-to-on-demand fallback or mix Task and Item rule workflows.

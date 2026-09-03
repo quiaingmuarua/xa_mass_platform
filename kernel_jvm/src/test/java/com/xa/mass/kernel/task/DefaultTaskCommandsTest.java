@@ -270,7 +270,8 @@ class DefaultTaskCommandsTest {
                 1,
                 Map.of("value", "abc"),
                 5,
-                10_000L
+                10_000L,
+                List.of()
         );
     }
 

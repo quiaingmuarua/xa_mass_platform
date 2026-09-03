@@ -21,6 +21,33 @@ import tools.jackson.databind.json.JsonMapper;
 public final class RedisCandidateWorkerCache
         implements CandidateWorkerCache, AutoCloseable {
 
+    private static final String APPEND_CANDIDATES = """
+            local now_millis = tonumber(ARGV[1])
+            local expires_at_millis = tonumber(ARGV[2])
+            local maximum = tonumber(ARGV[3])
+
+            redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_millis)
+            local available = maximum - redis.call('ZCARD', KEYS[1])
+            local accepted = {}
+            if available <= 0 then
+                return accepted
+            end
+            for index = 4, #ARGV, 2 do
+                if available <= 0 then
+                    break
+                end
+                local worker_id = ARGV[index]
+                local encoded = ARGV[index + 1]
+                if redis.call(
+                    'ZADD', KEYS[1], 'NX', expires_at_millis, encoded
+                ) == 1 then
+                    table.insert(accepted, worker_id)
+                    available = available - 1
+                end
+            end
+            return accepted
+            """;
+
     private static final String CONSUME_CANDIDATES = """
             local now_millis = tonumber(ARGV[1])
             local limit = tonumber(ARGV[2])
@@ -56,12 +83,18 @@ public final class RedisCandidateWorkerCache
     }
 
     @Override
-    public void appendCandidateWorkers(
+    public List<String> appendCandidateWorkers(
             String candidateId,
+            int maximumCandidateWorkers,
             List<CandidateWorkerEntry> candidateWorkers,
             long expiresAtMillis
     ) {
         requireCandidateId(candidateId);
+        if (maximumCandidateWorkers <= 0) {
+            throw new IllegalArgumentException(
+                    "maximumCandidateWorkers must be positive"
+            );
+        }
         if (candidateWorkers == null) {
             throw new IllegalArgumentException(
                     "candidateWorkers must be present"
@@ -73,7 +106,7 @@ public final class RedisCandidateWorkerCache
             );
         }
         if (candidateWorkers.isEmpty()) {
-            return;
+            return List.of();
         }
         long nowMillis = redisTimeMillis();
         if (expiresAtMillis <= nowMillis) {
@@ -81,16 +114,31 @@ public final class RedisCandidateWorkerCache
                     "candidate batch expiry must be in the future"
             );
         }
-        String key = candidateKey(candidateId);
-        commands().zremrangebyscore(
-                key,
-                Double.NEGATIVE_INFINITY,
-                nowMillis
-        );
+        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+        List<String> arguments = new ArrayList<>();
+        arguments.add(Long.toString(nowMillis));
+        arguments.add(Long.toString(expiresAtMillis));
+        arguments.add(Integer.toString(maximumCandidateWorkers));
         for (CandidateWorkerEntry entry : candidateWorkers) {
             validateEntry(entry);
-            commands().zadd(key, expiresAtMillis, encode(entry));
+            if (!workerIds.add(entry.workerId())) {
+                throw new IllegalArgumentException(
+                        "candidateWorkers must be unique by workerId"
+                );
+            }
+            arguments.add(entry.workerId());
+            arguments.add(encode(entry));
         }
+        Object raw = commands().eval(
+                APPEND_CANDIDATES,
+                ScriptOutputType.MULTI,
+                new String[]{candidateKey(candidateId)},
+                arguments.toArray(String[]::new)
+        );
+        if (!(raw instanceof List<?> values) || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream().map(String::valueOf).toList();
     }
 
     @Override
@@ -170,8 +218,10 @@ public final class RedisCandidateWorkerCache
         try {
             Map<String, Object> value = new TreeMap<>();
             value.put("workerId", entry.workerId());
-            value.put("workerGroupId", entry.workerGroupId());
-            value.put("workerLeaseScore", entry.workerLeaseScore());
+            value.put(
+                    "heldWorkerLeaseScore",
+                    entry.heldWorkerLeaseScore()
+            );
             return mapper.writeValueAsString(value);
         } catch (JacksonException error) {
             throw new IllegalStateException(
@@ -184,16 +234,13 @@ public final class RedisCandidateWorkerCache
     private CandidateWorkerEntry decode(String encoded) {
         try {
             JsonNode value = mapper.readTree(encoded);
-            if (value == null || !value.isObject() || value.size() != 3) {
+            if (value == null || !value.isObject() || value.size() != 2) {
                 return null;
             }
             JsonNode workerId = value.get("workerId");
-            JsonNode workerGroupId = value.get("workerGroupId");
-            JsonNode workerLeaseScore = value.get("workerLeaseScore");
+            JsonNode workerLeaseScore = value.get("heldWorkerLeaseScore");
             if (workerId == null || !workerId.isTextual()
                     || workerId.textValue().isEmpty()
-                    || workerGroupId == null || !workerGroupId.isTextual()
-                    || workerGroupId.textValue().isEmpty()
                     || workerLeaseScore == null
                     || !workerLeaseScore.isIntegralNumber()
                     || workerLeaseScore.longValue() <= 0) {
@@ -201,7 +248,6 @@ public final class RedisCandidateWorkerCache
             }
             return new CandidateWorkerEntry(
                     workerId.textValue(),
-                    workerGroupId.textValue(),
                     workerLeaseScore.longValue()
             );
         } catch (JacksonException | IllegalArgumentException error) {
@@ -212,8 +258,7 @@ public final class RedisCandidateWorkerCache
     private static void validateEntry(CandidateWorkerEntry entry) {
         if (entry == null
                 || entry.workerId().isBlank()
-                || entry.workerGroupId().isBlank()
-                || entry.workerLeaseScore() <= 0) {
+                || entry.heldWorkerLeaseScore() <= 0) {
             throw new IllegalArgumentException(
                     "Candidate Worker entry is invalid"
             );
@@ -254,7 +299,7 @@ public final class RedisCandidateWorkerCache
     private static void requireCandidateId(String candidateId) {
         if (candidateId == null || candidateId.isBlank()) {
             throw new IllegalArgumentException(
-                    "candidate id must be non-blank"
+                    "candidateId must be non-blank"
             );
         }
     }

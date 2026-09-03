@@ -112,7 +112,7 @@ final class AndroidRuntimeApiClient {
             long waitTimeoutMillis
     ) {
         return callItems(
-                List.of(new TaskItemCall(eventName, payload, Map.of())),
+                List.of(new TaskItemCall(eventName, payload, List.of())),
                 waitTimeoutMillis
         ).get(0);
     }
@@ -120,11 +120,11 @@ final class AndroidRuntimeApiClient {
     TaskCall callItem(
             String eventName,
             Map<String, Object> payload,
-            Map<String, Object> allocationRule,
+            List<Object> workerSelector,
             long waitTimeoutMillis
     ) {
         return callItems(
-                List.of(new TaskItemCall(eventName, payload, allocationRule)),
+                List.of(new TaskItemCall(eventName, payload, workerSelector)),
                 waitTimeoutMillis
         ).get(0);
     }
@@ -145,7 +145,7 @@ final class AndroidRuntimeApiClient {
             item.put("messageId", messageId);
             item.put("eventCode", call.eventName());
             item.put("payload", call.payload());
-            item.put("allocationRule", call.allocationRule());
+            item.put("workerSelector", call.workerSelector());
             items.add(Map.copyOf(item));
         }
         JsonHttpClient.Response response = http.send(
@@ -447,16 +447,16 @@ final class AndroidRuntimeApiClient {
     record TaskItemCall(
             String eventName,
             Map<String, Object> payload,
-            Map<String, Object> allocationRule
+            List<Object> workerSelector
     ) {
         TaskItemCall {
             if (eventName == null || eventName.isBlank()) {
                 throw new IllegalArgumentException("eventName must be non-blank");
             }
             payload = Map.copyOf(Objects.requireNonNull(payload, "payload"));
-            allocationRule = Map.copyOf(Objects.requireNonNull(
-                    allocationRule,
-                    "allocationRule"
+            workerSelector = List.copyOf(Objects.requireNonNull(
+                    workerSelector,
+                    "workerSelector"
             ));
         }
     }

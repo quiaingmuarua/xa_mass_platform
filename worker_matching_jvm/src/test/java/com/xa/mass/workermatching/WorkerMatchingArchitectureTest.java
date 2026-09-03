@@ -25,7 +25,6 @@ class WorkerMatchingArchitectureTest {
 
         for (String forbidden : List.of(
                 "com.xa.mass.kernel.score",
-                "CandidateWorkerCache",
                 "TaskRuntime",
                 "WorkerResourceCatalog",
                 "com.xa.mass.kernel.pacer",
@@ -37,12 +36,20 @@ class WorkerMatchingArchitectureTest {
                 "DeliveryReport",
                 "scanWorkerFacts",
                 "WorkerFactsPage",
-                "itemCursors"
+                "itemCursors",
+                "ItemRule",
+                "taskId",
+                ":matching:task:"
         )) {
             assertFalse(
                     source.toString().contains(forbidden),
                     () -> "Worker Matching must not contain " + forbidden
             );
         }
+        assertFalse(
+                source.toString().contains("WorkerScoreCore"),
+                "Worker Matching may carry opaque held scores but must not "
+                        + "interpret them"
+        );
     }
 }

@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-/** A Worker that passed exact lease acquisition and canonical rematching. */
+/** A Worker selected through score ownership and canonical description. */
 record AcquiredWorkerCandidate(
         String workerId,
         String workerGroupId,

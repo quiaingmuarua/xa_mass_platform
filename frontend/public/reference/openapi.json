@@ -138,10 +138,6 @@
       },
       "TaskItemRequest" : {
         "properties" : {
-          "allocationRule" : {
-            "additionalProperties" : { },
-            "type" : "object"
-          },
           "eventCode" : {
             "minLength" : 1,
             "type" : "string"
@@ -164,6 +160,11 @@
             "format" : "int64",
             "minimum" : 0,
             "type" : "integer"
+          },
+          "workerSelector" : {
+            "description" : "ON_DEMAND only: [], [workerId, $eq, id], or [workerId, $in, ids]; omit for finite TaskItems",
+            "items" : { },
+            "type" : "array"
           }
         },
         "required" : [ "eventCode", "messageId", "payload" ],

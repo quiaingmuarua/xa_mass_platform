@@ -61,24 +61,24 @@ String Item two is a deterministic 10-second `extension.worker.lab.delay` and
 Item three is `extension.worker.lab.fail`; Phone Items are unchanged. These
 seven DELAY and seven FAIL Items are background offered load, not additional
 per-Item or Result assertions.
-Directed witnesses use an explicit finite candidate identity set together with
-their mutable Property condition. The other 49 Items keep empty rules, so this
-scenario does not turn bounded candidate discovery into part of its oracle.
+All managed ON_DEMAND wave Items use empty rules. Property interpretation is
+proved separately by one finite PRECOMPUTED Task so the two allocation
+mechanisms are not blended into one witness.
 
 1. Baseline all 100 Workers connected and HOT, then stop the directed String
    Worker before any workload and keep it unavailable through wave six.
 2. Stop five other Workers per Group; require disconnected plus recovery/cold,
    then restore them.
-3. Stop two Workers per Group, replace `convergenceSlot`, start them, observe
-   the refreshed snapshot and prove ON_DEMAND matching uses it.
+3. Stop two Workers per Group, replace `convergenceSlot`, start them, and
+   observe the refreshed Properties projection.
 4. Stop the other 49 String Workers and observe all 50 unavailable. Submit wave
    one: Phone work completes while String work stays due; restore only those 49
    and close it.
-5. Complete waves two through five on the recovered world, including the
-   directed witness that proves the earlier `convergenceSlot` replacement.
-6. Reconfirm the directed String Worker is locally STOPPED, Adapter
-   disconnected and Kernel scheduling-unavailable. Submit its unmatched-slot
-   witness and prove it remains unobserved before restarting Runtime Server
+5. Complete waves two through five on the recovered world.
+6. Reconfirm the slot-C String Worker is locally STOPPED, Adapter disconnected
+   and Kernel scheduling-unavailable. Submit one finite PRECOMPUTED Task whose
+   PRECOMPUTED Candidate Rule requires `worker.convergenceSlot=C`, prove its Item remains
+   unobserved, then restart Runtime Server
    while Scenario Host stays alive.
 7. Reconnect the other 99 stable identities and require them HOT while the
    directed Worker remains stopped. Replace its slot, start it exactly once,
@@ -139,8 +139,8 @@ resulting outage and recovery.
 
 The fixed Triad adds only the multi-process claim. Three application IDs create
 three independent Android sandboxes and worker identities in the same Group.
-Correctness directs one Item to each through a `workerId` candidate bound plus
-the matching `worker.packageName` constraint. Convergence force-stops `lab2`,
+Correctness directs one Item to each through an exact `workerId` target.
+Convergence force-stops `lab2`,
 requires `lab1` and `lab3` to remain serviceable, then
 restarts `lab2` and requires its original worker ID. It does not generalize N,
 repeat Server restart, or claim Android background survival. The disposable

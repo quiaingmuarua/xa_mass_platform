@@ -18,6 +18,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class WorkerCandidateSelectionPolicyTest {
@@ -32,180 +33,212 @@ class WorkerCandidateSelectionPolicyTest {
                 "worker-2", 102L
         );
         when(scores.observeDueHotScoreCandidates(
-                "group-1",
-                null,
-                100
+                "group-1", null, 2
         )).thenReturn(observed);
         when(scores.acquireObservedHotScoreLeases(
-                "group-1",
-                observed,
-                5_000L
+                "group-1", observed, 5_000L
         )).thenReturn(Map.of(
                 "worker-1", transitioned(201L),
                 "worker-2", new WorkerScoreTransitionResult(
-                        WorkerScoreTransitionStatus.STALE,
-                        102L
+                        WorkerScoreTransitionStatus.STALE, 102L
                 )
         ));
-
         WorkerCandidateSelectionPolicy policy = policy(scores, cache, catalog);
 
-        assertEquals(observed, policy.observeDueCandidates("group-1"));
+        assertEquals(observed, policy.observeDueCandidates("group-1", 2));
         assertEquals(
                 Map.of("worker-1", 201L),
                 policy.holdObservedCandidates(
-                        "group-1",
-                        observed,
-                        5_000L
+                        "group-1", observed, 5_000L
                 )
         );
         verifyNoInteractions(cache, catalog);
     }
 
     @Test
-    void heldEvidenceStillUsesKernelPriorityAndUniqueness() {
+    void cachedCandidateCarriesExactHeldScoreWithoutEarlyRenewal() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        LinkedHashMap<String, Long> active = linkedScores(
-                "worker-1", 201L,
-                "worker-2", 202L
+        when(cache.consumeCandidateWorkers("task-1", 1)).thenReturn(
+                List.of(new CandidateWorkerEntry("worker-1", 101L))
         );
-        when(scores.observeActiveHotScoreLeases(
-                "group-1",
-                List.of("worker-1", "worker-2"),
-                5_000L
-        )).thenReturn(active);
         when(catalog.getWorkerDescriptors(
-                "group-1",
-                List.of("worker-1", "worker-2")
+                "group-1", List.of("worker-1")
+        )).thenReturn(Map.of("worker-1", workerDescriptor("worker-1")));
+
+        List<AcquiredWorkerCandidate> result = policy(
+                scores, cache, catalog
+        ).consumeCachedCandidates("group-1", "task-1", 1);
+
+        assertEquals(List.of(worker("worker-1", 101L)), result);
+        verifyNoInteractions(scores);
+    }
+
+    @Test
+    void missingDescriptorDropsConsumedCandidate() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(cache.consumeCandidateWorkers("task-1", 1)).thenReturn(
+                List.of(new CandidateWorkerEntry("worker-1", 101L))
+        );
+        when(catalog.getWorkerDescriptors(
+                "group-1", List.of("worker-1")
+        )).thenReturn(Map.of());
+
+        assertEquals(
+                List.of(),
+                policy(scores, cache, catalog).consumeCachedCandidates(
+                        "group-1", "task-1", 1
+                )
+        );
+        verifyNoInteractions(scores);
+    }
+
+    @Test
+    void onDemandUsesExplicitTargetsThenAnyDueWorkersUniquely() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.observeDueHotScores(
+                "group-1", List.of("worker-2", "worker-1"), null
+        )).thenReturn(Map.of("worker-1", 101L, "worker-2", 102L));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1", Map.of("worker-2", 102L), 5_000L
+        )).thenReturn(Map.of("worker-2", transitioned(202L)));
+        when(scores.observeDueHotScoreCandidates(
+                "group-1", null, 2
+        )).thenReturn(Map.of("worker-1", 101L));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1", Map.of("worker-1", 101L), 5_000L
+        )).thenReturn(Map.of("worker-1", transitioned(201L)));
+        when(catalog.getWorkerDescriptors(
+                "group-1", List.of("worker-2", "worker-1")
         )).thenReturn(Map.of(
-                "worker-1", worker("worker-1"),
-                "worker-2", worker("worker-2")
+                "worker-1", workerDescriptor("worker-1"),
+                "worker-2", workerDescriptor("worker-2")
         ));
-        LinkedHashMap<String, WorkerCandidateRequest> requests =
-                new LinkedHashMap<>();
-        requests.put("lower", new WorkerCandidateRequest(10, 2));
-        requests.put("higher", new WorkerCandidateRequest(1, 1));
+        LinkedHashMap<String, List<String>> targets = new LinkedHashMap<>();
+        targets.put("message-explicit", List.of("worker-2", "worker-1"));
+        targets.put("message-any", List.of());
 
-        Map<String, List<AcquiredWorkerCandidate>> result = policy(
-                scores,
-                cache,
-                catalog
-        ).selectHeldCandidates(
-                "group-1",
-                requests,
+        Map<String, AcquiredWorkerCandidate> result = policy(
+                scores, cache, catalog
+        ).acquireOnDemandCandidates(
+                "group-1", targets, Set.of(), 5_000L
+        );
+
+        assertEquals(
                 Map.of(
-                        "lower", List.of("worker-1", "worker-2"),
-                        "higher", List.of("worker-1")
+                        "message-explicit", worker("worker-2", 202L),
+                        "message-any", worker("worker-1", 201L)
                 ),
-                Map.of("lower", 5_000L, "higher", 5_000L),
-                100
-        );
-
-        assertEquals(
-                List.of("worker-1"),
-                result.get("higher").stream()
-                        .map(AcquiredWorkerCandidate::workerId)
-                        .toList()
-        );
-        assertEquals(
-                List.of("worker-2"),
-                result.get("lower").stream()
-                        .map(AcquiredWorkerCandidate::workerId)
-                        .toList()
+                result
         );
         verifyNoInteractions(cache);
     }
 
     @Test
-    void staleHoldOrMissingDescriptorCannotTurnEvidenceIntoAWorker() {
+    void anyTargetsScanPastWorkersAlreadyUsedInTheRound() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        when(scores.observeActiveHotScoreLeases(
-                "group-1",
-                List.of("worker-1", "worker-2"),
-                5_000L
-        )).thenReturn(Map.of("worker-1", 201L));
+        LinkedHashMap<String, Long> observed = new LinkedHashMap<>();
+        observed.put("worker-used", 101L);
+        observed.put("worker-free", 102L);
+        when(scores.observeDueHotScoreCandidates(
+                "group-1", null, 2
+        )).thenReturn(observed);
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1", Map.of("worker-free", 102L), 5_000L
+        )).thenReturn(Map.of("worker-free", transitioned(202L)));
         when(catalog.getWorkerDescriptors(
-                "group-1",
-                List.of("worker-1")
-        )).thenReturn(Map.of());
+                "group-1", List.of("worker-free")
+        )).thenReturn(Map.of(
+                "worker-free", workerDescriptor("worker-free")
+        ));
 
-        Map<String, List<AcquiredWorkerCandidate>> result = policy(
-                scores,
-                cache,
-                catalog
-        ).selectHeldCandidates(
-                "group-1",
-                Map.of("item", new WorkerCandidateRequest(0, 2)),
-                Map.of("item", List.of("worker-1", "worker-2")),
-                Map.of("item", 5_000L),
-                100
-        );
-
-        assertEquals(List.of(), result.get("item"));
-    }
-
-    @Test
-    void cachedRenewalUsesOnlyKernelCandidateCache() {
-        WorkerScoreCore scores = mock(WorkerScoreCore.class);
-        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        when(cache.consumeCandidateWorkers("task-1", 1)).thenReturn(
-                List.of(new CandidateWorkerEntry(
-                        "worker-1",
+        assertEquals(
+                Map.of("message-any", worker("worker-free", 202L)),
+                policy(scores, cache, catalog).acquireOnDemandCandidates(
                         "group-1",
-                        101L
-                ))
+                        Map.of("message-any", List.of()),
+                        Set.of("worker-used"),
+                        5_000L
+                )
         );
-        when(scores.renewActiveHotScoreLeases(
-                "group-1",
-                Map.of("worker-1", 101L),
-                5_000L
-        )).thenReturn(Map.of("worker-1", transitioned(201L)));
-        when(catalog.getWorkerDescriptors(
-                "group-1",
-                List.of("worker-1")
-        )).thenReturn(Map.of("worker-1", worker("worker-1")));
+        verifyNoInteractions(cache);
+    }
 
-        Map<String, List<AcquiredWorkerCandidate>> result = policy(
-                scores,
-                cache,
-                catalog
-        ).renewCachedCandidates(
-                "group-1",
-                Map.of("task-1", new WorkerCandidateRequest(0, 1)),
-                5_000L
-        );
+    @Test
+    void excludedAndStaleExplicitTargetsDoNotBecomeCandidates() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.observeDueHotScores(
+                "group-1", List.of("worker-2"), null
+        )).thenReturn(Map.of("worker-2", 102L));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1", Map.of("worker-2", 102L), 5_000L
+        )).thenReturn(Map.of(
+                "worker-2",
+                new WorkerScoreTransitionResult(
+                        WorkerScoreTransitionStatus.STALE, 102L
+                )
+        ));
 
-        assertEquals("worker-1", result.get("task-1").getFirst().workerId());
-        verify(scores, never()).observeDueHotScoreCandidates(
-                "group-1",
-                null,
-                100
+        assertEquals(
+                Map.of(),
+                policy(scores, cache, catalog).acquireOnDemandCandidates(
+                        "group-1",
+                        Map.of("message-1", List.of(
+                                "worker-1", "worker-2"
+                        )),
+                        Set.of("worker-1"),
+                        5_000L
+                )
         );
-        verify(scores, never()).acquireObservedHotScoreLeases(
+        verify(catalog, never()).getWorkerDescriptors(
                 org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.anyLong()
+                org.mockito.ArgumentMatchers.anyList()
         );
     }
 
     @Test
-    void candidateEvidenceCannotExceedKernelRoundBound() {
+    void targetValidationRejectsDuplicateWorkersAndOversizedRounds() {
+        WorkerCandidateSelectionPolicy policy = policy(
+                mock(WorkerScoreCore.class),
+                mock(CandidateWorkerCache.class),
+                mock(WorkerResourceCatalog.class)
+        );
+
+        assertThrows(IllegalArgumentException.class, () ->
+                policy.acquireOnDemandCandidates(
+                        "group-1",
+                        Map.of("message-1", List.of(
+                                "worker-1", "worker-1"
+                        )),
+                        Set.of(),
+                        5_000L
+                ));
+        LinkedHashMap<String, List<String>> tooMany = new LinkedHashMap<>();
+        for (int index = 0; index < 101; index++) {
+            tooMany.put("message-" + index, List.of());
+        }
+        assertThrows(IllegalArgumentException.class, () ->
+                policy.acquireOnDemandCandidates(
+                        "group-1", tooMany, Set.of(), 5_000L
+                ));
+    }
+
+    @Test
+    void dueObservationCannotExceedConfiguredScanLimit() {
         assertThrows(IllegalArgumentException.class, () -> policy(
                 mock(WorkerScoreCore.class),
                 mock(CandidateWorkerCache.class),
                 mock(WorkerResourceCatalog.class)
-        ).selectHeldCandidates(
-                "group-1",
-                Map.of("item", new WorkerCandidateRequest(0, 1)),
-                Map.of("item", List.of("worker-1")),
-                Map.of("item", 5_000L),
-                101
-        ));
+        ).observeDueCandidates("group-1", 101));
     }
 
     private static WorkerCandidateSelectionPolicy policy(
@@ -214,34 +247,36 @@ class WorkerCandidateSelectionPolicyTest {
             WorkerResourceCatalog catalog
     ) {
         return new WorkerCandidateSelectionPolicy(
-                scores,
-                cache,
-                catalog,
-                100,
-                null
+                scores, cache, catalog, 100, null
         );
     }
 
     private static LinkedHashMap<String, Long> linkedScores(
-            String firstId,
-            long firstScore,
-            String secondId,
-            long secondScore
+            Object... pairs
     ) {
         LinkedHashMap<String, Long> result = new LinkedHashMap<>();
-        result.put(firstId, firstScore);
-        result.put(secondId, secondScore);
+        for (int index = 0; index < pairs.length; index += 2) {
+            result.put((String) pairs[index], (Long) pairs[index + 1]);
+        }
         return result;
     }
 
     private static WorkerScoreTransitionResult transitioned(long score) {
         return new WorkerScoreTransitionResult(
-                WorkerScoreTransitionStatus.TRANSITIONED,
-                score
+                WorkerScoreTransitionStatus.TRANSITIONED, score
         );
     }
 
-    private static WorkerDescriptor worker(String workerId) {
+    private static WorkerDescriptor workerDescriptor(String workerId) {
         return new WorkerDescriptor(workerId, "group-1", "adapter-1");
+    }
+
+    private static AcquiredWorkerCandidate worker(
+            String workerId,
+            long score
+    ) {
+        return new AcquiredWorkerCandidate(
+                workerId, "group-1", "adapter-1", score
+        );
     }
 }

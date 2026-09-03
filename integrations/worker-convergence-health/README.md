@@ -36,14 +36,13 @@ phase and is not treated as downstream convergence evidence.
 
 Seven waves submit 50 Items per Group, for 700 offered Items total. The first
 Item in each batch is a named valid witness; every tenth Item has deterministic
-invalid input. A directed witness combines a finite explicit Worker candidate
-set with its mutable Property condition; the other 49 Items retain empty rules.
-This keeps candidate discovery probability outside the Property-convergence
-oracle. The scenario proves:
+invalid input. Managed ON_DEMAND waves use empty rules. A separate finite
+PRECOMPUTED Task isolates the Property-matching oracle. The scenario proves:
 
 - five stopped Workers per Group leave connected/HOT serviceability and recover;
-- stopped-state `convergenceSlot` changes appear after explicit start and affect
-  ON_DEMAND matching;
+- stopped-state `convergenceSlot` changes appear after explicit start;
+- one finite PRECOMPUTED witness remains unmatched until a Worker with the new
+  `convergenceSlot` is started, then converges through Task-rule matching;
 - a full String Group outage does not stop Phone progress, and parked String
   witness work finishes after recovery;
 - after the 100-Worker baseline, the directed String Worker is stopped before

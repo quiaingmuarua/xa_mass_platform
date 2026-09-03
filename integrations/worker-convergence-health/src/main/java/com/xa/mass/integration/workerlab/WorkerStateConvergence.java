@@ -13,6 +13,7 @@ import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.safe
 
 import com.xa.mass.integration.workerlab.ConvergenceWorkload.Batch;
 import com.xa.mass.integration.workerlab.RuntimeApiClient.CallStatus;
+import com.xa.mass.integration.workerlab.RuntimeApiClient.PrecomputedWitness;
 import com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.WorkerRef;
 import com.xa.mass.integration.workerlab.WorkerLabControlClient.WorkerSnapshot;
 import java.io.IOException;
@@ -41,8 +42,6 @@ final class WorkerStateConvergence {
             PHONE_WORKERS.subList(5, 7),
             STRING_WORKERS.subList(5, 7)
     );
-    private static final WorkerRef MUTATED_PHONE_WORKER = PHONE_WORKERS.get(5);
-    private static final WorkerRef MUTATED_STRING_WORKER = STRING_WORKERS.get(5);
     private static final WorkerRef SLOT_C_WORKER = STRING_WORKERS.get(7);
     private static final List<WorkerRef> SERVER_RESTART_RUNNING_WORKERS =
             CONVERGENCE_WORKERS.stream()
@@ -129,16 +128,6 @@ final class WorkerStateConvergence {
                     mutatedIds,
                     MUTATED_SLOT
             );
-            Map<String, Map<String, Object>> slotRules = Map.of(
-                    PHONE_GROUP, slotRule(
-                            workerId(mutatedIds, MUTATED_PHONE_WORKER),
-                            MUTATED_SLOT
-                    ),
-                    STRING_GROUP, slotRule(
-                            workerId(mutatedIds, MUTATED_STRING_WORKER),
-                            MUTATED_SLOT
-                    )
-            );
             stopLocally(
                     "string-group-outage",
                     options,
@@ -199,7 +188,7 @@ final class WorkerStateConvergence {
             );
             awaitWaveWitnesses(
                     workload,
-                    workload.submitWave("wave-3", slotRules, null),
+                    workload.submitWave("wave-3", Map.of(), null),
                     options
             );
             awaitWaveWitnesses(
@@ -234,42 +223,43 @@ final class WorkerStateConvergence {
             );
             List<Batch> restartWave = workload.submitWave(
                     "wave-6",
-                    Map.of(STRING_GROUP, slotRule(
-                            workerId(identities, SLOT_C_WORKER),
-                            UNMATCHED_SLOT
-                    )),
+                    Map.of(),
                     null
             );
-            Batch phoneBeforeRestart = workload.requireBatch(
-                    restartWave,
-                    PHONE_GROUP
-            );
-            Batch stringBeforeRestart = workload.requireBatch(
-                    restartWave,
-                    STRING_GROUP
-            );
-            workload.awaitWitness(phoneBeforeRestart, options.maximumWait());
+            awaitWaveWitnesses(workload, restartWave, options);
+            String propertyMessageId = options.proofId()
+                    + "-precomputed-slot-c";
+            PrecomputedWitness propertyWitness =
+                    runtime.submitPrecomputedWitness(
+                            STRING_GROUP,
+                            Map.of(MATCH_PROPERTY, Map.of(
+                                    "$eq",
+                                    UNMATCHED_SLOT
+                            )),
+                            propertyMessageId,
+                            WorkerLabConvergenceSupport.STRING_EVENT,
+                            Map.of("value", "property-slot-c")
+                    );
             require(
-                    workload.immediateWitnessStatus(stringBeforeRestart)
+                    runtime.loadResultStatuses(
+                            propertyWitness.taskId(),
+                            List.of(propertyWitness.messageId())
+                    ).get(propertyWitness.messageId())
                             == CallStatus.NOT_OBSERVED,
-                    "Unmatched String witness items:call status was not NOT_OBSERVED "
-                            + "before slot C existed"
-            );
-            require(
-                    !workload.witnessObserved(stringBeforeRestart),
-                    "Unmatched String witness already had a successful Result before "
-                            + "slot C existed"
+                    "PRECOMPUTED property witness was observed before slot C existed"
             );
             new StateConvergencePhaseState(
                     options.proofId(),
                     Instant.now(),
                     coordinates(identities),
-                    workload.batches()
+                    workload.batches(),
+                    propertyWitness.taskId(),
+                    propertyWitness.messageId()
             ).save(phaseStatePath);
             evidence.record("server-restart", "work-submitted-before-restart", Map.of(
                     "offeredItemCount", workload.offeredItemCount(),
-                    "unmatchedWitnessMessageId",
-                    stringBeforeRestart.witnessMessageId(),
+                    "propertyWitnessTaskId", propertyWitness.taskId(),
+                    "propertyWitnessMessageId", propertyWitness.messageId(),
                     "workerCount", identities.size()
             ));
         } catch (RuntimeException error) {
@@ -371,18 +361,13 @@ final class WorkerStateConvergence {
                     ),
                     "Worker identities changed across Runtime Server restart"
             );
-            Batch restartWitness = workload.requireBatch(
-                    state.batches(),
-                    STRING_GROUP,
-                    "wave-6"
-            );
             awaitRestartWitness(
                     options,
                     lab,
                     runtime,
                     evidence,
-                    workload,
-                    restartWitness,
+                    state.propertyWitnessTaskId(),
+                    state.propertyWitnessMessageId(),
                     expectedSlotCWorkerId
             );
             awaitWaveWitnesses(
@@ -715,22 +700,12 @@ final class WorkerStateConvergence {
         ));
     }
 
-    private static Map<String, Object> slotRule(
-            String workerId,
-            String slot
-    ) {
-        return Map.of(
-                "workerId", Map.of("$eq", workerId),
-                MATCH_PROPERTY, Map.of("$eq", slot)
-        );
-    }
-
     private static String workerId(
             Map<WorkerRef, String> identities,
             WorkerRef worker
     ) {
         String workerId = identities.get(worker);
-        require(workerId != null, "Missing Worker identity for allocation rule");
+        require(workerId != null, "Missing Worker identity for Candidate Rule");
         return workerId;
     }
 
@@ -749,19 +724,28 @@ final class WorkerStateConvergence {
             WorkerLabControlClient lab,
             RuntimeApiClient runtime,
             ConvergenceEvidence evidence,
-            ConvergenceWorkload workload,
-            Batch batch,
+            String taskId,
+            String messageId,
             String targetWorkerId
     ) {
         try {
-            workload.awaitWitness(batch, options.maximumWait());
+            await(
+                    "precomputed-property-witness",
+                    options.maximumWait(),
+                    () -> runtime.loadResultStatuses(
+                            taskId,
+                            List.of(messageId)
+                    ),
+                    states -> states.get(messageId) == CallStatus.SUCCEEDED
+            );
         } catch (RuntimeException error) {
             recordRestartFailureSnapshot(
                     options,
                     lab,
                     runtime,
                     evidence,
-                    batch,
+                    taskId,
+                    messageId,
                     targetWorkerId,
                     error
             );
@@ -774,7 +758,8 @@ final class WorkerStateConvergence {
             WorkerLabControlClient lab,
             RuntimeApiClient runtime,
             ConvergenceEvidence evidence,
-            Batch batch,
+            String taskId,
+            String messageId,
             String targetWorkerId,
             RuntimeException primaryFailure
     ) {
@@ -785,9 +770,9 @@ final class WorkerStateConvergence {
                     "witnessStatus",
                     () -> {
                         CallStatus status = runtime.loadResultStatuses(
-                                batch.taskId(),
-                                List.of(batch.witnessMessageId())
-                        ).get(batch.witnessMessageId());
+                                taskId,
+                                List.of(messageId)
+                        ).get(messageId);
                         return status == null ? "missing" : status.wireValue();
                     },
                     primaryFailure
@@ -796,8 +781,8 @@ final class WorkerStateConvergence {
                     facts,
                     "taskScoreBand",
                     () -> runtime.previewTaskScoreBands(
-                            List.of(batch.taskId())
-                    ).getOrDefault(batch.taskId(), "missing"),
+                            List.of(taskId)
+                    ).getOrDefault(taskId, "missing"),
                     primaryFailure
             );
             captureSnapshot(
@@ -846,7 +831,7 @@ final class WorkerStateConvergence {
             facts.put("targetWorkerId", targetWorkerId);
             evidence.record(
                     "server-restart",
-                    "wave-6-timeout-snapshot",
+                    "property-witness-timeout-snapshot",
                     facts
             );
         } catch (RuntimeException snapshotFailure) {

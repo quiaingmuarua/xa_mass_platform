@@ -6,8 +6,9 @@ import java.util.Objects;
 
 public interface CandidateWorkerCache {
 
-    void appendCandidateWorkers(
+    List<String> appendCandidateWorkers(
             String candidateId,
+            int maximumCandidateWorkers,
             List<CandidateWorkerEntry> candidateWorkers,
             long expiresAtMillis
     );
@@ -21,12 +22,10 @@ public interface CandidateWorkerCache {
 
     record CandidateWorkerEntry(
             String workerId,
-            String workerGroupId,
-            long workerLeaseScore
+            long heldWorkerLeaseScore
     ) {
         public CandidateWorkerEntry {
             Objects.requireNonNull(workerId, "workerId");
-            Objects.requireNonNull(workerGroupId, "workerGroupId");
         }
     }
 }

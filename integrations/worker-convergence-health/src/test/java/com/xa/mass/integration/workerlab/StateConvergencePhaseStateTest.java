@@ -21,7 +21,9 @@ class StateConvergencePhaseStateTest {
                 "proof-1",
                 Instant.parse("2026-09-01T00:00:00Z"),
                 ConvergenceTestData.workerIds(),
-                ConvergenceTestData.batches(6)
+                ConvergenceTestData.batches(6),
+                "property-task",
+                "property-message"
         );
 
         expected.save(path);
@@ -32,7 +34,7 @@ class StateConvergencePhaseStateTest {
     @Test
     void rejectsIncompletePhaseState() throws Exception {
         Path path = temporaryDirectory.resolve("invalid.json");
-        Files.writeString(path, "{\"schemaVersion\":2}");
+        Files.writeString(path, "{\"schemaVersion\":3}");
 
         assertThatThrownBy(() -> StateConvergencePhaseState.load(path))
                 .isInstanceOf(IllegalStateException.class);

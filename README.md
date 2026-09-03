@@ -18,7 +18,7 @@ The visual projection is available in
 | Layer | Owns | Must not own |
 | --- | --- | --- |
 | Kernel | Task, TaskItem and Worker scheduling truth; selection; lease; claim; retry, recovery and result disposition | HTTP, physical connections, endpoint handlers and request waiters |
-| Worker Matching | Worker/Platform Properties, Task/Item allocation rules, rule interpretation and bounded Worker-ID evidence | Score, priority, lease, claim, retry and finality |
+| Worker Matching | Worker/Platform Properties, PRECOMPUTED Candidate Rules, constraint interpretation and bounded candidate publication | Item Worker Selectors, Score, priority, lease, claim, retry and finality |
 | Server | Runtime API; provider assembly; bounded use cases; Worker identity and Binding; Command-source routing; Result destination routing and correlation | Candidate selection, Worker lease, Item claim, retry policy and Task finality |
 | Adapter | Command acquisition, current verified route, physical delivery and Adapter-local handlers | Scheduling eligibility, Task priority, Worker selection and result truth |
 | Worker | Local full Event Name resolution, execution and Result evidence | Task lifecycle, scheduling policy and Adapter routing |
@@ -42,11 +42,12 @@ Network delivery and local invocation belong to Transport.
 TASK follows:
 
 ```text
-API -> Server writes Matching Rule + Kernel Task/Item truth
-    -> Kernel publishes bounded Match Demand
-    -> Kernel exact-holds the admitted due Worker pool
-    -> Worker Matching returns Worker-ID evidence
-    -> Kernel confirms the hold and assignment dispatches a targeted Command
+API -> Server writes a PRECOMPUTED Candidate Rule or normalizes an ON_DEMAND Worker Selector, then writes Kernel Task/Item truth
+    -> Kernel orders demand and exact-holds a bounded due Worker pool
+    -> Worker Matching filters PRECOMPUTED holds and writes Candidate Cache
+       or Kernel directly acquires normalized ON_DEMAND Worker-ID targets
+    -> Kernel exact-renews the chosen hold, claims the Item and dispatches
+       a targeted Command
     -> Server authority routing -> Adapter -> Worker -> Result
     -> Server TASK owner -> Kernel result routing
 ```
@@ -132,9 +133,11 @@ those owners.
   closures. The stability order is `kernel_jvm > kernel_pacer_jvm >
   server_jvm`.
 - [`worker_matching_jvm/`](worker_matching_jvm/) owns persistent Worker and
-  Platform Properties, Task and Item allocation rules, constraint evaluation
-  and the single bounded Demand/Evidence consumer. It returns identity-only
-  evidence and never reads Score, leases Workers or claims Items.
+  Platform Properties, PRECOMPUTED Candidate Rules, constraint evaluation and
+  the single bounded PRECOMPUTED Demand consumer. It appends matching held
+  identities to the Kernel-owned Candidate Cache without reading or
+  interpreting Score, leasing Workers or claiming Items. ON_DEMAND selectors are
+  normalized to explicit Worker IDs or ANY before Kernel TaskItem storage.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server adapts the one
   Kernel Pacer Runtime lifecycle to Spring and owns Worker Identity,

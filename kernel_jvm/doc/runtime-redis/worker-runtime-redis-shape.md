@@ -10,7 +10,7 @@ split by owner:
 ```text
 Kernel WorkerResourceCatalog  WorkerGroup catalog and minimal Worker metadata
 Kernel WorkerScoreCore        scheduling score
-WorkerMatchingCatalog         Worker/Platform facts and allocation rules
+WorkerMatchingCatalog         Worker/Platform facts and Candidate Rules
 Server Identity/Binding       external identity and endpoint address
 ```
 
@@ -56,12 +56,8 @@ xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
   HASH field = workerId
   value       = complete canonical Platform Properties JSON
 
-xa_mass:<scope>:matching:task:rules
-  HASH field = taskId
-  value       = {"workerGroupId":"...","allocationRule":{...}}
-
-xa_mass:<scope>:matching:task:<taskId>:item-rules
-  HASH field = messageId
+xa_mass:<scope>:matching:candidate:rules
+  HASH field = candidateId
   value       = {"workerGroupId":"...","allocationRule":{...}}
 ```
 
@@ -69,12 +65,14 @@ Worker Prepare replaces the complete Worker-owned facts row and preserves the
 separate Platform row. Platform patch requires an existing Worker facts row,
 applies nullable field updates and uses bounded compare-and-set retries.
 
-Task and Item Rules are create-only. Equal content is unchanged; different
-content conflicts. Orphan facts or Rules are inert because Matching evaluates
-only a bounded Demand published by Kernel scheduling.
+Candidate Rules are create-only. Equal content is unchanged; different content
+conflicts. Orphan facts or Rules are inert. The resident Matching Runtime reads
+Candidate Rules only for a bounded PRECOMPUTED Demand containing Kernel-held
+Worker IDs.
 
-ON_DEMAND enumeration uses `HSCAN` within one explicit WorkerGroup. The cursor
-is held only in the process-local Matching Runtime and is not persisted.
+ON_DEMAND uses no Matching key. Kernel validates the finite `workerSelector`,
+stores only normalized explicit Worker IDs or an empty ANY target with the
+TaskItem, and does not ask Matching to scan Group facts during dispatch.
 
 ## Worker Score
 
@@ -138,7 +136,9 @@ across owners.
 ## Guardrails
 
 - Do not restore `worker:properties` or Properties inside Kernel metadata.
-- Do not place Task or Item Rules in Kernel Task JSON.
+- Do not place PRECOMPUTED Candidate Rules in Kernel Task JSON.
+- Do not add ON_DEMAND Item Rule storage; only normalized Worker IDs belong to
+  the Kernel TaskItem.
 - Do not use identity ownership for Worker discovery.
 - Do not let Matching interpret Score or let Kernel interpret Properties.
 - Do not add dual reads or migration aliases for the retired layout.

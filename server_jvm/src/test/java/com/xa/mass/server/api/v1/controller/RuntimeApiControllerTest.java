@@ -148,23 +148,8 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.createTaskRule(any(), any(), any()))
+        when(matchingCatalog.createCandidateRule(any(), any(), any()))
                 .thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.createItemRules(anyList()))
-                .thenAnswer(invocation -> {
-                    List<WorkerMatchingCatalog.ItemRule> rules =
-                            invocation.getArgument(0);
-                    var results = new LinkedHashMap<
-                            com.xa.mass.kernel.assignment.WorkerMatchRuntime
-                                    .ItemMatchKey,
-                            MutationResult
-                            >();
-                    rules.forEach(rule -> results.put(
-                            rule.key(),
-                            new MutationResult(MutationStatus.APPLIED)
-                    ));
-                    return results;
-                });
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -264,7 +249,6 @@ class RuntimeApiControllerTest {
                 taskCallSubmission,
                 taskRuntime,
                 taskCatalog,
-                matchingCatalog,
                 taskRpcRegistry,
                 taskItems,
                 rpcProperties
@@ -831,8 +815,7 @@ class RuntimeApiControllerTest {
                                 [{
                                   "messageId":"message-internal",
                                   "eventCode":"observe",
-                                  "payload":{},
-                                  "allocationRule":{}
+                                  "payload":{}
                                 }]
                                 """))
                 .andExpect(status().isBadRequest())
@@ -886,7 +869,7 @@ class RuntimeApiControllerTest {
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
                                             "payload": {"phoneNumber": "+14155552671"},
-                                            "allocationRule": {}
+                                            "workerSelector": []
                                           }],
                                           "waitTimeoutMillis": 1000
                                         }
@@ -940,7 +923,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "allocationRule": {}
+                                    "workerSelector": []
                                   }]
                                 }
                                 """))
@@ -955,7 +938,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-finite",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "allocationRule": {}
+                                    "workerSelector": []
                                   }]
                                 }
                                 """))
@@ -977,7 +960,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "allocationRule": {}
+                                    "workerSelector": []
                                   }]
                                 }
                                 """))
@@ -1007,7 +990,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-unregistered",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "allocationRule": {}
+                                    "workerSelector": []
                                   }]
                                 }
                                 """))
@@ -1019,6 +1002,27 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageIds\":[\"message-unregistered\"]}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void legacyItemAllocationRuleIsRejected() throws Exception {
+        mockMvc.perform(post(
+                                "/api/v1/tasks/"
+                                        + "scenario-rpc-phone-tools/items:call"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [{
+                                    "messageId": "legacy-item-rule",
+                                    "eventCode": "event",
+                                    "payload": {},
+                                    "allocationRule": {}
+                                  }]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12001));
     }
 
     @Test

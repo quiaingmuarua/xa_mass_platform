@@ -24,12 +24,11 @@ record TaskFaultState(
         String backupCoordinate,
         String checkpointToken,
         String checkpointMessageId,
-        long labSlot,
         List<Batch> batches,
         String recoveredWorkerId
 ) {
 
-    private static final long SCHEMA_VERSION = 3L;
+    private static final long SCHEMA_VERSION = 4L;
     private static final Set<String> FIELDS = Set.of(
             "schemaVersion",
             "proofId",
@@ -40,7 +39,6 @@ record TaskFaultState(
             "backupCoordinate",
             "checkpointToken",
             "checkpointMessageId",
-            "labSlot",
             "batches",
             "recoveredWorkerId"
     );
@@ -68,9 +66,6 @@ record TaskFaultState(
                 checkpointMessageId,
                 "checkpointMessageId"
         );
-        if (labSlot < 1L) {
-            throw new IllegalArgumentException("labSlot must be positive");
-        }
         batches = List.copyOf(batches);
         if (batches.size() != 4 && batches.size() != 6) {
             throw new IllegalArgumentException(
@@ -133,7 +128,6 @@ record TaskFaultState(
                     JsonValues.requiredString(value, "backupCoordinate"),
                     JsonValues.requiredString(value, "checkpointToken"),
                     JsonValues.requiredString(value, "checkpointMessageId"),
-                    JsonValues.requiredLong(value, "labSlot"),
                     batches,
                     (String) recovered
             );
@@ -171,7 +165,6 @@ record TaskFaultState(
             value.put("backupCoordinate", backupCoordinate);
             value.put("checkpointToken", checkpointToken);
             value.put("checkpointMessageId", checkpointMessageId);
-            value.put("labSlot", labSlot);
             value.put("batches", batches.stream().map(Batch::toMap).toList());
             value.put("recoveredWorkerId", recoveredWorkerId);
             Files.writeString(
@@ -214,7 +207,6 @@ record TaskFaultState(
                 backupCoordinate,
                 checkpointToken,
                 checkpointMessageId,
-                labSlot,
                 completedBatches,
                 requireNonBlank(workerId, "workerId")
         );

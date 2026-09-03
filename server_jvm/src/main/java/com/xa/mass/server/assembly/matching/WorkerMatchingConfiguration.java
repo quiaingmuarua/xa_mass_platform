@@ -1,5 +1,6 @@
 package com.xa.mass.server.assembly.matching;
 
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
@@ -25,9 +26,10 @@ public class WorkerMatchingConfiguration {
 
     @Bean
     WorkerMatchingRuntime workerMatchingRuntime(
-            WorkerMatchingCatalog catalog
+            WorkerMatchingCatalog catalog,
+            CandidateWorkerCache candidateCache
     ) {
-        return new WorkerMatchingRuntime(catalog);
+        return new WorkerMatchingRuntime(catalog, candidateCache);
     }
 
     @Bean

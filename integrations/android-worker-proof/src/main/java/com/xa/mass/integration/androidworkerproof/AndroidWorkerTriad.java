@@ -122,8 +122,7 @@ final class AndroidWorkerTriad {
                 .map(worker -> new AndroidRuntimeApiClient.TaskItemCall(
                         AndroidWorkerProofConstants.DELAY_EVENT,
                         Map.of("delayMillis", 100L),
-                        AndroidWorkerTriadTopology.allocationRule(
-                                worker,
+                        AndroidWorkerTriadTopology.workerSelector(
                                 workerIdsByApplicationId.get(
                                         worker.applicationId()
                                 )

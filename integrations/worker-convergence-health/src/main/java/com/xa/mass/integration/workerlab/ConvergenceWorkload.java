@@ -61,24 +61,24 @@ final class ConvergenceWorkload {
 
     List<Batch> submitWave(
             String wave,
-            Map<String, Map<String, Object>> rulesByGroup,
+            Map<String, List<Object>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
-        return submitWave(wave, rulesByGroup, checkpoint, false);
+        return submitWave(wave, selectorsByGroup, checkpoint, false);
     }
 
     List<Batch> submitCheckpointWave(
             String wave,
-            Map<String, Map<String, Object>> rulesByGroup,
+            Map<String, List<Object>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
         java.util.Objects.requireNonNull(checkpoint, "checkpoint");
-        return submitWave(wave, rulesByGroup, checkpoint, true);
+        return submitWave(wave, selectorsByGroup, checkpoint, true);
     }
 
     private List<Batch> submitWave(
             String wave,
-            Map<String, Map<String, Object>> rulesByGroup,
+            Map<String, List<Object>> selectorsByGroup,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -92,7 +92,10 @@ final class ConvergenceWorkload {
             List<TaskItem> items = items(
                     wave,
                     group,
-                    rulesByGroup.getOrDefault(group.groupId(), Map.of()),
+                    selectorsByGroup.getOrDefault(
+                            group.groupId(),
+                            List.of()
+                    ),
                     checkpoint,
                     applyRuleToWholeBatch
             );
@@ -207,7 +210,7 @@ final class ConvergenceWorkload {
     private List<TaskItem> items(
             String wave,
             GroupWorkload group,
-            Map<String, Object> allocationRule,
+            List<Object> workerSelector,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -247,7 +250,7 @@ final class ConvergenceWorkload {
                     eventCode,
                     payload,
                     applyRuleToWholeBatch || index == 1
-                            ? allocationRule : Map.of()
+                            ? workerSelector : List.of()
             ));
         }
         return List.copyOf(items);
