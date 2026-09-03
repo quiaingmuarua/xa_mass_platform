@@ -110,9 +110,7 @@ function parseWorkerSelector(text: string): TaskItemWorkerSelector {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw taskCallDebugConfigurationError(
-      "Worker Selector 必须是合法 JSON Array。"
-    );
+    throw taskCallDebugConfigurationError("Worker Selector 必须是合法 JSON Array。");
   }
   if (!Array.isArray(parsed)) {
     throw invalidWorkerSelector();
