@@ -2,9 +2,9 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.workermatching.ConstraintEvaluator.Condition;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
@@ -13,16 +13,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Resolves ordered Candidate demands into bounded Candidate Cache entries. */
-public final class WorkerMatchingRuntime
-        implements WorkerMatchRuntime, AutoCloseable {
+public final class WorkerMatchingRuntime implements AutoCloseable {
 
-    public static final int DEFAULT_DEMAND_CAPACITY = 10_000;
     private static final System.Logger LOGGER = System.getLogger(
             WorkerMatchingRuntime.class.getName()
     );
@@ -37,8 +31,7 @@ public final class WorkerMatchingRuntime
 
     public record Snapshot(
             State state,
-            int queuedDemands,
-            int pendingDemands
+            int queuedDemands
     ) {
     }
 
@@ -46,23 +39,14 @@ public final class WorkerMatchingRuntime
     private final WorkerMatchingCatalog catalog;
     private final CandidateWorkerCache candidateCache;
     private final ConstraintEvaluator evaluator;
-    private final BlockingQueue<TaskRuleMatchDemand> demands;
-    private final Set<String> pendingWorkerGroups =
-            ConcurrentHashMap.newKeySet();
+    private final WorkerMatchQueue matchQueue;
     private volatile State state = State.STOPPED;
     private volatile Thread workerThread;
 
     public WorkerMatchingRuntime(
             WorkerMatchingCatalog catalog,
-            CandidateWorkerCache candidateCache
-    ) {
-        this(catalog, candidateCache, DEFAULT_DEMAND_CAPACITY);
-    }
-
-    public WorkerMatchingRuntime(
-            WorkerMatchingCatalog catalog,
             CandidateWorkerCache candidateCache,
-            int demandCapacity
+            WorkerMatchQueue matchQueue
     ) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.candidateCache = Objects.requireNonNull(
@@ -70,12 +54,10 @@ public final class WorkerMatchingRuntime
                 "candidateCache"
         );
         this.evaluator = new ConstraintEvaluator();
-        if (demandCapacity < 1) {
-            throw new IllegalArgumentException(
-                    "demandCapacity must be positive"
-            );
-        }
-        this.demands = new ArrayBlockingQueue<>(demandCapacity);
+        this.matchQueue = Objects.requireNonNull(
+                matchQueue,
+                "matchQueue"
+        );
     }
 
     public void start() {
@@ -123,7 +105,6 @@ public final class WorkerMatchingRuntime
         join(thread, timeoutMillis);
         synchronized (lifecycleGate) {
             if (state == State.STOPPING) {
-                clearTransientState();
                 state = State.STOPPED;
             }
         }
@@ -136,36 +117,14 @@ public final class WorkerMatchingRuntime
     public Snapshot snapshot() {
         return new Snapshot(
                 state,
-                demands.size(),
-                pendingWorkerGroups.size()
+                matchQueue.size()
         );
-    }
-
-    @Override
-    public boolean offerTaskDemand(TaskRuleMatchDemand demand) {
-        Objects.requireNonNull(demand, "demand");
-        if (demand.holdUntilMillis() <= System.currentTimeMillis()) {
-            throw new IllegalArgumentException(
-                    "Task demand must not already be expired"
-            );
-        }
-        synchronized (lifecycleGate) {
-            requireRunning();
-            if (!pendingWorkerGroups.add(demand.workerGroupId())) {
-                return false;
-            }
-            if (!demands.offer(demand)) {
-                pendingWorkerGroups.remove(demand.workerGroupId());
-                return false;
-            }
-            return true;
-        }
     }
 
     private void runLoop() {
         try {
             while (state == State.RUNNING) {
-                TaskRuleMatchDemand demand = demands.take();
+                TaskRuleMatchDemand demand = matchQueue.consume();
                 try {
                     processDemand(demand);
                 } catch (RuntimeException failure) {
@@ -177,8 +136,6 @@ public final class WorkerMatchingRuntime
                                     + " failure="
                                     + failure.getClass().getSimpleName()
                     );
-                } finally {
-                    pendingWorkerGroups.remove(demand.workerGroupId());
                 }
             }
         } catch (InterruptedException interrupted) {
@@ -272,19 +229,10 @@ public final class WorkerMatchingRuntime
         return List.copyOf(matches);
     }
 
-    private void requireRunning() {
-        if (state != State.RUNNING) {
-            throw new IllegalStateException(
-                    "Worker Matching is not running: " + state
-            );
-        }
-    }
-
     private void failRuntime(Throwable failure) {
         synchronized (lifecycleGate) {
             if (state == State.RUNNING) {
                 state = State.FAILED;
-                clearTransientState();
             }
         }
         LOGGER.log(
@@ -292,11 +240,6 @@ public final class WorkerMatchingRuntime
                 "operation=workerMatching.run failure="
                         + failure.getClass().getSimpleName()
         );
-    }
-
-    private void clearTransientState() {
-        demands.clear();
-        pendingWorkerGroups.clear();
     }
 
     @Override
@@ -313,9 +256,6 @@ public final class WorkerMatchingRuntime
             }
         }
         join(thread, 5_000);
-        synchronized (lifecycleGate) {
-            clearTransientState();
-        }
     }
 
     private static void join(Thread thread, long timeoutMillis) {

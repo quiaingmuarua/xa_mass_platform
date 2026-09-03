@@ -24,38 +24,6 @@ import org.junit.jupiter.api.Test;
 class WorkerCandidateSelectionPolicyTest {
 
     @Test
-    void dueObservationAndExactHoldRemainSeparateKernelOperations() {
-        WorkerScoreCore scores = mock(WorkerScoreCore.class);
-        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        LinkedHashMap<String, Long> observed = linkedScores(
-                "worker-1", 101L,
-                "worker-2", 102L
-        );
-        when(scores.observeDueHotScoreCandidates(
-                "group-1", null, 2
-        )).thenReturn(observed);
-        when(scores.acquireObservedHotScoreLeases(
-                "group-1", observed, 5_000L
-        )).thenReturn(Map.of(
-                "worker-1", transitioned(201L),
-                "worker-2", new WorkerScoreTransitionResult(
-                        WorkerScoreTransitionStatus.STALE, 102L
-                )
-        ));
-        WorkerCandidateSelectionPolicy policy = policy(scores, cache, catalog);
-
-        assertEquals(observed, policy.observeDueCandidates("group-1", 2));
-        assertEquals(
-                Map.of("worker-1", 201L),
-                policy.holdObservedCandidates(
-                        "group-1", observed, 5_000L
-                )
-        );
-        verifyNoInteractions(cache, catalog);
-    }
-
-    @Test
     void cachedCandidateCarriesExactHeldScoreWithoutEarlyRenewal() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
@@ -232,15 +200,6 @@ class WorkerCandidateSelectionPolicyTest {
                 ));
     }
 
-    @Test
-    void dueObservationCannotExceedConfiguredScanLimit() {
-        assertThrows(IllegalArgumentException.class, () -> policy(
-                mock(WorkerScoreCore.class),
-                mock(CandidateWorkerCache.class),
-                mock(WorkerResourceCatalog.class)
-        ).observeDueCandidates("group-1", 101));
-    }
-
     private static WorkerCandidateSelectionPolicy policy(
             WorkerScoreCore scores,
             CandidateWorkerCache cache,
@@ -249,16 +208,6 @@ class WorkerCandidateSelectionPolicyTest {
         return new WorkerCandidateSelectionPolicy(
                 scores, cache, catalog, null
         );
-    }
-
-    private static LinkedHashMap<String, Long> linkedScores(
-            Object... pairs
-    ) {
-        LinkedHashMap<String, Long> result = new LinkedHashMap<>();
-        for (int index = 0; index < pairs.length; index += 2) {
-            result.put((String) pairs[index], (Long) pairs[index + 1]);
-        }
-        return result;
     }
 
     private static WorkerScoreTransitionResult transitioned(long score) {

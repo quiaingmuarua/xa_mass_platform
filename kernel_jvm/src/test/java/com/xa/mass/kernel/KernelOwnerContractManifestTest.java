@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -50,7 +51,7 @@ class KernelOwnerContractManifestTest {
                     "CandidateWorkerCache",
                     CandidateWorkerCache.class
             ),
-            Map.entry("WorkerMatchRuntime", WorkerMatchRuntime.class),
+            Map.entry("WorkerMatchQueue", WorkerMatchQueue.class),
             Map.entry(
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
@@ -111,11 +112,11 @@ class KernelOwnerContractManifestTest {
             ),
             Map.entry(
                     "TaskCandidateNeed",
-                    WorkerMatchRuntime.TaskCandidateNeed.class
+                    TaskRuleMatchDemand.TaskCandidateNeed.class
             ),
             Map.entry(
                     "TaskRuleMatchDemand",
-                    WorkerMatchRuntime.TaskRuleMatchDemand.class
+                    TaskRuleMatchDemand.class
             ),
             Map.entry(
                     "DeliveryCommand",
@@ -253,7 +254,7 @@ class KernelOwnerContractManifestTest {
     }
 
     @Test
-    void removedWorkerPropertyMutationContractsRemainAbsent() {
+    void removedContractsRemainAbsent() {
         assertFalse(Arrays.stream(WorkerRuntime.class.getDeclaredMethods())
                 .anyMatch(method -> method.getName().equals(
                         "replaceWorkerProperties"
@@ -262,6 +263,12 @@ class KernelOwnerContractManifestTest {
                 ClassNotFoundException.class,
                 () -> Class.forName(
                         "com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime"
+                )
+        );
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        "com.xa.mass.kernel.assignment.WorkerMatchRuntime"
                 )
         );
     }
@@ -351,7 +358,7 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
-                "WorkerMatchRuntime", WorkerMatchRuntime.class,
+                "TaskRuleMatchDemand", TaskRuleMatchDemand.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         var expected = new TreeMap<String, Map<String, Long>>();
@@ -382,7 +389,7 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
-                "WorkerMatchRuntime", WorkerMatchRuntime.class,
+                "TaskRuleMatchDemand", TaskRuleMatchDemand.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         @SuppressWarnings("unchecked")

@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.InMemoryWorkerMatchQueue;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
@@ -32,10 +34,11 @@ class WorkerMatchingRuntimeTest {
         catalog.rules.put("task-first", rule("task-first", Map.of()));
         catalog.rules.put("task-second", rule("task-second", Map.of()));
         RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchQueue queue = queue(4);
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
             runtime.start();
-            assertTrue(runtime.offerTaskDemand(demand(
+            assertTrue(queue.offer(demand(
                     "group-1",
                     List.of(
                             new TaskCandidateNeed("task-first", 1),
@@ -76,10 +79,11 @@ class WorkerMatchingRuntimeTest {
         catalog.rules.put("task-next", rule("task-next", Map.of()));
         RecordingCandidateCache cache = new RecordingCandidateCache();
         cache.rejectCandidates.add("task-full");
+        WorkerMatchQueue queue = queue(4);
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
             runtime.start();
-            runtime.offerTaskDemand(demand(
+            queue.offer(demand(
                     "group-1",
                     List.of(
                             new TaskCandidateNeed("task-full", 1),
@@ -108,10 +112,11 @@ class WorkerMatchingRuntimeTest {
         );
         catalog.rules.put("task-valid", rule("task-valid", Map.of()));
         RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchQueue queue = queue(4);
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 4)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
             runtime.start();
-            runtime.offerTaskDemand(demand(
+            queue.offer(demand(
                     "group-1",
                     List.of(
                             new TaskCandidateNeed("task-missing", 1),
@@ -130,7 +135,7 @@ class WorkerMatchingRuntimeTest {
     }
 
     @Test
-    void admissionIsSingleFlightPerGroupAndQueueBounded() throws Exception {
+    void queueCapacityRemainsIndependentOfDemandProcessing() throws Exception {
         FakeCatalog catalog = catalogWithWorkers(
                 "worker-a",
                 "worker-b",
@@ -149,24 +154,23 @@ class WorkerMatchingRuntimeTest {
         ));
         catalog.blockLoads.set(true);
         RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchQueue queue = queue(1);
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 1)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
             runtime.start();
-            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+            assertTrue(queue.offer(singleTaskDemand(
                     "group-1", "task-a", "worker-a"
             )));
             assertTrue(catalog.loadEntered.await(1, TimeUnit.SECONDS));
-            assertFalse(runtime.offerTaskDemand(singleTaskDemand(
-                    "group-1", "task-a", "worker-a"
-            )));
-            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+            assertEquals(0, queue.size());
+            assertTrue(queue.offer(singleTaskDemand(
                     "group-2", "task-b", "worker-b"
             )));
-            assertFalse(runtime.offerTaskDemand(singleTaskDemand(
+            assertFalse(queue.offer(singleTaskDemand(
                     "group-3", "task-c", "worker-c"
             )));
             catalog.releaseLoads.countDown();
-            await(() -> runtime.snapshot().pendingDemands() == 0);
+            await(() -> queue.size() == 0);
         }
     }
 
@@ -176,14 +180,15 @@ class WorkerMatchingRuntimeTest {
         catalog.rules.put("task-a", rule("task-a", Map.of()));
         RecordingCandidateCache cache = new RecordingCandidateCache();
         cache.failNext.set(true);
+        WorkerMatchQueue queue = queue(2);
 
-        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, 2)) {
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
             runtime.start();
-            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+            assertTrue(queue.offer(singleTaskDemand(
                     "group-1", "task-a", "worker-a"
             )));
-            await(() -> runtime.snapshot().pendingDemands() == 0);
-            assertTrue(runtime.offerTaskDemand(singleTaskDemand(
+            await(() -> cache.appends.size() == 1);
+            assertTrue(queue.offer(singleTaskDemand(
                     "group-1", "task-a", "worker-a"
             )));
             await(() -> cache.appends.size() == 2);
@@ -194,25 +199,19 @@ class WorkerMatchingRuntimeTest {
     void lifecycleAndExpiredDemandAreExplicit() {
         FakeCatalog catalog = catalogWithWorkers("worker-a");
         RecordingCandidateCache cache = new RecordingCandidateCache();
-        WorkerMatchingRuntime runtime = runtime(catalog, cache, 1);
+        WorkerMatchQueue queue = queue(1);
+        WorkerMatchingRuntime runtime = runtime(catalog, cache, queue);
 
-        assertThrows(
-                IllegalStateException.class,
-                () -> runtime.offerTaskDemand(singleTaskDemand(
-                        "group-1", "task-a", "worker-a"
-                ))
-        );
+        assertTrue(queue.offer(new TaskRuleMatchDemand(
+                "group-1",
+                List.of(new TaskCandidateNeed("task-a", 1)),
+                Map.of("worker-a", 101L),
+                1L
+        )));
         runtime.start();
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> runtime.offerTaskDemand(new TaskRuleMatchDemand(
-                        "group-1",
-                        List.of(new TaskCandidateNeed("task-a", 1)),
-                        Map.of("worker-a", 101L),
-                        1L
-                ))
-        );
+        await(() -> queue.size() == 0);
         runtime.stop(2_000);
+        assertTrue(cache.appends.isEmpty());
         assertEquals(
                 WorkerMatchingRuntime.State.STOPPED,
                 runtime.snapshot().state()
@@ -228,9 +227,15 @@ class WorkerMatchingRuntimeTest {
     private static WorkerMatchingRuntime runtime(
             FakeCatalog catalog,
             RecordingCandidateCache cache,
+            WorkerMatchQueue queue
+    ) {
+        return new WorkerMatchingRuntime(catalog, cache, queue);
+    }
+
+    private static WorkerMatchQueue queue(
             int capacity
     ) {
-        return new WorkerMatchingRuntime(catalog, cache, capacity);
+        return new InMemoryWorkerMatchQueue(capacity);
     }
 
     private static FakeCatalog catalogWithWorkers(String... workerIds) {

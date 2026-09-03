@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
@@ -48,7 +48,7 @@ public final class DispatchConvergenceRuntime {
             TaskRuntime taskRuntime,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchRuntime workerMatches,
+            WorkerMatchQueue workerMatchQueue,
             ResultContextCodec resultContextCodec
     ) {
         Objects.requireNonNull(preset, "preset");
@@ -68,18 +68,19 @@ public final class DispatchConvergenceRuntime {
         Long assignmentHotFloor = serviceabilityConfig == null
                 ? null
                 : serviceabilityConfig.hotEligibilityFloorMillis();
+        TaskWorkerAllocationPolicy allocation =
+                new TaskWorkerAllocationPolicy(
+                        workerScores,
+                        candidateCache,
+                        workerMatchQueue,
+                        assignmentHotFloor
+                );
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(
                         workerScores,
                         candidateCache,
                         workerCatalog,
                         assignmentHotFloor
-                );
-        TaskWorkerAllocationPolicy allocation =
-                new TaskWorkerAllocationPolicy(
-                        candidateSelection,
-                        candidateCache,
-                        workerMatches
                 );
         TaskInitializationPolicy initialization =
                 new TaskInitializationPolicy(

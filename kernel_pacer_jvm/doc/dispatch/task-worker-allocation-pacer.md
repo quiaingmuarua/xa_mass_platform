@@ -61,10 +61,11 @@ earlier write has filled the Task. The current deficit is a Pacer-local input:
 it controls how many Workers are observed and held but is not copied into the
 Demand.
 
-Only one Demand per WorkerGroup may be pending. A busy Group or full Demand
-queue rejects the offer without blocking. The Pacer does not retry inside the
-round and does not release the already-created holds. They expire naturally.
-Unrelated Groups remain independent.
+`WorkerMatchQueue` accepts or rejects each complete Demand without blocking.
+Its interface owns offer, size observation, and consumption; the current
+bounded in-memory provider is an assembly choice rather than a Pacer
+dependency. The Pacer does not inspect Queue size, retry inside the round, or
+release the already-created holds. They expire naturally.
 
 ## Candidate Cache
 

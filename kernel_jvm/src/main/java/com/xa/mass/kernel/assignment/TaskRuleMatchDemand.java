@@ -7,15 +7,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Bounded handoff from Kernel scheduling to Worker matching. */
-public interface WorkerMatchRuntime {
+/** One bounded PRECOMPUTED matching request. */
+public record TaskRuleMatchDemand(
+        String workerGroupId,
+        List<TaskCandidateNeed> orderedTaskNeeds,
+        Map<String, Long> heldWorkerLeaseScores,
+        long holdUntilMillis
+) {
 
-    int MAX_TASKS_PER_DEMAND = 100;
-    int MAX_HELD_WORKERS_PER_DEMAND = 100;
+    public static final int MAX_TASKS = 100;
+    public static final int MAX_HELD_WORKERS = 100;
 
-    boolean offerTaskDemand(TaskRuleMatchDemand demand);
+    public TaskRuleMatchDemand {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        orderedTaskNeeds = immutableTaskNeeds(orderedTaskNeeds);
+        heldWorkerLeaseScores = immutableHeldScores(
+                heldWorkerLeaseScores
+        );
+        if (holdUntilMillis < 1) {
+            throw new IllegalArgumentException(
+                    "holdUntilMillis must be positive"
+            );
+        }
+    }
 
-    record TaskCandidateNeed(
+    public record TaskCandidateNeed(
             String candidateId,
             int maximumCandidateWorkers
     ) {
@@ -29,34 +45,14 @@ public interface WorkerMatchRuntime {
         }
     }
 
-    record TaskRuleMatchDemand(
-            String workerGroupId,
-            List<TaskCandidateNeed> orderedTaskNeeds,
-            Map<String, Long> heldWorkerLeaseScores,
-            long holdUntilMillis
-    ) {
-        public TaskRuleMatchDemand {
-            requireNonBlank(workerGroupId, "workerGroupId");
-            orderedTaskNeeds = immutableTaskNeeds(orderedTaskNeeds);
-            heldWorkerLeaseScores = immutableHeldScores(
-                    heldWorkerLeaseScores
-            );
-            if (holdUntilMillis < 1) {
-                throw new IllegalArgumentException(
-                        "holdUntilMillis must be positive"
-                );
-            }
-        }
-    }
-
     private static List<TaskCandidateNeed> immutableTaskNeeds(
             List<TaskCandidateNeed> values
     ) {
         Objects.requireNonNull(values, "orderedTaskNeeds");
-        if (values.isEmpty() || values.size() > MAX_TASKS_PER_DEMAND) {
+        if (values.isEmpty() || values.size() > MAX_TASKS) {
             throw new IllegalArgumentException(
-                    "orderedTaskNeeds must contain 1.."
-                            + MAX_TASKS_PER_DEMAND + " tasks"
+                    "orderedTaskNeeds must contain 1.." + MAX_TASKS
+                            + " tasks"
             );
         }
         LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
@@ -76,11 +72,10 @@ public interface WorkerMatchRuntime {
             Map<String, Long> values
     ) {
         Objects.requireNonNull(values, "heldWorkerLeaseScores");
-        if (values.isEmpty()
-                || values.size() > MAX_HELD_WORKERS_PER_DEMAND) {
+        if (values.isEmpty() || values.size() > MAX_HELD_WORKERS) {
             throw new IllegalArgumentException(
                     "heldWorkerLeaseScores must contain 1.."
-                            + MAX_HELD_WORKERS_PER_DEMAND + " workers"
+                            + MAX_HELD_WORKERS + " workers"
             );
         }
         LinkedHashMap<String, Long> result = new LinkedHashMap<>();

@@ -1,12 +1,14 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskRuleMatchDemand;
-import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,42 +20,47 @@ final class TaskWorkerAllocationPolicy {
 
     static final long WORKER_HOLD_MILLIS = 5_000;
 
-    private final WorkerCandidateSelectionPolicy candidateSelection;
+    private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
-    private final WorkerMatchRuntime workerMatches;
+    private final WorkerMatchQueue matchQueue;
+    private final Long hotEligibilityFloorMillis;
     private final LongSupplier currentTimeMillis;
 
     TaskWorkerAllocationPolicy(
-            WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
-            WorkerMatchRuntime workerMatches
+            WorkerMatchQueue matchQueue,
+            Long hotEligibilityFloorMillis
     ) {
         this(
-                candidateSelection,
+                workerScores,
                 candidateCache,
-                workerMatches,
+                matchQueue,
+                hotEligibilityFloorMillis,
                 System::currentTimeMillis
         );
     }
 
     TaskWorkerAllocationPolicy(
-            WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
-            WorkerMatchRuntime workerMatches,
+            WorkerMatchQueue matchQueue,
+            Long hotEligibilityFloorMillis,
             LongSupplier currentTimeMillis
     ) {
-        this.candidateSelection = Objects.requireNonNull(
-                candidateSelection,
-                "candidateSelection"
+        this.workerScores = Objects.requireNonNull(
+                workerScores,
+                "workerScores"
         );
         this.candidateCache = Objects.requireNonNull(
                 candidateCache,
                 "candidateCache"
         );
-        this.workerMatches = Objects.requireNonNull(
-                workerMatches,
-                "workerMatches"
+        this.matchQueue = Objects.requireNonNull(
+                matchQueue,
+                "matchQueue"
         );
+        this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
         this.currentTimeMillis = Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
@@ -61,47 +68,42 @@ final class TaskWorkerAllocationPolicy {
     }
 
     int allocateCandidateWorkers(
-            List<ObservedTask> tasks
+            List<CandidateAllocationNeed> needs
     ) {
-        List<ObservedTask> precomputedTasks = List.copyOf(
-                Objects.requireNonNull(tasks, "tasks")
+        List<CandidateAllocationNeed> allocationNeeds = List.copyOf(
+                Objects.requireNonNull(needs, "needs")
         );
-        if (precomputedTasks.stream().anyMatch(task ->
-                task.descriptor().workerAllocationMechanism()
-                        != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE)) {
-            throw new IllegalArgumentException(
-                    "Worker Allocation requires PRECOMPUTED Task inputs"
-            );
-        }
-        if (precomputedTasks.isEmpty()) {
+        if (allocationNeeds.isEmpty()) {
             return 0;
         }
 
-        List<String> candidateIds = precomputedTasks.stream()
-                .map(ObservedTask::taskId)
+        List<String> candidateIds = allocationNeeds.stream()
+                .map(CandidateAllocationNeed::candidateId)
                 .toList();
         Map<String, Integer> candidateCounts =
                 candidateCache.candidateWorkerCounts(candidateIds);
-        LinkedHashMap<String, List<ObservedTask>> tasksByGroup =
+        LinkedHashMap<String, List<CandidateAllocationNeed>> needsByGroup =
                 new LinkedHashMap<>();
-        for (ObservedTask task : precomputedTasks) {
-            if (deficit(task, candidateCounts) > 0) {
-                tasksByGroup.computeIfAbsent(
-                        task.descriptor().workerGroupId(),
+        for (CandidateAllocationNeed need : allocationNeeds) {
+            if (deficit(need, candidateCounts) > 0) {
+                needsByGroup.computeIfAbsent(
+                        need.workerGroupId(),
                         ignored -> new ArrayList<>()
-                ).add(task);
+                ).add(need);
             }
         }
 
         long now = currentTimeMillis.getAsLong();
         int offered = 0;
-        for (Map.Entry<String, List<ObservedTask>> group
-                : tasksByGroup.entrySet()) {
-            List<ObservedTask> ordered = group.getValue().stream()
+        for (Map.Entry<String, List<CandidateAllocationNeed>> group
+                : needsByGroup.entrySet()) {
+            List<CandidateAllocationNeed> ordered = group.getValue().stream()
                     .sorted(Comparator
-                            .comparingInt(TaskWorkerAllocationPolicy::priority)
-                            .thenComparing(ObservedTask::taskId))
-                    .limit(WorkerMatchRuntime.MAX_TASKS_PER_DEMAND)
+                            .comparingInt(CandidateAllocationNeed::priority)
+                            .thenComparing(
+                                    CandidateAllocationNeed::candidateId
+                            ))
+                    .limit(TaskRuleMatchDemand.MAX_TASKS)
                     .toList();
             int requestedWorkers = requestedWorkers(
                     ordered,
@@ -110,8 +112,12 @@ final class TaskWorkerAllocationPolicy {
             if (requestedWorkers == 0) {
                 continue;
             }
-            Map<String, Long> observed = candidateSelection
-                    .observeDueCandidates(group.getKey(), requestedWorkers);
+            Map<String, Long> observed = workerScores
+                    .observeDueHotScoreCandidates(
+                            group.getKey(),
+                            hotEligibilityFloorMillis,
+                            requestedWorkers
+                    );
             if (observed.isEmpty()) {
                 continue;
             }
@@ -119,24 +125,23 @@ final class TaskWorkerAllocationPolicy {
                     now,
                     WORKER_HOLD_MILLIS
             );
-            Map<String, Long> held = candidateSelection
-                    .holdObservedCandidates(
-                            group.getKey(),
-                            observed,
-                            holdUntil
-                    );
+            Map<String, Long> held = holdObservedCandidates(
+                    group.getKey(),
+                    observed,
+                    holdUntil
+            );
             if (held.isEmpty()) {
                 continue;
             }
-            List<TaskCandidateNeed> needs = ordered.stream()
-                    .map(task -> new TaskCandidateNeed(
-                            task.taskId(),
-                            maximumCandidates(task.descriptor())
+            List<TaskCandidateNeed> taskNeeds = ordered.stream()
+                    .map(need -> new TaskCandidateNeed(
+                            need.candidateId(),
+                            need.maximumCandidateWorkers()
                     ))
                     .toList();
-            if (workerMatches.offerTaskDemand(new TaskRuleMatchDemand(
+            if (matchQueue.offer(new TaskRuleMatchDemand(
                     group.getKey(),
-                    needs,
+                    taskNeeds,
                     held,
                     holdUntil
             ))) {
@@ -146,20 +151,44 @@ final class TaskWorkerAllocationPolicy {
         return offered;
     }
 
+    private Map<String, Long> holdObservedCandidates(
+            String workerGroupId,
+            Map<String, Long> observedScores,
+            long holdUntilMillis
+    ) {
+        Map<String, WorkerScoreTransitionResult> transitions =
+                workerScores.acquireObservedHotScoreLeases(
+                        workerGroupId,
+                        observedScores,
+                        holdUntilMillis
+                );
+        LinkedHashMap<String, Long> held = new LinkedHashMap<>();
+        observedScores.keySet().forEach(workerId -> {
+            WorkerScoreTransitionResult result = transitions.get(workerId);
+            if (result != null
+                    && result.status()
+                            == WorkerScoreTransitionStatus.TRANSITIONED
+                    && result.score() != null) {
+                held.put(workerId, result.score());
+            }
+        });
+        return Collections.unmodifiableMap(held);
+    }
+
     private static int requestedWorkers(
-            List<ObservedTask> tasks,
+            List<CandidateAllocationNeed> needs,
             Map<String, Integer> candidateCounts
     ) {
         int requested = 0;
-        for (ObservedTask task : tasks) {
-            int remaining = WorkerMatchRuntime.MAX_HELD_WORKERS_PER_DEMAND
+        for (CandidateAllocationNeed need : needs) {
+            int remaining = TaskRuleMatchDemand.MAX_HELD_WORKERS
                     - requested;
             requested += Math.min(
                     remaining,
-                    deficit(task, candidateCounts)
+                    deficit(need, candidateCounts)
             );
             if (requested
-                    == WorkerMatchRuntime.MAX_HELD_WORKERS_PER_DEMAND) {
+                    == TaskRuleMatchDemand.MAX_HELD_WORKERS) {
                 break;
             }
         }
@@ -167,23 +196,16 @@ final class TaskWorkerAllocationPolicy {
     }
 
     private static int deficit(
-            ObservedTask task,
+            CandidateAllocationNeed need,
             Map<String, Integer> candidateCounts
     ) {
         return Math.max(
                 0,
-                maximumCandidates(task.descriptor())
-                        - candidateCounts.getOrDefault(task.taskId(), 0)
+                need.maximumCandidateWorkers()
+                        - candidateCounts.getOrDefault(
+                                need.candidateId(),
+                                0
+                        )
         );
-    }
-
-    private static int maximumCandidates(TaskDescriptor descriptor) {
-        return Integer.parseInt(
-                descriptor.config().get("maximumCandidateWorkers")
-        );
-    }
-
-    private static int priority(ObservedTask task) {
-        return Integer.parseInt(task.descriptor().config().get("priority"));
     }
 }

@@ -70,10 +70,11 @@ and admits no more than each Candidate maximum. Matching follows Pacer Task orde
 and removes only Cache-accepted Workers from the local pool, so one held Worker
 enters at most one Candidate bucket per Demand.
 
-Only one Demand may be pending per WorkerGroup. Rejection does not block and
-does not release its holds. Missing matches, Cache rejection, partial failures,
-and unselected holds recover through lease expiry. Other WorkerGroups are not
-serialized behind that Group.
+`WorkerMatchQueue` admits Demands through one complete queue contract. The
+current Server assembly uses bounded process memory, while Pacer and Matching
+depend only on `offer`, `size`, and blocking `consume`. Rejection does not
+block and does not release its holds. Missing matches, Cache rejection,
+partial failures, and unselected holds recover through lease expiry.
 
 Candidate Cache remains disposable address-oriented state:
 
@@ -149,8 +150,8 @@ finality remain independent owners.
 
 | Failure | Result |
 | --- | --- |
-| PRECOMPUTED Demand busy or queue full | offer is skipped; hold expires; a later due round recomputes deficit |
-| Matching catalog or Cache failure | pending Group is released; completed Cache writes remain; other holds expire |
+| PRECOMPUTED Demand queue full | offer is skipped; hold expires; a later due round recomputes deficit |
+| Matching catalog or Cache failure | consumed Demand is dropped; completed Cache writes remain; other holds expire |
 | missing or invalid Candidate Rule | Candidate is skipped inside the Demand; Workers remain available to later needs |
 | Candidate expiry or stale Worker score | Cache entry is dropped or final exact renewal fails |
 | invalid ON_DEMAND Worker Selector | public mutation fails before Kernel TaskItem append |

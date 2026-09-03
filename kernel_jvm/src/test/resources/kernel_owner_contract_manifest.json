@@ -49,9 +49,9 @@
       "MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT": 100,
       "MAX_WORKER_GROUP_LOOKUP_LIMIT": 100
     },
-    "WorkerMatchRuntime": {
-      "MAX_HELD_WORKERS_PER_DEMAND": 100,
-      "MAX_TASKS_PER_DEMAND": 100
+    "TaskRuleMatchDemand": {
+      "MAX_HELD_WORKERS": 100,
+      "MAX_TASKS": 100
     },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
@@ -81,6 +81,11 @@
       "append_candidate_workers",
       "candidate_worker_counts",
       "consume_candidate_workers"
+    ],
+    "WorkerMatchQueue": [
+      "consume",
+      "offer",
+      "size"
     ],
     "TaskResultRuntime": [
       "append_task_results",
@@ -134,9 +139,6 @@
       "consume_worker_command",
       "consume_worker_commands",
       "offer_worker_commands"
-    ],
-    "WorkerMatchRuntime": [
-      "offer_task_demand"
     ],
     "WorkerResourceCatalog": [
         "get_worker_descriptors",

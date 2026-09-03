@@ -39,7 +39,8 @@ class WorkerMatchingArchitectureTest {
                 "itemCursors",
                 "ItemRule",
                 "taskId",
-                ":matching:task:"
+                ":matching:task:",
+                "ArrayBlockingQueue"
         )) {
             assertFalse(
                     source.toString().contains(forbidden),

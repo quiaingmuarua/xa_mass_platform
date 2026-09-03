@@ -72,7 +72,10 @@ used to smuggle rule syntax or Worker facts back into Kernel.
 ## Scheduling Handoffs
 
 For PRECOMPUTED Tasks, Kernel orders current deficits, exact-holds a bounded
-due HOT pool, and publishes one Group Demand through `WorkerMatchRuntime`.
+due HOT pool, and offers one Group Demand to `WorkerMatchQueue`. The contract
+owns offer, size observation, and consumption together; the current Server
+assembly chooses an in-memory implementation without exposing that choice to
+Pacer or Matching.
 Matching loads Candidate Rules and only the supplied Worker Facts, then
 appends matches directly through the Kernel-owned Candidate Cache operation
 while carrying held scores opaquely. Kernel later consumes the Candidate

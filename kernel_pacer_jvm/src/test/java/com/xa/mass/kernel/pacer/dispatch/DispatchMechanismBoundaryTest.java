@@ -76,6 +76,34 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
+    void allocationReceivesOnlyItsFlatPolicyInput() throws IOException {
+        Path file = ROOT.resolve("TaskWorkerAllocationPolicy.java");
+        String source = Files.readString(file);
+        for (String token : List.of(
+                "ObservedTask",
+                "TaskDescriptor",
+                "WorkerAllocationMechanism",
+                "WorkerCandidateSelectionPolicy",
+                "WorkerResourceCatalog",
+                "descriptor()",
+                "config()",
+                "releaseScoreHolds(",
+                "releaseCompletedHotScoreHolds("
+        )) {
+            assertFalse(
+                    source.contains(token),
+                    () -> file + " must not contain " + token
+            );
+        }
+        assertTrue(source.contains("List<CandidateAllocationNeed> needs"));
+        assertTrue(source.contains("WorkerScoreCore workerScores"));
+        assertTrue(source.contains("WorkerMatchQueue matchQueue"));
+        assertTrue(source.contains("observeDueHotScoreCandidates("));
+        assertTrue(source.contains("acquireObservedHotScoreLeases("));
+        assertFalse(source.contains("ArrayBlockingQueue"));
+    }
+
+    @Test
     void passThroughFacadesAndOpaqueWrappersStayDeleted() {
         for (String type : List.of(
                 "WorkerCandidateMechanism",
@@ -156,6 +184,12 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("acquireWorkerCandidates("));
         assertFalse(selection.contains("releaseScoreHolds("));
         assertFalse(selection.contains("releaseCompletedHotScoreHolds("));
+        assertTrue(selection.contains(
+                "private Map<String, Long> observeDueCandidates("
+        ));
+        assertTrue(selection.contains(
+                "private Map<String, Long> holdObservedCandidates("
+        ));
     }
 
     @Test
@@ -192,6 +226,7 @@ class DispatchMechanismBoundaryTest {
                 "TaskIdleSettlement",
                 "DispatchMainScheduler",
                 "DispatchProducerId",
+                "CandidateAllocationNeed",
                 "HeldWorkerCandidate",
                 "ObservedTask"
         )) {

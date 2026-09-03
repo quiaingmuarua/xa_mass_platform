@@ -220,11 +220,17 @@ final class DispatchMainScheduler {
                 Set<DispatchProducerId> eligible,
                 List<ObservedTask> normalTasks
         ) {
-            List<ObservedTask> allocationTasks = normalTasks.stream()
+            List<CandidateAllocationNeed> allocationNeeds = normalTasks.stream()
                     .filter(task -> task.descriptor()
                             .workerAllocationMechanism()
                             == WorkerAllocationMechanism
                             .PRECOMPUTED_TASK_RULE)
+                    .map(task -> new CandidateAllocationNeed(
+                            task.descriptor().workerGroupId(),
+                            task.taskId(),
+                            task.descriptor().priority(),
+                            task.descriptor().maximumCandidateWorkers()
+                    ))
                     .toList();
             LinkedHashSet<String> groupIds = new LinkedHashSet<>();
             normalTasks.forEach(task -> groupIds.add(
@@ -235,9 +241,9 @@ final class DispatchMainScheduler {
             if (eligible.contains(DispatchProducerId.WORKER_ALLOCATION)) {
                 startProducer(
                         DispatchProducerId.WORKER_ALLOCATION,
-                        allocationTasks.size(),
+                        allocationNeeds.size(),
                         () -> allocation.allocateCandidateWorkers(
-                                allocationTasks
+                                allocationNeeds
                         )
                 );
             }

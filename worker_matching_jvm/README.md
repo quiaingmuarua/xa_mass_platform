@@ -32,8 +32,13 @@ Server passes the finite workerSelector to the Kernel parser
 | Server | public validation, ordered cross-owner writes, Runtime View composition and lifecycle assembly |
 | Transport | complete Properties upload during Prepare and execution of an already-targeted Command |
 
-`WorkerMatchRuntime` lives in `kernel_jvm` as the narrow PRECOMPUTED handoff.
-One `TaskRuleMatchDemand` contains a WorkerGroup, an ordered list of opaque
+`WorkerMatchQueue` lives in `kernel_jvm` as the complete PRECOMPUTED handoff
+contract: Kernel Pacer offers Demands, the resident Matching runtime consumes
+them, and health observation reads the same Queue size. The current Server
+assembly selects `InMemoryWorkerMatchQueue`; neither producer nor consumer
+depends on that implementation, so a future distributed Queue does not change
+their policy contracts. One
+`TaskRuleMatchDemand` contains a WorkerGroup, an ordered list of opaque
 Candidate addresses and static candidate limits, the exact held scores for at
 most 100 Workers, and the common hold deadline. It contains no Rule,
 Properties, endpoint, Item, or Delivery DTO. Matching carries held scores
@@ -92,11 +97,11 @@ take one TaskRuleMatchDemand
   -> remove only Cache-accepted Workers from this demand's available pool
 ```
 
-The default Demand queue capacity is 10,000. At most one Demand per
-WorkerGroup may be pending, while unrelated Groups remain independent. A held
-Worker may enter at most one Candidate bucket in one Demand. A missing, wrong-Group,
-or invalid Candidate Rule skips that address and leaves the Worker pool
-available to later Candidate needs.
+The current in-memory Demand Queue capacity is 10,000. Queue capacity is the
+only admission condition; there is no separate pending-Group registry. A held
+Worker may enter at most one Candidate bucket in one Demand. A missing,
+wrong-Group, or invalid Candidate Rule skips that address and leaves the
+Worker pool available to later Candidate needs.
 
 Candidate Cache remains a Kernel mechanical owner. Matching is only a bounded
 writer through `appendCandidateWorkers`; it cannot read Cache state or consume

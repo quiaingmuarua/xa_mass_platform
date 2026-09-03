@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Kernel-owned Worker observation, hold and descriptor selection. */
+/** Kernel-owned Task Dispatch candidate selection and description. */
 final class WorkerCandidateSelectionPolicy {
 
     private static final int MAX_UNIQUE_WORKERS_PER_ROUND = 100;
@@ -47,7 +47,7 @@ final class WorkerCandidateSelectionPolicy {
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
     }
 
-    Map<String, Long> observeDueCandidates(
+    private Map<String, Long> observeDueCandidates(
             String workerGroupId,
             int limit
     ) {
@@ -64,7 +64,7 @@ final class WorkerCandidateSelectionPolicy {
         );
     }
 
-    Map<String, Long> holdObservedCandidates(
+    private Map<String, Long> holdObservedCandidates(
             String workerGroupId,
             Map<String, Long> observedScores,
             long holdUntilMillis

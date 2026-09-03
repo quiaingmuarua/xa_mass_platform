@@ -1,8 +1,8 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -11,12 +11,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime;
-import com.xa.mass.kernel.assignment.WorkerMatchRuntime.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -33,22 +37,16 @@ class AssignmentPacersTest {
 
     @Test
     void allocationPublishesOrderedNeedsAndExactHeldScores() {
-        WorkerCandidateSelectionPolicy selection = mock(
-                WorkerCandidateSelectionPolicy.class
-        );
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
-        ObservedTask lower = due(
+        WorkerMatchQueue matches = matchDemands();
+        CandidateAllocationNeed lower = allocationNeed(
                 "task-lower",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 10,
                 5
         );
-        ObservedTask higher = due(
+        CandidateAllocationNeed higher = allocationNeed(
                 "task-higher",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 1,
                 7
         );
@@ -67,20 +65,27 @@ class AssignmentPacersTest {
                 "worker-a", 201L,
                 "worker-c", 203L
         );
-        when(selection.observeDueCandidates("group-1", 3))
+        when(scores.observeDueHotScoreCandidates("group-1", 900L, 3))
                 .thenReturn(observed);
-        when(selection.holdObservedCandidates(
+        when(scores.acquireObservedHotScoreLeases(
                 "group-1", observed, 6_000L
-        )).thenReturn(held);
-        when(matches.offerTaskDemand(any())).thenReturn(true);
+        )).thenReturn(Map.of(
+                "worker-a", transitioned(201L),
+                "worker-b", new WorkerScoreTransitionResult(
+                        WorkerScoreTransitionStatus.STALE,
+                        102L
+                ),
+                "worker-c", transitioned(203L)
+        ));
+        when(matches.offer(any())).thenReturn(true);
 
-        int offered = allocation(selection, cache, matches)
+        int offered = allocation(scores, cache, matches, 900L)
                 .allocateCandidateWorkers(
                         List.of(lower, higher)
                 );
 
         assertEquals(1, offered);
-        verify(matches).offerTaskDemand(argThat(demand ->
+        verify(matches).offer(argThat(demand ->
                 demand.workerGroupId().equals("group-1")
                         && demand.orderedTaskNeeds().equals(List.of(
                                 new TaskCandidateNeed("task-higher", 7),
@@ -88,133 +93,163 @@ class AssignmentPacersTest {
                         ))
                         && demand.heldWorkerLeaseScores().equals(held)
                         && demand.holdUntilMillis() == 6_000L));
-        InOrder order = org.mockito.Mockito.inOrder(selection, matches);
-        order.verify(selection).holdObservedCandidates(
+        InOrder order = org.mockito.Mockito.inOrder(cache, scores, matches);
+        order.verify(cache).candidateWorkerCounts(List.of(
+                "task-lower", "task-higher"
+        ));
+        order.verify(scores).observeDueHotScoreCandidates(
+                "group-1", 900L, 3
+        );
+        order.verify(scores).acquireObservedHotScoreLeases(
                 "group-1", observed, 6_000L
         );
-        order.verify(matches).offerTaskDemand(any());
+        order.verify(matches).offer(any());
     }
 
     @Test
     void fullTaskIsOmittedWithoutTakingCapacityFromLaterTask() {
-        WorkerCandidateSelectionPolicy selection = mock(
-                WorkerCandidateSelectionPolicy.class
-        );
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
-        ObservedTask full = due(
+        WorkerMatchQueue matches = matchDemands();
+        CandidateAllocationNeed full = allocationNeed(
                 "task-full",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 1,
                 10
         );
-        ObservedTask next = due(
+        CandidateAllocationNeed next = allocationNeed(
                 "task-next",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 2,
                 4
         );
         when(cache.candidateWorkerCounts(List.of(
                 "task-full", "task-next"
         ))).thenReturn(Map.of("task-full", 10, "task-next", 3));
-        when(selection.observeDueCandidates("group-1", 1))
+        when(scores.observeDueHotScoreCandidates("group-1", null, 1))
                 .thenReturn(Map.of("worker-a", 101L));
-        when(selection.holdObservedCandidates(
+        when(scores.acquireObservedHotScoreLeases(
                 "group-1", Map.of("worker-a", 101L), 6_000L
-        )).thenReturn(Map.of("worker-a", 201L));
-        when(matches.offerTaskDemand(any())).thenReturn(true);
+        )).thenReturn(Map.of("worker-a", transitioned(201L)));
+        when(matches.offer(any())).thenReturn(true);
 
-        assertEquals(1, allocation(selection, cache, matches)
+        assertEquals(1, allocation(scores, cache, matches)
                 .allocateCandidateWorkers(
                         List.of(full, next)
                 ));
 
-        verify(matches).offerTaskDemand(argThat(demand ->
+        verify(matches).offer(argThat(demand ->
                 demand.orderedTaskNeeds().equals(List.of(
                         new TaskCandidateNeed("task-next", 4)
                 ))));
     }
 
     @Test
+    void allocationPublishesIndependentDemandForEachWorkerGroup() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerMatchQueue matches = matchDemands();
+        when(cache.candidateWorkerCounts(List.of(
+                "candidate-a", "candidate-b"
+        ))).thenReturn(Map.of());
+        when(scores.observeDueHotScoreCandidates("group-a", null, 1))
+                .thenReturn(Map.of("worker-a", 101L));
+        when(scores.observeDueHotScoreCandidates("group-b", null, 1))
+                .thenReturn(Map.of("worker-b", 102L));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-a", Map.of("worker-a", 101L), 6_000L
+        )).thenReturn(Map.of("worker-a", transitioned(201L)));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-b", Map.of("worker-b", 102L), 6_000L
+        )).thenReturn(Map.of("worker-b", transitioned(202L)));
+        when(matches.offer(any())).thenReturn(true);
+
+        assertEquals(2, allocation(scores, cache, matches)
+                .allocateCandidateWorkers(List.of(
+                        allocationNeed("group-a", "candidate-a", 1, 1),
+                        allocationNeed("group-b", "candidate-b", 1, 1)
+                )));
+
+        verify(matches).offer(argThat(demand ->
+                demand.workerGroupId().equals("group-a")
+                        && demand.orderedTaskNeeds().equals(List.of(
+                                new TaskCandidateNeed("candidate-a", 1)
+                        ))));
+        verify(matches).offer(argThat(demand ->
+                demand.workerGroupId().equals("group-b")
+                        && demand.orderedTaskNeeds().equals(List.of(
+                                new TaskCandidateNeed("candidate-b", 1)
+                        ))));
+    }
+
+    @Test
     void rejectedDemandLeavesHeldWorkersToExpireNaturally() {
-        WorkerCandidateSelectionPolicy selection = mock(
-                WorkerCandidateSelectionPolicy.class
-        );
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
+        WorkerMatchQueue matches = matchDemands();
         when(cache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.observeDueCandidates("group-1", 2))
+        when(scores.observeDueHotScoreCandidates("group-1", null, 2))
                 .thenReturn(Map.of("worker-1", 101L));
-        when(selection.holdObservedCandidates(
+        when(scores.acquireObservedHotScoreLeases(
                 "group-1", Map.of("worker-1", 101L), 6_000L
-        )).thenReturn(Map.of("worker-1", 201L));
-        when(matches.offerTaskDemand(any())).thenReturn(false);
+        )).thenReturn(Map.of("worker-1", transitioned(201L)));
+        when(matches.offer(any())).thenReturn(false);
 
-        assertEquals(0, allocation(selection, cache, matches)
+        assertEquals(0, allocation(scores, cache, matches)
                 .allocateCandidateWorkers(
-                        List.of(due(
+                        List.of(allocationNeed(
                                 "task-1",
-                                WorkerAllocationMechanism
-                                        .PRECOMPUTED_TASK_RULE,
-                                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                                 10,
                                 2
                         ))
                 ));
 
-        verify(matches).offerTaskDemand(any());
+        verify(matches).offer(any());
+        verify(scores, never()).releaseScoreHolds(
+                any(), any(), anyLong()
+        );
+        verify(scores, never()).releaseCompletedHotScoreHolds(
+                any(), any(), anyLong()
+        );
     }
 
     @Test
-    void failedHoldDoesNotPublishDemand() {
-        WorkerCandidateSelectionPolicy selection = mock(
-                WorkerCandidateSelectionPolicy.class
-        );
+    void nonTransitionedOrMissingHoldDoesNotPublishDemand() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
-        WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
+        WorkerMatchQueue matches = matchDemands();
         when(cache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.observeDueCandidates("group-1", 2))
-                .thenReturn(Map.of("worker-1", 101L));
-        when(selection.holdObservedCandidates(
-                "group-1", Map.of("worker-1", 101L), 6_000L
-        )).thenReturn(Map.of());
-
-        assertEquals(0, allocation(selection, cache, matches)
-                .allocateCandidateWorkers(
-                        List.of(due(
-                                "task-1",
-                                WorkerAllocationMechanism
-                                        .PRECOMPUTED_TASK_RULE,
-                                TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                                10,
-                                2
-                        ))
-                ));
-        verify(matches, never()).offerTaskDemand(any());
-    }
-
-    @Test
-    void allocationRejectsOnDemandTasks() {
-        TaskWorkerAllocationPolicy policy = allocation(
-                mock(WorkerCandidateSelectionPolicy.class),
-                mock(CandidateWorkerCache.class),
-                mock(WorkerMatchRuntime.class)
+        LinkedHashMap<String, Long> observed = linkedScores(
+                "worker-stale", 101L,
+                "worker-noop", 102L,
+                "worker-invalid", 103L,
+                "worker-missing", 104L
         );
+        when(scores.observeDueHotScoreCandidates("group-1", null, 4))
+                .thenReturn(observed);
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1", observed, 6_000L
+        )).thenReturn(Map.of(
+                "worker-stale", new WorkerScoreTransitionResult(
+                        WorkerScoreTransitionStatus.STALE, 101L
+                ),
+                "worker-noop", new WorkerScoreTransitionResult(
+                        WorkerScoreTransitionStatus.NOOP, 102L
+                ),
+                "worker-invalid", new WorkerScoreTransitionResult(
+                        WorkerScoreTransitionStatus.INVALID, null
+                )
+        ));
 
-        assertThrows(IllegalArgumentException.class, () ->
-                policy.allocateCandidateWorkers(
-                        List.of(due(
+        assertEquals(0, allocation(scores, cache, matches)
+                .allocateCandidateWorkers(
+                        List.of(allocationNeed(
                                 "task-1",
-                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                                TaskIdleDisposition.PARK_WHEN_IDLE,
                                 10,
-                                2
+                                4
                         ))
                 ));
+        verify(matches, never()).offer(any());
     }
 
     @Test
@@ -385,12 +420,56 @@ class AssignmentPacersTest {
     }
 
     private static TaskWorkerAllocationPolicy allocation(
-            WorkerCandidateSelectionPolicy selection,
+            WorkerScoreCore scores,
             CandidateWorkerCache cache,
-            WorkerMatchRuntime matches
+            WorkerMatchQueue matches
+    ) {
+        return allocation(scores, cache, matches, null);
+    }
+
+    private static TaskWorkerAllocationPolicy allocation(
+            WorkerScoreCore scores,
+            CandidateWorkerCache cache,
+            WorkerMatchQueue matches,
+            Long hotEligibilityFloorMillis
     ) {
         return new TaskWorkerAllocationPolicy(
-                selection, cache, matches, () -> 1_000L
+                scores,
+                cache,
+                matches,
+                hotEligibilityFloorMillis,
+                () -> 1_000L
+        );
+    }
+
+    private static WorkerMatchQueue matchDemands() {
+        return mock(WorkerMatchQueue.class);
+    }
+
+    private static CandidateAllocationNeed allocationNeed(
+            String candidateId,
+            int priority,
+            int maximumCandidateWorkers
+    ) {
+        return allocationNeed(
+                "group-1",
+                candidateId,
+                priority,
+                maximumCandidateWorkers
+        );
+    }
+
+    private static CandidateAllocationNeed allocationNeed(
+            String workerGroupId,
+            String candidateId,
+            int priority,
+            int maximumCandidateWorkers
+    ) {
+        return new CandidateAllocationNeed(
+                workerGroupId,
+                candidateId,
+                priority,
+                maximumCandidateWorkers
         );
     }
 
@@ -472,6 +551,13 @@ class AssignmentPacersTest {
     ) {
         return new HeldWorkerCandidate(
                 workerId, "group-1", "adapter-1", score
+        );
+    }
+
+    private static WorkerScoreTransitionResult transitioned(long score) {
+        return new WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                score
         );
     }
 

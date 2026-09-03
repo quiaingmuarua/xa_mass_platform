@@ -40,13 +40,14 @@ class DispatchConvergenceLifecycleTest {
         stubProjectedBatch(fixture);
         CountDownLatch rounds = new CountDownLatch(4);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
-        AtomicReference<List<String>> allocationTasks = new AtomicReference<>();
+        AtomicReference<List<CandidateAllocationNeed>> allocationNeeds =
+                new AtomicReference<>();
         AtomicReference<List<String>> dispatchedTasks = new AtomicReference<>();
         AtomicReference<List<String>> serviceabilityGroups =
                 new AtomicReference<>();
         doAnswer(invocation -> {
-            List<ObservedTask> tasks = invocation.getArgument(0);
-            allocationTasks.set(taskIds(tasks));
+            List<CandidateAllocationNeed> needs = invocation.getArgument(0);
+            allocationNeeds.set(needs);
             return complete(rounds, allVirtual);
         }).when(fixture.allocation).allocateCandidateWorkers(any());
         doAnswer(ignored -> {
@@ -81,7 +82,15 @@ class DispatchConvergenceLifecycleTest {
                 "task-repeat-group",
                 "task-invalid"
         ));
-        assertEquals(List.of("task-precomputed"), allocationTasks.get());
+        assertEquals(
+                List.of(new CandidateAllocationNeed(
+                        "group-1",
+                        "task-precomputed",
+                        0,
+                        1
+                )),
+                allocationNeeds.get()
+        );
         assertEquals(
                 List.of(
                         "task-precomputed",

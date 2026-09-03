@@ -146,19 +146,26 @@ WorkerMatchingCatalog / WorkerMatchingRuntime
   Matching carries held scores opaquely into Candidate Cache but never reads,
   interprets or changes Score and never makes the final assignment
 
+WorkerMatchQueue
+  is the complete offer/size/consume handoff contract between Allocation and
+  Matching; its current in-memory provider is selected only by Server assembly
+
 CandidateWorkerCache
-  owns transient taskId-local candidate entries and atomic Task capacity
+  owns transient candidateId-local entries and atomic Candidate capacity
 
 DispatchMainScheduler
   reads one bounded taskId-to-opaque-score map, asks the Task Score Owner for
   its INITIAL subset, loads Descriptors only for the NORMAL complement, and
   plans the complete root input of four fixed single-flight Resource Producers
 
+TaskWorkerAllocationPolicy
+  owns PRECOMPUTED Candidate deficits and priority, bounded due-pool
+  observation, exact initial hold and ordered Match Demand publication
+
 WorkerCandidateSelectionPolicy
-  owns HOT/Cache scheduling sources, due-pool observation, exact initial hold,
-  ON_DEMAND explicit-ID/ANY selection, round uniqueness, cached final renewal
-  and endpoint-bearing Candidate assembly; it never interprets Rule or
-  Properties
+  serves Task Dispatch only: cached Candidate consumption, ON_DEMAND
+  explicit-ID/ANY selection, round uniqueness, exact hold and endpoint-bearing
+  Candidate assembly; it never interprets Rule or Properties
 
 TaskAssignmentDispatcher / TaskIdleSettlement
   protect the two real cross-Owner Task Dispatch closures: Worker renew before

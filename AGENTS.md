@@ -197,22 +197,27 @@ kernel_jvm`.
   replace failed and request promotion of the existing score to
   `FINAL_SUCCESS`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
-- `WorkerCandidateSelectionPolicy` owns due HOT pool observation, exact hold,
-  priority/count/unique selection, cached renewal and endpoint-bearing
-  candidate assembly. Allocation and Dispatch policies exact-hold a bounded
-  due pool before publishing an ordered PRECOMPUTED Match Demand containing
-  only successfully held Worker IDs and their opaque exact scores. Matching
-  may filter that pool and append accepted entries directly to the
+- `TaskWorkerAllocationPolicy` owns PRECOMPUTED Candidate deficits, priority,
+  bounded due HOT observation, exact initial hold and ordered Match Demand
+  publication. `WorkerCandidateSelectionPolicy` is confined to Task Dispatch:
+  cached Candidate consumption, ON_DEMAND explicit-ID/ANY selection, exact
+  hold and endpoint-bearing Candidate assembly. Matching may filter the
+  PRECOMPUTED held pool and append accepted entries directly to the
   Kernel-owned Candidate Cache; final dispatch exact-renews the cached score.
-  ON_DEMAND TaskItems contain only normalized explicit Worker-ID targets or an
-  empty ANY target and acquire from Worker Score directly without a Matching
-  runtime round trip. Unmatched and unselected holds expire naturally; do not
-  compensate-release them or add a pending lease registry.
+  Unmatched and unselected holds expire naturally; do not compensate-release
+  them or add a pending lease registry.
   They must not read Rule or Properties data or interpret constraint syntax.
   There is no generic acquisition Strategy or cached-to-on-demand fallback.
   `WorkerAllocationMechanism` is a fixed Producer workflow label;
   PRECOMPUTED Candidate Rule matching and ON_DEMAND Worker Selector workflows
   are mutually exclusive and do not exchange Candidate Cache entries.
+- `WorkerMatchQueue` is the complete PRECOMPUTED handoff contract. Pacer
+  offers, Matching consumes, and health reads size through the same Queue
+  interface; do not split producer and consumer operations behind another
+  Runtime or write-only port. The current Server assembly selects the bounded
+  in-memory implementation, but Pacer and Matching must not depend on that
+  storage choice. Queue size is diagnostic, while `offer` is the admission
+  result.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,

@@ -56,10 +56,6 @@ public final class DefaultTaskLifecycleCommands
         if (classified != null) {
             return classified;
         }
-        int priority = Integer.parseInt(
-                descriptor.config().get("priority")
-        );
-
         try {
             if (taskScore.countRunningTasks() >= RUNNING_TASK_SOFT_LIMIT) {
                 return new TaskApprovalResult(
@@ -70,7 +66,7 @@ public final class DefaultTaskLifecycleCommands
             var transition = taskScore.startObservedPreReviewTask(
                     taskId,
                     state.score(),
-                    priority
+                    descriptor.priority()
             );
             if (transition.status()
                     == TaskScoreTransitionStatus.TRANSITIONED) {

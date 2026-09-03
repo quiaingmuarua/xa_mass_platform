@@ -191,6 +191,16 @@ public interface TaskRuntime {
                     new LinkedHashMap<>(config)
             );
         }
+
+        public int priority() {
+            return Integer.parseInt(config.get("priority"));
+        }
+
+        public int maximumCandidateWorkers() {
+            return Integer.parseInt(
+                    config.get("maximumCandidateWorkers")
+            );
+        }
     }
 
     record TaskItemAppendResult(
