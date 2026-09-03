@@ -54,7 +54,7 @@ class RedisWorkerScoreCoreTest {
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
-                    scoreCore.applyServiceabilityPolarityEvidence(
+                    scoreCore.applyServiceabilityEvidence(
                             "group-1",
                             Map.of("worker-1", 0L),
                             WorkerScorePolarity.HOT_ACQUIRE

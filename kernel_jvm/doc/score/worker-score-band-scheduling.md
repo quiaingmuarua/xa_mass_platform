@@ -516,10 +516,12 @@ RECOVERY_RECHECK -> HOT_ACQUIRE
 
 The general `toggle_current_polarity` operation preserves `timeSlot` and dirty
 while resetting the target lane to `laneRank=0`. Worker Serviceability Result
-does not use that general primitive: its dedicated Evidence operation changes
-only the sign and therefore preserves `timeSlot`, `laneRank`, and dirty exactly.
-The two operations remain distinct because an explicit lane transition and an
-Evidence polarity correction own different low-bit semantics. Dirty score
+does not use that general primitive. Its dedicated Evidence operation preserves
+`laneRank` and dirty; unavailable Evidence changes only the sign, while accepted
+connected Evidence advances a non-future older coordinate to the Evidence slot.
+Future leases and PAUSE keep their exact coordinate. The two operations remain
+distinct because an explicit lane transition and a serviceability correction
+own different time and low-bit semantics. Dirty score
 primitives are implemented; policy may invoke them only for an active
 continuation that will later revalidate or renew. Raw external observation
 never writes dirty.
@@ -745,7 +747,7 @@ observation cannot advance a newer lease, hold, pause, or check. Probe offer
 loss is not rolled back: the updated RECOVERY coordinate becomes the source of
 the next bounded retry scan.
 
-### Worker Serviceability Evidence Polarity
+### Worker Serviceability Evidence
 
 Adapter Evidence applies one target polarity through a same-key batch Lua. For
 each Worker, with all times reduced to the 100ms score slot, Evidence is valid
@@ -759,14 +761,18 @@ OR storedTimeSlot <= evidenceTimeSlot
 The first branch permits an observed Route fact to correct the polarity of a
 future lease, hold, or pause without lowering that coordinate. The second is
 the normal non-future freshness fence and deliberately accepts the same slot.
-When valid, the owner changes only the sign; `timeSlot`, `laneRank`, and dirty
-remain byte-for-byte represented by the same absolute score. A score already
-at the target polarity is `NOOP`; a newer non-future coordinate makes older
-Evidence `STALE`.
+Valid unavailable Evidence changes only the sign. Valid connected Evidence
+also replaces an older non-future `timeSlot` with `evidenceTimeSlot`; it keeps
+the stored time when the score is a future lease or pause. Both paths preserve
+`laneRank` and dirty. A score already at the target polarity is `NOOP` only when
+its time coordinate also remains unchanged. A newer non-future coordinate
+makes older Evidence `STALE`.
 
-The Result path therefore owns no HOT-floor rewrite, retry increment, cold
-park, or PAUSE exception. Dispatch owns check timing and retry progression;
-Evidence owns only the observed target polarity.
+The Result path therefore owns no floor calculation, retry increment, cold
+park, or PAUSE exception. Dispatch owns check timing and retry progression.
+Connected Evidence supplies the fresh coordinate that makes a verified Route
+eligible above the immutable process floor; unavailable Evidence only removes
+that Worker from the HOT polarity.
 
 ### Recovery Exhausted / Cold Park
 
@@ -958,7 +964,10 @@ manual disable / drain / maintenance:
   owner gate fact and same-polarity hold score write
 
 trusted serviceability evidence:
-  stored score time must be older than Adapter observed time before polarity move
+  stored score time must not be newer than Adapter observed time unless it is a
+  future lease or PAUSE
+  connected evidence advances an older non-future coordinate to its evidence slot
+  unavailable evidence and future coordinates preserve the stored time
 
 validated recovery:
   validated owner facts and RECOVERY_RECHECK -> HOT_ACQUIRE polarity move
@@ -1018,11 +1027,11 @@ negative recovery-recheck acquire range
 observed-score stale fence for active renewal, lowering, and polarity moves
 dirty bit mark / hot lease clear / stale-renew protocol
 same-polarity release
-owner-validated polarity move boundary preserving timeSlot
+owner-validated serviceability evidence boundary preserving laneRank and dirty
 RECOVERY_RECHECK lookback-window acquisition
 RECOVERY_RECHECK cold-too-old exhausted coordinate
 home bucket score key
-no transport-driven positive refresh
+only normalized connected Adapter evidence may refresh a non-future HOT coordinate
 ```
 
 Policy owns:

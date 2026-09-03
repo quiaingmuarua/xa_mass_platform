@@ -198,7 +198,7 @@ current-state projection.
 ## Score Convergence
 
 `DefaultWorkerServiceabilityEvents` resolves WorkerGroup ownership and calls
-one bounded Score-owner polarity Evidence operation. The Adapter Evidence
+one bounded Score-owner serviceability Evidence operation. The Adapter Evidence
 policy cannot read a Worker score or select a concrete score mutation. The
 finite event interface is not a generic EventBus.
 
@@ -211,14 +211,18 @@ DISCONNECTED / delivery expired / Probe miss  -> RECOVERY
 
 For each Worker, Evidence is accepted when its 100ms slot is at least the
 stored non-future slot, or when the stored Score is a future lease/hold. The
-same slot is accepted. Valid Evidence changes only the Score sign; it preserves
-`timeSlot`, `laneRank`, and dirty. This also means PAUSE needs no special branch:
-changing the sign of its fixed absolute coordinate does not make it schedulable.
+same slot is accepted. Valid Evidence always preserves `laneRank` and dirty.
+Unavailable Evidence changes only the Score sign. Connected Evidence also
+advances an older non-future coordinate to its Evidence slot, so a reconnect
+observed after Server startup crosses that process's HOT eligibility floor
+without depending on a separate Probe round. A future lease or PAUSE keeps its
+exact time coordinate and is never shortened by Evidence.
 
 Retry rank, next-check time, and cold parking are Dispatch concerns performed
 before a Probe is offered or when a due Recovery observation is exhausted.
-The Result path neither rewrites to the HOT floor nor advances Recovery retry
-state. A newer non-future Score rejects older Evidence as `STALE`.
+The Result path does not calculate the process floor or advance Recovery retry
+state; it uses the accepted connection timestamp as the fresh HOT coordinate.
+A newer non-future Score rejects older Evidence as `STALE`.
 
 ## Server And Adapter Boundary
 

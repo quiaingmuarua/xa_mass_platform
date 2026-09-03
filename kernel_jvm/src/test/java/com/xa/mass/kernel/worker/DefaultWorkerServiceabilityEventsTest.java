@@ -102,7 +102,7 @@ class DefaultWorkerServiceabilityEventsTest {
                 new Class<?>[]{WorkerScoreCore.class},
                 (_proxy, method, args) -> {
                     if (!method.getName().equals(
-                            "applyServiceabilityPolarityEvidence"
+                            "applyServiceabilityEvidence"
                     )) {
                         throw new AssertionError(
                                 "Unexpected score call: " + method.getName()

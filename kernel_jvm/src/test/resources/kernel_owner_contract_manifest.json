@@ -156,7 +156,7 @@
       "acquire_observed_hot_score_leases",
       "acquire_recovery_recheck_candidates",
       "advance_observed_recovery_rechecks",
-      "apply_serviceability_polarity_evidence",
+      "apply_serviceability_evidence",
       "exhaust_recovery_recheck",
       "get_score_states",
       "hold_observed_hot_for_serviceability_probes",

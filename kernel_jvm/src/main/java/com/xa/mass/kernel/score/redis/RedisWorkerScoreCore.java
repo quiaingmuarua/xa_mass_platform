@@ -178,7 +178,15 @@ public final class RedisWorkerScoreCore
                   status = "invalid"
                 elseif stored_time_slot > now_time_slot
                     or stored_time_slot <= evidence_time_slot then
-                  local target_score = target_sign * stored_abs_score
+                  local target_abs_score = stored_abs_score
+                  if target_sign == 1
+                      and stored_time_slot <= now_time_slot
+                      and stored_time_slot < evidence_time_slot then
+                    local low_bits = stored_abs_score % slot_factor
+                    target_abs_score = evidence_time_slot * slot_factor
+                        + low_bits
+                  end
+                  local target_score = target_sign * target_abs_score
                   if target_score == stored_score then
                     status = "noop"
                   else
@@ -940,7 +948,7 @@ public final class RedisWorkerScoreCore
 
     @Override
     public Map<String, WorkerScoreTransitionResult>
-            applyServiceabilityPolarityEvidence(
+            applyServiceabilityEvidence(
                     String homeBucketId,
                     Map<String, Long> evidenceTimeMillisByWorkerId,
                     WorkerScorePolarity targetPolarity

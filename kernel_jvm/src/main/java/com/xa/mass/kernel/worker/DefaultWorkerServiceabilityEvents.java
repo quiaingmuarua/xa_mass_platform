@@ -93,7 +93,7 @@ public final class DefaultWorkerServiceabilityEvents
                         entry.getKey(),
                         entry.getValue()
                 ));
-                workerScores.applyServiceabilityPolarityEvidence(
+                workerScores.applyServiceabilityEvidence(
                         workerGroupId,
                         chunk,
                         targetPolarity

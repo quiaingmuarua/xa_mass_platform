@@ -912,9 +912,16 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 6,
                 1
         );
+        long oldHot = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                currentSlot - 100,
+                8,
+                1
+        );
         redis.zadd(scoreKey("group-serviceability"), newer, "newer");
         redis.zadd(scoreKey("group-serviceability"), future, "future");
         redis.zadd(scoreKey("group-serviceability"), pause, "pause");
+        redis.zadd(scoreKey("group-serviceability"), oldHot, "old-hot");
 
         LinkedHashMap<String, Long> evidence = new LinkedHashMap<>();
         evidence.put("hot", held.get("hot").timeMillis());
@@ -930,8 +937,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "pause",
                 (currentSlot - 100) * WorkerScoreCore.SLOT_MILLIS
         );
+        evidence.put(
+                "old-hot",
+                currentSlot * WorkerScoreCore.SLOT_MILLIS
+        );
         evidence.put("missing", currentSlot * WorkerScoreCore.SLOT_MILLIS);
-        var evidenceResults = scoreCore.applyServiceabilityPolarityEvidence(
+        var evidenceResults = scoreCore.applyServiceabilityEvidence(
                 "group-serviceability",
                 evidence,
                 WorkerScorePolarity.HOT_ACQUIRE
@@ -949,11 +960,14 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(evidenceResults.get("pause").status()).isEqualTo(
                 WorkerScoreTransitionStatus.NOOP
         );
+        assertThat(evidenceResults.get("old-hot").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
         assertThat(evidenceResults.get("missing").status()).isEqualTo(
                 WorkerScoreTransitionStatus.STALE
         );
 
-        var unavailable = scoreCore.applyServiceabilityPolarityEvidence(
+        var unavailable = scoreCore.applyServiceabilityEvidence(
                 "group-serviceability",
                 Map.of(
                         "future",
@@ -969,7 +983,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 ));
         Map<String, WorkerScoreState> finalStates = scoreCore.getScoreStates(
                 "group-serviceability",
-                List.of("hot", "future", "pause")
+                List.of("hot", "future", "pause", "old-hot")
         );
         assertScoreShape(
                 finalStates.get("hot"),
@@ -990,6 +1004,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 WorkerScoreCore.PAUSE_TIME_MILLIS,
                 6,
+                1
+        );
+        assertScoreShape(
+                finalStates.get("old-hot"),
+                WorkerScorePolarity.HOT_ACQUIRE,
+                currentSlot * WorkerScoreCore.SLOT_MILLIS,
+                8,
                 1
         );
     }

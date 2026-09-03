@@ -112,7 +112,7 @@ public interface WorkerScoreCore {
             );
 
     Map<String, WorkerScoreTransitionResult>
-            applyServiceabilityPolarityEvidence(
+            applyServiceabilityEvidence(
                     String homeBucketId,
                     Map<String, Long> evidenceTimeMillisByWorkerId,
                     WorkerScorePolarity targetPolarity

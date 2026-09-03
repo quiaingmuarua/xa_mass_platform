@@ -84,12 +84,12 @@ class JavaWorkerPlatformTest {
             throws Exception {
         int connectionCount = 128;
         ExecutorService webSocketExecutor;
-        try (MockWebServer server = new MockWebServer();
-             JavaWorkerPlatform platform = JavaWorkerPlatform.create(
+        try (JavaWorkerPlatform platform = JavaWorkerPlatform.create(
                      connectionCount,
                      "test-java-scale",
                      true
-             )) {
+             );
+             MockWebServer server = new MockWebServer()) {
             server.start();
             CountDownLatch opened = new CountDownLatch(connectionCount);
             CopyOnWriteArrayList<Boolean> virtualCallbacks =
