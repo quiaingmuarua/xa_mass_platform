@@ -12,7 +12,7 @@ Java Server
            -> TASK_SUCCESS virtual batches
            -> TASK_FAILURE virtual batches
            -> ADAPTER_EVIDENCE virtual batch             optional
-        -> DispatchConvergenceApplication
+        -> DispatchConvergenceRuntime
            -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
               -> TASK_INITIALIZATION resource producer
@@ -54,7 +54,7 @@ TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
-TaskInitializationCheck
+TaskInitializationPolicy
 TaskAssignmentDispatcher / TaskIdleSettlement
 CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
@@ -97,12 +97,13 @@ no Task Score point recheck. INITIAL needs no Descriptor wrapper. These values
 are round evidence, not locks; every later mutation still uses exact owner
 fences.
 
-`DispatchConvergenceApplication` owns one non-daemon Main Scheduler and one
-virtual thread per non-empty eligible Producer round. Every Producer is
-single-flight. The Main Scheduler reads the original Task Source at most once
-per eligible sweep, then supplies each Producer only its complete root input. A
-busy Producer skips that source snapshot and retains no memory hint; unchanged
-Task score lets a later observation rediscover the Task.
+`DispatchConvergenceRuntime` owns one non-daemon Main Scheduler thread.
+`DispatchMainScheduler` owns one virtual thread per non-empty eligible Producer
+round. Every Producer is single-flight. The Main Scheduler reads the original
+Task Source at most once per eligible sweep, then supplies each Producer only
+its complete root input. A busy Producer skips that source snapshot and retains
+no memory hint; unchanged Task score lets a later observation rediscover the
+Task.
 
 The fixed Producers are:
 
@@ -149,10 +150,12 @@ Result Convergence
 -> Dispatch Convergence
 ```
 
-Shutdown is strictly reversed. Both Applications share one shutdown deadline;
-neither resets the budget per Producer, lane, or thread. Startup failure rolls
-back every started Application in reverse order. Any required scheduler or worker-loop
-death moves `KernelPacerRuntime` to `FAILED`.
+Shutdown is strictly reversed. Result Convergence and Dispatch Convergence
+share one shutdown deadline. Dispatch shutdown interrupts and joins its Main
+Scheduler thread; the Scheduler then interrupts outstanding virtual Producer
+tasks. It has no stop queue, latch, or monitoring thread. Startup failure rolls
+back every started runtime in reverse order. A required scheduler or worker-loop
+death observed by runtime health moves `KernelPacerRuntime` to `FAILED`.
 
 Spring readiness requires the Runtime and Kernel Redis to be UP. Liveness
 remains a JVM-process signal. Health exposes only:

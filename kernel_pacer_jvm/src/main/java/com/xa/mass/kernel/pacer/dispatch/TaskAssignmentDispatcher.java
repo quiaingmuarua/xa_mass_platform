@@ -24,6 +24,17 @@ import tools.jackson.databind.json.JsonMapper;
 
 final class TaskAssignmentDispatcher {
 
+    record AssignmentAttempt(
+            TaskItem item,
+            long observedItemScore,
+            HeldWorkerCandidate worker
+    ) {
+        AssignmentAttempt {
+            Objects.requireNonNull(item, "item");
+            Objects.requireNonNull(worker, "worker");
+        }
+    }
+
     private final TaskItemScoreBandCore itemScores;
     private final WorkerScoreCore workerScores;
     private final WorkerCommandRuntime workerCommands;
@@ -52,33 +63,31 @@ final class TaskAssignmentDispatcher {
     }
 
     int dispatch(
-            DueTaskObservation task,
-            Map<String, TaskItem> itemsByMessageId,
-            Map<String, Long> observedItemScores,
-            Map<String, AcquiredWorkerCandidate> workersByMessageId,
+            ObservedTask task,
+            List<AssignmentAttempt> attempts,
             long claimUntilMillis
     ) {
         Objects.requireNonNull(task, "task");
-        Objects.requireNonNull(itemsByMessageId, "itemsByMessageId");
-        Objects.requireNonNull(observedItemScores, "observedItemScores");
-        Objects.requireNonNull(workersByMessageId, "workersByMessageId");
-        if (workersByMessageId.isEmpty()) {
+        Objects.requireNonNull(attempts, "attempts");
+        if (attempts.isEmpty()) {
             return 0;
         }
-        if (!itemsByMessageId.keySet().equals(workersByMessageId.keySet())
-                || !observedItemScores.keySet().equals(
-                        workersByMessageId.keySet()
-                )) {
-            throw new IllegalArgumentException(
-                    "TaskItem, score and Worker assignments must align"
-            );
-        }
 
+        LinkedHashMap<String, AssignmentAttempt> attemptsByMessageId =
+                new LinkedHashMap<>();
         LinkedHashMap<String, Long> observedWorkers = new LinkedHashMap<>();
         HashSet<String> workerIds = new HashSet<>();
-        workersByMessageId.forEach((messageId, worker) -> {
+        for (AssignmentAttempt attempt : attempts) {
+            Objects.requireNonNull(attempt, "assignment attempt");
+            TaskItem item = attempt.item();
+            String messageId = item.messageId();
+            HeldWorkerCandidate worker = attempt.worker();
             requireNonBlank(messageId, "messageId");
-            Objects.requireNonNull(worker, "worker");
+            if (attemptsByMessageId.putIfAbsent(messageId, attempt) != null) {
+                throw new IllegalArgumentException(
+                        "Assignments must be unique by messageId"
+                );
+            }
             if (!task.descriptor().workerGroupId().equals(
                     worker.workerGroupId()
             )) {
@@ -93,9 +102,9 @@ final class TaskAssignmentDispatcher {
             }
             observedWorkers.put(
                     worker.workerId(),
-                    worker.workerLeaseScore()
+                    worker.heldWorkerLeaseScore()
             );
-        });
+        }
 
         Map<String, WorkerScoreTransitionResult> verified =
                 workerScores.renewActiveHotScoreLeases(
@@ -115,9 +124,10 @@ final class TaskAssignmentDispatcher {
         });
 
         LinkedHashMap<String, Long> claimScores = new LinkedHashMap<>();
-        workersByMessageId.forEach((messageId, worker) -> {
+        attemptsByMessageId.forEach((messageId, attempt) -> {
+            HeldWorkerCandidate worker = attempt.worker();
             if (verifiedScores.containsKey(worker.workerId())) {
-                claimScores.put(messageId, observedItemScores.get(messageId));
+                claimScores.put(messageId, attempt.observedItemScore());
             }
         });
         if (claimScores.isEmpty()) {
@@ -133,7 +143,8 @@ final class TaskAssignmentDispatcher {
 
         LinkedHashMap<String, Map<String, DeliveryCommand>> byAdapter =
                 new LinkedHashMap<>();
-        workersByMessageId.forEach((messageId, worker) -> {
+        attemptsByMessageId.forEach((messageId, attempt) -> {
+            HeldWorkerCandidate worker = attempt.worker();
             var claim = claims.get(messageId);
             Long workerLeaseScore = verifiedScores.get(worker.workerId());
             if (claim == null
@@ -143,10 +154,7 @@ final class TaskAssignmentDispatcher {
                     || workerLeaseScore == null) {
                 return;
             }
-            TaskItem item = Objects.requireNonNull(
-                    itemsByMessageId.get(messageId),
-                    "assigned TaskItem"
-            );
+            TaskItem item = attempt.item();
             DeliveryCommand command = DeliveryCommand.create(
                     DeliveryEndpoint.TASK,
                     DeliveryEndpoint.WORKER,

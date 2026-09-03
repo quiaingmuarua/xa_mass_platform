@@ -69,17 +69,13 @@ final class WorkerServiceabilityDispatchPolicy {
 
     int dispatchProbes(
             List<String> orderedWorkerGroupIds,
-            WorkerServiceabilityDispatchConfig config,
-            long hotEligibilityFloorMillis
+            WorkerServiceabilityDispatchConfig config
     ) {
         List<String> workerGroupIds = List.copyOf(Objects.requireNonNull(
                 orderedWorkerGroupIds,
                 "orderedWorkerGroupIds"
         ));
         Objects.requireNonNull(config, "config");
-        WorkerServiceabilityDispatchAssemblyConfig.requireFloor(
-                hotEligibilityFloorMillis
-        );
         if (workerGroupIds.isEmpty()) {
             return 0;
         }
@@ -96,7 +92,7 @@ final class WorkerServiceabilityDispatchPolicy {
         long nowMillis = currentTimeMillis.getAsLong();
         long hotProbeCutoffMillis = hotProbeCutoffMillis(
                 nowMillis,
-                hotEligibilityFloorMillis,
+                config.hotEligibilityFloorMillis(),
                 config.probeRetryIntervalMillis()
         );
         retainActiveGroupSweeps(workerGroupIds);

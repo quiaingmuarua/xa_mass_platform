@@ -1,8 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import java.util.List;
@@ -20,12 +19,10 @@ class DispatchConvergenceRuntimeTest {
 
     @Test
     void keepsFiniteServiceabilityPresetValuesInsideTheDispatchPackage() {
-        WorkerServiceabilityDispatchAssemblyConfig disabled =
-                DispatchConvergenceRuntime.serviceabilityConfigForPreset(
-                        PolicyPreset.DEFAULT,
-                        0
-                );
-        assertFalse(disabled.enabled());
+        assertNull(DispatchConvergenceRuntime.serviceabilityConfigForPreset(
+                PolicyPreset.DEFAULT,
+                0
+        ));
 
         assertServiceability(PolicyPreset.SERVICEABILITY_DEFAULT, 60_000);
         assertServiceability(PolicyPreset.SCENARIO_LAB, 60_000);
@@ -56,27 +53,25 @@ class DispatchConvergenceRuntimeTest {
             PolicyPreset preset,
             long expectedRecoveryInterval
     ) {
-        WorkerServiceabilityDispatchAssemblyConfig config =
+        WorkerServiceabilityDispatchConfig config =
                 DispatchConvergenceRuntime.serviceabilityConfigForPreset(
                         preset,
                         12_300
                 );
-        assertTrue(config.enabled());
         assertEquals(12_300, config.hotEligibilityFloorMillis());
         assertEquals(1_000, config.intervalMillis());
         assertEquals(
                 expectedRecoveryInterval,
-                config.dispatch().probeRetryIntervalMillis()
+                config.probeRetryIntervalMillis()
         );
         assertEquals(
                 10_000,
-                config.dispatch().probeSweepRestartDelayMillis()
+                config.probeSweepRestartDelayMillis()
         );
-        assertEquals(5, config.dispatch().maxRecoveryAttempts());
+        assertEquals(5, config.maxRecoveryAttempts());
         assertEquals(
                 List.of("system-polling"),
-                config.dispatch()
-                        .probeExcludedEndpointManagerIds()
+                config.probeExcludedEndpointManagerIds()
         );
     }
 }

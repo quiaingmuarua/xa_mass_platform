@@ -91,10 +91,8 @@ class TaskIdleSettlementTest {
         verify(taskScores).tryReleaseIdlePark("task-1");
     }
 
-    private static DueTaskObservation dueTask() {
-        return new DueTaskObservation(
-                "task-1",
-                777_777_777L,
+    private static ObservedTask dueTask() {
+        return new ObservedTask(
                 new TaskDescriptor(
                         "task-1",
                         "group-1",
@@ -105,7 +103,8 @@ class TaskIdleSettlementTest {
                                 "maximumCandidateWorkers", "1",
                                 "maxRetryTimes", "1"
                         )
-                )
+                ),
+                777_777_777L
         );
     }
 }

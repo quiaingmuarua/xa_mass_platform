@@ -29,11 +29,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
-class DispatchConvergenceApplicationTest {
+class DispatchConvergenceLifecycleTest {
 
     @Test
     void oneSourceObservationPlansAllFixedProducerInputs() throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(
+                oneShotAssignment(),
+                enabledServiceability()
+        );
         stubProjectedBatch(fixture);
         CountDownLatch rounds = new CountDownLatch(4);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
@@ -42,34 +45,36 @@ class DispatchConvergenceApplicationTest {
         AtomicReference<List<String>> serviceabilityGroups =
                 new AtomicReference<>();
         doAnswer(invocation -> {
-            List<DueTaskObservation> tasks = invocation.getArgument(0);
+            List<ObservedTask> tasks = invocation.getArgument(0);
             allocationTasks.set(taskIds(tasks));
             return complete(rounds, allVirtual);
-        }).when(fixture.allocation).allocateCandidateWorkers(any(), any());
+        }).when(fixture.allocation).allocateCandidateWorkers(any());
         doAnswer(ignored -> {
             complete(rounds, allVirtual);
             return null;
-        }).when(fixture.initialization).check(any());
+        }).when(fixture.initialization).initialize(any());
         doAnswer(invocation -> {
-            List<DueTaskObservation> tasks = invocation.getArgument(0);
+            List<ObservedTask> tasks = invocation.getArgument(0);
             dispatchedTasks.set(taskIds(tasks));
             return complete(rounds, allVirtual);
-        }).when(fixture.dispatch).dispatchTasks(any(), any());
+        }).when(fixture.dispatch).dispatchTasks(any());
         doAnswer(invocation -> {
             List<String> groups = invocation.getArgument(0);
             serviceabilityGroups.set(groups);
             return complete(rounds, allVirtual);
         }).when(fixture.serviceability).dispatchProbes(
-                any(), any(), any(Long.class)
+                any(), any()
         );
 
-        fixture.application.start(oneShotAssignment(), enabledServiceability());
+        fixture.runtime.start();
 
         assertTrue(rounds.await(2, TimeUnit.SECONDS));
         assertTrue(allVirtual.get());
         verify(fixture.taskScores).acquireSchedulingTasks(100);
         verify(fixture.taskScores).filterInitialTaskScores(any());
-        verify(fixture.initialization).check(Map.of("task-initial", 100L));
+        verify(fixture.initialization).initialize(Map.of(
+                "task-initial", 100L
+        ));
         verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
                 "task-precomputed",
                 "task-on-demand",
@@ -89,22 +94,22 @@ class DispatchConvergenceApplicationTest {
                 List.of("group-1", "group-2"),
                 serviceabilityGroups.get()
         );
-        assertTrue(fixture.application.isRunning());
+        assertTrue(fixture.runtime.isRunning());
         assertThrows(IllegalStateException.class, () ->
-                fixture.application.start(
-                        fastAssignment(),
-                        enabledServiceability()
-                )
+                fixture.runtime.start()
         );
 
-        fixture.application.stop(2_000);
-        fixture.application.stop(2_000);
-        assertEquals("STOPPED", fixture.application.state());
+        fixture.runtime.stop(2_000);
+        fixture.runtime.stop(2_000);
+        assertEquals("STOPPED", fixture.runtime.state());
     }
 
     @Test
     void sourceFailureDefersEveryEligibleProducer() throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(
+                oneShotAssignment(),
+                enabledServiceability()
+        );
         CountDownLatch sourceAttempt = new CountDownLatch(1);
         when(fixture.taskScores.acquireSchedulingTasks(100)).thenAnswer(
                 ignored -> {
@@ -113,53 +118,48 @@ class DispatchConvergenceApplicationTest {
                 }
         );
 
-        fixture.application.start(oneShotAssignment(), enabledServiceability());
+        fixture.runtime.start();
 
         assertTrue(sourceAttempt.await(2, TimeUnit.SECONDS));
-        verify(fixture.initialization, never()).check(any());
-        verify(fixture.allocation, never()).allocateCandidateWorkers(
+        verify(fixture.initialization, never()).initialize(any());
+        verify(fixture.allocation, never()).allocateCandidateWorkers(any());
+        verify(fixture.dispatch, never()).dispatchTasks(any());
+        verify(fixture.serviceability, never()).dispatchProbes(
                 any(), any()
         );
-        verify(fixture.dispatch, never()).dispatchTasks(any(), any());
-        verify(fixture.serviceability, never()).dispatchProbes(
-                any(), any(), any(Long.class)
-        );
-        assertTrue(fixture.application.isRunning());
-        fixture.application.stop(2_000);
+        assertTrue(fixture.runtime.isRunning());
+        fixture.runtime.stop(2_000);
     }
 
     @Test
     void descriptorFailureDoesNotBlockFormedInitializationInput()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(oneShotAssignment(), null);
         stubMixedBatch(fixture);
         CountDownLatch initialized = new CountDownLatch(1);
         doAnswer(ignored -> {
             initialized.countDown();
             return null;
-        }).when(fixture.initialization).check(any());
+        }).when(fixture.initialization).initialize(any());
         when(fixture.taskCatalog.loadTaskAllocationDescriptors(any()))
                 .thenThrow(new IllegalStateException("catalog unavailable"));
 
-        fixture.application.start(
-                oneShotAssignment(),
-                WorkerServiceabilityDispatchAssemblyConfig.disabled()
-        );
+        fixture.runtime.start();
 
         assertTrue(initialized.await(2, TimeUnit.SECONDS));
-        verify(fixture.initialization).check(Map.of("task-initial", 100L));
-        verify(fixture.allocation, never()).allocateCandidateWorkers(
-                any(), any()
-        );
-        verify(fixture.dispatch, never()).dispatchTasks(any(), any());
-        assertTrue(fixture.application.isRunning());
-        fixture.application.stop(2_000);
+        verify(fixture.initialization).initialize(Map.of(
+                "task-initial", 100L
+        ));
+        verify(fixture.allocation, never()).allocateCandidateWorkers(any());
+        verify(fixture.dispatch, never()).dispatchTasks(any());
+        assertTrue(fixture.runtime.isRunning());
+        fixture.runtime.stop(2_000);
     }
 
     @Test
     void runtimeFailureIsProducerLocalAndLaterRoundsContinue()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(fastAssignment(), null);
         stubNormalBatch(fixture);
         AtomicInteger rounds = new AtomicInteger();
         doAnswer(ignored -> {
@@ -167,43 +167,40 @@ class DispatchConvergenceApplicationTest {
                 throw new IllegalStateException("round failure");
             }
             return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any(), any());
+        }).when(fixture.allocation).allocateCandidateWorkers(any());
 
-        fixture.application.start(
-                fastAssignment(),
-                WorkerServiceabilityDispatchAssemblyConfig.disabled()
-        );
+        fixture.runtime.start();
 
         await(Duration.ofSeconds(2), () -> rounds.get() >= 2);
-        assertTrue(fixture.application.isRunning());
-        fixture.application.stop(2_000);
+        assertTrue(fixture.runtime.isRunning());
+        fixture.runtime.stop(2_000);
     }
 
     @Test
     void persistentlyDueNormalTaskIsRediscoveredAcrossCadences()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(fastAssignment(), null);
         stubNormalBatch(fixture);
         CountDownLatch dispatchRounds = new CountDownLatch(3);
         doAnswer(ignored -> {
             dispatchRounds.countDown();
             return 1;
-        }).when(fixture.dispatch).dispatchTasks(any(), any());
+        }).when(fixture.dispatch).dispatchTasks(any());
 
-        fixture.application.start(
-                fastAssignment(),
-                WorkerServiceabilityDispatchAssemblyConfig.disabled()
-        );
+        fixture.runtime.start();
 
         assertTrue(dispatchRounds.await(2, TimeUnit.SECONDS));
         verify(fixture.taskScores, atLeast(3)).acquireSchedulingTasks(100);
-        fixture.application.stop(2_000);
+        fixture.runtime.stop(2_000);
     }
 
     @Test
     void blockedAllocationDoesNotBlockOtherProducersOrReenter()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(
+                fastAssignment(),
+                enabledServiceability()
+        );
         stubNormalBatch(fixture);
         CountDownLatch allocationStarted = new CountDownLatch(1);
         CountDownLatch releaseAllocation = new CountDownLatch(1);
@@ -214,32 +211,32 @@ class DispatchConvergenceApplicationTest {
             allocationStarted.countDown();
             releaseAllocation.await(2, TimeUnit.SECONDS);
             return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any(), any());
+        }).when(fixture.allocation).allocateCandidateWorkers(any());
         doAnswer(ignored -> {
             otherProducers.countDown();
             return 0;
-        }).when(fixture.dispatch).dispatchTasks(any(), any());
+        }).when(fixture.dispatch).dispatchTasks(any());
         doAnswer(ignored -> {
             otherProducers.countDown();
             return 0;
         }).when(fixture.serviceability).dispatchProbes(
-                any(), any(), any(Long.class)
+                any(), any()
         );
 
-        fixture.application.start(fastAssignment(), enabledServiceability());
+        fixture.runtime.start();
 
         assertTrue(allocationStarted.await(2, TimeUnit.SECONDS));
         assertTrue(otherProducers.await(2, TimeUnit.SECONDS));
         Thread.sleep(30);
         assertEquals(1, allocationRounds.get());
         releaseAllocation.countDown();
-        fixture.application.stop(2_000);
+        fixture.runtime.stop(2_000);
     }
 
     @Test
     void blockedInitializationDoesNotBlockNormalProducersOrReenter()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture(fastAssignment(), null);
         stubMixedBatch(fixture);
         CountDownLatch initializationStarted = new CountDownLatch(1);
         CountDownLatch releaseInitialization = new CountDownLatch(1);
@@ -250,48 +247,42 @@ class DispatchConvergenceApplicationTest {
             initializationStarted.countDown();
             releaseInitialization.await(2, TimeUnit.SECONDS);
             return null;
-        }).when(fixture.initialization).check(any());
+        }).when(fixture.initialization).initialize(any());
         doAnswer(ignored -> {
             normalProducers.countDown();
             return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any(), any());
+        }).when(fixture.allocation).allocateCandidateWorkers(any());
         doAnswer(ignored -> {
             normalProducers.countDown();
             return 0;
-        }).when(fixture.dispatch).dispatchTasks(any(), any());
+        }).when(fixture.dispatch).dispatchTasks(any());
 
-        fixture.application.start(
-                fastAssignment(),
-                WorkerServiceabilityDispatchAssemblyConfig.disabled()
-        );
+        fixture.runtime.start();
 
         assertTrue(initializationStarted.await(2, TimeUnit.SECONDS));
         assertTrue(normalProducers.await(2, TimeUnit.SECONDS));
         Thread.sleep(30);
         assertEquals(1, initializationRounds.get());
         releaseInitialization.countDown();
-        fixture.application.stop(2_000);
+        fixture.runtime.stop(2_000);
     }
 
     @Test
-    void jvmErrorFromProducerFailsTheApplication() throws Exception {
-        Fixture fixture = fixture();
+    void jvmErrorFromProducerFailsRuntimeHealth() throws Exception {
+        Fixture fixture = fixture(fastAssignment(), null);
         stubNormalBatch(fixture);
         doAnswer(ignored -> {
             throw new AssertionError("fatal producer failure");
-        }).when(fixture.dispatch).dispatchTasks(any(), any());
+        }).when(fixture.dispatch).dispatchTasks(any());
 
-        fixture.application.start(
-                fastAssignment(),
-                WorkerServiceabilityDispatchAssemblyConfig.disabled()
-        );
+        fixture.runtime.start();
 
         await(Duration.ofSeconds(2), () ->
-                "FAILED".equals(fixture.application.state())
+                "FAILED".equals(fixture.runtime.state())
         );
-        assertFalse(fixture.application.isRunning());
-        fixture.application.stop(2_000);
-        assertEquals("STOPPED", fixture.application.state());
+        assertFalse(fixture.runtime.isRunning());
+        fixture.runtime.stop(2_000);
+        assertEquals("STOPPED", fixture.runtime.state());
     }
 
     private static int complete(
@@ -303,8 +294,8 @@ class DispatchConvergenceApplicationTest {
         return 0;
     }
 
-    private static List<String> taskIds(List<DueTaskObservation> tasks) {
-        return tasks.stream().map(DueTaskObservation::taskId).toList();
+    private static List<String> taskIds(List<ObservedTask> tasks) {
+        return tasks.stream().map(ObservedTask::taskId).toList();
     }
 
     private static AssignmentDispatchConfig fastAssignment() {
@@ -315,13 +306,19 @@ class DispatchConvergenceApplicationTest {
         return AssignmentDispatchConfig.create(10_000, 10_000, 10_000);
     }
 
-    private static WorkerServiceabilityDispatchAssemblyConfig
+    private static WorkerServiceabilityDispatchConfig
             enabledServiceability() {
-        return new WorkerServiceabilityDispatchAssemblyConfig(
-                true,
-                1_000,
+        return new WorkerServiceabilityDispatchConfig(
                 5,
-                WorkerServiceabilityDispatchConfig.defaults()
+                1_000,
+                WorkerServiceabilityDispatchConfig
+                        .DEFAULT_PROBE_RETRY_INTERVAL_MILLIS,
+                WorkerServiceabilityDispatchConfig
+                        .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
+                WorkerServiceabilityDispatchConfig
+                        .DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                WorkerServiceabilityDispatchConfig
+                        .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
         );
     }
 
@@ -343,11 +340,14 @@ class DispatchConvergenceApplicationTest {
         );
     }
 
-    private static Fixture fixture() {
+    private static Fixture fixture(
+            AssignmentDispatchConfig assignmentConfig,
+            WorkerServiceabilityDispatchConfig serviceabilityConfig
+    ) {
         TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
         TaskResourceCatalog taskCatalog = mock(TaskResourceCatalog.class);
-        TaskInitializationCheck initialization = mock(
-                TaskInitializationCheck.class
+        TaskInitializationPolicy initialization = mock(
+                TaskInitializationPolicy.class
         );
         TaskWorkerAllocationPolicy allocation = mock(
                 TaskWorkerAllocationPolicy.class
@@ -357,13 +357,19 @@ class DispatchConvergenceApplicationTest {
                 WorkerServiceabilityDispatchPolicy.class
         );
         return new Fixture(
-                new DispatchConvergenceApplication(
-                        taskScores,
-                        taskCatalog,
-                        initialization,
-                        allocation,
-                        dispatch,
-                        serviceability
+                new DispatchConvergenceRuntime(
+                        new DispatchMainScheduler(
+                                taskScores,
+                                taskCatalog,
+                                initialization,
+                                allocation,
+                                dispatch,
+                                serviceabilityConfig == null
+                                        ? null
+                                        : serviceability,
+                                assignmentConfig,
+                                serviceabilityConfig
+                        )
                 ),
                 taskScores,
                 taskCatalog,
@@ -468,10 +474,10 @@ class DispatchConvergenceApplicationTest {
     }
 
     private record Fixture(
-            DispatchConvergenceApplication application,
+            DispatchConvergenceRuntime runtime,
             TaskScoreBandCore taskScores,
             TaskResourceCatalog taskCatalog,
-            TaskInitializationCheck initialization,
+            TaskInitializationPolicy initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability

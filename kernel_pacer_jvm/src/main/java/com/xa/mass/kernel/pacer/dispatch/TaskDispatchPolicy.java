@@ -8,6 +8,7 @@ import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,6 +18,9 @@ import java.util.Set;
 import java.util.function.LongSupplier;
 
 final class TaskDispatchPolicy {
+
+    static final int PER_TASK_DISPATCH_LIMIT = 100;
+    static final long ITEM_CLAIM_LEASE_MILLIS = 5_000;
 
     private final TaskScoreBandCore taskScores;
     private final TaskItemScoreBandCore itemScores;
@@ -75,24 +79,20 @@ final class TaskDispatchPolicy {
         );
     }
 
-    int dispatchTasks(
-            List<DueTaskObservation> tasks,
-            TaskDispatchConfig config
-    ) {
+    int dispatchTasks(List<ObservedTask> tasks) {
         Objects.requireNonNull(tasks, "tasks");
-        Objects.requireNonNull(config, "config");
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
                 dispatchTimeMillis,
-                config.itemClaimLeaseDurationMillis()
+                ITEM_CLAIM_LEASE_MILLIS
         );
         Set<String> roundWorkerIds = new LinkedHashSet<>();
         int published = 0;
-        for (DueTaskObservation task : tasks) {
+        for (ObservedTask task : tasks) {
             Map<String, TaskItemScoreObservation> observed =
                     itemScores.acquireItemScoreCandidates(
                             task.taskId(),
-                            config.perTaskDispatchLimit()
+                            PER_TASK_DISPATCH_LIMIT
                     );
             List<String> loadIds = observed.entrySet().stream()
                     .filter(entry -> entry.getValue().remainingBudget() > 0)
@@ -139,7 +139,7 @@ final class TaskDispatchPolicy {
             }
 
             try {
-                Map<String, AcquiredWorkerCandidate> assignments =
+                Map<String, HeldWorkerCandidate> assignments =
                         assignments(
                                 task,
                                 claimableIds,
@@ -147,22 +147,24 @@ final class TaskDispatchPolicy {
                                 claimUntilMillis,
                                 roundWorkerIds
                         );
-                LinkedHashMap<String, TaskItem> assignedItems =
-                        new LinkedHashMap<>();
-                LinkedHashMap<String, Long> assignedScores =
-                        new LinkedHashMap<>();
-                assignments.keySet().forEach(messageId -> {
-                    assignedItems.put(messageId, items.get(messageId));
-                    assignedScores.put(
-                            messageId,
-                            observed.get(messageId).score()
-                    );
-                });
+                List<TaskAssignmentDispatcher.AssignmentAttempt> attempts =
+                        new ArrayList<>(assignments.size());
+                assignments.forEach((messageId, worker) -> attempts.add(
+                        new TaskAssignmentDispatcher.AssignmentAttempt(
+                                Objects.requireNonNull(
+                                        items.get(messageId),
+                                        "assigned TaskItem"
+                                ),
+                                Objects.requireNonNull(
+                                        observed.get(messageId),
+                                        "assigned TaskItem score"
+                                ).score(),
+                                worker
+                        )
+                ));
                 published += assignmentDispatcher.dispatch(
                         task,
-                        assignedItems,
-                        assignedScores,
-                        assignments,
+                        attempts,
                         claimUntilMillis
                 );
             } finally {
@@ -176,8 +178,8 @@ final class TaskDispatchPolicy {
         return published;
     }
 
-    private Map<String, AcquiredWorkerCandidate> assignments(
-            DueTaskObservation task,
+    private Map<String, HeldWorkerCandidate> assignments(
+            ObservedTask task,
             List<String> messageIds,
             Map<String, TaskItem> items,
             long leaseUntilMillis,
@@ -186,7 +188,7 @@ final class TaskDispatchPolicy {
         if (task.descriptor().workerAllocationMechanism()
                 == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
             String candidateId = task.taskId();
-            List<AcquiredWorkerCandidate> acquired = candidateSelection
+            List<HeldWorkerCandidate> acquired = candidateSelection
                     .consumeCachedCandidates(
                             task.descriptor().workerGroupId(),
                             candidateId,
@@ -208,17 +210,17 @@ final class TaskDispatchPolicy {
                     ).targetWorkerIds()
             );
         }
-        Map<String, AcquiredWorkerCandidate> acquired = candidateSelection
+        Map<String, HeldWorkerCandidate> acquired = candidateSelection
                 .acquireOnDemandCandidates(
                         task.descriptor().workerGroupId(),
                         targets,
                         Set.copyOf(roundWorkerIds),
                         leaseUntilMillis
                 );
-        LinkedHashMap<String, AcquiredWorkerCandidate> result =
+        LinkedHashMap<String, HeldWorkerCandidate> result =
                 new LinkedHashMap<>();
         for (String messageId : messageIds) {
-            AcquiredWorkerCandidate worker = acquired.get(messageId);
+            HeldWorkerCandidate worker = acquired.get(messageId);
             if (worker != null && roundWorkerIds.add(worker.workerId())) {
                 result.put(messageId, worker);
             }
@@ -226,16 +228,16 @@ final class TaskDispatchPolicy {
         return java.util.Collections.unmodifiableMap(result);
     }
 
-    private static Map<String, AcquiredWorkerCandidate> pair(
+    private static Map<String, HeldWorkerCandidate> pair(
             List<String> messageIds,
-            List<AcquiredWorkerCandidate> workers,
+            List<HeldWorkerCandidate> workers,
             Set<String> roundWorkerIds
     ) {
-        LinkedHashMap<String, AcquiredWorkerCandidate> result =
+        LinkedHashMap<String, HeldWorkerCandidate> result =
                 new LinkedHashMap<>();
         int count = Math.min(messageIds.size(), workers.size());
         for (int index = 0; index < count; index++) {
-            AcquiredWorkerCandidate worker = workers.get(index);
+            HeldWorkerCandidate worker = workers.get(index);
             if (roundWorkerIds.add(worker.workerId())) {
                 result.put(messageIds.get(index), worker);
             }

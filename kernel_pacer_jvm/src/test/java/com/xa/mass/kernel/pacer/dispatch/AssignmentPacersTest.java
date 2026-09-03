@@ -38,14 +38,14 @@ class AssignmentPacersTest {
         );
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
-        DueTaskObservation lower = due(
+        ObservedTask lower = due(
                 "task-lower",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 10,
                 5
         );
-        DueTaskObservation higher = due(
+        ObservedTask higher = due(
                 "task-higher",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -76,8 +76,7 @@ class AssignmentPacersTest {
 
         int offered = allocation(selection, cache, matches)
                 .allocateCandidateWorkers(
-                        List.of(lower, higher),
-                        new TaskWorkerAllocationConfig(5_000)
+                        List.of(lower, higher)
                 );
 
         assertEquals(1, offered);
@@ -103,14 +102,14 @@ class AssignmentPacersTest {
         );
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerMatchRuntime matches = mock(WorkerMatchRuntime.class);
-        DueTaskObservation full = due(
+        ObservedTask full = due(
                 "task-full",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 1,
                 10
         );
-        DueTaskObservation next = due(
+        ObservedTask next = due(
                 "task-next",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -129,8 +128,7 @@ class AssignmentPacersTest {
 
         assertEquals(1, allocation(selection, cache, matches)
                 .allocateCandidateWorkers(
-                        List.of(full, next),
-                        new TaskWorkerAllocationConfig(5_000)
+                        List.of(full, next)
                 ));
 
         verify(matches).offerTaskDemand(argThat(demand ->
@@ -164,8 +162,7 @@ class AssignmentPacersTest {
                                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                                 10,
                                 2
-                        )),
-                        new TaskWorkerAllocationConfig(5_000)
+                        ))
                 ));
 
         verify(matches).offerTaskDemand(any());
@@ -195,8 +192,7 @@ class AssignmentPacersTest {
                                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                                 10,
                                 2
-                        )),
-                        new TaskWorkerAllocationConfig(5_000)
+                        ))
                 ));
         verify(matches, never()).offerTaskDemand(any());
     }
@@ -217,8 +213,7 @@ class AssignmentPacersTest {
                                 TaskIdleDisposition.PARK_WHEN_IDLE,
                                 10,
                                 2
-                        )),
-                        new TaskWorkerAllocationConfig(5_000)
+                        ))
                 ));
     }
 
@@ -240,8 +235,6 @@ class AssignmentPacersTest {
         )).thenReturn(List.of(worker("worker-1", 201L)));
         when(dispatcher.dispatch(
                 any(),
-                eq(Map.of("message-1", item)),
-                eq(Map.of("message-1", 333_333_333L)),
                 any(),
                 eq(6_000L)
         )).thenReturn(1);
@@ -259,8 +252,7 @@ class AssignmentPacersTest {
                         TaskIdleDisposition.CLOSE_WHEN_IDLE,
                         10,
                         2
-                )),
-                new TaskDispatchConfig(100, 5_000)
+                ))
         ));
 
         verify(selection).consumeCachedCandidates(
@@ -314,7 +306,7 @@ class AssignmentPacersTest {
                 anyWorker.messageId(), worker("worker-any", 202L)
         ));
         when(dispatcher.dispatch(
-                any(), any(), any(), any(), eq(6_000L)
+                any(), any(), eq(6_000L)
         )).thenReturn(2);
 
         assertEquals(2, dispatch(
@@ -330,8 +322,7 @@ class AssignmentPacersTest {
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10,
                         2
-                )),
-                new TaskDispatchConfig(100, 5_000)
+                ))
         ));
 
         verify(selection).acquireOnDemandCandidates(
@@ -378,8 +369,7 @@ class AssignmentPacersTest {
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10,
                         2
-                )),
-                new TaskDispatchConfig(100, 5_000)
+                ))
         ));
 
         InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
@@ -437,16 +427,14 @@ class AssignmentPacersTest {
         )).thenReturn(Map.of(item.messageId(), item));
     }
 
-    private static DueTaskObservation due(
+    private static ObservedTask due(
             String taskId,
             WorkerAllocationMechanism mechanism,
             TaskIdleDisposition idle,
             int priority,
             int maximumCandidateWorkers
     ) {
-        return new DueTaskObservation(
-                taskId,
-                777_777_777L,
+        return new ObservedTask(
                 new TaskDescriptor(
                         taskId,
                         "group-1",
@@ -458,7 +446,8 @@ class AssignmentPacersTest {
                                 Integer.toString(maximumCandidateWorkers),
                                 "maxRetryTimes", "1"
                         )
-                )
+                ),
+                777_777_777L
         );
     }
 
@@ -477,11 +466,11 @@ class AssignmentPacersTest {
         );
     }
 
-    private static AcquiredWorkerCandidate worker(
+    private static HeldWorkerCandidate worker(
             String workerId,
             long score
     ) {
-        return new AcquiredWorkerCandidate(
+        return new HeldWorkerCandidate(
                 workerId, "group-1", "adapter-1", score
         );
     }

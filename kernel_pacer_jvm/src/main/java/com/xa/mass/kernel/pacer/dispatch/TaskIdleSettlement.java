@@ -22,7 +22,7 @@ final class TaskIdleSettlement {
     }
 
     void settle(
-            DueTaskObservation task,
+            ObservedTask task,
             TaskIdleDisposition disposition,
             long observedAtMillis
     ) {

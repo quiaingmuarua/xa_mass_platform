@@ -19,19 +19,17 @@ import java.util.Set;
 /** Kernel-owned Worker observation, hold and descriptor selection. */
 final class WorkerCandidateSelectionPolicy {
 
-    static final int MAX_UNIQUE_WORKERS_PER_ROUND = 100;
+    private static final int MAX_UNIQUE_WORKERS_PER_ROUND = 100;
 
     private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
     private final WorkerResourceCatalog workerCatalog;
-    private final int workerScanLimit;
     private final Long hotEligibilityFloorMillis;
 
     WorkerCandidateSelectionPolicy(
             WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
             WorkerResourceCatalog workerCatalog,
-            int workerScanLimit,
             Long hotEligibilityFloorMillis
     ) {
         this.workerScores = Objects.requireNonNull(
@@ -46,14 +44,6 @@ final class WorkerCandidateSelectionPolicy {
                 workerCatalog,
                 "workerCatalog"
         );
-        if (workerScanLimit < 1
-                || workerScanLimit > MAX_UNIQUE_WORKERS_PER_ROUND) {
-            throw new IllegalArgumentException(
-                    "workerScanLimit must be in 1.."
-                            + MAX_UNIQUE_WORKERS_PER_ROUND
-            );
-        }
-        this.workerScanLimit = workerScanLimit;
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
     }
 
@@ -61,9 +51,10 @@ final class WorkerCandidateSelectionPolicy {
             String workerGroupId,
             int limit
     ) {
-        if (limit < 1 || limit > workerScanLimit) {
+        if (limit < 1 || limit > MAX_UNIQUE_WORKERS_PER_ROUND) {
             throw new IllegalArgumentException(
-                    "candidate limit must be in 1.." + workerScanLimit
+                    "candidate limit must be in 1.."
+                            + MAX_UNIQUE_WORKERS_PER_ROUND
             );
         }
         return workerScores.observeDueHotScoreCandidates(
@@ -101,7 +92,7 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(held);
     }
 
-    List<AcquiredWorkerCandidate> consumeCachedCandidates(
+    List<HeldWorkerCandidate> consumeCachedCandidates(
             String workerGroupId,
             String candidateId,
             int limit
@@ -135,7 +126,7 @@ final class WorkerCandidateSelectionPolicy {
         );
     }
 
-    Map<String, AcquiredWorkerCandidate> acquireOnDemandCandidates(
+    Map<String, HeldWorkerCandidate> acquireOnDemandCandidates(
             String workerGroupId,
             Map<String, List<String>> targetWorkerIdsByMessageId,
             Set<String> excludedWorkerIds,
@@ -197,10 +188,10 @@ final class WorkerCandidateSelectionPolicy {
                 .toList();
         if (!anyMessageIds.isEmpty()) {
             int limit = Math.min(
-                    workerScanLimit,
+                    MAX_UNIQUE_WORKERS_PER_ROUND,
                     anyMessageIds.size() + Math.min(
                             unavailableWorkerIds.size(),
-                            workerScanLimit
+                            MAX_UNIQUE_WORKERS_PER_ROUND
                     )
             );
             Map<String, Long> observed = observeDueCandidates(
@@ -236,14 +227,14 @@ final class WorkerCandidateSelectionPolicy {
         if (selectedByMessageId.isEmpty()) {
             return Map.of();
         }
-        Map<String, AcquiredWorkerCandidate> described = describeById(
+        Map<String, HeldWorkerCandidate> described = describeById(
                 workerGroupId,
                 held
         );
-        LinkedHashMap<String, AcquiredWorkerCandidate> result =
+        LinkedHashMap<String, HeldWorkerCandidate> result =
                 new LinkedHashMap<>();
         selectedByMessageId.forEach((messageId, workerId) -> {
-            AcquiredWorkerCandidate candidate = described.get(workerId);
+            HeldWorkerCandidate candidate = described.get(workerId);
             if (candidate != null) {
                 result.put(messageId, candidate);
             }
@@ -251,18 +242,18 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private List<AcquiredWorkerCandidate> describe(
+    private List<HeldWorkerCandidate> describe(
             String workerGroupId,
             List<String> workerIds,
             Map<String, Long> heldScores
     ) {
-        Map<String, AcquiredWorkerCandidate> described = describeById(
+        Map<String, HeldWorkerCandidate> described = describeById(
                 workerGroupId,
                 heldScores
         );
-        List<AcquiredWorkerCandidate> result = new ArrayList<>();
+        List<HeldWorkerCandidate> result = new ArrayList<>();
         workerIds.forEach(workerId -> {
-            AcquiredWorkerCandidate candidate = described.get(workerId);
+            HeldWorkerCandidate candidate = described.get(workerId);
             if (candidate != null) {
                 result.add(candidate);
             }
@@ -270,7 +261,7 @@ final class WorkerCandidateSelectionPolicy {
         return List.copyOf(result);
     }
 
-    private Map<String, AcquiredWorkerCandidate> describeById(
+    private Map<String, HeldWorkerCandidate> describeById(
             String workerGroupId,
             Map<String, Long> heldScores
     ) {
@@ -282,13 +273,13 @@ final class WorkerCandidateSelectionPolicy {
                         workerGroupId,
                         List.copyOf(heldScores.keySet())
                 );
-        LinkedHashMap<String, AcquiredWorkerCandidate> result =
+        LinkedHashMap<String, HeldWorkerCandidate> result =
                 new LinkedHashMap<>();
         heldScores.forEach((workerId, heldScore) -> {
             WorkerDescriptor descriptor = descriptors.get(workerId);
             if (descriptor != null
                     && workerGroupId.equals(descriptor.workerGroupId())) {
-                result.put(workerId, new AcquiredWorkerCandidate(
+                result.put(workerId, new HeldWorkerCandidate(
                         descriptor.workerId(),
                         descriptor.workerGroupId(),
                         descriptor.endpointManagerId(),

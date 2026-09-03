@@ -15,32 +15,38 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 final class DispatchMainScheduler {
 
+    private static final int TASK_BATCH_LIMIT = 100;
     private static final System.Logger LOGGER = System.getLogger(
             DispatchMainScheduler.class.getName()
     );
 
     private final TaskScoreBandCore taskScores;
     private final TaskResourceCatalog taskCatalog;
-    private final TaskInitializationCheck initialization;
+    private final TaskInitializationPolicy initialization;
     private final TaskWorkerAllocationPolicy allocation;
     private final TaskDispatchPolicy dispatch;
     private final WorkerServiceabilityDispatchPolicy serviceability;
+    private final AssignmentDispatchConfig assignmentConfig;
+    private final WorkerServiceabilityDispatchConfig serviceabilityConfig;
 
     DispatchMainScheduler(
             TaskScoreBandCore taskScores,
             TaskResourceCatalog taskCatalog,
-            TaskInitializationCheck initialization,
+            TaskInitializationPolicy initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
-            WorkerServiceabilityDispatchPolicy serviceability
+            WorkerServiceabilityDispatchPolicy serviceability,
+            AssignmentDispatchConfig assignmentConfig,
+            WorkerServiceabilityDispatchConfig serviceabilityConfig
     ) {
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
         this.taskCatalog = Objects.requireNonNull(
@@ -54,77 +60,342 @@ final class DispatchMainScheduler {
         this.allocation = Objects.requireNonNull(allocation, "allocation");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
         this.serviceability = serviceability;
+        this.assignmentConfig = Objects.requireNonNull(
+                assignmentConfig,
+                "assignmentConfig"
+        );
+        if (serviceabilityConfig != null && serviceability == null) {
+            throw new IllegalArgumentException(
+                    "serviceability config requires its dispatch policy"
+            );
+        }
+        if (serviceabilityConfig == null && serviceability != null) {
+            throw new IllegalArgumentException(
+                    "serviceability policy requires its config"
+            );
+        }
+        this.serviceabilityConfig = serviceabilityConfig;
     }
 
-    void run(
-            CountDownLatch stopSignal,
-            ExecutorService executor,
-            AssignmentDispatchConfig assignmentConfig,
-            WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
+    void run() {
+        ThreadFactory batchThreads = Thread.ofVirtual()
+                .name("dispatch-convergence-batch-", 0)
+                .factory();
+        ExecutorService executor = Executors.newThreadPerTaskExecutor(
+                batchThreads
+        );
+        try {
+            new SchedulerRun(executor).execute();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private List<ObservedTask> loadNormalTasks(
+            Map<String, Long> observedScores,
+            Set<String> initialTaskIds
     ) {
-        Objects.requireNonNull(stopSignal, "stopSignal");
-        Objects.requireNonNull(executor, "executor");
-        Objects.requireNonNull(assignmentConfig, "assignmentConfig");
-        Objects.requireNonNull(serviceabilityConfig, "serviceabilityConfig");
-        if (serviceabilityConfig.enabled() && serviceability == null) {
-            throw new IllegalStateException(
-                    "enabled serviceability requires its dispatch policy"
+        List<String> normalTaskIds = observedScores.keySet().stream()
+                .filter(taskId -> !initialTaskIds.contains(taskId))
+                .toList();
+        if (normalTaskIds.isEmpty()) {
+            return List.of();
+        }
+        Map<String, TaskDescriptor> descriptors = Objects.requireNonNull(
+                taskCatalog.loadTaskAllocationDescriptors(normalTaskIds),
+                "Task catalog returned null descriptors"
+        );
+        List<ObservedTask> tasks = new ArrayList<>();
+        for (String taskId : normalTaskIds) {
+            TaskDescriptor descriptor = descriptors.get(taskId);
+            if (descriptor == null || !taskId.equals(descriptor.taskId())) {
+                continue;
+            }
+            tasks.add(new ObservedTask(
+                    descriptor,
+                    observedScores.get(taskId)
+            ));
+        }
+        return List.copyOf(tasks);
+    }
+
+    private final class SchedulerRun {
+
+        private final ExecutorService executor;
+        private final BlockingQueue<ProducerCompletion> completions =
+                new LinkedBlockingQueue<>();
+        private final Map<DispatchProducerId, ProducerRuntime> runtimes;
+
+        private SchedulerRun(ExecutorService executor) {
+            this.executor = Objects.requireNonNull(executor, "executor");
+            this.runtimes = createRuntimes(
+                    assignmentConfig,
+                    serviceabilityConfig
             );
         }
 
-        BlockingQueue<ProducerCompletion> completions =
-                new LinkedBlockingQueue<>();
-        Map<DispatchProducerId, ProducerRuntime> runtimes = runtimes(
-                assignmentConfig,
-                serviceabilityConfig
-        );
-        boolean stopping = false;
-        try {
-            while (stopSignal.getCount() > 0) {
-                drainCompletions(runtimes, completions);
-                dispatchEligible(
-                        runtimes,
-                        completions,
-                        executor,
-                        stopSignal,
-                        assignmentConfig,
-                        serviceabilityConfig
-                );
-                if (stopSignal.getCount() == 0) {
-                    stopping = true;
-                    break;
+        private void execute() {
+            try {
+                while (isRunning()) {
+                    drainCompletions();
+                    dispatchEligible();
+                    if (!isRunning()) {
+                        break;
+                    }
+                    ProducerCompletion completion = waitForWork();
+                    if (completion != null) {
+                        applyCompletion(completion);
+                    }
                 }
-                ProducerCompletion completion = waitForWork(
-                        runtimes,
-                        completions
-                );
-                if (completion != null) {
-                    applyCompletion(runtimes, completion);
-                }
-            }
-            stopping = true;
-        } catch (InterruptedException interrupted) {
-            if (stopSignal.getCount() == 0) {
-                stopping = true;
-            } else {
+            } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException(
-                        "Dispatch Main Scheduler was interrupted",
-                        interrupted
+            }
+        }
+
+        private void dispatchEligible() {
+            Set<DispatchProducerId> eligible = eligibleProducers();
+            if (eligible.isEmpty()) {
+                return;
+            }
+
+            Map<String, Long> observedScores;
+            Map<String, Long> initialScores;
+            try {
+                observedScores = Objects.requireNonNull(
+                        taskScores.acquireSchedulingTasks(
+                                TASK_BATCH_LIMIT
+                        ),
+                        "Task score owner returned null scores"
+                );
+                initialScores = Objects.requireNonNull(
+                        taskScores.filterInitialTaskScores(observedScores),
+                        "Task score owner returned null INITIAL scores"
+                );
+            } catch (RuntimeException failure) {
+                deferProducers(eligible);
+                logFailure("taskSource", null, 0, failure);
+                return;
+            }
+            scheduleInitialization(eligible, initialScores);
+
+            Set<DispatchProducerId> normalEligible = EnumSet.copyOf(eligible);
+            normalEligible.remove(DispatchProducerId.TASK_INITIALIZATION);
+            if (normalEligible.isEmpty()) {
+                return;
+            }
+
+            List<ObservedTask> normalTasks;
+            try {
+                normalTasks = loadNormalTasks(
+                        observedScores,
+                        initialScores.keySet()
+                );
+            } catch (RuntimeException failure) {
+                deferProducers(normalEligible);
+                logFailure("taskProjection", null, 0, failure);
+                return;
+            }
+            scheduleNormalProducers(normalEligible, normalTasks);
+        }
+
+        private void scheduleInitialization(
+                Set<DispatchProducerId> eligible,
+                Map<String, Long> initialScores
+        ) {
+            if (!eligible.contains(DispatchProducerId.TASK_INITIALIZATION)) {
+                return;
+            }
+            Map<String, Long> immutableScores =
+                    Collections.unmodifiableMap(
+                            new LinkedHashMap<>(initialScores)
+                    );
+            startProducer(
+                    DispatchProducerId.TASK_INITIALIZATION,
+                    immutableScores.size(),
+                    () -> initialization.initialize(immutableScores)
+            );
+        }
+
+        private void scheduleNormalProducers(
+                Set<DispatchProducerId> eligible,
+                List<ObservedTask> normalTasks
+        ) {
+            List<ObservedTask> allocationTasks = normalTasks.stream()
+                    .filter(task -> task.descriptor()
+                            .workerAllocationMechanism()
+                            == WorkerAllocationMechanism
+                            .PRECOMPUTED_TASK_RULE)
+                    .toList();
+            LinkedHashSet<String> groupIds = new LinkedHashSet<>();
+            normalTasks.forEach(task -> groupIds.add(
+                    task.descriptor().workerGroupId()
+            ));
+            List<String> workerGroupIds = List.copyOf(groupIds);
+
+            if (eligible.contains(DispatchProducerId.WORKER_ALLOCATION)) {
+                startProducer(
+                        DispatchProducerId.WORKER_ALLOCATION,
+                        allocationTasks.size(),
+                        () -> allocation.allocateCandidateWorkers(
+                                allocationTasks
+                        )
                 );
             }
-        } finally {
-            if (stopping) {
-                executor.shutdown();
-            } else {
-                executor.shutdownNow();
+            if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
+                startProducer(
+                        DispatchProducerId.TASK_DISPATCH,
+                        normalTasks.size(),
+                        () -> dispatch.dispatchTasks(normalTasks)
+                );
             }
+            if (eligible.contains(DispatchProducerId.WORKER_SERVICEABILITY)) {
+                startProducer(
+                        DispatchProducerId.WORKER_SERVICEABILITY,
+                        workerGroupIds.size(),
+                        () -> Objects.requireNonNull(
+                                serviceability,
+                                "serviceability"
+                        ).dispatchProbes(
+                                workerGroupIds,
+                                Objects.requireNonNull(
+                                        serviceabilityConfig,
+                                        "serviceabilityConfig"
+                                )
+                        )
+                );
+            }
+        }
+
+        private void startProducer(
+                DispatchProducerId producerId,
+                int batchSize,
+                Runnable producer
+        ) {
+            ProducerRuntime runtime = Objects.requireNonNull(
+                    runtimes.get(producerId),
+                    "producer runtime"
+            );
+            if (!isRunning()) {
+                return;
+            }
+            if (batchSize == 0) {
+                deferProducer(runtime);
+                return;
+            }
+            runtime.inflight = true;
+            try {
+                executor.submit(() -> {
+                    Throwable failure = null;
+                    try {
+                        producer.run();
+                    } catch (RuntimeException runtimeFailure) {
+                        failure = runtimeFailure;
+                    } catch (Error fatalFailure) {
+                        failure = fatalFailure;
+                        throw fatalFailure;
+                    } finally {
+                        completions.offer(new ProducerCompletion(
+                                runtime.id,
+                                batchSize,
+                                failure
+                        ));
+                    }
+                });
+            } catch (RejectedExecutionException failure) {
+                runtime.inflight = false;
+                throw new IllegalStateException(
+                        "Dispatch Convergence executor rejected producer="
+                                + runtime.id,
+                        failure
+                );
+            }
+        }
+
+        private Set<DispatchProducerId> eligibleProducers() {
+            long now = System.nanoTime();
+            Set<DispatchProducerId> eligible = EnumSet.noneOf(
+                    DispatchProducerId.class
+            );
+            runtimes.forEach((producerId, runtime) -> {
+                if (runtime.idleAndEligible(now)) {
+                    eligible.add(producerId);
+                }
+            });
+            return eligible;
+        }
+
+        private void drainCompletions() {
+            ProducerCompletion completion;
+            while ((completion = completions.poll()) != null) {
+                applyCompletion(completion);
+            }
+        }
+
+        private void applyCompletion(ProducerCompletion completion) {
+            ProducerRuntime runtime = runtimes.get(completion.id());
+            if (runtime == null || !runtime.inflight) {
+                throw new IllegalStateException(
+                        "Unexpected Dispatch producer completion: "
+                                + completion.id()
+                );
+            }
+            runtime.inflight = false;
+            deferProducer(runtime);
+            if (completion.failure() == null) {
+                return;
+            }
+            if (completion.failure() instanceof Error fatal) {
+                throw fatal;
+            }
+            logFailure(
+                    "producer",
+                    runtime.id,
+                    completion.batchSize(),
+                    (RuntimeException) completion.failure()
+            );
+        }
+
+        private ProducerCompletion waitForWork()
+                throws InterruptedException {
+            long now = System.nanoTime();
+            long waitNanos = Long.MAX_VALUE;
+            boolean inflight = false;
+            for (ProducerRuntime runtime : runtimes.values()) {
+                if (runtime.inflight) {
+                    inflight = true;
+                    continue;
+                }
+                waitNanos = Math.min(
+                        waitNanos,
+                        Math.max(0, runtime.nextEligibleNanos - now)
+                );
+            }
+            if (waitNanos == 0) {
+                return null;
+            }
+            if (waitNanos == Long.MAX_VALUE) {
+                return inflight ? completions.take() : null;
+            }
+            return completions.poll(waitNanos, TimeUnit.NANOSECONDS);
+        }
+
+        private void deferProducers(Set<DispatchProducerId> producers) {
+            producers.forEach(producerId -> deferProducer(
+                    Objects.requireNonNull(
+                            runtimes.get(producerId),
+                            "producer runtime"
+                    )
+            ));
+        }
+
+        private boolean isRunning() {
+            return !Thread.currentThread().isInterrupted();
         }
     }
 
-    private static Map<DispatchProducerId, ProducerRuntime> runtimes(
+    private static Map<DispatchProducerId, ProducerRuntime> createRuntimes(
             AssignmentDispatchConfig assignmentConfig,
-            WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
+            WorkerServiceabilityDispatchConfig serviceabilityConfig
     ) {
         Map<DispatchProducerId, ProducerRuntime> result = new EnumMap<>(
                 DispatchProducerId.class
@@ -150,7 +421,7 @@ final class DispatchMainScheduler {
                         assignmentConfig.taskDispatchIntervalMillis()
                 )
         );
-        if (serviceabilityConfig.enabled()) {
+        if (serviceabilityConfig != null) {
             result.put(
                     DispatchProducerId.WORKER_SERVICEABILITY,
                     ProducerRuntime.fromMillis(
@@ -160,358 +431,6 @@ final class DispatchMainScheduler {
             );
         }
         return result;
-    }
-
-    private void dispatchEligible(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            BlockingQueue<ProducerCompletion> completions,
-            ExecutorService executor,
-            CountDownLatch stopSignal,
-            AssignmentDispatchConfig assignmentConfig,
-            WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
-    ) {
-        Set<DispatchProducerId> eligible = eligibleProducers(runtimes);
-        if (eligible.isEmpty() || stopSignal.getCount() == 0) {
-            return;
-        }
-
-        Map<String, Long> observedScores;
-        Map<String, Long> initialScores;
-        try {
-            observedScores = Objects.requireNonNull(
-                    taskScores.acquireSchedulingTasks(
-                            AssignmentDispatchConfig.TASK_BATCH_LIMIT
-                    ),
-                    "Task score owner returned null scores"
-            );
-            initialScores = Objects.requireNonNull(
-                    taskScores.filterInitialTaskScores(observedScores),
-                    "Task score owner returned null INITIAL scores"
-            );
-        } catch (RuntimeException failure) {
-            deferProducers(runtimes, eligible);
-            logFailure("taskSource", null, 0, failure);
-            return;
-        }
-        if (stopSignal.getCount() == 0) {
-            return;
-        }
-
-        scheduleInitialization(
-                runtimes,
-                eligible,
-                initialScores,
-                completions,
-                executor
-        );
-
-        Set<DispatchProducerId> normalEligible = EnumSet.copyOf(eligible);
-        normalEligible.remove(DispatchProducerId.TASK_INITIALIZATION);
-        if (normalEligible.isEmpty() || stopSignal.getCount() == 0) {
-            return;
-        }
-
-        List<DueTaskObservation> normalTasks;
-        try {
-            normalTasks = normalTasks(
-                    observedScores,
-                    initialScores.keySet()
-            );
-        } catch (RuntimeException failure) {
-            deferProducers(runtimes, normalEligible);
-            logFailure("taskProjection", null, 0, failure);
-            return;
-        }
-        if (stopSignal.getCount() == 0) {
-            return;
-        }
-
-        scheduleNormalProducers(
-                runtimes,
-                normalEligible,
-                normalTasks,
-                completions,
-                executor,
-                assignmentConfig,
-                serviceabilityConfig
-        );
-    }
-
-    private static Set<DispatchProducerId> eligibleProducers(
-            Map<DispatchProducerId, ProducerRuntime> runtimes
-    ) {
-        long now = System.nanoTime();
-        Set<DispatchProducerId> eligible = EnumSet.noneOf(
-                DispatchProducerId.class
-        );
-        runtimes.forEach((producerId, runtime) -> {
-            if (runtime.idleAndEligible(now)) {
-                eligible.add(producerId);
-            }
-        });
-        return eligible;
-    }
-
-    private void scheduleInitialization(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            Set<DispatchProducerId> eligible,
-            Map<String, Long> initialScores,
-            BlockingQueue<ProducerCompletion> completions,
-            ExecutorService executor
-    ) {
-        if (!eligible.contains(DispatchProducerId.TASK_INITIALIZATION)) {
-            return;
-        }
-        ProducerRuntime runtime = runtimes.get(
-                DispatchProducerId.TASK_INITIALIZATION
-        );
-        if (initialScores.isEmpty()) {
-            deferProducer(runtime);
-            return;
-        }
-        Map<String, Long> immutableScores = Collections.unmodifiableMap(
-                new LinkedHashMap<>(initialScores)
-        );
-        submit(
-                runtime,
-                immutableScores.size(),
-                () -> initialization.check(immutableScores),
-                completions,
-                executor
-        );
-    }
-
-    private void scheduleNormalProducers(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            Set<DispatchProducerId> eligible,
-            List<DueTaskObservation> normalTasks,
-            BlockingQueue<ProducerCompletion> completions,
-            ExecutorService executor,
-            AssignmentDispatchConfig assignmentConfig,
-            WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
-    ) {
-        List<DueTaskObservation> allocationTasks = normalTasks.stream()
-                .filter(task -> task.descriptor().workerAllocationMechanism()
-                        == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE)
-                .toList();
-        LinkedHashSet<String> groupIds = new LinkedHashSet<>();
-        normalTasks.forEach(task -> groupIds.add(
-                task.descriptor().workerGroupId()
-        ));
-        List<String> workerGroupIds = List.copyOf(groupIds);
-
-        if (eligible.contains(DispatchProducerId.WORKER_ALLOCATION)) {
-            scheduleProducer(
-                    runtimes.get(DispatchProducerId.WORKER_ALLOCATION),
-                    allocationTasks,
-                    () -> allocation.allocateCandidateWorkers(
-                            allocationTasks,
-                            assignmentConfig.workerAllocation()
-                    ),
-                    completions,
-                    executor
-            );
-        }
-        if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
-            scheduleProducer(
-                    runtimes.get(DispatchProducerId.TASK_DISPATCH),
-                    normalTasks,
-                    () -> dispatch.dispatchTasks(
-                            normalTasks,
-                            assignmentConfig.taskDispatch()
-                    ),
-                    completions,
-                    executor
-            );
-        }
-        if (eligible.contains(DispatchProducerId.WORKER_SERVICEABILITY)) {
-            scheduleProducer(
-                    runtimes.get(DispatchProducerId.WORKER_SERVICEABILITY),
-                    workerGroupIds,
-                    () -> Objects.requireNonNull(
-                            serviceability,
-                            "serviceability"
-                    ).dispatchProbes(
-                            workerGroupIds,
-                            serviceabilityConfig.dispatch(),
-                            serviceabilityConfig.hotEligibilityFloorMillis()
-                    ),
-                    completions,
-                    executor
-            );
-        }
-    }
-
-    private static void scheduleProducer(
-            ProducerRuntime runtime,
-            List<?> input,
-            Runnable producer,
-            BlockingQueue<ProducerCompletion> completions,
-            ExecutorService executor
-    ) {
-        if (input.isEmpty()) {
-            deferProducer(runtime);
-            return;
-        }
-        submit(
-                runtime,
-                input.size(),
-                producer,
-                completions,
-                executor
-        );
-    }
-
-    private List<DueTaskObservation> normalTasks(
-            Map<String, Long> observedScores,
-            Set<String> initialTaskIds
-    ) {
-        List<String> normalTaskIds = observedScores.keySet().stream()
-                .filter(taskId -> !initialTaskIds.contains(taskId))
-                .toList();
-        if (normalTaskIds.isEmpty()) {
-            return List.of();
-        }
-        Map<String, TaskDescriptor> descriptors = Objects.requireNonNull(
-                taskCatalog.loadTaskAllocationDescriptors(normalTaskIds),
-                "Task catalog returned null descriptors"
-        );
-        List<DueTaskObservation> tasks = new ArrayList<>();
-        for (String taskId : normalTaskIds) {
-            TaskDescriptor descriptor = descriptors.get(taskId);
-            if (descriptor == null || !taskId.equals(descriptor.taskId())) {
-                continue;
-            }
-            tasks.add(new DueTaskObservation(
-                    taskId,
-                    observedScores.get(taskId),
-                    descriptor
-            ));
-        }
-        return List.copyOf(tasks);
-    }
-
-    private static void submit(
-            ProducerRuntime runtime,
-            int batchSize,
-            Runnable producer,
-            BlockingQueue<ProducerCompletion> completions,
-            ExecutorService executor
-    ) {
-        runtime.inflight = true;
-        try {
-            executor.submit(() -> executeProducer(
-                    runtime.id,
-                    batchSize,
-                    producer,
-                    completions
-            ));
-        } catch (RejectedExecutionException failure) {
-            runtime.inflight = false;
-            throw new IllegalStateException(
-                    "Dispatch Convergence executor rejected producer="
-                            + runtime.id,
-                    failure
-            );
-        }
-    }
-
-    private static void executeProducer(
-            DispatchProducerId producerId,
-            int batchSize,
-            Runnable producer,
-            BlockingQueue<ProducerCompletion> completions
-    ) {
-        Throwable failure = null;
-        try {
-            producer.run();
-        } catch (RuntimeException runtimeFailure) {
-            failure = runtimeFailure;
-        } catch (Error fatalFailure) {
-            failure = fatalFailure;
-            throw fatalFailure;
-        } finally {
-            completions.offer(new ProducerCompletion(
-                    producerId,
-                    batchSize,
-                    failure
-            ));
-        }
-    }
-
-    private static void drainCompletions(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            BlockingQueue<ProducerCompletion> completions
-    ) {
-        ProducerCompletion completion;
-        while ((completion = completions.poll()) != null) {
-            applyCompletion(runtimes, completion);
-        }
-    }
-
-    private static void applyCompletion(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            ProducerCompletion completion
-    ) {
-        ProducerRuntime runtime = runtimes.get(completion.id());
-        if (runtime == null || !runtime.inflight) {
-            throw new IllegalStateException(
-                    "Unexpected Dispatch producer completion: "
-                            + completion.id()
-            );
-        }
-        runtime.inflight = false;
-        deferProducer(runtime);
-        if (completion.failure() == null) {
-            return;
-        }
-        if (completion.failure() instanceof Error fatal) {
-            throw fatal;
-        }
-        logFailure(
-                "producer",
-                runtime.id,
-                completion.batchSize(),
-                (RuntimeException) completion.failure()
-        );
-    }
-
-    private static ProducerCompletion waitForWork(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            BlockingQueue<ProducerCompletion> completions
-    ) throws InterruptedException {
-        long now = System.nanoTime();
-        long waitNanos = Long.MAX_VALUE;
-        boolean inflight = false;
-        for (ProducerRuntime runtime : runtimes.values()) {
-            if (runtime.inflight) {
-                inflight = true;
-                continue;
-            }
-            waitNanos = Math.min(
-                    waitNanos,
-                    Math.max(0, runtime.nextEligibleNanos - now)
-            );
-        }
-        if (waitNanos == 0) {
-            return null;
-        }
-        if (waitNanos == Long.MAX_VALUE) {
-            return inflight ? completions.take() : null;
-        }
-        return completions.poll(waitNanos, TimeUnit.NANOSECONDS);
-    }
-
-    private static void deferProducers(
-            Map<DispatchProducerId, ProducerRuntime> runtimes,
-            Set<DispatchProducerId> producers
-    ) {
-        producers.forEach(producerId -> deferProducer(
-                Objects.requireNonNull(
-                        runtimes.get(producerId),
-                        "producer runtime"
-                )
-        ));
     }
 
     private static void deferProducer(ProducerRuntime runtime) {

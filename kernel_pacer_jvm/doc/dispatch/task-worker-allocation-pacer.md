@@ -20,10 +20,11 @@ Due PRECOMPUTED Tasks
 
 ## Input
 
-Each `DueTaskObservation` contains the Task ID, an opaque observed Task score,
-and a minimal `TaskDescriptor`. The descriptor has no Rule. It supplies the
-fixed WorkerGroup, priority, and `maximumCandidateWorkers`. Receiving an
-ON_DEMAND Task is a caller error.
+Each `ObservedTask` contains a minimal `TaskDescriptor` and its opaque observed
+Task score. The Task ID is derived from the descriptor rather than copied into
+a second field. The descriptor has no Rule. It supplies the fixed WorkerGroup,
+priority, and `maximumCandidateWorkers`. Receiving an ON_DEMAND Task is a
+caller error.
 
 ## One Round
 
@@ -77,10 +78,10 @@ expiresAtMillis = holdUntilMillis
 ```
 
 The Cache first removes expired entries and then accepts only the capacity
-remaining under the Candidate maximum. It returns exactly the Worker IDs written by
-that call. Matching removes only those accepted IDs from the current Demand's
-available pool, so a Cache-rejected Worker may still match a later Task in the
-same ordered Demand.
+remaining under the Candidate maximum. It returns exactly the Worker IDs
+written by that call. Matching removes only those accepted IDs from the current
+Demand's available pool, so a Cache-rejected Worker may still match a later
+Task in the same ordered Demand.
 
 Candidate entries contain no WorkerGroup, Rule, Properties, or endpoint.
 Dispatch obtains the Task's Group from its descriptor, loads the current Worker
@@ -91,6 +92,7 @@ Item claim.
 
 Allocation owns Task ordering, deficit computation, bounded Worker observation,
 exact initial hold, and Demand timing. Matching owns Rule and Properties
-interpretation. Candidate Cache owns atomic Candidate-address capacity. Dispatch owns final
-exact renewal, round uniqueness, Item claim, and Command publication. No
-failure path compensates by releasing an unmatched or unaccepted hold.
+interpretation. Candidate Cache owns atomic Candidate-address capacity.
+Dispatch owns final exact renewal, round uniqueness, Item claim, and Command
+publication. No failure path compensates by releasing an unmatched or
+unaccepted hold.

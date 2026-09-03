@@ -2,6 +2,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,18 +17,19 @@ class DispatchMechanismBoundaryTest {
     );
 
     @Test
-    void acquiredCandidateIsTheOnlyFlatTerminalCandidateRecord() {
-        assertEquals(
-                List.of(
-                        "workerId",
-                        "workerGroupId",
-                        "endpointManagerId",
-                        "workerLeaseScore"
-                ),
-                java.util.Arrays.stream(
-                        AcquiredWorkerCandidate.class.getRecordComponents()
-                ).map(component -> component.getName()).toList()
+    void exactHeldScoreReachesFinalWorkerRenewal() throws IOException {
+        String source = Files.readString(
+                ROOT.resolve("TaskAssignmentDispatcher.java")
         );
+        assertTrue(source.contains("worker.heldWorkerLeaseScore()"));
+        assertTrue(source.contains("renewActiveHotScoreLeases("));
+        for (String parallelInput : List.of(
+                "itemsByMessageId",
+                "observedItemScores",
+                "workersByMessageId"
+        )) {
+            assertFalse(source.contains(parallelInput));
+        }
     }
 
     @Test
@@ -86,7 +88,18 @@ class DispatchMechanismBoundaryTest {
                 "WorkerCandidateAcquisitionStrategy",
                 "TaskSchedulingReference",
                 "TaskItemReference",
-                "WorkerSweepCursor"
+                "WorkerSweepCursor",
+                "TaskWorkerAllocationConfig",
+                "TaskDispatchConfig",
+                "TaskInitializationCheck",
+                "DueActiveItemInitializationCheck",
+                "WorkerServiceabilityDispatchAssemblyConfig",
+                "DispatchConvergenceApplication",
+                "DispatchDependencies",
+                "DispatchContext",
+                "AllocationRequest",
+                "SelectionResult",
+                "AssignmentAttempt"
         )) {
             assertFalse(
                     Files.exists(ROOT.resolve(type + ".java")),
@@ -171,16 +184,16 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void onlyRealCrossOwnerClosuresAndInitializationStrategyRemainInternal()
+    void realDispatchClosuresAndRuntimeValuesRemainPackagePrivate()
             throws IOException {
         for (String type : List.of(
-                "TaskInitializationCheck",
-                "DueActiveItemInitializationCheck",
+                "TaskInitializationPolicy",
                 "TaskAssignmentDispatcher",
                 "TaskIdleSettlement",
                 "DispatchMainScheduler",
                 "DispatchProducerId",
-                "AcquiredWorkerCandidate"
+                "HeldWorkerCandidate",
+                "ObservedTask"
         )) {
             Path file = ROOT.resolve(type + ".java");
             String source = Files.readString(file);

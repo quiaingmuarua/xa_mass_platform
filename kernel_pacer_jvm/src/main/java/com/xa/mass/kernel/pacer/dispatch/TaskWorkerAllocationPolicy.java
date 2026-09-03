@@ -16,6 +16,8 @@ import java.util.function.LongSupplier;
 
 final class TaskWorkerAllocationPolicy {
 
+    static final long WORKER_HOLD_MILLIS = 5_000;
+
     private final WorkerCandidateSelectionPolicy candidateSelection;
     private final CandidateWorkerCache candidateCache;
     private final WorkerMatchRuntime workerMatches;
@@ -59,13 +61,11 @@ final class TaskWorkerAllocationPolicy {
     }
 
     int allocateCandidateWorkers(
-            List<DueTaskObservation> tasks,
-            TaskWorkerAllocationConfig config
+            List<ObservedTask> tasks
     ) {
-        List<DueTaskObservation> precomputedTasks = List.copyOf(
+        List<ObservedTask> precomputedTasks = List.copyOf(
                 Objects.requireNonNull(tasks, "tasks")
         );
-        Objects.requireNonNull(config, "config");
         if (precomputedTasks.stream().anyMatch(task ->
                 task.descriptor().workerAllocationMechanism()
                         != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE)) {
@@ -78,13 +78,13 @@ final class TaskWorkerAllocationPolicy {
         }
 
         List<String> candidateIds = precomputedTasks.stream()
-                .map(DueTaskObservation::taskId)
+                .map(ObservedTask::taskId)
                 .toList();
         Map<String, Integer> candidateCounts =
                 candidateCache.candidateWorkerCounts(candidateIds);
-        LinkedHashMap<String, List<DueTaskObservation>> tasksByGroup =
+        LinkedHashMap<String, List<ObservedTask>> tasksByGroup =
                 new LinkedHashMap<>();
-        for (DueTaskObservation task : precomputedTasks) {
+        for (ObservedTask task : precomputedTasks) {
             if (deficit(task, candidateCounts) > 0) {
                 tasksByGroup.computeIfAbsent(
                         task.descriptor().workerGroupId(),
@@ -95,12 +95,12 @@ final class TaskWorkerAllocationPolicy {
 
         long now = currentTimeMillis.getAsLong();
         int offered = 0;
-        for (Map.Entry<String, List<DueTaskObservation>> group
+        for (Map.Entry<String, List<ObservedTask>> group
                 : tasksByGroup.entrySet()) {
-            List<DueTaskObservation> ordered = group.getValue().stream()
+            List<ObservedTask> ordered = group.getValue().stream()
                     .sorted(Comparator
                             .comparingInt(TaskWorkerAllocationPolicy::priority)
-                            .thenComparing(DueTaskObservation::taskId))
+                            .thenComparing(ObservedTask::taskId))
                     .limit(WorkerMatchRuntime.MAX_TASKS_PER_DEMAND)
                     .toList();
             int requestedWorkers = requestedWorkers(
@@ -117,7 +117,7 @@ final class TaskWorkerAllocationPolicy {
             }
             long holdUntil = Math.addExact(
                     now,
-                    config.workerLeaseDurationMillis()
+                    WORKER_HOLD_MILLIS
             );
             Map<String, Long> held = candidateSelection
                     .holdObservedCandidates(
@@ -147,11 +147,11 @@ final class TaskWorkerAllocationPolicy {
     }
 
     private static int requestedWorkers(
-            List<DueTaskObservation> tasks,
+            List<ObservedTask> tasks,
             Map<String, Integer> candidateCounts
     ) {
         int requested = 0;
-        for (DueTaskObservation task : tasks) {
+        for (ObservedTask task : tasks) {
             int remaining = WorkerMatchRuntime.MAX_HELD_WORKERS_PER_DEMAND
                     - requested;
             requested += Math.min(
@@ -167,7 +167,7 @@ final class TaskWorkerAllocationPolicy {
     }
 
     private static int deficit(
-            DueTaskObservation task,
+            ObservedTask task,
             Map<String, Integer> candidateCounts
     ) {
         return Math.max(
@@ -183,7 +183,7 @@ final class TaskWorkerAllocationPolicy {
         );
     }
 
-    private static int priority(DueTaskObservation task) {
+    private static int priority(ObservedTask task) {
         return Integer.parseInt(task.descriptor().config().get("priority"));
     }
 }

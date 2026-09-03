@@ -37,10 +37,10 @@ INITIAL is not yet part of the NORMAL assignment working set.
 
 ## Policy
 
-`TaskInitializationCheck` is the complete fixed initialization entry:
+`TaskInitializationPolicy` is the complete fixed initialization entry:
 
 ```text
-TaskInitializationCheck.check(initial taskId -> opaque score)
+TaskInitializationPolicy.initialize(initial taskId -> opaque score)
   -> one hasDueActiveItems(all task ids)
   -> retain each ready id with its original opaque score
   -> one promoteObservedInitialTasks(ready exact scores)
@@ -56,8 +56,8 @@ unchanged INITIAL Tasks in a later round.
 ## Concurrency
 
 The opaque Task score is not a lease. Close, pause, or any concurrent
-score transition wins through exact CAS. A busy Initialization Producer retains no
-memory queue or hint; a future INITIAL scan is the liveness path.
+score transition wins through exact CAS. A busy Initialization Producer retains
+no memory queue or hint; a future INITIAL scan is the liveness path.
 
 ## Non-Goals
 

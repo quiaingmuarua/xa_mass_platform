@@ -56,8 +56,7 @@ class WorkerServiceabilityDispatchPolicyTest {
 
         int offered = policy(scores, catalog, runtime).dispatchProbes(
                 List.of("group-1"),
-                config(),
-                10_000L
+                config()
         );
 
         assertEquals(1, offered);
@@ -106,8 +105,7 @@ class WorkerServiceabilityDispatchPolicyTest {
 
         assertEquals(1, policy(scores, catalog, runtime).dispatchProbes(
                 List.of("group-1"),
-                config(),
-                10_000L
+                config()
         ));
         verify(scores).advanceObservedRecoveryRechecks(
                 "group-1", Map.of("worker-1", opaqueScore)
@@ -151,8 +149,7 @@ class WorkerServiceabilityDispatchPolicyTest {
 
         assertEquals(0, policy(scores, catalog, runtime).dispatchProbes(
                 List.of("group-1"),
-                config(),
-                10_000L
+                config()
         ));
         verify(scores).toggleCurrentPolarity(
                 "group-1", "worker-1", opaqueScore
@@ -183,8 +180,8 @@ class WorkerServiceabilityDispatchPolicyTest {
                 scores, catalog, runtime
         );
 
-        policy.dispatchProbes(List.of("group-1"), config(), 10_000L);
-        policy.dispatchProbes(List.of("group-1"), config(), 10_000L);
+        policy.dispatchProbes(List.of("group-1"), config());
+        policy.dispatchProbes(List.of("group-1"), config());
 
         verify(scores).acquireHotCandidatesBefore(
                 "group-1", 10_000L, 123_456_789L, 100
@@ -228,7 +225,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 catalog,
                 runtime,
                 20_000L
-        ).dispatchProbes(List.of("group-1"), config(), 10_000L);
+        ).dispatchProbes(List.of("group-1"), config());
 
         assertEquals(1, offered);
     }
@@ -257,6 +254,8 @@ class WorkerServiceabilityDispatchPolicyTest {
 
     private static WorkerServiceabilityDispatchConfig config() {
         return new WorkerServiceabilityDispatchConfig(
+                1_000L,
+                10_000L,
                 1_000L,
                 10_000L,
                 5,

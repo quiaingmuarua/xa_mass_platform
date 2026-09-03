@@ -67,7 +67,7 @@ class WorkerCandidateSelectionPolicyTest {
                 "group-1", List.of("worker-1")
         )).thenReturn(Map.of("worker-1", workerDescriptor("worker-1")));
 
-        List<AcquiredWorkerCandidate> result = policy(
+        List<HeldWorkerCandidate> result = policy(
                 scores, cache, catalog
         ).consumeCachedCandidates("group-1", "task-1", 1);
 
@@ -123,7 +123,7 @@ class WorkerCandidateSelectionPolicyTest {
         targets.put("message-explicit", List.of("worker-2", "worker-1"));
         targets.put("message-any", List.of());
 
-        Map<String, AcquiredWorkerCandidate> result = policy(
+        Map<String, HeldWorkerCandidate> result = policy(
                 scores, cache, catalog
         ).acquireOnDemandCandidates(
                 "group-1", targets, Set.of(), 5_000L
@@ -247,7 +247,7 @@ class WorkerCandidateSelectionPolicyTest {
             WorkerResourceCatalog catalog
     ) {
         return new WorkerCandidateSelectionPolicy(
-                scores, cache, catalog, 100, null
+                scores, cache, catalog, null
         );
     }
 
@@ -271,11 +271,11 @@ class WorkerCandidateSelectionPolicyTest {
         return new WorkerDescriptor(workerId, "group-1", "adapter-1");
     }
 
-    private static AcquiredWorkerCandidate worker(
+    private static HeldWorkerCandidate worker(
             String workerId,
             long score
     ) {
-        return new AcquiredWorkerCandidate(
+        return new HeldWorkerCandidate(
                 workerId, "group-1", "adapter-1", score
         );
     }

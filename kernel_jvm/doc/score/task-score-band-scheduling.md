@@ -158,7 +158,7 @@ safety violation.
 Task Initialization receives only the Score Owner-filtered INITIAL map:
 
 ```text
-TaskInitializationCheck.check(initial taskId -> opaque score)
+TaskInitializationPolicy.initialize(initial taskId -> opaque score)
 -> one bounded hasDueActiveItems(all task ids)
 -> keep due ids with their original opaque score
 -> one promoteObservedInitialTasks(exact scores of ready subset)

@@ -26,27 +26,13 @@ public final class DispatchConvergenceRuntime {
     private static final long LAB_INTERVAL_MILLIS = 20;
     private static final long BOUNDARY_PROBE_RETRY_MILLIS = 10;
 
-    private final DispatchConvergenceApplication application;
-    private final AssignmentDispatchConfig assignmentConfig;
-    private final WorkerServiceabilityDispatchAssemblyConfig
-            serviceabilityConfig;
+    private final DispatchMainScheduler mainScheduler;
+    private Thread schedulerThread;
 
-    private DispatchConvergenceRuntime(
-            DispatchConvergenceApplication application,
-            AssignmentDispatchConfig assignmentConfig,
-            WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
-    ) {
-        this.application = Objects.requireNonNull(
-                application,
-                "application"
-        );
-        this.assignmentConfig = Objects.requireNonNull(
-                assignmentConfig,
-                "assignmentConfig"
-        );
-        this.serviceabilityConfig = Objects.requireNonNull(
-                serviceabilityConfig,
-                "serviceabilityConfig"
+    DispatchConvergenceRuntime(DispatchMainScheduler mainScheduler) {
+        this.mainScheduler = Objects.requireNonNull(
+                mainScheduler,
+                "mainScheduler"
         );
     }
 
@@ -74,21 +60,20 @@ public final class DispatchConvergenceRuntime {
         AssignmentDispatchConfig assignment = assignmentConfigForPreset(
                 preset
         );
-        WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig =
+        WorkerServiceabilityDispatchConfig serviceabilityConfig =
                 serviceabilityConfigForPreset(
                         preset,
                         hotEligibilityFloorMillis
                 );
+        Long assignmentHotFloor = serviceabilityConfig == null
+                ? null
+                : serviceabilityConfig.hotEligibilityFloorMillis();
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(
                         workerScores,
                         candidateCache,
                         workerCatalog,
-                        AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
-                        serviceabilityConfig.enabled()
-                                ? serviceabilityConfig
-                                .hotEligibilityFloorMillis()
-                                : null
+                        assignmentHotFloor
                 );
         TaskWorkerAllocationPolicy allocation =
                 new TaskWorkerAllocationPolicy(
@@ -96,8 +81,8 @@ public final class DispatchConvergenceRuntime {
                         candidateCache,
                         workerMatches
                 );
-        TaskInitializationCheck initialization =
-                new DueActiveItemInitializationCheck(
+        TaskInitializationPolicy initialization =
+                new TaskInitializationPolicy(
                         itemScores,
                         taskScores
                 );
@@ -121,41 +106,92 @@ public final class DispatchConvergenceRuntime {
                 candidateSelection
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
-                new WorkerServiceabilityDispatchPolicy(
-                        workerScores,
-                        workerCatalog,
-                        serviceability
-                );
-        DispatchConvergenceApplication application =
-                new DispatchConvergenceApplication(
-                        taskScores,
-                        taskCatalog,
-                        initialization,
-                        allocation,
-                        dispatch,
-                        serviceabilityDispatch
-                );
-        return new DispatchConvergenceRuntime(
-                application,
+                serviceabilityConfig == null
+                        ? null
+                        : new WorkerServiceabilityDispatchPolicy(
+                                workerScores,
+                                workerCatalog,
+                                Objects.requireNonNull(
+                                        serviceability,
+                                        "serviceability"
+                                )
+                        );
+        DispatchMainScheduler scheduler = new DispatchMainScheduler(
+                taskScores,
+                taskCatalog,
+                initialization,
+                allocation,
+                dispatch,
+                serviceabilityDispatch,
                 assignment,
                 serviceabilityConfig
         );
+        return new DispatchConvergenceRuntime(scheduler);
     }
 
-    public void start() {
-        application.start(assignmentConfig, serviceabilityConfig);
+    public synchronized void start() {
+        if (schedulerThread != null) {
+            throw new IllegalStateException(
+                    "Dispatch Convergence is already started"
+            );
+        }
+        Thread started = Thread.ofPlatform()
+                .name("dispatch-main-scheduler")
+                .daemon(false)
+                .unstarted(mainScheduler::run);
+        schedulerThread = started;
+        try {
+            started.start();
+        } catch (RuntimeException | Error failure) {
+            schedulerThread = null;
+            throw failure;
+        }
     }
 
     public void stop(long timeoutMillis) {
-        application.stop(timeoutMillis);
+        if (timeoutMillis < 1) {
+            throw new IllegalArgumentException(
+                    "timeoutMillis must be positive"
+            );
+        }
+        Thread current;
+        synchronized (this) {
+            current = schedulerThread;
+            if (current == null) {
+                return;
+            }
+            current.interrupt();
+        }
+        try {
+            current.join(timeoutMillis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Dispatch Convergence shutdown was interrupted",
+                    interrupted
+            );
+        }
+        if (current.isAlive()) {
+            throw new IllegalStateException(
+                    "Dispatch Main Scheduler did not stop within its budget"
+            );
+        }
+        synchronized (this) {
+            if (schedulerThread == current) {
+                schedulerThread = null;
+            }
+        }
     }
 
-    public boolean isRunning() {
-        return application.isRunning();
+    public synchronized boolean isRunning() {
+        return schedulerThread != null && schedulerThread.isAlive();
     }
 
-    public String state() {
-        return application.state();
+    public synchronized String state() {
+        if (schedulerThread == null) {
+            return "STOPPED";
+        }
+        return schedulerThread.isAlive() ? "RUNNING" : "FAILED";
     }
 
     static AssignmentDispatchConfig assignmentConfigForPreset(
@@ -173,7 +209,7 @@ public final class DispatchConvergenceRuntime {
         };
     }
 
-    static WorkerServiceabilityDispatchAssemblyConfig
+    static WorkerServiceabilityDispatchConfig
             serviceabilityConfigForPreset(
                     PolicyPreset preset,
                     long hotEligibilityFloorMillis
@@ -186,31 +222,24 @@ public final class DispatchConvergenceRuntime {
                                     + "floor"
                     );
                 }
-                yield WorkerServiceabilityDispatchAssemblyConfig.disabled();
+                yield null;
             }
             case SERVICEABILITY_DEFAULT, SCENARIO_LAB ->
-                    new WorkerServiceabilityDispatchAssemblyConfig(
-                            true,
-                            hotEligibilityFloorMillis,
-                            WorkerServiceabilityDispatchAssemblyConfig
-                                    .DEFAULT_INTERVAL_MILLIS,
-                            WorkerServiceabilityDispatchConfig.defaults()
+                    WorkerServiceabilityDispatchConfig.defaults(
+                            hotEligibilityFloorMillis
                     );
             case RUNTIME_BOUNDARY_PROOF ->
-                    new WorkerServiceabilityDispatchAssemblyConfig(
-                            true,
-                            hotEligibilityFloorMillis,
-                            WorkerServiceabilityDispatchAssemblyConfig
+                    new WorkerServiceabilityDispatchConfig(
+                            WorkerServiceabilityDispatchConfig
                                     .DEFAULT_INTERVAL_MILLIS,
-                            new WorkerServiceabilityDispatchConfig(
-                                    BOUNDARY_PROBE_RETRY_MILLIS,
-                                    WorkerServiceabilityDispatchConfig
-                                            .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
-                                    WorkerServiceabilityDispatchConfig
-                                            .DEFAULT_MAX_RECOVERY_ATTEMPTS,
-                                    WorkerServiceabilityDispatchConfig
-                                            .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
-                            )
+                            hotEligibilityFloorMillis,
+                            BOUNDARY_PROBE_RETRY_MILLIS,
+                            WorkerServiceabilityDispatchConfig
+                                    .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
+                            WorkerServiceabilityDispatchConfig
+                                    .DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                            WorkerServiceabilityDispatchConfig
+                                    .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
                     );
         };
     }

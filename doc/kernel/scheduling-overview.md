@@ -124,7 +124,7 @@ TaskScoreBandCore
   owns Task acquisition visibility, encoding, bounded queries, holds,
   lifecycle-direction validation, and terminal score
 
-TaskInitializationCheck
+TaskInitializationPolicy
   receives the bounded taskId-to-opaque-score INITIAL subset, checks due ACTIVE
   Items once, and asks the Task Score Owner for one exact batch promotion
 
@@ -201,7 +201,7 @@ Fixed Result semantic Mechanism ports
   compose legal Task, TaskItem and Worker owner operations behind named event
   methods; they are not a registry, SPI or replacement-handler surface
 
-DispatchConvergenceApplication
+DispatchConvergenceRuntime
   owns one Main Scheduler and fixed single-flight Resource Producers; the Main
   Scheduler plans every root input and busy Producers skip without creating a
   replay hint

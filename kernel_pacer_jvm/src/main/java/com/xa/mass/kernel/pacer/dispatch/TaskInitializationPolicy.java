@@ -7,13 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-final class DueActiveItemInitializationCheck
-        implements TaskInitializationCheck {
+final class TaskInitializationPolicy {
 
     private final TaskItemScoreBandCore itemScores;
     private final TaskScoreBandCore taskScores;
 
-    DueActiveItemInitializationCheck(
+    TaskInitializationPolicy(
             TaskItemScoreBandCore itemScores,
             TaskScoreBandCore taskScores
     ) {
@@ -21,8 +20,7 @@ final class DueActiveItemInitializationCheck
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
     }
 
-    @Override
-    public void check(Map<String, Long> initialTaskScores) {
+    void initialize(Map<String, Long> initialTaskScores) {
         LinkedHashMap<String, Long> observed = new LinkedHashMap<>(
                 Objects.requireNonNull(
                         initialTaskScores,
@@ -42,9 +40,8 @@ final class DueActiveItemInitializationCheck
                 ready.put(taskId, score);
             }
         });
-        if (ready.isEmpty()) {
-            return;
+        if (!ready.isEmpty()) {
+            taskScores.promoteObservedInitialTasks(ready);
         }
-        taskScores.promoteObservedInitialTasks(ready);
     }
 }

@@ -74,9 +74,11 @@ class TaskAssignmentDispatcherTest {
                 new ResultContextCodec()
         ).dispatch(
                 dueTask(),
-                Map.of("message-1", item()),
-                Map.of("message-1", 333_333_333L),
-                Map.of("message-1", worker("worker-1", 111_111_111L)),
+                List.of(attempt(
+                        item(),
+                        333_333_333L,
+                        worker("worker-1", 111_111_111L)
+                )),
                 5_000L
         );
 
@@ -117,9 +119,11 @@ class TaskAssignmentDispatcherTest {
                 new ResultContextCodec()
         ).dispatch(
                 dueTask(),
-                Map.of("message-1", item()),
-                Map.of("message-1", 333L),
-                Map.of("message-1", worker("worker-1", 111L)),
+                List.of(attempt(
+                        item(),
+                        333L,
+                        worker("worker-1", 111L)
+                )),
                 5_000L
         ));
         verifyNoInteractions(itemScores, commands);
@@ -140,14 +144,17 @@ class TaskAssignmentDispatcherTest {
         assertThrows(IllegalArgumentException.class, () ->
                 dispatcher.dispatch(
                         dueTask(),
-                        Map.of(
-                                "message-1", item("message-1"),
-                                "message-2", item("message-2")
-                        ),
-                        Map.of("message-1", 301L, "message-2", 302L),
-                        Map.of(
-                                "message-1", worker("worker-1", 401L),
-                                "message-2", worker("worker-1", 402L)
+                        List.of(
+                                attempt(
+                                        item("message-1"),
+                                        301L,
+                                        worker("worker-1", 401L)
+                                ),
+                                attempt(
+                                        item("message-2"),
+                                        302L,
+                                        worker("worker-1", 402L)
+                                )
                         ),
                         5_000L
                 )
@@ -156,7 +163,7 @@ class TaskAssignmentDispatcherTest {
     }
 
     @Test
-    void assignmentInputsMustHaveTheSameMessageIds() {
+    void duplicateItemIsRejectedBeforeOwnerMutation() {
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
@@ -170,17 +177,57 @@ class TaskAssignmentDispatcherTest {
         assertThrows(IllegalArgumentException.class, () ->
                 dispatcher.dispatch(
                         dueTask(),
-                        Map.of("message-1", item()),
-                        Map.of("other-message", 333L),
-                        Map.of("message-1", worker("worker-1", 111L)),
+                        List.of(
+                                attempt(
+                                        item("message-1"),
+                                        301L,
+                                        worker("worker-1", 401L)
+                                ),
+                                attempt(
+                                        item("message-1"),
+                                        302L,
+                                        worker("worker-2", 402L)
+                                )
+                        ),
                         5_000L
                 )
         );
         verifyNoInteractions(itemScores, workerScores, commands);
     }
 
-    private static DueTaskObservation dueTask() {
-        return new DueTaskObservation("task-1", 777L, descriptor());
+    @Test
+    void wrongWorkerGroupIsRejectedBeforeOwnerMutation() {
+        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
+        WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
+        WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
+        TaskAssignmentDispatcher dispatcher = new TaskAssignmentDispatcher(
+                itemScores,
+                workerScores,
+                commands,
+                new ResultContextCodec()
+        );
+
+        assertThrows(IllegalArgumentException.class, () ->
+                dispatcher.dispatch(
+                        dueTask(),
+                        List.of(attempt(
+                                item(),
+                                301L,
+                                new HeldWorkerCandidate(
+                                        "worker-1",
+                                        "other-group",
+                                        "adapter-1",
+                                        401L
+                                )
+                        )),
+                        5_000L
+                )
+        );
+        verifyNoInteractions(itemScores, workerScores, commands);
+    }
+
+    private static ObservedTask dueTask() {
+        return new ObservedTask(descriptor(), 777L);
     }
 
     private static TaskDescriptor descriptor() {
@@ -213,11 +260,23 @@ class TaskAssignmentDispatcherTest {
         );
     }
 
-    private static AcquiredWorkerCandidate worker(
+    private static TaskAssignmentDispatcher.AssignmentAttempt attempt(
+            TaskItem item,
+            long observedItemScore,
+            HeldWorkerCandidate worker
+    ) {
+        return new TaskAssignmentDispatcher.AssignmentAttempt(
+                item,
+                observedItemScore,
+                worker
+        );
+    }
+
+    private static HeldWorkerCandidate worker(
             String workerId,
             long score
     ) {
-        return new AcquiredWorkerCandidate(
+        return new HeldWorkerCandidate(
                 workerId,
                 "group-1",
                 "adapter-1",

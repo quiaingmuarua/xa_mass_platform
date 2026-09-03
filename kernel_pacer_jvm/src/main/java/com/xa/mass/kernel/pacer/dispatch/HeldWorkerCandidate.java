@@ -1,13 +1,13 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-/** A Worker selected through score ownership and canonical description. */
-record AcquiredWorkerCandidate(
+/** A routed Worker candidate carrying Kernel's exact held score. */
+record HeldWorkerCandidate(
         String workerId,
         String workerGroupId,
         String endpointManagerId,
-        long workerLeaseScore
+        long heldWorkerLeaseScore
 ) {
-    AcquiredWorkerCandidate {
+    HeldWorkerCandidate {
         requireNonBlank(workerId, "workerId");
         requireNonBlank(workerGroupId, "workerGroupId");
         requireNonBlank(endpointManagerId, "endpointManagerId");
