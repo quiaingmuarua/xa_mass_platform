@@ -418,7 +418,10 @@ final class WorkerStateConvergence {
 
     private static void requireExactWorld(WorkerLabControlClient lab) {
         List<WorkerSnapshot> workers = lab.workers();
-        require(workers.size() == 100, "Convergence world must contain 100 Workers");
+        require(
+                workers.size() == WorkerLabConvergenceSupport.WORKER_COUNT,
+                "Convergence world must contain 1000 Workers"
+        );
         Map<WorkerRef, WorkerSnapshot> inventory =
                 WorkerLabConvergenceSupport.requireInventory(
                         lab,
@@ -434,7 +437,10 @@ final class WorkerStateConvergence {
 
     private static void requireServerRestartWorld(WorkerLabControlClient lab) {
         List<WorkerSnapshot> workers = lab.workers();
-        require(workers.size() == 100, "Convergence world must contain 100 Workers");
+        require(
+                workers.size() == WorkerLabConvergenceSupport.WORKER_COUNT,
+                "Convergence world must contain 1000 Workers"
+        );
         Map<WorkerRef, WorkerSnapshot> inventory =
                 WorkerLabConvergenceSupport.requireInventory(
                         lab,
@@ -496,8 +502,10 @@ final class WorkerStateConvergence {
             Predicate<String> acceptedNetworkState
     ) {
         require(
-                !workers.isEmpty() && workers.size() <= 100,
-                "Unavailable observation requires 1..100 Workers"
+                !workers.isEmpty()
+                        && workers.size()
+                        <= WorkerLabConvergenceSupport.WORKER_COUNT,
+                "Unavailable observation requires 1..1000 Workers"
         );
         Map<WorkerRef, String> targetIdentities = new LinkedHashMap<>();
         for (WorkerRef worker : workers) {

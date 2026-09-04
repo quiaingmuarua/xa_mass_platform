@@ -159,13 +159,14 @@ those owners.
 - [`integrations/`](integrations/) contains external proof clients; it owns no
   Kernel, Server or Transport mechanism. Worker Correctness owns the exact
   2x50 identity, extension, 100-call success and Host-restart closure. Worker
-  Convergence Health starts from the same isolated 2x50 Inventory and relates
+  Convergence Health owns an isolated 2x500 Inventory and relates
   deterministic mutations and named Task
   witnesses to Adapter and Kernel convergence through public HTTP boundaries;
-  its 1000 Items are offered load rather than an all-success claim. The independent Worker
-  WebSocket Scale lane prepares 15,000 Java Workers, retains a 10,000-Worker
-  loaded fleet and checks a 9,900 connected-and-HOT threshold across one
-  Server restart without claiming throughput or latency.
+  its 1,000 Items are offered load rather than an all-success claim. The
+  independent Worker WebSocket Scale lane prepares 15,000 Java Workers,
+  contracts to a 10,000-Worker loaded fleet, completes 200,000 Items across one
+  graceful and two hard Server restarts, and checks stable resource bounds
+  without claiming throughput or latency.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture

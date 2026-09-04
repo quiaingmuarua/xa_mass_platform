@@ -24,6 +24,8 @@ record StateConvergencePhaseState(
         String propertyWitnessMessageId
 ) {
 
+    private static final long SCHEMA_VERSION = 4L;
+
     private static final Set<String> FIELDS = Set.of(
             "schemaVersion",
             "proofId",
@@ -38,7 +40,8 @@ record StateConvergencePhaseState(
         if (proofId == null || proofId.isBlank()
                 || startedAt == null
                 || workerIdsByCoordinate == null
-                || workerIdsByCoordinate.size() != 100
+                || workerIdsByCoordinate.size()
+                != WorkerLabConvergenceSupport.WORKER_COUNT
                 || batches == null || batches.size() != 12
                 || propertyWitnessTaskId == null
                 || propertyWitnessTaskId.isBlank()
@@ -69,7 +72,7 @@ record StateConvergencePhaseState(
         }
         if (!FIELDS.equals(value.keySet())
                 || !(value.get("schemaVersion") instanceof Number version)
-                || version.longValue() != 3L) {
+                || version.longValue() != SCHEMA_VERSION) {
             throw new IllegalStateException(
                     "State convergence phase state is invalid"
             );
@@ -110,7 +113,7 @@ record StateConvergencePhaseState(
             Files.createDirectories(parent);
             temporary = Files.createTempFile(parent, ".worker-state-", ".tmp");
             Map<String, Object> value = new LinkedHashMap<>();
-            value.put("schemaVersion", 3);
+            value.put("schemaVersion", SCHEMA_VERSION);
             value.put("proofId", proofId);
             value.put("startedAt", startedAt.toString());
             value.put("workerIdsByCoordinate", workerIdsByCoordinate);

@@ -44,7 +44,7 @@ class TaskFaultStateTest {
     @Test
     void rejectsUnknownStateShape() throws Exception {
         Path path = temporaryDirectory.resolve("invalid.json");
-        Files.writeString(path, "{\"schemaVersion\":4}");
+        Files.writeString(path, "{\"schemaVersion\":5}");
 
         assertThatThrownBy(() -> TaskFaultState.load(path))
                 .isInstanceOf(IllegalStateException.class);

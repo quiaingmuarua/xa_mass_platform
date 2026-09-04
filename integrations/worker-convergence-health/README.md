@@ -11,22 +11,23 @@ Redis scopes and phase transitions.
 Each scenario uses:
 
 ```text
-2 WorkerGroups x 50 Workers
+2 WorkerGroups x 500 Workers
 one WebSocket Adapter
 ON_DEMAND_ITEM_RULE through managed batch items:call
 independent Lab, Network, Scheduling and Task observations
 ```
 
-The runner materializes the same canonical 2x50 Properties Inventory used by
-Worker Correctness, but into a separate Lab root and Redis scope. Capability
-assembly and all mutations remain owned by this convergence lane.
+The runner materializes its canonical 2x500 Properties Inventory with the same
+strict materializer used by Worker Correctness, but into a separate Lab root
+and Redis scope. Capability assembly and all mutations remain owned by this
+convergence lane.
 
 The Integration owns a Server catalog override and Scenario capability
 assembly that add `extension.worker.lab.delay` and
 `extension.worker.lab.fail` only to the existing String Group. Every String
 batch offers one 10-second delay Item and one immediate Handler-failure Item as
-non-witness background work. Phone batches and the 100-Worker topology remain
-unchanged.
+non-witness background work. The fixed 700/300 workloads remain unchanged as
+the topology grows to 1,000 Workers.
 
 The Lab is a mutation source and local witness, not a reconcile coordinator.
 Every action is sent once. A failed or ambiguous local operation fails that
@@ -45,12 +46,12 @@ PRECOMPUTED Task isolates the Property-matching oracle. The scenario proves:
   `convergenceSlot` is started, then converges through Task-rule matching;
 - a full String Group outage does not stop Phone progress, and parked String
   witness work finishes after recovery;
-- after the 100-Worker baseline, the directed String Worker is stopped before
+- after the 1,000-Worker baseline, the directed String Worker is stopped before
   any workload and remains unavailable through the pre-restart part of wave
   six; all other Worker stop/start and Property mutations also finish before
-  wave one. The full String outage stops and restores only the other 49 Workers
-  while the unavailable observation still covers all 50. After the Server
-  restart the other 99 identities reconnect and become HOT while that Worker
+  wave one. The full String outage stops and restores only the other 499 Workers
+  while the unavailable observation still covers all 500. After the Server
+  restart the other 999 identities reconnect and become HOT while that Worker
   remains stopped, then one stopped-state Property replacement and one explicit
   start restore its original identity and finish the witness.
 
@@ -69,12 +70,12 @@ checkpoint. The synchronous connection path prevents the remaining String
 Items from creating unrelated in-flight Worker executions before the runner
 kills Scenario Host. The runner then waits for the entire Worker world to
 become disconnected and unavailable,
-changes one stopped backup Worker's `labSlot`, then restarts 99 Workers while
+changes one stopped backup Worker's `labSlot`, then restarts 999 Workers while
 excluding the original target. The original checkpoint witness must finish on
-the recovered world: all 99 identities must reconnect unchanged, while the
+the recovered world: all 999 identities must reconnect unchanged, while the
 canonical backup Property and that explicitly targeted backup's HOT state are
 checked before the checkpoint closes. The recovery-wave witnesses must then
-succeed. The proof does not require all 99 Workers to be simultaneously HOT
+succeed. The proof does not require all 999 Workers to be simultaneously HOT
 while due work is present. After a second Host loss, the checkpoint's successful
 Result must remain observable through `results:load`; this does not prove
 TaskItem Score finality.
@@ -90,10 +91,12 @@ these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
 DSL or automatic compensation.
 
-Multi-Worker outage checks issue one bounded Network observation for the
-EndpointManager and one bounded Scheduling observation per WorkerGroup, then
-write the existing per-Worker timeline rows only after the whole requested set
-has converged. A `wave-6` timeout additionally records a best-effort bounded
+Multi-Worker outage checks page Network and Scheduling observations at the
+public 100-ID boundary, then write the existing per-Worker timeline rows only
+after the whole requested set has converged. Runtime Worker preview remains a
+100-entry random sample per Group; it checks sampled canonical identity while
+the paged Network/Scheduling observations cover the exact fleet. A `wave-6`
+timeout additionally records a best-effort bounded
 snapshot of witness status, managed Task score band, target Network/Scheduling
 and local states, and whether the canonical slot equals C. Snapshot failure is
 suppressed under the original proof failure. Diagnostics do not record Worker
@@ -121,6 +124,8 @@ Proof CI runs those two values as independent matrix jobs; `--scenario all`
 remains the local complete entrypoint. One runner invocation reuses a Gradle
 daemon with a five-minute idle timeout across artifact build and Java phases;
 Server, Host, Redis-scope and mutation ownership are unchanged.
+The default five-minute observation bound covers the fixed serviceability
+recovery budget at this 1,000-Worker topology; it is not a latency SLA.
 Default evidence root:
 
 ```text
@@ -144,4 +149,4 @@ python -m unittest integrations/worker-convergence-health/test_run_worker_conver
 ```
 
 See [`doc/testing/worker-proof-scenarios.md`](../../doc/testing/worker-proof-scenarios.md)
-for the exact 100-Worker scenario contract.
+for the exact 1,000-Worker scenario contract.

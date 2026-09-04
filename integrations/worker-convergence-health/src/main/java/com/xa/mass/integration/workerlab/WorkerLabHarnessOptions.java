@@ -76,7 +76,7 @@ record WorkerLabHarnessOptions(
                         "evidence-dir",
                         "build/worker-convergence-health/" + proofId
                 )),
-                arguments.number("maximum-wait-millis", 120_000),
+                arguments.number("maximum-wait-millis", 300_000),
                 arguments.number("request-timeout-millis", 10_000)
         );
     }

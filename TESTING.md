@@ -19,8 +19,8 @@ Worker worlds are in
 | Owner Test | minimal | One Owner algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
 | Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
-| Worker Convergence Health | 2 Groups x 50 Workers, 1000 Items | Finite-time convergence after deterministic state, process and Server faults |
-| Worker Capacity | 15,000 prepared / 10,000 active Workers, 10 x 5,000 Items per phase | Connection headroom, Fleet contraction, loaded work, resources and reconnect capacity |
+| Worker Convergence Health | 2 Groups x 500 Workers, 1,000 Items | Finite-time convergence after deterministic state, process and Server faults |
+| Worker Capacity | 15,000 prepared / 10,000 active Workers, 40 Tasks / 200,000 Items | Loaded Fleet contraction, repeated Server recovery and stable resource bounds |
 
 Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
 only a prerequisite or Boundary Witness. It must not be described as a second
@@ -36,15 +36,15 @@ convergence. `NOT_OBSERVED` is not treated as failure, `FAILED` is not counted
 as a successful witness, and non-witness Items do not carry a success-count or
 execution-count oracle.
 
-Correctness and Convergence materialize the same canonical 100-Worker
-Inventory into isolated Lab roots. Capacity uses the same materialization
-contract for 15,000 identities, then deterministically retains 10,000 active
-Workers; only topology, capability assembly and proof oracle change between
-lanes.
+Correctness and Convergence use the same strict Inventory materializer but own
+distinct fixed worlds: 100 Workers for exact correctness and 1,000 Workers for
+fault convergence. Capacity uses that materialization contract for 15,000
+identities, then deterministically retains 10,000 active Workers; topology,
+capability assembly and proof oracle remain lane-owned.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. Convergence Health uses `results:load` only for named
-witnesses. Capacity pages `results:load` for ten bounded Task progress streams
+witnesses. Capacity pages `results:load` for four fixed ten-Task progress sets
 and performs one final export per Task; this is the explicit bulk result-path
 witness rather than a business-payload oracle.
 
@@ -179,5 +179,5 @@ Properties or Task results.
 There is no coverage threshold, flaky-test retry, browser visual matrix,
 multi-JDK matrix, Android API matrix, general topology Cartesian product,
 throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
-remain protocol/Runtime Boundary claims; the 100-Worker health world does not
+remain protocol/Runtime Boundary claims; the 1,000-Worker health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.

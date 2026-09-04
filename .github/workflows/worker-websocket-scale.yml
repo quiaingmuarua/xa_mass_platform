@@ -1,4 +1,4 @@
-name: Java WebSocket 15k Headroom + 10k Loaded Fleet
+name: Java WebSocket 15k Headroom + 10k Loaded Recovery
 
 on:
   schedule:
@@ -17,7 +17,7 @@ env:
 
 jobs:
   worker-websocket-scale:
-    name: Java WebSocket 15k Headroom + 10k Loaded Fleet
+    name: Java WebSocket 15k Headroom + 10k Loaded Recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:

@@ -1,6 +1,7 @@
 package com.xa.mass.integration.workerlab;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -43,16 +44,20 @@ class RuntimeApiClientTest {
                         ))
                 ));
             } else if (path.endsWith("/workers:network-observe")) {
+                Map<String, String> states = new java.util.LinkedHashMap<>();
+                for (Object workerId : Jsons.parseArray(body)) {
+                    states.put((String) workerId, "connected");
+                }
                 respondJson(exchange, 200, Map.of(
-                        "statesByWorkerId", Map.of(
-                                "worker-1", "connected"
-                        )
+                        "statesByWorkerId", states
                 ));
             } else if (path.endsWith("/workers:scheduling-observe")) {
+                Map<String, String> states = new java.util.LinkedHashMap<>();
+                for (Object workerId : Jsons.parseArray(body)) {
+                    states.put((String) workerId, "recovery");
+                }
                 respondJson(exchange, 200, Map.of(
-                        "statesByWorkerId", Map.of(
-                                "worker-1", "recovery"
-                        )
+                        "statesByWorkerId", states
                 ));
             } else if (path.endsWith("/tasks:preview")) {
                 respondJson(exchange, 200, Map.of(
@@ -115,6 +120,18 @@ class RuntimeApiClientTest {
                     "group-1",
                     List.of("worker-1")
             )).containsEntry("worker-1", "recovery");
+            List<String> pagedWorkerIds = java.util.stream.IntStream
+                    .rangeClosed(1, 205)
+                    .mapToObj(index -> "paged-worker-" + index)
+                    .toList();
+            Map<String, String> expectedPagedStates =
+                    new java.util.LinkedHashMap<>();
+            pagedWorkerIds.forEach(workerId -> expectedPagedStates.put(
+                    workerId,
+                    "connected"
+            ));
+            assertThat(client.observeNetwork("adapter-1", pagedWorkerIds))
+                    .containsExactlyEntriesOf(expectedPagedStates);
             assertThat(client.previewTaskScoreBands(List.of("task-1")))
                     .containsExactly(Map.entry("task-1", "running-normal"));
             assertThat(client.callItems("task-1", List.of(
@@ -174,6 +191,14 @@ class RuntimeApiClientTest {
                 assertThat(body).containsEntry("waitTimeoutMillis", 250L);
                 assertThat(body.get("items")).asList().hasSize(2);
             });
+            assertThat(requests.stream()
+                    .filter(request -> request.path().endsWith(
+                            "/workers:network-observe"
+                    ))
+                    .map(request -> Jsons.parseArray(request.body()))
+                    .filter(ids -> !ids.equals(List.of("worker-1")))
+                    .map(List::size)
+                    .toList()).containsExactly(100, 100, 5);
             assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).endsWith("/tasks:preview");
                 assertThat(request.body()).isEqualTo("100");
@@ -206,6 +231,29 @@ class RuntimeApiClientTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void rejectsInvalidWorkerObservationIdentitySetsBeforeHttp() {
+        RuntimeApiClient client = new RuntimeApiClient(
+                new JsonHttpClient(
+                        URI.create("http://127.0.0.1:1"),
+                        Duration.ofSeconds(1)
+                )
+        );
+
+        assertThatThrownBy(() -> client.observeNetwork(
+                "adapter-1",
+                List.of("worker-1", "worker-1")
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+        assertThatThrownBy(() -> client.observeScheduling(
+                "group-1",
+                java.util.stream.IntStream.rangeClosed(1, 1_001)
+                        .mapToObj(index -> "worker-" + index)
+                        .toList()
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("1..1000");
     }
 
     private static String requestBody(HttpExchange exchange)

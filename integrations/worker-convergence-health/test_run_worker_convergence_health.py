@@ -17,6 +17,19 @@ SPEC.loader.exec_module(PROOF)
 
 class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
 
+    def test_world_contains_two_groups_of_five_hundred_workers(self):
+        self.assertEqual(500, len(PROOF.PHONE_WORKERS))
+        self.assertEqual(500, len(PROOF.STRING_WORKERS))
+        self.assertEqual(1000, len(PROOF.CONVERGENCE_WORKERS))
+        self.assertEqual(
+            (PROOF.PHONE_GROUP, "workers-004.jsonl:100"),
+            PROOF.PHONE_WORKERS[-1],
+        )
+        self.assertEqual(
+            (PROOF.STRING_GROUP, "workers-004.jsonl:100"),
+            PROOF.STRING_WORKERS[-1],
+        )
+
     def test_startup_plan_is_strict_and_deterministic(self):
         plan = PROOF._startup_plan(
             (PROOF.FAULT_TARGET,),

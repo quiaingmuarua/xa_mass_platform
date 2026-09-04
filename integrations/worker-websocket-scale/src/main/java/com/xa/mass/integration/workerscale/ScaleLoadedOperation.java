@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Runs the fixed ten-Task loaded operation for one scale-proof phase. */
+/** Owns one fixed ten-Task loaded operation across a proof mutation. */
 final class ScaleLoadedOperation {
 
     static final int TASK_COUNT = 10;
@@ -27,7 +27,7 @@ final class ScaleLoadedOperation {
     private ScaleLoadedOperation() {
     }
 
-    static LoadedOperationResult run(
+    static LoadedOperation start(
             ScaleOptions options,
             ScaleApiClient api,
             List<String> activeWorkerIds
@@ -39,103 +39,14 @@ final class ScaleLoadedOperation {
             tasks.add(task);
             appendBatchCount += task.appendBatchCount();
         }
-
         for (TaskTracker task : tasks) {
             api.approveTask(task.taskId());
         }
-        long started = System.nanoTime();
-
-        long overallDeadline = started + options.taskResultWait().toNanos();
-        long nextNetworkScan = started;
-        long lastProgress = started;
-        long maximumNoProgressNanos = 0;
-        int previousSucceeded = 0;
-        int minimumConnected = activeWorkerIds.size();
-
-        while (System.nanoTime() < overallDeadline) {
-            long now = System.nanoTime();
-            if (now >= nextNetworkScan) {
-                int connected = scanNetwork(options, api, activeWorkerIds);
-                minimumConnected = Math.min(minimumConnected, connected);
-                if (connected < options.minimumRetainedConverged()) {
-                    throw new IllegalStateException(
-                            "Active Worker connections fell below the loaded "
-                                    + "operation threshold"
-                    );
-                }
-                nextNetworkScan = System.nanoTime()
-                        + options.scanInterval().toNanos();
-            }
-
-            for (TaskTracker task : tasks) {
-                task.observe(api, started);
-            }
-            int succeeded = tasks.stream()
-                    .mapToInt(TaskTracker::succeeded)
-                    .sum();
-            long observedAt = System.nanoTime();
-            if (succeeded > previousSucceeded) {
-                requireTimelyProgress(
-                        previousSucceeded,
-                        observedAt - started,
-                        observedAt - lastProgress
-                );
-                maximumNoProgressNanos = Math.max(
-                        maximumNoProgressNanos,
-                        observedAt - lastProgress
-                );
-                previousSucceeded = succeeded;
-                lastProgress = observedAt;
-            }
-            appendProgress(options, tasks, elapsedMillis(started, observedAt));
-
-            boolean allExported = exportTerminalTasks(api, tasks, started);
-            if (allExported) {
-                int finalSucceeded = tasks.stream()
-                        .mapToInt(TaskTracker::succeeded)
-                        .sum();
-                long completedAt = System.nanoTime();
-                if (finalSucceeded > previousSucceeded) {
-                    requireTimelyProgress(
-                            previousSucceeded,
-                            completedAt - started,
-                            completedAt - lastProgress
-                    );
-                }
-                maximumNoProgressNanos = Math.max(
-                        maximumNoProgressNanos,
-                        completedAt - lastProgress
-                );
-                ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
-                        "atEpochMillis", System.currentTimeMillis(),
-                        "phase", options.phase().wireValue(),
-                        "event", "loaded-operation-completed",
-                        "taskCount", TASK_COUNT,
-                        "succeededItems", finalSucceeded
-                ));
-                return new LoadedOperationResult(
-                        tasks.stream().map(TaskTracker::progress).toList(),
-                        appendBatchCount,
-                        Duration.ofNanos(maximumNoProgressNanos).toMillis(),
-                        minimumConnected
-                );
-            }
-            if (progressDeadlineExceeded(
-                    succeeded,
-                    observedAt - started,
-                    observedAt - lastProgress
-            )) {
-                String failure = succeeded == 0
-                        ? "Loaded operation produced no successful Result within "
-                                + FIRST_PROGRESS_LIMIT.toSeconds() + " seconds"
-                        : "Loaded operation made no successful progress for "
-                                + MAXIMUM_NO_PROGRESS.toSeconds() + " seconds";
-                throw new IllegalStateException(failure);
-            }
-            sleep(RESULT_POLL_INTERVAL);
-        }
-        throw new IllegalStateException(
-                "Loaded operation did not complete within its time budget"
+        return new LoadedOperation(
+                options,
+                List.copyOf(tasks),
+                List.copyOf(activeWorkerIds),
+                appendBatchCount
         );
     }
 
@@ -147,30 +58,6 @@ final class ScaleLoadedOperation {
         return previouslySucceeded == 0
                 ? elapsedNanos >= FIRST_PROGRESS_LIMIT.toNanos()
                 : noProgressNanos >= MAXIMUM_NO_PROGRESS.toNanos();
-    }
-
-    private static void requireTimelyProgress(
-            int previousSucceeded,
-            long elapsedNanos,
-            long noProgressNanos
-    ) {
-        if (!progressDeadlineExceeded(
-                previousSucceeded,
-                elapsedNanos,
-                noProgressNanos
-        )) {
-            return;
-        }
-        if (previousSucceeded == 0) {
-            throw new IllegalStateException(
-                    "Loaded operation first observed a successful Result after "
-                            + FIRST_PROGRESS_LIMIT.toSeconds() + " seconds"
-            );
-        }
-        throw new IllegalStateException(
-                "Loaded operation observed a success gap longer than "
-                        + MAXIMUM_NO_PROGRESS.toSeconds() + " seconds"
-        );
     }
 
     private static TaskTracker prepareTask(
@@ -186,7 +73,7 @@ final class ScaleLoadedOperation {
                 index < options.workloadItemsPerTask();
                 index++) {
             String messageId = "scale-"
-                    + options.phase().wireValue()
+                    + options.stage().wireValue()
                     + "-" + label
                     + "-" + index + "-" + UUID.randomUUID();
             messageIds.add(messageId);
@@ -210,87 +97,6 @@ final class ScaleLoadedOperation {
         return new TaskTracker(label, taskId, messageIds, batches);
     }
 
-    private static boolean exportTerminalTasks(
-            ScaleApiClient api,
-            List<TaskTracker> tasks,
-            long started
-    ) {
-        List<TaskTracker> pending = tasks.stream()
-                .filter(task -> !task.exported())
-                .toList();
-        if (pending.isEmpty()) {
-            return true;
-        }
-        Map<String, String> scoreBands = api.previewTaskScoreBands(
-                pending.stream().map(TaskTracker::taskId).toList()
-        );
-        for (TaskTracker task : pending) {
-            if ("terminal".equals(scoreBands.get(task.taskId()))) {
-                task.verifyExport(api, elapsedMillis(started, System.nanoTime()));
-            }
-        }
-        return tasks.stream().allMatch(TaskTracker::exported);
-    }
-
-    private static int scanNetwork(
-            ScaleOptions options,
-            ScaleApiClient api,
-            List<String> workerIds
-    ) {
-        int connected = 0;
-        for (int offset = 0;
-                offset < workerIds.size();
-                offset += APPEND_PAGE_SIZE) {
-            List<String> chunk = workerIds.subList(
-                    offset,
-                    Math.min(offset + APPEND_PAGE_SIZE, workerIds.size())
-            );
-            for (String state : api.observeNetwork(
-                    options.endpointManagerId(),
-                    chunk
-            ).values()) {
-                if ("connected".equals(state)) {
-                    connected++;
-                }
-            }
-        }
-        ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
-                "atEpochMillis", System.currentTimeMillis(),
-                "phase", options.phase().wireValue(),
-                "event", "network-scan",
-                "stage", "loaded-operation",
-                "activeWorkers", workerIds.size(),
-                "connectedWorkers", connected
-        ));
-        return connected;
-    }
-
-    private static void appendProgress(
-            ScaleOptions options,
-            List<TaskTracker> tasks,
-            long elapsedMillis
-    ) {
-        List<Map<String, Object>> progress = new ArrayList<>();
-        for (TaskTracker task : tasks) {
-            TaskProgress state = task.progress();
-            Map<String, Object> value = new LinkedHashMap<>();
-            value.put("label", state.label());
-            value.put("taskId", state.taskId());
-            value.put("succeeded", state.succeeded());
-            value.put("failed", state.failed());
-            value.put("notObserved", state.notObserved());
-            value.put("exported", state.exported());
-            progress.add(value);
-        }
-        Map<String, Object> evidence = new LinkedHashMap<>();
-        evidence.put("atEpochMillis", System.currentTimeMillis());
-        evidence.put("phase", options.phase().wireValue());
-        evidence.put("event", "loaded-operation-progress");
-        evidence.put("elapsedMillis", elapsedMillis);
-        evidence.put("tasks", progress);
-        ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
-    }
-
     private static long elapsedMillis(long started, long observedAt) {
         return Duration.ofNanos(observedAt - started).toMillis();
     }
@@ -301,6 +107,384 @@ final class ScaleLoadedOperation {
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Scale proof was interrupted", error);
+        }
+    }
+
+    static final class LoadedOperation {
+
+        private final ScaleOptions options;
+        private final List<TaskTracker> tasks;
+        private final List<String> activeWorkerIds;
+        private final int appendBatchCount;
+        private final int expectedItems;
+        private final long started;
+        private final long overallDeadline;
+
+        private long nextNetworkScan;
+        private long lastProgress;
+        private long maximumNoProgressNanos;
+        private int previousSucceeded;
+        private int minimumConnected;
+
+        private LoadedOperation(
+                ScaleOptions options,
+                List<TaskTracker> tasks,
+                List<String> activeWorkerIds,
+                int appendBatchCount
+        ) {
+            this.options = options;
+            this.tasks = tasks;
+            this.activeWorkerIds = activeWorkerIds;
+            this.appendBatchCount = appendBatchCount;
+            this.expectedItems = Math.multiplyExact(
+                    TASK_COUNT,
+                    options.workloadItemsPerTask()
+            );
+            this.started = System.nanoTime();
+            this.overallDeadline = started + options.taskResultWait().toNanos();
+            this.nextNetworkScan = started;
+            this.lastProgress = started;
+            this.minimumConnected = activeWorkerIds.size();
+        }
+
+        MutationCheckpoint awaitMutationCheckpoint(ScaleApiClient api) {
+            int maximumSucceeded = expectedItems / 2;
+            int minimumUnresolved = expectedItems - maximumSucceeded;
+            while (System.nanoTime() < overallDeadline) {
+                observeNetworkWhenDue(api);
+                observeResults(api, true);
+                Map<String, String> scoreBands = requireTaskScoreBands(api);
+                boolean anyTerminal = scoreBands.values().stream()
+                        .anyMatch("terminal"::equals);
+                int succeeded = succeeded();
+                int unresolved = expectedItems - succeeded;
+                appendProgress("mutation-window");
+
+                if (anyTerminal) {
+                    throw new IllegalStateException(
+                            "A loaded Task became terminal before mutation"
+                    );
+                }
+                if (succeeded > maximumSucceeded
+                        || unresolved < minimumUnresolved) {
+                    throw new IllegalStateException(
+                            "Loaded operation passed the fixed mutation window"
+                    );
+                }
+                if (succeeded > 0) {
+                    MutationCheckpoint checkpoint = new MutationCheckpoint(
+                            TASK_COUNT,
+                            succeeded,
+                            unresolved,
+                            elapsedMillis(started, System.nanoTime())
+                    );
+                    ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
+                            "atEpochMillis", System.currentTimeMillis(),
+                            "stage", options.stage().wireValue(),
+                            "event", "mutation-window-established",
+                            "taskCount", checkpoint.taskCount(),
+                            "succeededItems", checkpoint.succeededItems(),
+                            "unresolvedItems", checkpoint.unresolvedItems()
+                    ));
+                    return checkpoint;
+                }
+                requireProgressBudget();
+                sleep(RESULT_POLL_INTERVAL);
+            }
+            throw new IllegalStateException(
+                    "Loaded operation did not reach its mutation window"
+            );
+        }
+
+        RecoverySnapshot observeAfterMutation(
+                ScaleApiClient api,
+                boolean requireBacklog
+        ) {
+            lastProgress = System.nanoTime();
+            observeResults(api, false);
+            int succeeded = succeeded();
+            int unresolved = expectedItems - succeeded;
+            if (requireBacklog && unresolved == 0) {
+                throw new IllegalStateException(
+                        "Hard restart resumed after the loaded operation completed"
+                );
+            }
+            RecoverySnapshot snapshot = new RecoverySnapshot(
+                    succeeded,
+                    unresolved,
+                    System.currentTimeMillis()
+            );
+            ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
+                    "atEpochMillis", snapshot.observedAtEpochMillis(),
+                    "stage", options.stage().wireValue(),
+                    "event", "post-mutation-result-snapshot",
+                    "succeededItems", snapshot.succeededItems(),
+                    "unresolvedItems", snapshot.unresolvedItems()
+            ));
+            lastProgress = System.nanoTime();
+            return snapshot;
+        }
+
+        void awaitRetainedConnectionsAfterServerRestart(ScaleApiClient api) {
+            long convergenceDeadline = Math.min(
+                    overallDeadline,
+                    System.nanoTime()
+                            + options.maximumConvergenceWait().toNanos()
+            );
+            int latestConnected = 0;
+            while (System.nanoTime() < convergenceDeadline) {
+                latestConnected = scanNetwork(api);
+                observeResults(api, true);
+                appendProgress("server-restart-connection-recovery");
+                if (latestConnected >= options.minimumRetainedConverged()) {
+                    minimumConnected = Math.min(
+                            minimumConnected,
+                            latestConnected
+                    );
+                    nextNetworkScan = System.nanoTime()
+                            + options.scanInterval().toNanos();
+                    return;
+                }
+                requireProgressBudget();
+                sleep(options.scanInterval());
+            }
+            throw new IllegalStateException(
+                    "Active Worker connections did not recover after the "
+                            + "planned Server restart (latest="
+                            + latestConnected + ")"
+            );
+        }
+
+        LoadedOperationResult awaitCompletion(
+                ScaleApiClient api,
+                RecoverySnapshot recoverySnapshot,
+                boolean requirePostRecoveryProgress
+        ) {
+            while (System.nanoTime() < overallDeadline) {
+                observeNetworkWhenDue(api);
+                observeResults(api, true);
+                appendProgress("completion");
+
+                boolean allExported = exportTerminalTasks(api);
+                int succeeded = succeeded();
+                if (allExported) {
+                    boolean postRecoveryProgress = succeeded
+                            > recoverySnapshot.succeededItems();
+                    if (requirePostRecoveryProgress && !postRecoveryProgress) {
+                        throw new IllegalStateException(
+                                "Hard restart produced no new successful Result"
+                        );
+                    }
+                    long completedAt = System.nanoTime();
+                    maximumNoProgressNanos = Math.max(
+                            maximumNoProgressNanos,
+                            completedAt - lastProgress
+                    );
+                    ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
+                            "atEpochMillis", System.currentTimeMillis(),
+                            "stage", options.stage().wireValue(),
+                            "event", "loaded-operation-completed",
+                            "taskCount", TASK_COUNT,
+                            "succeededItems", succeeded,
+                            "postRecoveryProgress", postRecoveryProgress
+                    ));
+                    return new LoadedOperationResult(
+                            tasks.stream().map(TaskTracker::progress).toList(),
+                            appendBatchCount,
+                            Duration.ofNanos(maximumNoProgressNanos).toMillis(),
+                            minimumConnected,
+                            postRecoveryProgress
+                    );
+                }
+                requireProgressBudget();
+                sleep(RESULT_POLL_INTERVAL);
+            }
+            throw new IllegalStateException(
+                    "Loaded operation did not complete within its time budget"
+            );
+        }
+
+        private void observeResults(ScaleApiClient api, boolean enforceBudget) {
+            int before = succeeded();
+            for (TaskTracker task : tasks) {
+                task.observe(api, started);
+            }
+            int after = succeeded();
+            long observedAt = System.nanoTime();
+            if (after > before) {
+                if (enforceBudget) {
+                    requireTimelyProgress(
+                            previousSucceeded,
+                            observedAt - started,
+                            observedAt - lastProgress
+                    );
+                }
+                maximumNoProgressNanos = Math.max(
+                        maximumNoProgressNanos,
+                        observedAt - lastProgress
+                );
+                lastProgress = observedAt;
+            }
+            previousSucceeded = Math.max(previousSucceeded, after);
+        }
+
+        private void observeNetworkWhenDue(ScaleApiClient api) {
+            long now = System.nanoTime();
+            if (now < nextNetworkScan) {
+                return;
+            }
+            int connected = scanNetwork(api);
+            minimumConnected = Math.min(minimumConnected, connected);
+            if (connected < options.minimumRetainedConverged()) {
+                throw new IllegalStateException(
+                        "Active Worker connections fell below the loaded "
+                                + "operation threshold"
+                );
+            }
+            nextNetworkScan = System.nanoTime()
+                    + options.scanInterval().toNanos();
+        }
+
+        private int scanNetwork(ScaleApiClient api) {
+            int connected = 0;
+            for (int offset = 0;
+                    offset < activeWorkerIds.size();
+                    offset += APPEND_PAGE_SIZE) {
+                List<String> chunk = activeWorkerIds.subList(
+                        offset,
+                        Math.min(
+                                offset + APPEND_PAGE_SIZE,
+                                activeWorkerIds.size()
+                        )
+                );
+                for (String state : api.observeNetwork(
+                        options.endpointManagerId(),
+                        chunk
+                ).values()) {
+                    if ("connected".equals(state)) {
+                        connected++;
+                    }
+                }
+            }
+            ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
+                    "atEpochMillis", System.currentTimeMillis(),
+                    "stage", options.stage().wireValue(),
+                    "event", "network-scan",
+                    "checkpoint", "loaded-operation",
+                    "activeWorkers", activeWorkerIds.size(),
+                    "connectedWorkers", connected
+            ));
+            return connected;
+        }
+
+        private Map<String, String> requireTaskScoreBands(ScaleApiClient api) {
+            List<String> taskIds = tasks.stream()
+                    .map(TaskTracker::taskId)
+                    .toList();
+            Map<String, String> scoreBands = api.previewTaskScoreBands(taskIds);
+            if (!scoreBands.keySet().equals(new LinkedHashSet<>(taskIds))) {
+                throw new IllegalStateException(
+                        "Task preview did not contain every loaded Task"
+                );
+            }
+            return scoreBands;
+        }
+
+        private boolean exportTerminalTasks(ScaleApiClient api) {
+            List<TaskTracker> pending = tasks.stream()
+                    .filter(task -> !task.exported())
+                    .toList();
+            if (pending.isEmpty()) {
+                return true;
+            }
+            Map<String, String> scoreBands = api.previewTaskScoreBands(
+                    pending.stream().map(TaskTracker::taskId).toList()
+            );
+            for (TaskTracker task : pending) {
+                if ("terminal".equals(scoreBands.get(task.taskId()))) {
+                    task.verifyExport(
+                            api,
+                            elapsedMillis(started, System.nanoTime())
+                    );
+                }
+            }
+            return tasks.stream().allMatch(TaskTracker::exported);
+        }
+
+        private void appendProgress(String checkpoint) {
+            List<Map<String, Object>> progress = new ArrayList<>();
+            for (TaskTracker task : tasks) {
+                TaskProgress state = task.progress();
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("label", state.label());
+                value.put("taskId", state.taskId());
+                value.put("succeeded", state.succeeded());
+                value.put("failed", state.failed());
+                value.put("notObserved", state.notObserved());
+                value.put("exported", state.exported());
+                progress.add(value);
+            }
+            Map<String, Object> evidence = new LinkedHashMap<>();
+            evidence.put("atEpochMillis", System.currentTimeMillis());
+            evidence.put("stage", options.stage().wireValue());
+            evidence.put("event", "loaded-operation-progress");
+            evidence.put("checkpoint", checkpoint);
+            evidence.put(
+                    "elapsedMillis",
+                    elapsedMillis(started, System.nanoTime())
+            );
+            evidence.put("tasks", progress);
+            ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
+        }
+
+        private int succeeded() {
+            return tasks.stream().mapToInt(TaskTracker::succeeded).sum();
+        }
+
+        private void requireProgressBudget() {
+            long now = System.nanoTime();
+            if (!progressDeadlineExceeded(
+                    previousSucceeded,
+                    now - started,
+                    now - lastProgress
+            )) {
+                return;
+            }
+            if (previousSucceeded == 0) {
+                throw new IllegalStateException(
+                        "Loaded operation produced no successful Result within "
+                                + FIRST_PROGRESS_LIMIT.toSeconds() + " seconds"
+                );
+            }
+            throw new IllegalStateException(
+                    "Loaded operation made no successful progress for "
+                            + MAXIMUM_NO_PROGRESS.toSeconds() + " seconds"
+            );
+        }
+
+        private static void requireTimelyProgress(
+                int previousSucceeded,
+                long elapsedNanos,
+                long noProgressNanos
+        ) {
+            if (!progressDeadlineExceeded(
+                    previousSucceeded,
+                    elapsedNanos,
+                    noProgressNanos
+            )) {
+                return;
+            }
+            if (previousSucceeded == 0) {
+                throw new IllegalStateException(
+                        "Loaded operation first observed a successful Result "
+                                + "after " + FIRST_PROGRESS_LIMIT.toSeconds()
+                                + " seconds"
+                );
+            }
+            throw new IllegalStateException(
+                    "Loaded operation observed a success gap longer than "
+                            + MAXIMUM_NO_PROGRESS.toSeconds() + " seconds"
+            );
         }
     }
 
@@ -427,6 +611,21 @@ final class ScaleLoadedOperation {
         }
     }
 
+    record MutationCheckpoint(
+            int taskCount,
+            int succeededItems,
+            int unresolvedItems,
+            long elapsedMillis
+    ) {
+    }
+
+    record RecoverySnapshot(
+            int succeededItems,
+            int unresolvedItems,
+            long observedAtEpochMillis
+    ) {
+    }
+
     record TaskProgress(
             String label,
             String taskId,
@@ -443,7 +642,8 @@ final class ScaleLoadedOperation {
             List<TaskProgress> tasks,
             int appendBatchCount,
             long maximumNoProgressMillis,
-            int minimumConnected
+            int minimumConnected,
+            boolean postRecoveryProgress
     ) {
     }
 }

@@ -10,6 +10,7 @@ from integrations.worker_proof_support.scenario_inventory import (
     PHONE_GROUP,
     STRING_GROUP,
     canonical_100_worker_world,
+    canonical_1000_worker_world,
     inventory_coordinates,
     materialize_inventory,
 )
@@ -114,6 +115,21 @@ class ScenarioInventoryTest(unittest.TestCase):
             for group_id, records in world.items()
         }
         self.assertEqual(expected, encoded)
+
+    def test_canonical_convergence_world_spans_five_files_per_group(self) -> None:
+        world = canonical_1000_worker_world()
+        coordinates = inventory_coordinates(world)
+
+        self.assertEqual({PHONE_GROUP, STRING_GROUP}, set(world))
+        self.assertEqual(
+            [500, 500],
+            sorted(len(records) for records in world.values()),
+        )
+        for group_id in (PHONE_GROUP, STRING_GROUP):
+            self.assertEqual("workers-000.jsonl:1", coordinates[group_id][0])
+            self.assertEqual("workers-000.jsonl:100", coordinates[group_id][99])
+            self.assertEqual("workers-001.jsonl:1", coordinates[group_id][100])
+            self.assertEqual("workers-004.jsonl:100", coordinates[group_id][-1])
 
 
 def _lines(path: Path) -> list[str]:

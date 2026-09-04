@@ -12,6 +12,11 @@ import java.util.Set;
 
 final class RuntimeApiClient {
 
+    static final int WORKER_PREVIEW_LIMIT = 100;
+
+    private static final int WORKER_OBSERVATION_PAGE_SIZE = 100;
+    private static final int MAX_WORKER_OBSERVATION_SIZE = 1_000;
+
     private final JsonHttpClient http;
 
     RuntimeApiClient(JsonHttpClient http) {
@@ -24,7 +29,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/worker-groups/"
                         + segment(workerGroupId)
                         + "/workers:preview",
-                100
+                WORKER_PREVIEW_LIMIT
         );
         requireStatus(response, 200, "preview workers");
         if (JsonValues.requiredLong(response.body(), "unreadableCount") != 0) {
@@ -320,10 +325,45 @@ final class RuntimeApiClient {
 
     private Map<String, String> observeStates(
             String path,
-            Object body,
+            List<String> workerIds,
             String operation
     ) {
-        JsonHttpClient.Response response = http.send("POST", path, body);
+        List<String> requested = requireWorkerIds(workerIds);
+        Map<String, String> states = new LinkedHashMap<>();
+        for (int offset = 0;
+             offset < requested.size();
+             offset += WORKER_OBSERVATION_PAGE_SIZE) {
+            List<String> page = List.copyOf(requested.subList(
+                    offset,
+                    Math.min(
+                            requested.size(),
+                            offset + WORKER_OBSERVATION_PAGE_SIZE
+                    )
+            ));
+            Map<String, String> pageStates = observeStatePage(
+                    path,
+                    page,
+                    operation
+            );
+            if (!pageStates.keySet().equals(new LinkedHashSet<>(page))) {
+                throw JsonValues.invalid(
+                        "Worker observation identities changed"
+                );
+            }
+            page.forEach(workerId -> states.put(
+                    workerId,
+                    pageStates.get(workerId)
+            ));
+        }
+        return Collections.unmodifiableMap(states);
+    }
+
+    private Map<String, String> observeStatePage(
+            String path,
+            List<String> workerIds,
+            String operation
+    ) {
+        JsonHttpClient.Response response = http.send("POST", path, workerIds);
         requireStatus(response, 200, operation);
         Map<String, Object> raw = JsonValues.object(
                 response.body().get("statesByWorkerId"),
@@ -336,7 +376,28 @@ final class RuntimeApiClient {
             }
             states.put(workerId, text);
         });
-        return Collections.unmodifiableMap(states);
+        return states;
+    }
+
+    private static List<String> requireWorkerIds(List<String> workerIds) {
+        if (workerIds == null
+                || workerIds.isEmpty()
+                || workerIds.size() > MAX_WORKER_OBSERVATION_SIZE) {
+            throw new IllegalArgumentException(
+                    "workerIds must contain 1..1000 values"
+            );
+        }
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String workerId : workerIds) {
+            if (workerId == null
+                    || workerId.isBlank()
+                    || !unique.add(workerId)) {
+                throw new IllegalArgumentException(
+                        "workerIds must contain unique non-blank values"
+                );
+            }
+        }
+        return List.copyOf(unique);
     }
 
     private static void requireStatus(

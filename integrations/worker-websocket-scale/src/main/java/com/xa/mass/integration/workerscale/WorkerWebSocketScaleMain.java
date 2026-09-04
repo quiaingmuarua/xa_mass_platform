@@ -2,9 +2,11 @@ package com.xa.mass.integration.workerscale;
 
 import com.xa.mass.integration.workerscale.ScaleApiClient.LabWorker;
 import com.xa.mass.integration.workerscale.ScaleEvidence.ScaleTopology;
+import com.xa.mass.integration.workerscale.ScaleLoadedOperation.LoadedOperation;
 import com.xa.mass.integration.workerscale.ScaleLoadedOperation.LoadedOperationResult;
+import com.xa.mass.integration.workerscale.ScaleLoadedOperation.MutationCheckpoint;
+import com.xa.mass.integration.workerscale.ScaleLoadedOperation.RecoverySnapshot;
 import com.xa.mass.integration.workerscale.ScaleLoadedOperation.TaskProgress;
-import com.xa.mass.integration.workerscale.ScaleOptions.Phase;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Public-API proof for one phase of the loaded Java WebSocket scale lane. */
+/** Public-API proof for one stage of the loaded Java WebSocket scale lane. */
 public final class WorkerWebSocketScaleMain {
 
     private static final System.Logger LOG = System.getLogger(
@@ -32,23 +34,14 @@ public final class WorkerWebSocketScaleMain {
         long startedAt = System.currentTimeMillis();
         Map<String, Object> summary = baseSummary(options, startedAt);
         try {
-            ScaleApiClient api = new ScaleApiClient(
-                    new ScaleHttpClient(
-                            options.labBaseUri(),
-                            options.requestTimeout()
-                    ),
-                    new ScaleHttpClient(
-                            options.serverBaseUri(),
-                            options.requestTimeout()
-                    )
-            );
+            ScaleApiClient api = createApi(options);
             ScaleTopology topology = loadAndVerifyTopology(options);
-            boolean allRunning = options.phase() == Phase.INITIAL;
+            boolean initial = options.stage().isInitialContraction();
             Map<String, String> observedIdentityByLabKey = awaitIdentityInventory(
                     options,
                     api,
                     topology,
-                    allRunning
+                    initial
             );
             Map<String, String> identityByLabKey = establishIdentityBaseline(
                     options,
@@ -56,27 +49,51 @@ public final class WorkerWebSocketScaleMain {
                     observedIdentityByLabKey
             );
 
-            int stopBatchCount = 0;
-            int stableScans = 0;
-            Convergence initialHeadroom = null;
-            if (options.phase() == Phase.INITIAL) {
-                List<String> allWorkerIds = List.copyOf(
-                        identityByLabKey.values()
-                );
-                initialHeadroom = awaitConvergence(
+            List<String> activeWorkerIds = workerIds(
+                    identityByLabKey,
+                    topology.retainedLabWorkerKeys()
+            );
+            List<String> stoppedWorkerIds = workerIds(
+                    identityByLabKey,
+                    topology.stoppedLabWorkerKeys()
+            );
+
+            StableWindow initialHeadroom = null;
+            Convergence activeConvergence = null;
+            ScaleProcessGate.GateResume gateResume = null;
+            if (initial) {
+                initialHeadroom = awaitStableWindow(
                         options,
                         api,
-                        allWorkerIds,
-                        List.of(),
-                        options.minimumInitialConverged(),
-                        "initial-headroom"
-                );
-                stableScans = verifyStableHold(
-                        options,
-                        api,
-                        allWorkerIds,
+                        List.copyOf(identityByLabKey.values()),
                         options.minimumInitialConverged()
                 );
+                gateResume = new ScaleProcessGate(options).awaitInitialHeadroom(
+                        initialHeadroom.scan().activeConnectedAndHot(),
+                        initialHeadroom.qualifyingScans(),
+                        initialHeadroom.stableMillis()
+                );
+            } else {
+                activeConvergence = awaitConvergence(
+                        options,
+                        api,
+                        activeWorkerIds,
+                        stoppedWorkerIds,
+                        options.minimumRetainedConverged(),
+                        "pre-work-convergence"
+                );
+            }
+
+            LoadedOperation loadedOperation = ScaleLoadedOperation.start(
+                    options,
+                    api,
+                    activeWorkerIds
+            );
+            MutationCheckpoint mutation = loadedOperation
+                    .awaitMutationCheckpoint(api);
+
+            int stopBatchCount = 0;
+            if (initial) {
                 stopBatchCount = stopExcessWorkers(options, api, topology);
                 observedIdentityByLabKey = awaitIdentityInventory(
                         options,
@@ -89,29 +106,46 @@ public final class WorkerWebSocketScaleMain {
                         observedIdentityByLabKey,
                         topology.retainedLabWorkerKeys()
                 );
+            } else {
+                gateResume = new ScaleProcessGate(options).awaitServerMutation(
+                        mutation.taskCount(),
+                        mutation.succeededItems(),
+                        mutation.unresolvedItems()
+                );
+                api = createApi(options);
             }
 
-            List<String> activeWorkerIds = workerIds(
+            RecoverySnapshot recovery = loadedOperation.observeAfterMutation(
+                    api,
+                    options.stage().isHardRestart()
+            );
+            if (!initial) {
+                loadedOperation.awaitRetainedConnectionsAfterServerRestart(api);
+            }
+            LoadedOperationResult operation = loadedOperation.awaitCompletion(
+                    api,
+                    recovery,
+                    options.stage().isHardRestart()
+            );
+
+            observedIdentityByLabKey = awaitIdentityInventory(
+                    options,
+                    api,
+                    topology,
+                    false
+            );
+            verifyObservedIdentities(
                     identityByLabKey,
+                    observedIdentityByLabKey,
                     topology.retainedLabWorkerKeys()
             );
-            List<String> stoppedWorkerIds = workerIds(
-                    identityByLabKey,
-                    topology.stoppedLabWorkerKeys()
+            List<String> observedActiveWorkerIds = workerIds(
+                    observedIdentityByLabKey,
+                    topology.retainedLabWorkerKeys()
             );
-            Convergence activeConvergence = awaitConvergence(
-                    options,
-                    api,
-                    activeWorkerIds,
-                    stoppedWorkerIds,
-                    options.minimumRetainedConverged(),
-                    "retained-fleet"
-            );
-            LoadedOperationResult operation = ScaleLoadedOperation.run(
-                    options,
-                    api,
-                    activeWorkerIds
-            );
+            List<String> observedAndRetainedBaselineWorkerIds =
+                    new ArrayList<>(observedActiveWorkerIds);
+            observedAndRetainedBaselineWorkerIds.addAll(stoppedWorkerIds);
             Convergence postWorkConvergence = awaitConvergence(
                     options,
                     api,
@@ -124,46 +158,71 @@ public final class WorkerWebSocketScaleMain {
             summary.put("status", "passed");
             summary.put("preparedIdentities", identityByLabKey.size());
             summary.put("retainedIdentities", activeWorkerIds.size());
+            summary.put(
+                    "observedRetainedIdentities",
+                    observedActiveWorkerIds.size()
+            );
             summary.put("stoppedIdentities", stoppedWorkerIds.size());
             summary.put(
                     "allWorkerIdSetSha256",
-                    ScaleEvidence.identityDigest(identityByLabKey.values())
+                    ScaleEvidence.identityDigest(
+                            observedAndRetainedBaselineWorkerIds
+                    )
             );
             summary.put(
                     "retainedWorkerIdSetSha256",
-                    ScaleEvidence.identityDigest(activeWorkerIds)
+                    ScaleEvidence.identityDigest(observedActiveWorkerIds)
             );
             summary.put(
                     "stoppedWorkerIdSetSha256",
                     ScaleEvidence.identityDigest(stoppedWorkerIds)
             );
             summary.put("batchStopRequestCount", stopBatchCount);
-            summary.put("stableHoldScans", stableScans);
             if (initialHeadroom != null) {
                 summary.put(
                         "initialHeadroomConnectedAndHot",
                         initialHeadroom.scan().activeConnectedAndHot()
                 );
                 summary.put(
-                        "initialHeadroomConsecutiveScans",
-                        initialHeadroom.consecutive()
+                        "initialHeadroomQualifyingScans",
+                        initialHeadroom.qualifyingScans()
+                );
+                summary.put(
+                        "initialHeadroomStableMillis",
+                        initialHeadroom.stableMillis()
                 );
             }
+            if (activeConvergence != null) {
+                summary.put(
+                        "preWorkConnectedAndHot",
+                        activeConvergence.scan().activeConnectedAndHot()
+                );
+            }
+            summary.put("mutationCheckpointTaskCount", mutation.taskCount());
             summary.put(
-                    "consecutiveRetainedConvergedScans",
-                    activeConvergence.consecutive()
+                    "mutationCheckpointSucceededItems",
+                    mutation.succeededItems()
             );
             summary.put(
-                    "retainedConnectedAndHotWorkers",
-                    activeConvergence.scan().activeConnectedAndHot()
+                    "mutationCheckpointUnresolvedItems",
+                    mutation.unresolvedItems()
             );
             summary.put(
-                    "stoppedConnectedWorkers",
-                    activeConvergence.scan().stoppedConnected()
+                    "mutationCheckpointElapsedMillis",
+                    mutation.elapsedMillis()
+            );
+            summary.put("gateWaitMillis", gateResume.waitMillis());
+            summary.put(
+                    "recoverySnapshotSucceededItems",
+                    recovery.succeededItems()
             );
             summary.put(
-                    "stoppedHotWorkers",
-                    activeConvergence.scan().stoppedHot()
+                    "recoverySnapshotUnresolvedItems",
+                    recovery.unresolvedItems()
+            );
+            summary.put(
+                    "postRecoveryProgress",
+                    operation.postRecoveryProgress()
             );
             summary.put("activeTaskCount", ScaleLoadedOperation.TASK_COUNT);
             summary.put(
@@ -211,16 +270,28 @@ public final class WorkerWebSocketScaleMain {
                     "postWorkStoppedHot",
                     postWorkConvergence.scan().stoppedHot()
             );
-            summary.put("completedAtEpochMillis", System.currentTimeMillis());
+            summary.put(
+                    "postWorkStoppedMissing",
+                    postWorkConvergence.scan().stoppedMissing()
+            );
+            long completedAt = System.currentTimeMillis();
+            summary.put(
+                    "restartAndRecoveryMillis",
+                    initial ? 0 : Math.max(
+                            0,
+                            completedAt - gateResume.resumedAtEpochMillis()
+                    )
+            );
+            summary.put("completedAtEpochMillis", completedAt);
             ScaleEvidence.writeSummary(options.summaryFile(), summary);
             LOG.log(
                     System.Logger.Level.INFO,
-                    "Worker WebSocket scale phase {0} passed: prepared={1}, "
+                    "Worker WebSocket scale stage {0} passed: prepared={1}, "
                             + "retained={2}, connectedAndHot={3}",
-                    options.phase().wireValue(),
+                    options.stage().wireValue(),
                     options.preparedWorkers(),
                     options.retainedWorkers(),
-                    activeConvergence.scan().activeConnectedAndHot()
+                    postWorkConvergence.scan().activeConnectedAndHot()
             );
         } catch (RuntimeException | Error failure) {
             summary.put("status", "failed");
@@ -234,6 +305,19 @@ public final class WorkerWebSocketScaleMain {
             }
             throw failure;
         }
+    }
+
+    private static ScaleApiClient createApi(ScaleOptions options) {
+        return new ScaleApiClient(
+                new ScaleHttpClient(
+                        options.labBaseUri(),
+                        options.requestTimeout()
+                ),
+                new ScaleHttpClient(
+                        options.serverBaseUri(),
+                        options.requestTimeout()
+                )
+        );
     }
 
     private static ScaleTopology loadAndVerifyTopology(ScaleOptions options) {
@@ -325,6 +409,7 @@ public final class WorkerWebSocketScaleMain {
         }
         Map<String, String> identities = new LinkedHashMap<>();
         Set<String> uniqueWorkerIds = new HashSet<>();
+        Set<String> requiredIdentityKeys = allRunning ? expectedKeys : retained;
         int running = 0;
         int stoppedCount = 0;
         boolean expectedStates = byLabKey.keySet().equals(expectedKeys);
@@ -356,9 +441,6 @@ public final class WorkerWebSocketScaleMain {
                 identities.put(labWorkerKey, worker.workerId());
             }
         }
-        Set<String> requiredIdentityKeys = allRunning
-                ? expectedKeys
-                : retained;
         boolean complete = byLabKey.size() == options.preparedWorkers()
                 && identities.keySet().containsAll(requiredIdentityKeys)
                 && expectedStates;
@@ -376,7 +458,7 @@ public final class WorkerWebSocketScaleMain {
             ScaleTopology topology,
             Map<String, String> observedIdentityByLabKey
     ) {
-        if (options.phase() == Phase.INITIAL) {
+        if (options.stage().isInitialContraction()) {
             if (observedIdentityByLabKey.size() != options.preparedWorkers()) {
                 throw new IllegalStateException(
                         "Initial Lab inventory did not expose every workerId"
@@ -440,7 +522,7 @@ public final class WorkerWebSocketScaleMain {
     ) {
         ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
                 "atEpochMillis", System.currentTimeMillis(),
-                "phase", options.phase().wireValue(),
+                "stage", options.stage().wireValue(),
                 "event", "identity-set-established",
                 "workerCount", identityByLabKey.size(),
                 "workerIdSetSha256",
@@ -460,7 +542,7 @@ public final class WorkerWebSocketScaleMain {
             batches++;
             ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
                     "atEpochMillis", System.currentTimeMillis(),
-                    "phase", options.phase().wireValue(),
+                    "stage", options.stage().wireValue(),
                     "event", "lab-stop-batch-accepted",
                     "batchOrdinal", batches,
                     "acceptedCount", batch.size()
@@ -524,7 +606,8 @@ public final class WorkerWebSocketScaleMain {
                         >= minimumConverged
                         && latest.activeHotWithoutConnection() == 0
                         && latest.stoppedConnected() == 0
-                        && latest.stoppedHot() == 0;
+                        && latest.stoppedHot() == 0
+                        && latest.stoppedMissing() == 0;
                 consecutive = converged ? consecutive + 1 : 0;
                 if (consecutive >= REQUIRED_CONSECUTIVE_SCANS) {
                     return new Convergence(latest, consecutive);
@@ -546,42 +629,67 @@ public final class WorkerWebSocketScaleMain {
         throw timeout;
     }
 
-    private static int verifyStableHold(
+    private static StableWindow awaitStableWindow(
             ScaleOptions options,
             ScaleApiClient api,
             List<String> activeWorkerIds,
             int minimumConverged
     ) {
-        if (options.stableHold().isZero()) {
-            return 0;
-        }
-        long started = System.nanoTime();
+        long deadline = deadline(options.maximumConvergenceWait());
         long holdNanos = options.stableHold().toNanos();
+        long stableSince = -1;
         int scans = 0;
-        while (true) {
-            Scan observed = scan(
-                    options,
-                    api,
-                    activeWorkerIds,
-                    List.of(),
-                    "initial-stable-hold"
-            );
-            scans++;
-            if (observed.activeConnectedAndHot() < minimumConverged
-                    || observed.activeHotWithoutConnection() != 0) {
-                throw new IllegalStateException(
-                        "Initial Worker headroom fell below the stable threshold"
+        Scan latest = null;
+        RuntimeException latestFailure = null;
+        do {
+            try {
+                latest = scan(
+                        options,
+                        api,
+                        activeWorkerIds,
+                        List.of(),
+                        "initial-headroom-window"
                 );
+                boolean qualifies = latest.activeConnectedAndHot()
+                        >= minimumConverged
+                        && latest.activeHotWithoutConnection() == 0;
+                long now = System.nanoTime();
+                if (qualifies) {
+                    if (stableSince < 0) {
+                        stableSince = now;
+                        scans = 1;
+                    } else {
+                        scans++;
+                    }
+                    long stableNanos = now - stableSince;
+                    if (scans >= REQUIRED_CONSECUTIVE_SCANS
+                            && stableNanos >= holdNanos) {
+                        return new StableWindow(
+                                latest,
+                                scans,
+                                Duration.ofNanos(stableNanos).toMillis()
+                        );
+                    }
+                } else {
+                    stableSince = -1;
+                    scans = 0;
+                }
+            } catch (RuntimeException error) {
+                latestFailure = error;
+                stableSince = -1;
+                scans = 0;
+                appendFailure(options, "initial-headroom-window", error);
             }
-            long elapsed = System.nanoTime() - started;
-            if (elapsed >= holdNanos) {
-                return scans;
-            }
-            sleep(min(
-                    options.scanInterval(),
-                    Duration.ofNanos(holdNanos - elapsed)
-            ));
+            sleep(options.scanInterval());
+        } while (System.nanoTime() < deadline);
+        IllegalStateException timeout = new IllegalStateException(
+                "Initial Worker headroom did not sustain its stable window "
+                        + "(latest=" + latest + ")"
+        );
+        if (latestFailure != null) {
+            timeout.addSuppressed(latestFailure);
         }
+        throw timeout;
     }
 
     private static Scan scan(
@@ -599,13 +707,14 @@ public final class WorkerWebSocketScaleMain {
                 active.connectedAndHot(),
                 active.hotWithoutConnection(),
                 stopped.connected(),
-                stopped.hot()
+                stopped.hot(),
+                stopped.missing()
         );
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("atEpochMillis", System.currentTimeMillis());
-        evidence.put("phase", options.phase().wireValue());
+        evidence.put("stage", options.stage().wireValue());
         evidence.put("event", "projection-scan");
-        evidence.put("stage", stage);
+        evidence.put("checkpoint", stage);
         evidence.put("activeWorkers", activeWorkerIds.size());
         evidence.put("activeConnected", active.connected());
         evidence.put("activeHot", active.hot());
@@ -617,6 +726,7 @@ public final class WorkerWebSocketScaleMain {
         evidence.put("stoppedWorkers", stoppedWorkerIds.size());
         evidence.put("stoppedConnected", stopped.connected());
         evidence.put("stoppedHot", stopped.hot());
+        evidence.put("stoppedMissing", stopped.missing());
         ScaleEvidence.appendTimeline(options.timelineFile(), evidence);
         return scan;
     }
@@ -630,6 +740,7 @@ public final class WorkerWebSocketScaleMain {
         int hot = 0;
         int connectedAndHot = 0;
         int hotWithoutConnection = 0;
+        int missing = 0;
         for (int offset = 0;
                 offset < workerIds.size();
                 offset += OBSERVATION_CHUNK_SIZE) {
@@ -647,7 +758,11 @@ public final class WorkerWebSocketScaleMain {
             );
             for (String workerId : chunk) {
                 boolean isConnected = "connected".equals(network.get(workerId));
-                boolean isHot = isHot(scheduling.get(workerId));
+                String schedulingState = scheduling.get(workerId);
+                boolean isHot = isHot(schedulingState);
+                if ("missing".equals(schedulingState)) {
+                    missing++;
+                }
                 if (isConnected) {
                     connected++;
                 }
@@ -665,7 +780,8 @@ public final class WorkerWebSocketScaleMain {
                 connected,
                 hot,
                 connectedAndHot,
-                hotWithoutConnection
+                hotWithoutConnection,
+                missing
         );
     }
 
@@ -687,7 +803,7 @@ public final class WorkerWebSocketScaleMain {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("proofId", options.proofId());
         result.put("lane", "worker-websocket-scale");
-        result.put("phase", options.phase().wireValue());
+        result.put("stage", options.stage().wireValue());
         result.put("preparedWorkers", options.preparedWorkers());
         result.put("retainedWorkers", options.retainedWorkers());
         result.put(
@@ -709,9 +825,9 @@ public final class WorkerWebSocketScaleMain {
     ) {
         ScaleEvidence.appendTimeline(options.timelineFile(), Map.of(
                 "atEpochMillis", System.currentTimeMillis(),
-                "phase", options.phase().wireValue(),
+                "stage", options.stage().wireValue(),
                 "event", "observation-failed",
-                "stage", stage,
+                "checkpoint", stage,
                 "failure", safeMessage(failure)
         ));
     }
@@ -722,10 +838,6 @@ public final class WorkerWebSocketScaleMain {
 
     private static long deadline(Duration duration) {
         return System.nanoTime() + duration.toNanos();
-    }
-
-    private static Duration min(Duration first, Duration second) {
-        return first.compareTo(second) <= 0 ? first : second;
     }
 
     private static void sleep(Duration duration) {
@@ -759,7 +871,7 @@ public final class WorkerWebSocketScaleMain {
         Map<String, Object> timeline(ScaleOptions options) {
             return Map.of(
                     "atEpochMillis", System.currentTimeMillis(),
-                    "phase", options.phase().wireValue(),
+                    "stage", options.stage().wireValue(),
                     "event", "identity-inventory-observed",
                     "observedWorkers", observedWorkers,
                     "runningWorkers", runningWorkers,
@@ -774,7 +886,8 @@ public final class WorkerWebSocketScaleMain {
             int connected,
             int hot,
             int connectedAndHot,
-            int hotWithoutConnection
+            int hotWithoutConnection,
+            int missing
     ) {
     }
 
@@ -784,10 +897,18 @@ public final class WorkerWebSocketScaleMain {
             int activeConnectedAndHot,
             int activeHotWithoutConnection,
             int stoppedConnected,
-            int stoppedHot
+            int stoppedHot,
+            int stoppedMissing
     ) {
     }
 
     private record Convergence(Scan scan, int consecutive) {
+    }
+
+    private record StableWindow(
+            Scan scan,
+            int qualifyingScans,
+            long stableMillis
+    ) {
     }
 }

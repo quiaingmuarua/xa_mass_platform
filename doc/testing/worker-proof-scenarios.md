@@ -35,11 +35,12 @@ Restart phase:
 
 Capability-specific output values remain Owner-test claims.
 
-## Convergence Health: 100 Workers, 1000 Items
+## Convergence Health: 1,000 Workers, 1,000 Items
 
-Both scenarios use 2 Groups x 50 Workers, one WebSocket Adapter and isolated
-Redis/Lab state. They begin from the exact same canonical Inventory as
-Correctness, then apply lane-owned mutations and capability additions.
+Both scenarios use 2 Groups x 500 Workers, one WebSocket Adapter and isolated
+Redis/Lab state. They use a convergence-owned canonical Inventory produced by
+the same strict materializer as Correctness, then apply lane-owned mutations
+and capability additions.
 
 Their Scenario assembly gives each current Endpoint a bounded 600-attempt,
 500-millisecond reconnect budget. This exists so one deliberate Server restart
@@ -65,22 +66,22 @@ All managed ON_DEMAND wave Items use empty rules. Property interpretation is
 proved separately by one finite PRECOMPUTED Task so the two allocation
 mechanisms are not blended into one witness.
 
-1. Baseline all 100 Workers connected and HOT, then stop the directed String
+1. Baseline all 1,000 Workers connected and HOT, then stop the directed String
    Worker before any workload and keep it unavailable through wave six.
 2. Stop five other Workers per Group; require disconnected plus recovery/cold,
    then restore them.
 3. Stop two Workers per Group, replace `convergenceSlot`, start them, and
    observe the refreshed Properties projection.
-4. Stop the other 49 String Workers and observe all 50 unavailable. Submit wave
-   one: Phone work completes while String work stays due; restore only those 49
-   and close it.
+4. Stop the other 499 String Workers and observe all 500 unavailable. Submit
+   wave one: Phone work completes while String work stays due; restore only
+   those 499 and close it.
 5. Complete waves two through five on the recovered world.
 6. Reconfirm the slot-C String Worker is locally STOPPED, Adapter disconnected
    and Kernel scheduling-unavailable. Submit one finite PRECOMPUTED Task whose
    PRECOMPUTED Candidate Rule requires `worker.convergenceSlot=C`, prove its Item remains
    unobserved, then restart Runtime Server
    while Scenario Host stays alive.
-7. Reconnect the other 99 stable identities and require them HOT while the
+7. Reconnect the other 999 stable identities and require them HOT while the
    directed Worker remains stopped. Replace its slot, start it exactly once,
    require its original identity plus connected/HOT/canonical Property, then
    close the parked witness and final stable wave. Fix `700 offered / 70
@@ -98,11 +99,11 @@ remains Item one and is the only execution Item promoted to a named oracle.
    current `labSlot`. Only the target initially matches; wait until its first
    Handler enters the checkpoint before killing the Host. This keeps unrelated
    String executions out of the process-loss boundary.
-3. Kill Scenario Host, then require the 100-worker world to become disconnected
+3. Kill Scenario Host, then require the 1,000-Worker world to become disconnected
    and leave serviceable HOT state.
-4. While Host is down, change one backup Worker's `labSlot`; restart 99 Workers
+4. While Host is down, change one backup Worker's `labSlot`; restart 999 Workers
    while excluding the original target.
-5. Require all 99 identities to reconnect unchanged, then require the canonical
+5. Require all 999 identities to reconnect unchanged, then require the canonical
    backup Property and that explicitly targeted backup's HOT state. The proof
    does not require every recovered Worker to be simultaneously HOT while due
    work is present. Finish the original in-flight checkpoint witness, submit
@@ -157,24 +158,29 @@ iterations of the fixed single-Worker and Triad scenarios.
 ```text
 World       1 Group x 15,000 identities; 10,000 active after contraction
 Topology    WebSocket, one Adapter, one Java 21 Host
-Workload    ten same-Group Tasks x 5,000 Items, repeated after restart
-Mutation    deterministic 5,000-run stop, then one Server restart; Host retained
-Oracle      10 terminal Tasks + 50,000 exact exports per phase,
+Workload    four stages x ten same-Group Tasks x 5,000 Items
+Mutation    loaded 5,000-run stop, one SIGTERM, then two SIGKILL; Host retained
+Oracle      40 terminal Tasks + 200,000 exact exports,
             >= 9,900 active connected-and-HOT after drain, plus Linux resources
 ```
 
-The shared Inventory materializer generates 150 JSONL files of 100 Workers.
+The shared Inventory materializer generates 150 JSONL files of 100 records.
 The lane prepares all 15,000 identities, holds at least 14,800
 connected-and-HOT for a stable window, and stops the final 5,000 coordinates
-without deleting identity. It then drains ten fully seeded 5,000-Item Tasks on
-the retained Fleet. During work it requires the 9,900 connection threshold but
-not HOT; after drain it re-establishes connected-and-HOT and rejects serviceable
-state for the stopped set. It restarts Server once without another Prepare and
-repeats the complete workload. It records Task progress, three identity-set
-digests, RSS, CPU, native-thread and file-descriptor evidence.
+without deleting identity while ten fully seeded 5,000-Item Tasks are active.
+Three later loaded stages cross one graceful and two hard Server restarts. Each
+mutation is admitted only while all ten Tasks are nonterminal, 1..25,000 Items
+have succeeded and at least 25,000 remain unresolved. During work the lane
+requires the 9,900 connection threshold but not HOT outside an intentional
+Server-down/reconnect interval; after each drain it re-establishes
+connected-and-HOT and rejects connected, HOT or missing state for the stopped
+baseline set. Hard recovery must expose backlog in its first Result observation
+and then make new progress. No stage starts Workers or performs Prepare. The
+lane records Task progress, three identity-set digests, RSS, CPU, native-thread and
+file-descriptor evidence, including stable resource drift across all recoveries.
 
 This is a resource/capacity claim. It does not repeat the 100-Worker correctness
-oracle, inject the 100-Worker fault matrix, or claim Task fairness, completion
+oracle, inject the 1,000-Worker fault matrix, or claim Task fairness, completion
 order, throughput or latency.
 
 ## Excluded Products
@@ -187,7 +193,7 @@ The scenarios deliberately do not multiply:
   topology required by the claim is used.
 - every chaos action against every workload mode; deterministic mutations are
   assigned to one health scenario.
-- 1,000 Workers as an intermediate scale; it adds neither the 100-Worker
-  convergence claim nor the 10k resource boundary.
+- treating the 1,000-Worker convergence world as a resource or throughput
+  result; Linux resource boundaries remain owned by the separate 10k lane.
 - large TaskItem counts in Correctness or Convergence merely for scale theater;
-  only the dedicated capacity lane owns the two 50,000-Item loaded operations.
+  only the dedicated capacity lane owns the four 50,000-Item loaded operations.

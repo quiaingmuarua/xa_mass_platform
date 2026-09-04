@@ -7,8 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -24,15 +24,13 @@ final class WorkerLabConvergenceSupport {
             "extension.worker.lab.checkpoint";
     static final String DELAY_EVENT = "extension.worker.lab.delay";
     static final String FAIL_EVENT = "extension.worker.lab.fail";
+    static final int WORKERS_PER_GROUP = 500;
+    static final int WORKER_COUNT = 2 * WORKERS_PER_GROUP;
 
-    static final List<WorkerRef> PHONE_WORKERS = workers(
-            PHONE_GROUP,
-            "workers-000.jsonl"
-    );
-    static final List<WorkerRef> STRING_WORKERS = workers(
-            STRING_GROUP,
-            "workers-000.jsonl"
-    );
+    private static final int INVENTORY_FILE_SIZE = 100;
+
+    static final List<WorkerRef> PHONE_WORKERS = workers(PHONE_GROUP);
+    static final List<WorkerRef> STRING_WORKERS = workers(STRING_GROUP);
     static final List<WorkerRef> CONVERGENCE_WORKERS = java.util.stream.Stream
             .concat(PHONE_WORKERS.stream(), STRING_WORKERS.stream())
             .toList();
@@ -115,6 +113,9 @@ final class WorkerLabConvergenceSupport {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+        if (!runtimePreviewMatchesInventory(localWorkers, viewsByGroup)) {
+            return Map.of();
+        }
         Map<WorkerRef, String> candidates = new LinkedHashMap<>();
         for (WorkerRef worker : workers) {
             WorkerSnapshot local = localWorkers.get(worker);
@@ -122,11 +123,6 @@ final class WorkerLabConvergenceSupport {
                     || !"RUNNING".equals(local.runtimeState())
                     || local.workerId() == null
                     || local.workerId().isBlank()) {
-                continue;
-            }
-            WorkerView view = viewsByGroup.get(worker.groupId())
-                    .get(worker.labWorkerKey());
-            if (view == null || !local.workerId().equals(view.workerId())) {
                 continue;
             }
             candidates.put(worker, local.workerId());
@@ -144,6 +140,38 @@ final class WorkerLabConvergenceSupport {
             return Map.of();
         }
         return Collections.unmodifiableMap(candidates);
+    }
+
+    private static boolean runtimePreviewMatchesInventory(
+            Map<WorkerRef, WorkerSnapshot> localWorkers,
+            Map<String, Map<String, WorkerView>> viewsByGroup
+    ) {
+        for (Map.Entry<String, Map<String, WorkerView>> group
+                : viewsByGroup.entrySet()) {
+            long inventorySize = localWorkers.keySet().stream()
+                    .filter(worker -> group.getKey().equals(worker.groupId()))
+                    .count();
+            int expectedSampleSize = (int) Math.min(
+                    RuntimeApiClient.WORKER_PREVIEW_LIMIT,
+                    inventorySize
+            );
+            if (group.getValue().size() != expectedSampleSize) {
+                return false;
+            }
+            for (Map.Entry<String, WorkerView> sampled
+                    : group.getValue().entrySet()) {
+                WorkerSnapshot local = localWorkers.get(new WorkerRef(
+                        group.getKey(),
+                        sampled.getKey()
+                ));
+                if (local == null
+                        || local.workerId() == null
+                        || !local.workerId().equals(sampled.getValue().workerId())) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     static String awaitUnavailableScheduling(
@@ -354,9 +382,16 @@ final class WorkerLabConvergenceSupport {
         }
     }
 
-    private static List<WorkerRef> workers(String groupId, String filename) {
+    private static List<WorkerRef> workers(String groupId) {
         List<WorkerRef> workers = new ArrayList<>();
-        for (int line = 1; line <= 50; line++) {
+        for (int index = 0; index < WORKERS_PER_GROUP; index++) {
+            int fileIndex = index / INVENTORY_FILE_SIZE;
+            int line = index % INVENTORY_FILE_SIZE + 1;
+            String filename = String.format(
+                    Locale.ROOT,
+                    "workers-%03d.jsonl",
+                    fileIndex
+            );
             workers.add(new WorkerRef(groupId, filename + ":" + line));
         }
         return List.copyOf(workers);

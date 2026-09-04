@@ -16,15 +16,27 @@ _RESERVED_PROPERTIES = frozenset({"labInventoryKey", "labInventoryLine"})
 
 
 def canonical_100_worker_world() -> dict[str, tuple[dict[str, object], ...]]:
-    """Return the common two-group, 100-Worker proof baseline."""
+    """Return the two-group, 100-Worker correctness baseline."""
+    return _canonical_two_group_world(workers_per_group=50)
+
+
+def canonical_1000_worker_world() -> dict[str, tuple[dict[str, object], ...]]:
+    """Return the two-group, 1,000-Worker convergence baseline."""
+    return _canonical_two_group_world(workers_per_group=500)
+
+
+def _canonical_two_group_world(
+    *,
+    workers_per_group: int,
+) -> dict[str, tuple[dict[str, object], ...]]:
     return {
         PHONE_GROUP: _canonical_group(
             capability="libphonenumber",
-            worker_count=50,
+            worker_count=workers_per_group,
         ),
         STRING_GROUP: _canonical_group(
             capability="string-utils",
-            worker_count=50,
+            worker_count=workers_per_group,
         ),
     }
 

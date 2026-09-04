@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 record ScaleOptions(
-        Phase phase,
+        Stage stage,
         String proofId,
         URI serverBaseUri,
         URI labBaseUri,
@@ -26,12 +26,13 @@ record ScaleOptions(
         Duration requestTimeout,
         Path topologyFile,
         Path baselineFile,
+        Path gateDirectory,
         Path summaryFile,
         Path timelineFile
 ) {
 
     private static final Set<String> FIELDS = Set.of(
-            "phase",
+            "stage",
             "proof-id",
             "server-base-url",
             "lab-base-url",
@@ -49,30 +50,51 @@ record ScaleOptions(
             "request-timeout-millis",
             "topology-file",
             "baseline-file",
+            "gate-directory",
             "summary-file",
             "timeline-file"
     );
 
-    enum Phase {
-        INITIAL,
-        RECONNECTED;
+    enum Stage {
+        INITIAL_CONTRACTION("initial-contraction"),
+        GRACEFUL_RESTART("graceful-restart"),
+        HARD_RESTART_1("hard-restart-1"),
+        HARD_RESTART_2("hard-restart-2");
 
-        static Phase parse(String value) {
-            return switch (requireText(value, "phase")) {
-                case "initial" -> INITIAL;
-                case "reconnected" -> RECONNECTED;
+        private final String wireValue;
+
+        Stage(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        static Stage parse(String value) {
+            return switch (requireText(value, "stage")) {
+                case "initial-contraction" -> INITIAL_CONTRACTION;
+                case "graceful-restart" -> GRACEFUL_RESTART;
+                case "hard-restart-1" -> HARD_RESTART_1;
+                case "hard-restart-2" -> HARD_RESTART_2;
                 default -> throw new IllegalArgumentException(
-                        "phase must be initial or reconnected"
+                        "stage must be initial-contraction, graceful-restart, "
+                                + "hard-restart-1 or hard-restart-2"
                 );
             };
         }
 
         String wireValue() {
-            return name().toLowerCase(java.util.Locale.ROOT);
+            return wireValue;
+        }
+
+        boolean isInitialContraction() {
+            return this == INITIAL_CONTRACTION;
+        }
+
+        boolean isHardRestart() {
+            return this == HARD_RESTART_1 || this == HARD_RESTART_2;
         }
     }
 
     ScaleOptions {
+        java.util.Objects.requireNonNull(stage, "stage");
         if (preparedWorkers < 1 || preparedWorkers > 15_000) {
             throw new IllegalArgumentException(
                     "preparedWorkers must be in 1..15000"
@@ -111,6 +133,7 @@ record ScaleOptions(
         requirePositive(requestTimeout, "requestTimeout");
         topologyFile = absolute(topologyFile, "topologyFile");
         baselineFile = absolute(baselineFile, "baselineFile");
+        gateDirectory = absolute(gateDirectory, "gateDirectory");
         summaryFile = absolute(summaryFile, "summaryFile");
         timelineFile = absolute(timelineFile, "timelineFile");
     }
@@ -144,9 +167,9 @@ record ScaleOptions(
                 );
             }
         }
-        Phase phase = Phase.parse(required(values, "phase"));
+        Stage stage = Stage.parse(required(values, "stage"));
         return new ScaleOptions(
-                phase,
+                stage,
                 text(values, "proof-id", "worker-websocket-scale"),
                 uri(values, "server-base-url", "http://127.0.0.1:18082"),
                 uri(values, "lab-base-url", "http://127.0.0.1:18086"),
@@ -165,13 +188,14 @@ record ScaleOptions(
                 millis(
                         values,
                         "stable-hold-millis",
-                        phase == Phase.INITIAL ? 60_000 : 0
+                        stage.isInitialContraction() ? 60_000 : 0
                 ),
                 millis(values, "scan-interval-millis", 10_000),
                 millis(values, "task-result-wait-millis", 900_000),
                 millis(values, "request-timeout-millis", 30_000),
                 path(values, "topology-file"),
                 path(values, "baseline-file"),
+                path(values, "gate-directory"),
                 path(values, "summary-file"),
                 path(values, "timeline-file")
         );

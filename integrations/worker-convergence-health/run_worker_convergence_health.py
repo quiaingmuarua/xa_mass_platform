@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
     PHONE_GROUP,
     STRING_GROUP,
-    canonical_100_worker_world,
+    canonical_1000_worker_world,
     inventory_coordinates,
     materialize_inventory,
 )
@@ -36,7 +36,7 @@ SERVER_CONFIG_DIRECTORY = Path(__file__).with_name("server-config").resolve()
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
 ENDPOINT_MANAGER = "scenario-websocket"
-CANONICAL_WORLD = canonical_100_worker_world()
+CANONICAL_WORLD = canonical_1000_worker_world()
 CANONICAL_COORDINATES = inventory_coordinates(CANONICAL_WORLD)
 PHONE_WORKERS = tuple(
     (PHONE_GROUP, key)
@@ -67,7 +67,7 @@ def main() -> int:
         type=Path,
         default=REPOSITORY_ROOT / "build/worker-convergence-health-proof",
     )
-    parser.add_argument("--maximum-wait-millis", type=int, default=120_000)
+    parser.add_argument("--maximum-wait-millis", type=int, default=300_000)
     parser.add_argument("--request-timeout-millis", type=int, default=10_000)
     options = parser.parse_args()
     if not 1_000 <= options.maximum_wait_millis <= 300_000:

@@ -28,7 +28,7 @@ record TaskFaultState(
         String recoveredWorkerId
 ) {
 
-    private static final long SCHEMA_VERSION = 4L;
+    private static final long SCHEMA_VERSION = 5L;
     private static final Set<String> FIELDS = Set.of(
             "schemaVersion",
             "proofId",
@@ -47,12 +47,13 @@ record TaskFaultState(
         proofId = requireNonBlank(proofId, "proofId");
         java.util.Objects.requireNonNull(startedAt, "startedAt");
         if (workerIdsByCoordinate == null
-                || workerIdsByCoordinate.size() != 100
+                || workerIdsByCoordinate.size()
+                != WorkerLabConvergenceSupport.WORKER_COUNT
                 || workerIdsByCoordinate.entrySet().stream().anyMatch(entry ->
                 entry.getKey() == null || entry.getKey().isBlank()
                         || entry.getValue() == null || entry.getValue().isBlank())) {
             throw new IllegalArgumentException(
-                    "workerIdsByCoordinate must contain 100 identities"
+                    "workerIdsByCoordinate must contain 1000 identities"
             );
         }
         workerIdsByCoordinate = Collections.unmodifiableMap(

@@ -9,6 +9,20 @@ import org.junit.jupiter.api.Test;
 class WorkerLabConvergenceSupportTest {
 
     @Test
+    void fixesTwoFiveHundredWorkerInventoryGroups() {
+        assertThat(WorkerLabConvergenceSupport.PHONE_WORKERS).hasSize(500);
+        assertThat(WorkerLabConvergenceSupport.STRING_WORKERS).hasSize(500);
+        assertThat(WorkerLabConvergenceSupport.CONVERGENCE_WORKERS)
+                .hasSize(1000);
+        assertThat(WorkerLabConvergenceSupport.PHONE_WORKERS.get(99)
+                .labWorkerKey()).isEqualTo("workers-000.jsonl:100");
+        assertThat(WorkerLabConvergenceSupport.PHONE_WORKERS.get(100)
+                .labWorkerKey()).isEqualTo("workers-001.jsonl:1");
+        assertThat(WorkerLabConvergenceSupport.STRING_WORKERS.get(499)
+                .labWorkerKey()).isEqualTo("workers-004.jsonl:100");
+    }
+
+    @Test
     void describesOnlyMissingUnexpectedAndUnacceptedWorkerStates() {
         assertThat(WorkerLabConvergenceSupport.describeUnexpectedStates(
                 List.of("worker-1", "worker-2", "worker-3"),

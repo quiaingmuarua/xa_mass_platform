@@ -15,7 +15,7 @@ class StateConvergencePhaseStateTest {
     Path temporaryDirectory;
 
     @Test
-    void roundTripsSixWavesAndOneHundredWorkerIdentities() {
+    void roundTripsSixWavesAndOneThousandWorkerIdentities() {
         Path path = temporaryDirectory.resolve("phase/state.json");
         StateConvergencePhaseState expected = new StateConvergencePhaseState(
                 "proof-1",
@@ -34,7 +34,7 @@ class StateConvergencePhaseStateTest {
     @Test
     void rejectsIncompletePhaseState() throws Exception {
         Path path = temporaryDirectory.resolve("invalid.json");
-        Files.writeString(path, "{\"schemaVersion\":3}");
+        Files.writeString(path, "{\"schemaVersion\":4}");
 
         assertThatThrownBy(() -> StateConvergencePhaseState.load(path))
                 .isInstanceOf(IllegalStateException.class);

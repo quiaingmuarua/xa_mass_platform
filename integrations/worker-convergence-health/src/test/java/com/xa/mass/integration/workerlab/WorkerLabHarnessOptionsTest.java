@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test;
 class WorkerLabHarnessOptionsTest {
 
     @Test
+    void defaultsToTheFullRecoveryObservationBudget() {
+        WorkerLabHarnessOptions options = WorkerLabHarnessOptions.from(
+                WorkerLabArguments.parse(
+                        new String[0],
+                        WorkerLabHarnessOptions.ARGUMENT_NAMES
+                ),
+                "default-proof"
+        );
+
+        assertThat(options.maximumWaitMillis()).isEqualTo(300_000);
+    }
+
+    @Test
     void parsesCommonLaneOptionsStrictly() {
         WorkerLabArguments arguments = WorkerLabArguments.parse(
                 new String[]{

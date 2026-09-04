@@ -92,7 +92,7 @@ stable repository-wide identity.
   unavailable, changed Properties do not affect matching, Group outage leaks,
   Server restart loses due work, in-flight loss never recovers or an observed
   successful Result disappears after a later Worker loss.
-- **World:** two isolated scenarios, each 2 Groups x 50 Workers and one
+- **World:** two isolated scenarios, each 2 Groups x 500 Workers and one
   WebSocket Adapter.
 - **Workload:** ON_DEMAND managed batch calls only. State/server offers 700
   Items with 70 deterministic invalid inputs plus seven offered DELAY and FAIL
@@ -100,18 +100,20 @@ stable repository-wide identity.
   offered DELAY and FAIL Items each. Fault Item counts are offered load, not
   observed execution counts.
 - **Mutation:** deterministic stop/start, stopped-state Properties replacement,
-  full Group outage, one Server restart with the directed Worker already
-  stopped, and Scenario Host kill. After restart, 99 Workers recover before the
-  stopped Worker is changed and explicitly started once.
+  full 500-Worker Group outage, one Server restart with the directed Worker
+  already stopped, and Scenario Host kill. After restart, 999 Workers recover
+  before the stopped Worker is changed and explicitly started once.
 - **Oracle:** established Lab local state followed by independent Network and
   Scheduling convergence plus passive `results:load` observation of named
-  witnesses. Host-loss recovery requires all 99 active identities to reconnect
+  witnesses. Host-loss recovery requires all 999 active identities to reconnect
   unchanged and the explicitly targeted backup to become canonical and HOT; it
-  does not require all 99 to be simultaneously HOT while due work exists.
+  does not require all 999 to be simultaneously HOT while due work exists.
   Non-witness outcomes and Result payloads are not assertions. The retained
   Result projection is not evidence of TaskItem Score finality.
 - **Prerequisites:** Redis 7, Server and Scenario Host; each scenario owns an
   isolated scope and Lab root.
+- **Observation bound:** five minutes per awaited convergence condition,
+  matching the finite recovery-recheck budget; this is not a latency SLA.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
   background fault Result status or execution count, TaskItem Score finality
@@ -123,28 +125,33 @@ stable repository-wide identity.
   aggregate Proof Gate result.
 - **CI cost:** medium per scenario; high when run locally through `all`.
 
-Correctness and Convergence independently materialize the same canonical
-100-Worker Properties world. They share initialization mechanics, not Redis,
-processes, mutations or evidence.
+Correctness and Convergence independently materialize distinct canonical
+100-Worker and 1,000-Worker Properties worlds. They share the strict
+materializer, not Redis, processes, mutations or evidence.
 
 ## worker_websocket_scale
 
 - **Primary owner:** `:integrations:worker-websocket-scale` and its separate
   workflow.
 - **Claim:** one Java 21 Host prepares 15,000 identities, sustains at least
-  14,800 connected-and-HOT Workers, stops a deterministic 5,000-run subset,
-  then drains ten 5,000-Item Tasks on the retained 10,000-Worker world before
-  and after one Server restart while process resources remain bounded.
+  14,800 connected-and-HOT Workers, stops a deterministic 5,000-run subset
+  during loaded work, then closes four sets of ten 5,000-Item Tasks across one
+  graceful and two hard Server restarts while process resources remain stable.
 - **Failure model:** connection ceiling, platform-thread explosion, FD or
-  memory exhaustion and reconnect collapse.
+  memory exhaustion, reconnect collapse, loaded graceful-shutdown loss,
+  abrupt-process loss and recovery-time resource accumulation.
 - **World:** one Group, 15,000 registered WebSocket Worker identities, exactly
   10,000 active runs after contraction, one Adapter and one Server.
-- **Workload:** ten same-Group 5,000-Item Tasks before and after restart; all
-  Tasks are fully populated before consecutive approval.
-- **Mutation:** fifty one-shot Lab batch stops followed by one Server restart
-  with the Host retained.
+- **Workload:** four fixed stages of ten same-Group 5,000-Item Tasks; all Tasks
+  are fully populated before consecutive approval, for 40 Tasks and 200,000
+  successful Items in total.
+- **Mutation:** fifty one-shot Lab batch stops during the first loaded stage,
+  then one SIGTERM and two SIGKILL Server restarts in later loaded stages with
+  the Host retained.
 - **Oracle:** paged Network/Scheduling observations, paged Result progress,
-  exact per-Task exports, worker-ID digest and Linux process resource samples.
+  exact per-Task exports, worker-ID digests, non-missing scheduling truth for
+  every stopped baseline identity, a post-hard-restart progress fence, and
+  Linux transient plus stable process-resource samples.
 - **Prerequisites:** Linux, Java 21, Redis 7.4 and `nofile >= 65536`.
 - **Deliberate nonclaims:** exact 15,000 or 10,000 online, Task fairness, fixed
   execution ratio, completion order, throughput, latency, Handler concurrency,
@@ -153,9 +160,9 @@ processes, mutations or evidence.
 - **CI cost:** very high; nightly/manual only.
 
 The capacity lane uses the same strict Inventory materializer and 100-record
-JSONL boundary as the 100-Worker lanes. Its 15k/10k topology, scale capability
-and resource oracle are lane-owned additions rather than a second
-initialization path.
+JSONL boundary as the Correctness and Convergence lanes. Its 15k/10k topology,
+scale capability and resource oracle are lane-owned additions rather than a
+second initialization path.
 
 ## android_host
 

@@ -483,7 +483,7 @@ system.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
 - Each direct `.jsonl` child is a strict line inventory: one schema-v2 Worker
-  record per physical line, at most 100 lines per file and at most 10,000
+  record per physical line, at most 100 lines per file and at most 15,000
   records per configured Group. Every record carries
   immutable `labInventoryKey` and `labInventoryLine` Properties matching its
   physical location. `<filename>:<line>` is only the Lab-local `labWorkerKey`,
@@ -567,7 +567,11 @@ Adapter connectivity, Kernel state or schedulability.
   Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
   record identities and projected states but never business payload. Failed or
   ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
-  each deterministic scenario stops mutation injection and evaluates the
+  its fixed world is 2 Groups x 500 Workers. Exact Network and Scheduling
+  observations page the existing 100-ID Runtime boundary; Runtime Preview is
+  only a bounded per-Group sample and must not be treated as enumeration of a
+  500-Worker Group.
+  Each deterministic scenario stops mutation injection and evaluates the
   actual observed local world instead of installing a preferred final world.
   It uses managed ON_DEMAND batch calls as offered load and `results:load` only
   for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
@@ -576,15 +580,18 @@ Adapter connectivity, Kernel state or schedulability.
   Boundary.
 - Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
   It may generate one 15,000-record Scenario Group, establish connection
-  headroom, stop a deterministic 5,000-run subset, and drain ten fully seeded
-  same-Group 5,000-Item Tasks before and after one Server restart while
-  retaining the Host. Existing Runtime APIs remain bounded to 100 Worker IDs;
-  each terminal Task is exported exactly once. During work it requires at
-  least 9,900 retained connections; after drain it requires at least 9,900
-  retained connected-and-HOT Workers while the stopped set remains inactive.
-  `/proc` evidence includes RSS, CPU, native threads and file descriptors. The
-  lane does not claim exact online convergence, Task fairness, completion
-  order, Handler concurrency, throughput, latency or soak behavior.
+  headroom, stop a deterministic 5,000-run subset during loaded work, and run
+  four fixed sets of ten fully seeded same-Group 5,000-Item Tasks. One SIGTERM
+  and two SIGKILL Server restarts occur while their Tasks remain active and the
+  Host is retained. Existing Runtime APIs remain bounded to 100 Worker IDs;
+  each terminal Task is exported exactly once. Outside a planned Server-down
+  and reconnect interval, work requires at least 9,900 retained connections;
+  after drain it requires at least 9,900 retained connected-and-HOT Workers
+  while every stopped baseline identity remains present and inactive. `/proc`
+  evidence includes RSS, CPU, transient ceilings and three-sample stable thread
+  and file-descriptor checkpoints. The lane does not claim exact online
+  convergence, Task fairness, completion order, Handler concurrency,
+  throughput, latency or soak behavior.
 - Worker Correctness inputs are caller-owned local files. Its perfect-world
   proof uses managed batch `items:call`, fixes exact Item statuses and treats
   Result payload as opaque. The frontend separately turns lines into ordinary

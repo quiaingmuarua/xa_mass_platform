@@ -327,17 +327,31 @@ final class WorkerTaskFaultConvergence {
                             "hostState", "offline"
                     )
             );
-            evidence.writeSummary("succeeded", Map.of(
-                    "targetWorkerId", state.targetWorkerId(),
-                    "recoveredWorkerId", state.recoveredWorkerId(),
-                    "offeredItemCount", 300,
-                    "invalidInputCount", 30,
-                    "offeredDelayItemCount", 3,
-                    "offeredFailItemCount", 3,
-                    "convergedWitnessCount", 5,
-                    "checkpointMessageId", state.checkpointMessageId(),
-                    "executionFaultObserved", true,
-                    "successfulResultRetainedAfterWorkerLoss", true
+            evidence.writeSummary("succeeded", Map.ofEntries(
+                    Map.entry(
+                            "workerCount",
+                            state.workerIdsByCoordinate().size()
+                    ),
+                    Map.entry(
+                            "recoveredActiveWorkerCount",
+                            state.workerIdsByCoordinate().size() - 1
+                    ),
+                    Map.entry("targetWorkerId", state.targetWorkerId()),
+                    Map.entry("recoveredWorkerId", state.recoveredWorkerId()),
+                    Map.entry("offeredItemCount", 300),
+                    Map.entry("invalidInputCount", 30),
+                    Map.entry("offeredDelayItemCount", 3),
+                    Map.entry("offeredFailItemCount", 3),
+                    Map.entry("convergedWitnessCount", 5),
+                    Map.entry(
+                            "checkpointMessageId",
+                            state.checkpointMessageId()
+                    ),
+                    Map.entry("executionFaultObserved", true),
+                    Map.entry(
+                            "successfulResultRetainedAfterWorkerLoss",
+                            true
+                    )
             ));
         } catch (RuntimeException error) {
             writeFailure(evidence, "result-retention", error);
@@ -359,7 +373,10 @@ final class WorkerTaskFaultConvergence {
 
     private static void requireBaselineWorld(WorkerLabControlClient lab) {
         List<WorkerSnapshot> workers = lab.workers();
-        require(workers.size() == 100, "Task-fault world must contain 100 Workers");
+        require(
+                workers.size() == WorkerLabConvergenceSupport.WORKER_COUNT,
+                "Task-fault world must contain 1000 Workers"
+        );
         Map<WorkerRef, WorkerSnapshot> inventory =
                 WorkerLabConvergenceSupport.requireInventory(
                         lab,

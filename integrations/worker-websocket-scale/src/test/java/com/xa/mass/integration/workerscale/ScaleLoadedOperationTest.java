@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +28,8 @@ class ScaleLoadedOperationTest {
     Path temporaryDirectory;
 
     private final AtomicInteger createdTasks = new AtomicInteger();
-    private final AtomicInteger finalTaskLoadRequests = new AtomicInteger();
+    private final AtomicBoolean completeTasks = new AtomicBoolean();
+    private final AtomicInteger disconnectedNetworkScans = new AtomicInteger();
     private final Map<String, List<String>> messageIdsByTask =
             new LinkedHashMap<>();
     private final List<String> operations = new ArrayList<>();
@@ -63,13 +65,32 @@ class ScaleLoadedOperationTest {
     @Test
     void fillsTenTasksBeforeApprovalAndAllowsAnyCompletionOrder()
             throws IOException {
+        ScaleLoadedOperation.LoadedOperation operation =
+                ScaleLoadedOperation.start(
+                        options(100),
+                        client,
+                        List.of("worker-a")
+                );
+        ScaleLoadedOperation.MutationCheckpoint checkpoint =
+                operation.awaitMutationCheckpoint(client);
+
+        assertThat(checkpoint.taskCount()).isEqualTo(10);
+        assertThat(checkpoint.succeededItems()).isEqualTo(100);
+        assertThat(checkpoint.unresolvedItems()).isEqualTo(900);
+        assertThat(operations).noneMatch(value -> value.startsWith("export-"));
+
+        ScaleLoadedOperation.RecoverySnapshot recovery =
+                operation.observeAfterMutation(client, true);
+        disconnectedNetworkScans.set(1);
+        operation.awaitRetainedConnectionsAfterServerRestart(client);
+        completeTasks.set(true);
         ScaleLoadedOperation.LoadedOperationResult result =
-                ScaleLoadedOperation.run(options(100), client, List.of("worker-a"));
+                operation.awaitCompletion(client, recovery, true);
 
         assertThat(createdTasks).hasValue(10);
         assertThat(operations.indexOf("approve-task-01")).isEqualTo(20);
         assertThat(operations.subList(0, 20))
-                .allMatch(operation -> !operation.startsWith("approve-"));
+                .allMatch(entry -> !entry.startsWith("approve-"));
         for (int ordinal = 1; ordinal <= 10; ordinal++) {
             String taskId = String.format("task-%02d", ordinal);
             assertThat(operations).containsOnlyOnce("export-" + taskId);
@@ -81,6 +102,14 @@ class ScaleLoadedOperationTest {
                 });
         assertThat(result.appendBatchCount()).isEqualTo(10);
         assertThat(result.minimumConnected()).isEqualTo(1);
+        assertThat(result.postRecoveryProgress()).isTrue();
+        assertThat(disconnectedNetworkScans).hasValue(0);
+        assertThat(operations.stream().filter(value -> value.startsWith("create-")))
+                .hasSize(10);
+        assertThat(operations.stream().filter(value -> value.startsWith("append-")))
+                .hasSize(10);
+        assertThat(operations.stream().filter(value -> value.startsWith("approve-")))
+                .hasSize(10);
 
         List<Map<String, Object>> timeline = java.nio.file.Files.readAllLines(
                 options(100).timelineFile()
@@ -122,11 +151,29 @@ class ScaleLoadedOperationTest {
     }
 
     @Test
+    void hardRestartRejectsAFirstSnapshotWithoutBacklog() {
+        ScaleLoadedOperation.LoadedOperation operation =
+                ScaleLoadedOperation.start(
+                        options(100),
+                        client,
+                        List.of("worker-a")
+                );
+        operation.awaitMutationCheckpoint(client);
+        completeTasks.set(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> operation.observeAfterMutation(client, true)
+        ).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("resumed after the loaded operation completed");
+    }
+
+    @Test
     void fixedProductionShapeIsTenTasksWithFiveThousandItemsEach() {
         ScaleOptions defaults = ScaleOptions.parse(new String[]{
-                "--phase=initial",
+                "--stage=initial-contraction",
                 "--topology-file=" + temporaryDirectory.resolve("topology.json"),
                 "--baseline-file=" + temporaryDirectory.resolve("baseline.json"),
+                "--gate-directory=" + temporaryDirectory.resolve("gate"),
                 "--summary-file=" + temporaryDirectory.resolve("summary.json"),
                 "--timeline-file=" + temporaryDirectory.resolve("timeline.jsonl")
         });
@@ -154,7 +201,7 @@ class ScaleLoadedOperationTest {
 
     private ScaleOptions options(int itemsPerTask) {
         return new ScaleOptions(
-                ScaleOptions.Phase.INITIAL,
+                ScaleOptions.Stage.INITIAL_CONTRACTION,
                 "proof-a",
                 baseUri(),
                 baseUri(),
@@ -167,11 +214,12 @@ class ScaleLoadedOperationTest {
                 itemsPerTask,
                 Duration.ofSeconds(10),
                 Duration.ZERO,
-                Duration.ofSeconds(10),
+                Duration.ofMillis(10),
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(2),
                 temporaryDirectory.resolve("topology.json"),
                 temporaryDirectory.resolve("baseline.json"),
+                temporaryDirectory.resolve("gate"),
                 temporaryDirectory.resolve("summary.json"),
                 temporaryDirectory.resolve("timeline.jsonl")
         );
@@ -184,8 +232,14 @@ class ScaleLoadedOperationTest {
     private void networkObservation(HttpExchange exchange) throws IOException {
         List<Object> requested = parseArray(exchange);
         Map<String, Object> states = new LinkedHashMap<>();
+        boolean disconnected = disconnectedNetworkScans.getAndUpdate(
+                remaining -> Math.max(0, remaining - 1)
+        ) > 0;
         for (Object workerId : requested) {
-            states.put((String) workerId, "connected");
+            states.put(
+                    (String) workerId,
+                    disconnected ? "disconnected" : "connected"
+            );
         }
         respondJson(exchange, 200, Map.of("statesByWorkerId", states));
     }
@@ -226,10 +280,9 @@ class ScaleLoadedOperationTest {
     private void taskPreview(HttpExchange exchange) throws IOException {
         List<Object> entries = new ArrayList<>();
         for (String taskId : messageIdsByTask.keySet()) {
-            String scoreBand = "task-10".equals(taskId)
-                    && finalTaskLoadRequests.get() <= 1
-                    ? "running-visible"
-                    : "terminal";
+            String scoreBand = completeTasks.get()
+                    ? "terminal"
+                    : "running-visible";
             entries.add(taskPreviewEntry(taskId, scoreBand));
         }
         respondJson(exchange, 200, Map.of(
@@ -268,12 +321,15 @@ class ScaleLoadedOperationTest {
     private void loadResults(HttpExchange exchange, String taskId)
             throws IOException {
         List<Object> requested = parseArray(exchange);
-        boolean succeeded = !"task-10".equals(taskId)
-                || finalTaskLoadRequests.incrementAndGet() > 1;
+        List<String> taskMessageIds = messageIdsByTask.get(taskId);
+        int checkpointSuccesses = Math.max(1, taskMessageIds.size() / 10);
         Map<String, Object> response = new LinkedHashMap<>();
         for (Object raw : requested) {
+            String messageId = (String) raw;
+            boolean succeeded = completeTasks.get()
+                    || taskMessageIds.indexOf(messageId) < checkpointSuccesses;
             response.put(
-                    (String) raw,
+                    messageId,
                     succeeded
                             ? Map.of(
                                     "status", "succeeded",

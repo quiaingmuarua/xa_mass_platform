@@ -42,7 +42,9 @@ final class ConvergenceTestData {
 
     static Map<String, String> workerIds() {
         Map<String, String> values = new LinkedHashMap<>();
-        for (int index = 1; index <= 100; index++) {
+        for (int index = 1;
+             index <= WorkerLabConvergenceSupport.WORKER_COUNT;
+             index++) {
             values.put("coordinate-" + index, "worker-" + index);
         }
         return Map.copyOf(values);

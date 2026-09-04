@@ -143,7 +143,7 @@
         "worker_correctness",
         "worker_convergence_health"
       ],
-      "reason": "The shared 100-Worker materializer defines the common Correctness and Convergence initial world; the separate 10k workflow retains its own capacity execution."
+      "reason": "The shared strict materializer defines the separate 100-Worker Correctness and 1,000-Worker Convergence worlds; the 10k workflow retains its own capacity execution."
     },
     {
       "path": "integrations/worker-convergence-health/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",

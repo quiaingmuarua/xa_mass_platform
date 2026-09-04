@@ -144,6 +144,14 @@ final class ScaleEvidence {
         writeJson(path, new LinkedHashMap<>(value));
     }
 
+    static void writeExclusive(Path path, Map<String, Object> value) {
+        writeJson(path, new LinkedHashMap<>(value), false);
+    }
+
+    static Map<String, Object> readObject(Path path, String owner) {
+        return readJson(path, owner);
+    }
+
     private static Map<String, Object> readJson(Path path, String owner) {
         try {
             return Jsons.parseObject(Files.readString(
@@ -167,6 +175,14 @@ final class ScaleEvidence {
     }
 
     private static void writeJson(Path path, Object value) {
+        writeJson(path, value, true);
+    }
+
+    private static void writeJson(
+            Path path,
+            Object value,
+            boolean replaceExisting
+    ) {
         Path temporary = null;
         try {
             Path parent = path.getParent();
@@ -184,12 +200,20 @@ final class ScaleEvidence {
                     StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING
             );
-            Files.move(
-                    temporary,
-                    path,
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING
-            );
+            if (replaceExisting) {
+                Files.move(
+                        temporary,
+                        path,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            } else {
+                Files.move(
+                        temporary,
+                        path,
+                        StandardCopyOption.ATOMIC_MOVE
+                );
+            }
             temporary = null;
         } catch (IOException error) {
             throw new IllegalStateException("Could not write scale evidence", error);
