@@ -143,7 +143,7 @@
         "worker_correctness",
         "worker_convergence_health"
       ],
-      "reason": "The shared strict materializer defines the separate 100-Worker Correctness and 1,000-Worker Convergence worlds; the 10k workflow retains its own capacity execution."
+      "reason": "The shared strict materializer defines the separate Correctness and Convergence worlds; Worker Loaded Capacity and Recovery Stability consumes it through its own nightly workflow."
     },
     {
       "path": "integrations/worker-convergence-health/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",
@@ -154,11 +154,11 @@
       "reason": "Convergence code owns state/server and in-flight-loss claims through public observations."
     },
     {
-      "path": "integrations/worker-websocket-scale/src/main/java/com/xa/mass/integration/workerscale/WorkerWebSocketScaleMain.java",
+      "path": "integrations/worker-loaded-recovery/src/main/java/com/xa/mass/integration/workerloadedrecovery/WorkerLoadedRecoveryMain.java",
       "lanes": [
         "jvm_contracts"
       ],
-      "reason": "The 10k implementation remains a separately scheduled capacity proof while compiling in JVM Contracts."
+      "reason": "Worker Loaded Capacity and Recovery Stability remains a separately scheduled high-cost proof while compiling in JVM Contracts."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",

@@ -163,10 +163,10 @@ those owners.
   deterministic mutations and named Task
   witnesses to Adapter and Kernel convergence through public HTTP boundaries;
   its 1,000 Items are offered load rather than an all-success claim. The
-  independent Worker WebSocket Scale lane prepares 15,000 Java Workers,
-  contracts to a 10,000-Worker loaded fleet, completes 200,000 Items across one
-  graceful and two hard Server restarts, and checks stable resource bounds
-  without claiming throughput or latency.
+  independent Worker Loaded Capacity + Recovery Stability proof prepares
+  15,000 Java Workers, contracts to a 10,000-Worker loaded fleet, completes
+  200,000 Items across one graceful and two hard Server restarts, and checks
+  stable resource bounds without claiming throughput or latency.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture
@@ -241,14 +241,14 @@ Commands, prerequisites and CI selection rules live in
   :server_jvm:build \
   :integrations:worker-correctness:build \
   :integrations:worker-convergence-health:build \
-  :integrations:worker-websocket-scale:build \
+  :integrations:worker-loaded-recovery:build \
   :integrations:android-worker-proof:build
 ```
 
 Real Redis, cross-process Runtime Boundary, Worker Correctness, Worker
-Convergence Health, Worker Capacity, Android Worker Proof, real-device Android and
-frontend proofs have separate prerequisites and commands in the proof
-registry. Strict owner/capability tests fix
+Convergence Health, Worker Loaded Capacity + Recovery Stability, Android Worker
+Proof, real-device Android and frontend proofs have separate prerequisites and
+commands in the proof registry. Strict owner/capability tests fix
 structures and business values; cross-process acceptance fixes stable
 identity, count, ownership, correlation, protocol-status, and restart
 relationships without freezing evolving payloads.

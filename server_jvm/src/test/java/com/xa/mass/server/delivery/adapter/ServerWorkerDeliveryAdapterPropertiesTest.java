@@ -169,12 +169,12 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     }
 
     @Test
-    void scaleOverlayOverridesOnlyItsReportFields() {
+    void loadedRecoveryOverlayOverridesOnlyItsReportFields() {
         Path overlay = Path.of(System.getProperty(
                 "xa.mass.repository.root"
         )).resolve(
-                "integrations/worker-websocket-scale/server-config/"
-                        + "application-worker-websocket-scale.yaml"
+                "integrations/worker-loaded-recovery/server-config/"
+                        + "application-worker-loaded-recovery.yaml"
         );
         contextRunner.withInitializer(
                 new ConfigDataApplicationContextInitializer()

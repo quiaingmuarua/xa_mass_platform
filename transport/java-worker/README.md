@@ -213,6 +213,8 @@ The focused test includes 128 simultaneous local WebSockets, verifies that
 their listeners and OkHttp TaskRunner execute on virtual threads, proves the
 Dispatcher is not limited to 64 calls, and verifies Platform shutdown releases
 the shared connections and both virtual-thread Executors. The separate
-[`worker-websocket-scale`](../../integrations/worker-websocket-scale/) lane
-offers 10,000 connections and proves a 9,900 connected-and-HOT threshold across
-one Server restart; it is not a throughput or soak claim.
+[Worker Loaded Capacity + Recovery Stability](../../integrations/worker-loaded-recovery/)
+proof prepares 15,000 identities, retains 10,000 active connections, closes 40
+loaded Tasks across one graceful and two hard Server restarts, and checks
+connection, thread and file-descriptor recovery. It is not a throughput or soak
+claim.

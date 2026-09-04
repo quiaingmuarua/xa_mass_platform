@@ -885,7 +885,7 @@ DeliveryReport
           <article class="card worker">
             <span class="owner">ASSEMBLY & OBSERVATION</span>
             <h3>Finite edges</h3>
-            <p>Scenario/Android提供具体Definitions与Host；四个Integration与Frontend只通过公开API执行correctness、convergence、capacity、Android和有限诊断，不拥有Kernel truth。</p>
+            <p>Scenario/Android提供具体Definitions与Host；这些Proof Integration与Frontend只通过公开API执行Worker Correctness、Convergence Health、Loaded Capacity + Recovery Stability、Android Proof和有限诊断，不拥有Kernel truth。</p>
           </article>
         </div>
 
@@ -906,9 +906,9 @@ Deployment
 
 Proof
   Owner / Boundary
-    -> Worker Correctness
-    -> Worker Convergence Health
-    -> Worker WebSocket Capacity
+  Worker Correctness
+  Worker Convergence Health
+  Worker Loaded Capacity + Recovery Stability
   Android Host -> API 33 Android Worker Proof</pre>
 
         <div class="rule">
@@ -971,8 +971,8 @@ Proof
         <div class="grid-3" style="margin-top: 14px">
           <article class="card"><h3>Owner & Boundary</h3><p>JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime Boundary证明相邻Owner和协议拓扑。</p></article>
           <article class="card"><h3>Worker Correctness</h3><p>2 Groups × 50 Workers、100 Items全部成功，并闭合Identity、Route、Extension、Result与Host restart。</p></article>
-          <article class="card"><h3>Convergence Health</h3><p>2 Groups × 50 Workers、1000 offered Items；固定mutation与named witnesses，不把所有offered work声明为成功。</p></article>
-          <article class="card"><h3>Worker Capacity</h3><p>15,000个Prepare身份建立连接余量，收缩到10,000个活跃Worker后执行双轮有界负载，并检查Server restart和native resource边界。</p></article>
+          <article class="card"><h3>Convergence Health</h3><p>2 Groups × 500 Workers、1000 offered Items；固定mutation与named witnesses，不把所有offered work声明为成功。</p></article>
+          <article class="card"><h3>Worker Loaded Capacity + Recovery Stability</h3><p>15,000个Prepare身份建立连接余量，收缩到10,000个活跃Worker后执行四阶段共200,000 Items，并跨一次SIGTERM与两次SIGKILL检查恢复和native resource稳定性。</p></article>
           <article class="card"><h3>Android Worker Proof</h3><p>API 33单App正确性与进程丢失恢复，加三App同Group的局部故障隔离；Android不是Java Worker的重复见证。</p></article>
           <article class="card"><h3>Finite Product Lanes</h3><p>Android Host、Frontend、Runtime Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。</p></article>
         </div>
@@ -983,7 +983,7 @@ Proof
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"><b>Server Runtime</b><br>provider matrix、use case边界与assembly。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"><b>Transport Modules</b><br>Adapter、Worker Core、Java与Android physical implementations。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/scenario_workers_jvm/README.md"><b>Scenario Worker Lab</b><br>persistent inventory、显式Host lifecycle与local mutation边界。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/worker-proof-scenarios.md"><b>Worker Proof Scenarios</b><br>Correctness、Convergence、Capacity与Android固定世界。</a>
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/worker-proof-scenarios.md"><b>Worker Proof Scenarios</b><br>Correctness、Convergence Health、Loaded Recovery与Android固定世界。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"><b>Proof Lanes</b><br>每条CI lane究竟证明什么，以及不证明什么。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/AGENTS.md"><b>Agent Change Contract</b><br>修改代码时必须保持的owner与negative guards。</a>
         </div>

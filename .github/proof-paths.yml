@@ -12,7 +12,7 @@ jvm_contracts:
   - 'transport/netty-adapter/**'
   - 'integrations/worker-correctness/**'
   - 'integrations/worker-convergence-health/**'
-  - 'integrations/worker-websocket-scale/**'
+  - 'integrations/worker-loaded-recovery/**'
   - 'build.gradle'
   - 'settings.gradle'
   - 'gradle.properties'

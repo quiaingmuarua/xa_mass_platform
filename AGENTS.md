@@ -507,7 +507,8 @@ system.
   Lab desired/runtime state is local observation, never Adapter or Kernel truth.
   The Host binds this listener before starting outbound Worker connections and
   begins serving only after initial startup completes, so the configured port
-  remains owned even when a scale lane widens the OS ephemeral port range.
+  remains owned even when the loaded-recovery proof widens the OS ephemeral
+  port range.
 - Atomic Worker file replacement fails closed when the filesystem cannot honor
   `ATOMIC_MOVE`. A start issued while the Manager's previous stop is still
   converging is a conflict; callers observe `STOPPED` before retrying.
@@ -578,7 +579,9 @@ Adapter connectivity, Kernel state or schedulability.
   offered Items to succeed, count `FAILED` as a successful witness, poll
   `results:export`, or repeat PRECOMPUTED and topology claims owned by Runtime
   Boundary.
-- Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
+- Worker Loaded Capacity + Recovery Stability is a separate nightly/manual
+  Linux proof of sustained loaded operation, repeated Server recovery and
+  process-resource stability.
   It may generate one 15,000-record Scenario Group, establish connection
   headroom, stop a deterministic 5,000-run subset during loaded work, and run
   four fixed sets of ten fully seeded same-Group 5,000-Item Tasks. One SIGTERM

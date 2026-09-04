@@ -1,0 +1,82 @@
+name: Worker Loaded Capacity + Recovery Stability
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-loaded-recovery
+  cancel-in-progress: false
+
+env:
+  XA_MASS_REDIS_EPHEMERAL: "true"
+
+jobs:
+  worker-loaded-recovery:
+    name: Worker Loaded Capacity + Recovery Stability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.x"
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install Python proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Configure local connection port range
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
+      - name: Verify loaded recovery owner contracts
+        run: |
+          ./gradlew --no-daemon \
+            :transport:java-worker:test \
+            :scenario_workers_jvm:test \
+            :integrations:worker-loaded-recovery:test
+          python -m unittest \
+            integrations.worker_proof_support.test_scenario_inventory
+          python -m unittest discover \
+            -s integrations/worker-loaded-recovery \
+            -p 'test_*.py'
+      - name: Run Worker Loaded Capacity + Recovery Stability
+        run: |
+          python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py \
+            --prepared-workers 15000 \
+            --retained-workers 10000 \
+            --minimum-initial-converged 14800 \
+            --minimum-retained-converged 9900 \
+            --workload-items-per-task 5000 \
+            --redis-url redis://127.0.0.1:6379/15 \
+            --output-root build/worker-loaded-recovery-proof
+      - name: Upload loaded recovery evidence and process logs
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-loaded-recovery-${{ github.run_attempt }}
+          path: |
+            build/worker-loaded-recovery-proof/evidence/**
+            build/worker-loaded-recovery-proof/process-resources.jsonl
+            build/worker-loaded-recovery-proof/*.log
+            integrations/worker-loaded-recovery/build/test-results/test/**
+            integrations/worker-loaded-recovery/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 7

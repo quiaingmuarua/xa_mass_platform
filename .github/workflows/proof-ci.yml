@@ -98,14 +98,14 @@ jobs:
           :server_jvm:build
           :integrations:worker-correctness:build
           :integrations:worker-convergence-health:build
-          :integrations:worker-websocket-scale:build
+          :integrations:worker-loaded-recovery:build
           :distribution:server:verifyPlatformDiagnosticCodes
-      - name: Verify Worker inventory and WebSocket scale runner contracts
+      - name: Verify Worker inventory and loaded recovery runner contracts
         run: |
           python3 -m unittest \
             integrations.worker_proof_support.test_scenario_inventory
           python3 -m unittest discover \
-            -s integrations/worker-websocket-scale \
+            -s integrations/worker-loaded-recovery \
             -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()

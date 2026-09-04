@@ -260,7 +260,8 @@ control-plane responsiveness, not a claim that Lab actions are transactional
 or distributed truth. The Host binds the configured control listener before
 starting outbound Worker connections, but starts serving requests only after
 the initial startup plan completes. The listener address therefore remains
-reserved even when a scale proof widens the OS ephemeral port range.
+reserved even when the loaded-recovery proof widens the OS ephemeral port
+range.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
 unchanged. Persistent Lab state means stable Lab Worker keys, Properties, and
@@ -290,17 +291,18 @@ configured Adapter; each proof runner owns the Worker Host process:
   extension reachability, 100 final Results and identity reuse across a real
   Host restart;
 - [`worker-convergence-health`](../integrations/worker-convergence-health/)
-  owns two isolated 2x50 scenarios: deterministic Worker/Server state
+  owns two isolated 2x500 scenarios: deterministic Worker/Server state
   convergence and execution-time Host loss with Task recovery/finality. The
   Lab remains only the mutation source and local witness; the Harness compares
   established local facts with independent Adapter, Kernel and Task
   observations.
-- [`worker-websocket-scale`](../integrations/worker-websocket-scale/) generates
-  one 15,000-record Group, stops a deterministic 5,000-run subset, and proves
-  the retained 10,000-Worker world can drain two 50,000-Item loaded operations
-  while at least 9,900 Workers reconverge before and after one Server restart.
-  It is a nightly/manual capacity lane, not part of the fixed default Lab
-  inventory.
+- [Worker Loaded Capacity + Recovery Stability](../integrations/worker-loaded-recovery/)
+  generates
+  one 15,000-record Group, stops a deterministic 5,000-run subset during load,
+  and proves the retained 10,000-Worker world can drain four 50,000-Item
+  workloads across one graceful and two hard Server restarts while resources
+  remain stable. It is a nightly/manual proof, not part of the fixed default
+  Lab inventory.
 
 Worker Correctness deliberately does not claim which Worker executed an Item
 or freeze capability-specific Result values.

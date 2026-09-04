@@ -68,7 +68,7 @@ class ScenarioInventoryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "scenario-workers"
             records = tuple(
-                {"scaleIndex": index}
+                {"workerIndex": index}
                 for index in range(1, MAX_RECORDS_PER_GROUP + 1)
             )
 

@@ -14,13 +14,17 @@ Worker worlds are in
 
 ## Proof Model
 
-| Level | Typical scale | Primary purpose |
+Worker counts and Item counts are fixed World fixtures, not proof levels,
+maturity grades or interchangeable strength settings. Each system Proof owns a
+different claim.
+
+| Proof | Fixed world | Primary claim |
 | --- | ---: | --- |
 | Owner Test | minimal | One Owner algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
 | Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
 | Worker Convergence Health | 2 Groups x 500 Workers, 1,000 Items | Finite-time convergence after deterministic state, process and Server faults |
-| Worker Capacity | 15,000 prepared / 10,000 active Workers, 40 Tasks / 200,000 Items | Loaded Fleet contraction, repeated Server recovery and stable resource bounds |
+| Worker Loaded Capacity + Recovery Stability | 15,000 prepared / 10,000 active Workers, 40 Tasks / 200,000 Items | Sustained loaded operation, repeated Server recovery and stable resource bounds |
 
 Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
 only a prerequisite or Boundary Witness. It must not be described as a second
@@ -38,15 +42,17 @@ execution-count oracle.
 
 Correctness and Convergence use the same strict Inventory materializer but own
 distinct fixed worlds: 100 Workers for exact correctness and 1,000 Workers for
-fault convergence. Capacity uses that materialization contract for 15,000
-identities, then deterministically retains 10,000 active Workers; topology,
-capability assembly and proof oracle remain lane-owned.
+fault convergence. Worker Loaded Capacity + Recovery Stability uses that
+materialization contract for 15,000 identities, then deterministically retains
+10,000 active Workers; topology, workload, mutations and resource oracle remain
+proof-owned.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. Convergence Health uses `results:load` only for named
-witnesses. Capacity pages `results:load` for four fixed ten-Task progress sets
-and performs one final export per Task; this is the explicit bulk result-path
-witness rather than a business-payload oracle.
+witnesses. Worker Loaded Capacity + Recovery Stability pages `results:load`
+for four fixed ten-Task progress sets and performs one final export per Task;
+this is the explicit bulk result-path witness rather than a business-payload
+oracle.
 
 ## Selection Decision
 
@@ -63,8 +69,8 @@ Use the lowest-cost proof that owns the changed claim:
    an Owner and Runtime Boundary claim; Convergence may be selected only as a
    downstream witness.
 5. Java Worker connection resource ownership changes: run focused Java Worker
-   tests; the 15k/10k lane remains nightly/manual unless the capacity claim itself
-   must be re-established.
+   tests; Worker Loaded Capacity + Recovery Stability remains nightly/manual
+   unless its loaded recovery or resource-stability claim must be re-established.
 6. Documentation-only changes run Docs Contract. They do not select runtime
    proofs.
 
@@ -89,7 +95,7 @@ python .github/scripts/check_proof_selection.py
 | Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
-| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
@@ -127,8 +133,9 @@ invalid implementation:
   and transitions without freezing opaque payloads;
 - convergence proofs issue each Lab mutation once, first establish its local
   effect, then compare Adapter, Kernel and Task projections;
-- capacity proofs record resource evidence and thresholds without claiming
-  functional correctness for every offered connection.
+- Worker Loaded Capacity + Recovery Stability records resource evidence and
+  thresholds without claiming functional correctness for every offered
+  connection.
 
 Delete or merge a test only when Owner, claim, failure model, evidence boundary
 and failure diagnostics are all the same. Keep unique architecture guards,
@@ -146,8 +153,8 @@ process lifecycles and stops all writers before a local cleanup attempt.
 
 The Runtime Boundary starts one Java Server context. Worker Correctness and
 Worker Convergence Health start Server and Scenario Host as independent
-processes. Worker WebSocket Scale is a separate nightly/manual workflow and is
-not part of the pull-request Proof Gate.
+processes. Worker Loaded Capacity + Recovery Stability is a separate
+nightly/manual workflow and is not part of the pull-request Proof Gate.
 
 Android Host owns deterministic SDK, capability, Demo and proof-Harness tests
 plus Android library assembly. Android APK Assembly independently builds the

@@ -6,6 +6,10 @@ Owner and boundary tests remain next to their production Owners. This file
 registers only high-level lanes whose process world, cost and claim need a
 stable repository-wide identity.
 
+Worker Correctness, Worker Convergence Health and Worker Loaded Capacity +
+Recovery Stability are claim identities, not size tiers. Their Worker and Item
+counts are fixed World and Workload fixtures chosen for those claims.
+
 ## jvm_contracts
 
 - **Primary owner:** each touched JVM module; CI only aggregates.
@@ -129,9 +133,9 @@ Correctness and Convergence independently materialize distinct canonical
 100-Worker and 1,000-Worker Properties worlds. They share the strict
 materializer, not Redis, processes, mutations or evidence.
 
-## worker_websocket_scale
+## worker_loaded_recovery
 
-- **Primary owner:** `:integrations:worker-websocket-scale` and its separate
+- **Primary owner:** `:integrations:worker-loaded-recovery` and its separate
   workflow.
 - **Claim:** one Java 21 Host prepares 15,000 identities, sustains at least
   14,800 connected-and-HOT Workers, stops a deterministic 5,000-run subset
@@ -156,13 +160,13 @@ materializer, not Redis, processes, mutations or evidence.
 - **Deliberate nonclaims:** exact 15,000 or 10,000 online, Task fairness, fixed
   execution ratio, completion order, throughput, latency, Handler concurrency,
   topology breadth and soak.
-- **Command:** `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15`.
+- **Command:** `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** very high; nightly/manual only.
 
-The capacity lane uses the same strict Inventory materializer and 100-record
-JSONL boundary as the Correctness and Convergence lanes. Its 15k/10k topology,
-scale capability and resource oracle are lane-owned additions rather than a
-second initialization path.
+This proof uses the same strict Inventory materializer and 100-record JSONL
+boundary as Correctness and Convergence. Its 15k/10k World, Java WebSocket
+Topology, loaded Workload, restart mutations and resource oracle are
+proof-owned additions rather than a second initialization path.
 
 ## android_host
 

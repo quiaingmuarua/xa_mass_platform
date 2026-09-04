@@ -78,6 +78,9 @@ FORBIDDEN_CURRENT_TERMS = {
     "mechanism " + "oracle",
     "kernel-" + "oracle",
     "KERNEL_" + "DESIGN_REDIS_URL",
+    "Worker WebSocket " + "Scale",
+    "worker-websocket-" + "scale",
+    "worker_websocket_" + "scale",
 }
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")

@@ -2,9 +2,10 @@
 
 Status: current deterministic Worker system scenarios.
 
-These scenarios prevent Scale, Topology, Chaos and Workload dimensions from
-forming a Cartesian product. Each scale tier fixes the other dimensions and
-owns one primary claim.
+These scenarios prevent World size, Topology, Mutation and Workload dimensions
+from forming a Cartesian product. Each Proof fixes all four dimensions and owns
+one primary claim. Worker quantity describes its World fixture; it does not
+define a proof level or make one Proof a larger substitute for another.
 
 ## Correctness: 100 Workers, 100 Items
 
@@ -153,7 +154,7 @@ real Runtime boundary, Doze/OEM policy, multiple devices, Handler throughput or
 an arbitrary number of Apps. Those are separate claims rather than missing
 iterations of the fixed single-Worker and Triad scenarios.
 
-## Capacity: 15,000 Identities / 10,000 Active Workers
+## Worker Loaded Capacity + Recovery Stability
 
 ```text
 World       1 Group x 15,000 identities; 10,000 active after contraction
@@ -179,21 +180,23 @@ and then make new progress. No stage starts Workers or performs Prepare. The
 lane records Task progress, three identity-set digests, RSS, CPU, native-thread and
 file-descriptor evidence, including stable resource drift across all recoveries.
 
-This is a resource/capacity claim. It does not repeat the 100-Worker correctness
-oracle, inject the 1,000-Worker fault matrix, or claim Task fairness, completion
-order, throughput or latency.
+This is a sustained-load, repeated-recovery and resource-stability claim. It
+does not repeat the 100-Worker correctness oracle, inject the 1,000-Worker
+fault matrix, or claim Task fairness, completion order, throughput or latency.
 
 ## Excluded Products
 
 The scenarios deliberately do not multiply:
 
-- WebSocket, Socket and Polling across every scale; protocol Owners and Runtime
+- WebSocket, Socket and Polling across every proof world; protocol Owners and Runtime
   Boundary own topology witnesses.
 - single/multi Group and single/multi Adapter across every fault; only the
   topology required by the claim is used.
 - every chaos action against every workload mode; deterministic mutations are
   assigned to one health scenario.
 - treating the 1,000-Worker convergence world as a resource or throughput
-  result; Linux resource boundaries remain owned by the separate 10k lane.
-- large TaskItem counts in Correctness or Convergence merely for scale theater;
-  only the dedicated capacity lane owns the four 50,000-Item loaded operations.
+  result; Linux resource boundaries remain owned by Worker Loaded Capacity +
+  Recovery Stability.
+- large TaskItem counts in Correctness or Convergence merely for size theater;
+  only Worker Loaded Capacity + Recovery Stability owns the four 50,000-Item
+  loaded workloads.
