@@ -17,7 +17,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decisi
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportDispatcher;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -60,7 +60,7 @@ public final class WorkerConnectionMechanism {
     private final NettyWorkerServer networkServer;
     private final WorkerRouteVerifier routeVerifier;
     private final WorkerDeliveryCodec codec;
-    private final BatchDispatcher<String> reportDispatcher;
+    private final DeliveryReportDispatcher reportDispatcher;
     private final String adapterId;
     private final Duration sendTimeLimit;
 
@@ -69,7 +69,7 @@ public final class WorkerConnectionMechanism {
             NettyWorkerServer networkServer,
             WorkerRouteVerifier routeVerifier,
             WorkerDeliveryCodec codec,
-            BatchDispatcher<String> reportDispatcher,
+            DeliveryReportDispatcher reportDispatcher,
             String adapterId,
             Duration sendTimeLimit,
             long maximumEncodedPropertiesBytes
@@ -392,7 +392,7 @@ public final class WorkerConnectionMechanism {
         }
         observePropertiesResult(context.channel(), report);
         boolean taskReport = report.dst() == TASK;
-        switch (reportDispatcher.tryDispatch(List.of(encodedReport))) {
+        switch (reportDispatcher.tryDispatch(report)) {
             case ACCEPTED -> {
             }
             case FULL -> {
@@ -402,8 +402,6 @@ public final class WorkerConnectionMechanism {
                             context.channel(),
                             AdapterConnectionCloseReason.RESULT_BUFFER_FULL
                     );
-                } else {
-                    logDrop("dropSystemResultBufferFull", report);
                 }
             }
             case CLOSED -> {
@@ -413,8 +411,6 @@ public final class WorkerConnectionMechanism {
                             context.channel(),
                             AdapterConnectionCloseReason.ADAPTER_STOPPING
                     );
-                } else {
-                    logDrop("dropSystemResultBufferClosed", report);
                 }
             }
         }
@@ -537,25 +533,7 @@ public final class WorkerConnectionMechanism {
                     )),
                     WORKER_SERVICEABILITY_EVIDENCE_FORWARD
             );
-            BatchDispatcher.DispatchStatus status =
-                    reportDispatcher.tryDispatch(List.of(
-                            codec.encodeDeliveryReport(evidence)
-                    ));
-            if (status
-                    != BatchDispatcher.DispatchStatus.ACCEPTED) {
-                LOGGER.log(
-                        System.Logger.Level.WARNING,
-                        "errorCode={0} operation={1} adapterId={2} "
-                                + "workerId={3} state={4} queueStatus={5}",
-                        WorkerDeliveryAdapterErrorCode
-                                .DELIVERY_INTERRUPTED.code(),
-                        "workerConnection.reportRouteEvidence",
-                        adapterId,
-                        workerId,
-                        state,
-                        status
-                );
-            }
+            reportDispatcher.tryDispatch(evidence);
         } catch (RuntimeException error) {
             LOGGER.log(
                     System.Logger.Level.WARNING,

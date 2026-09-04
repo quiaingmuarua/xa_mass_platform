@@ -3,12 +3,15 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -21,7 +24,7 @@ class AdapterProcessManagerTest {
     @Test
     void startsTheFixedReportThenCommandDispatchers() {
         BatchDispatcher<DeliveryCommandItem> command = commandMock();
-        BatchDispatcher<String> report = reportMock();
+        DeliveryReportDispatcher report = reportMock();
         AdapterProcessManager manager = new AdapterProcessManager(
                 command,
                 report,
@@ -38,7 +41,7 @@ class AdapterProcessManagerTest {
     @Test
     void stopReportClosesIngressBeforeInterruptingDispatcher() {
         BatchDispatcher<DeliveryCommandItem> command = commandMock();
-        BatchDispatcher<String> report = reportMock();
+        DeliveryReportDispatcher report = reportMock();
         AdapterProcessManager manager = new AdapterProcessManager(
                 command,
                 report,
@@ -68,19 +71,22 @@ class AdapterProcessManagerTest {
                             return BatchProcessResult.completed();
                         }
                 );
-        BatchDispatcher<String> report = BatchDispatcher.queued(
+        WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
+        doAnswer(invocation -> {
+            processed.countDown();
+            return null;
+        }).when(remoteApi).appendReports(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList()
+        );
+        DeliveryReportDispatcher report = new DeliveryReportDispatcher(
                 "adapter-1",
-                "delivery-report",
-                2,
                 2,
                 Duration.ofMillis(20),
-                batch -> {
-                    processed.countDown();
-                    return BatchProcessResult.completed();
-                }
+                remoteApi
         );
-        assertThat(report.tryDispatch(List.of("report-1"))).isEqualTo(
-                BatchDispatcher.DispatchStatus.ACCEPTED
+        assertThat(report.tryDispatch(report("report-1"))).isEqualTo(
+                DeliveryReportDispatcher.DispatchStatus.ACCEPTED
         );
         AdapterProcessManager manager = new AdapterProcessManager(
                 command,
@@ -124,13 +130,11 @@ class AdapterProcessManagerTest {
                             return BatchProcessResult.completed();
                         }
                 );
-        BatchDispatcher<String> report = BatchDispatcher.queued(
+        DeliveryReportDispatcher report = new DeliveryReportDispatcher(
                 "adapter-1",
-                "delivery-report",
-                2,
                 2,
                 Duration.ofSeconds(1),
-                batch -> BatchProcessResult.completed()
+                mock(WorkerDeliveryRemoteApi.class)
         );
         AdapterProcessManager manager = new AdapterProcessManager(
                 command,
@@ -171,10 +175,8 @@ class AdapterProcessManagerTest {
                 mock(BatchDispatcher.class);
     }
 
-    @SuppressWarnings("unchecked")
-    private static BatchDispatcher<String> reportMock() {
-        return (BatchDispatcher<String>) (BatchDispatcher<?>)
-                mock(BatchDispatcher.class);
+    private static DeliveryReportDispatcher reportMock() {
+        return mock(DeliveryReportDispatcher.class);
     }
 
     private static void awaitIgnoringInterrupt(CountDownLatch release) {
@@ -202,6 +204,18 @@ class AdapterProcessManagerTest {
                         "{}",
                         "context"
                 )
+        );
+    }
+
+    private static DeliveryReport report(String payload) {
+        return DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.SYSTEM,
+                "test.observe",
+                "200",
+                payload,
+                "direct-call:v1:test"
         );
     }
 }

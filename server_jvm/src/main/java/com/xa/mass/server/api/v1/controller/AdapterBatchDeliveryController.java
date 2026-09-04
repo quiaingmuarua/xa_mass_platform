@@ -3,6 +3,7 @@ package com.xa.mass.server.api.v1.controller;
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultBatchResponse;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultRequest;
 import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -119,7 +121,9 @@ public class AdapterBatchDeliveryController {
                             minItems = 1,
                             maxItems = WorkerDeliveryService
                                     .MAX_ADAPTER_RESULT_BATCH_SIZE,
-                            schema = @Schema(type = "string", minLength = 1)
+                            schema = @Schema(
+                                    implementation = WorkerResultRequest.class
+                            )
                     ))
             )
             @RequestBody
@@ -127,11 +131,14 @@ public class AdapterBatchDeliveryController {
                     min = 1,
                     max = WorkerDeliveryService.MAX_ADAPTER_RESULT_BATCH_SIZE
             )
-            List<@NotBlank String> results
+            List<@Valid @NotNull WorkerResultRequest> results
     ) {
-        var counts = workerDelivery.appendAdapterResults(
+        var reports = results.stream()
+                .map(WorkerResultRequest::toDeliveryReport)
+                .toList();
+        var counts = workerDelivery.appendAdapterReports(
                 endpointManagerId,
-                List.copyOf(results)
+                reports
         );
         return ResponseEntity.accepted().body(
                 new WorkerResultBatchResponse(

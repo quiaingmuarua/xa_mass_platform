@@ -18,6 +18,7 @@ import com.xa.mass.server.delivery.application.WorkerDeliveryService.WorkerResul
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.Collections;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,24 +74,22 @@ class AdapterBatchDeliveryControllerTest {
 
     @Test
     void adapterResultBatchUsesTheStableResponse() throws Exception {
-        String encodedResult = successResult();
-        when(service.appendAdapterResults(
+        DeliveryReport report = successReport();
+        when(service.appendAdapterReports(
                 org.mockito.ArgumentMatchers.eq("endpoint-1"),
                 anyList()
         )).thenReturn(new WorkerResultAppendCounts(1, 0));
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(Jsons.toJson(
-                                java.util.List.of(encodedResult)
-                        )))
+                        .content("[" + successResult() + "]"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.acceptedCount").value(1))
                 .andExpect(jsonPath("$.rejectedCount").value(0));
 
-        verify(service).appendAdapterResults(
+        verify(service).appendAdapterReports(
                 "endpoint-1",
-                java.util.List.of(encodedResult)
+                java.util.List.of(report)
         );
     }
 
@@ -149,8 +148,40 @@ class AdapterBatchDeliveryControllerTest {
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(
-                                Collections.nCopies(101, successResult())
+                                Collections.nCopies(
+                                        101,
+                                        Jsons.parseObject(successResult())
+                                )
                         )))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void encodedStringResultBatchIsRejectedBeforeCallingTheService()
+            throws Exception {
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(java.util.List.of(
+                                successResult()
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void unknownReportFieldIsRejectedBeforeCallingTheService()
+            throws Exception {
+        Map<String, Object> report = new java.util.LinkedHashMap<>(
+                Jsons.parseObject(successResult())
+        );
+        report.put("unexpected", true);
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(java.util.List.of(report))))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(service);
@@ -166,6 +197,18 @@ class AdapterBatchDeliveryControllerTest {
                 "messageType":"test.event","outcomeCode":"200",\
                 "payload":"null","sourceId":"worker-1","src":"WORKER"}\
                 """;
+    }
+
+    private static DeliveryReport successReport() {
+        return DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.TASK,
+                "test.event",
+                "200",
+                "null",
+                "context"
+        );
     }
 
     private static String batchPath(String action) {

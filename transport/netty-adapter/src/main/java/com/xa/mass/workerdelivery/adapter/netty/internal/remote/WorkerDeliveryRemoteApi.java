@@ -5,6 +5,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -13,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,11 +89,12 @@ public final class WorkerDeliveryRemoteApi {
 
     public void appendReports(
             String adapterId,
-            List<String> encodedReports
+            List<DeliveryReport> reports
     ) {
+        List<DeliveryReport> batch = requireHomogeneousReportBatch(reports);
         HttpResponse<String> response = postJson(
                 reportPath(adapterId),
-                encodeResultBatch(encodedReports),
+                encodeReportBatch(batch),
                 REPORT_OPERATION,
                 "Worker result submission failed"
         );
@@ -99,7 +103,7 @@ public final class WorkerDeliveryRemoteApi {
         }
         requireCompleteResultResponse(
                 responseBody(response),
-                encodedReports.size()
+                batch.size()
         );
     }
 
@@ -184,27 +188,55 @@ public final class WorkerDeliveryRemoteApi {
         }
     }
 
-    private String encodeResultBatch(
-            List<String> encodedDeliveryReports
+    private List<DeliveryReport> requireHomogeneousReportBatch(
+            List<DeliveryReport> reports
     ) {
-        if (encodedDeliveryReports == null
-                || encodedDeliveryReports.isEmpty()
-                || encodedDeliveryReports.size() > MAX_RESULTS_PER_APPEND) {
+        if (reports == null
+                || reports.isEmpty()
+                || reports.size() > MAX_RESULTS_PER_APPEND) {
             throw protocolFailure(
                     REPORT_ENCODE_OPERATION,
                     "DeliveryReport batch must contain 1..100 results"
             );
         }
-        for (String encodedDeliveryReport : encodedDeliveryReports) {
-            if (encodedDeliveryReport == null
-                    || encodedDeliveryReport.isEmpty()) {
+        List<DeliveryReport> batch;
+        try {
+            batch = List.copyOf(reports);
+        } catch (NullPointerException error) {
+            throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode
+                            .REMOTE_API_PROTOCOL_ERROR,
+                    REPORT_ENCODE_OPERATION,
+                    "DeliveryReport batch must not contain null",
+                    error
+            );
+        }
+        DeliveryEndpoint destination = batch.get(0).dst();
+        if (!isReportDestination(destination)) {
+            throw protocolFailure(
+                    REPORT_ENCODE_OPERATION,
+                    "DeliveryReport batch destination is unsupported"
+            );
+        }
+        for (DeliveryReport report : batch) {
+            if (report.dst() != destination) {
                 throw protocolFailure(
                         REPORT_ENCODE_OPERATION,
-                        "Encoded DeliveryReport must be non-empty"
+                        "DeliveryReport batch must have one destination"
                 );
             }
         }
-        return Jsons.toJson(encodedDeliveryReports);
+        return batch;
+    }
+
+    private String encodeReportBatch(List<DeliveryReport> reports) {
+        ArrayList<Map<String, Object>> payload = new ArrayList<>(
+                reports.size()
+        );
+        for (DeliveryReport report : reports) {
+            payload.add(codec.encodeDeliveryReportFields(report));
+        }
+        return Jsons.toJson(payload);
     }
 
     private void requireCompleteResultResponse(
@@ -252,6 +284,14 @@ public final class WorkerDeliveryRemoteApi {
         return "/api/v1/worker-delivery/endpoint-managers/"
                 + encodePathSegment(adapterId)
                 + "/results:append";
+    }
+
+    private static boolean isReportDestination(
+            DeliveryEndpoint destination
+    ) {
+        return destination == DeliveryEndpoint.TASK
+                || destination == DeliveryEndpoint.SYSTEM
+                || destination == DeliveryEndpoint.KERNEL;
     }
 
     private static String responseBody(HttpResponse<String> response) {

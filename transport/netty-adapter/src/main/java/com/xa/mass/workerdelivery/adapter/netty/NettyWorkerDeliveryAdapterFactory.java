@@ -15,7 +15,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessM
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandItem;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -73,14 +73,13 @@ public final class NettyWorkerDeliveryAdapterFactory {
                     requiredConfig.shutdownTimeout()
             );
         };
-        BatchDispatcher<String> reportDispatcher = BatchDispatcher.queued(
-                requiredAdapterId,
-                "delivery-report",
-                requiredConfig.reportQueueCapacity(),
-                WorkerDeliveryRemoteApi.MAX_RESULTS_PER_APPEND,
-                requiredConfig.reportBackoff(),
-                new DeliveryReportProcess(remoteApi, requiredAdapterId)
-        );
+        DeliveryReportDispatcher reportDispatcher =
+                new DeliveryReportDispatcher(
+                        requiredAdapterId,
+                        requiredConfig.reportQueueCapacity(),
+                        requiredConfig.reportBackoff(),
+                        remoteApi
+                );
         WorkerRouteRegistry routes = new WorkerRouteRegistry(
                 requiredConfig.reconnectVerificationRetention(),
                 requiredConfig.maximumDisconnectedWorkers()
@@ -107,7 +106,6 @@ public final class NettyWorkerDeliveryAdapterFactory {
                 connectionMechanism,
                 adapterEventDispatcher,
                 reportDispatcher,
-                codec,
                 requiredAdapterId
         );
         BatchDispatcher<DeliveryCommandItem> commandDispatcher =

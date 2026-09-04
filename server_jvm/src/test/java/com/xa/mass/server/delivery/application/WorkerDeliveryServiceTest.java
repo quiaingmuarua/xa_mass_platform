@@ -19,7 +19,6 @@ import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -36,7 +35,6 @@ class WorkerDeliveryServiceTest {
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private static final String POLLING =
             WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
-    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private WorkerCommandRuntime commandRuntime;
     private TaskResultRuntime resultRuntime;
     private WorkerBindingService bindings;
@@ -371,7 +369,7 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterBatchAcceptsAllResultClassesAndRejectsMalformedItems() {
+    void taskBatchAcceptsSuccessFailureAndAdapterRejection() {
         DeliveryReport success = result(COMMAND_ID, "200");
         DeliveryReport failure = result(
                 "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
@@ -390,19 +388,17 @@ class WorkerDeliveryServiceTest {
                 List.of(failure, forgedRejection)
         )).thenReturn(2);
 
-        var counts = service.appendAdapterResults(
+        var counts = service.appendAdapterReports(
                 "endpoint-1",
-                java.util.Arrays.asList(
-                        codec.encodeDeliveryReport(success),
-                        "not-json",
-                        null,
-                        codec.encodeDeliveryReport(failure),
-                        codec.encodeDeliveryReport(forgedRejection)
+                List.of(
+                        success,
+                        failure,
+                        forgedRejection
                 )
         );
 
         assertThat(counts.acceptedCount()).isEqualTo(3);
-        assertThat(counts.rejectedCount()).isEqualTo(2);
+        assertThat(counts.rejectedCount()).isZero();
         verify(resultRuntime).appendTaskResults(
                 TaskResultClass.SUCCESS,
                 List.of(success)
@@ -414,7 +410,7 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterBatchRejectsAResultForAnotherDestination() {
+    void mixedDestinationBatchFailsBeforeOwnerSideEffects() {
         DeliveryReport success = result(COMMAND_ID, "200");
         DeliveryReport wrongDestination = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
@@ -425,29 +421,34 @@ class WorkerDeliveryServiceTest {
                 "null",
                 "context"
         );
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
-                List.of(success)
-        )).thenReturn(1);
-        when(directCalls.completeReports(
+        assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                List.of(wrongDestination)
-        )).thenReturn(new DirectCallService.ResultAppendCounts(0, 1));
+                List.of(success, wrongDestination)
+        )).isInstanceOf(ServerException.class)
+                .extracting(error -> ((ServerException) error).errorCode())
+                .isEqualTo(ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST);
+        verifyNoInteractions(resultRuntime, directCalls, serviceability);
+    }
 
-        var counts = service.appendAdapterResults(
-                "endpoint-1",
-                List.of(
-                        codec.encodeDeliveryReport(success),
-                        codec.encodeDeliveryReport(wrongDestination)
-                )
+    @Test
+    void unsupportedDestinationBatchFailsBeforeOwnerSideEffects() {
+        DeliveryReport unsupported = DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.ADAPTER,
+                "test.event",
+                "200",
+                "null",
+                "context"
         );
 
-        assertThat(counts.acceptedCount()).isEqualTo(1);
-        assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.SUCCESS,
-                List.of(success)
-        );
+        assertThatThrownBy(() -> service.appendAdapterReports(
+                "endpoint-1",
+                List.of(unsupported)
+        )).isInstanceOf(ServerException.class)
+                .extracting(error -> ((ServerException) error).errorCode())
+                .isEqualTo(ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST);
+        verifyNoInteractions(resultRuntime, directCalls, serviceability);
     }
 
     @Test
@@ -467,12 +468,9 @@ class WorkerDeliveryServiceTest {
                 List.of(success)
         )).thenReturn(1);
 
-        var counts = service.appendAdapterResults(
+        var counts = service.appendAdapterReports(
                 "endpoint-1",
-                List.of(
-                        codec.encodeDeliveryReport(success),
-                        codec.encodeDeliveryReport(foreignAdapter)
-                )
+                List.of(success, foreignAdapter)
         );
 
         assertThat(counts.acceptedCount()).isEqualTo(1);
@@ -497,9 +495,9 @@ class WorkerDeliveryServiceTest {
         when(serviceability.appendAdapterEvidenceResults(List.of(kernel)))
                 .thenReturn(0);
 
-        assertThatThrownBy(() -> service.appendAdapterResults(
+        assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                List.of(codec.encodeDeliveryReport(kernel))
+                List.of(kernel)
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(error -> ((ServerException) error).errorCode())
@@ -507,7 +505,7 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterBatchRoutesTaskDirectCallAndKernelToTheirOwners() {
+    void homogeneousBatchesRouteOnlyToTheirOwner() {
         DeliveryReport task = result(COMMAND_ID, "200");
         DeliveryReport direct = DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
@@ -559,19 +557,25 @@ class WorkerDeliveryServiceTest {
                 routeChange
         ))).thenReturn(2);
 
-        var counts = service.appendAdapterResults(
+        var taskCounts = service.appendAdapterReports(
                 "endpoint-1",
-                List.of(
-                        codec.encodeDeliveryReport(task),
-                        codec.encodeDeliveryReport(direct),
-                        codec.encodeDeliveryReport(kernel),
-                        codec.encodeDeliveryReport(routeChange),
-                        codec.encodeDeliveryReport(unknownSystem)
-                )
+                List.of(task)
+        );
+        var systemCounts = service.appendAdapterReports(
+                "endpoint-1",
+                List.of(direct, unknownSystem)
+        );
+        var kernelCounts = service.appendAdapterReports(
+                "endpoint-1",
+                List.of(kernel, routeChange)
         );
 
-        assertThat(counts.acceptedCount()).isEqualTo(4);
-        assertThat(counts.rejectedCount()).isEqualTo(1);
+        assertThat(taskCounts).isEqualTo(new WorkerDeliveryService
+                .WorkerResultAppendCounts(1, 0));
+        assertThat(systemCounts).isEqualTo(new WorkerDeliveryService
+                .WorkerResultAppendCounts(1, 1));
+        assertThat(kernelCounts).isEqualTo(new WorkerDeliveryService
+                .WorkerResultAppendCounts(2, 0));
         verify(resultRuntime).appendTaskResults(
                 TaskResultClass.SUCCESS,
                 List.of(task)
@@ -602,9 +606,9 @@ class WorkerDeliveryServiceTest {
         when(serviceability.appendAdapterEvidenceResults(reports))
                 .thenReturn(100);
 
-        var counts = service.appendAdapterResults(
+        var counts = service.appendAdapterReports(
                 "endpoint-1",
-                Collections.nCopies(100, codec.encodeDeliveryReport(kernel))
+                Collections.nCopies(100, kernel)
         );
 
         assertThat(counts.acceptedCount()).isEqualTo(100);
@@ -614,9 +618,9 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void oversizedAdapterBatchFailsBeforeOwnerSideEffects() {
-        assertThatThrownBy(() -> service.appendAdapterResults(
+        assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                Collections.nCopies(101, "not-json")
+                Collections.nCopies(101, result(COMMAND_ID, "200"))
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(error -> ((ServerException) error).errorCode())
@@ -626,21 +630,25 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void allInvalidItemsDoNotCallTheRuntime() {
-        var counts = service.appendAdapterResults(
+    void foreignKernelItemsAreRejectedWithoutOwnerSideEffects() {
+        DeliveryReport foreign = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-2",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connection.changed",
+                "200",
+                "{}",
+                "worker-serviceability-evidence:v1"
+        );
+
+        var counts = service.appendAdapterReports(
                 "endpoint-1",
-                List.of(
-                        "not-json",
-                        ""
-                )
+                List.of(foreign)
         );
 
         assertThat(counts.acceptedCount()).isZero();
-        assertThat(counts.rejectedCount()).isEqualTo(2);
-        verify(resultRuntime, never()).appendTaskResults(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyList()
-        );
+        assertThat(counts.rejectedCount()).isEqualTo(1);
+        verifyNoInteractions(resultRuntime, directCalls, serviceability);
     }
 
     @Test
@@ -651,9 +659,9 @@ class WorkerDeliveryServiceTest {
                 List.of(success)
         )).thenReturn(0);
 
-        assertThatThrownBy(() -> service.appendAdapterResults(
+        assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                List.of(codec.encodeDeliveryReport(success))
+                List.of(success)
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(
@@ -666,12 +674,10 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void systemPollingCannotUseAdapterBatchOperations() {
-        assertThatThrownBy(() -> service.appendAdapterResults(
+        assertThatThrownBy(() -> service.appendAdapterReports(
                 WorkerDeliveryProtocol
                         .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                List.of(codec.encodeDeliveryReport(
-                        result(COMMAND_ID, "200")
-                ))
+                List.of(result(COMMAND_ID, "200"))
         )).isInstanceOf(ServerException.class);
     }
 

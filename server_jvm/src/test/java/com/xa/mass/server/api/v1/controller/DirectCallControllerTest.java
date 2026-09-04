@@ -156,8 +156,8 @@ class DirectCallControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> commands =
                 (Map<String, Map<String, Object>>) (Map<?, ?>) response;
-        List<String> reports = commands.entrySet().stream()
-                .map(entry -> codec.encodeDeliveryReport(DeliveryReport.create(
+        List<Map<String, Object>> reports = commands.entrySet().stream()
+                .map(entry -> DeliveryReport.create(
                         DeliveryEndpoint.WORKER,
                         entry.getKey(),
                         DeliveryEndpoint.SYSTEM,
@@ -165,7 +165,8 @@ class DirectCallControllerTest {
                         "200",
                         "{\"reachable\":true}",
                         String.valueOf(entry.getValue().get("forward"))
-                )))
+                ))
+                .map(codec::encodeDeliveryReportFields)
                 .toList();
         mockMvc.perform(post(path("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)

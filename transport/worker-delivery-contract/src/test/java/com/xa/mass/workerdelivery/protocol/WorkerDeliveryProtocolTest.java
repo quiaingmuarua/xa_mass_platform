@@ -54,6 +54,12 @@ final class WorkerDeliveryProtocolTest {
                 encoded
         );
         assertEquals(report, codec.decodeDeliveryReport(encoded));
+        assertEquals(
+                report,
+                codec.decodeDeliveryReport(
+                        codec.encodeDeliveryReportFields(report)
+                )
+        );
     }
 
     @Test

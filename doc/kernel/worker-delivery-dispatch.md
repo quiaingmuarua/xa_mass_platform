@@ -99,10 +99,11 @@ fields. Server constructs the Command only after higher-priority sources leave
 response capacity, Adapter executes its existing connection-snapshot Handler,
 and Server appends the `ADAPTER -> KERNEL` Report to the Kernel result handoff.
 The Adapter also emits one-Worker evidence for exact verified Route
-connected/disconnected transitions through the same Report ingress queue and
-Server append boundary. An expired TASK-to-Worker Command atomically offers its normal
-23002 TASK Report and a separate one-Worker KERNEL evidence Report to that same
-Process. `KERNEL` does not authorize Server or Transport to call a score owner.
+connected/disconnected transitions through the same Report ingress owner and
+Server append boundary. An expired TASK-to-Worker Command independently offers
+its normal 23002 TASK Report and a separate one-Worker KERNEL evidence Report
+to their destination lanes; there is no cross-lane atomic admission.
+`KERNEL` does not authorize Server or Transport to call a score owner.
 
 Delivery defines no outer message or correlation ID.
 `DeliveryReport.fromCommand()` routes the Report to the Command source and
@@ -279,7 +280,7 @@ POST /api/v1/worker-delivery/endpoint-managers/{id}/commands:consume
 body: 100
 
 POST /api/v1/worker-delivery/endpoint-managers/{id}/results:append
-body: ["<encoded DeliveryReport>", "..."]
+body: [{"src":"WORKER", "sourceId":"worker-1", "dst":"TASK", ...}]
 ```
 
 Batch consume returns the entry-keyed Command Map directly:
@@ -307,13 +308,14 @@ up to 100 Adapter-partitioned Serviceability request fields and add one
 addresses. Adapter and Serviceability entry keys are response-local, opaque,
 and ignored by Adapter dispatch, which relies on `dst`.
 
-The Adapter result endpoint accepts a mixed encoded batch and selects its owner
-by `dst`. TASK is validated and appended through the Task Result owner; SYSTEM
-is handed to the Direct Call owner; KERNEL accepts only path-consistent Adapter
-reports and appends them to `WorkerServiceabilityRuntime`. Each selected owner
-performs its own forward and payload validation. The response reports combined
-accepted and rejected counts. Remote unavailability appends the failed Adapter
-batch to its finite Report Queue tail for a later outer-loop acquisition.
+The Adapter result endpoint accepts `1..100` strict `DeliveryReport` objects.
+Every item in one batch must have the same supported `dst`; Server rejects a
+mixed or unsupported batch before a semantic Owner call. It then selects one
+owner: TASK is validated and appended through the Task Result owner, SYSTEM is
+handed to the Direct Call owner, and KERNEL admits only path-consistent Adapter
+reports into `WorkerServiceabilityRuntime`. That owner performs its own source,
+forward and payload validation and contributes the accepted/rejected counts.
+The HTTP path does not change when a Report destination is added.
 
 Priority is limited to the Adapter Direct FIFO prefix. It does not reorder
 commands already present in the Adapter's local FIFO, preempt an in-flight
@@ -417,29 +419,37 @@ type and opaque forward context. If a send has started and later fails, delivery
 `UNKNOWN`; the Adapter must not fabricate rejection evidence.
 
 Bound Worker Reports declaring the bound workerId and using `200` or
-Worker-owned `3...` enter the single Result queue for `dst=TASK` or
-`dst=SYSTEM`, preserving their original encoded JSON. Adapter-produced KERNEL
-snapshot and Route-change Reports enter that same queue. A full or closed queue still closes the
-Channel for TASK backpressure; best-effort SYSTEM evidence is dropped without
-closing it; best-effort KERNEL evidence is also dropped without closing a
-Worker Channel. Adapter-generated TASK `COMMAND_EXPIRED` enters
-the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
+Worker-owned `3...` enter the TASK or SYSTEM Report Queue as decoded objects.
+Adapter-produced KERNEL snapshot and Route-change Reports enter the KERNEL
+Queue. All three Queues share one rotating consumer thread. A full or closed
+TASK Queue still closes the exact Channel; best-effort SYSTEM evidence is
+dropped without closing it, and best-effort KERNEL evidence is also dropped
+without closing a Worker Channel. Adapter-generated TASK `COMMAND_EXPIRED`
+enters the TASK Queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
 
 One process-scoped construction factory owns one immutable Remote API facade
 and codec, accepts one complete flat Adapter config, returns only the public
 Adapter contract, and selects one complete WebSocket or line-Socket physical
-Server. Every instance
-independently owns three layers: the Adapter aggregate owns lifecycle and
-network shutdown sequencing; one fixed Process Manager owns two generic Batch
-Dispatchers and their shared join deadline; each Dispatcher owns one resident
-daemon platform thread, finite queue, current batch, retry-tail placement and
-failure backoff. The Command Dispatcher processes one retry slice and one fresh
-remote batch per outer iteration, while the Report Dispatcher is both the
-thread-safe ingress and single consumer. Command and Report Processes handle
-one supplied batch once. Remote priority is decided by Server before the
-Command response is created.
+Server. Every instance independently owns three layers: the Adapter aggregate
+owns lifecycle and network shutdown sequencing; one fixed Process Manager owns
+the Command and Report Dispatchers and their shared join deadline; the Command
+Dispatcher owns one retry Queue and processes one retry slice plus one fresh
+remote batch per outer iteration; the Report Dispatcher owns fixed TASK,
+SYSTEM, and KERNEL Queues plus one rotating consumer. The three Report Queues
+share one daemon platform thread and produce homogeneous batches of at most
+100. Queue count is a data-policy boundary, not an execution-resource count.
+Remote Command priority is decided by Server before the response is created.
+
+Only TASK remote unavailability returns its exact batch to the TASK Queue tail;
+SYSTEM and KERNEL failures are dropped. TASK has no retry-count or retry-time
+limit because its completion evidence is important and is not superseded by a
+newer value, while loss of the same Server normally also stops fresh Command
+acquisition. Finite lane capacity, one in-flight batch, a 100-item retry
+reserve, fixed backoff, and Adapter lifetime bound memory and concurrency. The
+contract remains best-effort and can duplicate TASK evidence after a lost
+response; it is neither persistent nor exactly-once.
 The Factory-owned Remote API owns the fixed Command consume and Report append
 methods, including their paths, wire JSON and method-specific status
 classification. Its process-shared JDK HTTP client owns
@@ -546,10 +556,9 @@ contract.
   command before Worker receipt.
 - Worker sends each Result once; a failed send is lost. Adapter queues are
   process-local and can be lost.
-- Adapter batch retry can duplicate a DeliveryReport at Server ingress.
-- A mixed TASK/SYSTEM/KERNEL batch requeued after remote unavailability remains
-  one unit at the Queue tail; a DIRECT_CALL waiter may already have timed out
-  when its late evidence reaches Server.
+- TASK batch retry can duplicate a DeliveryReport at Server ingress. Its exact
+  homogeneous batch returns to the TASK Queue tail after remote unavailability;
+  SYSTEM and KERNEL failures are dropped rather than retried.
 - Instance-local Adapter Direct FIFO and waiter state require Adapter HTTP
   affinity to the Server process that accepted the call.
 - When late or duplicate evidence is actually consumed, Result Routing owner

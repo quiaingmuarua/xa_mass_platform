@@ -11,7 +11,6 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.ArrayList;
@@ -34,8 +33,7 @@ public final class DeliveryCommandProcess
     );
 
     private final WorkerConnectionMechanism connectionMechanism;
-    private final BatchDispatcher<String> reportDispatcher;
-    private final WorkerDeliveryCodec codec;
+    private final DeliveryReportDispatcher reportDispatcher;
     private final AdapterEventDispatcher adapterEventDispatcher;
     private final String adapterId;
     private final LongSupplier nowMillis;
@@ -43,15 +41,13 @@ public final class DeliveryCommandProcess
     public DeliveryCommandProcess(
             WorkerConnectionMechanism connectionMechanism,
             AdapterEventDispatcher adapterEventDispatcher,
-            BatchDispatcher<String> reportDispatcher,
-            WorkerDeliveryCodec codec,
+            DeliveryReportDispatcher reportDispatcher,
             String adapterId
     ) {
         this(
                 connectionMechanism,
                 adapterEventDispatcher,
                 reportDispatcher,
-                codec,
                 adapterId,
                 System::currentTimeMillis
         );
@@ -60,8 +56,7 @@ public final class DeliveryCommandProcess
     DeliveryCommandProcess(
             WorkerConnectionMechanism connectionMechanism,
             AdapterEventDispatcher adapterEventDispatcher,
-            BatchDispatcher<String> reportDispatcher,
-            WorkerDeliveryCodec codec,
+            DeliveryReportDispatcher reportDispatcher,
             String adapterId,
             LongSupplier nowMillis
     ) {
@@ -77,7 +72,6 @@ public final class DeliveryCommandProcess
                 reportDispatcher,
                 "reportDispatcher"
         );
-        this.codec = Objects.requireNonNull(codec, "codec");
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
@@ -160,31 +154,43 @@ public final class DeliveryCommandProcess
                 )),
                 WORKER_SERVICEABILITY_EVIDENCE_FORWARD
         );
-        if (reportDispatcher.tryDispatch(List.of(
-                codec.encodeDeliveryReport(rejection),
-                codec.encodeDeliveryReport(evidence)
-        )) != BatchDispatcher.DispatchStatus.ACCEPTED) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "adapterId={0} target={1} message={2}",
-                    adapterId,
-                    item.entryKey(),
-                    "Adapter rejection and serviceability evidence were "
-                            + "dropped"
-            );
-        }
+        offerReport(
+                rejection,
+                item.entryKey(),
+                "Expired TASK rejection was dropped"
+        );
+        offerReport(
+                evidence,
+                item.entryKey(),
+                "Expired TASK serviceability evidence was dropped"
+        );
     }
 
     private void offerAdapterEventResult(DeliveryReport report) {
-        if (reportDispatcher.tryDispatch(List.of(
-                codec.encodeDeliveryReport(report)
-        )) != BatchDispatcher.DispatchStatus.ACCEPTED) {
+        offerReport(
+                report,
+                report.messageType(),
+                "Adapter Event Result was dropped"
+        );
+    }
+
+    private void offerReport(
+            DeliveryReport report,
+            String target,
+            String message
+    ) {
+        DeliveryReportDispatcher.DispatchStatus status =
+                reportDispatcher.tryDispatch(report);
+        if (report.dst() == TASK
+                && status
+                != DeliveryReportDispatcher.DispatchStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
-                    "adapterId={0} messageType={1} message={2}",
+                    "adapterId={0} destination={1} target={2} message={3}",
                     adapterId,
-                    report.messageType(),
-                    "Adapter Event Result was dropped"
+                    report.dst(),
+                    target,
+                    message
             );
         }
     }

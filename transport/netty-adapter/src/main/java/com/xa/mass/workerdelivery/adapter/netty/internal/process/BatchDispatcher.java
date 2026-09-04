@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Supplier;
 
-/** One finite Adapter queue, consumer loop, and same-lifetime thread. */
+/** One finite Command retry queue, fresh source, and resident consumer. */
 public final class BatchDispatcher<T> {
 
     private static final System.Logger LOGGER = System.getLogger(
@@ -58,7 +58,10 @@ public final class BatchDispatcher<T> {
         this.softCapacity = softCapacity;
         this.batchSize = batchSize;
         backoffMillis = requirePositiveMillis(backoff, "backoff");
-        this.freshSource = freshSource;
+        this.freshSource = Objects.requireNonNull(
+                freshSource,
+                "freshSource"
+        );
         this.processor = Objects.requireNonNull(processor, "processor");
         queue = new LinkedBlockingQueue<>((int) physicalCapacity);
         thread = new Thread(
@@ -83,26 +86,7 @@ public final class BatchDispatcher<T> {
                 softCapacity,
                 batchSize,
                 backoff,
-                Objects.requireNonNull(freshSource, "freshSource"),
-                processor
-        );
-    }
-
-    public static <T> BatchDispatcher<T> queued(
-            String adapterId,
-            String dispatcherId,
-            int softCapacity,
-            int batchSize,
-            Duration backoff,
-            AdapterBatchProcessor<T> processor
-    ) {
-        return new BatchDispatcher<>(
-                adapterId,
-                dispatcherId,
-                softCapacity,
-                batchSize,
-                backoff,
-                null,
+                freshSource,
                 processor
         );
     }
@@ -145,11 +129,7 @@ public final class BatchDispatcher<T> {
 
     private void runLoop() {
         try {
-            if (freshSource == null) {
-                runQueuedLoop();
-            } else {
-                runPullingLoop();
-            }
+            runPullingLoop();
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
         } finally {
@@ -158,31 +138,12 @@ public final class BatchDispatcher<T> {
         }
     }
 
-    private void runQueuedLoop() throws InterruptedException {
-        while (isActive()) {
-            List<T> batch = takeBatch();
-            if (!isActive()) {
-                return;
-            }
-            BatchAttempt attempt = processOnce(batch, true);
-            if (attempt == BatchAttempt.STOPPED) {
-                return;
-            }
-            if (attempt == BatchAttempt.FAILED) {
-                awaitBackoff();
-            }
-        }
-    }
-
     private void runPullingLoop() throws InterruptedException {
         while (isActive()) {
             boolean failed = false;
             List<T> retryBatch = drainBatch();
             if (!retryBatch.isEmpty()) {
-                BatchAttempt retryAttempt = processOnce(
-                        retryBatch,
-                        false
-                );
+                BatchAttempt retryAttempt = processOnce(retryBatch);
                 if (retryAttempt == BatchAttempt.STOPPED) {
                     return;
                 }
@@ -197,10 +158,7 @@ public final class BatchDispatcher<T> {
                 List<T> freshBatch = copyFreshBatch(freshSource.get());
                 fresh = !freshBatch.isEmpty();
                 if (fresh) {
-                    BatchAttempt freshAttempt = processOnce(
-                            freshBatch,
-                            false
-                    );
+                    BatchAttempt freshAttempt = processOnce(freshBatch);
                     if (freshAttempt == BatchAttempt.STOPPED) {
                         return;
                     }
@@ -225,10 +183,7 @@ public final class BatchDispatcher<T> {
         }
     }
 
-    private BatchAttempt processOnce(
-            List<T> batch,
-            boolean requeueUnavailable
-    ) {
+    private BatchAttempt processOnce(List<T> batch) {
         try {
             BatchProcessResult result = Objects.requireNonNull(
                     processor.process(batch),
@@ -270,16 +225,6 @@ public final class BatchDispatcher<T> {
                     "batchDispatcher.process",
                     "Adapter batch processing failed"
             );
-            if (requeueUnavailable
-                    && failure.errorCode()
-                    == WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_UNAVAILABLE) {
-                logDropIfRejected(
-                        admit(batch, true),
-                        failure.errorCode(),
-                        batch.size()
-                );
-            }
             logFailure(failure);
             return BatchAttempt.FAILED;
         }
@@ -299,13 +244,6 @@ public final class BatchDispatcher<T> {
             );
         }
         return copied;
-    }
-
-    private List<T> takeBatch() throws InterruptedException {
-        ArrayList<T> batch = new ArrayList<>(batchSize);
-        batch.add(queue.take());
-        queue.drainTo(batch, batchSize - 1);
-        return List.copyOf(batch);
     }
 
     private List<T> drainBatch() {

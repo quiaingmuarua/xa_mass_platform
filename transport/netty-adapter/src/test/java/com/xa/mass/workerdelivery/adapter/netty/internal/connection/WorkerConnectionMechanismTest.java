@@ -7,7 +7,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
@@ -21,12 +21,12 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.CloseCurrentOutcome;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -36,6 +36,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -189,13 +190,14 @@ class WorkerConnectionMechanismTest {
     @Test
     void evidenceQueuePressureNeverClosesVerifiedWorkerChannel() {
         Fixture fixture = new Fixture(2);
-        assertThat(fixture.ingressReports(List.of(
-                "occupied-1",
+        assertThat(fixture.ingressReports(fixture.report(
+                KERNEL,
+                "occupied-1"
+        ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+        assertThat(fixture.ingressReports(fixture.report(
+                KERNEL,
                 "occupied-2"
-        )))
-                .isEqualTo(
-                        BatchDispatcher.DispatchStatus.ACCEPTED
-                );
+        ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
@@ -523,12 +525,17 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.systemReports)
                     .containsExactly(fixture.systemResult("worker-1"));
 
-            assertThat(fixture.ingressReports(List.of(
-                    "occupied-1",
+            assertThat(fixture.ingressReports(fixture.report(
+                    SYSTEM,
+                    "occupied-1"
+            ))).isEqualTo(
+                    DeliveryReportDispatcher.DispatchStatus.ACCEPTED
+            );
+            assertThat(fixture.ingressReports(fixture.report(
+                    SYSTEM,
                     "occupied-2"
-            )))
-                    .isEqualTo(
-                    BatchDispatcher.DispatchStatus.ACCEPTED
+            ))).isEqualTo(
+                    DeliveryReportDispatcher.DispatchStatus.ACCEPTED
             );
             channel.writeInbound(fixture.systemResult("worker-1"));
 
@@ -548,13 +555,14 @@ class WorkerConnectionMechanismTest {
         awaitBound(fixture, channel);
         fixture.flushReports();
         fixture.systemReports.clear();
-        assertThat(fixture.ingressReports(List.of(
-                "occupied-1",
+        assertThat(fixture.ingressReports(fixture.report(
+                TASK,
+                "occupied-1"
+        ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+        assertThat(fixture.ingressReports(fixture.report(
+                TASK,
                 "occupied-2"
-        )))
-                .isEqualTo(
-                        BatchDispatcher.DispatchStatus.ACCEPTED
-                );
+        ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
 
         channel.writeInbound(fixture.taskResult("worker-1"));
 
@@ -825,9 +833,9 @@ class WorkerConnectionMechanismTest {
         private final AtomicInteger completedReportRequests =
                 new AtomicInteger();
         private final ScriptedHttpServer reportServer;
-        private final ArrayDeque<String> reportQueue = new ArrayDeque<>();
-        private final BatchDispatcher<String> reportDispatcher;
-        private final DeliveryReportProcess reportProcess;
+        private final Map<DeliveryEndpoint, ArrayDeque<DeliveryReport>>
+                reportQueues = new EnumMap<>(DeliveryEndpoint.class);
+        private final DeliveryReportDispatcher reportDispatcher;
         private final int reportCapacity;
         private final WorkerRouteRegistry routes;
         private final FakeNetworkServer network = new FakeNetworkServer();
@@ -854,15 +862,14 @@ class WorkerConnectionMechanismTest {
         ) {
             this.routes = routes;
             this.reportCapacity = reportCapacity;
+            reportQueues.put(TASK, new ArrayDeque<>());
+            reportQueues.put(SYSTEM, new ArrayDeque<>());
+            reportQueues.put(KERNEL, new ArrayDeque<>());
             reportServer = reportServer();
             reportDispatcher = reportDispatcher();
             doAnswer(invocation -> ingressReports(
                     invocation.getArgument(0)
-            )).when(reportDispatcher).tryDispatch(anyList());
-            reportProcess = new DeliveryReportProcess(
-                    remoteApi(reportServer),
-                    "adapter-1"
-            );
+            )).when(reportDispatcher).tryDispatch(any(DeliveryReport.class));
             mechanism = new WorkerConnectionMechanism(
                         routes,
                         network,
@@ -886,32 +893,46 @@ class WorkerConnectionMechanismTest {
 
         private void flushReports() {
             int previousRequests = completedReportRequests.get();
-            reportProcess.process(takeReports());
+            remoteApi(reportServer).appendReports(
+                    "adapter-1",
+                    takeReports()
+            );
             if (completedReportRequests.get() <= previousRequests) {
                 throw new AssertionError("No queued report was submitted");
             }
         }
 
-        private synchronized BatchDispatcher.DispatchStatus ingressReports(
-                List<String> reportsToIngress
+        private synchronized DeliveryReportDispatcher.DispatchStatus
+        ingressReports(
+                DeliveryReport report
         ) {
-            List<String> copied = List.copyOf(reportsToIngress);
-            if (copied.size() > reportCapacity) {
-                throw new IllegalArgumentException(
-                        "report batch exceeds test queue capacity"
-                );
+            ArrayDeque<DeliveryReport> queue = reportQueues.get(report.dst());
+            if (queue == null) {
+                throw new IllegalArgumentException("unsupported destination");
             }
-            if (reportQueue.size() >= reportCapacity) {
-                return BatchDispatcher.DispatchStatus.FULL;
+            if (queue.size() >= reportCapacity) {
+                return DeliveryReportDispatcher.DispatchStatus.FULL;
             }
-            reportQueue.addAll(copied);
-            return BatchDispatcher.DispatchStatus.ACCEPTED;
+            queue.addLast(report);
+            return DeliveryReportDispatcher.DispatchStatus.ACCEPTED;
         }
 
-        private synchronized List<String> takeReports() {
-            ArrayList<String> batch = new ArrayList<>(100);
-            while (batch.size() < 100 && !reportQueue.isEmpty()) {
-                batch.add(reportQueue.removeFirst());
+        private synchronized List<DeliveryReport> takeReports() {
+            ArrayDeque<DeliveryReport> queue = null;
+            for (DeliveryEndpoint destination
+                    : List.of(TASK, SYSTEM, KERNEL)) {
+                ArrayDeque<DeliveryReport> candidate =
+                        reportQueues.get(destination);
+                if (!candidate.isEmpty()) {
+                    queue = candidate;
+                    break;
+                }
+            }
+            ArrayList<DeliveryReport> batch = new ArrayList<>(100);
+            while (queue != null
+                    && batch.size() < 100
+                    && !queue.isEmpty()) {
+                batch.add(queue.removeFirst());
             }
             if (batch.isEmpty()) {
                 throw new AssertionError("No queued report was available");
@@ -919,20 +940,18 @@ class WorkerConnectionMechanismTest {
             return List.copyOf(batch);
         }
 
-        @SuppressWarnings("unchecked")
-        private BatchDispatcher<String> reportDispatcher() {
-            return (BatchDispatcher<String>) (BatchDispatcher<?>)
-                    mock(BatchDispatcher.class);
+        private DeliveryReportDispatcher reportDispatcher() {
+            return mock(DeliveryReportDispatcher.class);
         }
 
         private ScriptedHttpServer reportServer() {
             ScriptedHttpServer server = new ScriptedHttpServer(request -> {
-                List<String> batch = Jsons.parseArray(request.body())
+                List<DeliveryReport> batch = Jsons.parseArray(request.body())
                         .stream()
-                        .map(String.class::cast)
+                        .map(value -> decodeReportObject(codec, value))
                         .toList();
-                for (String encoded : batch) {
-                    var report = codec.decodeDeliveryReport(encoded);
+                for (DeliveryReport report : batch) {
+                    String encoded = codec.encodeDeliveryReport(report);
                     if (report.dst() == SYSTEM) {
                         systemReports.add(encoded);
                     } else if (report.dst() == KERNEL) {
@@ -949,6 +968,28 @@ class WorkerConnectionMechanismTest {
             });
             httpServers.add(server);
             return server;
+        }
+
+        private static DeliveryReport decodeReportObject(
+                WorkerDeliveryCodec codec,
+                Object value
+        ) {
+            if (!(value instanceof Map<?, ?> raw)) {
+                throw new IllegalArgumentException(
+                        "Expected DeliveryReport JSON object"
+                );
+            }
+            java.util.LinkedHashMap<String, Object> fields =
+                    new java.util.LinkedHashMap<>();
+            raw.forEach((key, fieldValue) -> {
+                if (!(key instanceof String name)) {
+                    throw new IllegalArgumentException(
+                            "Expected DeliveryReport field name"
+                    );
+                }
+                fields.put(name, fieldValue);
+            });
+            return codec.decodeDeliveryReport(fields);
         }
 
         private void assertConnectionEvidence(
@@ -977,6 +1018,24 @@ class WorkerConnectionMechanismTest {
             assertThat(payload).containsEntry("state", state);
             assertThat(payload.get("observedAtMillis"))
                     .isInstanceOf(Number.class);
+        }
+
+        private DeliveryReport report(
+                DeliveryEndpoint destination,
+                String payload
+        ) {
+            DeliveryEndpoint source = destination == KERNEL
+                    ? ADAPTER
+                    : WORKER;
+            return DeliveryReport.create(
+                    source,
+                    source == ADAPTER ? "adapter-1" : "worker-1",
+                    destination,
+                    "test.report",
+                    "200",
+                    payload,
+                    destination == TASK ? "context" : "direct-call:v1:test"
+            );
         }
 
         private String taskResult(String workerId) {

@@ -1,7 +1,6 @@
 package com.xa.mass.server.delivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
@@ -44,7 +43,6 @@ public final class WorkerDeliveryService {
     private final WorkerBindingService bindings;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
-    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
@@ -263,63 +261,62 @@ public final class WorkerDeliveryService {
         );
     }
 
-    public WorkerResultAppendCounts appendAdapterResults(
+    public WorkerResultAppendCounts appendAdapterReports(
             String endpointManagerId,
-            List<String> encodedWorkerResults
+            List<DeliveryReport> reports
     ) {
-        String operation = "workerDelivery.appendAdapterResults";
+        String operation = "workerDelivery.appendAdapterReports";
         requireAdapterBatchIdentity(endpointManagerId, operation);
-        if (encodedWorkerResults == null
-                || encodedWorkerResults.isEmpty()
-                || encodedWorkerResults.size()
-                > MAX_ADAPTER_RESULT_BATCH_SIZE) {
-            throw invalid(
-                    operation,
-                    "Adapter result batch must contain 1..100 Reports"
+        List<DeliveryReport> batch = requireHomogeneousReportBatch(
+                reports,
+                operation
+        );
+        WorkerResultAppendCounts counts = switch (batch.get(0).dst()) {
+            case TASK -> appendAdapterTaskReports(
+                    endpointManagerId,
+                    batch,
+                    operation
             );
-        }
+            case SYSTEM -> appendAdapterSystemReports(
+                    endpointManagerId,
+                    batch,
+                    operation
+            );
+            case KERNEL -> appendAdapterKernelReports(
+                    endpointManagerId,
+                    batch,
+                    operation
+            );
+            case ADAPTER, WORKER -> throw invalid(
+                    operation,
+                    "Adapter Report destination is unsupported"
+            );
+        };
+        logRejected(endpointManagerId, counts);
+        return counts;
+    }
 
-        List<DeliveryReport> directCallResults = new ArrayList<>();
-        List<DeliveryReport> kernelResults = new ArrayList<>();
+    private WorkerResultAppendCounts appendAdapterTaskReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
         List<DeliveryReport> successfulTaskResults = new ArrayList<>();
         List<DeliveryReport> failedTaskResults = new ArrayList<>();
         int rejectedCount = 0;
-        for (String encodedWorkerResult : encodedWorkerResults) {
-            if (encodedWorkerResult == null
-                    || encodedWorkerResult.isBlank()) {
-                rejectedCount++;
-                continue;
-            }
-            try {
-                DeliveryReport result = codec.decodeDeliveryReport(
-                        encodedWorkerResult
-                );
-                if (result == null) {
-                    rejectedCount++;
-                } else if (result.dst() == DeliveryEndpoint.SYSTEM) {
-                    directCallResults.add(result);
-                } else if (result.dst() == DeliveryEndpoint.KERNEL
-                        && result.src() == DeliveryEndpoint.ADAPTER
-                        && endpointManagerId.equals(result.sourceId())) {
-                    kernelResults.add(result);
-                } else {
-                    TaskResultClass resultClass = taskResultClass(
-                            endpointManagerId,
-                            result
-                    );
-                    if (resultClass == TaskResultClass.SUCCESS) {
-                        successfulTaskResults.add(result);
-                    } else if (resultClass == TaskResultClass.FAILURE) {
-                        failedTaskResults.add(result);
-                    } else {
-                        rejectedCount++;
-                    }
-                }
-            } catch (IllegalArgumentException error) {
+        for (DeliveryReport report : reports) {
+            TaskResultClass resultClass = taskResultClass(
+                    endpointManagerId,
+                    report
+            );
+            if (resultClass == TaskResultClass.SUCCESS) {
+                successfulTaskResults.add(report);
+            } else if (resultClass == TaskResultClass.FAILURE) {
+                failedTaskResults.add(report);
+            } else {
                 rejectedCount++;
             }
         }
-
         int acceptedCount = 0;
         if (!successfulTaskResults.isEmpty()) {
             appendTaskResults(
@@ -337,49 +334,117 @@ public final class WorkerDeliveryService {
             );
             acceptedCount += failedTaskResults.size();
         }
-        if (!directCallResults.isEmpty()) {
-            DirectCallService.ResultAppendCounts directCounts =
-                    directCalls.completeReports(
-                            endpointManagerId,
-                            directCallResults
-                    );
-            acceptedCount += directCounts.acceptedCount();
-            rejectedCount += directCounts.rejectedCount();
+        return new WorkerResultAppendCounts(acceptedCount, rejectedCount);
+    }
+
+    private WorkerResultAppendCounts appendAdapterSystemReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        try {
+            DirectCallService.ResultAppendCounts counts =
+                    directCalls.completeReports(endpointManagerId, reports);
+            return new WorkerResultAppendCounts(
+                    counts.acceptedCount(),
+                    counts.rejectedCount()
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
         }
-        if (!kernelResults.isEmpty()) {
-            try {
-                int accepted = serviceability.appendAdapterEvidenceResults(
-                        kernelResults
-                );
-                if (accepted != kernelResults.size()) {
-                    throw unavailable(
-                            operation,
-                            new IllegalStateException(
-                                    "Adapter evidence batch was not fully "
-                                            + "accepted"
-                            )
-                    );
-                }
-                acceptedCount += accepted;
-            } catch (ServerException error) {
-                throw error;
-            } catch (RuntimeException error) {
-                throw unavailable(operation, error);
+    }
+
+    private WorkerResultAppendCounts appendAdapterKernelReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        List<DeliveryReport> acceptedReports = new ArrayList<>();
+        for (DeliveryReport report : reports) {
+            if (report.src() == DeliveryEndpoint.ADAPTER
+                    && endpointManagerId.equals(report.sourceId())) {
+                acceptedReports.add(report);
             }
         }
-        if (rejectedCount > 0) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "endpointManagerId={0} acceptedCount={1} "
-                            + "rejectedCount={2}",
-                    endpointManagerId,
-                    acceptedCount,
-                    rejectedCount
+        if (acceptedReports.isEmpty()) {
+            return new WorkerResultAppendCounts(0, reports.size());
+        }
+        try {
+            int accepted = serviceability.appendAdapterEvidenceResults(
+                    acceptedReports
+            );
+            if (accepted != acceptedReports.size()) {
+                throw unavailable(
+                        operation,
+                        new IllegalStateException(
+                                "Adapter evidence batch was not fully accepted"
+                        )
+                );
+            }
+            return new WorkerResultAppendCounts(
+                    accepted,
+                    reports.size() - acceptedReports.size()
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
+        }
+    }
+
+    private static List<DeliveryReport> requireHomogeneousReportBatch(
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        if (reports == null
+                || reports.isEmpty()
+                || reports.size() > MAX_ADAPTER_RESULT_BATCH_SIZE) {
+            throw invalid(
+                    operation,
+                    "Adapter result batch must contain 1..100 Reports"
             );
         }
-        return new WorkerResultAppendCounts(
-                acceptedCount,
-                rejectedCount
+        List<DeliveryReport> batch;
+        try {
+            batch = List.copyOf(reports);
+        } catch (NullPointerException error) {
+            throw invalid(operation, "Adapter result batch contains null");
+        }
+        DeliveryEndpoint destination = batch.get(0).dst();
+        if (destination != DeliveryEndpoint.TASK
+                && destination != DeliveryEndpoint.SYSTEM
+                && destination != DeliveryEndpoint.KERNEL) {
+            throw invalid(
+                    operation,
+                    "Adapter Report destination is unsupported"
+            );
+        }
+        for (DeliveryReport report : batch) {
+            if (report.dst() != destination) {
+                throw invalid(
+                        operation,
+                        "Adapter Report batch must have one destination"
+                );
+            }
+        }
+        return batch;
+    }
+
+    private static void logRejected(
+            String endpointManagerId,
+            WorkerResultAppendCounts counts
+    ) {
+        if (counts.rejectedCount() == 0) {
+            return;
+        }
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "endpointManagerId={0} acceptedCount={1} rejectedCount={2}",
+                endpointManagerId,
+                counts.acceptedCount(),
+                counts.rejectedCount()
         );
     }
 

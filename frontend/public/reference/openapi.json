@@ -1451,8 +1451,7 @@
             "application/json" : {
               "schema" : {
                 "items" : {
-                  "minLength" : 1,
-                  "type" : "string"
+                  "$ref" : "#/components/schemas/WorkerResultRequest"
                 },
                 "maxItems" : 100,
                 "minItems" : 1,

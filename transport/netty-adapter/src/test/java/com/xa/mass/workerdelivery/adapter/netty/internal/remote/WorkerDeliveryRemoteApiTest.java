@@ -2,6 +2,9 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.remote;
 
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,6 +16,9 @@ import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
@@ -43,6 +49,8 @@ class WorkerDeliveryRemoteApiTest {
             return new Response(204, "");
         })) {
             WorkerDeliveryRemoteApi remoteApi = remoteApi(server);
+            DeliveryReport first = report(TASK, "report-1");
+            DeliveryReport second = report(TASK, "report-2");
 
             assertThat(remoteApi.consumeCommands("adapter/one", 3))
                     .containsExactly(
@@ -51,7 +59,7 @@ class WorkerDeliveryRemoteApiTest {
                     );
             remoteApi.appendReports(
                     "adapter/one",
-                    List.of("report-1", "report-2")
+                    List.of(first, second)
             );
             assertThat(server.requests()).hasSize(2);
             assertThat(server.requests().get(0)).satisfies(request -> {
@@ -67,9 +75,44 @@ class WorkerDeliveryRemoteApiTest {
                                 + "adapter%2Fone/results:append"
                 );
                 assertThat(request.body()).isEqualTo(
-                        "[\"report-1\",\"report-2\"]"
+                        Jsons.toJson(List.of(
+                                CODEC.encodeDeliveryReportFields(first),
+                                CODEC.encodeDeliveryReportFields(second)
+                        ))
                 );
             });
+        }
+    }
+
+    @Test
+    void submitsEverySupportedDestinationThroughTheSameReportPath() {
+        try (ScriptedHttpServer server = new ScriptedHttpServer(
+                request -> new Response(
+                        202,
+                        "{\"acceptedCount\":1,\"rejectedCount\":0}"
+                )
+        )) {
+            WorkerDeliveryRemoteApi remoteApi = remoteApi(server);
+
+            remoteApi.appendReports(
+                    "adapter-1",
+                    List.of(report(TASK, "task"))
+            );
+            remoteApi.appendReports(
+                    "adapter-1",
+                    List.of(report(SYSTEM, "system"))
+            );
+            remoteApi.appendReports(
+                    "adapter-1",
+                    List.of(report(KERNEL, "kernel"))
+            );
+
+            assertThat(server.requests()).hasSize(3).allSatisfy(
+                    request -> assertThat(request.rawPath()).isEqualTo(
+                            "/api/v1/worker-delivery/endpoint-managers/"
+                                    + "adapter-1/results:append"
+                    )
+            );
         }
     }
 
@@ -128,7 +171,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of("report")
+                            List.of(report(TASK, "report"))
                     ),
                     REMOTE_API_UNAVAILABLE,
                     "deliveryReport.submitRemote"
@@ -137,7 +180,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of("report")
+                            List.of(report(TASK, "report"))
                     ),
                     REMOTE_API_PROTOCOL_ERROR,
                     "deliveryReport.submitRemote"
@@ -146,7 +189,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of("report")
+                            List.of(report(TASK, "report"))
                     ),
                     REMOTE_API_PROTOCOL_ERROR,
                     "deliveryReport.submitRemote"
@@ -158,7 +201,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of("report")
+                            List.of(report(TASK, "report"))
                     ),
                     REMOTE_API_PROTOCOL_ERROR,
                     "deliveryReport.decodeRemoteResponse"
@@ -181,7 +224,39 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            Collections.nCopies(101, "report")
+                            Collections.nCopies(
+                                    101,
+                                    report(TASK, "report")
+                            )
+                    ),
+                    REMOTE_API_PROTOCOL_ERROR,
+                    "deliveryReport.encodeRemoteRequest"
+            );
+            assertThat(server.requests()).isEmpty();
+
+            assertFailure(
+                    () -> remoteApi.appendReports(
+                            "adapter-1",
+                            List.of(
+                                    report(TASK, "task"),
+                                    report(SYSTEM, "system")
+                            )
+                    ),
+                    REMOTE_API_PROTOCOL_ERROR,
+                    "deliveryReport.encodeRemoteRequest"
+            );
+            assertFailure(
+                    () -> remoteApi.appendReports(
+                            "adapter-1",
+                            List.of(DeliveryReport.create(
+                                    WORKER,
+                                    "worker-1",
+                                    ADAPTER,
+                                    "test.report",
+                                    "200",
+                                    "{}",
+                                    ""
+                            ))
                     ),
                     REMOTE_API_PROTOCOL_ERROR,
                     "deliveryReport.encodeRemoteRequest"
@@ -206,7 +281,7 @@ class WorkerDeliveryRemoteApiTest {
         assertFailure(
                 () -> remoteApi.appendReports(
                         "adapter-1",
-                        List.of("report")
+                        List.of(report(TASK, "report"))
                 ),
                 REMOTE_API_UNAVAILABLE,
                 "deliveryReport.submitRemote"
@@ -239,7 +314,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of("report")
+                            List.of(report(TASK, "report"))
                     ),
                     REMOTE_API_UNAVAILABLE,
                     "deliveryReport.submitRemote"
@@ -316,6 +391,22 @@ class WorkerDeliveryRemoteApiTest {
                 1234,
                 "{}",
                 "forward-1"
+        );
+    }
+
+    private static DeliveryReport report(
+            DeliveryEndpoint destination,
+            String payload
+    ) {
+        DeliveryEndpoint source = destination == KERNEL ? ADAPTER : WORKER;
+        return DeliveryReport.create(
+                source,
+                source == ADAPTER ? "adapter-1" : "worker-1",
+                destination,
+                "test.report",
+                "200",
+                payload,
+                destination == TASK ? "task-context" : "context"
         );
     }
 

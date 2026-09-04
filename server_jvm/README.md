@@ -432,16 +432,18 @@ Server may consume up to 100 coalesced Kernel Serviceability requests and add
 one Adapter snapshot Command. Only a Worker Command map key is its workerId;
 Adapter and Kernel Command keys are response-local and opaque.
 
-Adapter `results:append` accepts one mixed batch of `1..100` encoded Reports.
-Server validates that outer bound before decoding any Report, then routes TASK,
-SYSTEM and KERNEL subsets to their existing Owners. Queue capacity remains an
-Adapter-local memory bound and is not an HTTP batch-size declaration.
-If the Kernel Serviceability evidence LIST cannot admit its complete subset,
-Server returns `503` so the Adapter retries the unchanged mixed batch; capacity
-is not reported as a permanent per-Report rejection.
+Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects.
+The complete batch must have one supported `dst`; Server rejects a mixed or
+unsupported batch before calling any semantic Owner, then routes the whole
+batch to TASK Result, SYSTEM Direct Call, or KERNEL Serviceability handling.
+Owner-local source, correlation, outcome and forward failures remain per-item
+rejections. Queue capacity remains an Adapter-local memory bound and is not an
+HTTP batch-size declaration. If Kernel Serviceability cannot admit the complete
+valid evidence subset, Server returns `503`.
 `commands:consume` accepts the JSON integer limit and returns the entry-keyed
-Command Map directly. `results:append` accepts the encoded Report string array
-directly; only its accepted/rejected count response remains structured.
+Command Map directly. `results:append` accepts the Report object array directly;
+only its accepted/rejected count response remains a named structure. All Report
+destinations share this path; adding a destination does not add an endpoint.
 Exact route schemas are available from the running Server:
 
 ```text

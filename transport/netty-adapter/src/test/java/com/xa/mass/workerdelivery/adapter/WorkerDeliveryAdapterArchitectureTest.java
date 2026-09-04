@@ -151,15 +151,19 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void batchDispatcherOwnsTheOnlyProcessLoopQueueAndPlatformThread()
+    void commandAndReportOwnersKeepFixedIndependentConsumerThreads()
             throws IOException {
         String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
-        String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
-        String dispatcher = read(PROCESS.resolve("BatchDispatcher.java"));
+        String commandDispatcher = read(PROCESS.resolve(
+                "BatchDispatcher.java"
+        ));
+        String reportDispatcher = read(PROCESS.resolve(
+                "DeliveryReportDispatcher.java"
+        ));
         String result = read(PROCESS.resolve("BatchProcessResult.java"));
         String manager = read(PROCESS.resolve("AdapterProcessManager.java"));
 
-        assertThat(command + report)
+        assertThat(command)
                 .doesNotContain("Queue<")
                 .doesNotContain("runLoop")
                 .doesNotContain("loopStopped")
@@ -169,30 +173,41 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("while (")
                 .doesNotContain("retryCount")
                 .doesNotContain("retry_cnt");
-        assertThat(dispatcher)
+        assertThat(commandDispatcher)
                 .contains("LinkedBlockingQueue<")
-                .contains(".take()")
                 .contains(".drainTo(")
                 .contains("while (")
                 .contains("Thread.sleep")
                 .contains("new Thread(")
                 .contains("thread.setDaemon(true)")
                 .contains("volatile boolean stopped")
+                .doesNotContain("static <T> BatchDispatcher<T> queued")
                 .doesNotContain("while (currentBatch")
                 .doesNotContain("retryCount")
                 .doesNotContain("retry_cnt")
                 .doesNotContain("Executors.");
+        assertThat(reportDispatcher)
+                .contains("LinkedBlockingQueue<DeliveryReport> taskQueue")
+                .contains("LinkedBlockingQueue<DeliveryReport> systemQueue")
+                .contains("LinkedBlockingQueue<DeliveryReport> kernelQueue")
+                .contains("while (isActive())")
+                .contains("new Thread(")
+                .contains("thread.setDaemon(true)")
+                .doesNotContain("Executor")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("Timer");
         assertThat(result)
                 .contains("WorkerDeliveryAdapterErrorCode errorCode")
                 .contains("List<Integer> requeueIndexes")
                 .doesNotContain("List<T>");
         assertThat(manager)
                 .contains("BatchDispatcher<DeliveryCommandItem>")
-                .contains("BatchDispatcher<String>")
+                .contains("DeliveryReportDispatcher")
                 .doesNotContain("List<BatchDispatcher")
                 .doesNotContain("register(")
                 .doesNotContain("enum QuiescePhase");
-        assertThat(command + report + dispatcher + result + manager)
+        assertThat(command + commandDispatcher + reportDispatcher
+                + result + manager)
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("AdapterBatchLane")
                 .doesNotContain("AdapterBatchSource")
@@ -212,6 +227,9 @@ class WorkerDeliveryAdapterArchitectureTest {
         ))).isFalse();
         assertThat(Files.exists(PROCESS.resolve(
                 "DeliveryReportQueue.java"
+        ))).isFalse();
+        assertThat(Files.exists(PROCESS.resolve(
+                "DeliveryReportProcess.java"
         ))).isFalse();
     }
 

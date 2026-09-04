@@ -319,7 +319,8 @@ The production cut is frozen:
 NettyWorkerDeliveryAdapter
   -> AdapterProcessManager
      -> BatchDispatcher<DeliveryCommandItem> -> DeliveryCommandProcess
-     -> BatchDispatcher<String> -> DeliveryReportProcess
+     -> DeliveryReportDispatcher
+        -> TASK / SYSTEM / KERNEL LinkedBlockingQueue<DeliveryReport>
   -> WorkerConnectionInboundHandler
      -> WorkerConnectionMechanism
         -> WorkerRouteRegistry
@@ -330,17 +331,22 @@ NettyWorkerDeliveryAdapter
 Rules:
 
 - The aggregate owns public lifecycle and network shutdown ordering.
-  `AdapterProcessManager` owns exactly two same-lifetime Batch Dispatchers and
+  `AdapterProcessManager` owns exactly two same-lifetime Dispatchers and
   their shared join deadline; it is a fixed composition, not a dynamic list.
-- Each generic `BatchDispatcher` owns one finite `LinkedBlockingQueue`, one
-  resident daemon platform thread, stop intent, batch acquisition, retry-tail
-  placement, exception classification and backoff. Command and Report Processes
-  process one batch once and own no Queue, thread, sleep, pending batch or
-  lifecycle.
+- The Command `BatchDispatcher` owns one finite retry
+  `LinkedBlockingQueue`, one resident daemon platform thread, stop intent,
+  batch acquisition, retry-tail placement, exception classification and
+  backoff. `DeliveryCommandProcess` processes one batch once and owns no Queue,
+  thread, sleep, pending batch or lifecycle.
 - The Command Queue contains only deferred delivery items; one fresh remote
-  batch is processed directly after each retry slice. The Report Dispatcher is
-  both non-blocking multi-producer ingress and its single consumer. Queues do
-  not cross Dispatcher boundaries.
+  batch is processed directly after each retry slice.
+- `DeliveryReportDispatcher` owns three finite TASK, SYSTEM and KERNEL
+  `LinkedBlockingQueue<DeliveryReport>` lanes, their non-blocking admission,
+  rotating homogeneous batches, destination failure policy, and exactly one
+  resident daemon platform thread. Queue count does not determine thread
+  count. The three lanes do not cross the Report owner boundary. SYSTEM and
+  KERNEL admission-drop diagnostics must remain aggregated rather than logging
+  once per Report.
 - One process-scoped Adapter Factory owns the immutable Remote API facade and
   codec used by every Adapter it creates. The facade owns the fixed Command
   consume and Report append paths, wire JSON and method-specific status
@@ -353,10 +359,20 @@ Rules:
   destructures it so internal owners receive only their own values. Do not
   restore tagged Process lists, cache config wrappers, Server-side JSON schema
   parsing, global singleton configuration or compatibility aliases.
-- Result queue capacity is only a local soft memory bound. The Report Processor
-  submits fixed `1..100` remote batches once; classified remote unavailability
-  appends that batch to the Queue tail. Shutdown drops current and queued
-  Reports without a final synchronous flush.
+- Each Report lane's configured capacity is a local external soft memory bound;
+  the TASK lane additionally reserves 100 physical positions for its one
+  in-flight batch. The Report Dispatcher submits fixed homogeneous `1..100`
+  object batches once through the single `results:append` path. TASK remote
+  unavailability appends that batch to the TASK Queue tail without a retry
+  count or deadline; SYSTEM and KERNEL failures drop their batch. This is
+  bounded best-effort retransmission, not a durable or exactly-once claim.
+  Shutdown drops current and queued Reports without a final synchronous flush.
+- Server rejects a mixed or unsupported Report batch before semantic Owner
+  side effects, then routes the homogeneous batch by `dst`. New Report classes
+  extend the Adapter lane and Server Owner switch, not the HTTP path.
+- Future Report concurrency may use only one bounded executor inside the
+  Report owner with explicit in-flight, retry-reserve and shutdown bounds; do
+  not create one thread or pool per Queue.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
 - First verification crosses only the injected single-item
@@ -400,9 +416,10 @@ Rules:
 - Only valid bound Worker TASK/SYSTEM evidence follows the current destination
   rules; invalid unbound input and TASK result backpressure may close the exact
   connection.
-- Expired TASK delivery atomically offers its 23002 TASK Report and a separate
-  `platform.adapter.worker-delivery.expired` KERNEL Report to the one Report
-  Process; Transport does not interpret either as score policy.
+- Expired TASK delivery independently offers its 23002 TASK Report and a
+  separate `platform.adapter.worker-delivery.expired` KERNEL Report to their
+  Report lanes; Transport does not interpret either as score policy and does
+  not promise cross-lane atomic admission.
 - Shutdown waits are owner-local and bounded. Do not reset spent deadlines or
   add unbounded waits.
 - Do not add Session, protocol SPI, dynamic Process/lane registry, reflection,

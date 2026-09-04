@@ -36,7 +36,7 @@ public record NettyWorkerDeliveryAdapterConfig(
                 commandBackoff,
                 "commandBackoff"
         );
-        requireQueueCapacity(
+        requireRetryQueueCapacity(
                 commandRetryCapacity,
                 1,
                 "commandRetryCapacity"
@@ -52,11 +52,7 @@ public record NettyWorkerDeliveryAdapterConfig(
                 reportBackoff,
                 "reportBackoff"
         );
-        requireQueueCapacity(
-                reportQueueCapacity,
-                2,
-                "reportQueueCapacity"
-        );
+        requireReportQueueCapacity(reportQueueCapacity);
         reconnectVerificationRetention = requirePositive(
                 reconnectVerificationRetention,
                 "reconnectVerificationRetention"
@@ -108,7 +104,7 @@ public record NettyWorkerDeliveryAdapterConfig(
         return value;
     }
 
-    private static void requireQueueCapacity(
+    private static void requireRetryQueueCapacity(
             int value,
             int minimum,
             String name
@@ -120,6 +116,19 @@ public record NettyWorkerDeliveryAdapterConfig(
         }
         if (2L * value - 1L > Integer.MAX_VALUE) {
             throw new IllegalArgumentException(name + " is too large");
+        }
+    }
+
+    private static void requireReportQueueCapacity(int value) {
+        if (value < 2) {
+            throw new IllegalArgumentException(
+                    "reportQueueCapacity must be at least 2"
+            );
+        }
+        if ((long) value + 100L > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "reportQueueCapacity is too large"
+            );
         }
     }
 

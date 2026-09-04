@@ -10,7 +10,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -20,7 +20,6 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.ArrayList;
@@ -29,8 +28,6 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class DeliveryCommandProcessTest {
-
-    private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
     void returnsOnlyIndexesWhoseCurrentRouteRequestsRetry() {
@@ -77,11 +74,11 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
-    void expiredTaskProducesItsResultAndKernelEvidenceAsOneIngressBatch() {
+    void expiredTaskProducesIndependentTaskAndKernelReports() {
         WorkerConnectionMechanism connection = mock(
                 WorkerConnectionMechanism.class
         );
-        List<List<String>> offered = new ArrayList<>();
+        List<DeliveryReport> offered = new ArrayList<>();
         DeliveryCommandProcess process = process(
                 connection,
                 reportDispatcher(offered)
@@ -93,12 +90,8 @@ class DeliveryCommandProcessTest {
                 expired
         )))).isEqualTo(BatchProcessResult.completed());
 
-        assertThat(offered).singleElement().satisfies(batch -> {
-            assertThat(batch).hasSize(2);
-            List<DeliveryReport> decoded = batch.stream()
-                    .map(CODEC::decodeDeliveryReport)
-                    .toList();
-            assertThat(decoded).anySatisfy(report -> assertThat(report)
+        assertThat(offered).hasSize(2);
+        assertThat(offered).anySatisfy(report -> assertThat(report)
                     .isEqualTo(DeliveryReport.fromCommand(
                             expired,
                             ADAPTER,
@@ -109,20 +102,19 @@ class DeliveryCommandProcessTest {
                             ),
                             "null"
                     )));
-            assertThat(decoded).anySatisfy(report -> {
-                assertThat(report.dst()).isEqualTo(KERNEL);
-                assertThat(report.messageType()).isEqualTo(
-                        "platform.adapter.worker-delivery.expired"
-                );
-                assertThat(report.forward()).isEqualTo(
-                        "worker-serviceability-evidence:v1"
-                );
-                assertThat(Jsons.parseObject(report.payload()))
-                        .containsExactlyInAnyOrderEntriesOf(Map.of(
-                                "workerId", "worker-1",
-                                "observedAtMillis", 1_000L
-                        ));
-            });
+        assertThat(offered).anySatisfy(report -> {
+            assertThat(report.dst()).isEqualTo(KERNEL);
+            assertThat(report.messageType()).isEqualTo(
+                    "platform.adapter.worker-delivery.expired"
+            );
+            assertThat(report.forward()).isEqualTo(
+                    "worker-serviceability-evidence:v1"
+            );
+            assertThat(Jsons.parseObject(report.payload()))
+                    .containsExactlyInAnyOrderEntriesOf(Map.of(
+                            "workerId", "worker-1",
+                            "observedAtMillis", 1_000L
+                    ));
         });
     }
 
@@ -148,12 +140,11 @@ class DeliveryCommandProcessTest {
                 "null"
         );
         when(dispatcher.dispatch(command)).thenReturn(report);
-        List<List<String>> offered = new ArrayList<>();
+        List<DeliveryReport> offered = new ArrayList<>();
         DeliveryCommandProcess process = new DeliveryCommandProcess(
                 connection,
                 dispatcher,
                 reportDispatcher(offered),
-                CODEC,
                 "adapter-1",
                 () -> 1_000
         );
@@ -163,12 +154,7 @@ class DeliveryCommandProcessTest {
                 command
         )))).isEqualTo(BatchProcessResult.completed());
 
-        assertThat(offered).singleElement().satisfies(batch ->
-                assertThat(batch).singleElement().satisfies(encoded ->
-                        assertThat(CODEC.decodeDeliveryReport(encoded))
-                                .isEqualTo(report)
-                )
-        );
+        assertThat(offered).containsExactly(report);
     }
 
     @Test
@@ -193,36 +179,35 @@ class DeliveryCommandProcessTest {
 
     private static DeliveryCommandProcess process(
             WorkerConnectionMechanism connection,
-            BatchDispatcher<String> reportDispatcher
+            DeliveryReportDispatcher reportDispatcher
     ) {
         return new DeliveryCommandProcess(
                 connection,
                 mock(AdapterEventDispatcher.class),
                 reportDispatcher,
-                CODEC,
                 "adapter-1",
                 () -> 1_000
         );
     }
 
-    @SuppressWarnings("unchecked")
-    private static BatchDispatcher<String> acceptingReportDispatcher() {
-        BatchDispatcher<String> dispatcher = mock(BatchDispatcher.class);
-        when(dispatcher.tryDispatch(anyList())).thenReturn(
-                BatchDispatcher.DispatchStatus.ACCEPTED
+    private static DeliveryReportDispatcher acceptingReportDispatcher() {
+        DeliveryReportDispatcher dispatcher = mock(
+                DeliveryReportDispatcher.class
+        );
+        when(dispatcher.tryDispatch(any(DeliveryReport.class))).thenReturn(
+                DeliveryReportDispatcher.DispatchStatus.ACCEPTED
         );
         return dispatcher;
     }
 
-    private static BatchDispatcher<String> reportDispatcher(
-            List<List<String>> offered
+    private static DeliveryReportDispatcher reportDispatcher(
+            List<DeliveryReport> offered
     ) {
-        BatchDispatcher<String> dispatcher = acceptingReportDispatcher();
+        DeliveryReportDispatcher dispatcher = acceptingReportDispatcher();
         doAnswer(invocation -> {
-            List<String> batch = invocation.getArgument(0);
-            offered.add(List.copyOf(batch));
-            return BatchDispatcher.DispatchStatus.ACCEPTED;
-        }).when(dispatcher).tryDispatch(anyList());
+            offered.add(invocation.getArgument(0));
+            return DeliveryReportDispatcher.DispatchStatus.ACCEPTED;
+        }).when(dispatcher).tryDispatch(any(DeliveryReport.class));
         return dispatcher;
     }
 

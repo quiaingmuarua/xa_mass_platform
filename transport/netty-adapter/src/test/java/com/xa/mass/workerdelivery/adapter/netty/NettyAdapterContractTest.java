@@ -89,10 +89,10 @@ class NettyAdapterContractTest {
             String encodedReport = codec.encodeDeliveryReport(report);
             worker.send(encodedReport);
 
-            awaitResult(remoteApi, encodedReport);
+            awaitResult(remoteApi, report);
             assertThat(remoteApi.appendedResults.stream()
                     .flatMap(List::stream))
-                    .contains(encodedReport);
+                    .contains(report);
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
         } finally {
@@ -343,7 +343,7 @@ class NettyAdapterContractTest {
 
     private static void awaitResult(
             TestRemoteApi remoteApi,
-            String expected
+            DeliveryReport expected
     ) {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -365,7 +365,6 @@ class NettyAdapterContractTest {
         while (System.nanoTime() < deadline) {
             DeliveryReport found = remoteApi.appendedResults.stream()
                     .flatMap(List::stream)
-                    .map(codec::decodeDeliveryReport)
                     .filter(report -> forward.equals(report.forward()))
                     .findFirst()
                     .orElse(null);
@@ -591,7 +590,7 @@ class NettyAdapterContractTest {
 
         private final ConcurrentLinkedQueue<Map<String, DeliveryCommand>>
                 commandBatches = new ConcurrentLinkedQueue<>();
-        private final List<List<String>> appendedResults =
+        private final List<List<DeliveryReport>> appendedResults =
                 new CopyOnWriteArrayList<>();
         private final List<String> verifiedWorkerIds =
                 new CopyOnWriteArrayList<>();
@@ -610,9 +609,9 @@ class NettyAdapterContractTest {
                 return commandResponse(commandBatches.poll());
             }
             if (request.rawPath().endsWith("/results:append")) {
-                List<String> results = Jsons.parseArray(request.body())
+                List<DeliveryReport> results = Jsons.parseArray(request.body())
                         .stream()
-                        .map(String.class::cast)
+                        .map(this::decodeReport)
                         .toList();
                 appendedResults.add(List.copyOf(results));
                 return new Response(202, Jsons.toJson(Map.of(
@@ -623,6 +622,24 @@ class NettyAdapterContractTest {
                 )));
             }
             return new Response(404, "{}");
+        }
+
+        private DeliveryReport decodeReport(Object value) {
+            if (!(value instanceof Map<?, ?> fields)) {
+                throw new IllegalArgumentException(
+                        "Report request item must be an object"
+                );
+            }
+            Map<String, Object> copied = new java.util.LinkedHashMap<>();
+            fields.forEach((name, field) -> copied.put(
+                    String.valueOf(name),
+                    field
+            ));
+            DeliveryReport report = codec.decodeDeliveryReport(copied);
+            if (report == null) {
+                throw new IllegalArgumentException("Report is invalid");
+            }
+            return report;
         }
 
         private CompletionStage<Decision> verifyRoute(

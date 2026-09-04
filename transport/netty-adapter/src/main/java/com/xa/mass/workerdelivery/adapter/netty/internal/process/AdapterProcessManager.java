@@ -9,12 +9,12 @@ import java.util.Objects;
 public final class AdapterProcessManager {
 
     private final BatchDispatcher<DeliveryCommandItem> commandDispatcher;
-    private final BatchDispatcher<String> reportDispatcher;
+    private final DeliveryReportDispatcher reportDispatcher;
     private final Duration shutdownTimeout;
 
     public AdapterProcessManager(
             BatchDispatcher<DeliveryCommandItem> commandDispatcher,
-            BatchDispatcher<String> reportDispatcher,
+            DeliveryReportDispatcher reportDispatcher,
             Duration shutdownTimeout
     ) {
         this.commandDispatcher = Objects.requireNonNull(
@@ -51,18 +51,17 @@ public final class AdapterProcessManager {
         RuntimeException failure = null;
         boolean interrupted = false;
         boolean allStopped = true;
-        for (BatchDispatcher<?> dispatcher
-                : new BatchDispatcher<?>[]{
-                        commandDispatcher,
-                        reportDispatcher
-                }) {
-            if (!dispatcher.isAlive()) {
+        for (Thread thread : new Thread[]{
+                commandDispatcher.thread(),
+                reportDispatcher.thread()
+        }) {
+            if (!thread.isAlive()) {
                 continue;
             }
             long remaining = deadline - System.nanoTime();
             if (remaining > 0) {
                 try {
-                    dispatcher.join(remaining);
+                    join(thread, remaining);
                 } catch (InterruptedException error) {
                     interrupted = true;
                     failure = accumulate(
@@ -71,7 +70,7 @@ public final class AdapterProcessManager {
                     );
                 }
             }
-            if (dispatcher.isAlive()) {
+            if (thread.isAlive()) {
                 allStopped = false;
             }
         }
@@ -92,6 +91,13 @@ public final class AdapterProcessManager {
 
     Thread reportThread() {
         return reportDispatcher.thread();
+    }
+
+    private static void join(Thread thread, long remainingNanos)
+            throws InterruptedException {
+        long millis = remainingNanos / 1_000_000L;
+        int nanos = (int) (remainingNanos % 1_000_000L);
+        thread.join(millis, nanos);
     }
 
     private static WorkerDeliveryAdapterException shutdownTimeout() {

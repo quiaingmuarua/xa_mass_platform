@@ -5,6 +5,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -113,6 +114,12 @@ public final class WorkerDeliveryCodec {
     }
 
     public String encodeDeliveryReport(DeliveryReport report) {
+        return Jsons.toJson(encodeDeliveryReportFields(report));
+    }
+
+    public Map<String, Object> encodeDeliveryReportFields(
+            DeliveryReport report
+    ) {
         if (report == null) {
             throw new IllegalArgumentException(
                     "DeliveryReport must be present"
@@ -126,7 +133,7 @@ public final class WorkerDeliveryCodec {
         payload.put("payload", report.payload());
         payload.put("sourceId", report.sourceId());
         payload.put("src", report.src().wireValue());
-        return Jsons.toJson(payload);
+        return Collections.unmodifiableMap(payload);
     }
 
     private static String string(Object value) {
