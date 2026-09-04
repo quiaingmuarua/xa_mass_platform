@@ -79,7 +79,9 @@ xa_mass:<scope>:worker:serviceability:evidence_results
 The Adapter-partitioned HASH uses `HSETNX`, so repeated requests for one Worker
 coalesce. Server destructively selects up to 100 fields only when an Adapter
 Command response has remaining capacity. The LIST holds at most 10,000 ordinary
-Reports and accepts only the available prefix of an append batch.
+Reports and admits each append batch atomically with respect to capacity. A
+full LIST produces Server backpressure, so the Adapter may retry the unchanged
+batch through its existing bounded process-local queue.
 
 There is no dispatched state, deadline index, batch registry, ack, retry queue,
 durable claim, global pending counter, or backlog watermark. Dispatch advances

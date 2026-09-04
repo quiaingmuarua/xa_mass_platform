@@ -18,6 +18,57 @@ import org.junit.jupiter.api.Test;
 class BatchDispatcherHttpTest {
 
     @Test
+    void unavailableReportAppendRequeuesTheExactBatch() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch completed = new CountDownLatch(1);
+        try (ScriptedHttpServer server = new ScriptedHttpServer(request -> {
+            if (attempts.getAndIncrement() == 0) {
+                return new Response(503, "{}");
+            }
+            return new Response(202, Jsons.toJson(Map.of(
+                    "acceptedCount", 2,
+                    "rejectedCount", 0
+            )));
+        })) {
+            DeliveryReportProcess delegate = new DeliveryReportProcess(
+                    new WorkerDeliveryRemoteApi(
+                            server.baseUri(),
+                            Duration.ofSeconds(2),
+                            new WorkerDeliveryCodec()
+                    ),
+                    "adapter-1"
+            );
+            BatchDispatcher<String> dispatcher = BatchDispatcher.queued(
+                    "adapter-1",
+                    "delivery-report",
+                    4,
+                    100,
+                    Duration.ofMillis(10),
+                    batch -> {
+                        BatchProcessResult result = delegate.process(batch);
+                        completed.countDown();
+                        return result;
+                    }
+            );
+            dispatcher.tryDispatch(List.of("first", "second"));
+            dispatcher.start();
+
+            assertThat(completed.await(2, TimeUnit.SECONDS)).isTrue();
+            dispatcher.stopIngress();
+            dispatcher.stop();
+            dispatcher.thread().join(2_000);
+
+            assertThat(dispatcher.isAlive()).isFalse();
+            assertThat(server.requests())
+                    .extracting(ScriptedHttpServer.Request::body)
+                    .containsExactly(
+                            "[\"first\",\"second\"]",
+                            "[\"first\",\"second\"]"
+                    );
+        }
+    }
+
+    @Test
     void stopInterruptsSynchronousHttpWithoutReprocessingTheBatch()
             throws Exception {
         try (BlockingReportPeer peer = new BlockingReportPeer()) {

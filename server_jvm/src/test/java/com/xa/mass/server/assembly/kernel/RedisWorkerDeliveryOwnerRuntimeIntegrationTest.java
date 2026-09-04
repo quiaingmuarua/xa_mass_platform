@@ -328,6 +328,11 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 first,
                 second,
                 rejected
+        ))).isZero();
+        assertThat(redis.llen(serviceabilityResultKey())).isZero();
+        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(List.of(
+                first,
+                second
         ))).isEqualTo(2);
         assertThat(redis.lrange(serviceabilityResultKey(), 0, -1))
                 .extracting(codec::decodeDeliveryReport)

@@ -484,7 +484,7 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void kernelResultCapacityFailureIsBestEffortAndDoesNotRetryTheBatch() {
+    void kernelResultCapacityFailureIsUnavailableForBatchRetry() {
         DeliveryReport kernel = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
@@ -497,13 +497,13 @@ class WorkerDeliveryServiceTest {
         when(serviceability.appendAdapterEvidenceResults(List.of(kernel)))
                 .thenReturn(0);
 
-        var counts = service.appendAdapterResults(
+        assertThatThrownBy(() -> service.appendAdapterResults(
                 "endpoint-1",
                 List.of(codec.encodeDeliveryReport(kernel))
-        );
-
-        assertThat(counts.acceptedCount()).isZero();
-        assertThat(counts.rejectedCount()).isEqualTo(1);
+        ))
+                .isInstanceOf(ServerException.class)
+                .extracting(error -> ((ServerException) error).errorCode())
+                .isEqualTo(ServerErrorCode.WORKER_DELIVERY_UNAVAILABLE);
     }
 
     @Test

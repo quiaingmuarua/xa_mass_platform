@@ -59,15 +59,15 @@ public final class RedisWorkerServiceabilityRuntime
             """;
 
     private static final String APPEND_ADAPTER_EVIDENCE_RESULTS = """
-            local remaining = tonumber(ARGV[1]) - redis.call('LLEN', KEYS[1])
-            if remaining <= 0 then
+            local batch_size = #ARGV - 1
+            local current_size = redis.call('LLEN', KEYS[1])
+            if current_size + batch_size > tonumber(ARGV[1]) then
                 return 0
             end
-            local accepted = math.min(remaining, #ARGV - 1)
-            for index = 1, accepted do
+            for index = 1, batch_size do
                 redis.call('RPUSH', KEYS[1], ARGV[index + 1])
             end
-            return accepted
+            return batch_size
             """;
 
     private final RedisClient redisClient;

@@ -39,8 +39,10 @@ There is no fallback or dual-producer mode.
 
 `append_adapter_evidence_results` accepts at most 100 standard
 `ADAPTER -> KERNEL` DeliveryReports. A Route-change Report carries one Worker;
-a periodic snapshot Report may carry up to 100. The append Lua script accepts
-the prefix that fits under the 10,000-item limit and reports its count.
+a periodic snapshot Report may carry up to 100. The append Lua script admits
+the complete batch only when it fits under the 10,000-item limit. Capacity
+returns zero without writing a prefix, allowing Server to expose temporary
+backpressure and Adapter to retry the unchanged batch.
 
 `consume_adapter_evidence_results` destructively removes at most 100 items from
 the head. Corrupt or wrong-endpoint entries are discarded. There is no pending
@@ -53,6 +55,8 @@ dual-consumer mode.
 ## Failure Model
 
 Both structures are best-effort evidence handoffs. Process failure after
-destructive consume can lose work. Request or result loss does not mutate score;
-the old score remains eligible for a future bounded scan. These keys are not
-Worker connection, Binding, lifecycle, or scheduling truth.
+destructive consume can lose work, and Adapter-local queue pressure can still
+drop a retry. Redis LIST capacity alone does not turn evidence into a terminal
+semantic rejection. Request or result loss does not mutate score; the old score
+remains eligible for a future bounded scan. These keys are not Worker
+connection, Binding, lifecycle, or scheduling truth.

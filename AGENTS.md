@@ -62,6 +62,10 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
   scopes and may clean only that exact scope with `SCAN` plus `UNLINK`; never
   use `KEYS`, `FLUSHDB`, or `FLUSHALL`.
 - Best-effort hints must not become correctness prerequisites.
+- A bounded evidence handoff may remain lossy across process failure, but local
+  queue capacity must be surfaced as retryable backpressure when the upstream
+  already owns a bounded retry path; do not misclassify it as semantic input
+  rejection.
 - Do not add bridges, compatibility aliases, mirrored DTOs, fallback owners or
   speculative modules.
 - Keep module-coded exceptions local: `errorCode + owner.method operation +

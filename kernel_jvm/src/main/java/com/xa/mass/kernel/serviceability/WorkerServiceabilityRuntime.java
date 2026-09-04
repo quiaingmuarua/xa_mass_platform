@@ -13,6 +13,11 @@ public interface WorkerServiceabilityRuntime {
 
     List<String> consumeProbeRequests(String adapterId, int limit);
 
+    /**
+     * Admits the complete batch with respect to queue capacity.
+     *
+     * @return {@code reports.size()} when admitted, otherwise {@code 0}
+     */
     int appendAdapterEvidenceResults(List<DeliveryReport> reports);
 
     List<DeliveryReport> consumeAdapterEvidenceResults(int limit);

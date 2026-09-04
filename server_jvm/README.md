@@ -436,6 +436,9 @@ Adapter `results:append` accepts one mixed batch of `1..100` encoded Reports.
 Server validates that outer bound before decoding any Report, then routes TASK,
 SYSTEM and KERNEL subsets to their existing Owners. Queue capacity remains an
 Adapter-local memory bound and is not an HTTP batch-size declaration.
+If the Kernel Serviceability evidence LIST cannot admit its complete subset,
+Server returns `503` so the Adapter retries the unchanged mixed batch; capacity
+is not reported as a permanent per-Report rejection.
 `commands:consume` accepts the JSON integer limit and returns the entry-keyed
 Command Map directly. `results:append` accepts the encoded Report string array
 directly; only its accepted/rejected count response remains structured.

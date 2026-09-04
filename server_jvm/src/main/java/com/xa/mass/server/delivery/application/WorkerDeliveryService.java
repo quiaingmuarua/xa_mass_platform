@@ -351,17 +351,20 @@ public final class WorkerDeliveryService {
                 int accepted = serviceability.appendAdapterEvidenceResults(
                         kernelResults
                 );
+                if (accepted != kernelResults.size()) {
+                    throw unavailable(
+                            operation,
+                            new IllegalStateException(
+                                    "Adapter evidence batch was not fully "
+                                            + "accepted"
+                            )
+                    );
+                }
                 acceptedCount += accepted;
-                rejectedCount += kernelResults.size() - accepted;
+            } catch (ServerException error) {
+                throw error;
             } catch (RuntimeException error) {
-                rejectedCount += kernelResults.size();
-                logLowerPriorityFailure(
-                        "workerDelivery.appendAdapterEvidenceResults",
-                        endpointManagerId,
-                        error,
-                        "Rejecting Adapter evidence Report count="
-                                + kernelResults.size()
-                );
+                throw unavailable(operation, error);
             }
         }
         if (rejectedCount > 0) {
