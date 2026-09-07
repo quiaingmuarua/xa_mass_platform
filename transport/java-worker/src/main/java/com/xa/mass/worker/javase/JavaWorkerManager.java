@@ -27,7 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Runs one fixed set of replicas for one Java WorkerGroup.
  *
  * <p>Every replica shares this Manager's platform resources, Definition
- * extensions, and connection options. Reconciliation happens only when the
+ * common extensions, and connection options. Replica extensions are fixed at
+ * construction. Reconciliation happens only when the
  * Host explicitly invokes it.
  */
 public final class JavaWorkerManager implements AutoCloseable {
@@ -571,6 +572,15 @@ public final class JavaWorkerManager implements AutoCloseable {
                 String replicaKey,
                 WorkerPropertiesProvider workerProperties
         ) {
+            return replica(replicaKey, workerProperties, List.of());
+        }
+
+        /** Adds construction-time extensions for this replica after common extensions. */
+        public Builder replica(
+                String replicaKey,
+                WorkerPropertiesProvider workerProperties,
+                Collection<? extends WorkerEventDefinition<?>> extensions
+        ) {
             String key = requireNonBlank(
                     replicaKey,
                     "replicaKey"
@@ -585,7 +595,8 @@ public final class JavaWorkerManager implements AutoCloseable {
                     Objects.requireNonNull(
                             workerProperties,
                             "workerProperties"
-                    )
+                    ),
+                    List.copyOf(Objects.requireNonNull(extensions, "extensions"))
             ));
             return this;
         }
@@ -611,6 +622,8 @@ public final class JavaWorkerManager implements AutoCloseable {
                     );
                 }
                 for (ReplicaSpec replica : replicas.values()) {
+                    List<WorkerEventDefinition<?>> replicaDefinitions = new ArrayList<>(definitionExtensions);
+                    replicaDefinitions.addAll(replica.extensions);
                     WorkerPropertiesProvider batchProperties =
                             JavaWorkerProperties.snapshotProvider(
                                     replica.workerProperties
@@ -629,7 +642,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     transportType,
                                     replica.workerProperties,
                                     completeProperties,
-                                    definitionExtensions,
+                                    replicaDefinitions,
                                     options,
                                     platform
                             );
@@ -711,13 +724,16 @@ public final class JavaWorkerManager implements AutoCloseable {
 
         private final String replicaKey;
         private final WorkerPropertiesProvider workerProperties;
+        private final List<WorkerEventDefinition<?>> extensions;
 
         private ReplicaSpec(
                 String replicaKey,
-                WorkerPropertiesProvider workerProperties
+                WorkerPropertiesProvider workerProperties,
+                List<WorkerEventDefinition<?>> extensions
         ) {
             this.replicaKey = replicaKey;
             this.workerProperties = workerProperties;
+            this.extensions = extensions;
         }
     }
 

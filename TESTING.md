@@ -22,6 +22,7 @@ a prerequisite or Boundary Witness, not a second owner of that invariant.
 | Owner Test | Local algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | Encoding and behavior across adjacent owners or processes |
 | [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, live Properties without Prepare, extension, Result and restart closure |
+| [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) | Loaded PRECOMPUTED work follows live facts, with actual executor and Result witnesses |
 | [Worker Convergence Health](integrations/worker-convergence-health/README.md) | Named witness convergence after established state and process faults |
 | [Worker Loaded Capacity + Recovery Stability](integrations/worker-loaded-recovery/README.md) | Sustained work, repeated Server recovery and resource bounds |
 | [Android Worker](integrations/android-worker-proof/README.md) | Real Android lifecycle and fixed multi-process isolation |
@@ -61,10 +62,14 @@ Use the lowest-cost proof that owns the changed claim:
    convergence changes: run Worker Convergence Health. TaskItem finality remains
    an Owner and Runtime Boundary claim; Convergence may be selected only as a
    downstream witness.
-5. Java Worker connection resource ownership changes: run focused Java Worker
+5. Worker/Platform Properties, Matching, Candidate invalidation, assignment or
+   per-replica Handler assembly changes: run Worker Dynamic Matching. It owns
+   loaded execution witnesses; Redis Owner still owns exact dirty/confirmation
+   ordering and the separate facts/Score commit boundary.
+6. Java Worker connection resource ownership changes: run focused Java Worker
    tests; Worker Loaded Capacity + Recovery Stability remains nightly/manual
    unless its loaded recovery or resource-stability claim must be re-established.
-6. Documentation-only changes run Docs Contract. They do not select runtime
+7. Documentation-only changes run Docs Contract. They do not select runtime
    proofs.
 
 Inspect selection for a branch without running a proof:
@@ -92,6 +97,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Redis Owner | `.\gradlew.bat :server_jvm:redisOwnerIntegrationTest` | Redis 7 |
 | Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
+| Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
@@ -175,6 +181,15 @@ full snapshot oracles; focused Host/Harness tests do not replace this real
 process proof. Selection includes Server `worker/resource/**` admission, with
 representative Host, Adapter Properties entry and Server admission paths checked
 by the selection contract.
+
+Worker Dynamic Matching is an independent selected Proof Gate lane. Its three
+background Tasks overlap Worker PATCH/PUT and Platform Properties changes.
+Four witness Tasks prove ineligible waiting and eligible execution on the ten
+actual target replicas. Seven Tasks and 15,040 Results must close together with
+the independent Host journal, unchanged processes/controls and zero Prepare
+delta. Its Owner fixes negative windows, observation and drain budgets. Safe
+summaries exclude inventory, full Properties, raw journal and private Harness
+correlations. A successful Harness still requires the runner's independent audit.
 
 Android Host owns deterministic SDK, capability, Demo and proof-Harness tests
 plus Android library assembly. Android APK Assembly independently builds the

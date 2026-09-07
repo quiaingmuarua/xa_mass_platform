@@ -29,6 +29,17 @@ The concrete Platform, WebSocket, Control, and line-Socket Clients are
 internal. Cross-module callers use `JavaWorker` or `JavaWorkerManager`.
 `OkHttpWorkerPointClient` remains the public Polling client.
 
+## Replica Definitions
+
+`JavaWorkerManager.Builder.replica(key, properties, extensions)` adds an
+immutable construction-time extension set for that replica. The existing
+two-argument overload supplies no replica extensions. Assembly combines the
+fixed default management Definitions, Manager-common extensions and replica
+extensions in that order and rejects duplicate full Event Names. A per-replica
+Handler may capture its Host-local coordinate; shared platform resources,
+Prepare, reconnect, Properties reporting and lifecycle remain unchanged. This
+is not runtime Handler registration and cannot override management events.
+
 ## Worker Assembly
 
 ```java

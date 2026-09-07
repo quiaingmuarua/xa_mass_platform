@@ -6,7 +6,7 @@ Owner and boundary tests remain next to their production Owners. This file
 registers only high-level lanes whose process world, cost and claim need a
 stable repository-wide identity.
 
-Worker Correctness, Worker Convergence Health and Worker Loaded Capacity +
+Worker Correctness, Worker Dynamic Matching, Worker Convergence Health and Worker Loaded Capacity +
 Recovery Stability are claim identities, not size tiers. Their Worker and Item
 counts are fixed World and Workload fixtures chosen for those claims.
 
@@ -58,6 +58,19 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Worker, fault convergence, reliable SYSTEM delivery under faults, production
   latency SLA, throughput and topology combinations.
 - **Contract:** [Complete scenario](../../integrations/worker-correctness/README.md).
+
+## worker_dynamic_matching
+
+- **Primary owner:** `:integrations:worker-dynamic-matching`.
+- **Claim:** continuous PRECOMPUTED work overlaps live Worker and Platform
+  Properties changes; independent Adapter/Runtime snapshots converge, blocked
+  witnesses stay unexecuted, eligible witnesses execute on actual target
+  replicas, and all submitted Results close with completed execution witnesses
+  without new Prepare or process/Worker restart.
+- **Deliberate nonclaims:** atomic facts/Score cutover, exact dirty-confirmation
+  ordering, cancellation of confirmed work, exactly-once execution, reliable
+  SYSTEM replay, fault recovery, Task fairness, throughput, latency SLA or soak.
+- **Contract:** [Complete scenario](../../integrations/worker-dynamic-matching/README.md).
 
 ## worker_convergence_health
 

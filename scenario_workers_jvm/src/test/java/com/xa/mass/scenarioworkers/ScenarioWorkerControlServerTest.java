@@ -102,7 +102,8 @@ class ScenarioWorkerControlServerTest {
                         checkpointDefinition.eventName(), checkpointDefinition
                 ),
                 (runtimeApiBaseUrl, preparedGroup) -> manager,
-                checkpoints
+                checkpoints,
+                new ScenarioWorkerExecutionWitnesses()
         );
         workers.start(ScenarioWorkerStartupPlan.parse("""
                 {
@@ -172,6 +173,16 @@ class ScenarioWorkerControlServerTest {
                 .hasValue("GET");
         assertThat(request("GET", "/lab/not-found", null).statusCode())
                 .isEqualTo(404);
+    }
+
+    @Test
+    void witnessReadIsBoundedAndReadOnly() throws Exception {
+        assertThat(request("GET", "/lab/v1/execution-witnesses?after=0&limit=100", null).statusCode()).isEqualTo(200);
+        for (String query : List.of("after=-1", "after=1", "limit=101", "after=0&after=0", "unknown=1")) {
+            assertThat(request("GET", "/lab/v1/execution-witnesses?" + query, null).statusCode()).isEqualTo(400);
+        }
+        assertThat(request("POST", "/lab/v1/execution-witnesses", "{}").statusCode()).isEqualTo(405);
+        assertThat(request("GET", "/lab/v1/execution-witnesses/extra", null).statusCode()).isEqualTo(404);
     }
 
     @Test

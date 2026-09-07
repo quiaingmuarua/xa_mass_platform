@@ -529,6 +529,11 @@ It exposes no OkHttp types. `transport/android-worker` owns Android networking a
 HandlerThread resources and must not depend on Java Worker. Neither may import
 Server, Kernel, Redis, score, Pacer or platform business handlers.
 
+Java Worker Manager may accept immutable per-replica extension Definitions at
+construction alongside Group-common Definitions. Both pass through the same
+reserved-default and duplicate Event Name checks. This adds no runtime Handler
+registration, identity inference, thread or Core API.
+
 ## Scenario And Android Capabilities
 
 [Scenario Host](scenario_workers_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
@@ -658,6 +663,14 @@ Adapter connectivity, Kernel state or schedulability.
   the Integration Owner document. Keep Lab Properties and private phase data
   outside the CI artifact whitelist; local Harness success requires the runner
   audit before it can become phase success.
+- [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns
+  loaded PRECOMPUTED execution under live Worker/Platform Properties changes.
+  Scenario's optional execution witness must capture the actual Group/replica
+  in the construction-time Handler closure; request tokens only correlate.
+  Keep its finite paginated journal explicit on overflow and outside artifacts.
+  Harness assertions use Lab and public Runtime APIs; runner audits establish
+  unchanged processes, control files and no new Prepare. Existing Owner proofs
+  retain dirty/confirmation races, separate commits and fault-delivery limits.
 - Frontend is read only for Runtime truth. Its finite Task file flow may create,
   append, approve, and export only through public Task APIs and must not infer
   scheduling state from elapsed time.

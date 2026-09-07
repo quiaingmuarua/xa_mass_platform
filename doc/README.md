@@ -27,6 +27,7 @@ Status: current repository document index.
 - [Scenario Workers](../scenario_workers_jvm/README.md)
 - [Android surfaces](../xa-android/README.md)
 - [Worker Correctness](../integrations/worker-correctness/README.md)
+- [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
 - [Worker Convergence Health](../integrations/worker-convergence-health/README.md)
 - [Proof Registry](testing/proof-registry.md)
 - [Worker Loaded Recovery](../integrations/worker-loaded-recovery/README.md)

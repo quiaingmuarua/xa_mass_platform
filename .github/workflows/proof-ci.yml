@@ -29,6 +29,7 @@ jobs:
       redis_owner: ${{ steps.filter.outputs.redis_owner }}
       runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
       worker_correctness: ${{ steps.filter.outputs.worker_correctness }}
+      worker_dynamic_matching: ${{ steps.filter.outputs.worker_dynamic_matching }}
       worker_convergence_health: ${{ steps.filter.outputs.worker_convergence_health }}
       android_host: ${{ steps.filter.outputs.android_host }}
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
@@ -99,6 +100,7 @@ jobs:
           :scenario_workers_jvm:build
           :server_jvm:build
           :integrations:worker-correctness:build
+          :integrations:worker-dynamic-matching:build
           :integrations:worker-convergence-health:build
           :integrations:worker-loaded-recovery:build
           :distribution:server:verifyPlatformDiagnosticCodes
@@ -111,6 +113,9 @@ jobs:
             -p 'test_*.py'
           python3 -m unittest discover \
             -s integrations/worker-correctness \
+            -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-dynamic-matching \
             -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()
@@ -279,6 +284,48 @@ jobs:
             build/worker-correctness-proof/runtime-server.log
             build/worker-correctness-proof/scenario-host-initial.log
             build/worker-correctness-proof/scenario-host-restart.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  worker-dynamic-matching:
+    name: Worker Dynamic Matching
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_dynamic_matching == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Prove Worker dynamic matching
+        run: >-
+          python3 integrations/worker-dynamic-matching/run_worker_dynamic_matching.py
+          --redis-url redis://127.0.0.1:6379/15
+          --output-root "$GITHUB_WORKSPACE/build/worker-dynamic-matching-proof"
+      - name: Upload Worker dynamic matching evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-dynamic-matching-${{ github.run_attempt }}
+          path: |
+            build/worker-dynamic-matching-proof/evidence/worker-dynamic-matching.json
+            build/worker-dynamic-matching-proof/runtime-server.log
+            build/worker-dynamic-matching-proof/scenario-host.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -644,6 +691,7 @@ jobs:
       - redis-owner
       - runtime-boundary
       - worker-correctness
+      - worker-dynamic-matching
       - worker-convergence-health
       - android-host
       - android-apk
@@ -664,6 +712,8 @@ jobs:
       RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
       WORKER_CORRECTNESS_SELECTED: ${{ needs.changes.outputs.worker_correctness }}
       WORKER_CORRECTNESS_RESULT: ${{ needs.worker-correctness.result }}
+      WORKER_DYNAMIC_MATCHING_SELECTED: ${{ needs.changes.outputs.worker_dynamic_matching }}
+      WORKER_DYNAMIC_MATCHING_RESULT: ${{ needs.worker-dynamic-matching.result }}
       WORKER_CONVERGENCE_HEALTH_SELECTED: ${{ needs.changes.outputs.worker_convergence_health }}
       WORKER_CONVERGENCE_HEALTH_RESULT: ${{ needs.worker-convergence-health.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
@@ -715,6 +765,8 @@ jobs:
             "Runtime Boundary" "$RUNTIME_BOUNDARY_SELECTED" "$RUNTIME_BOUNDARY_RESULT"
           check_lane \
             "Worker Correctness" "$WORKER_CORRECTNESS_SELECTED" "$WORKER_CORRECTNESS_RESULT"
+          check_lane \
+            "Worker Dynamic Matching" "$WORKER_DYNAMIC_MATCHING_SELECTED" "$WORKER_DYNAMIC_MATCHING_RESULT"
           check_lane \
             "Worker Convergence Health" "$WORKER_CONVERGENCE_HEALTH_SELECTED" "$WORKER_CONVERGENCE_HEALTH_RESULT"
           check_lane \

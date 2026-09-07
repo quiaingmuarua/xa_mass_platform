@@ -27,6 +27,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerLab lab;
     private final ScenarioWorkerCommandCheckpoints commandCheckpoints;
+    private final ScenarioWorkerExecutionWitnesses executionWitnesses;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
     private final Map<String, ManagedGroup> managedGroupsById =
@@ -45,7 +46,8 @@ public final class ScenarioWorkers implements AutoCloseable {
             Map<String, WorkerEventDefinition<?>>
                     availableExtensionsByEventCode,
             GroupManagerFactory groupManagerFactory,
-            ScenarioWorkerCommandCheckpoints commandCheckpoints
+            ScenarioWorkerCommandCheckpoints commandCheckpoints,
+            ScenarioWorkerExecutionWitnesses executionWitnesses
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
                 runtimeApiBaseUrl,
@@ -66,6 +68,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 commandCheckpoints,
                 "commandCheckpoints"
         );
+        this.executionWitnesses = Objects.requireNonNull(executionWitnesses, "executionWitnesses");
     }
 
     public static ScenarioWorkers fromJson(
@@ -78,13 +81,15 @@ public final class ScenarioWorkers implements AutoCloseable {
                     ScenarioWorkersJsonParser.parse(capabilityAssemblyJson);
             ScenarioWorkerCommandCheckpoints checkpoints =
                     new ScenarioWorkerCommandCheckpoints();
+            ScenarioWorkerExecutionWitnesses witnesses = new ScenarioWorkerExecutionWitnesses();
             return new ScenarioWorkers(
                     runtimeApiBaseUrl,
                     sandboxRoot,
                     configs,
                     availableDefinitionExtensions(checkpoints),
-                    ScenarioWorkers::createManager,
-                    checkpoints
+                    (uri, group) -> createManager(uri, group, witnesses),
+                    checkpoints,
+                    witnesses
             );
         } catch (IllegalArgumentException error) {
             throw new ScenarioWorkerAssemblyException(
@@ -564,7 +569,8 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     private static JavaWorkerManager createManager(
             URI runtimeApiBaseUrl,
-            PreparedGroup preparedGroup
+            PreparedGroup preparedGroup,
+            ScenarioWorkerExecutionWitnesses witnesses
     ) {
         GroupAssembly group = preparedGroup.group();
         ScenarioWorkerGroupConfig config = group.config();
@@ -582,7 +588,10 @@ public final class ScenarioWorkers implements AutoCloseable {
         for (PreparedReplica replica : preparedGroup.replicas()) {
             builder.replica(
                     replica.labWorkerKey(),
-                    replica.stateFile()::workerProperties
+                    replica.stateFile()::workerProperties,
+                    config.eventCodes().contains(ScenarioWorkerExecutionWitnesses.EVENT)
+                            ? List.of(witnesses.definition(config.workerGroupId(), replica.labWorkerKey()))
+                            : List.of()
             );
         }
         return builder.build();
@@ -712,6 +721,9 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<WorkerEventDefinition<?>> definitionExtensions =
                     new ArrayList<>();
             for (String eventCode : config.eventCodes()) {
+                if (ScenarioWorkerExecutionWitnesses.EVENT.equals(eventCode)) {
+                    continue; // This finite capability is bound to each actual replica at construction.
+                }
                 WorkerEventDefinition<?> definition =
                         availableExtensionsByEventCode.get(eventCode);
                 if (definition == null) {
@@ -730,6 +742,10 @@ public final class ScenarioWorkers implements AutoCloseable {
             ));
         }
         return List.copyOf(resolved);
+    }
+
+    Map<String, Object> executionWitnesses(long after, int limit) {
+        return executionWitnesses.read(after, limit);
     }
 
     @FunctionalInterface

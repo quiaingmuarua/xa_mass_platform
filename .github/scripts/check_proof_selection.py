@@ -19,6 +19,7 @@ EXPECTED_LANES = {
     "redis_owner",
     "runtime_boundary",
     "worker_correctness",
+    "worker_dynamic_matching",
     "worker_convergence_health",
     "android_host",
     "android_emulator",

@@ -88,6 +88,34 @@ startup scheduled stop may reference only an initial Worker. The plan owns only
 this process's initial desired state and startup stop schedule. It does not own
 Properties, Worker identity, Tasks, Adapter state, or Kernel expectations.
 
+## Actual Execution Witness
+
+The optional `extension.worker.lab.execution-witness` capability is selected only
+by an explicit capability assembly. Each replica receives its own immutable
+Handler Definition through `JavaWorkerManager.Builder.replica`. The closure
+captures the configured WorkerGroup and actual Lab replica key at construction;
+neither the caller's token nor Task targeting supplies this execution identity.
+Shared Group capabilities still use the existing common Definitions.
+
+The input is exactly `{ "probeToken": "...", "delayMillis": 1000 }`: a nonblank
+token of at most 256 characters and an integer delay in 0..30000 ms. The Handler
+records ENTERED, waits outside the journal lock, records COMPLETED and returns
+JSON null through the ordinary Worker Result path. An interrupted wait records
+FAILED. This capability creates no thread, scheduler or runtime registration.
+
+The process-local journal retains at most 65,536 immutable records. Overflow is
+sticky and explicit; it fails the invocation without eviction or reset. The
+loopback-only `GET /lab/v1/execution-witnesses?after=0&limit=100` returns
+`records`, `nextCursor` and `overflowed`. Sequence numbers start at one, each
+attempt ID is its entry sequence, and completion carries the same actual
+Group/replica/token. Cursors are 0..current size and page limits are 1..100.
+Invalid queries return 400 and non-GET methods return 405.
+
+[Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
+uses this independent execution witness together with public Task Results.
+Its journal and correlation tokens remain private proof data, outside CI
+artifacts. The capability is absent from the default Lab assembly.
+
 ## Persistent Worker Lab
 
 One standalone Host process exclusively owns this writable local directory:
@@ -324,6 +352,9 @@ configured Adapter; each proof runner owns the Worker Host process:
   two-by-fifty topology, Lab-coordinate identity mapping, Adapter routes,
   extension reachability, 100 final Results and identity reuse across a real
   Host restart;
+- [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
+  proves loaded PRECOMPUTED execution follows live Worker and Platform facts,
+  with actual replica witnesses and independent Result closure;
 - [`worker-convergence-health`](../integrations/worker-convergence-health/)
   owns two isolated 2x500 scenarios: deterministic Worker/Server state
   convergence and execution-time Host loss with Task recovery/finality. The

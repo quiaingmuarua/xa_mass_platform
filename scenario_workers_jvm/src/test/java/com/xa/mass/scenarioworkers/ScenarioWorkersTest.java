@@ -367,7 +367,8 @@ class ScenarioWorkersTest {
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
                 managerFactory,
-                new ScenarioWorkerCommandCheckpoints()
+                new ScenarioWorkerCommandCheckpoints(),
+                new ScenarioWorkerExecutionWitnesses()
         );
     }
 

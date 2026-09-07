@@ -74,6 +74,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         server.setExecutor(executor);
         server.createContext(LAB_PATH, this::handleConsole);
         server.createContext(WORKERS_PATH, this::handle);
+        server.createContext("/lab/v1/execution-witnesses", this::handleWitnesses);
     }
 
     static ScenarioWorkerControlServer open(
@@ -183,6 +184,36 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     "lab_failure",
                     "Scenario Worker Lab operation failed"
             );
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private void handleWitnesses(HttpExchange exchange) throws IOException {
+        try {
+            if (!"/lab/v1/execution-witnesses".equals(exchange.getRequestURI().getPath())) {
+                respondError(exchange, 404, "not_found", "Unknown Lab path");
+                return;
+            }
+            requireMethod(exchange, "GET");
+            Map<String, String> query = new LinkedHashMap<>();
+            String raw = exchange.getRequestURI().getRawQuery();
+            if (raw != null) {
+                for (String part : raw.split("&", -1)) {
+                    String[] pair = part.split("=", -1);
+                    if (pair.length != 2 || !Set.of("after", "limit").contains(pair[0])
+                            || query.putIfAbsent(pair[0], pair[1]) != null) {
+                        throw new IllegalArgumentException("Invalid witness query");
+                    }
+                }
+            }
+            respondJson(exchange, 200, workers.executionWitnesses(
+                    Long.parseLong(query.getOrDefault("after", "0")),
+                    Integer.parseInt(query.getOrDefault("limit", "100"))));
+        } catch (IllegalArgumentException error) {
+            respondError(exchange, 400, "invalid_request", "Invalid witness cursor or limit");
+        } catch (ResponseSentException ignored) {
+            // Method-specific response already sent.
         } finally {
             exchange.close();
         }

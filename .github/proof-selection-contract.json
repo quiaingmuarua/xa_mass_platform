@@ -25,7 +25,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Kernel Worker registration and Binding now own the persistent identity/address boundary consumed by Java and Android Worker proofs."
     },
@@ -38,7 +39,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "The Endpoint directory replaces Server Binding address configuration for Java and Android Prepare."
     },
@@ -51,7 +53,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Prepare orchestrates identity, Kernel registration and actual Endpoint resolution for Java and Android Workers."
     },
@@ -63,7 +66,8 @@
         "runtime_boundary",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
     },
@@ -85,7 +89,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
@@ -107,7 +112,8 @@
         "worker_convergence_health",
         "android_host",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Worker Core production behavior reaches deterministic Java and Android proofs plus both Worker system claims."
     },
@@ -128,7 +134,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Adapter route production changes reach boundary, Worker correctness, convergence and deployed runtime proofs."
     },
@@ -169,7 +176,8 @@
       "lanes": [
         "jvm_contracts",
         "worker_correctness",
-        "worker_convergence_health"
+        "worker_convergence_health",
+        "worker_dynamic_matching"
       ],
       "reason": "The shared strict materializer defines the separate Correctness and Convergence worlds; Worker Loaded Capacity and Recovery Stability consumes it through its own nightly workflow."
     },
@@ -195,7 +203,8 @@
         "redis_owner",
         "runtime_boundary",
         "worker_convergence_health",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Generic Server error handling reaches Server-wide proofs but does not re-prove the Worker correctness primary claim."
     },
@@ -207,7 +216,8 @@
         "runtime_boundary",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Pacer assembly reaches convergence and runtime boundaries, not the fixed Worker correctness claim."
     },
@@ -220,7 +230,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
     },
@@ -233,7 +244,8 @@
         "worker_correctness",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "The Task Result response contract is strictly consumed by Worker correctness, convergence and the Android emulator proof."
     },
@@ -273,7 +285,8 @@
         "android_host",
         "android_emulator",
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Workflow changes re-prove the complete required gate."
     },
@@ -288,7 +301,8 @@
         "android_host",
         "android_emulator",
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "worker_dynamic_matching"
       ],
       "reason": "Selection-contract changes re-prove the complete required gate."
     },
@@ -304,7 +318,8 @@
       "lanes": [
         "jvm_contracts",
         "worker_convergence_health",
-        "worker_correctness"
+        "worker_correctness",
+        "worker_dynamic_matching"
       ],
       "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
     },
@@ -313,7 +328,8 @@
       "lanes": [
         "jvm_contracts",
         "worker_convergence_health",
-        "worker_correctness"
+        "worker_correctness",
+        "worker_dynamic_matching"
       ],
       "reason": "Host persistence and SDK publication belong to the live Properties integration closure."
     },
@@ -325,7 +341,8 @@
         "runtime_boundary",
         "runtime_distribution",
         "worker_convergence_health",
-        "worker_correctness"
+        "worker_correctness",
+        "worker_dynamic_matching"
       ],
       "reason": "Current verified Channel admission and Properties cache publication require the live Properties proof."
     },
@@ -337,9 +354,51 @@
         "runtime_boundary",
         "runtime_distribution",
         "worker_convergence_health",
-        "worker_correctness"
+        "worker_correctness",
+        "worker_dynamic_matching"
       ],
       "reason": "Server admission of dynamic Properties must select Worker Correctness through worker/resource."
+    },
+    {
+      "path": "integrations/worker-dynamic-matching/src/main/java/com/xa/mass/integration/workerdynamicmatching/DynamicMatchingMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkerExecutionWitnesses.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "transport/java-worker/src/main/java/com/xa/mass/worker/javase/JavaWorkerManager.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/score/redis/RedisWorkerScoreCore.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "runtime_distribution"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
     }
   ]
 }

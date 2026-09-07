@@ -83,7 +83,7 @@ process-local event snapshots report the actual immutable assembly.
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
 | JVM Lab | [scenario_workers_jvm](scenario_workers_jvm/README.md): independently launched finite Worker Host and local mutation fixtures |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
-| Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims |
+| Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) observes live facts during execution |
 | Frontend | [frontend](frontend/README.md): Runtime observation, finite Task files, Direct Debug and API/architecture references |
 | Releases | [Server Runtime](distribution/server/README.md) and [Worker SDK](distribution/worker-sdk/README.md): packaging of existing owners |
 

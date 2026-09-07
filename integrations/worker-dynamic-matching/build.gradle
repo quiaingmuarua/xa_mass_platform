@@ -1,0 +1,14 @@
+plugins { id 'application' }
+base { archivesName.set('xa-mass-worker-dynamic-matching') }
+application {
+    applicationName = 'xa-mass-worker-dynamic-matching'
+    mainClass = 'com.xa.mass.integration.workerdynamicmatching.DynamicMatchingMain'
+}
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+dependencies {
+    implementation project(':transport:worker-delivery-contract')
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') { useJUnitPlatform() }
