@@ -268,9 +268,13 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
-Server coordinates cross-owner creation in a fixed order: persistent Matching
-facts or Rules first, then Kernel scheduling metadata. It may compose Runtime
-Views from both owners, but it does not interpret Rules or select Workers.
+Server persists PRECOMPUTED Matching Rules before Kernel Task metadata.
+Worker Prepare establishes identity, Binding and minimal Kernel resources;
+it must not create or refresh Matching Properties, including for new Workers.
+First and later Worker facts enter through the same Adapter observation and
+Server admission path. Runtime Views may expose identity before facts exist,
+but an empty display must never become a stored baseline or readiness claim.
+Server does not interpret Rules or select Workers.
 
 Within the versioned HTTP Contract, use a direct JSON scalar, collection or
 Map when that is the complete body. Add a named DTO only for a combined

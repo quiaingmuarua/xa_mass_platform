@@ -62,7 +62,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
 
     @Test
     void boundedBatchReplacesWholeMapsAndPreservesIndependentPlatformProperties() {
-        catalog.upsertWorkerFacts("w1", "g", Map.of("old", 1, "clientWorkerKey", "prepare-key"));
+        catalog.upsertWorkerFactsBatch("g", Map.of("w1", Map.of("old", "1", "omitted", "value")));
         catalog.patchWorkerPlatformProperties("g", "w1", Map.of("policy", "retained"));
         Map<String, Map<String, String>> batch = new LinkedHashMap<>();
         batch.put("w1", Map.of("network.type", "cellular", "empty", ""));
@@ -81,11 +81,32 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("w1", Map.of())).get("w1").status())
                 .isEqualTo(MutationStatus.APPLIED);
         assertThat(catalog.loadWorkerFacts("g", List.of("w1")).get("w1").workerProperties()).isEmpty();
-        // Prepare retains its wider input contract and may still write the same facts after a live report.
-        assertThat(catalog.upsertWorkerFacts("w1", "g", Map.of("legacy-number", 87)).status())
-                .isEqualTo(MutationStatus.APPLIED);
+    }
+
+    @Test
+    void storedLegacyFactsRemainReadableUntilACompleteObservationReplacesThem() {
+        // Historical storage fixture only; production has no legacy single-Worker writer.
+        redis.hset(keyspace.base() + ":matching:worker:facts:g", "w1",
+                "{\"legacy-number\":87,\"clientWorkerKey\":\"old-key\"}");
         assertThat(catalog.loadWorkerFacts("g", List.of("w1")).get("w1").workerProperties())
-                .isEqualTo(Map.of("legacy-number", 87L));
+                .isEqualTo(Map.of("legacy-number", 87L, "clientWorkerKey", "old-key"));
+        catalog.patchWorkerPlatformProperties("g", "w1", Map.of("policy", "retained"));
+        catalog.upsertWorkerFactsBatch("g", Map.of("w1", Map.of("current", "observed")));
+        var current = catalog.loadWorkerFacts("g", List.of("w1")).get("w1");
+        assertThat(current.workerProperties()).isEqualTo(Map.of("current", "observed"));
+        assertThat(current.platformProperties()).isEqualTo(Map.of("policy", "retained"));
+    }
+
+    @Test
+    void firstEmptyObservationCreatesFactsAndEnablesIndependentPlatformPatch() {
+        assertThat(catalog.loadWorkerFacts("g", List.of("w"))).containsEntry("w", null);
+        assertThat(catalog.patchWorkerPlatformProperties("g", "w", Map.of("pool", "a")).status())
+                .isEqualTo(MutationStatus.NOT_FOUND);
+        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of())).get("w").status())
+                .isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.loadWorkerFacts("g", List.of("w")).get("w").workerProperties()).isEmpty();
+        assertThat(catalog.patchWorkerPlatformProperties("g", "w", Map.of("pool", "a")).status())
+                .isEqualTo(MutationStatus.APPLIED);
     }
 
     @Test
@@ -116,9 +137,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
 
     @Test
-    void concurrentPrepareAndRuntimeWritesNeverExposeHalfAWorkerMap() throws Exception {
+    void concurrentObservationBatchesNeverExposeHalfAWorkerMap() throws Exception {
         Map<String, String> live = Map.of("a", "live", "b", "live");
-        Map<String, Object> prepare = Map.of("a", "prepare", "b", "prepare");
+        Map<String, String> other = Map.of("a", "other", "b", "other");
         catalog.upsertWorkerFactsBatch("g", Map.of("w", live));
         CountDownLatch start = new CountDownLatch(1);
         try (var competing = new RedisWorkerMatchingCatalog(redisClient, keyspace);
@@ -133,14 +154,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             var second = executor.submit(() -> {
                 start.await();
                 for (int i = 0; i < 100; i++) {
-                    competing.upsertWorkerFacts("w", "g", prepare);
+                    competing.upsertWorkerFactsBatch("g", Map.of("w", other));
                 }
                 return null;
             });
             start.countDown();
             for (int i = 0; i < 100; i++) {
                 assertThat(catalog.loadWorkerFacts("g", List.of("w")).get("w").workerProperties())
-                        .isIn(live, prepare);
+                        .isIn(live, other);
             }
             first.get(10, TimeUnit.SECONDS);
             second.get(10, TimeUnit.SECONDS);
@@ -149,22 +170,18 @@ class RedisWorkerMatchingCatalogIntegrationTest {
 
     @Test
     void workerRefreshReplacesWorkerFactsAndPreservesPlatformFacts() {
-        assertThat(catalog.upsertWorkerFacts(
-                "worker-1",
-                "group-1",
-                Map.of("region", "cn", "capacity", 1)
-        ).status()).isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.upsertWorkerFactsBatch("group-1",
+                Map.of("worker-1", Map.of("region", "cn", "capacity", "1")))
+                .get("worker-1").status()).isEqualTo(MutationStatus.APPLIED);
         assertThat(catalog.patchWorkerPlatformProperties(
                 "group-1",
                 "worker-1",
                 Map.of("battery", 90, "network", "wifi")
         ).status()).isEqualTo(MutationStatus.APPLIED);
 
-        assertThat(catalog.upsertWorkerFacts(
-                "worker-1",
-                "group-1",
-                Map.of("region", "us", "capacity", 2)
-        ).status()).isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.upsertWorkerFactsBatch("group-1",
+                Map.of("worker-1", Map.of("region", "us", "capacity", "2")))
+                .get("worker-1").status()).isEqualTo(MutationStatus.APPLIED);
         var refreshed = catalog.loadWorkerFacts(
                 "group-1",
                 List.of("worker-1", "missing")
@@ -173,7 +190,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refreshed.get("worker-1").workerProperties())
                 .containsExactlyInAnyOrderEntriesOf(Map.of(
                         "region", "us",
-                        "capacity", 2L
+                        "capacity", "2"
                 ));
         assertThat(refreshed.get("worker-1").platformProperties())
                 .containsExactlyInAnyOrderEntriesOf(Map.of(
@@ -235,11 +252,8 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 "worker.region",
                 Map.of("$eq", "cn")
         );
-        catalog.upsertWorkerFacts(
-                "worker-1",
-                "group-1",
-                Map.of("region", "cn", "capacity", 2)
-        );
+        catalog.upsertWorkerFactsBatch("group-1",
+                Map.of("worker-1", Map.of("region", "cn", "capacity", "2")));
         catalog.patchWorkerPlatformProperties(
                 "group-1",
                 "worker-1",
@@ -257,7 +271,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(facts.workerProperties())
                 .containsExactlyInAnyOrderEntriesOf(Map.of(
                         "region", "cn",
-                        "capacity", 2L
+                        "capacity", "2"
                 ));
         assertThat(facts.platformProperties())
                 .containsExactlyEntriesOf(Map.of("network", "wifi"));

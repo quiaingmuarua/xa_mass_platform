@@ -235,12 +235,20 @@ public final class RuntimeViewService {
                     : sampled.entrySet()) {
                 WorkerDescriptor descriptor = entry.getValue();
                 WorkerFacts workerFacts = facts.get(entry.getKey());
-                if (descriptor == null || workerFacts == null) {
+                if (descriptor == null) {
                     unreadableCount++;
                     continue;
                 }
-                validateWorkerFacts(descriptor, workerFacts);
-                workers.add(toView(descriptor, workerFacts));
+                if (workerFacts == null) {
+                    // Identity exists independently of an observed Properties baseline.
+                    workers.add(new WorkerView(
+                            descriptor.workerId(), descriptor.workerGroupId(),
+                            descriptor.endpointManagerId(), Map.of(), Map.of()
+                    ));
+                } else {
+                    validateWorkerFacts(descriptor, workerFacts);
+                    workers.add(toView(descriptor, workerFacts));
+                }
             }
             return new WorkerPreviewResponse(
                     workerGroupId,

@@ -202,6 +202,55 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
+    void singleAndBatchPrepareKeepIdentityAndScoreWithoutCreatingMatchingFacts() throws Exception {
+        for (String kind : List.of("CLIENT_KEY", "SCENARIO_LAB")) {
+            String groupId = "prepare-only-" + UUID.randomUUID();
+            assertThat(send("POST", "/api/v1/worker-groups/" + groupId + ":register",
+                    "{\"eventCodes\":[]}").statusCode()).isEqualTo(200);
+            List<Map<String, Object>> requests = new ArrayList<>();
+            for (int i = 1; i <= 2; i++) {
+                Map<String, Object> coordinates = kind.equals("CLIENT_KEY")
+                        ? Map.of("clientWorkerKey", "installation-" + i)
+                        : Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", Integer.toString(i));
+                Map<String, Object> properties = new LinkedHashMap<>(coordinates);
+                properties.put("ignored", Map.of("nested", List.of(1, 2)));
+                requests.add(Map.of("workerKind", kind, "transportType", "POLLING", "workerProperties", properties));
+            }
+            String route = "/api/v1/worker-groups/" + groupId + "/workers:prepare";
+            HttpResponse<String> single = send("POST", route, JSON.writeValueAsString(requests.getFirst()));
+            assertThat(single.statusCode()).isEqualTo(200);
+            String firstId = JSON.readTree(single.body()).get("workerId").asText();
+            HttpResponse<String> batch = send("POST", route + "-batch", JSON.writeValueAsString(requests));
+            assertThat(batch.statusCode()).isEqualTo(200);
+            var rows = JSON.readTree(batch.body());
+            assertThat(rows.size()).isEqualTo(2);
+            assertThat(rows.get(0).get("workerId").asText()).isEqualTo(firstId);
+            String secondId = rows.get(1).get("workerId").asText();
+            assertThat(secondId).isNotEqualTo(firstId);
+            List<String> ids = List.of(firstId, secondId);
+            assertThat(matchingCatalog.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
+            assertThat(send("PATCH", "/api/v1/worker-groups/" + groupId + "/workers/" + firstId
+                    + "/platform-properties", "{\"pool\":\"a\"}").statusCode()).isEqualTo(400);
+            for (long time : List.of(System.currentTimeMillis() + 60_000, WorkerScoreCore.PAUSE_TIME_MILLIS)) {
+                workerScores.rewriteCurrentScores(groupId, ids, time, 17);
+                var before = workerScores.getScoreStates(groupId, ids);
+                assertThat(send("POST", route + "-batch", JSON.writeValueAsString(requests)).body())
+                        .isEqualTo(batch.body());
+                assertThat(workerScores.getScoreStates(groupId, ids)).isEqualTo(before);
+            }
+            var preview = JSON.readTree(send("POST", "/api/v1/runtime-view/worker-groups/" + groupId
+                    + "/workers:preview", "2").body());
+            assertThat(preview.get("returnedCount").asInt()).isEqualTo(2);
+            assertThat(preview.get("unreadableCount").asInt()).isZero();
+            for (var row : preview.get("workers")) {
+                assertThat(row.get("workerProperties").isEmpty()).isTrue();
+                assertThat(row.get("platformProperties").isEmpty()).isTrue();
+            }
+            assertThat(matchingCatalog.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
+        }
+    }
+
+    @Test
     void runtimePropertiesReachMatchingWithoutAnotherPrepareOnBothTextProtocols() throws Exception {
         for (WorkerTransportType type : List.of(WorkerTransportType.WEBSOCKET, WorkerTransportType.SOCKET)) {
             String groupId = "live-properties-" + UUID.randomUUID();
@@ -211,12 +260,31 @@ class RuntimeBoundaryIntegrationTest {
                     "{\"eventCodes\":[]}").statusCode()).isEqualTo(200);
             AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of(
                     "network.type", "wifi", "ssid", "lab"));
+            CountDownLatch firstObservation = new CountDownLatch(1);
+            AtomicInteger firstSubmissions = new AtomicInteger();
+            doAnswer(invocation -> {
+                Map<String, ?> snapshots = invocation.getArgument(1);
+                if (snapshots.containsValue(host.get())) {
+                    firstSubmissions.incrementAndGet();
+                    firstObservation.countDown();
+                    throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
+                            "workerResource.replaceReportedProperties", null, null);
+                }
+                return invocation.callRealMethod();
+            }).when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
             try (JavaWorker worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port),
                     groupId, "live-host", type, host::get)) {
                 worker.start();
                 awaitCondition(() -> worker.snapshot().workerId() != null);
                 String workerId = worker.snapshot().workerId();
-                // Exact equality also proves the automatic baseline replaced Prepare-only clientWorkerKey.
+                assertThat(firstObservation.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId))).containsEntry(workerId, null);
+                awaitRuntimeProperties(groupId, workerId, adapterId, Map.of());
+                Thread.sleep(150); // SYSTEM failure has no automatic replay, including the first baseline.
+                assertThat(firstSubmissions).hasValue(1);
+                verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
+                doCallRealMethod().when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
+                assertThat(worker.reportProperties()).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
                 URI endpoint = worker.snapshot().endpointUri();
                 long holdUntil = System.currentTimeMillis() + 60_000;
@@ -232,6 +300,17 @@ class RuntimeBoundaryIntegrationTest {
                 matchNewFacts(groupId, workerId, held, holdUntil,
                         Map.of("worker.network.type", Map.of("$eq", "cellular")));
                 assertThat(candidateCache.candidateWorkerCounts(List.of(oldCandidate)).get(oldCandidate)).isEqualTo(1);
+
+                // Re-Prepare cannot replace the observed baseline with stale startup input.
+                var scoreBeforePrepare = workerScores.getScoreStates(groupId, List.of(workerId));
+                PreparedCoordinate repeated = prepareWorker(groupId, "live-host",
+                        type == WorkerTransportType.WEBSOCKET ? TransportProfile.WEBSOCKET : TransportProfile.SOCKET,
+                        Map.of("network.type", "stale-startup"));
+                assertThat(repeated.workerId()).isEqualTo(workerId);
+                assertThat(repeated.endpointUri()).isEqualTo(endpoint);
+                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                        .workerProperties()).isEqualTo(host.get());
+                assertThat(workerScores.getScoreStates(groupId, List.of(workerId))).isEqualTo(scoreBeforePrepare);
 
                 host.set(Map.of());
                 assertThat(worker.reportProperties()).isTrue();
@@ -262,7 +341,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(submissions).hasValue(2);
                 assertThat(worker.snapshot().workerId()).isEqualTo(workerId);
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
-                verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
+                verify(preparationService, times(2)).prepareAll(eq(groupId), any(), any(), anyList());
             } finally {
                 doCallRealMethod().when(workerResources).replaceReportedProperties(anyString(), anyMap());
             }
@@ -312,9 +391,9 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
-    void finitePrecomputedClosesThroughTheJavaPollingWorker()
+    void onDemandClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
             throws Exception {
-        runFiniteWorkerDeliveryClosure(TransportProfile.POLLING);
+        runWorkerGroupTaskCall(TransportProfile.POLLING);
     }
 
     @Test
@@ -357,7 +436,7 @@ class RuntimeBoundaryIntegrationTest {
                 TransportProfile.WEBSOCKET
         );
         try {
-            awaitWorkerRegistered(workerGroupId, workerId);
+            awaitWorkerProperties(workerGroupId, workerId);
             assertThat(send(
                     "PATCH",
                     "/api/v1/worker-groups/" + workerGroupId
@@ -870,65 +949,6 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(readiness.body()).contains("\"status\":\"UP\"");
     }
 
-    private void runFiniteWorkerDeliveryClosure(
-            TransportProfile transportProfile
-    ) throws Exception {
-        String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "integration-tools-" + suffix;
-        String clientWorkerKey = "worker-" + suffix;
-        String firstMessageId = "message-1-" + suffix;
-        String secondMessageId = "message-2-" + suffix;
-
-        assertThat(send(
-                "POST",
-                "/api/v1/worker-groups/" + workerGroupId + ":register",
-                """
-                        {
-                          "eventCodes": ["%s"]
-                        }
-                        """.formatted(TEST_EVENT_CODE)
-        ).statusCode()).isEqualTo(200);
-
-        PreparedCoordinate boundWorker = prepareWorker(
-                workerGroupId,
-                clientWorkerKey,
-                transportProfile,
-                Map.of("runtime", "java")
-        );
-        String workerId = boundWorker.workerId();
-
-        RunningWorker worker = startWorker(
-                workerGroupId,
-                clientWorkerKey,
-                workerId,
-                boundWorker.endpointUri(),
-                Map.of("runtime", "java"),
-                transportProfile
-        );
-        try {
-            awaitWorkerRegistered(workerGroupId, workerId);
-            String taskId = createTask(workerGroupId, "{}");
-            appendItem(taskId, firstMessageId);
-            appendItem(taskId, secondMessageId);
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks/" + taskId + "/approve",
-                    null
-            ).statusCode()).isEqualTo(200);
-
-            awaitStoredResult(taskId, firstMessageId);
-            awaitStoredResult(taskId, secondMessageId);
-
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks/" + taskId + "/close",
-                    null
-            ).statusCode()).isEqualTo(200);
-        } finally {
-            worker.close();
-        }
-    }
-
     private void runWorkerGroupTaskCall(
             TransportProfile transportProfile
     ) throws Exception {
@@ -1048,6 +1068,10 @@ class RuntimeBoundaryIntegrationTest {
             );
             assertThat(managedClose.statusCode()).isEqualTo(400);
             assertThat(managedClose.body()).contains("\"code\":12008");
+            if (transportProfile == TransportProfile.POLLING) {
+                assertThat(matchingCatalog.loadWorkerFacts(workerGroupId, List.of(workerId)))
+                        .containsEntry(workerId, null);
+            }
         } finally {
             worker.close();
         }
@@ -1305,18 +1329,24 @@ class RuntimeBoundaryIntegrationTest {
                 + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline) {
             HttpResponse<String> response = send(
-                    "PATCH",
-                    "/api/v1/worker-groups/" + workerGroupId
-                            + "/workers/" + workerId
-                            + "/platform-properties",
-                    "{}"
+                    "POST",
+                    "/api/v1/runtime-view/worker-groups/" + workerGroupId + "/workers:preview",
+                    "100"
             );
             if (response.statusCode() == 200) {
-                return;
+                for (var worker : JSON.readTree(response.body()).get("workers")) {
+                    if (workerId.equals(worker.get("workerId").asText())) {
+                        return;
+                    }
+                }
             }
             Thread.sleep(20);
         }
         throw new AssertionError("Worker Bind was not applied to Kernel");
+    }
+
+    private void awaitWorkerProperties(String workerGroupId, String workerId) throws InterruptedException {
+        awaitCondition(() -> matchingCatalog.loadWorkerFacts(workerGroupId, List.of(workerId)).get(workerId) != null);
     }
 
     private void awaitStoredResult(
@@ -1564,6 +1594,8 @@ class RuntimeBoundaryIntegrationTest {
 
         private final PollingWorkerTransport transport;
         private final Thread thread;
+        private volatile String lastFailure = "none";
+        private volatile int completedCalls;
 
         private PollingWorkerHandle(PollingWorkerTransport transport) {
             this.transport = transport;
@@ -1575,10 +1607,15 @@ class RuntimeBoundaryIntegrationTest {
                             try {
                                 if (!transport.runOnce()) {
                                     Thread.sleep(20);
+                                } else {
+                                    completedCalls++;
                                 }
                             } catch (InterruptedException error) {
                                 Thread.currentThread().interrupt();
                             } catch (Exception error) {
+                                lastFailure = error instanceof com.xa.mass.worker.error.WorkerException workerError
+                                        ? workerError.operation() + ": " + workerError.errorCode().name()
+                                        : error.getClass().getSimpleName();
                                 try {
                                     Thread.sleep(20);
                                 } catch (InterruptedException interrupted) {
@@ -1591,6 +1628,9 @@ class RuntimeBoundaryIntegrationTest {
 
         @Override
         public void close() {
+            if (completedCalls == 0) {
+                System.err.println("Polling boundary made no progress; last failure: " + lastFailure);
+            }
             transport.close();
             thread.interrupt();
             try {

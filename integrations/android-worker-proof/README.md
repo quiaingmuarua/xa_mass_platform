@@ -142,7 +142,7 @@ Before extending this lane:
 6. Update this scenario contract, the Proof Registry and proof-path selection
    when the claim boundary changes.
 
-This lane deliberately does not prove dynamic Properties re-Prepare,
+This lane deliberately does not prove dynamic Properties mutation end to end,
 Doze/OEM background policy, a device matrix, Handler throughput or arbitrary
 application counts. A future Properties proof must use a real owning surface;
 it must not add a test-only Properties control API to the Demo Host.

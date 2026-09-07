@@ -26,6 +26,12 @@ The initial phase proves:
 - each batch response contains exactly the submitted message IDs and all 100
   statuses are `SUCCEEDED`.
 
+Prepare establishes identity without Matching facts. During bounded initial
+inventory observation, an empty Properties projection contributes no Lab
+coordinate; the Harness waits for the Adapter observation to arrive. Non-empty
+Properties with malformed coordinates remain invalid. No Prepare, Report
+injection or local mutation is issued to repair this observation.
+
 The fixed phase order is `initial -> live-properties -> Host restart -> restart`.
 The restart phase stops and restarts only Scenario Host while Server, Redis and
 Lab files remain. All 100 Lab addresses must map to their original worker IDs

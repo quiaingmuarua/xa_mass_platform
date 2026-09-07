@@ -70,6 +70,10 @@ final class RuntimeApiClient {
                     worker.get("workerProperties"),
                     "Worker Runtime preview properties"
             );
+            if (properties.isEmpty()) {
+                // Identity can precede the first observation; inventory awaits its Lab coordinate.
+                continue;
+            }
             Object rawInventoryKey = properties.get("labInventoryKey");
             Object rawInventoryLine = properties.get("labInventoryLine");
             if (!(rawInventoryKey instanceof String inventoryKey)

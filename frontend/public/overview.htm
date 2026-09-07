@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="XA Mass 纯 Java 生产 Kernel、Server 与 Transport 当前架构全景"
+      content="面向首次了解 XA Mass 的开发者：任务执行、职责分工、Worker 接入、运行部署与验证路径。"
     />
     <title>XA Mass · 架构全景</title>
     <style>
@@ -228,6 +228,13 @@
         gap: 10px;
       }
 
+      .hero-context {
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.8;
+      }
+
       .button {
         display: inline-flex;
         align-items: center;
@@ -294,6 +301,10 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
       }
 
+      .section-block {
+        margin-top: 18px;
+      }
+
       .card {
         position: relative;
         overflow: hidden;
@@ -337,6 +348,10 @@
         padding-left: 18px;
       }
 
+      .card p:last-child {
+        margin-bottom: 0;
+      }
+
       .card .owner {
         display: inline-block;
         margin-bottom: 16px;
@@ -353,6 +368,10 @@
       .kernel {
         --accent: var(--cyan);
         --glow: rgba(45, 212, 191, 0.13);
+      }
+      .matching {
+        --accent: var(--green);
+        --glow: rgba(134, 239, 172, 0.1);
       }
       .server {
         --accent: var(--blue);
@@ -419,28 +438,6 @@
         color: var(--text);
       }
 
-      .chain {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-      }
-
-      .node {
-        padding: 10px 12px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        color: #cfdae8;
-        background: rgba(6, 15, 27, 0.66);
-        font:
-          600 12px/1.35 ui-monospace,
-          monospace;
-      }
-
-      .arrow {
-        color: #63758a;
-      }
-
       .split {
         display: grid;
         grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
@@ -489,15 +486,9 @@
         line-height: 1.65;
       }
 
-      .tag {
-        display: inline-flex;
-        margin: 3px 4px 3px 0;
-        padding: 5px 8px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        color: #c7d4e4;
-        background: rgba(15, 31, 52, 0.78);
-        font-size: 11px;
+      .reading-title {
+        margin: 36px 0 0;
+        font-size: 21px;
       }
 
       .reading {
@@ -611,565 +602,461 @@
       <header class="topbar">
         <a class="brand" href="#overview">
           <span class="brand-mark">XA</span>
-          <strong>Architecture Panorama</strong>
+          <strong>XA Mass · 项目导览</strong>
         </a>
         <nav aria-label="页面导航">
-          <a href="#authority">Authority</a>
-          <a href="#task-mainline">TASK</a>
-          <a href="#direct-call">DIRECT_CALL</a>
-          <a href="#transport">Transport</a>
-          <a href="#runtime-topology">Runtime</a>
-          <a href="#proof-and-stability">Proof</a>
+          <a href="#authority">职责分工</a>
+          <a href="#task-mainline">任务主线</a>
+          <a href="#direct-call">直接调用</a>
+          <a href="#transport">Worker 接入</a>
+          <a href="#runtime-topology">运行部署</a>
+          <a href="#proof-and-stability">验证与文档</a>
         </nav>
       </header>
 
       <main id="main">
         <section class="hero" id="overview">
-          <p class="eyebrow">Current architecture · Java production kernel</p>
+          <p class="eyebrow">Project overview · 从任务到执行</p>
           <h1>XA Mass<br /><span>架构全景</span></h1>
           <p class="lede">
-            XA Mass 将大量任务项交给明确的 Worker 执行。Kernel 负责调度与收敛， Matching
-            解释 Worker 事实与匹配规则，Server 提供统一访问与装配， Transport
-            负责投递和本地执行。任务进度、连接状态与结果分别由对应 Owner 维护，
-            调用方通过公开 API 提交工作并观察它们的关系。
+            将一批工作拆成任务项，交给可用的 Worker 执行，再收集处理结果。 XA Mass
+            负责资源调度与执行推进，业务能力运行在独立的 Java 或 Android 终端上。
           </p>
           <div class="hero-links">
-            <a
-              class="button primary"
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"
-              >Architecture Entry</a
-            >
+            <a class="button primary" href="#task-mainline">从一个任务开始 →</a>
+            <a class="button" href="#runtime-topology">查看部署方式</a>
             <a
               class="button"
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"
-              >Java Kernel</a
-            >
-            <a
-              class="button"
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"
-              >Proof Lanes</a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/README.md"
+              >打开文档目录 ↗</a
             >
           </div>
+          <p class="hero-context">
+            当前规模模型：少量活跃 Task · 每个 Task 大量任务项 · 有限 WorkerGroup 内大量
+            Worker
+          </p>
         </section>
 
         <section id="authority">
           <div class="section-head">
             <div>
-              <p class="kicker">01 · Authority</p>
-              <h2>清晰的决策、服务与执行边界</h2>
+              <p class="kicker">01 · 职责分工</p>
+              <h2>四个部分，各自负责什么</h2>
             </div>
             <p>
-              每个 Owner 维护自己的事实，跨模块传递有界证据。Matching 独立维护
-              Properties 和规则解释；Server 组合这些 Owner 的能力，调度决定仍由 Kernel
-              作出。
+              一次任务执行需要接收请求、判断可用资源、解释匹配条件和调用业务能力。
+              这些职责分开维护，通过明确的接口协作。
             </p>
           </div>
-
           <div class="grid-4">
             <article class="card kernel">
               <span class="owner">KERNEL</span>
-              <h3>Decide & converge</h3>
+              <h3>决定与推进任务</h3>
               <p>
-                维护 Task、TaskItem 与 Worker
-                的调度状态，决定资源分配、重试、恢复和最终状态。
+                维护任务和 Worker 的调度状态，决定分配、领取、重试、恢复与最终状态。
+              </p>
+            </article>
+            <article class="card matching">
+              <span class="owner">MATCHING</span>
+              <h3>解释事实与条件</h3>
+              <p>
+                维护 Worker 属性与匹配规则，从 Kernel 提供的有限 Worker 集合中过滤候选。
               </p>
             </article>
             <article class="card server">
               <span class="owner">SERVER</span>
-              <h3>Expose & route</h3>
-              <p>校验公开请求，维护身份与绑定，装配 Owner，并关联调用及结果。</p>
-            </article>
-            <article class="card transport">
-              <span class="owner">ADAPTER</span>
-              <h3>Deliver</h3>
+              <h3>接收请求与协调</h3>
               <p>
-                使用当前已验证路由投递 Command，接收 Report，并执行 Adapter 本地事件。
+                提供 API，校验请求、建立身份与绑定，将指令和反馈交给对应的负责模块。
               </p>
             </article>
-            <article class="card worker">
-              <span class="owner">WORKER</span>
-              <h3>Resolve & execute</h3>
+            <article class="card transport">
+              <span class="owner">TRANSPORT</span>
+              <h3>连接、投递与执行</h3>
               <p>
-                按完整 Event Name 找到已装配的能力，执行本地 Handler，返回结果证据。
+                Adapter 将指令送达当前连接；Worker 调用已装配的本地能力并返回执行反馈。
               </p>
             </article>
           </div>
-
           <div class="rule">
-            判断归属：资源选择、租约、任务项领取与重试属于 Kernel；Properties 和规则解释
-            属于 Matching；公开访问与请求关联属于
-            Server；当前连接、消息投递和本地事件执行 属于
-            Transport。观察到的结果不自动成为另一 Owner 的状态。
-          </div>
-
-          <div class="grid-3" style="margin-top: 14px">
-            <article class="card kernel">
-              <span class="owner">ASSIGNMENT DISPATCH</span>
-              <h3>资源决策</h3>
-              <p>组合有界资源证据与精确围栏，形成已经确定目标的 Command。</p>
-            </article>
-            <article class="card server">
-              <span class="owner">AUTHORITY ROUTING</span>
-              <h3>消息owner路由</h3>
-              <p>把 Command 交给对应 Adapter，把返回证据路由给负责解释它的 Owner。</p>
-            </article>
-            <article class="card transport">
-              <span class="owner">EVENT DISPATCH</span>
-              <h3>本地函数调用</h3>
-              <p>Adapter 与 Worker 按目标和完整事件名调用本地 Handler。</p>
-            </article>
+            <strong>阅读时会遇到的对象：</strong>Task 组织一批工作；TaskItem
+            是其中一个执行单元； Worker 是执行端；WorkerGroup 将 Worker
+            组织在同一个调度范围内。 下文沿着一项工作，看这四个部分如何接力。
           </div>
         </section>
 
         <section id="task-mainline">
           <div class="section-head">
             <div>
-              <p class="kicker">02 · TASK mainline</p>
-              <h2>从任务提交到结果观察</h2>
+              <p class="kicker">02 · 任务主线</p>
+              <h2>一个任务，怎样走到结果</h2>
             </div>
             <p>
-              Task scheduling 是 Kernel 控制流主线。Server 与 Transport
-              消费调度结果，但不能反向更换 Worker 或决定 Item finality。
+              以批量规范化电话号码为例：整批工作放在一个 Task 中，每条号码对应一个
+              TaskItem， 由装有号码处理能力的 Worker 执行。
             </p>
           </div>
-
           <div class="flow">
-            <div class="flow-row kernel">
-              <div class="flow-label">Task initialization</div>
-              <div class="flow-body">
-                <strong>Task</strong> 经批准进入初始化，资源准备完成后进入常规调度。
-              </div>
-            </div>
-            <div class="flow-row kernel">
-              <div class="flow-label">Worker acquisition</div>
-              <div class="flow-body">
-                <strong>PRECOMPUTED</strong> 由 Matching 解释规则并提供候选证据；<strong
-                  >ON_DEMAND</strong
-                >
-                由 Kernel 按显式身份或有限选择指令获取 Worker。
-              </div>
-            </div>
-            <div class="flow-row kernel">
-              <div class="flow-label">Lease & claim</div>
-              <div class="flow-body">
-                Kernel 精确确认 Worker 租约并领取 TaskItem，随后发布定向 Command。
-              </div>
-            </div>
             <div class="flow-row server">
-              <div class="flow-label">Server routing</div>
+              <div class="flow-label">01 / 提交工作</div>
               <div class="flow-body">
-                Server 暴露有界 Command 消费入口，不重新选择 Worker。
+                调用方通过 API 提交任务和输入，每个任务项指定要调用的能力及参数。 Server
+                完成校验与记录，Kernel 按任务类型推进初始化和调度。
+              </div>
+            </div>
+            <div class="flow-row kernel">
+              <div class="flow-label">02 / 获取资源</div>
+              <div class="flow-body">
+                Kernel 获取候选
+                Worker，确认资源占用并领取任务项，形成目标确定的执行指令。 Worker
+                的获取方式由下方两条路径决定。
               </div>
             </div>
             <div class="flow-row transport">
-              <div class="flow-label">Transport</div>
+              <div class="flow-label">03 / 投递与执行</div>
               <div class="flow-body">
-                Adapter 经已验证路由投递，Worker 执行本地能力，并返回结果证据。
+                指令经 Server 和 Adapter 交给 Worker。Worker
+                按完整事件名找到本地处理器， 执行号码转换并返回反馈；投递环节沿用 Kernel
+                已确定的目标。
               </div>
             </div>
             <div class="flow-row kernel">
-              <div class="flow-label">Result Routing</div>
+              <div class="flow-label">04 / 处理反馈</div>
               <div class="flow-body">
-                Kernel 将结果证据交给语义事件 Owner。Result 观察与 TaskItem
-                最终状态独立维护，跨 Owner 调用间仍存在失败窗口。
+                Server 将任务反馈路由给 Kernel。成功反馈用于记录结果并请求成功终态；
+                未完成工作由 Kernel 依据领取期限、重试预算和任务项期限继续推进或结束。
+                调用方通过 API 读取已观察到的结果。
               </div>
             </div>
           </div>
-
-          <div class="chain" style="margin-top: 18px">
-            <span class="node">TaskDescriptor</span><span class="arrow">→</span>
-            <span class="node">TaskItem</span><span class="arrow">→</span>
-            <span class="node">Worker lease</span><span class="arrow">→</span>
-            <span class="node">Item claim</span><span class="arrow">→</span>
-            <span class="node">DeliveryCommand</span><span class="arrow">→</span>
-            <span class="node">DeliveryReport</span><span class="arrow">→</span>
-            <span class="node">owner transitions</span>
+          <div class="grid-2 section-block">
+            <article class="card matching">
+              <span class="owner">PRECOMPUTED</span>
+              <h3>按属性条件匹配</h3>
+              <p>
+                Kernel 先持有一个有限 Worker 池，Matching 用任务规则过滤出候选。
+                最终分配前，Kernel 仍要再次确认资源有效。
+              </p>
+            </article>
+            <article class="card kernel">
+              <span class="owner">ON_DEMAND</span>
+              <h3>按身份范围获取</h3>
+              <p>
+                任务项提供明确的 Worker ID 列表，或用空列表（ANY）让 Kernel
+                在所属分组内获取可用
+                Worker。这条路径不解释属性条件，也不使用预计算候选缓存。
+              </p>
+            </article>
           </div>
-
-          <div class="grid-3" style="margin-top: 14px">
-            <article class="card kernel">
-              <span class="owner">TASK SCORE</span>
-              <h3>Task scheduling visibility</h3>
-              <p>维护 Task 在调度流程中的位置与可见性。</p>
-            </article>
-            <article class="card kernel">
-              <span class="owner">WORKER SCORE</span>
-              <h3>Scheduling serviceability</h3>
-              <p>表示调度可用性与下一次可获取时间；连接状态由 Adapter 独立观察。</p>
-            </article>
-            <article class="card kernel">
-              <span class="owner">TASKITEM SCORE</span>
-              <h3>Claim, retry & finality</h3>
-              <p>维护任务项领取、重试和最终状态。</p>
-            </article>
+          <div class="rule">
+            <strong>结果与最终状态分别维护。</strong
+            >成功结果的保存与任务项终态更新是先后进行的操作，
+            中间存在失败窗口；读到结果并不证明终态已完成。指令和反馈可能丢失或重复，
+            资源到期恢复也不会重建已经丢失的结果。
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md"
+              >查看结果与状态的完整边界 ↗</a
+            >
           </div>
         </section>
 
         <section id="direct-call">
           <div class="section-head">
             <div>
-              <p class="kicker">03 · DIRECT_CALL</p>
-              <h2>调用方明确指定目标</h2>
+              <p class="kicker">03 · 直接调用</p>
+              <h2>已经知道目标时，直接发起调用</h2>
             </div>
             <p>
-              DIRECT_CALL 提供有限的直接调用与结果关联。调用方选择目标， Server
-              完成准入后，复用 Adapter 和 Worker 的投递执行路径。
+              除了提交任务，调用方也可以对指定 Worker 或 Adapter 发起 DIRECT_CALL，
+              例如查询已装配能力、读取快照或调试一次本地操作。
             </p>
           </div>
-
           <div class="split">
-            <div class="flow">
-              <div class="flow-row server">
-                <div class="flow-label">Explicit target</div>
-                <div class="flow-body">
-                  调用方选择 Adapter，以及需要调用的 Worker 目标或 Adapter 本地事件。
-                </div>
-              </div>
-              <div class="flow-row server">
-                <div class="flow-label">Admission</div>
-                <div class="flow-body">
-                  Server 校验身份与绑定，只接受所属 Adapter 的有界请求。
-                </div>
-              </div>
-              <div class="flow-row server">
-                <div class="flow-label">Shared mailbox</div>
-                <div class="flow-body">
-                  Worker 直接调用只进入空闲邮箱；权威 TASK
-                  投递仍可替换尚未消费的直接调用。
-                </div>
-              </div>
-              <div class="flow-row transport">
-                <div class="flow-label">Unified delivery</div>
-                <div class="flow-body">
-                  DIRECT_CALL 与 TASK 共享 Transport 的连接、投递和本地事件执行机制。
-                </div>
-              </div>
-              <div class="flow-row server">
-                <div class="flow-label">Correlation</div>
-                <div class="flow-body">
-                  Server 在有界等待期间关联 SERVER 结果；超时仅表示本次观察未得到结果。
-                </div>
-              </div>
-            </div>
-
             <article class="card server">
-              <span class="owner">BEST EFFORT</span>
-              <h3>明确不承诺</h3>
-              <ul>
-                <li>不创建Task或TaskItem</li>
-                <li>不进入Result Routing</li>
-                <li>不创建独立可靠Command或Result存储</li>
-                <li>不提供结果查询与可靠重试</li>
-                <li>不提供pause、drain、互斥或抢占</li>
-                <li>不允许Server从候选Worker中选择目标</li>
-              </ul>
-              <p style="margin-top: 18px">
-                直接调用采用 best-effort
-                语义。业务若需要可恢复执行或持续状态，应先定义相应的 Owner 契约。
+              <span class="owner">DIRECT_CALL</span>
+              <h3>由调用方选择目标</h3>
+              <div class="axis">
+                <div class="axis-row">
+                  <b>指定目标</b
+                  ><span>选择 Adapter，再指定 Worker 或 Adapter 本地事件。</span>
+                </div>
+                <div class="axis-row">
+                  <b>复用投递</b
+                  ><span>Server 校验请求，通过已有连接和本地能力完成调用。</span>
+                </div>
+                <div class="axis-row">
+                  <b>有限等待</b
+                  ><span>Server 关联本次回复；等待超时仅表示没有观察到回复。</span>
+                </div>
+              </div>
+            </article>
+            <article class="card transport">
+              <span class="owner">选择调用方式</span>
+              <h3>任务推进，还是一次定向操作</h3>
+              <p>需要资源选择、任务进度和调度重试时，使用 TASK 路径。</p>
+              <p>
+                已知目标、希望立即查询或调试时，使用
+                DIRECT_CALL。它采用尽力交付，不提供可靠重试或持久结果查询。
+              </p>
+              <p>
+                一次调用成功，只说明这次操作获得了回复；不能据此判断该 Worker
+                当前是否可被调度。
               </p>
             </article>
+          </div>
+          <div class="rule">
+            DIRECT_CALL 不创建 TaskItem，也不取得 Kernel
+            调度租约，因此不提供暂停、排空、互斥或抢占。 尚未消费的 Worker
+            直接调用还可能被 TASK 指令替换。
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"
+              >调用准入与结果关联详见 Server 文档 ↗</a
+            >
           </div>
         </section>
 
         <section id="transport">
           <div class="section-head">
             <div>
-              <p class="kicker">04 · Transport substrate</p>
-              <h2>共同机制，完整物理owner</h2>
+              <p class="kicker">04 · Worker 接入</p>
+              <h2>让业务能力成为可调用的 Worker</h2>
             </div>
             <p>
-              Delivery Contract 定义跨平台协议；Adapter、Worker Core 与平台 Worker
-              分别维护投递、执行和物理网络资源。实现细节由各模块文档维护。
+              Worker 运行在独立的宿主应用（Host）中。Host 选择 Java 或 Android SDK，
+              装配业务处理器，并显式管理 Worker 的启动和停止。
             </p>
           </div>
-
-          <div class="grid-2">
-            <article class="card transport">
-              <span class="owner">NETTY ADAPTER</span>
-              <h3>投递与连接</h3>
-              <div class="axis">
-                <div class="axis-row">
-                  <b>Aggregate</b><span>整体生命周期与关闭次序。</span>
-                </div>
-                <div class="axis-row">
-                  <b>Connection</b><span>身份验证、当前路由与有效结果入口。</span>
-                </div>
-                <div class="axis-row">
-                  <b>Physical Server</b><span>监听、连接、帧处理和物理读写。</span>
-                </div>
+          <div class="flow">
+            <div class="flow-row worker">
+              <div class="flow-label">01 / 装配能力</div>
+              <div class="flow-body">
+                Host 在启动前注册完整事件名与处理器，提供 Worker 的属性。
+                业务能力负责本地处理，SDK 负责协议、网络与运行生命周期。
               </div>
-            </article>
-            <article class="card worker">
-              <span class="owner">WORKER CORE</span>
-              <h3>显式运行与本地能力</h3>
-              <div class="axis">
-                <div class="axis-row">
-                  <b>Client</b><span>物理网络与透明重连。</span>
-                </div>
-                <div class="axis-row">
-                  <b>Transport</b
-                  ><span>身份协议、Command 解码、本地执行和 Result 编码。</span>
-                </div>
-                <div class="axis-row">
-                  <b>Run Controller</b
-                  ><span>显式启动与停止；端点耗尽后由 Host 决定再次启动。</span>
-                </div>
+            </div>
+            <div class="flow-row server">
+              <div class="flow-label">02 / 准备身份</div>
+              <div class="flow-body">
+                显式启动通过 Prepare 向 Server 提交注册坐标，取得稳定的 Worker ID
+                和连接地址，并建立绑定及最小 Worker 资源。Prepare 不保存匹配属性。
               </div>
-            </article>
+            </div>
+            <div class="flow-row transport">
+              <div class="flow-label">03 / 连接与运行</div>
+              <div class="flow-body">
+                Worker 连接
+                Adapter，完成身份验证后接收指令。临时断线由客户端在当前运行内重连，
+                不重新 Prepare；运行终止后，由 Host 决定是否再次显式启动。
+              </div>
+            </div>
           </div>
-
-          <div class="grid-3" style="margin-top: 14px">
-            <article class="card server">
-              <span class="owner">PREPARE & IDENTITY</span>
-              <h3>Server拥有注册坐标</h3>
+          <div class="grid-2 section-block">
+            <article class="card worker">
+              <span class="owner">JAVA / ANDROID</span>
+              <h3>共享协议，各自管理平台资源</h3>
               <p>
-                每次显式启动加载完整 Properties，并通过 Server Prepare
-                更新身份、绑定与事实。透明重连复用准备结果。
+                Java 与 Android 共用 Worker Core
+                和投递协议，分别管理各自的网络与线程资源。 业务 Host
+                装配具体能力，Server 不创建或启动这些执行端。
               </p>
             </article>
-            <article class="card worker">
-              <span class="owner">JAVA HOST</span>
-              <h3>显式启动，共享平台资源</h3>
+            <article class="card matching">
+              <span class="owner">WORKER PROPERTIES</span>
+              <h3>通过连接上报匹配属性</h3>
               <p>
-                Host 管理有限 Worker 集合；Java 与 Android
-                平台分别拥有网络、执行器和重连资源。
-              </p>
-            </article>
-            <article class="card worker">
-              <span class="owner">SCENARIO LAB</span>
-              <h3>Mutation source，不是真相源</h3>
-              <p>
-                文件、启动、停止与 checkpoint 建立本地动作证据；系统效果由 Adapter 和
-                Kernel 的公开观察独立确认。
+                首次与后续属性均由 Adapter 观察，经 Server 校验后写入 Matching，
+                无需重新 Prepare。首次属性到达前，身份可以存在，按属性匹配仍需等待。
+                上报采用尽力交付；已有候选不会因此撤销，也不直接改变调度状态。
               </p>
             </article>
           </div>
-
-          <pre class="code-panel" style="margin-top: 14px">
-Command
-  Kernel / Server -> Adapter -> current verified route -> Worker
-
-Local execution
-  complete Event Name -> assembled capability -> Handler
-
-Result evidence
-  Worker / Adapter -> Server -> semantic Owner
-
-Contract details
-  Delivery Contract / Server / Adapter / Worker Owner documents</pre
-          >
+          <div class="rule">
+            <strong>连接、能力与调度可用性需要分别观察。</strong>Adapter 报告当前连接，
+            Worker 报告实际装配的能力，Kernel 维护调度状态。WorkerGroup
+            中登记的事件名只是目录信息， 不能代替 Worker 已加载处理器的证据。
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"
+              >查看 SDK 与投递模块 ↗</a
+            >
+          </div>
         </section>
 
         <section id="runtime-topology">
           <div class="section-head">
             <div>
-              <p class="kicker">05 · Runtime topology</p>
-              <h2>一套 Java Kernel<br />两个稳定性层级</h2>
+              <p class="kicker">05 · 运行部署</p>
+              <h2>服务端集中装配，执行端独立运行</h2>
             </div>
             <p>
-              稳定机械 Owner、变化较快的调度策略与 Worker 匹配事实分别由独立模块维护。
-              Server 将它们装配为一个运行时，Worker Host 在外部运行。 发布包与本地实验
-              Host 有明确边界，Redis 由部署环境提供。
+              Server 将调度、匹配和配置的 Adapter 装配在同一个 Java 进程中，Redis
+              由运行环境提供。 Worker Host 作为独立应用连接进来，可以运行在 JVM 或
+              Android 上。
             </p>
           </div>
-
-          <div class="grid-3">
+          <div class="split">
+            <pre class="code-panel" aria-label="运行进程关系">
+运行环境
+├─ Java Server 进程
+│  ├─ Runtime API + 前端静态资源
+│  ├─ Kernel：机械契约 + Pacer
+│  ├─ Worker Matching
+│  └─ 配置的 Adapter
+├─ 外部 Redis
+└─ 独立 Worker Host
+   └─ Java / Android SDK + 业务能力</pre
+            >
             <article class="card kernel">
-              <span class="owner">DOC / KERNEL</span>
-              <h3>Authority index</h3>
+              <span class="owner">KERNEL 的两个模块</span>
+              <h3>机制与策略分别维护</h3>
+              <p><strong>kernel_jvm</strong> 维护稳定的调度契约、资源与 Redis 操作。</p>
               <p>
-                Java Kernel总入口连接mechanical Owner、Pacer
-                Policy、跨模块边界和对应proof，不复制第二份运行机制。
+                <strong>kernel_pacer_jvm</strong>
+                维护调度策略、结果处理和持续推进它们的生命周期。
               </p>
-            </article>
-            <article class="card kernel">
-              <span class="owner">KERNEL_JVM</span>
-              <h3>Mechanical owners</h3>
-              <p>维护稳定机械契约、Score、资源和 Redis 转换。</p>
-            </article>
-            <article class="card kernel">
-              <span class="owner">KERNEL_PACER_JVM</span>
-              <h3>Policy & lifecycle</h3>
-              <p>维护生产调度策略、结果收敛与有限生命周期。</p>
-            </article>
-            <article class="card worker">
-              <span class="owner">WORKER_MATCHING_JVM</span>
-              <h3>Facts & rule interpretation</h3>
-              <p>维护 Worker 事实与 PRECOMPUTED 规则，为 Kernel 提供有界候选证据。</p>
-            </article>
-            <article class="card server">
-              <span class="owner">SERVER_JVM</span>
-              <h3>API & Spring assembly</h3>
-              <p>装配 Kernel 与 Matching，提供公开 Runtime API，并管理应用生命周期。</p>
-            </article>
-            <article class="card transport">
-              <span class="owner">TRANSPORT</span>
-              <h3>Delivery mechanisms</h3>
-              <p>提供共享协议、Worker Core、Adapter，以及 Java 和 Android 平台实现。</p>
-            </article>
-            <article class="card worker">
-              <span class="owner">ASSEMBLY & OBSERVATION</span>
-              <h3>Finite edges</h3>
               <p>
-                Scenario 与 Android Host 装配具体能力；Integration 和 Frontend 通过公开
-                API 验证或观察系统。
+                Server 装配这两个模块以及独立的 Matching，通过公开 API 对外提供能力。
               </p>
             </article>
           </div>
-
-          <pre class="code-panel" style="margin-top: 14px">
-Runtime
-  Server API and application assembly
-    -> Kernel mechanical owners + production Pacer
-    -> Worker Matching
-    -> Adapter
-    -> external Redis
-
-Deployment
-  Server Runtime ZIP -> Server + Pacer + Frontend
-  Worker SDK ZIP     -> shared contract + Worker libraries
-  Worker Host        -> external Java or Android application
-  Scenario Host      -> independent source-checkout Lab process</pre
-          >
-
+          <div class="grid-3 section-block">
+            <article class="card server">
+              <span class="owner">SERVER RUNTIME</span>
+              <h3>运行服务端</h3>
+              <p>
+                发行包包含 Server、调度与匹配组件、Adapter 和编译后的前端。启动需要 Java
+                21 和外部 Redis。
+              </p>
+            </article>
+            <article class="card worker">
+              <span class="owner">WORKER SDK</span>
+              <h3>接入业务执行端</h3>
+              <p>
+                将 SDK 接入自己的 Java 或 Android Host，装配所需能力。下游 AgentForge
+                通过发行包和公开 API 接入。
+              </p>
+            </article>
+            <article class="card transport">
+              <span class="owner">SCENARIO LAB</span>
+              <h3>在本地建立实验环境</h3>
+              <p>
+                仓库中的 Scenario Host 提供有限 Worker
+                与实验能力，独立启动，用于开发和验证；不包含在 Server 发行包中。
+              </p>
+            </article>
+          </div>
           <div class="rule">
-            真相分类：<span class="tag">truth</span><span class="tag">evidence</span
-            ><span class="tag">address</span> <span class="tag">correlation</span
-            ><span class="tag">projection</span><span class="tag">hint</span>。
-            evidence、projection和hint不能因为“方便”而升级为调度或生命周期truth。
+            同一 Redis scope 只允许一个 Server 启用 Pacer，目前没有分布式主节点选举。
+            前端通过 API 观察和操作实际 Runtime；公开演示站使用 Mock 数据。
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/README.md"
+              >查看运行要求与启动方式 ↗</a
+            >
           </div>
         </section>
 
         <section id="proof-and-stability">
           <div class="section-head">
             <div>
-              <p class="kicker">06 · Proof & stability</p>
-              <h2>固定claim，分层证明</h2>
+              <p class="kicker">06 · 验证与文档</p>
+              <h2>验证结果，分别能说明什么</h2>
             </div>
             <p>
-              每个机制claim只有一个Primary Proof；其他lane只能提供前置条件或边界见证。
-              完美正确性、故障收敛、连接容量与Android进程事实不能互相替代。
+              读懂运行方式后，还需要知道哪些行为有对应证据。每条验证路径回答一个明确问题，
+              其适用范围由场景和观察方式决定，而非单看测试数量或 Worker 规模。
             </p>
           </div>
-
           <div class="grid-3">
-            <article class="card kernel">
-              <span class="owner">STABLE CUT</span>
-              <h3>稳定owner cut</h3>
-              <ul>
-                <li>Task、TaskItem、Worker三条独立score轴</li>
-                <li>PRECOMPUTED有序Demand与ON_DEMAND身份直选</li>
-                <li>稳定机械 Owner 与生产策略分别维护</li>
-                <li>Kernel / Matching / Server / Transport 职责</li>
-                <li>Adapter 投递、Worker 执行与平台资源分别维护</li>
-                <li>Server发行包与Worker Host/SDK独立</li>
-              </ul>
-            </article>
-            <article class="card server">
-              <span class="owner">EVOLVING</span>
-              <h3>Owner-local增量</h3>
-              <ul>
-                <li>有明确生产caller的mechanical operation</li>
-                <li>有限Server use case</li>
-                <li>Worker Prepare与Host资源实现</li>
-                <li>Scenario / Android capability和Lab surface</li>
-                <li>deployment、projection与claim-owned proof</li>
-              </ul>
-            </article>
-            <article class="card worker">
-              <span class="owner">DEFERRED</span>
-              <h3>独立未来路线</h3>
-              <ul>
-                <li>分布式Pacer leader election与multi-active Kernel</li>
-                <li>分布式DIRECT_CALL correlation</li>
-                <li>认证、Adapter HA与显式unbind</li>
-                <li>persistent delivery ack</li>
-                <li>大规模活跃Task公平、分片与Property Index</li>
-                <li>通用plugin与动态Process系统</li>
-              </ul>
-            </article>
-          </div>
-
-          <div class="grid-3" style="margin-top: 14px">
             <article class="card">
-              <h3>Owner & Boundary</h3>
+              <span class="owner">OWNER TESTS</span>
+              <h3>局部规则是否成立</h3>
               <p>
-                JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime
-                Boundary证明相邻Owner和协议拓扑。
+                聚焦模块算法、合法状态转换与并发约束。真实 Redis
+                测试验证需要存储原子性的操作。
               </p>
             </article>
             <article class="card">
-              <h3>Worker Correctness</h3>
+              <span class="owner">RUNTIME BOUNDARY</span>
+              <h3>相邻模块能否正确交接</h3>
               <p>
-                闭合身份、路由、能力、结果及 Host 重启关系，要求固定工作负载精确成功。
+                验证
+                API、编码、存储和投递边界在实际装配中的关系，覆盖局部测试无法说明的接口协作。
               </p>
             </article>
             <article class="card">
-              <h3>Convergence Health</h3>
-              <p>在明确建立故障后观察命名任务的恢复，不将全部提交工作视为成功。</p>
-            </article>
-            <article class="card">
-              <h3>Worker Loaded Capacity + Recovery Stability</h3>
-              <p>在持续负载和多次 Server 重启中检查任务完成、结果导出与资源稳定性。</p>
-            </article>
-            <article class="card">
-              <h3>Android Worker Proof</h3>
-              <p>验证真实 Android 生命周期、进程丢失恢复与固定多应用的局部故障隔离。</p>
-            </article>
-            <article class="card">
-              <h3>Finite Product Lanes</h3>
+              <span class="owner">WORKER CORRECTNESS</span>
+              <h3>理想环境能否完整执行</h3>
               <p>
-                Android Host、Frontend、Runtime
-                Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。
+                闭合身份、路由、能力、结果及 Host
+                重启关系，要求固定工作负载获得精确成功结果。
+              </p>
+            </article>
+            <article class="card">
+              <span class="owner">CONVERGENCE HEALTH</span>
+              <h3>故障后能否恢复指定行为</h3>
+              <p>
+                先建立明确的本地故障，再独立观察连接、调度和指定任务的恢复，不要求全部提交项成功。
+              </p>
+            </article>
+            <article class="card">
+              <span class="owner">LOADED RECOVERY</span>
+              <h3>持续负载下资源是否稳定</h3>
+              <p>
+                在持续工作和多次 Server
+                重启中验证任务完成、结果导出与资源边界，不扩展为吞吐或延迟承诺。
+              </p>
+            </article>
+            <article class="card">
+              <span class="owner">ANDROID WORKER</span>
+              <h3>真实平台生命周期是否成立</h3>
+              <p>
+                验证 Android
+                进程丢失恢复与固定多应用间的故障隔离，保留平台特有的验证边界。
               </p>
             </article>
           </div>
-
+          <div class="rule">
+            完整场景、明确不覆盖的行为与主要证明归属，见
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/proof-registry.md"
+              >Proof Registry</a
+            >。 SDK
+            构建、前端构建、发行包和文档检查各有独立验证；这些检查通过，不等于运行时场景已通过。
+          </div>
+          <h3 class="reading-title">接下来，按你要解决的问题阅读</h3>
           <div class="reading">
             <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"
-              ><b>Repository Architecture</b
-              ><br />跨模块authority、dispatch词义与主链。</a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/README.md"
+              ><b>继续了解项目全貌 ↗</b><br />从文档目录找到模块入口和阅读路径。</a
             >
             <a
               href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"
-              ><b>Java Kernel Documents</b
-              ><br />score、resource、policy、delivery与result truth。</a
+              ><b>理解调度如何工作 ↗</b><br />阅读 Kernel
+              的机制契约、策略和状态转换。</a
             >
             <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"
-              ><b>Server Runtime</b><br />provider matrix、use case边界与assembly。</a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/worker_matching_jvm/README.md"
+              ><b>理解属性与匹配条件 ↗</b><br />查看 Worker
+              事实、候选规则及其更新边界。</a
             >
             <a
               href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"
-              ><b>Transport Modules</b><br />Adapter、Worker Core、Java与Android
-              physical implementations。</a
+              ><b>接入自己的 Worker ↗</b><br />找到协议、Worker Core 与各平台 SDK
+              文档。</a
             >
             <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/scenario_workers_jvm/README.md"
-              ><b>Scenario Worker Lab</b><br />persistent inventory、显式Host
-              lifecycle与local mutation边界。</a
-            >
-            <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/proof-registry.md"
-              ><b>Proof Registry</b><br />证明主张、非主张与完整场景 Owner。</a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"
+              ><b>调用 API 或启动服务 ↗</b><br />查看 Server 用例、配置与部署入口。</a
             >
             <a
               href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"
-              ><b>Proof Selection</b><br />选择规则、运行命令、前置条件与CI入口。</a
-            >
-            <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/AGENTS.md"
-              ><b>Agent Change Contract</b><br />修改代码时必须保持的owner与negative
-              guards。</a
+              ><b>选择并运行验证 ↗</b><br />按改动选择测试，确认前置条件和命令。</a
             >
           </div>
         </section>
       </main>
 
       <footer>
-        XA Mass Platform · Human-facing architecture projection · Canonical truth
-        remains in production code and owner documents.
+        XA Mass · 项目导览 · 详细机制、接口与证明范围以仓库文档和当前源码为准。
       </footer>
     </div>
 

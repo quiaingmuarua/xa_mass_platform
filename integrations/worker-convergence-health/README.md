@@ -24,6 +24,13 @@ convergence lane. Each Endpoint receives a bounded 600-attempt, 500-millisecond
 reconnect fixture so the deliberate Server restart stays within the same Worker
 run. This is a scenario boundary, not a reconnect SLA.
 
+Prepare creates identity and access resources without Matching facts. Bounded
+Worker discovery skips empty Properties projections until an observation
+supplies the Lab coordinate; malformed non-empty coordinates still fail.
+After an explicit restart, the Properties witness observes the new Adapter
+publication independently of the local start result. It never re-Prepares or
+injects facts to repair a missing observation.
+
 The Integration owns a Server catalog override and Scenario capability
 assembly that add `extension.worker.lab.delay` and
 `extension.worker.lab.fail` only to the existing String Group. Every String

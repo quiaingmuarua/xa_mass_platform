@@ -20,6 +20,26 @@ import org.junit.jupiter.api.Test;
 class RuntimeApiClientTest {
 
     @Test
+    void awaitsEmptyPropertiesButRejectsMalformedObservedLabCoordinates() throws Exception {
+        var properties = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>(Map.of());
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1", exchange -> respondJson(exchange, 200, Map.of(
+                "unreadableCount", 0, "workers", List.of(Map.of(
+                        "workerGroupId", "group-1", "workerId", "worker-1", "workerProperties", properties.get())))));
+        server.start();
+        try {
+            RuntimeApiClient client = new RuntimeApiClient(new JsonHttpClient(baseUri(server), Duration.ofSeconds(2)));
+            assertThat(client.previewWorkers("group-1")).isEmpty();
+            properties.set(Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", "1"));
+            assertThat(client.previewWorkers("group-1").get("workers.jsonl:1").workerId()).isEqualTo("worker-1");
+            properties.set(Map.of("labInventoryKey", "workers.jsonl"));
+            assertThatThrownBy(() -> client.previewWorkers("group-1")).isInstanceOf(IllegalStateException.class);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void observesWorkersAndRunsFiniteTaskCalls() throws Exception {
         List<Request> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(

@@ -11,13 +11,8 @@ import org.jspecify.annotations.Nullable;
 public interface WorkerMatchingCatalog {
 
     int MAX_BATCH_SIZE = 100;
-    MutationResult upsertWorkerFacts(
-            String workerId,
-            String workerGroupId,
-            Map<String, Object> workerProperties
-    );
 
-    /** Replaces complete string Properties for 1..100 Workers in one Group. */
+    /** Creates or replaces complete string Properties for 1..100 Workers in one Group. */
     Map<String, MutationResult> upsertWorkerFactsBatch(
             String workerGroupId,
             Map<String, Map<String, String>> propertiesByWorkerId

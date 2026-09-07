@@ -10,6 +10,9 @@ public record WorkerPreparationRequest(
         @Schema(defaultValue = "CLIENT_KEY")
         WorkerRegistrationKind workerKind,
         @NotNull WorkerTransportType transportType,
+        @Schema(description = "Input for the Server-owned identity policy. Only registration coordinates "
+                + "are consumed; Prepare does not store Worker Properties. Matching facts arrive "
+                + "through Adapter observations after connection.")
         @NotNull Map<String, Object> workerProperties
 ) {
     public WorkerPreparationRequest {

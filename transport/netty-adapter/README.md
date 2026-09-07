@@ -478,12 +478,13 @@ pending/latest snapshot, retry, ACK or quiet-period repair. A new explicit full
 or later connection baseline can recover a lost publication.
 
 Server verifies the Adapter producer, current Binding and Worker Group before
-Matching replaces its persistent Worker Properties. Transport owns no Matching
+Matching creates or replaces its persistent Worker Properties. Transport owns no Matching
 or Redis access. Properties reporting never creates Worker identity/resources,
-rewrites score, revokes Candidates or emits connection evidence. Timing between
-Prepare and live reports is not fenced; their effective storage writes decide
-the current facts. Field timestamps, versions and reliable convergence remain
-out of scope.
+rewrites score, revokes Candidates or emits connection evidence. Prepare never
+writes these facts, including for new Workers. A lost first observation may
+leave a prepared Worker without facts. Concurrent observation batches have no
+ordering fence; effective storage writes decide the current facts. Field
+timestamps, versions and reliable convergence remain out of scope.
 
 ### Result ingress loop
 

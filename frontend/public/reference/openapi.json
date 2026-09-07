@@ -415,6 +415,7 @@
           },
           "workerProperties" : {
             "additionalProperties" : { },
+            "description" : "Input for the Server-owned identity policy. Only registration coordinates are consumed; Prepare does not store Worker Properties. Matching facts arrive through Adapter observations after connection.",
             "type" : "object"
           }
         },

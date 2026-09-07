@@ -35,7 +35,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Primary owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
 - **Claim:** one Java Server context closes the public Task, Result,
   DIRECT_CALL and Worker Serviceability boundaries through WebSocket, Socket
-  and Polling witnesses.
+  and Polling witnesses. Prepare establishes identity without Matching facts;
+  text-protocol observations independently create facts, and Polling executes
+  ON_DEMAND without them. Preview can expose an identity before a baseline.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity.
 - **Contract:** [Runtime Boundary owner](../../server_jvm/README.md#verification).
@@ -98,7 +100,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
   attempts, transient Score sequence, TaskItem Score finality across the
   process-loss window, UI behavior, arbitrary replica counts, dynamic
-  Properties re-Prepare end to end, multi-device compatibility, cached-process
+  Properties mutation end to end, multi-device compatibility, cached-process
   survival, Doze/OEM policy and physical-device background behavior.
 - **Contract:** [Complete scenarios](../../integrations/android-worker-proof/README.md).
 

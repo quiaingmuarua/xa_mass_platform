@@ -3,6 +3,7 @@ package com.xa.mass.integration.workercorrectness;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -20,6 +21,26 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class RuntimeApiClientTest {
+
+    @Test
+    void awaitsEmptyPropertiesButRejectsMalformedObservedLabCoordinates() throws Exception {
+        AtomicReference<Map<String, Object>> properties = new AtomicReference<>(Map.of());
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1", exchange -> respond(exchange, Map.of(
+                "unreadableCount", 0, "workers", List.of(Map.of(
+                        "workerGroupId", "group-1", "workerId", "worker-1", "workerProperties", properties.get())))));
+        server.start();
+        try {
+            RuntimeApiClient client = new RuntimeApiClient(baseUri(server), Duration.ofSeconds(2));
+            assertEquals(Map.of(), client.previewWorkerIdentities("group-1"));
+            properties.set(Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", "1"));
+            assertEquals(Map.of("workers.jsonl:1", "worker-1"), client.previewWorkerIdentities("group-1"));
+            properties.set(Map.of("labInventoryKey", "workers.jsonl"));
+            assertThrows(IllegalStateException.class, () -> client.previewWorkerIdentities("group-1"));
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test
     void callsManagedTaskBatchAndReturnsOnlyStatuses() throws Exception {

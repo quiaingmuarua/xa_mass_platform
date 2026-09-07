@@ -54,6 +54,8 @@ The fixed client key is injected as the reserved
 Java Worker does not store Worker ID. Each explicit start sends the Group,
 fixed client key and complete Properties to Server Prepare; the Server-owned
 identity registry returns the same Worker ID while its Redis state remains.
+The request shape is unchanged, but Server consumes only identity coordinates
+and never stores that Prepare Map as Matching facts.
 
 `WEBSOCKET` selects the internal OkHttp text Client and `SOCKET` selects the
 internal UTF-8 line Client. `POLLING` remains a separate request-response
@@ -87,10 +89,12 @@ load Properties
 
 Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns
 the Worker to `STOPPED`; only an explicit later `start()` performs another
-Prepare. That Prepare carries the only canonical Properties refresh; a running
-provider change is observable through an explicit Worker snapshot Command but
-waits for the next stop/start before it reaches Kernel resource truth. The
-Worker caches no Endpoint URI, Command, or Result.
+Prepare. Initial and runtime Properties reach Matching through Adapter
+observations and Server admission; Prepare never refreshes those facts. The
+Worker caches no Endpoint URI, Command, or Result. A lost first publication can
+leave no Matching facts until a later full report or connection baseline;
+there is no automatic upstream repair. Polling has no such Properties path and
+new Polling Workers use ON_DEMAND without requiring facts.
 
 ## Proactive Properties
 
@@ -199,8 +203,9 @@ manager.prepareAndStart(List.of(
 once, sends one batch of at most 100 entries, correlates the ordered response
 by request position, and injects each returned workerId/Endpoint into that
 replica's Controller. The configured batch kind tells Server how to derive
-identity from the complete Properties; Java Worker does not interpret that
-strategy. Running replicas are untouched. Batch failure does not fall back to
+identity coordinates from the submitted Map; Java Worker does not interpret
+that strategy. The batch creates no Matching facts; those arrive through the
+verified connections. Running replicas are untouched. Batch failure does not fall back to
 per-replica Prepare, and a concurrent stop prevents the returned coordinate
 from starting that replica. On a batch-configured Manager, `start` and
 `reconcile` use the same batch path; a keyed start is a one-record batch.

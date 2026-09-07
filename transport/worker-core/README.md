@@ -177,13 +177,15 @@ Core does not own the batch protocol or Properties aggregation.
 `WorkerControlClient`. Each call loads one Properties map, validates and
 copies its flat string KV entries, and performs exactly one Prepare request. Server resolves
 the long-lived Worker ID from `workerGroupId + clientWorkerKey`, establishes
-the Endpoint Binding, refreshes canonical Worker truth, and returns one
+the Endpoint Binding, initializes minimal Kernel resources, and returns one
 `PreparedWorker`. Core never persists Worker ID, starts networking, or executes
 Commands during preparation. It requires `workerId` to be non-blank but does
 not parse its Server-owned format.
 
-That Prepare is the only canonical Worker Properties refresh. Local observation
-uses the same Host Provider (`Map<String, String>`): non-blank keys, non-null
+Prepare carries the existing Map for Server-owned identity resolution; it does
+not persist Worker Properties. First and later observations pass through Adapter
+and Server admission into Matching. Local observation uses the same Host
+Provider (`Map<String, String>`): non-blank keys, non-null
 string values, empty strings allowed, and dots treated literally. Nested JSON,
 arrays, numbers and booleans are rejected without coercion.
 
@@ -205,6 +207,10 @@ extracts the Map from the successful snapshot output, without reading the Provid
 again or sending an additional ordinary Result. TASK/SERVER snapshot calls keep
 their `{"properties":{...}}` Result payload, destination and correlation.
 Client onOpen still sends only identity; no ready state or ACK is added.
+If the first request or upstream publication is lost, a new identity may remain
+without Matching facts until explicit full reporting or a later connection
+baseline. Polling has no equivalent Properties observation path; its new
+Workers can use ON_DEMAND without a matching baseline.
 
 Both report payloads are direct string KV Maps. `updated` overwrites supplied
 keys and retains the rest; `replaced` replaces the whole Map and removes omitted

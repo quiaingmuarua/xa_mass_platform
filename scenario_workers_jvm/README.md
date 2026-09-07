@@ -170,6 +170,12 @@ one JavaWorkerManager for each non-empty configured WorkerGroup
 -> return without waiting for initial Adapter verification
 ```
 
+Batch Prepare supplies Server-owned identity coordinates and establishes access;
+it does not store Matching Properties. Initial and subsequent Properties reach
+Matching only through Adapter observations and Server admission. Startup does
+not wait for that best-effort publication. A proof that needs current Matching
+facts must observe their arrival independently of the local start result.
+
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
 Worker until an explicit later Host start. Initial file batches and later

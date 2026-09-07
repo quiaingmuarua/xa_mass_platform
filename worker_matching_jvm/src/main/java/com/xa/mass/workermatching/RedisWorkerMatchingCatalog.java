@@ -58,27 +58,6 @@ public final class RedisWorkerMatchingCatalog
     }
 
     @Override
-    public MutationResult upsertWorkerFacts(
-            String workerId,
-            String workerGroupId,
-            Map<String, Object> workerProperties
-    ) {
-        WorkerFacts facts = new WorkerFacts(
-                workerId,
-                workerGroupId,
-                workerProperties,
-                Map.of()
-        );
-        String encoded;
-        try {
-            encoded = encodeObject(facts.workerProperties());
-        } catch (IllegalArgumentException error) {
-            return result(MutationStatus.INVALID, "invalid Worker properties");
-        }
-        return storeWorkerFacts(workerGroupId, Map.of(workerId, encoded)).get(workerId);
-    }
-
-    @Override
     public Map<String, MutationResult> upsertWorkerFactsBatch(
             String workerGroupId,
             Map<String, Map<String, String>> propertiesByWorkerId
@@ -127,7 +106,7 @@ public final class RedisWorkerMatchingCatalog
             }
         }
         if (!changed.isEmpty()) {
-            // Whole JSON values, no ordering fence against Prepare or another batch.
+            // Whole JSON values, no observation-order fence between batches.
             commands.hset(key, changed);
         }
         return Collections.unmodifiableMap(results);

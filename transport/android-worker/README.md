@@ -136,10 +136,13 @@ endpoint retry exhausted
   -> wait for an explicit Host start
 ```
 
-Prepare is the only canonical Properties refresh. A running
-provider change can be read through an explicit Worker snapshot Command, but
-it is not published and reaches Kernel resource truth only after the next
-explicit stop/start.
+Prepare uses the existing input only for Server-owned identity and access
+preparation; it never creates or refreshes Matching Properties. The first
+connection baseline and explicit runtime reports pass through Adapter and
+Server admission into Matching. A Host can update its Provider and call
+`reportProperties()` or the update overload during the same run. Publication
+is best-effort: a failed first report may leave no Matching facts until a new
+full report or later connection baseline, without affecting the prepared identity.
 
 Prepare failure ends that single start attempt. `start()` and
 `stop()` return after submitting their request, so Android hosts do not need a

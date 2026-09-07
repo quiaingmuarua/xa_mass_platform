@@ -7,8 +7,6 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.identity.WorkerIdentityService;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,14 +21,12 @@ public final class WorkerBindingService {
     private final WorkerEndpointDirectory endpoints;
     private final WorkerIdentityService identities;
     private final WorkerRuntime workerRuntime;
-    private final WorkerMatchingCatalog matchingCatalog;
 
     WorkerBindingService(
             WorkerBindingRegistry registry,
             WorkerEndpointDirectory endpoints,
             WorkerIdentityService identities,
-            WorkerRuntime workerRuntime,
-            WorkerMatchingCatalog matchingCatalog
+            WorkerRuntime workerRuntime
     ) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
@@ -38,10 +34,6 @@ public final class WorkerBindingService {
         this.workerRuntime = Objects.requireNonNull(
                 workerRuntime,
                 "workerRuntime"
-        );
-        this.matchingCatalog = Objects.requireNonNull(
-                matchingCatalog,
-                "matchingCatalog"
         );
     }
 
@@ -83,7 +75,6 @@ public final class WorkerBindingService {
                 workerGroupId,
                 workerId,
                 transportType,
-                workerProperties,
                 operation
         );
     }
@@ -92,7 +83,6 @@ public final class WorkerBindingService {
             String workerGroupId,
             String workerId,
             WorkerTransportType transportType,
-            Map<String, Object> workerProperties,
             String operation
     ) {
         String endpointManagerId;
@@ -145,23 +135,6 @@ public final class WorkerBindingService {
             );
         }
 
-        MutationResult factsResult;
-        try {
-            factsResult = matchingCatalog.upsertWorkerFacts(
-                    workerId,
-                    workerGroupId,
-                    workerProperties
-            );
-        } catch (RuntimeException error) {
-            throw failure(
-                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
-                    operation,
-                    null,
-                    error
-            );
-        }
-        requireFactsUpsertAccepted(factsResult, operation);
-
         WorkerRuntimeResult result;
         try {
             result = workerRuntime.upsertWorker(new WorkerDeclaration(
@@ -179,43 +152,6 @@ public final class WorkerBindingService {
         }
         requireUpsertAccepted(result, operation);
         return binding;
-    }
-
-    private static void requireFactsUpsertAccepted(
-            MutationResult result,
-            String operation
-    ) {
-        if (result == null) {
-            throw failure(
-                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
-                    operation,
-                    null,
-                    null
-            );
-        }
-        switch (result.status()) {
-            case APPLIED, UNCHANGED -> {
-                return;
-            }
-            case INVALID -> throw failure(
-                    ServerErrorCode.INVALID_WORKER_BINDING_REQUEST,
-                    operation,
-                    result.reason(),
-                    null
-            );
-            case CONFLICT -> throw failure(
-                    ServerErrorCode.WORKER_BINDING_CONFLICT,
-                    operation,
-                    result.reason(),
-                    null
-            );
-            case NOT_FOUND -> throw failure(
-                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
-                    operation,
-                    result.reason(),
-                    null
-            );
-        }
     }
 
     public void requireCurrentEndpoint(

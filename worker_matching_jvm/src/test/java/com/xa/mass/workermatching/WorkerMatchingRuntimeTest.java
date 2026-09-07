@@ -55,6 +55,22 @@ class WorkerMatchingRuntimeTest {
     }
 
     @Test
+    void unrestrictedRuleSkipsMissingFactsButAcceptsAnObservedEmptyMap() {
+        FakeCatalog catalog = new FakeCatalog();
+        catalog.facts.put("observed", new WorkerFacts("observed", "group-1", Map.of(), Map.of()));
+        catalog.rules.put("unrestricted", rule("unrestricted", Map.of()));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchQueue queue = queue(1);
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
+            runtime.start();
+            assertTrue(queue.offer(demand("group-1", List.of(new TaskCandidateNeed("unrestricted", 2)),
+                    linkedScores("missing", 101L, "observed", 202L))));
+            await(() -> cache.appends.size() == 1);
+            assertEquals(List.of(new CandidateWorkerEntry("observed", 202L)), cache.appends.getFirst().candidates());
+        }
+    }
+
+    @Test
     void writesCandidatesInPacerTaskAndWorkerOrder() {
         FakeCatalog catalog = catalogWithWorkers("worker-a", "worker-b");
         catalog.rules.put("task-first", rule("task-first", Map.of()));
@@ -402,15 +418,6 @@ class WorkerMatchingRuntimeTest {
         private final AtomicBoolean blockLoads = new AtomicBoolean();
         private final CountDownLatch loadEntered = new CountDownLatch(1);
         private final CountDownLatch releaseLoads = new CountDownLatch(1);
-
-        @Override
-        public MutationResult upsertWorkerFacts(
-                String workerId,
-                String workerGroupId,
-                Map<String, Object> workerProperties
-        ) {
-            throw new UnsupportedOperationException();
-        }
 
         @Override
         public Map<String, MutationResult> upsertWorkerFactsBatch(

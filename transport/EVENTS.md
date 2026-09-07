@@ -183,11 +183,12 @@ The existing SYSTEM Queue submits homogeneous object batches through
 `results:append`. Oversize, encoding, queue and HTTP failures drop publication
 without undoing the cache or closing the Worker. There is no retry or automatic
 repair without new input. Server validates event source/shape, current Binding
-and Group, then replaces Worker facts through the Matching Catalog. Unknown
+and Group, then creates or replaces Worker facts through the Matching Catalog. Unknown
 SYSTEM events are per-item rejections, never Direct Call completions.
 Later Matching Demands read the facts; existing Candidates, Kernel scores,
-identity and Binding remain unchanged. Prepare still writes the same facts
-without a cross-path timestamp fence or special retention of registration keys.
+identity and Binding remain unchanged. Prepare creates no Matching facts; the
+first observation uses this same event. No observation-order fence or special
+retention of registration keys is provided.
 
 ## Extension Boundary
 

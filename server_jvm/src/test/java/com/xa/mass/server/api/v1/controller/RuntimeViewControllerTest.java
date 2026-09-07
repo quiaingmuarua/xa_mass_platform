@@ -521,6 +521,44 @@ class RuntimeViewControllerTest {
     }
 
     @Test
+    void previewIncludesIdentityBeforePropertiesWithoutCreatingFacts() throws Exception {
+        when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
+                .thenReturn(groupLookup("group-a"));
+        when(workerCatalog.sampleWorkerDescriptors("group-a", 1))
+                .thenReturn(Map.of("worker-a", worker("worker-a", "group-a")));
+        when(matchingCatalog.loadWorkerFacts("group-a", List.of("worker-a")))
+                .thenReturn(java.util.Collections.singletonMap("worker-a", null));
+
+        mockMvc.perform(post("/api/v1/runtime-view/worker-groups/group-a/workers:preview")
+                        .contentType(MediaType.APPLICATION_JSON).content("1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sampledCount").value(1))
+                .andExpect(jsonPath("$.returnedCount").value(1))
+                .andExpect(jsonPath("$.unreadableCount").value(0))
+                .andExpect(jsonPath("$.workers[0].workerId").value("worker-a"))
+                .andExpect(jsonPath("$.workers[0].workerGroupId").value("group-a"))
+                .andExpect(jsonPath("$.workers[0].endpointManagerId").value("endpoint-1"))
+                .andExpect(jsonPath("$.workers[0].workerProperties").isEmpty())
+                .andExpect(jsonPath("$.workers[0].platformProperties").isEmpty());
+        verify(matchingCatalog).loadWorkerFacts("group-a", List.of("worker-a"));
+        org.mockito.Mockito.verifyNoMoreInteractions(matchingCatalog);
+    }
+
+    @Test
+    void previewDoesNotTurnMatchingReadFailureIntoEmptyProperties() throws Exception {
+        when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
+                .thenReturn(groupLookup("group-a"));
+        when(workerCatalog.sampleWorkerDescriptors("group-a", 1))
+                .thenReturn(Map.of("worker-a", worker("worker-a", "group-a")));
+        when(matchingCatalog.loadWorkerFacts("group-a", List.of("worker-a")))
+                .thenThrow(new IllegalStateException("matching unavailable"));
+        mockMvc.perform(post("/api/v1/runtime-view/worker-groups/group-a/workers:preview")
+                        .contentType(MediaType.APPLICATION_JSON).content("1"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(15002));
+    }
+
+    @Test
     void previewReturnsEmptySuccessForAnExistingGroup()
             throws Exception {
         when(workerCatalog.getWorkerGroupDescriptors(

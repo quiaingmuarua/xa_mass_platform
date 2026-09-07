@@ -23,8 +23,10 @@ below rather than reproduced here.
 ## Identity And Address
 
 Prepare resolves a Server-owned Worker identity according to its Worker kind,
-persists Endpoint Binding, refreshes Matching facts and initializes minimal
-Kernel resources. The ordered writes are not a cross-owner transaction.
+persists Endpoint Binding and initializes minimal Kernel resources. Matching
+facts arrive separately through admitted Adapter Properties observations;
+Prepare does not create or refresh them. The ordered preparation writes are
+not a cross-owner transaction.
 Neither Prepare nor Binding proves that a physical connection is live.
 
 A long-lived connection sends its identity Report first. Adapter verification

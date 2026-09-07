@@ -336,7 +336,7 @@ all of which must share one kind and transport type. Both HTTP routes enter the
 same Server `prepareAll` path;
 the single route supplies a one-item list. Server validates the batch shape and
 every registration coordinate before side effects, then invokes Identity,
-Binding, Matching Facts and minimal Kernel Worker owners sequentially.
+Binding and minimal Kernel Worker owners sequentially.
 The response is an ordered list of the ordinary Prepare response DTO. Only a
 complete response returns `200`; completed side effects are not rolled back,
 so callers may retry through the same derived coordinates.
@@ -345,20 +345,37 @@ so callers may retry through the same derived coordinates.
 not part of the Redis key address: all identities for one WorkerGroup are
 fields in the same Group identity Hash. Each algorithm emits a typed,
 unambiguous field value, so an arbitrary `CLIENT_KEY` input cannot alias a
-`SCENARIO_LAB` coordinate. This cutover intentionally provides no legacy field
-fallback or workerId migration; test and deployment scopes may clear old
-identity data before using the new contract.
+`SCENARIO_LAB` coordinate. Existing typed coordinates and stored Worker IDs
+remain unchanged; removing Prepare's Properties write requires no data reset.
 
 `CLIENT_KEY` Prepare requires an existing Group and a non-blank
 `workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
-Worker identity, selects or reuses the persistent Endpoint Binding, replaces
-the complete Matching-owner Worker Properties snapshot, and initializes
-missing Kernel scheduling metadata and Score. These are separate owners and
+Worker identity, selects or reuses the persistent Endpoint Binding, and
+initializes missing Kernel scheduling metadata and Score. The HTTP field
+`workerProperties` retains its existing shape, but Server consumes only the
+selected identity policy's coordinates. Non-identity fields are neither
+interpreted nor encoded or persisted as Matching facts. These are separate owners and
 Redis keys, not one transaction; a repeated Prepare converges interrupted
 stages. Ordinary Workers retain only their
 Group/client key coordinate and never send a Worker ID hint. Transparent
 reconnect reuses the current in-memory identity and Endpoint without preparing
 again.
+
+Prepare success does not imply connectivity or observed Properties. New Workers
+have no Matching facts until an admitted Adapter observation creates them;
+even an unrestricted PRECOMPUTED Rule skips a Worker with no facts. ON_DEMAND
+does not require these facts. Polling has no current Adapter Properties path,
+so new Polling Workers use ON_DEMAND. Existing stored facts remain readable
+until a later complete observation replaces them; repeated Prepare never
+overwrites them, Platform Properties, an active Worker lease or PAUSE.
+
+Worker Preview still returns the Kernel-owned identity, Group and Endpoint when
+Matching returns no usable facts. Both Properties fields are then empty Maps,
+and the Worker counts as returned rather than unreadable. This is a projection,
+not a synthetic Matching record or proof of an observed empty baseline. The
+current Catalog maps both missing and undecodable facts to no usable facts;
+this read distinction is unchanged. Missing Kernel descriptors still count as
+unreadable, and Owner call failures still fail the request.
 
 Worker scheduling control and platform Properties changes use the same action
 effect contract:
@@ -374,6 +391,9 @@ requested mutation changes owner state and `{"status":"unchanged"}` when the
 resource is already at the requested value. A Properties patch still accepts
 the direct JSON Properties object; it mutates Matching facts and never writes
 Worker Score.
+Platform Properties patch requires an existing Matching Worker facts row.
+Before the first observation it returns the existing `400/15008` outcome;
+it must not be used as a read-only probe for successful Prepare.
 Missing resources, invalid changes and state conflicts use the public
 `15008..15010` business codes and never expose the Kernel Owner reason.
 Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
@@ -554,12 +574,12 @@ Provider selection stays in Server assembly. The shared `assembly.redis`
 package owns connection and health only; Redis key operations live in
 owner-local provider packages.
 
-Worker Prepare composes Server-owned identity resolution and Endpoint Binding,
-complete Matching-owner Worker Facts replacement, and minimal Kernel Worker
-metadata/Score initialization in that order. The owners and registries remain
-separate. Prepare remains unchanged; runtime observations can also replace
-Matching Properties without re-Prepare or Kernel Worker upsert. Transparent
-Client reconnect performs no Prepare operation.
+Worker Prepare composes Server-owned identity resolution, Endpoint Binding,
+and minimal Kernel Worker metadata/Score initialization in that order. Binding
+has no Matching dependency. The owners and registries remain separate.
+First and later Adapter observations create or replace Matching Properties
+without re-Prepare or Kernel Worker upsert. Transparent Client reconnect
+performs no Prepare operation.
 
 ### Worker Delivery
 
@@ -633,12 +653,14 @@ mutation outcomes reject them. Infrastructure failure returns `503` without
 rolling back earlier Group writes. SYSTEM then drops the batch, not retries it.
 
 Matching owns the persistent facts, not Server. Replacement removes omitted
-keys without preserving Prepare-only metadata inside Properties; independent
+keys without retaining registration fields inside Properties; independent
 identity, Binding and Worker records remain intact. New Matching Demands read
 the new facts. Existing Candidates are not revoked and scheduling is not
-explicitly awakened. Prepare and live reports have no timestamp/version fence;
-effective storage writes determine facts. No quiet-network eventual repair,
-ACK, throttling or publication history is provided.
+explicitly awakened. Concurrent observation batches have no timestamp/version
+fence; effective storage writes determine facts. A failed first publication can
+leave no facts, and a failed later publication can leave old facts. A later
+explicit complete report or connection baseline can supply new input. No
+quiet-network eventual repair, ACK, throttling or publication history is provided.
 
 Server-level route verification defaults to a `100000` request queue and a
 `5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner
@@ -826,8 +848,12 @@ aggregate reaches `RUNNING`. Shutdown uses one shared deadline in the exact
 reverse order. A failed start rolls back every already-started Java
 application.
 
-The Runtime Boundary proof closes real polling, WebSocket and Socket Task
-paths. It also calls an unpaused real WebSocket Worker directly, executes a
+The Runtime Boundary proof closes real Polling ON_DEMAND, WebSocket and Socket
+Task paths. It proves that Prepare alone creates no Matching facts, Preview
+can expose an identity before Properties, and an admitted text-protocol report
+can create the first facts without another Prepare. Lost first and later
+publications require new input; re-Prepare preserves observed facts and Worker
+scores. It also calls an unpaused real WebSocket Worker directly, executes a
 custom `extension.worker.*` event through a SERVER Command and the default
 probe/properties/events handlers, observes Adapter connection state, closes
 the current Channel, and proves transparent reconnect.

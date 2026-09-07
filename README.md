@@ -25,7 +25,7 @@ scheduling eligibility.
 
 ```text
 TASK
-API -> Server coordinates Matching facts/Rules and Kernel Task/Item writes
+API -> Server coordinates Matching Rules and Kernel Task/Item writes
     -> PRECOMPUTED: Kernel holds a bounded pool; Matching filters into Candidate Cache
        ON_DEMAND: Kernel acquires normalized explicit Worker IDs or ANY
     -> Kernel renews the Worker fence, claims the Item and publishes a Command
@@ -48,16 +48,20 @@ Result and requesting finality are ordered Owner calls, not a transaction or
 an unconditional repair guarantee. The detailed failure windows are in
 [Result storage](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
 
-Worker Prepare establishes Server-owned identity/Binding, replaces canonical
-Matching Properties and initializes minimal Kernel resources. Transparent
+Worker Prepare establishes Server-owned identity/Binding and initializes
+minimal Kernel resources. Its Properties input supplies registration coordinates
+only; it does not create or refresh Matching facts. Transparent
 reconnect sends identity only. Adapter Route evidence may feed the optional
 Kernel Serviceability policy, but Route and local Properties snapshots are
 observations, not scheduling truth. Adapter Properties reporting and baseline calibration follow the
 [connection Owner](transport/netty-adapter/README.md) and
 [Worker Core](transport/worker-core/README.md) contracts. After installing a
 complete observation, Adapter offers one SYSTEM Report; Server validates its
-producer, Binding and Group before replacing Matching-owned Worker facts.
-New Matching Demands read those facts without re-Prepare. Reporting is lossy,
+producer, Binding and Group before creating or replacing Matching-owned Worker
+facts. Before the first valid observation, identity may exist without facts:
+PRECOMPUTED skips that Worker while ON_DEMAND can use its identity. Polling
+currently has no Properties reporting path and uses ON_DEMAND for new Workers.
+New Matching Demands read observed facts without re-Prepare. Reporting is lossy,
 does not revoke existing Candidates, and does not directly change scheduling.
 WorkerGroup event declarations likewise do not prove that handlers are loaded;
 process-local event snapshots report the actual immutable assembly.

@@ -46,15 +46,20 @@ final class RuntimeApiClient {
             )) {
                 throw JsonValues.invalid("WorkerGroup identity changed");
             }
+            String workerId = JsonValues.requiredString(value, "workerId");
             Map<String, Object> properties = JsonValues.object(
                     value.get("workerProperties"),
                     "workerProperties"
             );
+            if (properties.isEmpty()) {
+                // Identity can precede the first observation; bounded discovery keeps waiting.
+                continue;
+            }
             String labWorkerKey = labWorkerKey(properties);
             WorkerView previous = workers.putIfAbsent(
                     labWorkerKey,
                     new WorkerView(
-                            JsonValues.requiredString(value, "workerId"),
+                            workerId,
                             Collections.unmodifiableMap(properties)
                     )
             );

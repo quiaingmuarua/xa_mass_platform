@@ -30,7 +30,7 @@ Server passes the finite workerSelector to the Kernel parser
 | Worker Matching | Worker and Platform Properties, Candidate Rules, constraint interpretation, ordered filtering of a supplied held pool |
 | Kernel | Task/Item/Worker score, finite Item Worker Selector normalization, Task ordering and deficit, Worker observation and exact hold, Candidate Cache truth, round uniqueness, Item claim, retry and finality |
 | Server | public validation, ordered cross-owner writes, Runtime View composition and lifecycle assembly |
-| Transport | Prepare upload, best-effort runtime Properties observations, and execution of an already-targeted Command |
+| Transport | Identity preparation, best-effort Properties observations, and execution of an already-targeted Command |
 
 `WorkerMatchQueue` lives in `kernel_jvm` as the complete PRECOMPUTED handoff
 contract: Kernel Pacer offers Demands, the resident Matching runtime consumes
@@ -60,12 +60,13 @@ interprets a Task identity and no second persistent ID is introduced.
 :matching:candidate:rules
 ```
 
-Worker Prepare and Server-admitted live Adapter observations replace the
-complete Worker Properties value and preserve the independently written
-Platform Properties value. Platform patch requires
-an existing Worker facts row. Candidate Rules are create-only: an exact retry
-is unchanged and different content conflicts. Missing Kernel resources leave
-inert orphan facts or rules.
+Server-admitted Adapter observations create or replace the complete Worker
+Properties value and preserve the independently written Platform Properties
+value. Prepare does not write this Catalog. Platform patch requires an existing
+Worker facts row, including a genuinely observed empty Map; an identity with no
+facts does not satisfy that precondition. Candidate Rules are create-only: an
+exact retry is unchanged and different content conflicts. Missing Kernel
+resources leave inert orphan facts or rules.
 
 Live ingestion uses `upsertWorkerFactsBatch(groupId, propertiesByWorkerId)` for
 1..100 unique Worker IDs in one Group. Each value is a complete flat string KV
@@ -73,23 +74,30 @@ Map (non-blank keys, non-null strings, empty strings allowed). The Catalog
 canonically encodes complete values, compares them with one `HMGET`, and issues
 one multi-field `HSET` for changed values only. Unchanged content returns
 UNCHANGED; invalid Properties return INVALID for that Worker. Empty Maps clear
-all Worker Properties; omitted keys, including Prepare-only registration
+all Worker Properties; omitted keys, including any previously stored registration
 properties, are not retained. Independent Identity, Binding, Kernel resource
 and Platform Properties records are unaffected.
 
-The original single-Worker Prepare operation retains its input contract and
-uses the same encoding/storage implementation. There is no new key, cache,
-timestamp, version, CAS, cross-request transaction or late-snapshot rejection.
-Concurrent Prepare and live reports follow their effective Redis writes, not
-observation time or HTTP arrival order. Each stored JSON Map is replaced whole;
-the compare followed by write does not promise cross-request serialization.
+The bounded batch is the sole Worker facts write operation, including for one
+Worker and the first observation. Existing stored values remain readable without
+migration. There is no new key, cache, timestamp, version, CAS, cross-request
+transaction or late-snapshot rejection. Concurrent batches follow their
+effective Redis writes, not observation time or HTTP arrival order. Each stored
+JSON Map is replaced whole; the compare followed by write does not promise
+cross-request serialization.
 
 The upstream SYSTEM path is one-shot best-effort: a queue or HTTP failure can
-leave old facts until new Host input or a later connection baseline arrives.
+leave no facts or old facts until new Host input or a later connection baseline arrives.
 Server owns producer/Binding/Group admission, not Rule interpretation. Every
 new Demand loads the current Catalog facts; there is no refresh notification,
 Matching facts cache or Candidate revocation. String comparison remains lexical;
 numeric-string coercion and new constraint semantics are not part of this path.
+
+A Worker without usable facts is skipped even for an unrestricted Rule or a
+Worker-ID-only Rule. This does not block ON_DEMAND, whose Kernel path never
+reads this Catalog. The current Catalog returns null for both absent and
+undecodable facts; Runtime Preview may display the identity with empty Maps,
+but that display must not be reused as matching evidence.
 
 PRECOMPUTED Candidate Rules use the finite constraint language. Roots are
 `workerId`, `worker.*`, and `platform.*`; operators are `$eq`/`$equal`, `$ne`,
