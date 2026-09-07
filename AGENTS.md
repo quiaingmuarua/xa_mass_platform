@@ -411,8 +411,12 @@ Rules:
 - Adapter-local Worker property observation is a separate projection cache;
   it must not be folded into RouteEntry or copied into Server/Kernel truth.
 - Worker Properties observation must come from the exact current verified
-  Channel. Follow the Adapter Owner's full-baseline and patch contract; missing
-  baseline and invalid patches are local drops. Keep cache content immutable
+  Channel. The fixed `properties.updated` and `properties.replaced` events carry
+  direct string KV Maps: update merges supplied keys into a full baseline;
+  replacement atomically replaces the Map, deleting omitted keys. Missing
+  baseline and invalid updates are local drops; empty strings are not deletions.
+  Explicit TASK/SERVER snapshot Results keep their wrapped query payload and
+  never write the cache. Keep cache content immutable
   with owner-local fingerprint and observation metadata, without field versions.
   Baseline calibration and explicit SDK reporting remain best-effort observation,
   never canonical Matching writes, upstream Reports or ACKs. Host publication

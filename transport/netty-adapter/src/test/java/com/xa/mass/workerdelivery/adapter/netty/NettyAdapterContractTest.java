@@ -31,7 +31,6 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -193,13 +192,17 @@ class NettyAdapterContractTest {
             worker.start();
             awaitProperties(remoteApi, properties.get());
 
+            properties.set(Map.of("battery", "87", "network.type", "cellular", "network.ssid", ""));
+            assertThat(worker.reportProperties(Map.of("network.type", "cellular", "network.ssid", ""))).isTrue();
+            awaitProperties(remoteApi, properties.get());
+
+            // Removing a Host key requires a full replacement; an empty value above kept it present.
             properties.set(Map.of("battery", "87", "network.type", "cellular"));
-            assertThat(worker.reportProperties(Map.of("network.type", "cellular"),
-                    Set.of("network.ssid"))).isTrue();
+            assertThat(worker.reportProperties()).isTrue();
             awaitProperties(remoteApi, properties.get());
 
             // The SDK must not update the Host provider, and full reporting replaces the Map.
-            assertThat(worker.reportProperties(Map.of("temporary", "transport-only"), Set.of())).isTrue();
+            assertThat(worker.reportProperties(Map.of("temporary", "transport-only"))).isTrue();
             awaitProperties(remoteApi, Map.of(
                     "battery", "87", "network.type", "cellular", "temporary", "transport-only"));
             assertThat(properties.get()).doesNotContainKey("temporary");
@@ -218,7 +221,8 @@ class NettyAdapterContractTest {
             assertThat(remoteApi.verificationCount.get()).isEqualTo(1);
             assertThat(remoteApi.prepareCount.get()).isEqualTo(1);
             assertThat(remoteApi.appendedResults.stream().flatMap(List::stream))
-                    .noneMatch(report -> report.messageType().equals("platform.worker.properties.reported"));
+                    .noneMatch(report -> report.messageType().equals("platform.worker.properties.updated")
+                            || report.messageType().equals("platform.worker.properties.replaced"));
             worker.stop();
             assertThat(worker.reportProperties()).isFalse();
         }

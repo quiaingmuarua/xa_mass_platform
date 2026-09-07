@@ -99,17 +99,23 @@ snapshot. Keys must be non-blank; values must be strings (including empty
 strings). Producers explicitly encode numeric/boolean facts as strings; Transport
 does not flatten or coerce them.
 
-`reportProperties()` sends a full snapshot from that Provider.
-`reportProperties(set, remove)` sends a patch without mutating the Host:
+`reportProperties()` reads that Provider once and sends a full
+`platform.worker.properties.replaced` Map. `reportProperties(updates)` sends
+`platform.worker.properties.updated` without mutating the Host:
 update the Host's data first, then call it. The SDK retains no extra Map or
 history. Both return only Client acceptance; inactive, disconnected, stopped or
-closed sends return false, Provider failure returns false, and invalid patch
+closed sends return false, Provider failure returns false, and invalid update
 arguments throw. Encoding is bounded to a 1,000,000-byte Report. No Prepare,
 retry, ACK, watcher or second Provider is introduced.
 
 Adapter requests one full snapshot after each verified connection/reconnection;
-Core answers it through the same `properties.reported` path. Explicit TASK/SERVER
-snapshot calls still return correlated Results. Loss may require an explicit full
+Core unwraps the successful snapshot output into one `properties.replaced`
+Report without another Provider read. Both Report payloads are direct string KV
+Maps: update merges supplied keys, replacement removes omitted keys. Empty
+strings stay present; deletion requires a Host-side removal and full replacement.
+Empty Maps are legal, and `set`, `remove`, and `properties` are ordinary keys.
+Explicit TASK/SERVER snapshot calls still return correlated `{"properties":{...}}`
+Results. Loss may require an explicit full
 report or a later connection baseline; this is not guaranteed eventual delivery.
 
 JavaWorkerManager exposes these methods with a first `replicaKey` argument,

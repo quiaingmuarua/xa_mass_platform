@@ -14,7 +14,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -32,15 +31,17 @@ class WorkerPropertiesReportingTest {
         Fixture f = new Fixture(() -> { loads.incrementAndGet(); return host.get(); });
         try (WorkerRunController worker = f.worker) {
             assertFalse(worker.reportProperties());
-            assertFalse(worker.reportProperties(Map.of(), Set.of()));
+            assertFalse(worker.reportProperties(Map.of()));
             assertEquals(0, loads.get());
             worker.start();
             assertTrue(worker.reportProperties());
             assertFull(f.last(), Map.of("battery", "87"));
             host.set(Map.of("battery", "88", "network.type", "wifi"));
-            assertTrue(worker.reportProperties(Map.of("battery", "88"), Set.of("old")));
-            assertEquals(Map.of("set", Map.of("battery", "88"), "remove", List.of("old")),
+            assertTrue(worker.reportProperties(Map.of("battery", "88", "temporary", "transport-only")));
+            assertEquals("platform.worker.properties.updated", f.last().messageType());
+            assertEquals(Map.of("battery", "88", "temporary", "transport-only"),
                     Jsons.parseObject(f.last().payload()));
+            assertEquals(Map.of("battery", "88", "network.type", "wifi"), host.get());
             assertEquals(1, loads.get());
             assertTrue(worker.reportProperties());
             assertFull(f.last(), host.get());
@@ -48,17 +49,24 @@ class WorkerPropertiesReportingTest {
             assertEquals(1, f.prepares.get());
             f.client.accept = false;
             assertFalse(worker.reportProperties());
+            assertFalse(worker.reportProperties(Map.of("battery", "89")));
             f.client.accept = true;
             worker.stop();
             assertFalse(worker.reportProperties());
+            assertFalse(worker.reportProperties(Map.of("battery", "89")));
             assertEquals(WorkerLifecycle.State.STOPPED, worker.snapshot().state());
         }
         assertFalse(f.worker.reportProperties());
+        assertFalse(f.worker.reportProperties(Map.of("battery", "89")));
     }
 
     @Test
-    void adapterSnapshotUsesReportedOnlyWhileTaskAndSystemKeepCorrelation() {
-        Fixture f = new Fixture(() -> Map.of("network.type", "wifi"));
+    void adapterSnapshotUsesReplacedOnlyWhileTaskAndServerKeepCorrelation() {
+        AtomicInteger loads = new AtomicInteger();
+        Fixture f = new Fixture(() -> {
+            loads.incrementAndGet();
+            return Map.of("network.type", "wifi");
+        });
         try (WorkerRunController worker = f.worker) {
             worker.start();
             f.client.sent.clear();
@@ -74,14 +82,17 @@ class WorkerPropertiesReportingTest {
                     assertEquals(source, report.dst());
                     assertEquals(command.messageType(), report.messageType());
                     assertEquals(command.forward(), report.forward());
+                    assertEquals(Map.of("properties", Map.of("network.type", "wifi")),
+                            Jsons.parseObject(report.payload()));
                 }
+                assertEquals(f.client.sent.size(), loads.get());
             }
             assertEquals(3, f.client.sent.size());
         }
     }
 
     @Test
-    void invalidPatchFailsImmediatelyAndProviderOrEncodedSizeFailureDoesNotEndRun() {
+    void invalidUpdateFailsImmediatelyAndProviderOrEncodedSizeFailureDoesNotEndRun() {
         AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of());
         Fixture f = new Fixture(() -> {
             if (host.get() == null) throw new Exception("opaque private provider failure");
@@ -89,18 +100,17 @@ class WorkerPropertiesReportingTest {
         });
         try (WorkerRunController worker = f.worker) {
             assertThrows(IllegalArgumentException.class,
-                    () -> worker.reportProperties(Map.of(" ", "x"), Set.of()));
+                    () -> worker.reportProperties(Map.of(" ", "x")));
             assertThrows(IllegalArgumentException.class,
-                    () -> worker.reportProperties(Map.of("a", "x"), Set.of("a")));
-            assertThrows(IllegalArgumentException.class,
-                    () -> worker.reportProperties(Map.of(), Set.of(" ")));
+                    () -> worker.reportProperties(java.util.Collections.singletonMap("a", null)));
+            assertThrows(IllegalArgumentException.class, () -> worker.reportProperties(null));
             worker.start();
             f.client.sent.clear();
             host.set(null);
             assertFalse(worker.reportProperties());
             host.set(Map.of("value", "中".repeat(340_000)));
             assertFalse(worker.reportProperties());
-            assertFalse(worker.reportProperties(host.get(), Set.of()));
+            assertFalse(worker.reportProperties(host.get()));
             // JSON escaping can exceed the frame limit even when the raw value does not.
             host.set(Map.of("value", "\"".repeat(300_000)));
             assertFalse(worker.reportProperties());
@@ -109,6 +119,49 @@ class WorkerPropertiesReportingTest {
             host.set(Map.of("empty", ""));
             assertTrue(worker.reportProperties());
             assertFull(f.last(), host.get());
+        }
+    }
+
+    @Test
+    void emptyMapsAndFormerWrapperNamesArePlainPropertyValues() {
+        AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of());
+        Fixture f = new Fixture(host::get);
+        try (WorkerRunController worker = f.worker) {
+            worker.start();
+            assertTrue(worker.reportProperties());
+            assertFull(f.last(), Map.of());
+            assertTrue(worker.reportProperties(Map.of()));
+            assertEquals("platform.worker.properties.updated", f.last().messageType());
+            assertEquals(Map.of(), Jsons.parseObject(f.last().payload()));
+            Map<String, String> ordinaryKeys = Map.of("set", "x", "remove", "", "properties", "y");
+            assertTrue(worker.reportProperties(ordinaryKeys));
+            assertEquals(ordinaryKeys, Jsons.parseObject(f.last().payload()));
+            assertEquals(Map.of(), host.get());
+            host.set(ordinaryKeys);
+            assertTrue(worker.reportProperties());
+            assertFull(f.last(), ordinaryKeys);
+        }
+    }
+
+    @Test
+    void adapterSnapshotFailureNeverPublishesAnEmptyReplacement() {
+        AtomicInteger loads = new AtomicInteger();
+        Fixture f = new Fixture(() -> {
+            loads.incrementAndGet();
+            throw new Exception("private provider failure");
+        });
+        try (WorkerRunController worker = f.worker) {
+            worker.start();
+            f.client.sent.clear();
+            for (String payload : List.of("{}", "null")) {
+                DeliveryCommand command = DeliveryCommand.create(ADAPTER, WORKER,
+                        "platform.worker.properties.snapshot", System.currentTimeMillis() + 60_000,
+                        payload, "");
+                f.client.listener.onMessage(codec.encodeDeliveryCommand(command));
+            }
+            assertTrue(f.client.sent.isEmpty());
+            assertEquals(1, loads.get());
+            assertEquals(WorkerLifecycle.State.RUNNING, worker.snapshot().state());
         }
     }
 
@@ -143,8 +196,8 @@ class WorkerPropertiesReportingTest {
         assertEquals(ADAPTER, report.dst());
         assertEquals("200", report.outcomeCode());
         assertEquals("", report.forward());
-        assertEquals("platform.worker.properties.reported", report.messageType());
-        assertEquals(Map.of("properties", properties), Jsons.parseObject(report.payload()));
+        assertEquals("platform.worker.properties.replaced", report.messageType());
+        assertEquals(properties, Jsons.parseObject(report.payload()));
     }
 
     private final class Fixture {

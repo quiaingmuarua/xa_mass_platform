@@ -98,9 +98,11 @@ cache-evicted, and Channel metadata contains only the claimed workerId for
 callback correlation. The separate flat string Properties projection is
 capacity bounded, not time deleted; retained verification evidence gates
 visibility, and eviction makes the projection unknown. After verified activation
-Adapter requests one full baseline; Java/Android Hosts can then send full or patch
-`properties.reported` observations using their same Provider. Only that event
-writes the local cache; ordinary snapshot Results only forward. Connection and
+Adapter requests one full baseline; Java/Android Hosts can then send full
+`properties.replaced` or incremental `properties.updated` observations using
+their same Provider. Both carry direct string KV Maps: update merges supplied
+keys, replacement removes omitted keys. Only these events write the local cache;
+ordinary snapshot Results keep their wrapped payload and only forward. Connection and
 Properties expose independent snapshots without an atomic join or shared
 version. Neither cache is scheduling, Binding or Worker lifecycle truth.
 

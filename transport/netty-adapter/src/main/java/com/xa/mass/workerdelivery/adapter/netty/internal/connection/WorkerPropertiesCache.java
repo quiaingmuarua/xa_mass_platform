@@ -5,9 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
@@ -77,26 +75,17 @@ final class WorkerPropertiesCache {
     /** A patch without a retained complete baseline is deliberately dropped. */
     ObservationWrite patch(
             String workerId,
-            Map<String, String> set,
-            List<String> remove
+            Map<String, String> updates
     ) {
         String requiredWorkerId = requireWorkerId(workerId);
         Map<String, String> captured = WorkerDeliveryCodec.copyWorkerProperties(
-                Objects.requireNonNull(set, "set")
+                Objects.requireNonNull(updates, "updates")
         );
-        List<String> removed = List.copyOf(remove);
-        if (new HashSet<>(removed).size() != removed.size()
-                || removed.stream().anyMatch(key -> key.isBlank() || captured.containsKey(key))) {
-            throw new IllegalArgumentException(
-                    "remove must be unique and disjoint from set"
-            );
-        }
         AtomicReference<ObservationWrite> write = new AtomicReference<>();
         propertiesByWorkerId.asMap().computeIfPresent(
                 requiredWorkerId,
                 (id, current) -> {
                     Map<String, String> merged = new LinkedHashMap<>(current.properties());
-                    removed.forEach(merged::remove);
                     merged.putAll(captured);
                     CachedProperties replacement = capture(
                             id,

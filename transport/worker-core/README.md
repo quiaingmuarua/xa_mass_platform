@@ -187,24 +187,31 @@ uses the same Host Provider (`Map<String, String>`): non-blank keys, non-null
 string values, empty strings allowed, and dots treated literally. Nested JSON,
 arrays, numbers and booleans are rejected without coercion.
 
-Java/Android `reportProperties()` reads that Provider once; the patch overload
-`reportProperties(Map<String, String> set, Set<String> remove)` sends only its
-arguments. The Host updates its own consistent snapshot before sending a patch.
+Java/Android `reportProperties()` reads that Provider once and sends
+`platform.worker.properties.replaced`; the update overload
+`reportProperties(Map<String, String> updates)` sends only its arguments as
+`platform.worker.properties.updated`. The Host updates its own consistent
+snapshot before sending an update.
 Core retains no Properties copy, patch history, retry or queue. The Controller
 captures its current Transport under the run gate, then performs Provider reads,
 encoding and sending outside it. Inactive or unaccepted sends return false.
-Invalid patch arguments throw; Provider failures return false with safe
+Invalid update arguments throw; Provider failures return false with safe
 diagnostics and do not end the run.
 
 On each verified connection Adapter sends one ADAPTER-origin
 `platform.worker.properties.snapshot` Command. A successful output becomes a
-single `WORKER -> ADAPTER platform.worker.properties.reported` full report.
-TASK/SERVER snapshot calls keep their normal Result destination and correlation.
+single `WORKER -> ADAPTER platform.worker.properties.replaced` report: Core
+extracts the Map from the successful snapshot output, without reading the Provider
+again or sending an additional ordinary Result. TASK/SERVER snapshot calls keep
+their `{"properties":{...}}` Result payload, destination and correlation.
 Client onOpen still sends only identity; no ready state or ACK is added.
 
-The report payload is either `{"properties":{...}}` (full replacement) or
-`{"set":{...},"remove":[...]}` (disjoint sets, unique removals, empty patch
-allowed). The complete encoded Report must fit 1,000,000 UTF-8 bytes. A rejected
+Both report payloads are direct string KV Maps. `updated` overwrites supplied
+keys and retains the rest; `replaced` replaces the whole Map and removes omitted
+keys. Empty values stay present, and incremental deletion is not supported.
+Empty updates preserve content; empty replacements establish an empty baseline.
+`set`, `remove`, and `properties` are ordinary keys, not control fields. The
+complete encoded Report must fit 1,000,000 UTF-8 bytes. A rejected
 or lost report is not retained or retried. Already-admitted work may finish
 after stop; the closed Client rejects its late send best effort. Concurrent
 reports have no cross-Attempt ordering promise; explicit full reporting or a

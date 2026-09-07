@@ -238,8 +238,8 @@ public final class AndroidWorker implements WorkerLifecycle {
         return worker.reportProperties();
     }
 
-    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
-        return worker.reportProperties(set, remove);
+    public boolean reportProperties(Map<String, String> updates) {
+        return worker.reportProperties(updates);
     }
 
     @Override

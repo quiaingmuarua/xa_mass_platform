@@ -273,9 +273,11 @@ them. Disconnected evidence is removed by TTL or capacity pressure and then
 projects as `UNKNOWN`. Cache eviction never emits availability evidence.
 
 Each Adapter also owns one `WorkerPropertiesCache` beside the Registry. It is
-not route truth: `platform.worker.properties.reported` from the exact current
-verified Channel is its sole write path. A full payload replaces the complete
-baseline, while a patch can only modify an already-retained baseline.
+not route truth: `platform.worker.properties.updated` and
+`platform.worker.properties.replaced` from the exact current verified Channel
+are its only write paths. Replacement installs a complete immutable Map;
+update merges supplied keys into an already-retained baseline. Neither exposes
+an intermediate cleared or partially modified Map to readers.
 A replaced old Channel may still submit valid in-flight
 evidence, but it cannot refresh this projection. Properties survive ordinary
 disconnect and reconnect while route verification evidence is retained. Each
@@ -432,24 +434,31 @@ attribute changes to Server or Kernel. Entries are keyed by workerId and do not
 repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
 only: no loader, refresh, listener, scheduler or cleanup thread is installed.
 
-The fixed Worker-produced `WORKER -> ADAPTER` event
-`platform.worker.properties.reported` accepts outcome `200`, empty forward,
-and exactly one payload shape: `{"properties":{...}}` or
-`{"set":{...},"remove":["..."]}`. Full replaces the entire Map; patch requires
-a retained full baseline. Keys are non-blank literal strings and values are
-non-null strings (empty allowed). Remove is unique, non-blank and disjoint from
-set. Nested objects, arrays, numbers, booleans and mixed/unknown payload fields
-are rejected, not coerced. An empty full Map or patch is valid.
+The fixed Worker-produced `WORKER -> ADAPTER` events
+`platform.worker.properties.updated` and `platform.worker.properties.replaced`
+accept outcome `200`, empty forward, and a direct string KV Map payload. Only
+the Event Name selects merge or replacement. Update copies the full baseline
+and applies `putAll`; replacement installs the supplied full Map, removing
+omitted keys. Both retain the existing per-Worker atomic installation and
+conditional rollback if the Channel ceases to be current.
+
+Keys are non-blank literal strings and values are non-null strings (empty
+allowed). Empty values are not deletion markers; removal requires a full
+replacement. Nested objects, arrays, numbers and booleans are rejected, not
+coerced. `set`, `remove`, and `properties` with string values are ordinary keys.
+Empty updates preserve content; empty replacements establish empty baselines.
 
 Before identity, during verification, after replacement, or for an invalid
-payload, the report is dropped locally. A patch after capacity eviction is also
+payload, the report is dropped locally. An update after capacity eviction is also
 dropped without a compensating snapshot request. Host explicit full reporting
 or the next successful connection baseline can restore it. Report encoding is
 bounded to the existing 1,000,000-byte frame limit.
 
-This event is not a callable Handler, forwarded to Report queues, or
-acknowledged. Ordinary TASK/SERVER snapshot Results still forward but never
-refresh the cache. Java and Android use their one Host Provider for full reports;
+Neither event is a callable Handler, forwarded to Report queues, or
+acknowledged. Ordinary TASK/SERVER snapshot Results retain their
+`{"properties":{...}}` query payload and still forward but never refresh the cache.
+Automatic baseline reuses that successful snapshot output as one `replaced`
+Report without a second Provider read. Java and Android use their one Host Provider for full reports;
 the SDK does not store or merge Host properties. Server publication/coalescing,
 field timestamps, versions and reliable convergence remain out of scope.
 Connection evidence behavior is unchanged; this observation never writes Kernel.

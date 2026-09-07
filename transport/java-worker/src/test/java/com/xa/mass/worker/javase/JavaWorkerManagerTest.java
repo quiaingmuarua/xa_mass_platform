@@ -65,10 +65,16 @@ class JavaWorkerManagerTest {
                 var full = reports.poll(5, TimeUnit.SECONDS);
                 assertTrue(full != null);
                 assertEquals("worker-1", full.sourceId());
-                assertEquals(Map.of("properties", Map.of("battery", "87")),
+                assertEquals("platform.worker.properties.replaced", full.messageType());
+                assertEquals(Map.of("battery", "87"),
                         com.xa.mass.workerdelivery.json.Jsons.parseObject(full.payload()));
-                assertTrue(manager.reportProperties("first", Map.of("battery", "88"), java.util.Set.of()));
-                assertTrue(reports.poll(5, TimeUnit.SECONDS) != null);
+                assertTrue(manager.reportProperties("first", Map.of("battery", "88")));
+                var update = reports.poll(5, TimeUnit.SECONDS);
+                assertTrue(update != null);
+                assertEquals("worker-1", update.sourceId());
+                assertEquals("platform.worker.properties.updated", update.messageType());
+                assertEquals(Map.of("battery", "88"),
+                        com.xa.mass.workerdelivery.json.Jsons.parseObject(update.payload()));
                 assertEquals(false, manager.reportProperties("second"));
                 assertEquals(WorkerLifecycle.State.STOPPED, manager.snapshot("second").state());
                 assertEquals(2, server.getRequestCount());

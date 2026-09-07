@@ -16,12 +16,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -42,8 +39,10 @@ final class TextMessageWorkerTransport
             TextMessageWorkerTransport.class.getName()
     );
 
-    private static final String PROPERTIES_REPORTED_EVENT =
-            "platform.worker.properties.reported";
+    private static final String PROPERTIES_UPDATED_EVENT =
+            "platform.worker.properties.updated";
+    private static final String PROPERTIES_REPLACED_EVENT =
+            "platform.worker.properties.replaced";
     private static final int MAX_REPORT_BYTES = 1_000_000;
 
     private final TextMessageClient client;
@@ -118,7 +117,11 @@ final class TextMessageWorkerTransport
                     && WorkerManagementEventDefinitions.PROPERTIES_SNAPSHOT_EVENT
                             .equals(command.messageType())) {
                 if ("200".equals(outcome.outcomeCode())) {
-                    sendProperties(outcome.payload());
+                    Map<String, Object> snapshot = Jsons.parseObject(outcome.payload());
+                    sendProperties(PROPERTIES_REPLACED_EVENT,
+                            WorkerDeliveryCodec.copyWorkerProperties(
+                                    (Map<?, ?>) snapshot.get("properties")
+                            ));
                 }
                 return;
             }
@@ -156,34 +159,22 @@ final class TextMessageWorkerTransport
                         "workerProperties must not expose clientWorkerKey"
                 );
             }
-            return sendProperties(Jsons.toJson(Map.of("properties", properties)));
+            return sendProperties(PROPERTIES_REPLACED_EVENT, properties);
         } catch (Exception failure) {
             log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.report", failure);
             return false;
         }
     }
 
-    static String propertiesPatch(Map<String, String> set, Set<String> remove) {
-        Map<String, String> captured = WorkerDeliveryCodec.copyWorkerProperties(set);
-        Objects.requireNonNull(remove, "remove");
-        List<String> removed = new ArrayList<>();
-        for (Object key : remove) {
-            if (!(key instanceof String) || ((String) key).isBlank()
-                    || captured.containsKey(key)) {
-                throw new IllegalArgumentException(
-                        "remove requires non-blank keys disjoint from set"
-                );
-            }
-            removed.add((String) key);
-        }
-        return Jsons.toJson(Map.of("set", captured, "remove", removed));
+    boolean reportProperties(Map<String, String> updates) {
+        return sendProperties(PROPERTIES_UPDATED_EVENT, updates);
     }
 
-    boolean sendProperties(String payload) {
+    private boolean sendProperties(String eventName, Map<String, String> properties) {
         try {
             String encoded = codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER, workerId, ADAPTER, PROPERTIES_REPORTED_EVENT,
-                    "200", payload, ""
+                    WORKER, workerId, ADAPTER, eventName,
+                    "200", Jsons.toJson(properties), ""
             ));
             if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_REPORT_BYTES) {
                 log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.size", null);

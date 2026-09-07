@@ -117,21 +117,21 @@ public class AndroidWorkerTest {
         DeliveryReport baseline = reports.poll(5, TimeUnit.SECONDS);
         assertNotNull(baseline);
         assertEquals(ADAPTER, baseline.dst());
-        assertEquals("platform.worker.properties.reported", baseline.messageType());
+        assertEquals("platform.worker.properties.replaced", baseline.messageType());
         assertEquals("", baseline.forward());
-        assertEquals(Map.of("properties", properties.get()), Jsons.parseObject(baseline.payload()));
+        assertEquals(properties.get(), Jsons.parseObject(baseline.payload()));
 
         properties.set(Map.of("network.type", "cellular", "battery", "88"));
-        assertTrue(worker.reportProperties(Map.of("network.type", "cellular"),
-                java.util.Set.of("region")));
+        assertTrue(worker.reportProperties(Map.of("network.type", "cellular")));
         DeliveryReport patch = reports.poll(5, TimeUnit.SECONDS);
         assertNotNull(patch);
-        assertEquals(Map.of("set", Map.of("network.type", "cellular"), "remove", List.of("region")),
-                Jsons.parseObject(patch.payload()));
+        assertEquals("platform.worker.properties.updated", patch.messageType());
+        assertEquals(Map.of("network.type", "cellular"), Jsons.parseObject(patch.payload()));
         assertTrue(worker.reportProperties());
         DeliveryReport full = reports.poll(5, TimeUnit.SECONDS);
         assertNotNull(full);
-        assertEquals(Map.of("properties", properties.get()), Jsons.parseObject(full.payload()));
+        assertEquals("platform.worker.properties.replaced", full.messageType());
+        assertEquals(properties.get(), Jsons.parseObject(full.payload()));
         assertEquals(2, server.getRequestCount()); // One Prepare and one physical handshake.
         assertTrue(reports.isEmpty()); // No extra ordinary snapshot Result.
         worker.close();

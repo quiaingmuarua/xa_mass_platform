@@ -18,15 +18,14 @@ class WorkerPropertiesCacheTest {
     @Test
     void patchNeedsBaselineAndFullReplacesAllPreviousKeys() {
         WorkerPropertiesCache cache = cache(DEFAULT_BUDGET, () -> 123L);
-        assertThat(cache.patch(WORKER_ID, Map.of("battery", "90"), List.of())).isNull();
+        assertThat(cache.patch(WORKER_ID, Map.of("battery", "90"))).isNull();
         assertUnknown(cache.observation(WORKER_ID));
         cache.observe(WORKER_ID, Map.of(
                 "battery", "87", "network.type", "wifi", "network.ssid", "home"));
-        var write = cache.patch(WORKER_ID, Map.of("network.type", "cellular", "empty", ""),
-                List.of("network.ssid"));
+        var write = cache.patch(WORKER_ID, Map.of("network.type", "cellular", "network.ssid", ""));
         assertThat(cache.observation(WORKER_ID).properties()).isEqualTo(
-                Map.of("battery", "87", "network.type", "cellular", "empty", ""));
-        var empty = cache.patch(WORKER_ID, Map.of(), List.of());
+                Map.of("battery", "87", "network.type", "cellular", "network.ssid", ""));
+        var empty = cache.patch(WORKER_ID, Map.of());
         assertThat(empty.written().metadata().propertiesFingerprint())
                 .isEqualTo(write.written().metadata().propertiesFingerprint());
         assertThat(empty.written().metadata().updatedAtMillis()).isEqualTo(125L);
@@ -55,11 +54,11 @@ class WorkerPropertiesCacheTest {
                 .isEqualTo(original.metadata().propertiesFingerprint());
         assertThat(same.encodedWeight()).isEqualTo(canonical.length + WORKER_ID.length())
                 .isEqualTo(original.encodedWeight());
-        var changed = cache.patch(WORKER_ID, Map.of("z", "longer"), List.of());
+        var changed = cache.patch(WORKER_ID, Map.of("z", "longer"));
         assertThat(changed.written().metadata().propertiesFingerprint())
                 .isNotEqualTo(same.metadata().propertiesFingerprint());
         assertThat(changed.written().encodedWeight()).isGreaterThan(same.encodedWeight());
-        var deleted = cache.patch(WORKER_ID, Map.of(), List.of("z"));
+        var deleted = cache.observe(WORKER_ID, Map.of("a", "中文"));
         assertThat(deleted.written().encodedWeight()).isLessThan(changed.written().encodedWeight());
     }
 
@@ -74,7 +73,7 @@ class WorkerPropertiesCacheTest {
                 String key = "field-" + index;
                 futures.add(executor.submit(() -> {
                     start.await();
-                    cache.patch(WORKER_ID, Map.of(key, "true"), List.of());
+                    cache.patch(WORKER_ID, Map.of(key, "true"));
                     return null;
                 }));
             }
@@ -85,8 +84,8 @@ class WorkerPropertiesCacheTest {
         }
         assertThat(cache.observation(WORKER_ID).properties()).hasSize(100);
         assertThat(cache.observation(WORKER_ID).updatedAtMillis()).isEqualTo(223L);
-        var stale = cache.patch(WORKER_ID, Map.of("stale", "true"), List.of());
-        var newer = cache.patch(WORKER_ID, Map.of("new", "true"), List.of("stale"));
+        var stale = cache.patch(WORKER_ID, Map.of("stale", "true"));
+        var newer = cache.observe(WORKER_ID, Map.of("new", "true"));
         cache.rollback(stale);
         var recaptured = cache.observe(WORKER_ID, cache.observation(WORKER_ID).properties());
         assertThat(recaptured.written().metadata().propertiesFingerprint())
@@ -100,9 +99,9 @@ class WorkerPropertiesCacheTest {
     void invalidPatchCannotPartiallyChangeBaseline() {
         WorkerPropertiesCache cache = cache(DEFAULT_BUDGET, () -> 123L);
         cache.observe(WORKER_ID, Map.of("battery", "87"));
-        assertThatThrownBy(() -> cache.patch(WORKER_ID, Map.of("battery", "88"), List.of("battery")))
+        assertThatThrownBy(() -> cache.patch(WORKER_ID, Map.of("battery", "88", " ", "invalid")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> cache.patch(WORKER_ID, Map.of(), List.of("battery", "battery")))
+        assertThatThrownBy(() -> cache.patch(WORKER_ID, java.util.Collections.singletonMap("battery", null)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(cache.observation(WORKER_ID).properties()).containsEntry("battery", "87");
         assertThat(cache.observation(WORKER_ID).updatedAtMillis()).isEqualTo(123L);
@@ -156,7 +155,7 @@ class WorkerPropertiesCacheTest {
             }
         }
         assertThat(evictedWorker).isNotNull();
-        assertThat(cache.patch(evictedWorker, Map.of("value", "partial"), List.of())).isNull();
+        assertThat(cache.patch(evictedWorker, Map.of("value", "partial"))).isNull();
         assertUnknown(cache.observation(evictedWorker));
 
         wallClock.set(456L);
@@ -172,6 +171,20 @@ class WorkerPropertiesCacheTest {
         }
         assertThat(rewritten).isNotNull();
         assertThat(rewritten.updatedAtMillis()).isEqualTo(456L);
+    }
+
+    @Test
+    void replacementAndMergeLeavePreviouslyObservedSnapshotsUnchanged() {
+        WorkerPropertiesCache cache = cache(DEFAULT_BUDGET, () -> 123L);
+        cache.observe(WORKER_ID, Map.of("a", "old", "b", "old"));
+        var original = cache.observation(WORKER_ID);
+        cache.patch(WORKER_ID, Map.of("a", "new"));
+        var merged = cache.observation(WORKER_ID);
+        cache.observe(WORKER_ID, Map.of("replacement", "value"));
+        assertThat(original.properties()).isEqualTo(Map.of("a", "old", "b", "old"));
+        assertThat(merged.properties()).isEqualTo(Map.of("a", "new", "b", "old"));
+        assertThat(cache.observation(WORKER_ID).properties())
+                .isEqualTo(Map.of("replacement", "value"));
     }
 
     @Test

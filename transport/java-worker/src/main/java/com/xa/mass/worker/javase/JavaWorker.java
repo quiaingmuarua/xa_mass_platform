@@ -10,7 +10,6 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
 
 public final class JavaWorker implements WorkerLifecycle {
@@ -136,8 +135,8 @@ public final class JavaWorker implements WorkerLifecycle {
         return worker.reportProperties();
     }
 
-    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
-        return worker.reportProperties(set, remove);
+    public boolean reportProperties(Map<String, String> updates) {
+        return worker.reportProperties(updates);
     }
 
     @Override

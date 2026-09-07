@@ -32,7 +32,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Shared Netty connection mechanism for one Adapter instance.
@@ -43,14 +42,12 @@ import java.util.Set;
  */
 public final class WorkerConnectionMechanism {
 
-    private static final Set<String> PROPERTIES_PAYLOAD_FIELDS = Set.of(
-            "properties"
-    );
     private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
             "platform.worker.properties.snapshot";
-    private static final String WORKER_PROPERTIES_REPORTED_EVENT =
-            "platform.worker.properties.reported";
-    private static final Set<String> PROPERTIES_PATCH_FIELDS = Set.of("set", "remove");
+    private static final String WORKER_PROPERTIES_UPDATED_EVENT =
+            "platform.worker.properties.updated";
+    private static final String WORKER_PROPERTIES_REPLACED_EVENT =
+            "platform.worker.properties.replaced";
     private static final String WORKER_CONNECTION_CHANGED_EVENT =
             "platform.adapter.worker-connection.changed";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -260,7 +257,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
         if (report.dst() == ADAPTER
-                && WORKER_PROPERTIES_REPORTED_EVENT.equals(report.messageType())) {
+                && isPropertiesEvent(report.messageType())) {
             // Observation cannot establish identity or force a connection close.
             return;
         }
@@ -383,7 +380,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
         if (report.dst() == ADAPTER) {
-            if (WORKER_PROPERTIES_REPORTED_EVENT.equals(report.messageType())) {
+            if (isPropertiesEvent(report.messageType())) {
                 observeProperties(context.channel(), report);
             } else if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                     report.messageType()
@@ -429,6 +426,11 @@ public final class WorkerConnectionMechanism {
         }
     }
 
+    private static boolean isPropertiesEvent(String eventName) {
+        return WORKER_PROPERTIES_UPDATED_EVENT.equals(eventName)
+                || WORKER_PROPERTIES_REPLACED_EVENT.equals(eventName);
+    }
+
     private void observeProperties(Channel channel, DeliveryReport report) {
         String workerId = report.sourceId();
         if (!"200".equals(report.outcomeCode()) || !report.forward().isEmpty()
@@ -436,29 +438,13 @@ public final class WorkerConnectionMechanism {
             return;
         }
         try {
-            Map<String, Object> payload = Jsons.parseObject(report.payload());
-            WorkerPropertiesCache.ObservationWrite write;
-            if (payload.keySet().equals(PROPERTIES_PAYLOAD_FIELDS)
-                    && payload.get("properties") instanceof Map<?, ?> properties) {
-                write = propertiesCache.observe(
-                        workerId, WorkerDeliveryCodec.copyWorkerProperties(properties)
-                );
-            } else if (payload.keySet().equals(PROPERTIES_PATCH_FIELDS)
-                    && payload.get("set") instanceof Map<?, ?> values
-                    && payload.get("remove") instanceof List<?> removals) {
-                List<String> remove = new ArrayList<>(removals.size());
-                for (Object value : removals) {
-                    if (!(value instanceof String key) || key.isBlank()) {
-                        return;
-                    }
-                    remove.add(key);
-                }
-                write = propertiesCache.patch(
-                        workerId, WorkerDeliveryCodec.copyWorkerProperties(values), remove
-                );
-            } else {
-                return;
-            }
+            Map<String, String> properties = WorkerDeliveryCodec.copyWorkerProperties(
+                    Jsons.parseObject(report.payload())
+            );
+            WorkerPropertiesCache.ObservationWrite write =
+                    WORKER_PROPERTIES_REPLACED_EVENT.equals(report.messageType())
+                            ? propertiesCache.observe(workerId, properties)
+                            : propertiesCache.patch(workerId, properties);
             if (write != null && !routes.isCurrentConnected(workerId, channel)) {
                 propertiesCache.rollback(write);
             }

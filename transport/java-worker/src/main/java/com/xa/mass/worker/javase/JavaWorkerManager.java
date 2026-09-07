@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -238,9 +237,9 @@ public final class JavaWorkerManager implements AutoCloseable {
     }
 
     public boolean reportProperties(
-            String replicaKey, Map<String, String> set, Set<String> remove
+            String replicaKey, Map<String, String> updates
     ) {
-        return requireReplica(replicaKey).controller().reportProperties(set, remove);
+        return requireReplica(replicaKey).controller().reportProperties(updates);
     }
 
     public Map<String, WorkerLifecycle.Snapshot> snapshots() {

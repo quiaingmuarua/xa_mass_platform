@@ -36,7 +36,7 @@ Definitions. Their mechanism contract is owned by
 `probe` is not schedulability, idleness, Binding, or connectivity truth.
 `properties.snapshot` reads flat string KV from the Host Provider. TASK/SERVER
 calls return ordinary correlated Results; an ADAPTER baseline request returns
-one full `properties.reported` instead. Neither updates canonical facts or
+one full `properties.replaced` instead. Neither updates canonical facts or
 scheduling truth.
 `events.snapshot` includes itself and all Host extensions, but does not replace
 WorkerGroup `eventCodes` or authorization.
@@ -114,28 +114,35 @@ Worker resource truth nor evidence of Binding validity or schedulability.
 
 ### Worker-produced property observation
 
-`platform.worker.properties.reported` is a fixed `WORKER -> ADAPTER` Report,
-not a callable management Handler and not part of `events.snapshot`. It requires
-the bound Worker sourceId, outcome `200`, empty forward, and exactly one shape:
+Two fixed `WORKER -> ADAPTER` Reports carry property observations. Neither is a
+callable management Handler or part of `events.snapshot`. Both require the bound
+Worker sourceId, outcome `200`, empty forward, and a direct string KV Map payload:
 
-- `{"properties":{"network.type":"wifi","battery":"87"}}`: full replacement.
-- `{"set":{"network.type":"cellular"},"remove":["network.ssid"]}`: patch.
+- `platform.worker.properties.updated`, `{"network.type":"cellular"}`:
+  overwrite supplied keys, retaining omitted keys.
+- `platform.worker.properties.replaced`, `{"network.type":"wifi","battery":"87"}`:
+  replace the whole Map, removing omitted keys.
 
 Keys must be non-blank and values must be non-null strings; empty strings and
 empty Maps are valid. Dots are literal key characters. Nested values and
-implicit numeric/boolean conversion are not supported. Removal keys must be
-unique, non-blank and disjoint from set keys. The complete Report frame is
-limited to 1,000,000 UTF-8 bytes.
+implicit numeric/boolean conversion are not supported. Empty strings are values,
+not removal markers. There is no incremental deletion: the Host removes keys
+from its full data and sends a replacement. An empty update preserves content;
+an empty replacement establishes an empty baseline. `set`, `remove`, and
+`properties` are ordinary property names when their values are strings, not
+control fields. The complete Report frame is limited to 1,000,000 UTF-8 bytes.
 
 Only the exact current verified Channel can write this cache. Full replaces the
-baseline; patch requires an existing baseline. Pre-identity, pending verification,
-stale Channel and invalid input are local drops. Baseline-less patches do not
+baseline; update requires an existing baseline. Pre-identity, pending verification,
+stale Channel and invalid input are local drops. Baseline-less updates do not
 trigger compensation. Ordinary snapshot Results no longer update the cache.
 
 After each verified activation (including cached-verification reconnect), Adapter
 requests one full `properties.snapshot` directly on that Channel. Java/Android
 Hosts can call `reportProperties()` or update their one Provider then call
-`reportProperties(set, remove)`; Manager delegates by replica key. No SDK copy,
+`reportProperties(updates)`; Manager delegates by replica key. Automatic baseline
+reuses the successful snapshot output without reading the Provider again; explicit
+TASK/SERVER queries still return `{"properties":{...}}`. No SDK copy,
 history, ACK, retry or upstream Server publication is maintained. A missed full
 requires a later explicit full or connection baseline, not automatic repair.
 

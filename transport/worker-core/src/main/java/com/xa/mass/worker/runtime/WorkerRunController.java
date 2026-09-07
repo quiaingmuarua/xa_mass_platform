@@ -1,5 +1,6 @@
 package com.xa.mass.worker.runtime;
 
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -126,11 +127,11 @@ public final class WorkerRunController implements WorkerLifecycle {
         return transport != null && transport.reportProperties();
     }
 
-    /** Sends a patch; the Host, not the SDK, owns the corresponding data update. */
-    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
-        String payload = TextMessageWorkerTransport.propertiesPatch(set, remove);
+    /** Sends an incremental merge; the Host owns the corresponding data update. */
+    public boolean reportProperties(Map<String, String> updates) {
+        Map<String, String> captured = WorkerDeliveryCodec.copyWorkerProperties(updates);
         TextMessageWorkerTransport transport = currentTransport();
-        return transport != null && transport.sendProperties(payload);
+        return transport != null && transport.reportProperties(captured);
     }
 
     private TextMessageWorkerTransport currentTransport() {

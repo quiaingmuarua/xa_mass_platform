@@ -135,34 +135,49 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void reportedPatchMergesOnlyWithCompleteBaselineAndNeverEntersReportQueues() {
+    void updatedMergesOnlyWithCompleteBaselineAndPropertiesNeverEnterReportQueues() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         try {
-            String patch = fixture.propertiesPatch("worker-1", "200",
-                    "{\"set\":{\"network.type\":\"cellular\",\"empty\":\"\"},\"remove\":[\"old\"]}");
+            String patch = fixture.propertiesUpdate("worker-1", "200",
+                    "{\"network.type\":\"cellular\",\"empty\":\"\"}");
             channel.writeInbound(patch); // Before identity: no close or verification.
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{}"));
             assertThat(channel.isActive()).isTrue();
             assertThat(fixture.routeVerifier.verificationCalls).isZero();
             channel.writeInbound(fixture.identity("worker-1"));
             channel.writeInbound(patch); // Pending verification: not buffered.
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{}"));
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             channel.writeInbound(patch); // Verified but no complete baseline.
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").properties()).isNull();
             String baseline = fixture.propertiesFull("worker-1", "200",
-                    "{\"properties\":{\"battery\":\"87\",\"old\":\"true\",\"network.type\":\"wifi\"}}");
+                    "{\"battery\":\"87\",\"old\":\"true\",\"network.type\":\"wifi\"}");
             channel.writeInbound(baseline);
             channel.writeInbound(patch);
             var observation = fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1");
-            assertThat(observation.properties()).containsOnlyKeys("battery", "network.type", "empty")
+            assertThat(observation.properties()).containsOnlyKeys("battery", "old", "network.type", "empty")
                     .containsEntry("battery", "87")
+                    .containsEntry("old", "true")
                     .containsEntry("network.type", "cellular")
                     .containsEntry("empty", "");
-            channel.writeInbound(fixture.propertiesPatch("worker-1", "200", "{\"set\":{},\"remove\":[]}"));
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", "{}"));
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").updatedAtMillis()).isGreaterThan(observation.updatedAtMillis());
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
+                    .get("worker-1").properties()).isEqualTo(observation.properties());
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{}"));
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
+                    .get("worker-1").properties()).isEmpty();
+            String ordinaryKeys = "{\"set\":\"x\",\"remove\":\"\",\"properties\":\"y\"}";
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", ordinaryKeys));
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
+                    .get("worker-1").properties()).isEqualTo(Map.of("set", "x", "remove", "", "properties", "y"));
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{\"properties\":\"z\"}"));
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
+                    .get("worker-1").properties()).isEqualTo(Map.of("properties", "z"));
             fixture.flushReports();
             assertThat(fixture.serverReports).isEmpty();
             assertThat(fixture.reportQueues.get(TASK)).isEmpty();
@@ -183,29 +198,31 @@ class WorkerConnectionMechanismTest {
             old.writeInbound(fixture.identity("worker-1"));
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, old);
-            old.writeInbound(fixture.propertiesFull("worker-1", "200", "{\"properties\":{\"battery\":\"87\"}}"));
+            old.writeInbound(fixture.propertiesFull("worker-1", "200", "{\"battery\":\"87\"}"));
             current.writeInbound(fixture.identity("worker-1"));
             var baseline = fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1");
-            String validPatch = "{\"set\":{\"battery\":\"1\"},\"remove\":[]}";
-            old.writeInbound(fixture.propertiesPatch("worker-1", "200", validPatch));
-            current.writeInbound(fixture.propertiesPatch("other-worker", "200", validPatch));
-            current.writeInbound(fixture.propertiesPatch("worker-1", "3301", validPatch));
+            String validPatch = "{\"battery\":\"1\"}";
+            old.writeInbound(fixture.propertiesUpdate("worker-1", "200", validPatch));
+            old.writeInbound(fixture.propertiesFull("worker-1", "200", validPatch));
+            current.writeInbound(fixture.propertiesUpdate("other-worker", "200", validPatch));
+            current.writeInbound(fixture.propertiesUpdate("worker-1", "3301", validPatch));
             current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                    ADAPTER, "worker-1", ADAPTER, "platform.worker.properties.reported", "200", validPatch, "")));
+                    ADAPTER, "worker-1", ADAPTER, "platform.worker.properties.updated", "200", validPatch, "")));
+            current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER, "worker-1", ADAPTER, "platform.worker.properties.replaced", "200", validPatch, "not-empty")));
+            // The removed event is not a second cache write path, with either payload shape.
+            for (String payload : List.of(validPatch, "{\"properties\":{\"battery\":\"1\"}}")) {
+                current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                        WORKER, "worker-1", ADAPTER, "platform.worker.properties.reported", "200", payload, "")));
+            }
             for (String invalid : List.of(
-                    "{\"properties\":{\"battery\":87}}",
-                    "{\"properties\":{\"a\":null}}",
-                    "{\"properties\":{\" \":\"x\"}}",
-                    "{\"properties\":{\"a\":{}}}",
-                    "{\"properties\":{},\"set\":{},\"remove\":[]}",
-                    "{\"set\":{\"a\":true},\"remove\":[]}",
-                    "{\"set\":{\"a\":[]},\"remove\":[]}",
-                    "not-json", "[]", "{}", "{\"set\":{},\"remove\":[],\"extra\":true}",
-                    "{\"set\":[],\"remove\":[]}", "{\"set\":{},\"remove\":{}}",
-                    "{\"set\":{},\"remove\":[null]}", "{\"set\":{},\"remove\":[1]}",
-                    "{\"set\":{},\"remove\":[\"battery\",\"battery\"]}",
-                    "{\"set\":{\"battery\":\"1\"},\"remove\":[\"battery\"]}")) {
-                current.writeInbound(fixture.propertiesPatch("worker-1", "200", invalid));
+                    "{\"battery\":87}", "{\"battery\":true}", "{\"battery\":null}",
+                    "{\"battery\":\"1\",\" \":\"x\"}", "{\"battery\":{}}", "{\"battery\":[]}",
+                    "not-json", "[]", "null",
+                    "{\"properties\":{\"battery\":\"1\"}}",
+                    "{\"set\":{\"battery\":\"1\"},\"remove\":[]}")) {
+                current.writeInbound(fixture.propertiesUpdate("worker-1", "200", invalid));
+                current.writeInbound(fixture.propertiesFull("worker-1", "200", invalid));
             }
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1"))
                     .isEqualTo(baseline);
@@ -741,7 +758,7 @@ class WorkerConnectionMechanismTest {
             String encoded = fixture.propertiesFull(
                     "worker-1",
                     "200",
-                    "{\"properties\":{\"battery\":\"87\"}}"
+                    "{\"battery\":\"87\"}"
             );
             channel.writeInbound(encoded);
 
@@ -783,7 +800,7 @@ class WorkerConnectionMechanismTest {
             first.writeInbound(fixture.propertiesFull(
                     "worker-1",
                     "200",
-                    "{\"properties\":{\"battery\":\"87\"}}"
+                    "{\"battery\":\"87\"}"
             ));
 
             replacement.writeInbound(fixture.identity("worker-1"));
@@ -792,7 +809,7 @@ class WorkerConnectionMechanismTest {
             String stale = fixture.propertiesFull(
                     "worker-1",
                     "200",
-                    "{\"properties\":{\"battery\":\"1\"}}"
+                    "{\"battery\":\"1\"}"
             );
             first.writeInbound(stale);
             replacement.writeInbound(fixture.propertiesFull(
@@ -803,7 +820,7 @@ class WorkerConnectionMechanismTest {
             replacement.writeInbound(fixture.propertiesFull(
                     "worker-1",
                     "3303",
-                    "{\"properties\":{\"battery\":\"2\"}}"
+                    "{\"battery\":\"2\"}"
             ));
 
             var snapshot = fixture.mechanism.workerProperties(
@@ -829,7 +846,7 @@ class WorkerConnectionMechanismTest {
         channel.writeInbound(fixture.propertiesFull(
                 "worker-1",
                 "200",
-                "{\"properties\":{\"battery\":\"87\"}}"
+                "{\"battery\":\"87\"}"
         ));
         Long updatedAtMillis = fixture.mechanism.workerProperties(
                 List.of("worker-1")
@@ -885,7 +902,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.propertiesFull(
                     "worker-1",
                     "200",
-                    "{\"properties\":{\"battery\":\"87\"}}"
+                    "{\"battery\":\"87\"}"
             ));
 
             ticker.advance(retention.plusNanos(1L));
@@ -922,7 +939,7 @@ class WorkerConnectionMechanismTest {
             first.writeInbound(fixture.propertiesFull(
                     "worker-1",
                     "200",
-                    "{\"properties\":{\"battery\":\"87\"}}"
+                    "{\"battery\":\"87\"}"
             ));
             first.finishAndReleaseAll();
             fixture.routes.clear();
@@ -1233,16 +1250,16 @@ class WorkerConnectionMechanismTest {
                     WORKER,
                     workerId,
                     ADAPTER,
-                    "platform.worker.properties.reported",
+                    "platform.worker.properties.replaced",
                     outcomeCode,
                     payload,
                     ""
             ));
         }
 
-        private String propertiesPatch(String workerId, String outcomeCode, String payload) {
+        private String propertiesUpdate(String workerId, String outcomeCode, String payload) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER, workerId, ADAPTER, "platform.worker.properties.reported",
+                    WORKER, workerId, ADAPTER, "platform.worker.properties.updated",
                     outcomeCode, payload, ""
             ));
         }
