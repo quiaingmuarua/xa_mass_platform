@@ -32,12 +32,9 @@ class WorkerControlPreparationTest {
     void eachPreparationLoadsOneDefensiveCopyAndCallsControlOnce()
             throws Exception {
         FakeControlClient control = new FakeControlClient();
-        List<String> tags = new ArrayList<>(List.of("one"));
-        Map<String, Object> nested = new LinkedHashMap<>();
-        nested.put("tags", tags);
-        Map<String, Object> source = new LinkedHashMap<>();
+        Map<String, String> source = new LinkedHashMap<>();
         source.put("clientWorkerKey", "installation-1");
-        source.put("nested", nested);
+        source.put("network.type", "wifi");
         WorkerControlPreparation preparation = preparation(() -> source, control);
 
         assertEquals(PREPARED, preparation.prepare());
@@ -47,14 +44,10 @@ class WorkerControlPreparationTest {
                 UnsupportedOperationException.class,
                 () -> control.properties.get(0).put("new", "value")
         );
-        source.put("afterPrepare", true);
-        tags.add("two");
+        source.put("afterPrepare", "true");
+        source.put("network.type", "cellular");
         assertTrue(!control.properties.get(0).containsKey("afterPrepare"));
-        assertEquals(
-                List.of("one"),
-                ((Map<?, ?>) control.properties.get(0).get("nested"))
-                        .get("tags")
-        );
+        assertEquals("wifi", control.properties.get(0).get("network.type"));
     }
 
     @Test
@@ -65,7 +58,7 @@ class WorkerControlPreparationTest {
         WorkerControlPreparation preparation = preparation(
                 () -> Map.of(
                         "clientWorkerKey", "installation-1",
-                        "version", ++version[0]
+                        "version", Integer.toString(++version[0])
                 ),
                 control
         );
@@ -74,8 +67,8 @@ class WorkerControlPreparationTest {
         preparation.prepare();
 
         assertEquals(2, control.prepareCalls);
-        assertEquals(1, control.properties.get(0).get("version"));
-        assertEquals(2, control.properties.get(1).get("version"));
+        assertEquals("1", control.properties.get(0).get("version"));
+        assertEquals("2", control.properties.get(1).get("version"));
     }
 
     @Test
@@ -102,7 +95,7 @@ class WorkerControlPreparationTest {
             public PreparedWorker prepare(
                     String workerGroupId,
                     WorkerTransportType transportType,
-                    Map<String, Object> workerProperties,
+                    Map<String, String> workerProperties,
                     Duration timeout
             ) {
                 entered.countDown();
@@ -182,14 +175,14 @@ class WorkerControlPreparationTest {
 
         private int prepareCalls;
         private boolean closed;
-        private final List<Map<String, Object>> properties =
+        private final List<Map<String, String>> properties =
                 new ArrayList<>();
 
         @Override
         public PreparedWorker prepare(
                 String workerGroupId,
                 WorkerTransportType transportType,
-                Map<String, Object> workerProperties,
+                Map<String, String> workerProperties,
                 Duration timeout
         ) {
             prepareCalls++;

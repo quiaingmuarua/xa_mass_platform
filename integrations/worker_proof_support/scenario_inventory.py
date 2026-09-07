@@ -15,12 +15,12 @@ MAX_RECORDS_PER_GROUP = 15_000
 _RESERVED_PROPERTIES = frozenset({"labInventoryKey", "labInventoryLine"})
 
 
-def canonical_100_worker_world() -> dict[str, tuple[dict[str, object], ...]]:
+def canonical_100_worker_world() -> dict[str, tuple[dict[str, str], ...]]:
     """Return the two-group, 100-Worker correctness baseline."""
     return _canonical_two_group_world(workers_per_group=50)
 
 
-def canonical_1000_worker_world() -> dict[str, tuple[dict[str, object], ...]]:
+def canonical_1000_worker_world() -> dict[str, tuple[dict[str, str], ...]]:
     """Return the two-group, 1,000-Worker convergence baseline."""
     return _canonical_two_group_world(workers_per_group=500)
 
@@ -28,7 +28,7 @@ def canonical_1000_worker_world() -> dict[str, tuple[dict[str, object], ...]]:
 def _canonical_two_group_world(
     *,
     workers_per_group: int,
-) -> dict[str, tuple[dict[str, object], ...]]:
+) -> dict[str, tuple[dict[str, str], ...]]:
     return {
         PHONE_GROUP: _canonical_group(
             capability="libphonenumber",
@@ -42,7 +42,7 @@ def _canonical_two_group_world(
 
 
 def inventory_coordinates(
-    groups: Mapping[str, Sequence[Mapping[str, object]]],
+    groups: Mapping[str, Sequence[Mapping[str, str]]],
 ) -> dict[str, tuple[str, ...]]:
     """Return the deterministic Lab keys produced for complete properties."""
     validated = _validate_groups(groups)
@@ -57,7 +57,7 @@ def inventory_coordinates(
 
 def materialize_inventory(
     root: Path,
-    groups: Mapping[str, Sequence[Mapping[str, object]]],
+    groups: Mapping[str, Sequence[Mapping[str, str]]],
 ) -> dict[str, tuple[str, ...]]:
     """Write a fresh Scenario inventory and return its Lab coordinates."""
     root = Path(root).resolve()
@@ -91,7 +91,7 @@ def materialize_inventory(
             ):
                 properties = dict(source_properties)
                 properties["labInventoryKey"] = filename
-                properties["labInventoryLine"] = line_index
+                properties["labInventoryLine"] = str(line_index)
                 lines.append(_encode_document(properties))
             (directory / filename).write_text(
                 "\n".join(lines) + "\n",
@@ -105,13 +105,13 @@ def _canonical_group(
     *,
     capability: str,
     worker_count: int,
-) -> tuple[dict[str, object], ...]:
+) -> tuple[dict[str, str], ...]:
     return tuple(
         {
             "runtime": "java",
             "capability": capability,
             "region": "local",
-            "labSlot": index,
+            "labSlot": str(index),
             "convergenceSlot": "A",
         }
         for index in range(1, worker_count + 1)
@@ -119,11 +119,11 @@ def _canonical_group(
 
 
 def _validate_groups(
-    groups: Mapping[str, Sequence[Mapping[str, object]]],
-) -> dict[str, tuple[dict[str, object], ...]]:
+    groups: Mapping[str, Sequence[Mapping[str, str]]],
+) -> dict[str, tuple[dict[str, str], ...]]:
     if not isinstance(groups, Mapping) or not groups:
         raise ValueError("groups must contain at least one WorkerGroup")
-    validated: dict[str, tuple[dict[str, object], ...]] = {}
+    validated: dict[str, tuple[dict[str, str], ...]] = {}
     entries = []
     for raw_group_id, raw_properties in groups.items():
         group_id = _require_path_segment(raw_group_id, "workerGroupId")
@@ -154,6 +154,11 @@ def _validate_groups(
                     f"{group_id} record {index} contains reserved properties: "
                     + ", ".join(reserved)
                 )
+            if any(
+                not isinstance(key, str) or not key.strip() or not isinstance(value, str)
+                for key, value in properties.items()
+            ):
+                raise ValueError(f"{group_id} record {index} requires flat string Properties")
             _encode_document(properties)
             copied.append(properties)
         validated[group_id] = tuple(copied)

@@ -709,7 +709,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             String labWorkerKey,
             boolean desiredRunning,
             WorkerLifecycle.Snapshot runtime,
-            Map<String, Object> workerProperties
+            Map<String, String> workerProperties
     ) {
     }
 

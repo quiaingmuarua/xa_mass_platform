@@ -40,7 +40,7 @@ class WorkerLoadedRecoveryRunnerTest(unittest.TestCase):
                     self.assertEqual(2, value["schemaVersion"])
                     properties = value["workerProperties"]
                     self.assertEqual(path.name, properties["labInventoryKey"])
-                    self.assertEqual(line_number, properties["labInventoryLine"])
+                    self.assertEqual(str(line_number), properties["labInventoryLine"])
                     self.assertEqual("loaded-recovery-ci", properties["region"])
                     self.assertEqual(
                         {

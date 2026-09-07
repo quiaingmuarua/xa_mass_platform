@@ -101,6 +101,7 @@ class TextMessageWorkerTransportTest {
                         new FakeTextMessageClient(),
                         " ",
                         command -> Optional.empty(),
+                        java.util.Map::of,
                         new RecordingListener()
                 )
         );
@@ -540,6 +541,7 @@ class TextMessageWorkerTransportTest {
                         client,
                         WORKER_ID,
                         dispatcher,
+                        java.util.Map::of,
                         listener
                 );
         transports.add(transport);

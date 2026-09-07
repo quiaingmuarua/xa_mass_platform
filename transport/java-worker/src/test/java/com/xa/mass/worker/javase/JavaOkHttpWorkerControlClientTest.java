@@ -140,13 +140,13 @@ class JavaOkHttpWorkerControlClientTest {
                 List.of(
                         Map.of(
                                 "labInventoryKey", "worker-a.jsonl",
-                                "labInventoryLine", 1,
-                                "labSlot", 1
+                                "labInventoryLine", "1",
+                                "labSlot", "1"
                         ),
                         Map.of(
                                 "labInventoryKey", "worker-a.jsonl",
-                                "labInventoryLine", 2,
-                                "labSlot", 2
+                                "labInventoryLine", "2",
+                                "labSlot", "2"
                         )
                 ),
                 Duration.ofSeconds(2)
@@ -167,8 +167,8 @@ class JavaOkHttpWorkerControlClientTest {
                                 "transportType", "WEBSOCKET",
                                 "workerProperties", Map.of(
                                         "labInventoryKey", "worker-a.jsonl",
-                                        "labInventoryLine", 1L,
-                                        "labSlot", 1L
+                                        "labInventoryLine", "1",
+                                        "labSlot", "1"
                                 )
                         ),
                         Map.of(
@@ -176,8 +176,8 @@ class JavaOkHttpWorkerControlClientTest {
                                 "transportType", "WEBSOCKET",
                                 "workerProperties", Map.of(
                                         "labInventoryKey", "worker-a.jsonl",
-                                        "labInventoryLine", 2L,
-                                        "labSlot", 2L
+                                        "labInventoryLine", "2",
+                                        "labSlot", "2"
                                 )
                         )
                 ),
@@ -195,7 +195,7 @@ class JavaOkHttpWorkerControlClientTest {
                 "SCENARIO_LAB",
                 "group",
                 WorkerTransportType.WEBSOCKET,
-                List.of(Map.of("labSlot", 1)),
+                List.of(Map.of("labSlot", "1")),
                 Duration.ofSeconds(2)
         ));
 
@@ -210,7 +210,7 @@ class JavaOkHttpWorkerControlClientTest {
                 "SCENARIO_LAB",
                 "group",
                 WorkerTransportType.WEBSOCKET,
-                List.of(Map.of("labSlot", 1)),
+                List.of(Map.of("labSlot", "1")),
                 Duration.ofSeconds(2)
         ));
     }

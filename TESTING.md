@@ -7,52 +7,31 @@ valuable when it is the cheapest credible proof of one named invariant or
 boundary. Repeating the same success path at another scale does not create a
 new claim.
 
-Detailed lane ownership is in
-[`doc/testing/proof-registry.md`](doc/testing/proof-registry.md). The fixed
-Worker worlds are in
-[`doc/testing/worker-proof-scenarios.md`](doc/testing/worker-proof-scenarios.md).
+[Proof Registry](doc/testing/proof-registry.md) owns claims, nonclaims and
+Primary Owners. Each linked Integration README owns its complete world,
+workload, mutation sequence and oracle. This file owns selection, commands,
+prerequisites and CI routing.
 
 ## Proof Model
 
-Worker counts and Item counts are fixed World fixtures, not proof levels,
-maturity grades or interchangeable strength settings. Each system Proof owns a
-different claim.
+Every mechanism claim has one **Primary Proof**. A repeated check elsewhere is
+a prerequisite or Boundary Witness, not a second owner of that invariant.
 
-| Proof | Fixed world | Primary claim |
-| --- | ---: | --- |
-| Owner Test | minimal | One Owner algorithm, legal transition, strict contract or concurrency fence |
-| Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
-| Worker Correctness | 2 Groups x 50 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
-| Worker Convergence Health | 2 Groups x 500 Workers, 1,000 Items | Finite-time convergence after deterministic state, process and Server faults |
-| Worker Loaded Capacity + Recovery Stability | 15,000 prepared / 10,000 active Workers, 40 Tasks / 200,000 Items | Sustained loaded operation, repeated Server recovery and stable resource bounds |
+| Proof | Contract |
+| --- | --- |
+| Owner Test | Local algorithm, legal transition, strict contract or concurrency fence |
+| Boundary Proof | Encoding and behavior across adjacent owners or processes |
+| [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, extension, Result and restart closure |
+| [Worker Convergence Health](integrations/worker-convergence-health/README.md) | Named witness convergence after established state and process faults |
+| [Worker Loaded Capacity + Recovery Stability](integrations/worker-loaded-recovery/README.md) | Sustained work, repeated Server recovery and resource bounds |
+| [Android Worker](integrations/android-worker-proof/README.md) | Real Android lifecycle and fixed multi-process isolation |
 
-Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
-only a prerequisite or Boundary Witness. It must not be described as a second
-proof of the same invariant.
-
-Worker Correctness is the deliberately perfect world: its two managed
-`items:call` batches require exact response identities and 100 `SUCCEEDED`
-statuses while keeping capability Result payloads opaque. Worker Convergence
-Health is deliberately imperfect: it fixes offered and invalid-input counts,
-includes deterministic slow and failed Handler Items as background offered
-work, then asserts independent Network/Scheduling mutations and named witness
-convergence. `NOT_OBSERVED` is not treated as failure, `FAILED` is not counted
-as a successful witness, and non-witness Items do not carry a success-count or
-execution-count oracle.
-
-Correctness and Convergence use the same strict Inventory materializer but own
-distinct fixed worlds: 100 Workers for exact correctness and 1,000 Workers for
-fault convergence. Worker Loaded Capacity + Recovery Stability uses that
-materialization contract for 15,000 identities, then deterministically retains
-10,000 active Workers; topology, workload, mutations and resource oracle remain
-proof-owned.
-
-PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
-Boundary claims. Convergence Health uses `results:load` only for named
-witnesses. Worker Loaded Capacity + Recovery Stability pages `results:load`
-for four fixed ten-Task progress sets and performs one final export per Task;
-this is the explicit bulk result-path witness rather than a business-payload
-oracle.
+World size is a fixture, not a proof level. Do not multiply topology, Group or
+Adapter cardinality, mutation and workload dimensions into a Cartesian product.
+Runtime Boundary owns protocol combinations; named convergence witnesses do not
+imply all-offered success. A larger world does not replace correctness or create
+a throughput, latency or resource claim. Shared Inventory materialization does
+not transfer scenario or oracle ownership.
 
 ## Selection Decision
 
@@ -102,6 +81,17 @@ python .github/scripts/check_proof_selection.py
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
+
+The exact JVM module build list and Android assembly commands are maintained in
+[Proof CI](.github/workflows/proof-ci.yml), alongside their environment setup.
+For documentation checks, run both the checker tests and the repository scan:
+
+```powershell
+python .github/scripts/test_check_docs.py
+python .github/scripts/check_docs.py
+python .github/scripts/test_check_proof_selection.py
+python .github/scripts/check_proof_selection.py
+```
 
 Worker one-shot runners support Python 3.11 or newer. Install their small
 shared dependency set once before running them locally:
@@ -186,5 +176,5 @@ Properties or Task results.
 There is no coverage threshold, flaky-test retry, browser visual matrix,
 multi-JDK matrix, Android API matrix, general topology Cartesian product,
 throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
-remain protocol/Runtime Boundary claims; the 1,000-Worker health world does not
+remain protocol/Runtime Boundary claims; the convergence health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.

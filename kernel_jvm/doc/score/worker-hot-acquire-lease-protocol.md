@@ -2,280 +2,122 @@
 
 Status: active Java Kernel HOT lease mechanism contract.
 
-Parent contract: [Worker Score-Band Scheduling](worker-score-band-scheduling.md).
-Related pacers:
-[Task Worker Allocation Pacer](../../../kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md),
-[Task Dispatch Pacer](../../../kernel_pacer_jvm/doc/dispatch/task-dispatch-pacer.md),
-and
-[Result-Routing Scheduling](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md).
+This document owns the opaque Worker fence across allocation, assignment and
+result disposition. [Worker Score](worker-score-band-scheduling.md) owns its
+encoding, primitive validation and atomic transitions; this protocol adds no
+reservation store, attempt lifecycle or lease registry.
 
-## Purpose
+## One Worker Slot
 
-One opaque Worker score fence protects the bounded continuation from Worker
-allocation through dispatch and result disposition:
+One WorkerId is one scheduler-visible execution slot with one Score. A physical
+executor with parallel capacity exposes multiple logical WorkerIds. One lease
+carries one TaskItem and one DeliveryCommand; business batching stays inside
+that Item's payload. Never release a fence after publication to simulate early
+slot reuse or assign independent Items behind the same Worker lease.
 
-```text
-due HOT observation
-  -> exact bounded pool hold and dirty clear
-  -> PRECOMPUTED: ordered Match Demand and direct Candidate Cache append
-     or ON_DEMAND: direct normalized Worker-ID selection
-  -> CandidateWorkerEntry(heldWorkerLeaseScore), when PRECOMPUTED
-  -> final exact Worker lease renewal
-  -> ResultContext(workerLeaseScore)
-  -> result exact release
-```
-
-There is no separate reservation store, attempt lifecycle, lease token model,
-or transport-owned Worker state.
-
-`WorkerId` means one scheduler-visible execution slot. A successful allocation
-lease prevents that slot from receiving another independent TaskItem until
-trusted result disposition or lease expiry. A physical executor with parallel
-capacity exposes multiple logical WorkerIds; the kernel does not create several
-active assignments behind one Worker score.
-
-One Worker lease carries one TaskItem and one DeliveryCommand. A Worker that exposes
-a business batch operation receives the batch as a bounded collection inside
-that TaskItem payload. The kernel does not merge multiple TaskItems, create
-multiple Item claim fences behind one Worker lease, or release the slot early.
-
-## HOT-Pool And On-Demand Acquisition Lease
+## Acquisition And Handoff
 
 ```text
-observe_due_hot_score_candidates(
-    workerGroupId,
-    hotEligibilityFloorMillis?,
-    limit
-)
-  -> workerId -> opaque observedScore
-
-observe_due_hot_scores(
-    workerGroupId,
-    workerIds,
-    hotEligibilityFloorMillis?
-)
-  -> due HOT workerId -> opaque observedScore
-
-acquire_observed_hot_score_leases(
-    workerGroupId,
-    observedScores,
-    targetTimeMillis,
-)
-  -> independent exact-CAS results
+due HOT observation -> exact initial hold and dirty clear
+  PRECOMPUTED -> ordered Match Demand -> accepted Candidate Cache entry
+  ON_DEMAND  -> normalized explicit Worker ID or ANY selection
+  -> final exact Worker renewal -> exact Item claim -> Command publication
+  -> opaque ResultContext/WorkerLeaseReference -> exact result disposition
 ```
 
-Only due positive HOT scores may be leased. Successful acquisition preserves
-laneRank, writes a future time coordinate, and clears dirty. Concurrent rounds
-may observe the same Worker, but only one exact observed-score CAS succeeds.
-When Worker Serviceability is enabled, both reads exclude scores below that
-Kernel process's HOT eligibility floor. With no Serviceability configuration,
-the optional floor is absent and the original full positive range remains.
+The Kernel observes only bounded due HOT scores and returns the exact opaque
+observations to the Score Owner. A successful initial hold preserves rank,
+writes a future coordinate and clears dirty. Concurrent observations do not
+create concurrent leases: only the exact CAS winner holds the Worker. Optional
+Serviceability eligibility filtering is owned by the Score operations.
 
-`WorkerCandidateSelectionPolicy` calls the bounded observation and exact-fence
-Owner operations directly. Kernel exact-holds the observed pool before it
-offers a PRECOMPUTED Demand. Queue rejection therefore leaves real short-lived
-holds, which expire naturally. Worker Matching is a separate facts/rule owner:
+[Allocation Policy](../../../kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
+holds the PRECOMPUTED pool before publishing Demand. Matching receives ordered
+Candidate addresses, held Worker IDs and opaque scores, then appends accepted
+entries through the Candidate Cache Owner. It removes only Cache-accepted IDs
+from that Demand's available pool. It cannot decode, compare, renew or release
+the held scores, and receives no endpoint or Item state.
 
-```text
-Candidate-rule precomputation
-  Kernel supplies and holds one bounded due HOT WorkerId set
-  Kernel supplies ordered Candidate addresses and opaque exact held scores
-  Worker Matching filters in that order against canonical facts
-  Worker Matching atomically appends accepted entries to Candidate Cache
-  Kernel later consumes and exact-renews the cached score before claim
+ON_DEMAND selection directly acquires normalized Worker IDs/ANY without a
+Matching round trip or Candidate Cache. The
+[Assignment Policy](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
+owns deficits, priority, pairing and round uniqueness. Neither a cached miss nor
+a stale candidate switches allocation mechanism.
 
-Item Worker Selector on-demand acquisition
-  Kernel validates the Selector into explicit Worker IDs or ANY at write
-  Kernel observes eligible targets and exact-holds one Worker per Item
-  Kernel exact-renews that held score before claim
-```
+Unmatched, unselected, Cache-rejected and Demand-rejected holds expire
+naturally. Queue rejection is not a reason to add compensation release or a
+pending-lease registry. Properties updates do not revoke Candidate entries;
+expiry and exact renewal bound their use.
 
-ON_DEMAND does not use Candidate Cache. PRECOMPUTED Matching receives the raw
-held score only to carry it unchanged into a Cache entry; it cannot decode,
-compare, construct, renew, or release Score. It also receives no endpoint or
-TaskItem state. Candidate Cache is the atomic Candidate-address capacity owner and returns
-the IDs actually accepted. Matching removes only those IDs from the current
-Demand pool, preventing one accepted hold from entering two Candidate buckets.
+## Renewal Before Claim
 
-Unmatched, unselected, Cache-rejected, and Demand-rejected Workers are not
-actively released. Their short holds expire naturally. Moving each observed
-pool to a newer score position lets other due Workers enter subsequent bounded
-observations.
+Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
+closure renews the supplied clean, active HOT fences. An exact NOOP that covers
+the requested deadline is valid; a transition returns the renewed fence. Dirty,
+expired, negative or stale observations cannot proceed to Item claim.
 
-## Cached Candidate Renewal
+Only a successful renewal result participates in the Item claim batch. Only
+claimed Items become Commands. The returned Worker fence is encoded into
+ResultContext and carried opaquely by delivery. Item claim or Command append
+failure does not compensate-release the Worker: independent lease and claim
+expiry restore scheduling eligibility.
 
-The cached renewal path consumes bounded Candidate Cache entries and calls:
-
-```text
-renew_active_hot_score_leases(
-    workerGroupId,
-    observedScores,
-    targetTimeMillis,
-)
-```
-
-All accepted observations are submitted in one score-owner batch for the
-call's explicit WorkerGroup. Candidate Cache identity is already scoped to the
-Task and is not rematched against Properties during renewal.
-
-Rules:
-
-```text
-storedScore != observedScore -> STALE
-polarity != HOT_ACQUIRE      -> rejected
-dirty == 1                   -> STALE
-observed lease expired       -> STALE
-target is not future         -> INVALID
-lease covers target          -> exact NOOP + observedScore
-lease needs extension        -> exact CAS + renewedScore
-```
-
-Only a `TRANSITIONED` or exact `NOOP` result carrying a score may proceed to
-minimal descriptor loading and Item claim. The returned fence, unchanged or
-renewed, is written into `forward`.
-
-Cached miss or rejected candidate never falls back to Worker Selector on-demand
-acquisition. `TaskDispatchPolicy` chooses one path from the fixed
-`TaskDescriptor.workerAllocationMechanism`: cached candidate renewal for
-Task-owned rules or on-demand acquisition for Item-owned rules. Both paths
-carry raw Score evidence opaquely by
-usage: they may associate and return it to exact Owner operations but never
-decode or calculate it. Neither path clears dirty or releases rejected
-candidates.
+Policy may retain, associate, exact-compare and return raw Score evidence but
+must not decode or calculate it. Primitive preconditions and status results
+are maintained once in the
+[Score primitive contract](worker-score-band-scheduling.md#score-primitives).
 
 ## Dirty Fence
 
-Dirty means only:
-
-```text
-an active Worker lease exists
-and a score-owner caller has explicitly invalidated renewal of that fence
-```
-
-It is not scheduling-serviceability polarity, metadata version, global Worker
-status, or an
-attribute update lock. Non-lease owners may set dirty but never clear it.
-Allocation may clear dirty only while acquiring a due Worker. Worker Matching
-facts updates do not write Worker score and do not set dirty in this cut.
-Active cached renewal rejects dirty and forces later allocation to create a new
-held match and Cache entry.
+Dirty invalidates renewal of an active lease; it is not a metadata version,
+network state, scheduling polarity or attribute write lock. A real continuation
+must justify a dirty producer. Non-lease owners never clear dirty. Initial due
+acquisition may clear it, while active renewal rejects it. Matching facts
+updates do not write Score or mark dirty.
 
 ## Result Disposition
 
-The opaque Worker fence returns through `ResultContext` together with its
-`workerGroupId` home-bucket coordinate. Result routing must not reread Task
-metadata to recover the Worker score bucket:
+[Result Policy](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
+parses the returned context and publishes bounded semantic events. It does not
+call WorkerScoreCore directly. The Worker execution event Owner unwraps the
+opaque WorkerLeaseReference and applies the completed-HOT exact release.
 
-```text
-200 / Worker failure
-  -> this attempt crossed the Worker execution boundary
-  -> exact release preserving positive polarity
+The release accepts only the exact returned HOT lease or its exact
+sign-flipped RECOVERY counterpart. The latter may be restored and released
+atomically by the Score Owner. No newer or otherwise changed fence is released.
+This mechanical counterpart rule is not an inference that the Worker is online.
+Adapter evidence classification remains with the independent Serviceability
+policy and its dedicated event port.
 
-Adapter rejection
-  -> delivery definitively ended before Worker execution entry
-  -> exact release preserving positive polarity
-```
+Worker success/failure and trusted Adapter pre-execution rejection submit their
+own lease evidence. There is no cross-class winner registry. Conflicting
+logical outcomes do not justify a guessed mutation; duplicate or late evidence
+must still satisfy the exact Owner fence. Result disposition is independent of
+TaskItem movement and cannot prove that all preceding Owner calls completed.
 
-For Adapter rejection, release proves only that this exact lease no longer
-needs to be held. It does not prove the Worker is connected or serviceable;
-Adapter Route evidence and the Serviceability Pacer own that classification.
+## Failure Boundaries
 
-A Worker Delivery Dispatch producer emits evidence only; it never mutates
-score. The polling Worker endpoint accepts only `200` and Worker-owned `3...`.
-The long-lived Adapter batch endpoint accepts trusted
-pre-execution rejection evidence; authentication of that role remains
-deferred. Result routing invokes WorkerScoreCore and treats Worker disposition
-independently from Item movement.
-
-Every result submits its own exact lease evidence without cross-class winner
-aggregation. Stale evidence cannot release a newer lease. Conflicting
-classes for one exact lease violate the one-logical-outcome protocol; the score
-owner accepts at most one applicable disposition. A duplicated copy of the same
-transport result is allowed to reach routing, but after the first applicable
-exact transition the old Worker fence is stale and cannot change newer truth.
-
-## Scheduling Serviceability
-
-Polarity is the kernel-owned classification of whether a Worker may participate
-in normal TaskItem scheduling:
-
-```text
-HOT_ACQUIRE
-  scheduling-available
-  may enter ordinary allocation when due and after all runtime checks
-
-RECOVERY_RECHECK
-  scheduling-unavailable
-  excluded from ordinary allocation; may enter only recovery validation
-```
-
-This is not a physical connection or socket state. Adapter Route changes and
-periodic Adapter snapshots are evidence interpreted by the independent Worker
-Serviceability Result Policy in the Adapter Evidence lane. Task results only release their correlated lease;
-they do not change polarity. With no demand or fresh evidence, bounded
-classification lag is allowed.
-
-## Failure Matrix
-
-| Stage | Evidence | Action |
+| Stage | Failure | Existing behavior |
 | --- | --- | --- |
-| Match admission | hold CAS lost | exclude Worker from later Evidence use |
-| Allocation | unmatched or publication failure | retain short lease until expiry |
-| Cached candidate renewal | dirty/recovery/expired/stale fence or missing descriptor | consume candidate, do not claim Item |
-| Item dispatch | Item absent or claim lost | no release; leases expire |
-| Task Dispatch | mailbox residue replaced | publish the new lease-backed Seed; optional bounded residue metric |
-| Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
-| Worker Delivery Dispatch | expired or malformed Seed | drop; no synthetic result |
-| Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit a Worker-owned `3...` outcome |
-| Long-lived Adapter | command expired before execution entry | may emit `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` through Adapter batch ingress |
-| Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
-| Result | `200` or Worker failure | exact release |
-| Result | Adapter rejection | exact release; no online inference |
-| Result | malformed/missing evidence | no guessed mutation; expiry recovers lease eligibility only |
+| Initial hold | CAS lost | Exclude the Worker from that held pool |
+| Match handoff | rejection, no match or partial publication | Accepted entries remain; unaccepted holds expire |
+| Renewal | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
+| Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
+| Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |
+| Result | missing or malformed context | No guessed mutation; expiry restores eligibility only |
+| Result | duplicate, late or conflicting fence | Only an exact applicable Owner transition can change Score |
 
-No branch adds a repair scanner, compensation queue, distributed lock, or
-cross-owner transaction.
+The [delivery boundary](../../../doc/kernel/worker-delivery-dispatch.md) owns
+network failure windows; the
+[Result storage contract](../runtime-redis/task-result-runtime-redis-shape.md)
+owns the independent storage/finality interruption windows. Lease expiry does
+not replay evidence or repair a stored Result's separate finality transition.
 
-## Owner Matrix
+## Serviceability Boundary
 
-| Owner | Responsibility | Refusal |
-| --- | --- | --- |
-| WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
-| WorkerRuntime | minimal declaration validation, endpoint metadata and first score initialization | no Properties, matching, heartbeat or dispatch ownership |
-| WorkerMatchingRuntime | persistent Candidate Rule/Properties interpretation and ordered append through the Candidate Cache owner API | no Score interpretation/transition, Cache read/consume, priority, Item Selector, Item claim, endpoint or ON_DEMAND runtime work |
-| WorkerCandidateSelectionPolicy | due HOT identity source, exact initial hold and final renewal, ON_DEMAND target selection, round uniqueness and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
-| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, sort Task needs, hold a bounded Worker pool and publish one Group Demand | no Task discovery, Rule interpretation, Task-score write or result handling |
-| TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
-| TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
-| TaskDispatchPolicy | bounded Task/Item observation, expiry/exhaustion, pairing, per-Task limit, ordinary pacing and idle-disposition choice | no Score decoding, construction or arithmetic |
-| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
-| Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
-| ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
-| TaskResultBatchPolicy | context decode, bounded owner-key grouping and TaskItem/Worker execution event publication | no queue ownership, score decoding, mechanical owner calls or cross-owner truth |
-| WorkerExecutionResultEvents | successful/failed Task execution semantics and batched score-owner fence application | no DeliveryReport, lane, JSON or endpoint-code interpretation |
-
-## Deferred Policy
-
-Recovery probe cadence and ranking are deferred. TaskItem coalescing is not a
-deferred kernel policy; business batching is expressed inside one TaskItem
-payload.
-
-## Guardrails
-
-- Do not lease negative `RECOVERY_RECHECK` scores through HOT primitives.
-- Do not expose score encoding, dirty bit, sign or timeSlot to callers.
-- Do not let active renewal clear dirty.
-- Do not let cached candidate renewal fall back to Worker Selector on-demand acquisition.
-- Do not let `TaskDispatchPolicy` bypass `WorkerCandidateSelectionPolicy` to
-  access Worker Score or Candidate Cache, or bypass `TaskAssignmentDispatcher`
-  to claim Items and publish Commands. Direct bounded Owner calls inside the
-  policy that owns that exact decision are allowed; Score remains opaque by
-  usage.
-- Do not release rejected dispatch candidates as compensation.
-- Do not treat missing result as Adapter rejection.
-- Do not let old result evidence mutate a newer Worker lease.
-- Do not create separate Attempt, reservation, session epoch or lease registry.
-- Do not release a Worker fence after DeliveryCommand append to simulate
-  immediate slot reuse.
-- Do not assign independent TaskItems or different Tasks concurrently to one
-  WorkerId.
+HOT and RECOVERY are Kernel scheduling eligibility, not physical connection
+state. The [Serviceability Policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+interprets Adapter evidence and probe results through its dedicated time-fenced
+operation. It must not be collapsed into Task result lease disposition.
+Cadence, recovery ranking and cold parking belong to that policy; no generic
+Session, Attempt or Worker reservation owner is introduced here.

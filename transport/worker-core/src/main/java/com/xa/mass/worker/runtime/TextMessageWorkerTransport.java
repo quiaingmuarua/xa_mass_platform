@@ -9,12 +9,19 @@ import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerCommandOutcome;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,7 +42,12 @@ final class TextMessageWorkerTransport
             TextMessageWorkerTransport.class.getName()
     );
 
+    private static final String PROPERTIES_REPORTED_EVENT =
+            "platform.worker.properties.reported";
+    private static final int MAX_REPORT_BYTES = 1_000_000;
+
     private final TextMessageClient client;
+    private final WorkerPropertiesProvider propertiesProvider;
     private final String workerId;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandDispatcher;
@@ -45,6 +57,7 @@ final class TextMessageWorkerTransport
             TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandDispatcher,
+            WorkerPropertiesProvider propertiesProvider,
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");
@@ -53,6 +66,7 @@ final class TextMessageWorkerTransport
                 commandDispatcher,
                 "commandDispatcher"
         );
+        this.propertiesProvider = Objects.requireNonNull(propertiesProvider, "propertiesProvider");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -100,6 +114,14 @@ final class TextMessageWorkerTransport
             }
 
             WorkerCommandOutcome outcome = result.get();
+            if (command.src() == ADAPTER
+                    && WorkerManagementEventDefinitions.PROPERTIES_SNAPSHOT_EVENT
+                            .equals(command.messageType())) {
+                if ("200".equals(outcome.outcomeCode())) {
+                    sendProperties(outcome.payload());
+                }
+                return;
+            }
             DeliveryReport report = DeliveryReport.fromCommand(
                     command,
                     WORKER,
@@ -121,6 +143,56 @@ final class TextMessageWorkerTransport
                     "command.process",
                     unexpected
             );
+        }
+    }
+
+    boolean reportProperties() {
+        try {
+            Map<String, String> properties = WorkerDeliveryCodec.copyWorkerProperties(
+                    propertiesProvider.loadProperties()
+            );
+            if (properties.containsKey("clientWorkerKey")) {
+                throw new IllegalArgumentException(
+                        "workerProperties must not expose clientWorkerKey"
+                );
+            }
+            return sendProperties(Jsons.toJson(Map.of("properties", properties)));
+        } catch (Exception failure) {
+            log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.report", failure);
+            return false;
+        }
+    }
+
+    static String propertiesPatch(Map<String, String> set, Set<String> remove) {
+        Map<String, String> captured = WorkerDeliveryCodec.copyWorkerProperties(set);
+        Objects.requireNonNull(remove, "remove");
+        List<String> removed = new ArrayList<>();
+        for (Object key : remove) {
+            if (!(key instanceof String) || ((String) key).isBlank()
+                    || captured.containsKey(key)) {
+                throw new IllegalArgumentException(
+                        "remove requires non-blank keys disjoint from set"
+                );
+            }
+            removed.add((String) key);
+        }
+        return Jsons.toJson(Map.of("set", captured, "remove", removed));
+    }
+
+    boolean sendProperties(String payload) {
+        try {
+            String encoded = codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER, workerId, ADAPTER, PROPERTIES_REPORTED_EVENT,
+                    "200", payload, ""
+            ));
+            if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_REPORT_BYTES) {
+                log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.size", null);
+                return false;
+            }
+            return client.send(encoded);
+        } catch (RuntimeException failure) {
+            log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.send", failure);
+            return false;
         }
     }
 
@@ -171,7 +243,7 @@ final class TextMessageWorkerTransport
     private void log(
             WorkerErrorCode errorCode,
             String operation,
-            RuntimeException failure
+            Exception failure
     ) {
         LOGGER.log(
                 Level.WARNING,

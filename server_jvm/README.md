@@ -328,8 +328,9 @@ Single and batch calls use the same Prepare item DTO:
 ordinary callers. Android supplies `CLIENT_KEY` explicitly; ordinary Java may
 omit it. `SCENARIO_LAB` derives its
 Server-owned registration coordinate from immutable
-`labInventoryKey + labInventoryLine` properties and strictly rejects
-`clientWorkerKey`; mutable fields such as `labSlot` do not participate in
+`labInventoryKey + labInventoryLine` string properties (line parses as decimal
+`1..100`, preserving the same registration key) and strictly rejects numeric
+line values and `clientWorkerKey`; mutable fields such as `labSlot` do not participate in
 identity. A batch body is the direct array of `1..100` ordered Prepare items,
 all of which must share one kind and transport type. Both HTTP routes enter the
 same Server `prepareAll` path;
@@ -541,7 +542,8 @@ not add alternate Runtime owners.
 
 ### Kernel Providers
 
-Controllers and use-case services depend only on `kernel_jvm` owner contracts.
+Controllers and use-case services depend on `kernel_jvm` and
+`worker_matching_jvm` owner contracts.
 Provider selection stays in Server assembly. The shared `assembly.redis`
 package owns connection and health only; Redis key operations live in
 owner-local provider packages.
@@ -774,6 +776,12 @@ uses `SCENARIO_LAB` and defaults to `profile_scenario_workers`.
 Exactly one Server instance per Redis scope may have the Pacer lifecycle
 enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
 there is no distributed leader election.
+
+Known readiness mismatch: `KernelPacerHealthIndicator` currently reports DOWN
+when that lifecycle is disabled, including the API-only replica described
+above. The readiness/deployment contract remains unresolved; disabling Pacer
+must not be documented as making such a replica readiness-UP. This documentation
+correction does not change the indicator or its tests.
 
 Result Convergence starts first and Dispatch Convergence starts second.
 Dispatch Convergence owns the fixed Task Initialization, Allocation, Task Dispatch and

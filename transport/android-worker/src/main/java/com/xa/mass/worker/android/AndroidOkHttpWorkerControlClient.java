@@ -46,7 +46,7 @@ final class AndroidOkHttpWorkerControlClient
     public PreparedWorker prepare(
             String workerGroupId,
             WorkerTransportType transportType,
-            Map<String, Object> workerProperties,
+            Map<String, String> workerProperties,
             Duration timeout
     ) throws IOException {
         requireOpen();
@@ -264,7 +264,7 @@ final class AndroidOkHttpWorkerControlClient
     }
 
     private static void requireProperties(
-            Map<String, Object> workerProperties
+            Map<String, String> workerProperties
     ) {
         if (workerProperties == null) {
             throw new IllegalArgumentException(

@@ -34,6 +34,51 @@ import org.junit.jupiter.api.Test;
 class JavaWorkerManagerTest {
 
     @Test
+    void propertiesReportingIsKeyedAndUsesOnlyTheTargetTransport() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            String endpoint = server.url("/worker").toString().replaceFirst("^http", "ws");
+            server.enqueue(new MockResponse.Builder().code(200).body(
+                    "{\"workerId\":\"worker-1\",\"transportType\":\"WEBSOCKET\","
+                            + "\"endpointUri\":\"" + endpoint + "\"}").build());
+            var reports = new java.util.concurrent.LinkedBlockingQueue<
+                    com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport>();
+            var codec = new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec();
+            server.enqueue(new MockResponse.Builder().webSocketUpgrade(new okhttp3.WebSocketListener() {
+                @Override
+                public void onMessage(okhttp3.WebSocket socket, String message) {
+                    reports.add(codec.decodeDeliveryReport(message));
+                }
+                @Override
+                public void onClosing(okhttp3.WebSocket socket, int code, String reason) {
+                    socket.close(code, reason);
+                }
+            }).build());
+            try (JavaWorkerManager manager = JavaWorkerManager.builder(
+                    URI.create(server.url("/").toString()), "group", WorkerTransportType.WEBSOCKET)
+                    .replica("first", () -> Map.of("battery", "87"))
+                    .replica("second", () -> Map.of("battery", "99")).build()) {
+                assertEquals(false, manager.reportProperties("first"));
+                manager.start("first");
+                assertTrue(reports.poll(5, TimeUnit.SECONDS) != null); // Identity admitted.
+                assertTrue(manager.reportProperties("first"));
+                var full = reports.poll(5, TimeUnit.SECONDS);
+                assertTrue(full != null);
+                assertEquals("worker-1", full.sourceId());
+                assertEquals(Map.of("properties", Map.of("battery", "87")),
+                        com.xa.mass.workerdelivery.json.Jsons.parseObject(full.payload()));
+                assertTrue(manager.reportProperties("first", Map.of("battery", "88"), java.util.Set.of()));
+                assertTrue(reports.poll(5, TimeUnit.SECONDS) != null);
+                assertEquals(false, manager.reportProperties("second"));
+                assertEquals(WorkerLifecycle.State.STOPPED, manager.snapshot("second").state());
+                assertEquals(2, server.getRequestCount());
+                manager.close();
+                assertEquals(false, manager.reportProperties("first"));
+            }
+        }
+    }
+
+    @Test
     void startsStopsAndSnapshotsFixedOrderedReplicas() {
         List<String> events = new ArrayList<>();
         FakeWorker first = new FakeWorker("first", events);
@@ -169,16 +214,16 @@ class JavaWorkerManagerTest {
                         firstLoads.incrementAndGet();
                         return Map.of(
                                 "labInventoryKey", "workers.jsonl",
-                                "labInventoryLine", 1,
-                                "labSlot", 1
+                                "labInventoryLine", "1",
+                                "labSlot", "1"
                         );
                     })
                     .replica("workers.jsonl:2", () -> {
                         secondLoads.incrementAndGet();
                         return Map.of(
                                 "labInventoryKey", "workers.jsonl",
-                                "labInventoryLine", 2,
-                                "labSlot", 2
+                                "labInventoryLine", "2",
+                                "labSlot", "2"
                         );
                     })
                     .build();
@@ -241,8 +286,8 @@ class JavaWorkerManagerTest {
                     .batchWorkerKind("SCENARIO_LAB")
                     .replica("workers.jsonl:1", () -> Map.of(
                             "labInventoryKey", "workers.jsonl",
-                            "labInventoryLine", 1,
-                            "labSlot", 1
+                            "labInventoryLine", "1",
+                            "labSlot", "1"
                     ))
                     .build();
 
@@ -872,13 +917,13 @@ class JavaWorkerManagerTest {
                 .batchWorkerKind("SCENARIO_LAB")
                 .replica("workers.jsonl:1", () -> Map.of(
                         "labInventoryKey", "workers.jsonl",
-                        "labInventoryLine", 1,
-                        "labSlot", 1
+                        "labInventoryLine", "1",
+                        "labSlot", "1"
                 ))
                 .replica("workers.jsonl:2", () -> Map.of(
                         "labInventoryKey", "workers.jsonl",
-                        "labInventoryLine", 2,
-                        "labSlot", 2
+                        "labInventoryLine", "2",
+                        "labSlot", "2"
                 ))
                 .build();
     }

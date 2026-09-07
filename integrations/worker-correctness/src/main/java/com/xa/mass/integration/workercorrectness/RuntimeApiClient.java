@@ -74,14 +74,13 @@ final class RuntimeApiClient {
             Object rawInventoryLine = properties.get("labInventoryLine");
             if (!(rawInventoryKey instanceof String inventoryKey)
                     || inventoryKey.isBlank()
-                    || !(rawInventoryLine instanceof Number line)
-                    || line.longValue() < 1L
-                    || line.longValue() > 100L) {
+                    || !(rawInventoryLine instanceof String line)
+                    || !line.matches("[1-9][0-9]?|100")) {
                 throw new IllegalStateException(
                         "Worker Runtime preview has no Lab inventory coordinate"
                 );
             }
-            String labWorkerKey = inventoryKey + ":" + line.longValue();
+            String labWorkerKey = inventoryKey + ":" + line;
             if (identities.putIfAbsent(labWorkerKey, workerId) != null) {
                 throw new IllegalStateException(
                         "Worker Runtime preview has duplicate labWorkerKey"

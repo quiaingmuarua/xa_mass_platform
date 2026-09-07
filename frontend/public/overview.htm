@@ -1,1028 +1,1206 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="XA Mass 纯 Java 生产 Kernel、Server 与 Transport 当前架构全景">
-  <title>XA Mass · 架构全景</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #07111f;
-      --panel: rgba(14, 28, 47, 0.82);
-      --panel-strong: #101f34;
-      --line: rgba(148, 163, 184, 0.22);
-      --text: #e8eef7;
-      --muted: #9caec4;
-      --cyan: #5eead4;
-      --blue: #7dd3fc;
-      --violet: #c4b5fd;
-      --amber: #fcd34d;
-      --rose: #fda4af;
-      --green: #86efac;
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
-      --radius: 22px;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system,
-        BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 12% 5%, rgba(45, 212, 191, 0.14), transparent 28rem),
-        radial-gradient(circle at 88% 16%, rgba(124, 58, 237, 0.16), transparent 30rem),
-        linear-gradient(180deg, #07111f 0%, #081525 52%, #07111f 100%);
-      min-height: 100vh;
-    }
-
-    body::before {
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      content: "";
-      opacity: 0.22;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-      background-size: 42px 42px;
-      mask-image: linear-gradient(to bottom, black, transparent 78%);
-    }
-
-    a {
-      color: inherit;
-    }
-
-    .progress {
-      position: fixed;
-      inset: 0 auto auto 0;
-      z-index: 20;
-      width: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet));
-      box-shadow: 0 0 18px rgba(94, 234, 212, 0.65);
-    }
-
-    .skip-link {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      z-index: 50;
-      padding: 10px 14px;
-      border-radius: 10px;
-      background: white;
-      color: #07111f;
-      transform: translateY(-150%);
-    }
-
-    .skip-link:focus {
-      transform: translateY(0);
-    }
-
-    .shell {
-      width: min(1240px, calc(100% - 36px));
-      margin: 0 auto;
-      padding: 24px 0 80px;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 14px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 22px;
-      padding: 12px 16px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: rgba(7, 17, 31, 0.82);
-      backdrop-filter: blur(18px);
-      box-shadow: var(--shadow);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    .brand-mark {
-      display: grid;
-      width: 34px;
-      height: 34px;
-      place-items: center;
-      border: 1px solid rgba(94, 234, 212, 0.48);
-      border-radius: 10px;
-      color: var(--cyan);
-      background: rgba(45, 212, 191, 0.08);
-      font: 800 12px/1 ui-monospace, monospace;
-    }
-
-    .brand strong {
-      font-size: 14px;
-      letter-spacing: 0.04em;
-    }
-
-    nav {
-      display: flex;
-      gap: 4px;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-
-    nav a {
-      padding: 8px 10px;
-      border-radius: 9px;
-      color: var(--muted);
-      font-size: 12px;
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    nav a:hover,
-    nav a[aria-current="location"] {
-      color: var(--text);
-      background: rgba(125, 211, 252, 0.11);
-    }
-
-    .hero {
-      padding: 104px 0 70px;
-    }
-
-    .eyebrow,
-    .kicker {
-      margin: 0 0 12px;
-      color: var(--cyan);
-      font: 700 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-
-    h1,
-    h2,
-    h3,
-    p {
-      margin-top: 0;
-    }
-
-    h1 {
-      max-width: 950px;
-      margin-bottom: 24px;
-      font-size: clamp(52px, 9vw, 112px);
-      line-height: 0.93;
-      letter-spacing: -0.065em;
-    }
-
-    h1 span {
-      color: transparent;
-      background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet));
-      background-clip: text;
-      -webkit-background-clip: text;
-    }
-
-    .lede {
-      max-width: 850px;
-      margin-bottom: 34px;
-      color: #bdc9d8;
-      font-size: clamp(18px, 2.3vw, 26px);
-      line-height: 1.65;
-    }
-
-    .hero-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .button {
-      display: inline-flex;
-      align-items: center;
-      min-height: 42px;
-      padding: 0 15px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      color: var(--text);
-      background: rgba(15, 31, 52, 0.75);
-      font-size: 13px;
-      text-decoration: none;
-    }
-
-    .button.primary {
-      border-color: rgba(94, 234, 212, 0.42);
-      color: #dffff9;
-      background: rgba(45, 212, 191, 0.12);
-    }
-
-    section {
-      scroll-margin-top: 92px;
-      padding: 70px 0;
-      border-top: 1px solid var(--line);
-    }
-
-    .section-head {
-      display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-      gap: 40px;
-      align-items: end;
-      margin-bottom: 30px;
-    }
-
-    h2 {
-      margin-bottom: 0;
-      font-size: clamp(34px, 5vw, 62px);
-      line-height: 1.04;
-      letter-spacing: -0.045em;
-    }
-
-    .section-head > p {
-      margin-bottom: 4px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.75;
-    }
-
-    .grid-3,
-    .grid-2,
-    .grid-4 {
-      display: grid;
-      gap: 14px;
-    }
-
-    .grid-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .grid-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .grid-4 {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .card {
-      position: relative;
-      overflow: hidden;
-      padding: 23px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: linear-gradient(145deg, rgba(18, 35, 58, 0.9), rgba(10, 23, 40, 0.82));
-      box-shadow: 0 16px 50px rgba(0, 0, 0, 0.16);
-    }
-
-    .card::after {
-      position: absolute;
-      right: -42px;
-      bottom: -72px;
-      width: 150px;
-      height: 150px;
-      border-radius: 50%;
-      content: "";
-      background: var(--glow, rgba(94, 234, 212, 0.08));
-      filter: blur(10px);
-    }
-
-    .card h3 {
-      margin-bottom: 12px;
-      font-size: 21px;
-    }
-
-    .card p,
-    .card li {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.7;
-    }
-
-    .card ul {
-      margin: 12px 0 0;
-      padding-left: 18px;
-    }
-
-    .card .owner {
-      display: inline-block;
-      margin-bottom: 16px;
-      padding: 5px 8px;
-      border: 1px solid currentColor;
-      border-radius: 7px;
-      color: var(--accent, var(--cyan));
-      font: 700 10px/1 ui-monospace, monospace;
-      letter-spacing: 0.1em;
-    }
-
-    .kernel { --accent: var(--cyan); --glow: rgba(45, 212, 191, 0.13); }
-    .server { --accent: var(--blue); --glow: rgba(56, 189, 248, 0.13); }
-    .transport { --accent: var(--violet); --glow: rgba(167, 139, 250, 0.14); }
-    .worker { --accent: var(--amber); --glow: rgba(250, 204, 21, 0.1); }
-
-    .rule {
-      margin-top: 16px;
-      padding: 18px 20px;
-      border-left: 3px solid var(--cyan);
-      border-radius: 0 14px 14px 0;
-      color: #c9d6e5;
-      background: rgba(45, 212, 191, 0.07);
-      font-size: 15px;
-      line-height: 1.7;
-    }
-
-    .flow {
-      display: grid;
-      gap: 10px;
-    }
-
-    .flow-row {
-      display: grid;
-      grid-template-columns: 150px minmax(0, 1fr);
-      gap: 14px;
-      align-items: stretch;
-    }
-
-    .flow-label,
-    .flow-body {
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: rgba(13, 28, 47, 0.7);
-    }
-
-    .flow-label {
-      display: flex;
-      align-items: center;
-      color: var(--accent, var(--cyan));
-      font: 700 12px/1.5 ui-monospace, monospace;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .flow-body {
-      color: #c0cede;
-      font-size: 14px;
-      line-height: 1.7;
-    }
-
-    .flow-body strong {
-      color: var(--text);
-    }
-
-    .chain {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .node {
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      color: #cfdae8;
-      background: rgba(6, 15, 27, 0.66);
-      font: 600 12px/1.35 ui-monospace, monospace;
-    }
-
-    .arrow {
-      color: #63758a;
-    }
-
-    .split {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-      gap: 14px;
-    }
-
-    .code-panel {
-      margin: 0;
-      padding: 22px;
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      color: #cce6e2;
-      background: #07101c;
-      font: 13px/1.75 ui-monospace, SFMono-Regular, Consolas, monospace;
-      white-space: pre;
-    }
-
-    .axis {
-      display: grid;
-      gap: 10px;
-    }
-
-    .axis-row {
-      display: grid;
-      grid-template-columns: 170px minmax(0, 1fr);
-      gap: 16px;
-      padding: 16px 0;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .axis-row:last-child {
-      border-bottom: 0;
-    }
-
-    .axis-row b {
-      color: var(--accent, var(--cyan));
-    }
-
-    .axis-row span {
-      color: var(--muted);
-      line-height: 1.65;
-    }
-
-    .tag {
-      display: inline-flex;
-      margin: 3px 4px 3px 0;
-      padding: 5px 8px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      color: #c7d4e4;
-      background: rgba(15, 31, 52, 0.78);
-      font-size: 11px;
-    }
-
-    .reading {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 24px;
-    }
-
-    .reading a {
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      color: #c9d6e5;
-      background: rgba(15, 31, 52, 0.58);
-      text-decoration: none;
-    }
-
-    .reading a:hover {
-      border-color: rgba(94, 234, 212, 0.45);
-      color: white;
-    }
-
-    footer {
-      padding: 38px 0 8px;
-      color: #71839a;
-      font-size: 12px;
-      text-align: center;
-    }
-
-    @media (max-width: 900px) {
-      .topbar {
-        align-items: flex-start;
-        flex-direction: column;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="XA Mass 纯 Java 生产 Kernel、Server 与 Transport 当前架构全景"
+    />
+    <title>XA Mass · 架构全景</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07111f;
+        --panel: rgba(14, 28, 47, 0.82);
+        --panel-strong: #101f34;
+        --line: rgba(148, 163, 184, 0.22);
+        --text: #e8eef7;
+        --muted: #9caec4;
+        --cyan: #5eead4;
+        --blue: #7dd3fc;
+        --violet: #c4b5fd;
+        --amber: #fcd34d;
+        --rose: #fda4af;
+        --green: #86efac;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+        --radius: 22px;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
       }
 
-      nav {
-        width: 100%;
+      * {
+        box-sizing: border-box;
       }
 
-      .section-head,
-      .split {
-        grid-template-columns: 1fr;
-      }
-
-      .grid-3,
-      .grid-4 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 620px) {
-      .shell {
-        width: min(100% - 22px, 1240px);
-      }
-
-      .hero {
-        padding-top: 72px;
-      }
-
-      h1 {
-        font-size: 51px;
-      }
-
-      .grid-2,
-      .grid-3,
-      .grid-4,
-      .reading {
-        grid-template-columns: 1fr;
-      }
-
-      .flow-row,
-      .axis-row {
-        grid-template-columns: 1fr;
-      }
-
-      .flow-label {
-        min-height: 52px;
-      }
-    }
-
-    @media print {
-      .topbar,
-      .progress,
-      .skip-link {
-        display: none;
+      html {
+        scroll-behavior: smooth;
       }
 
       body {
-        background: white;
-        color: black;
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(
+            circle at 12% 5%,
+            rgba(45, 212, 191, 0.14),
+            transparent 28rem
+          ),
+          radial-gradient(
+            circle at 88% 16%,
+            rgba(124, 58, 237, 0.16),
+            transparent 30rem
+          ),
+          linear-gradient(180deg, #07111f 0%, #081525 52%, #07111f 100%);
+        min-height: 100vh;
       }
 
-      .card,
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        content: "";
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+        background-size: 42px 42px;
+        mask-image: linear-gradient(to bottom, black, transparent 78%);
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .progress {
+        position: fixed;
+        inset: 0 auto auto 0;
+        z-index: 20;
+        width: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet));
+        box-shadow: 0 0 18px rgba(94, 234, 212, 0.65);
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 50;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: white;
+        color: #07111f;
+        transform: translateY(-150%);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .shell {
+        width: min(1240px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 24px 0 80px;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 14px;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 22px;
+        padding: 12px 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(7, 17, 31, 0.82);
+        backdrop-filter: blur(18px);
+        box-shadow: var(--shadow);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid rgba(94, 234, 212, 0.48);
+        border-radius: 10px;
+        color: var(--cyan);
+        background: rgba(45, 212, 191, 0.08);
+        font:
+          800 12px/1 ui-monospace,
+          monospace;
+      }
+
+      .brand strong {
+        font-size: 14px;
+        letter-spacing: 0.04em;
+      }
+
+      nav {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      nav a {
+        padding: 8px 10px;
+        border-radius: 9px;
+        color: var(--muted);
+        font-size: 12px;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      nav a:hover,
+      nav a[aria-current="location"] {
+        color: var(--text);
+        background: rgba(125, 211, 252, 0.11);
+      }
+
+      .hero {
+        padding: 104px 0 70px;
+      }
+
+      .eyebrow,
+      .kicker {
+        margin: 0 0 12px;
+        color: var(--cyan);
+        font:
+          700 12px/1.4 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 950px;
+        margin-bottom: 24px;
+        font-size: clamp(52px, 9vw, 112px);
+        line-height: 0.93;
+        letter-spacing: -0.065em;
+      }
+
+      h1 span {
+        color: transparent;
+        background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet));
+        background-clip: text;
+        -webkit-background-clip: text;
+      }
+
+      .lede {
+        max-width: 850px;
+        margin-bottom: 34px;
+        color: #bdc9d8;
+        font-size: clamp(18px, 2.3vw, 26px);
+        line-height: 1.65;
+      }
+
+      .hero-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 15px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        color: var(--text);
+        background: rgba(15, 31, 52, 0.75);
+        font-size: 13px;
+        text-decoration: none;
+      }
+
+      .button.primary {
+        border-color: rgba(94, 234, 212, 0.42);
+        color: #dffff9;
+        background: rgba(45, 212, 191, 0.12);
+      }
+
+      section {
+        scroll-margin-top: 92px;
+        padding: 70px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+        gap: 40px;
+        align-items: end;
+        margin-bottom: 30px;
+      }
+
+      h2 {
+        margin-bottom: 0;
+        font-size: clamp(34px, 5vw, 62px);
+        line-height: 1.04;
+        letter-spacing: -0.045em;
+      }
+
+      .section-head > p {
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.75;
+      }
+
+      .grid-3,
+      .grid-2,
+      .grid-4 {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card {
+        position: relative;
+        overflow: hidden;
+        padding: 23px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(
+          145deg,
+          rgba(18, 35, 58, 0.9),
+          rgba(10, 23, 40, 0.82)
+        );
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.16);
+      }
+
+      .card::after {
+        position: absolute;
+        right: -42px;
+        bottom: -72px;
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        content: "";
+        background: var(--glow, rgba(94, 234, 212, 0.08));
+        filter: blur(10px);
+      }
+
+      .card h3 {
+        margin-bottom: 12px;
+        font-size: 21px;
+      }
+
+      .card p,
+      .card li {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .card ul {
+        margin: 12px 0 0;
+        padding-left: 18px;
+      }
+
+      .card .owner {
+        display: inline-block;
+        margin-bottom: 16px;
+        padding: 5px 8px;
+        border: 1px solid currentColor;
+        border-radius: 7px;
+        color: var(--accent, var(--cyan));
+        font:
+          700 10px/1 ui-monospace,
+          monospace;
+        letter-spacing: 0.1em;
+      }
+
+      .kernel {
+        --accent: var(--cyan);
+        --glow: rgba(45, 212, 191, 0.13);
+      }
+      .server {
+        --accent: var(--blue);
+        --glow: rgba(56, 189, 248, 0.13);
+      }
+      .transport {
+        --accent: var(--violet);
+        --glow: rgba(167, 139, 250, 0.14);
+      }
+      .worker {
+        --accent: var(--amber);
+        --glow: rgba(250, 204, 21, 0.1);
+      }
+
+      .rule {
+        margin-top: 16px;
+        padding: 18px 20px;
+        border-left: 3px solid var(--cyan);
+        border-radius: 0 14px 14px 0;
+        color: #c9d6e5;
+        background: rgba(45, 212, 191, 0.07);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .flow {
+        display: grid;
+        gap: 10px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 14px;
+        align-items: stretch;
+      }
+
       .flow-label,
-      .flow-body,
-      .code-panel {
-        break-inside: avoid;
-        border-color: #bbb;
-        color: black;
-        background: white;
+      .flow-body {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: rgba(13, 28, 47, 0.7);
       }
-    }
-  </style>
-</head>
-<body>
-  <div class="progress" aria-hidden="true"></div>
-  <a class="skip-link" href="#main">跳到正文</a>
 
-  <div class="shell">
-    <header class="topbar">
-      <a class="brand" href="#overview">
-        <span class="brand-mark">XA</span>
-        <strong>Architecture Panorama</strong>
-      </a>
-      <nav aria-label="页面导航">
-        <a href="#authority">Authority</a>
-        <a href="#task-mainline">TASK</a>
-        <a href="#direct-call">DIRECT_CALL</a>
-        <a href="#transport">Transport</a>
-        <a href="#runtime-topology">Runtime</a>
-        <a href="#proof-and-stability">Proof</a>
-      </nav>
-    </header>
+      .flow-label {
+        display: flex;
+        align-items: center;
+        color: var(--accent, var(--cyan));
+        font:
+          700 12px/1.5 ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
 
-    <main id="main">
-      <section class="hero" id="overview">
-        <p class="eyebrow">Current architecture · Java production kernel</p>
-        <h1>XA Mass<br><span>架构全景</span></h1>
-        <p class="lede">
-          生产 Kernel 已完全由 Java owner 与固定 Pacer 组成。Kernel 决定谁应该执行什么；
-          Server 负责外部访问、有限编排、authority routing 与请求相关性；Transport
-          把已经形成的 Command 送到目标，并调用 endpoint-local handler。三层都可以出现
-          dispatch，但只有 Kernel Assignment Dispatch 做资源决策。
-        </p>
-        <div class="hero-links">
-          <a class="button primary" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md">Architecture Entry</a>
-          <a class="button" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md">Java Kernel</a>
-          <a class="button" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md">Proof Lanes</a>
-        </div>
-      </section>
+      .flow-body {
+        color: #c0cede;
+        font-size: 14px;
+        line-height: 1.7;
+      }
 
-      <section id="authority">
-        <div class="section-head">
-          <div>
-            <p class="kicker">01 · Authority</p>
-            <h2>一个系统，四个明确 owner</h2>
-          </div>
-          <p>
-            分层不是按技术栈，而是按谁能够维护 truth、谁只能携带 evidence。
-            Server 可以暂时复杂，但不能通过 use case 偷偷变成第二个 Kernel。
+      .flow-body strong {
+        color: var(--text);
+      }
+
+      .chain {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .node {
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: #cfdae8;
+        background: rgba(6, 15, 27, 0.66);
+        font:
+          600 12px/1.35 ui-monospace,
+          monospace;
+      }
+
+      .arrow {
+        color: #63758a;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+        gap: 14px;
+      }
+
+      .code-panel {
+        margin: 0;
+        padding: 22px;
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        color: #cce6e2;
+        background: #07101c;
+        font:
+          13px/1.75 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        white-space: pre;
+      }
+
+      .axis {
+        display: grid;
+        gap: 10px;
+      }
+
+      .axis-row {
+        display: grid;
+        grid-template-columns: 170px minmax(0, 1fr);
+        gap: 16px;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .axis-row:last-child {
+        border-bottom: 0;
+      }
+
+      .axis-row b {
+        color: var(--accent, var(--cyan));
+      }
+
+      .axis-row span {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .tag {
+        display: inline-flex;
+        margin: 3px 4px 3px 0;
+        padding: 5px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: #c7d4e4;
+        background: rgba(15, 31, 52, 0.78);
+        font-size: 11px;
+      }
+
+      .reading {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .reading a {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        color: #c9d6e5;
+        background: rgba(15, 31, 52, 0.58);
+        text-decoration: none;
+      }
+
+      .reading a:hover {
+        border-color: rgba(94, 234, 212, 0.45);
+        color: white;
+      }
+
+      footer {
+        padding: 38px 0 8px;
+        color: #71839a;
+        font-size: 12px;
+        text-align: center;
+      }
+
+      @media (max-width: 900px) {
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        nav {
+          width: 100%;
+        }
+
+        .section-head,
+        .split {
+          grid-template-columns: 1fr;
+        }
+
+        .grid-3,
+        .grid-4 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 620px) {
+        .shell {
+          width: min(100% - 22px, 1240px);
+        }
+
+        .hero {
+          padding-top: 72px;
+        }
+
+        h1 {
+          font-size: 51px;
+        }
+
+        .grid-2,
+        .grid-3,
+        .grid-4,
+        .reading {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-row,
+        .axis-row {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-label {
+          min-height: 52px;
+        }
+      }
+
+      @media print {
+        .topbar,
+        .progress,
+        .skip-link {
+          display: none;
+        }
+
+        body {
+          background: white;
+          color: black;
+        }
+
+        .card,
+        .flow-label,
+        .flow-body,
+        .code-panel {
+          break-inside: avoid;
+          border-color: #bbb;
+          color: black;
+          background: white;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" aria-hidden="true"></div>
+    <a class="skip-link" href="#main">跳到正文</a>
+
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="#overview">
+          <span class="brand-mark">XA</span>
+          <strong>Architecture Panorama</strong>
+        </a>
+        <nav aria-label="页面导航">
+          <a href="#authority">Authority</a>
+          <a href="#task-mainline">TASK</a>
+          <a href="#direct-call">DIRECT_CALL</a>
+          <a href="#transport">Transport</a>
+          <a href="#runtime-topology">Runtime</a>
+          <a href="#proof-and-stability">Proof</a>
+        </nav>
+      </header>
+
+      <main id="main">
+        <section class="hero" id="overview">
+          <p class="eyebrow">Current architecture · Java production kernel</p>
+          <h1>XA Mass<br /><span>架构全景</span></h1>
+          <p class="lede">
+            XA Mass 将大量任务项交给明确的 Worker 执行。Kernel 负责调度与收敛， Matching
+            解释 Worker 事实与匹配规则，Server 提供统一访问与装配， Transport
+            负责投递和本地执行。任务进度、连接状态与结果分别由对应 Owner 维护，
+            调用方通过公开 API 提交工作并观察它们的关系。
           </p>
-        </div>
-
-        <div class="grid-4">
-          <article class="card kernel">
-            <span class="owner">KERNEL</span>
-            <h3>Decide & converge</h3>
-            <p>Task、TaskItem、Worker scheduling truth，以及selection、lease、claim、retry、recovery和result disposition。</p>
-          </article>
-          <article class="card server">
-            <span class="owner">SERVER</span>
-            <h3>Expose & route</h3>
-            <p>API、validation、provider assembly、有限use-case编排、Identity、Binding、authority routing和waiter correlation。</p>
-          </article>
-          <article class="card transport">
-            <span class="owner">ADAPTER</span>
-            <h3>Deliver</h3>
-            <p>批量Command/Report、当前Worker route、物理连接、Adapter-local handler。它不重新选择Worker。</p>
-          </article>
-          <article class="card worker">
-            <span class="owner">WORKER</span>
-            <h3>Resolve & execute</h3>
-            <p>通过完整的 <code>messageType Event Name</code> 找到静态Definition，执行resolver与handler，并生成Result evidence；<code>src</code>只保留调用来源证据。</p>
-          </article>
-        </div>
-
-        <div class="rule">
-          判断规则：如果逻辑在决定“Command 是否应该存在、什么时候执行、哪个 Worker
-          执行、是否重试”，它属于 Kernel；如果 Command 已经存在，只是在选 source、找
-          connection、调用 handler 或把 Result 交回 owner，它属于 Server / Transport。
-        </div>
-
-        <div class="grid-3" style="margin-top: 14px">
-          <article class="card kernel">
-            <span class="owner">ASSIGNMENT DISPATCH</span>
-            <h3>资源决策</h3>
-            <p>Kernel读取有界证据，完成Worker acquisition、lease、TaskItem exact claim，并产生already-targeted Command。</p>
-          </article>
-          <article class="card server">
-            <span class="owner">AUTHORITY ROUTING</span>
-            <h3>消息owner路由</h3>
-            <p>Server将Adapter Direct FIFO与共享Worker Command mailbox暴露给Adapter，并按Result destination分流。</p>
-          </article>
-          <article class="card transport">
-            <span class="owner">EVENT DISPATCH</span>
-            <h3>本地函数调用</h3>
-            <p>Adapter或Worker根据目标与messageType调用本地handler，不读取Task priority或Worker score。</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="task-mainline">
-        <div class="section-head">
-          <div>
-            <p class="kicker">02 · TASK mainline</p>
-            <h2>调度决定只形成一次</h2>
+          <div class="hero-links">
+            <a
+              class="button primary"
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"
+              >Architecture Entry</a
+            >
+            <a
+              class="button"
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"
+              >Java Kernel</a
+            >
+            <a
+              class="button"
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"
+              >Proof Lanes</a
+            >
           </div>
-          <p>
-            Task scheduling 是 Kernel 控制流主线。Server 与 Transport
-            消费调度结果，但不能反向更换 Worker 或决定 Item finality。
-          </p>
-        </div>
+        </section>
 
-        <div class="flow">
-          <div class="flow-row kernel">
-            <div class="flow-label">Task initialization</div>
-            <div class="flow-body"><strong>Task score</strong> 在approve时原子检查固定RUNNING容量，先进入INITIAL排序坐标；满足启动条件后才精确推进到NORMAL调度范围。</div>
+        <section id="authority">
+          <div class="section-head">
+            <div>
+              <p class="kicker">01 · Authority</p>
+              <h2>清晰的决策、服务与执行边界</h2>
+            </div>
+            <p>
+              每个 Owner 维护自己的事实，跨模块传递有界证据。Matching 独立维护
+              Properties 和规则解释；Server 组合这些 Owner 的能力，调度决定仍由 Kernel
+              作出。
+            </p>
           </div>
-          <div class="flow-row kernel">
-            <div class="flow-label">Worker acquisition</div>
-            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 由Kernel排序并hold有界Worker池，Matching解释Candidate Rule与Properties后写Candidate Cache；<strong>ON_DEMAND_ITEM_RULE</strong> 由Kernel把有限Worker Selector规范化为WorkerId目标，再按Score、唯一性和exact lease形成调度决定。</div>
-          </div>
-          <div class="flow-row kernel">
-            <div class="flow-label">Lease & claim</div>
-            <div class="flow-body">Worker score exact lease与TaskItem score exact claim共同接受一次assignment，随后写入Adapter分区Command mailbox。</div>
-          </div>
-          <div class="flow-row server">
-            <div class="flow-label">Server routing</div>
-            <div class="flow-body">Server先读取Adapter Direct FIFO，再从共享Worker Command Hash消费一次，返回已经包含目标workerId的Command map。</div>
-          </div>
-          <div class="flow-row transport">
-            <div class="flow-label">Transport</div>
-            <div class="flow-body">Adapter通过当前verified route投递；Worker同步执行Definition并返回保留原始forward与payload的DeliveryReport。</div>
-          </div>
-          <div class="flow-row kernel">
-            <div class="flow-label">Result Routing</div>
-            <div class="flow-body">TASK evidence进入Kernel Result Routing。SUCCESS先写Result查询投影，再分别请求TaskItem <code>FINAL_SUCCESS</code>与Worker lease释放；Result HASH不是Item finality truth，这些owner调用有顺序但不跨资源原子。</div>
-          </div>
-        </div>
 
-        <div class="chain" style="margin-top: 18px">
-          <span class="node">TaskDescriptor</span><span class="arrow">→</span>
-          <span class="node">TaskItem</span><span class="arrow">→</span>
-          <span class="node">Worker lease</span><span class="arrow">→</span>
-          <span class="node">Item claim</span><span class="arrow">→</span>
-          <span class="node">DeliveryCommand</span><span class="arrow">→</span>
-          <span class="node">DeliveryReport</span><span class="arrow">→</span>
-          <span class="node">owner transitions</span>
-        </div>
-
-        <div class="grid-3" style="margin-top: 14px">
-          <article class="card kernel">
-            <span class="owner">TASK SCORE</span>
-            <h3>Task scheduling visibility</h3>
-            <p>调度band、下一次lane动作时间与owner-local suffix。它不镜像Worker资源。</p>
-          </article>
-          <article class="card kernel">
-            <span class="owner">WORKER SCORE</span>
-            <h3>Scheduling serviceability</h3>
-            <p>HOT/RECOVERY polarity、time、lane与dirty。它不是socket在线状态，也不承诺跨Evidence Batch的单调连接历史；后续Route或Probe证据驱动最终收敛。</p>
-          </article>
-          <article class="card kernel">
-            <span class="owner">TASKITEM SCORE</span>
-            <h3>Claim, retry & finality</h3>
-            <p>ACTIVE预算与到期坐标、exact claim、retry和单调final promotion。</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="direct-call">
-        <div class="section-head">
-          <div>
-            <p class="kicker">03 · DIRECT_CALL</p>
-            <h2>直接控制，不伪装成Task</h2>
+          <div class="grid-4">
+            <article class="card kernel">
+              <span class="owner">KERNEL</span>
+              <h3>Decide & converge</h3>
+              <p>
+                维护 Task、TaskItem 与 Worker
+                的调度状态，决定资源分配、重试、恢复和最终状态。
+              </p>
+            </article>
+            <article class="card server">
+              <span class="owner">SERVER</span>
+              <h3>Expose & route</h3>
+              <p>校验公开请求，维护身份与绑定，装配 Owner，并关联调用及结果。</p>
+            </article>
+            <article class="card transport">
+              <span class="owner">ADAPTER</span>
+              <h3>Deliver</h3>
+              <p>
+                使用当前已验证路由投递 Command，接收 Report，并执行 Adapter 本地事件。
+              </p>
+            </article>
+            <article class="card worker">
+              <span class="owner">WORKER</span>
+              <h3>Resolve & execute</h3>
+              <p>
+                按完整 Event Name 找到已装配的能力，执行本地 Handler，返回结果证据。
+              </p>
+            </article>
           </div>
-          <p>
-            调用方已经明确选择目标，因此Server无需重新调度。它只做bounded admission、
-            mailbox offer与结果相关性，并复用同一套Adapter delivery。
-          </p>
-        </div>
 
-        <div class="split">
+          <div class="rule">
+            判断归属：资源选择、租约、任务项领取与重试属于 Kernel；Properties 和规则解释
+            属于 Matching；公开访问与请求关联属于
+            Server；当前连接、消息投递和本地事件执行 属于
+            Transport。观察到的结果不自动成为另一 Owner 的状态。
+          </div>
+
+          <div class="grid-3" style="margin-top: 14px">
+            <article class="card kernel">
+              <span class="owner">ASSIGNMENT DISPATCH</span>
+              <h3>资源决策</h3>
+              <p>组合有界资源证据与精确围栏，形成已经确定目标的 Command。</p>
+            </article>
+            <article class="card server">
+              <span class="owner">AUTHORITY ROUTING</span>
+              <h3>消息owner路由</h3>
+              <p>把 Command 交给对应 Adapter，把返回证据路由给负责解释它的 Owner。</p>
+            </article>
+            <article class="card transport">
+              <span class="owner">EVENT DISPATCH</span>
+              <h3>本地函数调用</h3>
+              <p>Adapter 与 Worker 按目标和完整事件名调用本地 Handler。</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="task-mainline">
+          <div class="section-head">
+            <div>
+              <p class="kicker">02 · TASK mainline</p>
+              <h2>从任务提交到结果观察</h2>
+            </div>
+            <p>
+              Task scheduling 是 Kernel 控制流主线。Server 与 Transport
+              消费调度结果，但不能反向更换 Worker 或决定 Item finality。
+            </p>
+          </div>
+
           <div class="flow">
-            <div class="flow-row server">
-              <div class="flow-label">Explicit target</div>
-              <div class="flow-body">调用方在一个Adapter URL下提交同Group的1..100项workerId → opaquePayload；使用顶层opaquePayload时直接控制该Adapter。</div>
+            <div class="flow-row kernel">
+              <div class="flow-label">Task initialization</div>
+              <div class="flow-body">
+                <strong>Task</strong> 经批准进入初始化，资源准备完成后进入常规调度。
+              </div>
+            </div>
+            <div class="flow-row kernel">
+              <div class="flow-label">Worker acquisition</div>
+              <div class="flow-body">
+                <strong>PRECOMPUTED</strong> 由 Matching 解释规则并提供候选证据；<strong
+                  >ON_DEMAND</strong
+                >
+                由 Kernel 按显式身份或有限选择指令获取 Worker。
+              </div>
+            </div>
+            <div class="flow-row kernel">
+              <div class="flow-label">Lease & claim</div>
+              <div class="flow-body">
+                Kernel 精确确认 Worker 租约并领取 TaskItem，随后发布定向 Command。
+              </div>
             </div>
             <div class="flow-row server">
-              <div class="flow-label">Admission</div>
-              <div class="flow-body">Worker调用批量读取descriptor与Binding，并要求Binding等于URL中的Adapter；它不读取score，也不会跨Adapter拆分调用。</div>
-            </div>
-            <div class="flow-row server">
-              <div class="flow-label">Shared mailbox</div>
-              <div class="flow-body">Worker Command通过HSETNX只填空槽；TASK append可在消费前覆盖它。Adapter Command进入Server内存FIFO，waiter与Server进程同生命周期。</div>
+              <div class="flow-label">Server routing</div>
+              <div class="flow-body">
+                Server 暴露有界 Command 消费入口，不重新选择 Worker。
+              </div>
             </div>
             <div class="flow-row transport">
-              <div class="flow-label">Unified delivery</div>
-              <div class="flow-body">DIRECT_CALL与TASK共用Adapter Command Process、Report Process、connection和Worker Dispatcher，不增加第二条Transport状态机。</div>
+              <div class="flow-label">Transport</div>
+              <div class="flow-body">
+                Adapter 经已验证路由投递，Worker 执行本地能力，并返回结果证据。
+              </div>
             </div>
-            <div class="flow-row server">
-              <div class="flow-label">Correlation</div>
-              <div class="flow-body">合法SYSTEM Result完成当前target；timeout、shutdown与Result精确竞争。槽位占用立即拒绝，提交结果未知则返回unobserved。</div>
+            <div class="flow-row kernel">
+              <div class="flow-label">Result Routing</div>
+              <div class="flow-body">
+                Kernel 将结果证据交给语义事件 Owner。Result 观察与 TaskItem
+                最终状态独立维护，跨 Owner 调用间仍存在失败窗口。
+              </div>
             </div>
           </div>
 
-          <article class="card server">
-            <span class="owner">BEST EFFORT</span>
-            <h3>明确不承诺</h3>
-            <ul>
-              <li>不创建Task或TaskItem</li>
-              <li>不进入Result Routing</li>
-              <li>不创建独立可靠Command或Result存储</li>
-              <li>不提供结果查询与可靠重试</li>
-              <li>不提供pause、drain、互斥或抢占</li>
-              <li>不允许Server从候选Worker中选择目标</li>
-            </ul>
-            <p style="margin-top: 18px">DIRECT_CALL只保证投递时不覆盖已有Worker槽位；已经消费的Direct Command不会被后来的TASK撤回。解绑、迁移、排他维护或可靠执行需要另行定义明确的Owner与机制。</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="transport">
-        <div class="section-head">
-          <div>
-            <p class="kicker">04 · Transport substrate</p>
-            <h2>共同机制，完整物理owner</h2>
+          <div class="chain" style="margin-top: 18px">
+            <span class="node">TaskDescriptor</span><span class="arrow">→</span>
+            <span class="node">TaskItem</span><span class="arrow">→</span>
+            <span class="node">Worker lease</span><span class="arrow">→</span>
+            <span class="node">Item claim</span><span class="arrow">→</span>
+            <span class="node">DeliveryCommand</span><span class="arrow">→</span>
+            <span class="node">DeliveryReport</span><span class="arrow">→</span>
+            <span class="node">owner transitions</span>
           </div>
-          <p>
-            Adapter和Worker都采用三层owner。统一发生在稳定机制合同上；WebSocket、line Socket、
-            OkHttp与Android HandlerThread仍由具体物理实现完整拥有。
-          </p>
-        </div>
 
-        <div class="grid-2">
-          <article class="card transport">
-            <span class="owner">NETTY ADAPTER</span>
-            <h3>三层冻结结构</h3>
-            <div class="axis">
-              <div class="axis-row"><b>Aggregate</b><span>Adapter lifecycle、Process Manager和network shutdown ordering。</span></div>
-              <div class="axis-row"><b>Connection</b><span>Inbound callback adapter、identity、first verification、route registry、Command routing与Result ingress。</span></div>
-              <div class="axis-row"><b>Physical Server</b><span>完整WebSocket或line-Socket listener、EventLoop、全部Channel、framing、write与close。</span></div>
-            </div>
-          </article>
-          <article class="card worker">
-            <span class="owner">WORKER CORE</span>
-            <h3>三层运行结构</h3>
-            <div class="axis">
-              <div class="axis-row"><b>Client</b><span>具体网络、透明重连和物理callback serialization。</span></div>
-              <div class="axis-row"><b>Transport</b><span>identity、Command decode、同步handler execution、Result encode与endpoint termination。</span></div>
-              <div class="axis-row"><b>Run Controller</b><span>只拥有显式run的RUNNING/STOPPED与一次Preparation；active stop先撤销run，endpoint耗尽后必须由Host再次start。</span></div>
-            </div>
-          </article>
-        </div>
-
-        <div class="grid-3" style="margin-top: 14px">
-          <article class="card server">
-            <span class="owner">PREPARE & IDENTITY</span>
-            <h3>Server拥有注册坐标</h3>
-            <p>普通Worker使用<code>CLIENT_KEY</code>；Scenario使用<code>SCENARIO_LAB</code> inventory坐标。单条与1..100批量Prepare进入同一Identity、Binding与canonical Properties owner链，不构成跨Owner事务。HTTP中单标量、单集合和单Map直接作为JSON body；只有组合契约与结构化资源保留命名DTO。</p>
-          </article>
-          <article class="card worker">
-            <span class="owner">JAVA HOST</span>
-            <h3>显式启动，共享平台资源</h3>
-            <p>Manager固定一个WorkerGroup与replica集合；透明重连复用已Prepare坐标，不刷新Properties。WebSocket reader与OkHttp TaskRunner使用Platform-owned virtual threads。</p>
-          </article>
-          <article class="card worker">
-            <span class="owner">SCENARIO LAB</span>
-            <h3>Mutation source，不是真相源</h3>
-            <p>JSONL保存Lab坐标与Properties，不保存workerId。start、stop、原子文件替换和checkpoint只建立本地动作，不能替代Adapter Route或Kernel Scheduling观察。</p>
-          </article>
-        </div>
-
-        <pre class="code-panel" style="margin-top: 14px">DeliveryCommand
-  targetAddress outside DTO
-  src + dst + messageType + deadline + payload + opaque forward
-
-Adapter
-  WORKER target  -> current verified Channel -> physical write
-  ADAPTER target -> fixed local handler
-
-Worker
-  full messageType Event Name -> immutable Definition -> resolver -> handler
-  src -> invocation evidence only
-
-DeliveryReport
-  producer src + sourceId + destination + outcome + opaque payload/forward</pre>
-      </section>
-
-      <section id="runtime-topology">
-        <div class="section-head">
-          <div>
-            <p class="kicker">05 · Runtime topology</p>
-            <h2>一套 Java Kernel<br>两个稳定性层级</h2>
+          <div class="grid-3" style="margin-top: 14px">
+            <article class="card kernel">
+              <span class="owner">TASK SCORE</span>
+              <h3>Task scheduling visibility</h3>
+              <p>维护 Task 在调度流程中的位置与可见性。</p>
+            </article>
+            <article class="card kernel">
+              <span class="owner">WORKER SCORE</span>
+              <h3>Scheduling serviceability</h3>
+              <p>表示调度可用性与下一次可获取时间；连接状态由 Adapter 独立观察。</p>
+            </article>
+            <article class="card kernel">
+              <span class="owner">TASKITEM SCORE</span>
+              <h3>Claim, retry & finality</h3>
+              <p>维护任务项领取、重试和最终状态。</p>
+            </article>
           </div>
-          <p>
-            <code>kernel_jvm</code>拥有稳定的机械Owner与Redis转换，
-            <code>kernel_pacer_jvm</code>拥有变化更快的Policy、Convergence与线程生命周期；
-            <code>worker_matching_jvm</code>拥有Worker事实与Rule解释；Server只完成跨Owner API编排与Spring装配。
-          </p>
-        </div>
+        </section>
 
-        <div class="grid-3">
-          <article class="card kernel">
-            <span class="owner">DOC / KERNEL</span>
-            <h3>Authority index</h3>
-            <p>Java Kernel总入口连接mechanical Owner、Pacer Policy、跨模块边界和对应proof，不复制第二份运行机制。</p>
-          </article>
-          <article class="card kernel">
-            <span class="owner">KERNEL_JVM</span>
-            <h3>Mechanical owners</h3>
-            <p>稳定的Java 21 owner contracts、Redis providers、Candidate Cache与codec；不拥有调度策略、Pacer线程或Spring生命周期。</p>
-          </article>
-          <article class="card kernel">
-            <span class="owner">KERNEL_PACER_JVM</span>
-            <h3>Policy & lifecycle</h3>
-            <p><code>KernelPacerRuntime</code>是唯一公开生产入口，固定装配Result Convergence与Dispatch Convergence。</p>
-          </article>
-          <article class="card worker">
-            <span class="owner">WORKER_MATCHING_JVM</span>
-            <h3>Facts & rule interpretation</h3>
-            <p>持久化Worker/Platform Properties和PRECOMPUTED Candidate Rule，消费有界Demand并写入短期WorkerId候选；ON_DEMAND Worker Selector由Kernel规范化，不经过Matching。</p>
-          </article>
-          <article class="card server">
-            <span class="owner">SERVER_JVM</span>
-            <h3>API & Spring assembly</h3>
-            <p>选择受检Pacer Preset、装配mechanical owners，并把一个<code>KernelPacerRuntime</code>委托给Spring生命周期；不解释调度策略或装配单个Pacer。</p>
-          </article>
-          <article class="card transport">
-            <span class="owner">TRANSPORT</span>
-            <h3>Delivery mechanisms</h3>
-            <p>Java 11 contract/Core、Netty Adapter、Java Worker与Android Worker，不依赖Kernel调度实现。</p>
-          </article>
-          <article class="card worker">
-            <span class="owner">ASSEMBLY & OBSERVATION</span>
-            <h3>Finite edges</h3>
-            <p>Scenario/Android提供具体Definitions与Host；这些Proof Integration与Frontend只通过公开API执行Worker Correctness、Convergence Health、Loaded Capacity + Recovery Stability、Android Proof和有限诊断，不拥有Kernel truth。</p>
-          </article>
-        </div>
+        <section id="direct-call">
+          <div class="section-head">
+            <div>
+              <p class="kicker">03 · DIRECT_CALL</p>
+              <h2>调用方明确指定目标</h2>
+            </div>
+            <p>
+              DIRECT_CALL 提供有限的直接调用与结果关联。调用方选择目标， Server
+              完成准入后，复用 Adapter 和 Worker 的投递执行路径。
+            </p>
+          </div>
 
-        <pre class="code-panel" style="margin-top: 14px">Production
-  Java Server / KernelPacerAssembly
-    -> KernelPacerRuntime
-       -> Result Convergence
-          -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE
-       -> Dispatch Convergence
-          -> one Main Scheduler / one bounded RUNNING Task observation
-          -> TASK_INITIALIZATION / WORKER_ALLOCATION / TASK_DISPATCH / optional WORKER_SERVICEABILITY
-       -> kernel_jvm mechanical owners -> Redis
+          <div class="split">
+            <div class="flow">
+              <div class="flow-row server">
+                <div class="flow-label">Explicit target</div>
+                <div class="flow-body">
+                  调用方选择 Adapter，以及需要调用的 Worker 目标或 Adapter 本地事件。
+                </div>
+              </div>
+              <div class="flow-row server">
+                <div class="flow-label">Admission</div>
+                <div class="flow-body">
+                  Server 校验身份与绑定，只接受所属 Adapter 的有界请求。
+                </div>
+              </div>
+              <div class="flow-row server">
+                <div class="flow-label">Shared mailbox</div>
+                <div class="flow-body">
+                  Worker 直接调用只进入空闲邮箱；权威 TASK
+                  投递仍可替换尚未消费的直接调用。
+                </div>
+              </div>
+              <div class="flow-row transport">
+                <div class="flow-label">Unified delivery</div>
+                <div class="flow-body">
+                  DIRECT_CALL 与 TASK 共享 Transport 的连接、投递和本地事件执行机制。
+                </div>
+              </div>
+              <div class="flow-row server">
+                <div class="flow-label">Correlation</div>
+                <div class="flow-body">
+                  Server 在有界等待期间关联 SYSTEM 结果；超时仅表示本次观察未得到结果。
+                </div>
+              </div>
+            </div>
+
+            <article class="card server">
+              <span class="owner">BEST EFFORT</span>
+              <h3>明确不承诺</h3>
+              <ul>
+                <li>不创建Task或TaskItem</li>
+                <li>不进入Result Routing</li>
+                <li>不创建独立可靠Command或Result存储</li>
+                <li>不提供结果查询与可靠重试</li>
+                <li>不提供pause、drain、互斥或抢占</li>
+                <li>不允许Server从候选Worker中选择目标</li>
+              </ul>
+              <p style="margin-top: 18px">
+                直接调用采用 best-effort
+                语义。业务若需要可恢复执行或持续状态，应先定义相应的 Owner 契约。
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="transport">
+          <div class="section-head">
+            <div>
+              <p class="kicker">04 · Transport substrate</p>
+              <h2>共同机制，完整物理owner</h2>
+            </div>
+            <p>
+              Delivery Contract 定义跨平台协议；Adapter、Worker Core 与平台 Worker
+              分别维护投递、执行和物理网络资源。实现细节由各模块文档维护。
+            </p>
+          </div>
+
+          <div class="grid-2">
+            <article class="card transport">
+              <span class="owner">NETTY ADAPTER</span>
+              <h3>投递与连接</h3>
+              <div class="axis">
+                <div class="axis-row">
+                  <b>Aggregate</b><span>整体生命周期与关闭次序。</span>
+                </div>
+                <div class="axis-row">
+                  <b>Connection</b><span>身份验证、当前路由与有效结果入口。</span>
+                </div>
+                <div class="axis-row">
+                  <b>Physical Server</b><span>监听、连接、帧处理和物理读写。</span>
+                </div>
+              </div>
+            </article>
+            <article class="card worker">
+              <span class="owner">WORKER CORE</span>
+              <h3>显式运行与本地能力</h3>
+              <div class="axis">
+                <div class="axis-row">
+                  <b>Client</b><span>物理网络与透明重连。</span>
+                </div>
+                <div class="axis-row">
+                  <b>Transport</b
+                  ><span>身份协议、Command 解码、本地执行和 Result 编码。</span>
+                </div>
+                <div class="axis-row">
+                  <b>Run Controller</b
+                  ><span>显式启动与停止；端点耗尽后由 Host 决定再次启动。</span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="grid-3" style="margin-top: 14px">
+            <article class="card server">
+              <span class="owner">PREPARE & IDENTITY</span>
+              <h3>Server拥有注册坐标</h3>
+              <p>
+                每次显式启动加载完整 Properties，并通过 Server Prepare
+                更新身份、绑定与事实。透明重连复用准备结果。
+              </p>
+            </article>
+            <article class="card worker">
+              <span class="owner">JAVA HOST</span>
+              <h3>显式启动，共享平台资源</h3>
+              <p>
+                Host 管理有限 Worker 集合；Java 与 Android
+                平台分别拥有网络、执行器和重连资源。
+              </p>
+            </article>
+            <article class="card worker">
+              <span class="owner">SCENARIO LAB</span>
+              <h3>Mutation source，不是真相源</h3>
+              <p>
+                文件、启动、停止与 checkpoint 建立本地动作证据；系统效果由 Adapter 和
+                Kernel 的公开观察独立确认。
+              </p>
+            </article>
+          </div>
+
+          <pre class="code-panel" style="margin-top: 14px">
+Command
+  Kernel / Server -> Adapter -> current verified route -> Worker
+
+Local execution
+  complete Event Name -> assembled capability -> Handler
+
+Result evidence
+  Worker / Adapter -> Server -> semantic Owner
+
+Contract details
+  Delivery Contract / Server / Adapter / Worker Owner documents</pre
+          >
+        </section>
+
+        <section id="runtime-topology">
+          <div class="section-head">
+            <div>
+              <p class="kicker">05 · Runtime topology</p>
+              <h2>一套 Java Kernel<br />两个稳定性层级</h2>
+            </div>
+            <p>
+              稳定机械 Owner、变化较快的调度策略与 Worker 匹配事实分别由独立模块维护。
+              Server 将它们装配为一个运行时，Worker Host 在外部运行。 发布包与本地实验
+              Host 有明确边界，Redis 由部署环境提供。
+            </p>
+          </div>
+
+          <div class="grid-3">
+            <article class="card kernel">
+              <span class="owner">DOC / KERNEL</span>
+              <h3>Authority index</h3>
+              <p>
+                Java Kernel总入口连接mechanical Owner、Pacer
+                Policy、跨模块边界和对应proof，不复制第二份运行机制。
+              </p>
+            </article>
+            <article class="card kernel">
+              <span class="owner">KERNEL_JVM</span>
+              <h3>Mechanical owners</h3>
+              <p>维护稳定机械契约、Score、资源和 Redis 转换。</p>
+            </article>
+            <article class="card kernel">
+              <span class="owner">KERNEL_PACER_JVM</span>
+              <h3>Policy & lifecycle</h3>
+              <p>维护生产调度策略、结果收敛与有限生命周期。</p>
+            </article>
+            <article class="card worker">
+              <span class="owner">WORKER_MATCHING_JVM</span>
+              <h3>Facts & rule interpretation</h3>
+              <p>维护 Worker 事实与 PRECOMPUTED 规则，为 Kernel 提供有界候选证据。</p>
+            </article>
+            <article class="card server">
+              <span class="owner">SERVER_JVM</span>
+              <h3>API & Spring assembly</h3>
+              <p>装配 Kernel 与 Matching，提供公开 Runtime API，并管理应用生命周期。</p>
+            </article>
+            <article class="card transport">
+              <span class="owner">TRANSPORT</span>
+              <h3>Delivery mechanisms</h3>
+              <p>提供共享协议、Worker Core、Adapter，以及 Java 和 Android 平台实现。</p>
+            </article>
+            <article class="card worker">
+              <span class="owner">ASSEMBLY & OBSERVATION</span>
+              <h3>Finite edges</h3>
+              <p>
+                Scenario 与 Android Host 装配具体能力；Integration 和 Frontend 通过公开
+                API 验证或观察系统。
+              </p>
+            </article>
+          </div>
+
+          <pre class="code-panel" style="margin-top: 14px">
+Runtime
+  Server API and application assembly
+    -> Kernel mechanical owners + production Pacer
+    -> Worker Matching
+    -> Adapter
+    -> external Redis
 
 Deployment
-  Server Runtime ZIP -> Server + Pacer + Frontend; external Redis
-  Worker SDK ZIP     -> Delivery Contract + Worker Core + Android Worker/Capability artifacts
-  Scenario Host      -> independent source-checkout Lab process
+  Server Runtime ZIP -> Server + Pacer + Frontend
+  Worker SDK ZIP     -> shared contract + Worker libraries
+  Worker Host        -> external Java or Android application
+  Scenario Host      -> independent source-checkout Lab process</pre
+          >
 
-Proof
-  Owner / Boundary
-  Worker Correctness
-  Worker Convergence Health
-  Worker Loaded Capacity + Recovery Stability
-  Android Host -> API 33 Android Worker Proof</pre>
-
-        <div class="rule">
-          真相分类：<span class="tag">truth</span><span class="tag">evidence</span><span class="tag">address</span>
-          <span class="tag">correlation</span><span class="tag">projection</span><span class="tag">hint</span>。
-          evidence、projection和hint不能因为“方便”而升级为调度或生命周期truth。
-        </div>
-      </section>
-
-      <section id="proof-and-stability">
-        <div class="section-head">
-          <div>
-            <p class="kicker">06 · Proof & stability</p>
-            <h2>固定claim，分层证明</h2>
+          <div class="rule">
+            真相分类：<span class="tag">truth</span><span class="tag">evidence</span
+            ><span class="tag">address</span> <span class="tag">correlation</span
+            ><span class="tag">projection</span><span class="tag">hint</span>。
+            evidence、projection和hint不能因为“方便”而升级为调度或生命周期truth。
           </div>
-          <p>
-            每个机制claim只有一个Primary Proof；其他lane只能提供前置条件或边界见证。
-            完美正确性、故障收敛、连接容量与Android进程事实不能互相替代。
-          </p>
-        </div>
+        </section>
 
-        <div class="grid-3">
-          <article class="card kernel">
-            <span class="owner">STABLE CUT</span>
-            <h3>稳定owner cut</h3>
-            <ul>
-              <li>Task、TaskItem、Worker三条独立score轴</li>
-              <li>PRECOMPUTED有序Demand与ON_DEMAND身份直选</li>
-              <li>一个KernelPacerRuntime、两个Convergence Application</li>
-              <li>Kernel / Server / Transport authority</li>
-              <li>Adapter与Worker三层结构</li>
-              <li>Server发行包与Worker Host/SDK独立</li>
-            </ul>
-          </article>
-          <article class="card server">
-            <span class="owner">EVOLVING</span>
-            <h3>Owner-local增量</h3>
-            <ul>
-              <li>有明确生产caller的mechanical operation</li>
-              <li>有限Server use case</li>
-              <li>Worker Prepare与Host资源实现</li>
-              <li>Scenario / Android capability和Lab surface</li>
-              <li>deployment、projection与claim-owned proof</li>
-            </ul>
-          </article>
-          <article class="card worker">
-            <span class="owner">DEFERRED</span>
-            <h3>独立未来路线</h3>
-            <ul>
-              <li>分布式Pacer leader election与multi-active Kernel</li>
-              <li>分布式DIRECT_CALL correlation</li>
-              <li>认证、Adapter HA与显式unbind</li>
-              <li>persistent delivery ack</li>
-              <li>大规模活跃Task公平、分片与Property Index</li>
-              <li>通用plugin与动态Process系统</li>
-            </ul>
-          </article>
-        </div>
+        <section id="proof-and-stability">
+          <div class="section-head">
+            <div>
+              <p class="kicker">06 · Proof & stability</p>
+              <h2>固定claim，分层证明</h2>
+            </div>
+            <p>
+              每个机制claim只有一个Primary Proof；其他lane只能提供前置条件或边界见证。
+              完美正确性、故障收敛、连接容量与Android进程事实不能互相替代。
+            </p>
+          </div>
 
-        <div class="grid-3" style="margin-top: 14px">
-          <article class="card"><h3>Owner & Boundary</h3><p>JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime Boundary证明相邻Owner和协议拓扑。</p></article>
-          <article class="card"><h3>Worker Correctness</h3><p>2 Groups × 50 Workers、100 Items全部成功，并闭合Identity、Route、Extension、Result与Host restart。</p></article>
-          <article class="card"><h3>Convergence Health</h3><p>2 Groups × 500 Workers、1000 offered Items；固定mutation与named witnesses，不把所有offered work声明为成功。</p></article>
-          <article class="card"><h3>Worker Loaded Capacity + Recovery Stability</h3><p>15,000个Prepare身份建立连接余量，收缩到10,000个活跃Worker后执行四阶段共200,000 Items，并跨一次SIGTERM与两次SIGKILL检查恢复和native resource稳定性。</p></article>
-          <article class="card"><h3>Android Worker Proof</h3><p>API 33单App正确性与进程丢失恢复，加三App同Group的局部故障隔离；Android不是Java Worker的重复见证。</p></article>
-          <article class="card"><h3>Finite Product Lanes</h3><p>Android Host、Frontend、Runtime Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。</p></article>
-        </div>
+          <div class="grid-3">
+            <article class="card kernel">
+              <span class="owner">STABLE CUT</span>
+              <h3>稳定owner cut</h3>
+              <ul>
+                <li>Task、TaskItem、Worker三条独立score轴</li>
+                <li>PRECOMPUTED有序Demand与ON_DEMAND身份直选</li>
+                <li>稳定机械 Owner 与生产策略分别维护</li>
+                <li>Kernel / Matching / Server / Transport 职责</li>
+                <li>Adapter 投递、Worker 执行与平台资源分别维护</li>
+                <li>Server发行包与Worker Host/SDK独立</li>
+              </ul>
+            </article>
+            <article class="card server">
+              <span class="owner">EVOLVING</span>
+              <h3>Owner-local增量</h3>
+              <ul>
+                <li>有明确生产caller的mechanical operation</li>
+                <li>有限Server use case</li>
+                <li>Worker Prepare与Host资源实现</li>
+                <li>Scenario / Android capability和Lab surface</li>
+                <li>deployment、projection与claim-owned proof</li>
+              </ul>
+            </article>
+            <article class="card worker">
+              <span class="owner">DEFERRED</span>
+              <h3>独立未来路线</h3>
+              <ul>
+                <li>分布式Pacer leader election与multi-active Kernel</li>
+                <li>分布式DIRECT_CALL correlation</li>
+                <li>认证、Adapter HA与显式unbind</li>
+                <li>persistent delivery ack</li>
+                <li>大规模活跃Task公平、分片与Property Index</li>
+                <li>通用plugin与动态Process系统</li>
+              </ul>
+            </article>
+          </div>
 
-        <div class="reading">
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"><b>Repository Architecture</b><br>跨模块authority、dispatch词义与主链。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"><b>Java Kernel Documents</b><br>score、resource、policy、delivery与result truth。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"><b>Server Runtime</b><br>provider matrix、use case边界与assembly。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"><b>Transport Modules</b><br>Adapter、Worker Core、Java与Android physical implementations。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/scenario_workers_jvm/README.md"><b>Scenario Worker Lab</b><br>persistent inventory、显式Host lifecycle与local mutation边界。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/worker-proof-scenarios.md"><b>Worker Proof Scenarios</b><br>Correctness、Convergence Health、Loaded Recovery与Android固定世界。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"><b>Proof Lanes</b><br>每条CI lane究竟证明什么，以及不证明什么。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/AGENTS.md"><b>Agent Change Contract</b><br>修改代码时必须保持的owner与negative guards。</a>
-        </div>
-      </section>
-    </main>
+          <div class="grid-3" style="margin-top: 14px">
+            <article class="card">
+              <h3>Owner & Boundary</h3>
+              <p>
+                JVM Contracts固定Owner算法与架构；Redis Owner证明原子转换；Runtime
+                Boundary证明相邻Owner和协议拓扑。
+              </p>
+            </article>
+            <article class="card">
+              <h3>Worker Correctness</h3>
+              <p>
+                闭合身份、路由、能力、结果及 Host 重启关系，要求固定工作负载精确成功。
+              </p>
+            </article>
+            <article class="card">
+              <h3>Convergence Health</h3>
+              <p>在明确建立故障后观察命名任务的恢复，不将全部提交工作视为成功。</p>
+            </article>
+            <article class="card">
+              <h3>Worker Loaded Capacity + Recovery Stability</h3>
+              <p>在持续负载和多次 Server 重启中检查任务完成、结果导出与资源稳定性。</p>
+            </article>
+            <article class="card">
+              <h3>Android Worker Proof</h3>
+              <p>验证真实 Android 生命周期、进程丢失恢复与固定多应用的局部故障隔离。</p>
+            </article>
+            <article class="card">
+              <h3>Finite Product Lanes</h3>
+              <p>
+                Android Host、Frontend、Runtime
+                Distribution与Docs各自证明SDK、构建、发布或文档合同，不扩大运行时claim。
+              </p>
+            </article>
+          </div>
 
-    <footer>
-      XA Mass Platform · Human-facing architecture projection · Canonical truth remains in production code and owner documents.
-    </footer>
-  </div>
+          <div class="reading">
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"
+              ><b>Repository Architecture</b
+              ><br />跨模块authority、dispatch词义与主链。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"
+              ><b>Java Kernel Documents</b
+              ><br />score、resource、policy、delivery与result truth。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"
+              ><b>Server Runtime</b><br />provider matrix、use case边界与assembly。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"
+              ><b>Transport Modules</b><br />Adapter、Worker Core、Java与Android
+              physical implementations。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/scenario_workers_jvm/README.md"
+              ><b>Scenario Worker Lab</b><br />persistent inventory、显式Host
+              lifecycle与local mutation边界。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/testing/proof-registry.md"
+              ><b>Proof Registry</b><br />证明主张、非主张与完整场景 Owner。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"
+              ><b>Proof Selection</b><br />选择规则、运行命令、前置条件与CI入口。</a
+            >
+            <a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/AGENTS.md"
+              ><b>Agent Change Contract</b><br />修改代码时必须保持的owner与negative
+              guards。</a
+            >
+          </div>
+        </section>
+      </main>
 
-  <script>
-    (() => {
-      const progress = document.querySelector(".progress");
-      const links = [...document.querySelectorAll("nav a")];
-      const sections = links
-        .map((link) => document.querySelector(link.getAttribute("href")))
-        .filter(Boolean);
+      <footer>
+        XA Mass Platform · Human-facing architecture projection · Canonical truth
+        remains in production code and owner documents.
+      </footer>
+    </div>
 
-      const update = () => {
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        const ratio = max > 0 ? window.scrollY / max : 0;
-        progress.style.width = `${Math.min(1, Math.max(0, ratio)) * 100}%`;
+    <script>
+      (() => {
+        const progress = document.querySelector(".progress");
+        const links = [...document.querySelectorAll("nav a")];
+        const sections = links
+          .map((link) => document.querySelector(link.getAttribute("href")))
+          .filter(Boolean);
 
-        let active = sections[0];
-        for (const section of sections) {
-          if (section.getBoundingClientRect().top <= 150) active = section;
-        }
-        for (const link of links) {
-          const current = link.getAttribute("href") === `#${active?.id}`;
-          if (current) link.setAttribute("aria-current", "location");
-          else link.removeAttribute("aria-current");
-        }
-      };
+        const update = () => {
+          const max = document.documentElement.scrollHeight - window.innerHeight;
+          const ratio = max > 0 ? window.scrollY / max : 0;
+          progress.style.width = `${Math.min(1, Math.max(0, ratio)) * 100}%`;
 
-      update();
-      window.addEventListener("scroll", update, { passive: true });
-      window.addEventListener("resize", update);
-    })();
-  </script>
-</body>
+          let active = sections[0];
+          for (const section of sections) {
+            if (section.getBoundingClientRect().top <= 150) active = section;
+          }
+          for (const link of links) {
+            const current = link.getAttribute("href") === `#${active?.id}`;
+            if (current) link.setAttribute("aria-current", "location");
+            else link.removeAttribute("aria-current");
+          }
+        };
+
+        update();
+        window.addEventListener("scroll", update, { passive: true });
+        window.addEventListener("resize", update);
+      })();
+    </script>
+  </body>
 </html>

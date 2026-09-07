@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -136,7 +137,7 @@ public final class JavaWorkerManager implements AutoCloseable {
         if (targets.isEmpty()) {
             return;
         }
-        List<Map<String, Object>> properties = new ArrayList<>();
+        List<Map<String, String>> properties = new ArrayList<>();
         for (ManagedReplica target : targets) {
             properties.add(loadBatchProperties(target));
         }
@@ -230,6 +231,16 @@ public final class JavaWorkerManager implements AutoCloseable {
             String replicaKey
     ) {
         return requireReplica(replicaKey).worker.snapshot();
+    }
+
+    public boolean reportProperties(String replicaKey) {
+        return requireReplica(replicaKey).controller().reportProperties();
+    }
+
+    public boolean reportProperties(
+            String replicaKey, Map<String, String> set, Set<String> remove
+    ) {
+        return requireReplica(replicaKey).controller().reportProperties(set, remove);
     }
 
     public Map<String, WorkerLifecycle.Snapshot> snapshots() {
@@ -411,11 +422,11 @@ public final class JavaWorkerManager implements AutoCloseable {
                 != WorkerLifecycle.State.STOPPED) {
             return;
         }
-        target.preparedStarter.start(preparedWorker);
+        target.controller().start(preparedWorker);
         throwIfPresent(reconcile(target));
     }
 
-    private static Map<String, Object> loadBatchProperties(
+    private static Map<String, String> loadBatchProperties(
             ManagedReplica target
     ) {
         try {
@@ -611,7 +622,6 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     replica.workerProperties
                             );
                     WorkerLifecycle worker;
-                    PreparedStarter preparedStarter;
                     if (workerAssembler == null) {
                         WorkerRunController controller =
                                 JavaWorkerAssembly.assembleComplete(
@@ -625,19 +635,12 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     platform
                             );
                         worker = controller;
-                        preparedStarter = controller::start;
                     } else {
                         worker = workerAssembler.assemble(
                                     platform,
                                     replica.replicaKey,
                                     replica.workerProperties
                             );
-                        preparedStarter = prepared -> {
-                            throw new UnsupportedOperationException(
-                                    "Custom Worker assembler does not support "
-                                            + "batch preparation"
-                            );
-                        };
                     }
                     if (worker == null) {
                         throw new IllegalStateException(
@@ -649,8 +652,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                             new ManagedReplica(
                                     replica.replicaKey,
                                     worker,
-                                    batchProperties,
-                                    preparedStarter
+                                    batchProperties
                             )
                     );
                 }
@@ -725,14 +727,12 @@ public final class JavaWorkerManager implements AutoCloseable {
         private final String replicaKey;
         private final WorkerLifecycle worker;
         private final WorkerPropertiesProvider batchProperties;
-        private final PreparedStarter preparedStarter;
         private final AtomicBoolean desiredRunning = new AtomicBoolean();
 
         private ManagedReplica(
                 String replicaKey,
                 WorkerLifecycle worker,
-                WorkerPropertiesProvider batchProperties,
-                PreparedStarter preparedStarter
+                WorkerPropertiesProvider batchProperties
         ) {
             this.replicaKey = Objects.requireNonNull(
                     replicaKey,
@@ -743,17 +743,16 @@ public final class JavaWorkerManager implements AutoCloseable {
                     batchProperties,
                     "batchProperties"
             );
-            this.preparedStarter = Objects.requireNonNull(
-                    preparedStarter,
-                    "preparedStarter"
+        }
+
+        private WorkerRunController controller() {
+            if (worker instanceof WorkerRunController controller) {
+                return controller;
+            }
+            throw new UnsupportedOperationException(
+                    "Custom lifecycle-only Worker assembler has no Transport control"
             );
         }
-    }
-
-    @FunctionalInterface
-    private interface PreparedStarter {
-
-        void start(PreparedWorker preparedWorker);
     }
 
     private static URI requireRuntimeApiBaseUrl(URI value) {

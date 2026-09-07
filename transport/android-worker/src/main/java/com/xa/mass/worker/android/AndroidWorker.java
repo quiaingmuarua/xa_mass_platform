@@ -122,7 +122,7 @@ public final class AndroidWorker implements WorkerLifecycle {
         WorkerPropertiesProvider liveProperties = () ->
                 resolvedWorkerProperties.getProperties(resolvedContext);
         WorkerPropertiesProvider completeProperties = () -> {
-            Map<String, Object> supplied = liveProperties.loadProperties();
+            Map<String, String> supplied = liveProperties.loadProperties();
             if (supplied == null) {
                 throw new IllegalArgumentException(
                         "workerProperties must be present"
@@ -134,7 +134,7 @@ public final class AndroidWorker implements WorkerLifecycle {
                                 + CLIENT_WORKER_KEY
                 );
             }
-            Map<String, Object> complete = new LinkedHashMap<>();
+            Map<String, String> complete = new LinkedHashMap<>();
             complete.put(
                     CLIENT_WORKER_KEY,
                     clientKeyStore.loadOrCreate()
@@ -169,7 +169,8 @@ public final class AndroidWorker implements WorkerLifecycle {
                                     resolvedOptions.requestTimeout(),
                                     resolvedOptions.reconnectPolicy()
                             ),
-                            dispatcher
+                            dispatcher,
+                            liveProperties
                     ),
                     platform.controlExecutor()
             );
@@ -231,6 +232,14 @@ public final class AndroidWorker implements WorkerLifecycle {
     @Override
     public void stop() {
         worker.stop();
+    }
+
+    public boolean reportProperties() {
+        return worker.reportProperties();
+    }
+
+    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
+        return worker.reportProperties(set, remove);
     }
 
     @Override

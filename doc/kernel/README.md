@@ -69,29 +69,13 @@ Cross-module documents:
 - [Repository Architecture](../../README.md)
 - [Proof Lanes](../../TESTING.md)
 
-## Stable Boundaries
+## Cross-Owner Reading
 
-- Task, TaskItem and Worker score truth are independent.
-- A Score is an opaque scheduling coordinate, not a resource write lock.
-- Mechanical Owners define legal state transitions and exact fences.
-- Policy owns bounded Demand, priority, deficits, Score validation, unique
-  selection, lease and cadence. Worker Matching owns PRECOMPUTED Candidate
-  Rule/Properties interpretation and ordered Candidate publication. Kernel
-  owns the finite ON_DEMAND Worker Selector and persists only normalized IDs.
-- Result Policy parses and groups delivery evidence, then publishes finite
-  semantic events to the owning Task or Worker mechanism.
-- Result Convergence and Dispatch Convergence are the only production Pacer
-  applications. They are assembled through `KernelPacerRuntime`.
-- Server never selects a Worker, leases a Score, claims an Item, or decides
-  retry, recovery or Task finality.
-- Transport never interprets scheduling policy.
-
-The scheduling scale contract is deliberately vertical: a small bounded active
-Task set may contain many TaskItems and use many Workers inside finite
-WorkerGroups. The liveness target is work-conserving convergence, not per-Task
-fairness. Fully utilized compatible Workers are normal backpressure; a defect
-exists when persistently due work and persistently idle compatible Workers
-cannot form an assignment across repeated eligible rounds.
+[Scheduling Mainline](scheduling-overview.md) explains the independent Score
+owners, Matching handoff, Result evidence and vertical scale boundary.
+[Worker Delivery Boundary](worker-delivery-dispatch.md) follows already-decided
+Commands and returning evidence through Server and Transport. The Owner links
+above maintain the detailed transitions, storage and policies.
 
 ## Verification
 

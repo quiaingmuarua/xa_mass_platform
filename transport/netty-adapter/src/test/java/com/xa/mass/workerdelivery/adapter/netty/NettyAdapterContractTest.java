@@ -31,6 +31,12 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import com.xa.mass.worker.javase.JavaWorker;
+import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -73,6 +79,7 @@ class NettyAdapterContractTest {
 
         try (WorkerPeer worker = connect(protocol, port)) {
             worker.send(identity());
+            assertBaselineRequest(worker);
             DeliveryCommand command = taskCommand("round-trip");
             remoteApi.commandBatches.add(Map.of(WORKER_ID, command));
 
@@ -117,6 +124,7 @@ class NettyAdapterContractTest {
         try {
             try (WorkerPeer first = connect(protocol, port)) {
                 first.send(identity());
+                assertBaselineRequest(first);
                 DeliveryCommand barrier = taskCommand("first-route");
                 remoteApi.commandBatches.add(Map.of(WORKER_ID, barrier));
                 assertThat(codec.decodeDeliveryCommand(first.receive()))
@@ -125,6 +133,7 @@ class NettyAdapterContractTest {
 
             try (WorkerPeer reconnect = connect(protocol, port)) {
                 reconnect.send(identity());
+                assertBaselineRequest(reconnect);
                 DeliveryCommand command = taskCommand("reconnect-route");
                 remoteApi.commandBatches.add(Map.of(WORKER_ID, command));
                 assertThat(codec.decodeDeliveryCommand(reconnect.receive()))
@@ -151,6 +160,7 @@ class NettyAdapterContractTest {
 
         try (WorkerPeer worker = connect(protocol, port)) {
             worker.send(identity());
+            assertBaselineRequest(worker);
             awaitVerified(remoteApi);
 
             adapter.close();
@@ -163,90 +173,77 @@ class NettyAdapterContractTest {
 
     @ParameterizedTest
     @EnumSource(Protocol.class)
-    void propertiesCacheSurvivesPhysicalReconnect(
-            Protocol protocol
-    ) throws Exception {
+    void realWorkerPropertiesRoundTripAndReconnectCalibration(Protocol protocol) throws Exception {
         TestRemoteApi remoteApi = new TestRemoteApi();
         int port = availablePort();
-        WorkerDeliveryAdapter adapter = adapter(protocol, port, remoteApi);
-        adapter.start();
+        remoteApi.preparedEndpoint = (protocol == Protocol.WEBSOCKET ? "ws" : "tcp")
+                + "://127.0.0.1:" + port + (protocol == Protocol.WEBSOCKET ? "/api/v1/worker-delivery/websocket" : "");
+        remoteApi.preparedTransport = protocol.name();
+        var properties = new AtomicReference<>(Map.of(
+                "battery", "87", "network.type", "wifi", "network.ssid", "home"));
+        try (WorkerDeliveryAdapter adapter = adapter(protocol, port, remoteApi);
+                JavaWorker worker = JavaWorker.create(
+                        remoteApi.server.baseUri(), "group", "installation",
+                        WorkerTransportType.valueOf(protocol.name()), properties::get, List.of(),
+                        WorkerConnectionOptions.of(Duration.ofSeconds(2),
+                                TextMessageReconnectPolicy.of(20, Duration.ofMillis(20), Duration.ofSeconds(1)))
+                )) {
+            assertThat(worker.reportProperties()).isFalse();
+            adapter.start();
+            worker.start();
+            awaitProperties(remoteApi, properties.get());
 
-        try {
-            try (WorkerPeer first = connect(protocol, port)) {
-                first.send(identity());
-                DeliveryCommand firstBarrier = taskCommand("first-barrier");
-                remoteApi.commandBatches.add(Map.of(
-                        WORKER_ID,
-                        firstBarrier
-                ));
-                assertThat(codec.decodeDeliveryCommand(first.receive()))
-                        .isEqualTo(firstBarrier);
-                first.send(codec.encodeDeliveryReport(DeliveryReport.create(
-                        WORKER,
-                        WORKER_ID,
-                        SYSTEM,
-                        "platform.worker.properties.snapshot",
-                        "200",
-                        "{\"properties\":{\"battery\":87}}",
-                        "direct-call:v1:properties"
-                )));
-                awaitReport(remoteApi, "direct-call:v1:properties");
-            }
-            remoteApi.appendedResults.clear();
+            properties.set(Map.of("battery", "87", "network.type", "cellular"));
+            assertThat(worker.reportProperties(Map.of("network.type", "cellular"),
+                    Set.of("network.ssid"))).isTrue();
+            awaitProperties(remoteApi, properties.get());
 
-            try (WorkerPeer reconnect = connect(protocol, port)) {
-                reconnect.send(identity());
-                DeliveryCommand routeBarrier = taskCommand("reconnect-barrier");
-                remoteApi.commandBatches.add(Map.of(
-                        WORKER_ID,
-                        routeBarrier
-                ));
-                assertThat(codec.decodeDeliveryCommand(reconnect.receive()))
-                        .isEqualTo(routeBarrier);
-                DeliveryCommand snapshot = DeliveryCommand.create(
-                        SYSTEM,
-                        ADAPTER,
-                        "platform.adapter.worker-properties.snapshot",
-                        System.currentTimeMillis() + 60_000,
-                        Jsons.toJson(Map.of(
-                                "workerIds",
-                                List.of(WORKER_ID)
-                        )),
-                        "direct-call:v1:properties-snapshot"
-                );
-                remoteApi.commandBatches.add(Map.of("opaque-1", snapshot));
+            // The SDK must not update the Host provider, and full reporting replaces the Map.
+            assertThat(worker.reportProperties(Map.of("temporary", "transport-only"), Set.of())).isTrue();
+            awaitProperties(remoteApi, Map.of(
+                    "battery", "87", "network.type", "cellular", "temporary", "transport-only"));
+            assertThat(properties.get()).doesNotContainKey("temporary");
+            assertThat(worker.reportProperties()).isTrue();
+            awaitProperties(remoteApi, properties.get());
 
-                DeliveryReport result = awaitReport(
-                        remoteApi,
-                        "direct-call:v1:properties-snapshot"
-                );
-                assertThat(result.outcomeCode()).isEqualTo("200");
-                @SuppressWarnings("unchecked")
-                Map<String, Object> propertiesByWorkerId =
-                        (Map<String, Object>) Jsons.parseObject(
-                                result.payload()
-                        ).get("propertiesByWorkerId");
-                @SuppressWarnings("unchecked")
-                Map<String, Object> worker = (Map<String, Object>)
-                        propertiesByWorkerId.get(WORKER_ID);
-                assertThat(worker)
-                        .containsKey("updatedAtMillis")
-                        .doesNotContainKeys(
-                                "connectionState",
-                                "workerGroupId",
-                                "freshness",
-                                "version",
-                                "observedAtMillis"
-                        );
-                @SuppressWarnings("unchecked")
-                Map<String, Object> properties = (Map<String, Object>)
-                        worker.get("properties");
-                assertThat(properties).containsEntry("battery", 87L);
-            }
-            assertThat(remoteApi.verificationCount).hasValue(1);
-        } finally {
-            adapter.close();
+            // An unsent Host mutation is calibrated by the next physical connection, without Prepare.
+            properties.set(Map.of("battery", "88", "network.type", "wifi", "empty", ""));
+            remoteApi.commandBatches.add(Map.of("close-current", DeliveryCommand.create(
+                    SYSTEM, ADAPTER, "platform.adapter.worker-connections.close-current",
+                    System.currentTimeMillis() + 30_000, Jsons.toJson(Map.of("workerIds", List.of(WORKER_ID))),
+                    "close-for-reconnect"
+            )));
+            awaitReport(remoteApi, "close-for-reconnect");
+            awaitProperties(remoteApi, properties.get());
+            assertThat(remoteApi.verificationCount.get()).isEqualTo(1);
+            assertThat(remoteApi.prepareCount.get()).isEqualTo(1);
+            assertThat(remoteApi.appendedResults.stream().flatMap(List::stream))
+                    .noneMatch(report -> report.messageType().equals("platform.worker.properties.reported"));
+            worker.stop();
+            assertThat(worker.reportProperties()).isFalse();
         }
+    }
+
+    private void awaitProperties(TestRemoteApi remoteApi, Map<String, String> expected) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        Map<?, ?> actual = null;
+        int attempt = 0;
+        do {
+            String forward = "properties-observe-" + System.nanoTime() + "-" + attempt++;
+            remoteApi.commandBatches.add(Map.of("properties-query", DeliveryCommand.create(
+                    SYSTEM, ADAPTER, "platform.adapter.worker-properties.snapshot",
+                    System.currentTimeMillis() + 30_000,
+                    Jsons.toJson(Map.of("workerIds", List.of(WORKER_ID))), forward
+            )));
+            var result = awaitReport(remoteApi, forward);
+            Map<?, ?> byWorker = (Map<?, ?>) Jsons.parseObject(result.payload()).get("propertiesByWorkerId");
+            actual = (Map<?, ?>) ((Map<?, ?>) byWorker.get(WORKER_ID)).get("properties");
+            if (expected.equals(actual)) {
+                return;
+            }
+            Thread.sleep(10);
+        } while (System.nanoTime() < deadline);
+        assertThat(actual).isEqualTo(expected);
     }
 
     @ParameterizedTest
@@ -317,6 +314,15 @@ class NettyAdapterContractTest {
                         Duration.ofSeconds(1)
                 )
         );
+    }
+
+    private void assertBaselineRequest(WorkerPeer worker) throws Exception {
+        DeliveryCommand command = codec.decodeDeliveryCommand(worker.receive());
+        assertThat(command.src()).isEqualTo(ADAPTER);
+        assertThat(command.dst()).isEqualTo(WORKER);
+        assertThat(command.messageType()).isEqualTo("platform.worker.properties.snapshot");
+        assertThat(command.payload()).isEqualTo("null");
+        assertThat(command.forward()).isEmpty();
     }
 
     private static WorkerPeer connect(
@@ -599,12 +605,22 @@ class NettyAdapterContractTest {
                 this::handle
         );
         private volatile int verificationStatus = 204;
+        private String preparedEndpoint;
+        private String preparedTransport;
+        private final AtomicInteger prepareCount = new AtomicInteger();
 
         private TestRemoteApi() {
             httpServers.add(server);
         }
 
         private Response handle(ScriptedHttpServer.Request request) {
+            if (request.rawPath().endsWith("/workers:prepare")) {
+                prepareCount.incrementAndGet();
+                return new Response(200, Jsons.toJson(Map.of(
+                        "workerId", WORKER_ID, "transportType", preparedTransport,
+                        "endpointUri", preparedEndpoint
+                )));
+            }
             if (request.rawPath().endsWith("/commands:consume")) {
                 return commandResponse(commandBatches.poll());
             }

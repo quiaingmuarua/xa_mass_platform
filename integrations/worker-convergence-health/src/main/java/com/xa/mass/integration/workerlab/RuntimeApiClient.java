@@ -70,11 +70,11 @@ final class RuntimeApiClient {
                 properties,
                 "labInventoryKey"
         );
-        long inventoryLine = JsonValues.requiredLong(
+        String inventoryLine = JsonValues.requiredString(
                 properties,
                 "labInventoryLine"
         );
-        if (inventoryLine < 1L || inventoryLine > 100L) {
+        if (!inventoryLine.matches("[1-9][0-9]?|100")) {
             throw JsonValues.invalid(
                     "labInventoryLine must be in 1..100"
             );

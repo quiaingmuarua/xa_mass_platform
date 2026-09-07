@@ -143,18 +143,19 @@ class WorkerIdentityServiceTest {
     void scenarioLabIdentityUsesImmutableInventoryCoordinates() {
         Map<String, Object> first = Map.of(
                 "labInventoryKey", "workers-a.jsonl",
-                "labInventoryLine", 7L,
-                "labSlot", 1L
+                "labInventoryLine", "7",
+                "labSlot", "1"
         );
         Map<String, Object> changed = Map.of(
                 "labInventoryKey", "workers-a.jsonl",
-                "labInventoryLine", 7L,
-                "labSlot", 9L
+                "labInventoryLine", "7",
+                "labSlot", "9"
         );
         String key = service.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,
                 first
         );
+        assertThat(key).isEqualTo("scenario-lab:15:workers-a.jsonl:7");
         assertThat(service.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,
                 changed
@@ -179,6 +180,12 @@ class WorkerIdentityServiceTest {
 
     @Test
     void scenarioLabIdentityRejectsMissingOrInvalidLineCoordinates() {
+        for (Object invalid : List.of(1, 1L, "0", "-1", "101", "1.0", "true", " ", "999999999999")) {
+            assertThatThrownBy(() -> service.registrationKey(
+                    WorkerRegistrationKind.SCENARIO_LAB,
+                    Map.of("labInventoryKey", "workers-a.jsonl", "labInventoryLine", invalid)
+            )).isInstanceOf(ServerException.class);
+        }
         assertThatThrownBy(() -> service.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,
                 Map.of("labInventoryKey", "workers-a.jsonl")
@@ -187,14 +194,14 @@ class WorkerIdentityServiceTest {
                 WorkerRegistrationKind.SCENARIO_LAB,
                 Map.of(
                         "labInventoryKey", "workers-a.jsonl",
-                        "labInventoryLine", 101L
+                        "labInventoryLine", "101"
                 )
         )).isInstanceOf(ServerException.class);
         assertThatThrownBy(() -> service.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,
                 Map.of(
                         "labInventoryKey", "workers-a.jsonl",
-                        "labInventoryLine", 1L,
+                        "labInventoryLine", "1",
                         "clientWorkerKey", "must-not-be-used"
                 )
         )).isInstanceOf(ServerException.class);

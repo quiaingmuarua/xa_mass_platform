@@ -46,7 +46,7 @@ final class JavaOkHttpWorkerControlClient
     public PreparedWorker prepare(
             String workerGroupId,
             WorkerTransportType transportType,
-            Map<String, Object> workerProperties,
+            Map<String, String> workerProperties,
             Duration requestTimeout
     ) throws IOException {
         requireOpen();
@@ -82,7 +82,7 @@ final class JavaOkHttpWorkerControlClient
             String workerKind,
             String workerGroupId,
             WorkerTransportType transportType,
-            List<Map<String, Object>> workerProperties,
+            List<Map<String, String>> workerProperties,
             Duration requestTimeout
     ) throws IOException {
         requireOpen();
@@ -102,7 +102,7 @@ final class JavaOkHttpWorkerControlClient
         }
 
         List<Map<String, Object>> workers = new ArrayList<>();
-        for (Map<String, Object> properties : workerProperties) {
+        for (Map<String, String> properties : workerProperties) {
             requireProperties(properties);
             Map<String, Object> worker = new LinkedHashMap<>();
             worker.put("workerKind", kind);
@@ -409,7 +409,7 @@ final class JavaOkHttpWorkerControlClient
     }
 
     private static void requireProperties(
-            Map<String, Object> workerProperties
+            Map<String, String> workerProperties
     ) {
         if (workerProperties == null) {
             throw new IllegalArgumentException(

@@ -30,6 +30,7 @@ is preserved by `legacy-java-platform-final-2026-07-24`.
 - Trace fields that mirror owner truth or become scheduling inputs.
 - Module boundaries created only by the old Maven reactor.
 
-Future trace work must derive a new event registry from the Kotlin owner
-contracts after those contracts pass parity against the Python executable
-specification.
+At the time of this archive, the proposed trace direction was to derive a new
+event registry from Kotlin owner contracts after parity with the Python
+executable specification. That was a historical design direction, not a current
+implementation requirement; current ownership starts at [the repository entry](../../../README.md).

@@ -20,7 +20,9 @@ independent Lab, Network, Scheduling and Task observations
 The runner materializes its canonical 2x500 Properties Inventory with the same
 strict materializer used by Worker Correctness, but into a separate Lab root
 and Redis scope. Capability assembly and all mutations remain owned by this
-convergence lane.
+convergence lane. Each Endpoint receives a bounded 600-attempt, 500-millisecond
+reconnect fixture so the deliberate Server restart stays within the same Worker
+run. This is a scenario boundary, not a reconnect SLA.
 
 The Integration owns a Server catalog override and Scenario capability
 assembly that add `extension.worker.lab.delay` and
@@ -35,25 +37,33 @@ phase and is not treated as downstream convergence evidence.
 
 ## State And Server Convergence
 
-Seven waves submit 50 Items per Group, for 700 offered Items total. The first
-Item in each batch is a named valid witness; every tenth Item has deterministic
-invalid input. Managed ON_DEMAND waves use empty rules. A separate finite
-PRECOMPUTED Task isolates the Property-matching oracle. The scenario proves:
+Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
+250-millisecond immediate observation window. Item one is the named valid
+witness, every tenth Item has deterministic invalid input, and String Items
+two and three are the delay and fail background work. Managed ON_DEMAND waves
+use empty Worker Selectors. A separate finite PRECOMPUTED Task owns the
+Properties-matching witness; it does not change the ON_DEMAND mechanism.
 
-- five stopped Workers per Group leave connected/HOT serviceability and recover;
-- stopped-state `convergenceSlot` changes appear after explicit start;
-- one finite PRECOMPUTED witness remains unmatched until a Worker with the new
-  `convergenceSlot` is started, then converges through Task-rule matching;
-- a full String Group outage does not stop Phone progress, and parked String
-  witness work finishes after recovery;
-- after the 1,000-Worker baseline, the directed String Worker is stopped before
-  any workload and remains unavailable through the pre-restart part of wave
-  six; all other Worker stop/start and Property mutations also finish before
-  wave one. The full String outage stops and restores only the other 499 Workers
-  while the unavailable observation still covers all 500. After the Server
-  restart the other 999 identities reconnect and become HOT while that Worker
-  remains stopped, then one stopped-state Property replacement and one explicit
-  start restore its original identity and finish the witness.
+The phase order is:
+
+1. Establish all 1,000 Workers connected and HOT. Stop the directed String
+   Worker before workload and keep it unavailable until after Server restart.
+2. Stop five other Workers per Group, observe disconnected and scheduling
+   unavailable, then restore them.
+3. Stop two Workers per Group, replace `convergenceSlot`, explicitly start them,
+   and observe the refreshed canonical Properties.
+4. Stop the other 499 String Workers and observe all 500 unavailable. Submit
+   wave one: Phone progresses while String witness work remains due. Restore
+   only those 499 Workers and close the wave.
+5. Complete waves two through five.
+6. Reconfirm the directed Worker is locally STOPPED, disconnected and scheduling
+   unavailable. Submit wave six and a separate finite PRECOMPUTED Task requiring
+   `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
+   restart Runtime Server while retaining Scenario Host.
+7. Require the other 999 stable identities to reconnect and become HOT while
+   the directed Worker stays stopped. Replace its stopped-state slot and start
+   it once. Require its original identity, canonical Property and connected/HOT
+   observations; close the PRECOMPUTED witness, wave six and final wave seven.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
 witnesses. The workload also offers seven delay and seven fail Items. These are
@@ -62,23 +72,34 @@ scenario does not require every offered Item to succeed.
 
 ## In-Flight Loss Convergence
 
-Three waves offer 300 Items with 30 deterministic invalid inputs. During wave
-two, the String batch uses the target and backup worker IDs as its finite
-candidate set plus the mutable `labSlot` condition. Only the initial target
-matches before the mutation, and its first Item enters the Scenario-only
-checkpoint. The synchronous connection path prevents the remaining String
-Items from creating unrelated in-flight Worker executions before the runner
-kills Scenario Host. The runner then waits for the entire Worker world to
-become disconnected and unavailable,
-changes one stopped backup Worker's `labSlot`, then restarts 999 Workers while
-excluding the original target. The original checkpoint witness must finish on
-the recovered world: all 999 identities must reconnect unchanged, while the
-canonical backup Property and that explicitly targeted backup's HOT state are
-checked before the checkpoint closes. The recovery-wave witnesses must then
-succeed. The proof does not require all 999 Workers to be simultaneously HOT
-while due work is present. After a second Host loss, the checkpoint's successful
-Result must remain observable through `results:load`; this does not prove
-TaskItem Score finality.
+Three waves offer 300 Items with 30 deterministic invalid inputs. Each String
+batch retains Item-two DELAY and Item-three FAIL background work. The first
+String Item in wave two is the only checkpoint execution promoted to an oracle.
+
+1. Establish all 1,000 Workers running, connected and HOT; complete both
+   wave-one witnesses.
+2. Explicitly stop the backup before arming the checkpoint and observe it
+   STOPPED, disconnected and scheduling unavailable. Arm the target's
+   Scenario-only checkpoint. The complete wave-two String batch uses an
+   explicit Worker ID selector containing only the target and backup IDs.
+   There is no `labSlot` condition or backup Properties mutation. With the
+   backup unavailable, wait for the target Handler to enter the checkpoint.
+3. Kill Scenario Host and require the entire 1,000-Worker world to become
+   disconnected and scheduling unavailable.
+4. Restart 999 Workers, including the backup, while excluding the original
+   target. Require the 999 identities to reconnect unchanged and the explicitly
+   targeted backup to become HOT before closing the original checkpoint
+   witness. This does not require all recovered Workers to be simultaneously
+   HOT while due work is present.
+5. Complete both wave-three recovery witnesses.
+6. Kill Host again, observe the recovered world disconnected, and require the
+   checkpoint's successful Result to remain observable through `results:load`.
+   This is Result retention, not TaskItem Score finality.
+
+Acceptance fixes `300 offered / 30 invalid` and five named successful witnesses,
+not 300 successful Results. The synchronous checkpoint path bounds the
+in-flight String execution before the first Host kill; it does not establish
+exactly-once execution or the identity of a later successful executor.
 
 Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,
@@ -148,5 +169,5 @@ Focused tests:
 python -m unittest integrations/worker-convergence-health/test_run_worker_convergence_health.py
 ```
 
-See [`doc/testing/worker-proof-scenarios.md`](../../doc/testing/worker-proof-scenarios.md)
-for the exact 1,000-Worker scenario contract.
+See [Proof Registry](../../doc/testing/proof-registry.md#worker_convergence_health)
+for claim boundaries and [TESTING.md](../../TESTING.md) for lane selection.

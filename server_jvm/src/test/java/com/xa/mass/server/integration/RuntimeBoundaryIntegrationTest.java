@@ -1032,7 +1032,7 @@ class RuntimeBoundaryIntegrationTest {
             String clientWorkerKey,
             String workerId,
             URI serverUrl,
-            Map<String, Object> workerProperties,
+            Map<String, String> workerProperties,
             TransportProfile transportProfile
     ) throws Exception {
         List<WorkerEventDefinition<?>> definitions =
@@ -1088,7 +1088,7 @@ class RuntimeBoundaryIntegrationTest {
             String workerGroupId,
             String clientWorkerKey,
             String workerId,
-            Map<String, Object> workerProperties,
+            Map<String, String> workerProperties,
             List<WorkerEventDefinition<?>> definitions,
             WorkerTransportType transportType
     ) {
@@ -1119,7 +1119,7 @@ class RuntimeBoundaryIntegrationTest {
             String workerGroupId,
             String clientWorkerKey,
             TransportProfile profile,
-            Map<String, Object> workerProperties
+            Map<String, String> workerProperties
     ) throws Exception {
         Map<String, Object> completeProperties =
                 new LinkedHashMap<>(workerProperties);

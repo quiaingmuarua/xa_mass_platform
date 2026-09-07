@@ -168,8 +168,8 @@ class ScenarioWorkersTest {
     void noneModeAssemblesWithoutStartingAndControlsOneReplica()
             throws Exception {
         createLabRoot();
-        writeWorker(GROUP, "client-1", Map.of("slot", 1));
-        writeWorker(GROUP, "client-2", Map.of("slot", 2));
+        writeWorker(GROUP, "client-1", Map.of("slot", "1"));
+        writeWorker(GROUP, "client-2", Map.of("slot", "2"));
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         when(manager.snapshot("client-1.jsonl:1")).thenReturn(
                 new com.xa.mass.worker.runtime.WorkerLifecycle.Snapshot(
@@ -205,7 +205,7 @@ class ScenarioWorkersTest {
         verify(manager).stop("client-1.jsonl:1");
         assertThat(snapshot.runtime().workerId()).isEqualTo("worker-1");
         assertThat(snapshot.desiredRunning()).isTrue();
-        assertThat(snapshot.workerProperties()).containsEntry("slot", 1L);
+        assertThat(snapshot.workerProperties()).containsEntry("slot", "1");
         assertThatThrownBy(() -> workers.startWorker(GROUP, "missing"))
                 .isInstanceOf(ScenarioWorkers.UnknownWorkerException.class);
 
@@ -216,7 +216,7 @@ class ScenarioWorkersTest {
     void startupPlanValidatesEveryCoordinateBeforeStartingAnyReplica()
             throws Exception {
         createLabRoot();
-        writeWorker(GROUP, "client-1", Map.of("slot", 1));
+        writeWorker(GROUP, "client-1", Map.of("slot", "1"));
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
@@ -386,7 +386,7 @@ class ScenarioWorkersTest {
         value.put("schemaVersion", 2);
         Map<String, Object> complete = new LinkedHashMap<>();
         complete.put("labInventoryKey", labWorkerKey + ".jsonl");
-        complete.put("labInventoryLine", 1);
+        complete.put("labInventoryLine", "1");
         complete.putAll(properties);
         value.put("workerProperties", complete);
         Files.writeString(

@@ -10,81 +10,44 @@ Worker Correctness, Worker Convergence Health and Worker Loaded Capacity +
 Recovery Stability are claim identities, not size tiers. Their Worker and Item
 counts are fixed World and Workload fixtures chosen for those claims.
 
+Commands, prerequisites and selection belong to [TESTING.md](../../TESTING.md).
+World, workload, mutation order and oracles belong to the linked scenario Owner.
+
 ## jvm_contracts
 
 - **Primary owner:** each touched JVM module; CI only aggregates.
 - **Claim:** Java contracts, architecture guards and deterministic Owner tests
   pass together.
-- **Failure model:** local invariant, strict validation, controlled race or
-  forbidden dependency.
-- **World:** in-process test fixtures with no required infrastructure.
-- **Workload:** minimal examples chosen by each Owner.
-- **Mutation:** test-controlled method calls and interleavings.
-- **Oracle:** Owner state, returned contract and architecture source guards.
-- **Prerequisites:** Java 21 toolchain; Java 11 compatibility remains enforced
-  by the modules consumed by Android.
 - **Deliberate nonclaims:** Redis behavior, process boundaries and system
   convergence.
-- **Command:** explicit non-Android module `build` tasks in Proof CI.
-- **CI cost:** low.
+- **Contract:** [Selection and commands](../../TESTING.md#lane-index).
 
 ## redis_owner
 
 - **Primary owner:** Java Redis providers and their Server-owned registries.
 - **Claim:** atomic owner operations preserve scores, resources, identities,
   bindings and result transitions against real Redis.
-- **Failure model:** CAS conflict, cursor boundary, duplicate operation,
-  concurrent transition and exact-fence mismatch.
-- **World:** one Redis 7 instance and one exact `test_*` scope.
-- **Workload:** bounded Owner calls, not a Server process.
-- **Mutation:** controlled concurrent Redis operations.
-- **Oracle:** owner returns plus exact Redis-visible state.
-- **Prerequisites:** Redis 7.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
-- **Command:** `.\gradlew.bat :server_jvm:redisOwnerIntegrationTest`.
-- **CI cost:** medium.
+- **Contract:** [Server verification](../../server_jvm/README.md#verification).
 
 ## runtime_boundary
 
-- **Primary owner:** Server assembly over Kernel Pacer and Transport ports.
+- **Primary owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
 - **Claim:** one Java Server context closes the public Task, Result,
   DIRECT_CALL and Worker Serviceability boundaries through WebSocket, Socket
   and Polling witnesses.
-- **Failure model:** contract drift, route loss, result correlation failure and
-  serviceability polarity failure.
-- **World:** one Server context, Redis and finite local Workers.
-- **Workload:** minimal finite Tasks and calls.
-- **Mutation:** explicit Worker shutdown/reconnect and Adapter evidence.
-- **Oracle:** public Runtime APIs and final Task state.
-- **Prerequisites:** Redis 7 and deterministic Owner tests.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity.
-- **Command:** `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest`.
-- **CI cost:** medium.
+- **Contract:** [Runtime Boundary owner](../../server_jvm/README.md#verification).
 
 ## worker_correctness
 
 - **Primary owner:** `:integrations:worker-correctness`.
-- **Claim:** the fixed 2x50 Scenario world has exact Lab-to-worker identity,
-  Adapter route and Properties relationships; six extension names are
-  reachable; 100 batch-call Items succeed; graceful Host restart preserves all 100
-  worker IDs.
-- **Failure model:** missing/duplicate identity, route mismatch, unreachable
-  extension, missing/duplicate Result or restart identity drift.
-- **World:** 2 Groups x 50 Workers, one WebSocket Adapter, one Server and one
-  Scenario Host.
-- **Workload:** one managed `items:call` batch per Group, 50 Items each; Event
-  distribution per Group is `17/17/16`.
-- **Mutation:** one graceful Scenario Host restart while Server and Redis stay
-  running.
-- **Oracle:** Lab files, Runtime Preview, Adapter Network, Direct Call, exact
-  call-response message IDs and 100 `SUCCEEDED` statuses. Result payload is
-  opaque.
-- **Prerequisites:** Redis 7, Server profile and Scenario distribution.
+- **Claim:** exact Lab-to-Worker identity, route, Properties, extension and
+  successful Result closure, with identity preserved across graceful Host restart.
 - **Deliberate nonclaims:** capability-specific payload values, executing
   Worker, fault convergence, throughput and topology combinations.
-- **Command:** `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15`.
-- **CI cost:** medium.
+- **Contract:** [Complete scenario](../../integrations/worker-correctness/README.md).
 
 ## worker_convergence_health
 
@@ -92,81 +55,24 @@ counts are fixed World and Workload fixtures chosen for those claims.
 - **Claim:** Adapter and Kernel scheduling converge within a bounded wait after
   established Worker mutations, one Server restart and one execution-time Host
   loss; named successful Results remain observable across a later Host loss.
-- **Failure model:** stopped Worker remains HOT, restored Worker stays
-  unavailable, changed Properties do not affect matching, Group outage leaks,
-  Server restart loses due work, in-flight loss never recovers or an observed
-  successful Result disappears after a later Worker loss.
-- **World:** two isolated scenarios, each 2 Groups x 500 Workers and one
-  WebSocket Adapter.
-- **Workload:** ON_DEMAND managed batch calls only. State/server offers 700
-  Items with 70 deterministic invalid inputs plus seven offered DELAY and FAIL
-  Items each; in-flight loss offers 300 with 30 invalid inputs plus three
-  offered DELAY and FAIL Items each. Fault Item counts are offered load, not
-  observed execution counts.
-- **Mutation:** deterministic stop/start, stopped-state Properties replacement,
-  full 500-Worker Group outage, one Server restart with the directed Worker
-  already stopped, and Scenario Host kill. After restart, 999 Workers recover
-  before the stopped Worker is changed and explicitly started once.
-- **Oracle:** established Lab local state followed by independent Network and
-  Scheduling convergence plus passive `results:load` observation of named
-  witnesses. Host-loss recovery requires all 999 active identities to reconnect
-  unchanged and the explicitly targeted backup to become canonical and HOT; it
-  does not require all 999 to be simultaneously HOT while due work exists.
-  Non-witness outcomes and Result payloads are not assertions. The retained
-  Result projection is not evidence of TaskItem Score finality.
-- **Prerequisites:** Redis 7, Server and Scenario Host; each scenario owns an
-  isolated scope and Lab root.
-- **Observation bound:** five minutes per awaited convergence condition,
-  matching the finite recovery-recheck budget; this is not a latency SLA.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
   background fault Result status or execution count, TaskItem Score finality
   across the interruption window, executing Worker, random coverage,
   throughput and soak.
-- **Command:** `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15`.
-- **CI execution:** `state` and `task-fault` run as independent matrix jobs with
-  isolated Redis services, scopes and artifacts; the job ID exposes one
-  aggregate Proof Gate result.
-- **CI cost:** medium per scenario; high when run locally through `all`.
-
-Correctness and Convergence independently materialize distinct canonical
-100-Worker and 1,000-Worker Properties worlds. They share the strict
-materializer, not Redis, processes, mutations or evidence.
+- **Contract:** [Complete scenarios](../../integrations/worker-convergence-health/README.md).
 
 ## worker_loaded_recovery
 
 - **Primary owner:** `:integrations:worker-loaded-recovery` and its separate
   workflow.
-- **Claim:** one Java 21 Host prepares 15,000 identities, sustains at least
-  14,800 connected-and-HOT Workers, stops a deterministic 5,000-run subset
-  during loaded work, then closes four sets of ten 5,000-Item Tasks across one
-  graceful and two hard Server restarts while process resources remain stable.
-- **Failure model:** connection ceiling, platform-thread explosion, FD or
-  memory exhaustion, reconnect collapse, loaded graceful-shutdown loss,
-  abrupt-process loss and recovery-time resource accumulation.
-- **World:** one Group, 15,000 registered WebSocket Worker identities, exactly
-  10,000 active runs after contraction, one Adapter and one Server.
-- **Workload:** four fixed stages of ten same-Group 5,000-Item Tasks; all Tasks
-  are fully populated before consecutive approval, for 40 Tasks and 200,000
-  successful Items in total.
-- **Mutation:** fifty one-shot Lab batch stops during the first loaded stage,
-  then one SIGTERM and two SIGKILL Server restarts in later loaded stages with
-  the Host retained.
-- **Oracle:** paged Network/Scheduling observations, paged Result progress,
-  exact per-Task exports, worker-ID digests, non-missing scheduling truth for
-  every stopped baseline identity, a post-hard-restart progress fence, and
-  Linux transient plus stable process-resource samples.
-- **Prerequisites:** Linux, Java 21, Redis 7.4 and `nofile >= 65536`.
-- **Deliberate nonclaims:** exact 15,000 or 10,000 online, Task fairness, fixed
+- **Claim:** sustained loaded operation after deterministic Worker contraction,
+  repeated graceful and hard Server recovery, exact terminal Task exports and
+  bounded process resource drift.
+- **Deliberate nonclaims:** every prepared or retained Worker online, Task fairness, fixed
   execution ratio, completion order, throughput, latency, Handler concurrency,
   topology breadth and soak.
-- **Command:** `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15`.
-- **CI cost:** very high; nightly/manual only.
-
-This proof uses the same strict Inventory materializer and 100-record JSONL
-boundary as Correctness and Convergence. Its 15k/10k World, Java WebSocket
-Topology, loaded Workload, restart mutations and resource oracle are
-proof-owned additions rather than a second initialization path.
+- **Contract:** [Complete scenario](../../integrations/worker-loaded-recovery/README.md).
 
 ## android_host
 
@@ -174,102 +80,45 @@ proof-owned additions rather than a second initialization path.
 - **Claim:** Android library assembly, identity persistence, capability
   Definitions, local lifecycle, Control HTTP and Java proof clients remain
   compatible.
-- **Failure model:** lifecycle race, callback ordering, persistence conflict or
-  assembly drift.
-- **World:** Robolectric, MockWebServer and JDK HttpServer.
-- **Workload:** minimal deterministic calls.
-- **Mutation:** lifecycle and network callback controls.
-- **Oracle:** Android state, mock HTTP/WebSocket evidence and host contracts.
-- **Prerequisites:** Android SDK 36.
 - **Deliberate nonclaims:** real process, Doze, vendor policy and physical
   device behavior.
-- **Command:** Android Debug tasks plus
-  `:integrations:android-worker-proof:test`.
-- **Required CI prerequisite:** Android APK Assembly builds the Debug and three
-  fixed Lab APKs independently. Host selection requires this job even when no
-  Emulator artifact upload is needed.
-- **CI cost:** medium.
+- **Contract:** [Android owners](../../xa-android/README.md).
 
 ## android_emulator
 
 - **Primary owner:** `:integrations:android-worker-proof`; the shell owns only
   external process choreography.
-- **Claim:** one API 33 Debug App proves exact ten-Item lifecycle Correctness,
-  physical-route recovery, in-flight Handler process loss, endpoint exhaustion
-  and explicit identity-stable recovery; three fixed Lab application IDs add
-  same-Group identity isolation, identity-bounded Property matching and partial
-  process outage.
-- **Failure model:** Handler failure terminates a run, physical route loss or
-  Android process death permanently loses the in-flight successful Result,
-  endpoint loss auto-restarts, one App loss degrades its peers, serviceability
-  remains stale, or identity drifts.
-- **World:** one KVM Android Emulator with cached-app freezing disabled, Redis,
-  Server, one Debug APK and three Debug-derived Lab APKs in the same
-  WorkerGroup.
-- **Workload:** ten sequential single-App DELAY Items, one process-loss DELAY,
-  three Triad-targeted DELAY Items, plus named FAIL, Probe and recovery
-  witnesses.
-- **Mutation:** explicit stop/start, Adapter close-current, force-stop during an
-  active DELAY, Server loss, Debug App process restart and one `lab2`
-  force-stop/restart.
-- **Oracle:** device-local state only establishes local mutations; independent
-  Network, Scheduling, Direct Call, `items:call`, and `results:load` APIs prove
-  system behavior. Result payloads remain opaque.
-- **Prerequisites:** Linux KVM and the Android APK Assembly artifact. Emulator
-  execution does not wait for Android Host tests unless that lane is selected
-  independently.
+- **Claim:** one Debug App proves exact lifecycle correctness, route recovery,
+  Handler-time process loss, endpoint exhaustion and explicit identity-stable
+  recovery. A fixed App Triad adds same-Group identity isolation, explicit
+  Worker ID targeting and partial process outage.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
   attempts, transient Score sequence, TaskItem Score finality across the
   process-loss window, UI behavior, arbitrary replica counts, dynamic
   Properties re-Prepare end to end, multi-device compatibility, cached-process
   survival, Doze/OEM policy and physical-device background behavior.
-- **Command:** `Android Worker Proof` in Proof CI.
-- **CI cost:** high.
+- **Contract:** [Complete scenarios](../../integrations/android-worker-proof/README.md).
 
 ## frontend
 
 - **Primary owner:** `frontend/`.
 - **Claim:** Runtime projections, finite Task workbench and static API Reference
   remain lint-clean, type-safe, tested and buildable.
-- **Failure model:** schema, state, input, build or public-demo drift.
-- **World:** Node test/build environment.
-- **Workload:** finite mocked API interactions.
-- **Mutation:** store and component actions.
-- **Oracle:** tests, type checker and production builds.
-- **Prerequisites:** Node and pnpm.
 - **Deliberate nonclaims:** browser compatibility and visual regression.
-- **Command:** `pnpm lint`, `typecheck`, `test`, `build`, `build:demo`.
-- **CI cost:** low.
+- **Contract:** [Frontend owner](../../frontend/README.md).
 
 ## runtime_distribution
 
 - **Primary owner:** `distribution/server` and `distribution/worker-sdk`.
 - **Claim:** publishable archives work outside the checkout and contain only
   declared runtime/publication boundaries.
-- **Failure model:** missing artifact, dependency/POM drift, private runtime
-  leakage or packaged profile failure.
-- **World:** extracted distribution, Redis and external Android consumer build.
-- **Workload:** finite packaged Server/Profile and SDK consumption calls.
-- **Mutation:** process start/stop from extracted archives.
-- **Oracle:** archive contents, public endpoints and external build result.
-- **Prerequisites:** Java, Redis, Android SDK, Node and pnpm.
 - **Deliberate nonclaims:** OCI deployment and Redis lifecycle.
-- **Command:** distribution integration tests with
-  `-PxaMassVersion=0.5.0`.
-- **CI cost:** high.
+- **Contract:** [Server distribution](../../distribution/server/README.md) and [Worker SDK distribution](../../distribution/worker-sdk/README.md).
 
 ## docs_contract
 
 - **Primary owner:** `.github/scripts/check_docs.py`.
-- **Claim:** current documentation entrypoints, relative links and retired
-  vocabulary remain converged.
-- **Failure model:** stale current link, missing entrypoint or retired current
-  narrative.
-- **World:** tracked Markdown and the source human overview.
-- **Workload:** static scan.
-- **Mutation:** repository documentation changes.
-- **Oracle:** checked link/vocabulary rules.
-- **Prerequisites:** Python standard library.
+- **Claim:** current entrypoints, local file and chapter links, Overview
+  navigation and retired vocabulary remain converged.
 - **Deliberate nonclaims:** implementation behavior.
-- **Command:** `python .github/scripts/check_docs.py`.
-- **CI cost:** low.
+- **Contract:** [Checker](../../.github/scripts/check_docs.py) and [unit tests](../../.github/scripts/test_check_docs.py).

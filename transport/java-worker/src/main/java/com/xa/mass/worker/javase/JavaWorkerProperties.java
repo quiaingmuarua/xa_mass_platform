@@ -1,11 +1,10 @@
 package com.xa.mass.worker.javase;
 
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -36,10 +35,10 @@ final class JavaWorkerProperties {
                 suppliedProperties,
                 "workerProperties"
         );
-        return () -> immutableJsonMap(supplied.loadProperties());
+        return () -> WorkerDeliveryCodec.copyWorkerProperties(supplied.loadProperties());
     }
 
-    private static Map<String, Object> complete(
+    private static Map<String, String> complete(
             String clientWorkerKey,
             Map<?, ?> supplied
     ) {
@@ -54,75 +53,10 @@ final class JavaWorkerProperties {
                             + CLIENT_WORKER_KEY
             );
         }
-        Map<String, Object> complete = new LinkedHashMap<>();
+        Map<String, String> complete = new LinkedHashMap<>();
         complete.put(CLIENT_WORKER_KEY, clientWorkerKey);
-        for (Map.Entry<?, ?> entry : supplied.entrySet()) {
-            if (!(entry.getKey() instanceof String)) {
-                throw new IllegalArgumentException(
-                        "workerProperties keys must be strings"
-                );
-            }
-            complete.put(
-                    (String) entry.getKey(),
-                    immutableValue(entry.getValue())
-            );
-        }
+        complete.putAll(WorkerDeliveryCodec.copyWorkerProperties(supplied));
         return Collections.unmodifiableMap(complete);
-    }
-
-    private static Map<String, Object> immutableJsonMap(Map<?, ?> supplied) {
-        if (supplied == null) {
-            throw new IllegalArgumentException(
-                    "workerProperties must be present"
-            );
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : supplied.entrySet()) {
-            if (!(entry.getKey() instanceof String)) {
-                throw new IllegalArgumentException(
-                        "workerProperties keys must be strings"
-                );
-            }
-            result.put(
-                    (String) entry.getKey(),
-                    immutableValue(entry.getValue())
-            );
-        }
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static Object immutableValue(Object value) {
-        if (value == null
-                || value instanceof String
-                || value instanceof Boolean
-                || value instanceof Number) {
-            return value;
-        }
-        if (value instanceof Map<?, ?>) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
-                if (!(entry.getKey() instanceof String)) {
-                    throw new IllegalArgumentException(
-                            "workerProperties keys must be strings"
-                    );
-                }
-                result.put(
-                        (String) entry.getKey(),
-                        immutableValue(entry.getValue())
-                );
-            }
-            return Collections.unmodifiableMap(result);
-        }
-        if (value instanceof List<?>) {
-            List<Object> result = new ArrayList<>();
-            for (Object item : (List<?>) value) {
-                result.add(immutableValue(item));
-            }
-            return Collections.unmodifiableList(result);
-        }
-        throw new IllegalArgumentException(
-                "workerProperties contain a non-JSON value"
-        );
     }
 
     private static String requireNonBlank(String value, String name) {

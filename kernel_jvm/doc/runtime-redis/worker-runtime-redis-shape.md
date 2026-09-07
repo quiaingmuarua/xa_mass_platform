@@ -41,8 +41,8 @@ different declarations conflict. The ID-owner Hash is an immutable
 cross-Group fence for bounded explicit-ID reads; it is not a global discovery
 index.
 
-Worker upsert validates Group existence and identity ownership, then creates or
-updates only the endpoint coordinate. The exact metadata field set rejects
+Worker upsert validates Group existence and identity ownership, then creates
+immutable minimal metadata. A different existing endpoint coordinate conflicts. The exact metadata field set rejects
 legacy Properties fields.
 
 ## Matching Facts
@@ -104,34 +104,15 @@ kind selects only the Server-owned registration-key algorithm and never enters
 the Redis key address. Binding establishes the persistent delivery route.
 Neither is connection truth or a Kernel scheduling decision.
 
-## Prepare Composition
+## Composition And Views
 
-```text
-resolve/register identity
-  -> persist endpoint binding
-  -> upsert WorkerMatchingCatalog facts
-  -> upsert minimal Kernel Worker metadata
-  -> initialize score when absent
-```
-
-These owner writes are ordered but not transactional. Retrying the complete
-Prepare converges idempotently. A partial Matching record cannot schedule work
-without a Kernel Demand, current score and exact lease.
-
-## Reads And Runtime Views
-
-Kernel catalog reads remain caller-bounded and return only minimal descriptors.
-Matching reads are independently bounded by explicit Worker IDs or one Group
-scan page. Server builds the public Worker view by joining:
-
-```text
-Kernel descriptor
-  + Matching facts
-  + score/network projections requested by that API
-```
-
-The join is a projection, not a new truth record and not an atomic snapshot
-across owners.
+[Server Prepare](../../../server_jvm/README.md#workergroup-and-worker-preparation)
+owns the ordered cross-owner use case. The
+[Matching catalog](../../../worker_matching_jvm/README.md#persistent-catalog)
+owns fact/Rule semantics, and the
+[Worker resource model](../resource-model/worker-resource-model.md) owns Kernel
+metadata. Runtime views join independent Owner reads; they are neither new
+truth records nor atomic snapshots across these keys.
 
 ## Guardrails
 

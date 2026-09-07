@@ -2,6 +2,7 @@ package com.xa.mass.worker.runtime;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -116,6 +117,25 @@ public final class WorkerRunController implements WorkerLifecycle {
         closeQuietly(transport);
         if (changed) {
             publish();
+        }
+    }
+
+    /** One-shot full observation from the Host's existing Properties provider. */
+    public boolean reportProperties() {
+        TextMessageWorkerTransport transport = currentTransport();
+        return transport != null && transport.reportProperties();
+    }
+
+    /** Sends a patch; the Host, not the SDK, owns the corresponding data update. */
+    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
+        String payload = TextMessageWorkerTransport.propertiesPatch(set, remove);
+        TextMessageWorkerTransport transport = currentTransport();
+        return transport != null && transport.sendProperties(payload);
+    }
+
+    private TextMessageWorkerTransport currentTransport() {
+        synchronized (stateLock) {
+            return activeTransport;
         }
     }
 

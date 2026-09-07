@@ -136,14 +136,15 @@ discovered invalid file fails aggregate startup
 before a Manager or network Client is created.
 
 Each physical line is one complete persistent local snapshot. Immutable
-`labInventoryKey` and `labInventoryLine` Properties must match its filename and
-one-based physical line. `<filename>:<line>` is the Lab-local `labWorkerKey`
+`labInventoryKey` and decimal-string `labInventoryLine` Properties must match
+its filename and one-based physical line. All Properties values are strings;
+only the outer `schemaVersion` remains numeric. `<filename>:<line>` is the Lab-local `labWorkerKey`
 used by the control API; it is not `clientWorkerKey` or a general Transport
 identity field. The parent directory supplies the configured `workerGroupId`:
 
 ```json
-{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":1,"runtime":"java","capability":"string-utils","region":"local","labSlot":1,"convergenceSlot":"A"}}
-{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":2,"runtime":"java","capability":"string-utils","region":"local","labSlot":2,"convergenceSlot":"A"}}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":"1","runtime":"java","capability":"string-utils","region":"local","labSlot":"1","convergenceSlot":"A"}}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"workers-000.jsonl","labInventoryLine":"2","runtime":"java","capability":"string-utils","region":"local","labSlot":"2","convergenceSlot":"A"}}
 ```
 
 Blank lines, comments, multi-line objects, missing `workerProperties`, schema

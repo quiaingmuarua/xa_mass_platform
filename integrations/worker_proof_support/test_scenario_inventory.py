@@ -29,7 +29,7 @@ class ScenarioInventoryTest(unittest.TestCase):
     def test_materializes_fixed_chunks_and_location_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "scenario-workers"
-            groups = {"group-a": tuple({"index": i} for i in range(205))}
+            groups = {"group-a": tuple({"index": str(i)} for i in range(205))}
 
             coordinates = materialize_inventory(root, groups)
 
@@ -45,21 +45,21 @@ class ScenarioInventoryTest(unittest.TestCase):
                 "workers-000.jsonl",
                 first["workerProperties"]["labInventoryKey"],
             )
-            self.assertEqual(1, first["workerProperties"]["labInventoryLine"])
-            self.assertEqual(204, last["workerProperties"]["index"])
-            self.assertEqual(5, last["workerProperties"]["labInventoryLine"])
+            self.assertEqual("1", first["workerProperties"]["labInventoryLine"])
+            self.assertEqual("204", last["workerProperties"]["index"])
+            self.assertEqual("5", last["workerProperties"]["labInventoryLine"])
             self.assertEqual("workers-002.jsonl:5", coordinates["group-a"][-1])
 
     def test_supports_fixed_group_boundaries(self) -> None:
         for count in (1, 100, MAX_RECORDS_PER_GROUP):
             with self.subTest(count=count):
-                groups = {"group-a": tuple({"index": i} for i in range(count))}
+                groups = {"group-a": tuple({"index": str(i)} for i in range(count))}
                 coordinates = inventory_coordinates(groups)
                 self.assertEqual(count, len(coordinates["group-a"]))
         with self.assertRaisesRegex(ValueError, "1..15000"):
             inventory_coordinates({
                 "group-a": tuple(
-                    {"index": i}
+                    {"index": str(i)}
                     for i in range(MAX_RECORDS_PER_GROUP + 1)
                 )
             })
@@ -68,7 +68,7 @@ class ScenarioInventoryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "scenario-workers"
             records = tuple(
-                {"workerIndex": index}
+                {"workerIndex": str(index)}
                 for index in range(1, MAX_RECORDS_PER_GROUP + 1)
             )
 
@@ -84,20 +84,20 @@ class ScenarioInventoryTest(unittest.TestCase):
             inventory_coordinates({
                 "group-a": ({"labInventoryLine": 1},),
             })
-        with self.assertRaisesRegex(ValueError, "strict JSON"):
+        with self.assertRaisesRegex(ValueError, "flat string Properties"):
             inventory_coordinates({"group-a": ({"value": float("nan")},)})
         with self.assertRaisesRegex(ValueError, "one path segment"):
-            inventory_coordinates({"parent\\group-a": ({"value": 1},)})
+            inventory_coordinates({"parent\\group-a": ({"value": "1"},)})
         with self.assertRaisesRegex(ValueError, "duplicate normalized"):
             inventory_coordinates({
-                "group-a": ({"value": 1},),
-                " group-a ": ({"value": 2},),
+                "group-a": ({"value": "1"},),
+                " group-a ": ({"value": "2"},),
             })
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "scenario-workers"
             (root / "group-a").mkdir(parents=True)
             with self.assertRaisesRegex(ValueError, "already exist"):
-                materialize_inventory(root, {"group-a": ({"value": 1},)})
+                materialize_inventory(root, {"group-a": ({"value": "1"},)})
 
     def test_canonical_world_matches_scenario_default_resource(self) -> None:
         world = canonical_100_worker_world()

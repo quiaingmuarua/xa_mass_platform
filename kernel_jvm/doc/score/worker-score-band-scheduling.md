@@ -45,33 +45,20 @@ the score model never coalesces multiple TaskItems behind one Worker lease.
 
 ## Owner Boundary
 
-Worker-runtime owns:
+`WorkerScoreCore` owns legal score encoding, exact fences and coordinate
+transitions. `WorkerRuntime` owns immutable scheduling identity, Group and
+Endpoint metadata; [Worker Matching](../../../worker_matching_jvm/README.md)
+owns Properties and Rule interpretation. Production allocation, dispatch and
+Serviceability policies live in `kernel_pacer_jvm`.
 
-```text
-worker declaration validation
-worker group membership interpretation
-dispatch gate interpretation
-reachability interpretation for scheduling
-slot admission truth
-score polarity and coordinate placement
-validated recovery promotion
-RECOVERY_RECHECK allocation blocking
-manual hold / release policy
-```
+Adapter connection owners retain verified Route truth and produce bounded
+observation evidence. [Serviceability Policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+interprets that evidence and requests named semantic Owner transitions. Neither
+Adapter nor Server writes Score or promotes a Worker into HOT directly.
 
-Adapter and endpoint managers own local final-hop observations:
-
-```text
-endpoint/session observation
-heartbeat / keepalive freshness
-adapter-local consumer availability
-delivery mailbox evidence
-pre-execution rejection evidence
-```
-
-These observations may become evidence for a Worker score owner operation. They
-must not directly write Worker score or promote a Worker into HOT_ACQUIRE. The
-kernel owns the resulting scheduling-serviceability classification.
+Generic hold/release primitives do not imply a separate current pause, drain,
+slot-admission or reset-state registry. Their production callers and policy
+limits remain defined by the linked Pacer documents.
 
 ## Score Model
 
@@ -527,9 +514,10 @@ continuation that will later revalidate or renew. Raw external observation
 never writes dirty.
 
 Raw socket, heartbeat, keepalive, session, latency observation, and
-`WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
+`WorkerRuntime.upsertWorker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
 Upsert initializes only a missing score and preserves every existing score
-exactly while replacing the Worker Properties snapshot. Only normalized
+exactly. Worker Properties replacement belongs to Worker Matching during Prepare;
+Kernel WorkerRuntime stores only minimal identity/Group/Endpoint metadata. Only normalized
 Adapter Route evidence interpreted by the Kernel Serviceability Result Policy
 may reach `WorkerServiceabilityEvents`; its default event Mechanism composes
 bounded WorkerGroup resolution with the Score Owner's atomic Evidence fence.
@@ -677,10 +665,9 @@ released atomically. Other
 RECOVERY coordinates, a newer lease, dirty drift, pause, or a missing score are
 `STALE`. Result Routing never decodes or constructs the counterpart.
 
-If owner evidence says a held worker is owner-reset-required, release also
-requires owner reset authorization. That authorization is not encoded in the
-score; it belongs to worker-runtime owner evidence and must be checked before
-writing the release.
+The current release primitive has no companion reset-authorization state.
+Any future business authorization for manual release requires its own caller
+contract; it must not be inferred from Score or invented as WorkerRuntime data.
 
 ### Polarity Move
 
@@ -880,9 +867,10 @@ global resource lock.
 | HOT_ACQUIRE | slot contention / cooldown / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
 | HOT_ACQUIRE | Adapter rejection result | exact lease release, polarity preserved | complete observed-score CAS |
-| HOT_ACQUIRE | bounded-age Adapter Route evidence says unavailable, or delivery expires before start | RECOVERY_RECHECK(sameTime, 0, dirty) | exact observed-score CAS; evidence time is not a score fence |
-| RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, 0, dirty) | owner-validated polarity move |
-| RECOVERY_RECHECK | recovery validation fails and retry remains | RECOVERY_RECHECK(nextRecheckTime, retryCount + 1, dirty) | future exact retry operation; not implemented in this slice |
+| HOT_ACQUIRE | accepted unavailable Adapter evidence | RECOVERY_RECHECK(sameTime, sameRank, dirty) | dedicated evidence-time fence; preserve the entire absolute coordinate |
+| RECOVERY_RECHECK | explicit owner-validated general polarity move | HOT_ACQUIRE(sameTime, 0, dirty) | exact observed-score CAS; distinct from Serviceability evidence |
+| either | accepted connected Adapter evidence | HOT_ACQUIRE(retained or refreshed time, sameRank, dirty) | dedicated evidence-time fence; advance an older non-future coordinate, preserve future lease/PAUSE |
+| RECOVERY_RECHECK | due Serviceability probe round | RECOVERY_RECHECK(owner Redis time, retryCount + 1, dirty) | exact advance before probe offer; Dispatch policy owns retry cadence |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
 | RECOVERY_RECHECK | owner hold / disabled / drain / maintenance | RECOVERY_RECHECK(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold + owner evidence |
 
@@ -890,39 +878,14 @@ There is no PARKED row because PARKED is not a polarity or band. It is owner
 evidence attached to a RECOVERY_RECHECK too-old cold coordinate or a policy
 hold, depending on owner reason.
 
-## Assignment-Dispatch Protocol
+## Cross-Owner Use
 
-Worker score-band participates in assignment-dispatch like this:
-
-```text
-task score acquires due task candidate
-PRECOMPUTED allocation orders deficits, observes due HOT Workers and exact-holds
-Worker Matching interprets persistent Candidate Rules and supplied Worker facts
-Worker Matching carries opaque held scores into CandidateWorkerCache
-ON_DEMAND dispatch observes normalized explicit Worker IDs or an ANY pool
-candidate selection exact-holds and enforces round uniqueness
-Task dispatch resolves the WorkerAllocationMechanism acquisition path
-and keeps Task-or-Item-to-Worker bindings
-final candidate renewal exact-validates/renews only the score fence
-Kernel loads the minimal Worker endpoint descriptor and selected TaskItem record
-TaskItemScoreBandCore claims the observed Item score
-transport receives already-selected worker dispatch
-```
-
-Worker score-band does not:
-
-```text
-read TaskItem records
-claim Item score
-select transport route
-inspect adapter connections directly
-write task score
-create or own Worker candidate cache; transient `CandidateWorkerCache` ZSETs
-belong to assignment-dispatch
-```
-
-RECOVERY_RECHECK acquisition is a worker-runtime recovery validation path, not an
-assignment-dispatch worker selection path.
+The [HOT Lease Protocol](worker-hot-acquire-lease-protocol.md) owns the opaque
+fence from initial acquisition through matching, renewal, claim and Result
+release. This Score Owner supplies bounded mechanical operations; it does not
+read TaskItems, interpret Rules, select physical routes or own Candidate Cache.
+Serviceability policy and evidence classification are defined in
+[Worker Serviceability](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).
 
 ## Input Write Taxonomy
 
@@ -939,7 +902,7 @@ assignment-dispatch worker selection path.
 | assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before PRECOMPUTED Demand or ON_DEMAND claim |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard the candidate |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
-| bounded-age Adapter Route evidence | yes | Adapter Evidence Batch policy orders within one batch, then uses current-score read plus exact CAS; there is no cross-batch evidence fence, so delayed evidence may cause a temporary polarity regression before later evidence repairs it |
+| bounded-age Adapter Route evidence | yes | dedicated same-key evidence operation checks stored time against evidence time, with the future-coordinate exception described in Serviceability Evidence; this is not a total cross-batch ordering guarantee |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |
@@ -994,12 +957,12 @@ score due but worker disabled/draining
   stale candidate or owner mismatch; rewrite same polarity to far-future hold
   if the owner hold fact is current
 
-HOT_ACQUIRE score due but serviceability validation fails strongly
-  move to RECOVERY_RECHECK laneRank=0 by owner policy, preserving timeSlot/dirty
+accepted unavailable Adapter evidence
+  apply the Serviceability evidence-time fence; preserve timeSlot, laneRank and dirty
 
 RECOVERY_RECHECK score due but recovery validation fails
-  a future exact retry operation writes next time and retryCount+1 if allowed,
-  or writes a RECOVERY_RECHECK too-old cold coordinate if exhausted
+  the next eligible Dispatch round exact-advances the due score before offering
+  another probe, or cold-parks the exact exhausted observation
 
 score due but slot admission defers use
   rewrite HOT_ACQUIRE with future time or reject according to admission policy
@@ -1016,7 +979,7 @@ Score absence is not RECOVERY_RECHECK. It may be used only for absent
 resources or confirmed orphan cleanup, not as the ordinary way to hold, park,
 disable, or demote a long-lived worker id.
 
-## Mechanism And Deferred Policy
+## Mechanism And Policy
 
 Mechanism owns:
 
@@ -1034,7 +997,9 @@ home bucket score key
 only normalized connected Adapter evidence may refresh a non-future HOT coordinate
 ```
 
-Policy owns:
+Production policy is defined in the [Pacer documents](../../../kernel_pacer_jvm/README.md).
+The following choices belong outside encoding; their presence here does not
+claim that every possible policy has a current production caller:
 
 ```text
 initial HOT_ACQUIRE score time coordinate; laneRank is fixed at 0
@@ -1054,9 +1019,9 @@ slot contention delay
 verified reopen policy
 ```
 
-## First-Version Non-Goals
+## Non-Goals
 
-Do not include these in the first worker-score version:
+These remain outside the Worker Score Owner:
 
 ```text
 lifecycle-like worker tags
@@ -1101,9 +1066,9 @@ slot registry redesign
   cold coordinate, polarity sign, dirty bit, base, or factor constants.
 - Do not add fake business strategy knobs to score-core methods before a real
   caller workflow owns the value.
-- Do not set dirty bit directly from a hash modulo. Store the full scheduling
-  signature/hash in worker-runtime metadata or evidence and use score dirty only
-  as a one-bit revalidation flag.
+- Do not derive dirty directly from a Properties hash or store Matching
+  signatures in WorkerRuntime. Dirty is only a score-local lease fence; a new
+  producer requires an explicit continuation invariant and owning caller.
 - Do not let heartbeat, session refresh, trace, diagnostics, or display-only
   metadata bump dirty bit.
 - Do not invent a score lease just to justify dirty. Dirty only has a consumer

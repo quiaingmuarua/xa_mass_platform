@@ -293,7 +293,7 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(mechanism)
                 .contains("routes.hasVerificationEvidence(workerId)")
                 .contains("propertiesCache.invalidate(workerId)")
-                .doesNotContain("requestPropertiesSnapshot")
+
                 .doesNotContain("worker-properties.changed")
                 .doesNotContain("worker-properties-evidence");
         assertThat(dispatcher)

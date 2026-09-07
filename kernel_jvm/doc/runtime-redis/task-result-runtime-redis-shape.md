@@ -120,43 +120,14 @@ Dispatch stores failed first and then requests `FINAL_FAILED`. Its normal later
 round may repeat that idempotent sequence while the Item remains eligible, but
 there is no general background reconciliation between Result and Score.
 
-## Owner Rules
+## Related Owners And Migration
 
-```text
-Server Worker Delivery ingress
-  owns producer validation, endpoint error-code validation and lane mapping
-
-RedisTaskResultRuntime
-  owns selected-lane encoding, append and bounded consume
-
-ResultConvergenceApplication
-  owns fixed SUCCESS/FAILURE lane consumption and shared-capacity asynchronous
-  Batch dispatch; both Task lanes may execute concurrent Batches. FIFO fixes
-  consume order, not policy completion order; duplicate SUCCESS payloads use
-  the last actual Redis field write
-
-TaskResultBatchPolicy
-  owns ResultContext decode, bounded grouping, last-wins collapse and
-  SUCCESS/FAILURE semantic event publication
-
-TaskItemResultEvents
-  owns successful TaskItem Result meaning; it orders Result storage before a
-  separate finality promotion request
-
-WorkerExecutionResultEvents
-  owns Worker execution success/failure event meaning and is the only Result
-  layer allowed to unwrap WorkerLeaseReference into the score-owner fence
-
-TaskRuntime
-  owns the Task-scoped self-describing Result HASH
-
-TaskDispatchPolicy
-  owns exhaustion/TTL classification and orders failed-result storage before
-  FINAL_FAILED promotion
-
-TaskItemScoreBandCore / WorkerScoreCore
-  own score validation and mutation
-```
+[Result Policy](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
+defines classification, parsing, grouping and semantic event publication;
+[Pacer assembly](../../../kernel_pacer_jvm/doc/application-assembly.md)
+defines lane execution and lifecycle. Those operations do not add a transaction
+or replay owner to this Redis shape. [TaskItem Score](../score/task-item-score-band-scheduling.md)
+remains the finality owner.
 
 The old `worker-failure` and `adapter-rejection` LISTs are not read or migrated.
 They were transient best-effort evidence and have no compatibility alias. The

@@ -29,8 +29,8 @@ class ScenarioWorkerStateFileTest {
     void derivesStableKeysFromFilenameAndPhysicalLine() throws Exception {
         Path path = temporaryDirectory.resolve("workers-a.jsonl");
         writeLines(path, List.of(
-                document(path, 1, Map.of("labSlot", 1)),
-                document(path, 2, Map.of("labSlot", 2))
+                document(path, 1, Map.of("labSlot", "1")),
+                document(path, 2, Map.of("labSlot", "2"))
         ));
 
         List<ScenarioWorkerStateFile> records =
@@ -43,7 +43,7 @@ class ScenarioWorkerStateFileTest {
                 .isEqualTo("workers-a.jsonl");
         assertThat(records.get(1).lineNumber()).isEqualTo(2);
         assertThat(records.get(1).workerProperties())
-                .containsEntry("labSlot", 2L);
+                .containsEntry("labSlot", "2");
     }
 
     @Test
@@ -73,7 +73,7 @@ class ScenarioWorkerStateFileTest {
              index <= ScenarioWorkerStateFile.MAX_RECORDS_PER_FILE;
              index++) {
             oversized.add(document(path, index + 1, Map.of(
-                    "labSlot", index
+                    "labSlot", Integer.toString(index)
             )));
         }
         writeLines(path, oversized);
@@ -111,7 +111,7 @@ class ScenarioWorkerStateFileTest {
                         "workerProperties",
                         Map.of(
                                 "labInventoryKey", "workers.jsonl",
-                                "labInventoryLine", 1L,
+                                "labInventoryLine", "1",
                                 "region", "replacement"
                         )
                 );
@@ -162,7 +162,7 @@ class ScenarioWorkerStateFileTest {
     ) {
         var complete = new java.util.LinkedHashMap<String, Object>();
         complete.put("labInventoryKey", path.getFileName().toString());
-        complete.put("labInventoryLine", lineNumber);
+        complete.put("labInventoryLine", Integer.toString(lineNumber));
         complete.putAll(properties);
         return Jsons.toJson(Map.of(
                 "schemaVersion", 2,

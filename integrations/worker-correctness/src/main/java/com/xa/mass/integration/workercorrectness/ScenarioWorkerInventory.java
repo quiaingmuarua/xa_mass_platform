@@ -126,9 +126,7 @@ final class ScenarioWorkerInventory {
                         labWorkerKey.substring(separator + 1)
                 );
                 if (!inventoryKey.equals(properties.get("labInventoryKey"))
-                        || !(properties.get("labInventoryLine")
-                        instanceof Number line)
-                        || line.longValue() != inventoryLine
+                        || !Long.toString(inventoryLine).equals(properties.get("labInventoryLine"))
                         || properties.containsKey("clientWorkerKey")) {
                     throw inconsistent(
                             "lab.worker-identity",

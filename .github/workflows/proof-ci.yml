@@ -67,7 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Verify current documentation contract
-        run: python3 .github/scripts/check_docs.py
+        run: |
+          python3 .github/scripts/test_check_docs.py
+          python3 .github/scripts/check_docs.py
 
   jvm-contracts:
     name: JVM Contracts

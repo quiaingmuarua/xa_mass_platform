@@ -1,6 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,7 +9,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +75,7 @@ final class ScenarioWorkerStateFile {
         return lineNumber;
     }
 
-    Map<String, Object> workerProperties() {
+    Map<String, String> workerProperties() {
         return readRecords(path).get(lineNumber - 1).workerProperties();
     }
 
@@ -148,28 +148,26 @@ final class ScenarioWorkerStateFile {
                 || !(value.get("workerProperties") instanceof Map<?, ?>)) {
             throw invalid(path, lineNumber, null);
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> properties = (Map<String, Object>) value.get(
-                "workerProperties"
-        );
-        requireInventoryIdentity(properties, path, lineNumber);
-        return new StateDocument(immutableJsonMap(
-                properties,
-                "workerProperties"
-        ));
+        try {
+            Map<String, String> properties = WorkerDeliveryCodec.copyWorkerProperties(
+                    (Map<?, ?>) value.get("workerProperties")
+            );
+            requireInventoryIdentity(properties, path, lineNumber);
+            return new StateDocument(properties);
+        } catch (IllegalArgumentException error) {
+            throw invalid(path, lineNumber, error);
+        }
     }
 
     private static void requireInventoryIdentity(
-            Map<String, Object> properties,
+            Map<String, String> properties,
             Path path,
             int lineNumber
     ) {
         String filename = path.getFileName().toString();
         if (properties.containsKey("clientWorkerKey")
                 || !filename.equals(properties.get(LAB_INVENTORY_KEY))
-                || !(properties.get(LAB_INVENTORY_LINE) instanceof Long)
-                || ((Long) properties.get(LAB_INVENTORY_LINE))
-                != lineNumber) {
+                || !Integer.toString(lineNumber).equals(properties.get(LAB_INVENTORY_LINE))) {
             throw invalid(path, lineNumber, null);
         }
     }
@@ -220,16 +218,6 @@ final class ScenarioWorkerStateFile {
         }
     }
 
-    private static Map<String, Object> immutableJsonMap(
-            Map<String, Object> value,
-            String name
-    ) {
-        if (value == null) {
-            throw new NullPointerException(name);
-        }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(value));
-    }
-
     private static ScenarioWorkerAssemblyException invalid(
             Path path,
             int lineNumber,
@@ -246,6 +234,6 @@ final class ScenarioWorkerStateFile {
         );
     }
 
-    private record StateDocument(Map<String, Object> workerProperties) {
+    private record StateDocument(Map<String, String> workerProperties) {
     }
 }

@@ -2,11 +2,8 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,7 +52,7 @@ public final class WorkerControlPreparation implements WorkerPreparation {
     @Override
     public PreparedWorker prepare() throws Exception {
         requireOpen();
-        Map<String, Object> properties = immutableProperties(
+        Map<String, String> properties = immutableProperties(
                 propertiesProvider.loadProperties()
         );
         return Objects.requireNonNull(
@@ -85,62 +82,18 @@ public final class WorkerControlPreparation implements WorkerPreparation {
         }
     }
 
-    private static Map<String, Object> immutableProperties(
+    private static Map<String, String> immutableProperties(
             Map<?, ?> source
     ) {
-        if (source == null) {
-            throw new IllegalArgumentException(
-                    "workerProperties must be present"
-            );
-        }
-        Map<String, Object> properties = immutableObject(source);
-        Object rawClientKey = properties.get(CLIENT_WORKER_KEY);
-        if (!(rawClientKey instanceof String)
-                || ((String) rawClientKey).trim().isEmpty()) {
+        Map<String, String> properties = WorkerDeliveryCodec.copyWorkerProperties(source);
+        String clientKey = properties.get(CLIENT_WORKER_KEY);
+        if (clientKey == null || clientKey.isBlank()) {
             throw new IllegalArgumentException(
                     "workerProperties.clientWorkerKey must be a "
                             + "non-blank string"
             );
         }
         return properties;
-    }
-
-    private static Map<String, Object> immutableObject(Map<?, ?> source) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : source.entrySet()) {
-            if (!(entry.getKey() instanceof String)) {
-                throw new IllegalArgumentException(
-                        "workerProperties keys must be strings"
-                );
-            }
-            result.put(
-                    (String) entry.getKey(),
-                    immutableValue(entry.getValue())
-            );
-        }
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static Object immutableValue(Object value) {
-        if (value == null
-                || value instanceof String
-                || value instanceof Boolean
-                || value instanceof Number) {
-            return value;
-        }
-        if (value instanceof Map<?, ?>) {
-            return immutableObject((Map<?, ?>) value);
-        }
-        if (value instanceof List<?>) {
-            List<Object> result = new ArrayList<>();
-            for (Object item : (List<?>) value) {
-                result.add(immutableValue(item));
-            }
-            return Collections.unmodifiableList(result);
-        }
-        throw new IllegalArgumentException(
-                "workerProperties contain a non-JSON value"
-        );
     }
 
     private static Duration requirePositive(Duration value, String name) {

@@ -102,7 +102,7 @@ class JavaWorkerTest {
     @Test
     void changedPropertiesAreLoadedByTheNextExplicitStart()
             throws Exception {
-        AtomicReference<Map<String, Object>> properties =
+        AtomicReference<Map<String, String>> properties =
                 new AtomicReference<>(Map.of(
                         "runtime", "java",
                         "region", "initial"
@@ -269,7 +269,7 @@ class JavaWorkerTest {
         assertEquals(Boolean.TRUE, virtualHandler.get());
     }
 
-    private JavaWorker worker(Map<String, Object> properties) {
+    private JavaWorker worker(Map<String, String> properties) {
         return JavaWorker.create(
                 URI.create(server.url("/").toString()),
                 "group-1",

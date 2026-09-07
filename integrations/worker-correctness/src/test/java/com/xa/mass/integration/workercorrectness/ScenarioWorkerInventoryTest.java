@@ -181,7 +181,7 @@ class ScenarioWorkerInventoryTest {
                 "schemaVersion", 2,
                 "workerProperties", Map.of(
                         "labInventoryKey", inventoryKey,
-                        "labInventoryLine", inventoryLine,
+                        "labInventoryLine", Integer.toString(inventoryLine),
                         "dynamic", UUID.randomUUID().toString()
                 )
         ));

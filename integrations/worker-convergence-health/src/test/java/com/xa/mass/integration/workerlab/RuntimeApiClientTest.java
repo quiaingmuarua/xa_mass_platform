@@ -38,7 +38,7 @@ class RuntimeApiClientTest {
                                 "workerId", "worker-1",
                                 "workerProperties", Map.of(
                                         "labInventoryKey", "workers.jsonl",
-                                        "labInventoryLine", 1,
+                                        "labInventoryLine", "1",
                                         "labSlot", 901
                                 )
                         ))

@@ -272,15 +272,25 @@ them. Disconnected evidence is removed by TTL or capacity pressure and then
 projects as `UNKNOWN`. Cache eviction never emits availability evidence.
 
 Each Adapter also owns one `WorkerPropertiesCache` beside the Registry. It is
-not route truth: it stores only the most recent successful
-`platform.worker.properties.snapshot` observed from the exact current
-connected Channel. A replaced old Channel may still submit valid in-flight
+not route truth: `platform.worker.properties.reported` from the exact current
+verified Channel is its sole write path. A full payload replaces the complete
+baseline, while a patch can only modify an already-retained baseline.
+A replaced old Channel may still submit valid in-flight
 evidence, but it cannot refresh this projection. Properties survive ordinary
 disconnect and reconnect while route verification evidence is retained. Each
-entry contains the complete properties Map and an Adapter-written
-`updatedAtMillis`. The time is strictly increasing for successive writes to a
+entry contains a flat immutable complete string Properties Map, metadata
+(`propertiesFingerprint`, Adapter-written `updatedAtMillis`), and an internal
+encoded weight. The time is strictly increasing for successive writes to a
 retained entry, including same-millisecond updates or a short wall-clock
 rollback. It is observation metadata, not a cross-restart version or CAS fence.
+
+The fingerprint uses JDK CRC32C over UTF-8 JSON with lexically sorted property
+keys. The same encoding supplies the capacity weight;
+no second encoded snapshot is retained and reads do not parse JSON. Collisions
+are acceptable: fingerprint equality never suppresses a valid cache write.
+Full replacement and patch commit content, metadata and weight together through
+the same per-worker cache compute. Conditional rollback cannot remove a newer
+observation. The weight is a logical encoded-data budget, not measured heap size.
 
 Properties have no independent time expiry. The connection mechanism gates
 every read with current route verification evidence: losing that evidence by
@@ -290,8 +300,8 @@ lifetime's properties. No Caffeine removal callback joins the two owners;
 inaccessible residue is removed lazily and remains bounded by the independent
 64 MiB encoded-data budget. That budget is weighted by UTF-8 workerId plus
 encoded properties bytes and may evict a connected Worker's properties without
-changing its route. Management reads are quiet; only a successful current-
-Channel properties result refreshes an entry.
+changing its route. Management reads are quiet; only a valid current-Channel
+full snapshot or incremental report refreshes an entry.
 
 ## Delivery Processes
 
@@ -411,14 +421,37 @@ shared version. `CONNECTED`, cached properties, current Binding and scheduling
 eligibility remain independent facts. A caller needing a combined view invokes
 both events and joins by workerId. `updatedAtMillis` is comparable only within
 one retained entry lifetime; after UNKNOWN or Adapter restart, the next value is
-a new baseline. The Adapter does not automatically probe a Worker or publish
+a new baseline. After committing each verified activation, including retained
+verification reconnect, Adapter requests one `platform.worker.properties.snapshot`
+directly on that exact Channel. The Command is ADAPTER -> WORKER, payload `null`,
+empty forward, with the configured `sendTimeLimit` deadline. It runs outside
+Route mutation, never enters a retry Queue and failure never closes a healthy
+connection. There is no request registry or compensation. Adapter does not publish
 attribute changes to Server or Kernel. Entries are keyed by workerId and do not
 repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
 only: no loader, refresh, listener, scheduler or cleanup thread is installed.
 
-The current Worker event supplies a complete properties snapshot. There is no
-partial-update, change-notification, or per-property timestamp contract. This
-Adapter observation is never a Kernel write path.
+The fixed Worker-produced `WORKER -> ADAPTER` event
+`platform.worker.properties.reported` accepts outcome `200`, empty forward,
+and exactly one payload shape: `{"properties":{...}}` or
+`{"set":{...},"remove":["..."]}`. Full replaces the entire Map; patch requires
+a retained full baseline. Keys are non-blank literal strings and values are
+non-null strings (empty allowed). Remove is unique, non-blank and disjoint from
+set. Nested objects, arrays, numbers, booleans and mixed/unknown payload fields
+are rejected, not coerced. An empty full Map or patch is valid.
+
+Before identity, during verification, after replacement, or for an invalid
+payload, the report is dropped locally. A patch after capacity eviction is also
+dropped without a compensating snapshot request. Host explicit full reporting
+or the next successful connection baseline can restore it. Report encoding is
+bounded to the existing 1,000,000-byte frame limit.
+
+This event is not a callable Handler, forwarded to Report queues, or
+acknowledged. Ordinary TASK/SYSTEM snapshot Results still forward but never
+refresh the cache. Java and Android use their one Host Provider for full reports;
+the SDK does not store or merge Host properties. Server publication/coalescing,
+field timestamps, versions and reliable convergence remain out of scope.
+Connection evidence behavior is unchanged; this observation never writes Kernel.
 
 ### Result ingress loop
 

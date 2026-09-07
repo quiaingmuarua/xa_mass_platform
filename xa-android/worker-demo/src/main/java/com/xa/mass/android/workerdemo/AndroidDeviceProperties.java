@@ -21,17 +21,17 @@ final class AndroidDeviceProperties implements AndroidWorkerProperties {
     }
 
     @Override
-    public Map<String, Object> getProperties(Context applicationContext) {
+    public Map<String, String> getProperties(Context applicationContext) {
         if (applicationContext == null) {
             throw new IllegalArgumentException(
                     "applicationContext must be present"
             );
         }
-        Map<String, Object> properties = new LinkedHashMap<>();
+        Map<String, String> properties = new LinkedHashMap<>();
         properties.put("runtime", "android");
         properties.put("packageName", packageName());
         properties.put("versionName", versionName());
-        properties.put("sdkInt", Build.VERSION.SDK_INT);
+        properties.put("sdkInt", Integer.toString(Build.VERSION.SDK_INT));
         properties.put("manufacturer", Build.MANUFACTURER);
         properties.put("model", Build.MODEL);
         return Collections.unmodifiableMap(properties);

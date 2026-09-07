@@ -2,6 +2,7 @@ package com.xa.mass.worker.execution;
 
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -126,12 +127,9 @@ public final class WorkerManagementEventDefinitions {
     private static String propertiesSnapshot(
             WorkerPropertiesProvider provider
     ) throws Exception {
-        Map<String, Object> properties = provider.loadProperties();
-        if (properties == null) {
-            throw new IllegalArgumentException(
-                    "workerProperties must be present"
-            );
-        }
+        Map<String, String> properties = WorkerDeliveryCodec.copyWorkerProperties(
+                provider.loadProperties()
+        );
         if (properties.containsKey(CLIENT_WORKER_KEY)) {
             throw new IllegalArgumentException(
                     "workerProperties must not expose " + CLIENT_WORKER_KEY

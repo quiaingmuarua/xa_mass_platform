@@ -236,14 +236,17 @@ SYSTEM -> Direct Call correlation
 KERNEL -> Worker Serviceability Runtime
 ```
 
-It does not parse Serviceability event payloads. Adapter uses the existing
-Command/Report Processes and adds no queue, thread, or HTTP path.
+It does not parse Serviceability event payloads. Adapter uses its fixed Command
+and Report Dispatchers; see the [Adapter Owner](../../../transport/netty-adapter/README.md)
+for lane admission, retransmission and shutdown.
 
-When a TASK Command expires before delivery, Adapter atomically offers one
-23002 TASK Report and one `platform.adapter.worker-delivery.expired` KERNEL
-Report to the same Report queue. Task Result Routing performs TaskItem
-disposition and exact lease release only; Serviceability alone interprets the
-second Report. Queue pressure drops both without closing a Worker Channel.
+When a TASK Command expires before delivery, Adapter independently offers a
+23002 TASK Report and a `platform.adapter.worker-delivery.expired` KERNEL Report
+to their respective lanes. These admissions are not atomic and either may be
+lost. Task Result Routing handles correlated execution evidence and lease
+release; only Serviceability interprets the KERNEL Report as availability
+evidence. Queue pressure does not create a cross-lane admission guarantee or
+close a Worker Channel merely because delivery expired.
 
 ## Lifecycle And Guardrails
 

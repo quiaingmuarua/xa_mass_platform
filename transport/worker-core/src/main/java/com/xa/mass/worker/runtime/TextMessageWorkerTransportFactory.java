@@ -14,11 +14,14 @@ public final class TextMessageWorkerTransportFactory {
 
     private final Function<URI, TextMessageClient> clientCreator;
     private final WorkerCommandExecutor commandDispatcher;
+    private final WorkerPropertiesProvider propertiesProvider;
 
     public TextMessageWorkerTransportFactory(
             Function<URI, TextMessageClient> clientCreator,
-            WorkerCommandExecutor commandDispatcher
+            WorkerCommandExecutor commandDispatcher,
+            WorkerPropertiesProvider propertiesProvider
     ) {
+        this.propertiesProvider = Objects.requireNonNull(propertiesProvider, "propertiesProvider");
         this.clientCreator = Objects.requireNonNull(
                 clientCreator,
                 "clientCreator"
@@ -43,6 +46,7 @@ public final class TextMessageWorkerTransportFactory {
                     client,
                     preparedWorker.workerId(),
                     commandDispatcher,
+                    propertiesProvider,
                     listener
             );
         } catch (RuntimeException | Error failure) {

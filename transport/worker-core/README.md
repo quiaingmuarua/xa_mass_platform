@@ -175,18 +175,41 @@ Core does not own the batch protocol or Properties aggregation.
 
 `WorkerControlPreparation` owns `WorkerPropertiesProvider` and
 `WorkerControlClient`. Each call loads one Properties map, validates and
-recursively copies it, and performs exactly one Prepare request. Server resolves
+copies its flat string KV entries, and performs exactly one Prepare request. Server resolves
 the long-lived Worker ID from `workerGroupId + clientWorkerKey`, establishes
 the Endpoint Binding, refreshes canonical Worker truth, and returns one
 `PreparedWorker`. Core never persists Worker ID, starts networking, or executes
 Commands during preparation. It requires `workerId` to be non-blank but does
 not parse its Server-owned format.
 
-That Prepare is the only canonical Worker Properties refresh. A live
-provider change may be returned by an explicit
-`platform.worker.properties.snapshot` Command for observation, but it is not
-published as a lifecycle event and does not write Kernel truth. The next
-explicit stop/start loads and prepares a new complete snapshot.
+That Prepare is the only canonical Worker Properties refresh. Local observation
+uses the same Host Provider (`Map<String, String>`): non-blank keys, non-null
+string values, empty strings allowed, and dots treated literally. Nested JSON,
+arrays, numbers and booleans are rejected without coercion.
+
+Java/Android `reportProperties()` reads that Provider once; the patch overload
+`reportProperties(Map<String, String> set, Set<String> remove)` sends only its
+arguments. The Host updates its own consistent snapshot before sending a patch.
+Core retains no Properties copy, patch history, retry or queue. The Controller
+captures its current Transport under the run gate, then performs Provider reads,
+encoding and sending outside it. Inactive or unaccepted sends return false.
+Invalid patch arguments throw; Provider failures return false with safe
+diagnostics and do not end the run.
+
+On each verified connection Adapter sends one ADAPTER-origin
+`platform.worker.properties.snapshot` Command. A successful output becomes a
+single `WORKER -> ADAPTER platform.worker.properties.reported` full report.
+TASK/SYSTEM snapshot calls keep their normal Result destination and correlation.
+Client onOpen still sends only identity; no ready state or ACK is added.
+
+The report payload is either `{"properties":{...}}` (full replacement) or
+`{"set":{...},"remove":[...]}` (disjoint sets, unique removals, empty patch
+allowed). The complete encoded Report must fit 1,000,000 UTF-8 bytes. A rejected
+or lost report is not retained or retried. Already-admitted work may finish
+after stop; the closed Client rejects its late send best effort. Concurrent
+reports have no cross-Attempt ordering promise; explicit full reporting or a
+later reconnect baseline can calibrate the Adapter cache. None of this publishes
+Server/Matching facts or changes scheduling truth.
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may

@@ -9,6 +9,8 @@ import com.xa.mass.worker.runtime.WorkerRunController;
 import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 
 public final class JavaWorker implements WorkerLifecycle {
@@ -128,6 +130,14 @@ public final class JavaWorker implements WorkerLifecycle {
     @Override
     public void stop() {
         worker.stop();
+    }
+
+    public boolean reportProperties() {
+        return worker.reportProperties();
+    }
+
+    public boolean reportProperties(Map<String, String> set, Set<String> remove) {
+        return worker.reportProperties(set, remove);
     }
 
     @Override

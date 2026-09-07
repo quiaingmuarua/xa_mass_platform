@@ -34,8 +34,10 @@ Definitions. Their mechanism contract is owned by
 | `platform.worker.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observe the immutable Event Names loaded by this Worker process |
 
 `probe` is not schedulability, idleness, Binding, or connectivity truth.
-`properties.snapshot` is explicit observation only; it does not update
-canonical Worker resource or scheduling truth.
+`properties.snapshot` reads flat string KV from the Host Provider. TASK/SYSTEM
+calls return ordinary correlated Results; an ADAPTER baseline request returns
+one full `properties.reported` instead. Neither updates canonical facts or
+scheduling truth.
 `events.snapshot` includes itself and all Host extensions, but does not replace
 WorkerGroup `eventCodes` or authorization.
 
@@ -109,6 +111,37 @@ version. The cache has no independent freshness window: retained route
 verification evidence gates visibility, while a separate encoded-data budget
 may evict properties without affecting the connection. This cache is neither
 Worker resource truth nor evidence of Binding validity or schedulability.
+
+### Worker-produced property observation
+
+`platform.worker.properties.reported` is a fixed `WORKER -> ADAPTER` Report,
+not a callable management Handler and not part of `events.snapshot`. It requires
+the bound Worker sourceId, outcome `200`, empty forward, and exactly one shape:
+
+- `{"properties":{"network.type":"wifi","battery":"87"}}`: full replacement.
+- `{"set":{"network.type":"cellular"},"remove":["network.ssid"]}`: patch.
+
+Keys must be non-blank and values must be non-null strings; empty strings and
+empty Maps are valid. Dots are literal key characters. Nested values and
+implicit numeric/boolean conversion are not supported. Removal keys must be
+unique, non-blank and disjoint from set keys. The complete Report frame is
+limited to 1,000,000 UTF-8 bytes.
+
+Only the exact current verified Channel can write this cache. Full replaces the
+baseline; patch requires an existing baseline. Pre-identity, pending verification,
+stale Channel and invalid input are local drops. Baseline-less patches do not
+trigger compensation. Ordinary snapshot Results no longer update the cache.
+
+After each verified activation (including cached-verification reconnect), Adapter
+requests one full `properties.snapshot` directly on that Channel. Java/Android
+Hosts can call `reportProperties()` or update their one Provider then call
+`reportProperties(set, remove)`; Manager delegates by replica key. No SDK copy,
+history, ACK, retry or upstream Server publication is maintained. A missed full
+requires a later explicit full or connection baseline, not automatic repair.
+
+The cache keeps immutable complete Properties, CRC32C over key-sorted JSON,
+observation time and encoded weight. Fingerprint equality never suppresses a
+valid write; metadata is not a field version or scheduling truth.
 
 Connection and properties are separate queries with no atomic join or common
 version. `CONNECTED` does not prove properties exist or are recent, and cached

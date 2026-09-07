@@ -25,6 +25,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +47,9 @@ public final class WorkerConnectionMechanism {
     );
     private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
             "platform.worker.properties.snapshot";
+    private static final String WORKER_PROPERTIES_REPORTED_EVENT =
+            "platform.worker.properties.reported";
+    private static final Set<String> PROPERTIES_PATCH_FIELDS = Set.of("set", "remove");
     private static final String WORKER_CONNECTION_CHANGED_EVENT =
             "platform.adapter.worker-connection.changed";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -254,6 +258,11 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
+        if (report.dst() == ADAPTER
+                && WORKER_PROPERTIES_REPORTED_EVENT.equals(report.messageType())) {
+            // Observation cannot establish identity or force a connection close.
+            return;
+        }
         if (report.dst() != ADAPTER
                 || !WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                 report.messageType()
@@ -286,6 +295,7 @@ public final class WorkerConnectionMechanism {
                     reportConnectionChanged(workerId, "CONNECTED");
                 }
                 closeReplaced(admission.replacedChannel());
+                requestPropertiesSnapshot(workerId, channel);
             }
             case VERIFICATION_CLAIMED -> {
                 propertiesCache.invalidate(workerId);
@@ -353,6 +363,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
         reportConnectionChanged(workerId, "CONNECTED");
+        requestPropertiesSnapshot(workerId, channel);
     }
 
     private void receiveBoundReport(
@@ -371,7 +382,9 @@ public final class WorkerConnectionMechanism {
             return;
         }
         if (report.dst() == ADAPTER) {
-            if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
+            if (WORKER_PROPERTIES_REPORTED_EVENT.equals(report.messageType())) {
+                observeProperties(context.channel(), report);
+            } else if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                     report.messageType()
             )) {
                 logDrop("dropRepeatedIdentity", report);
@@ -390,7 +403,6 @@ public final class WorkerConnectionMechanism {
             logDrop("dropWorkerOutcome", report);
             return;
         }
-        observePropertiesResult(context.channel(), report);
         boolean taskReport = report.dst() == TASK;
         switch (reportDispatcher.tryDispatch(report)) {
             case ACCEPTED -> {
@@ -416,41 +428,58 @@ public final class WorkerConnectionMechanism {
         }
     }
 
-    void observePropertiesResult(
-            Channel currentChannel,
-            DeliveryReport report
-    ) {
-        Objects.requireNonNull(currentChannel, "currentChannel");
-        Objects.requireNonNull(report, "report");
-        if (!WORKER_PROPERTIES_SNAPSHOT_EVENT.equals(report.messageType())
-                || !"200".equals(report.outcomeCode())) {
-            return;
-        }
+    private void observeProperties(Channel channel, DeliveryReport report) {
         String workerId = report.sourceId();
-        if (!routes.isCurrentConnected(workerId, currentChannel)) {
+        if (!"200".equals(report.outcomeCode()) || !report.forward().isEmpty()
+                || !routes.isCurrentConnected(workerId, channel)) {
             return;
         }
         try {
             Map<String, Object> payload = Jsons.parseObject(report.payload());
-            Object rawProperties = payload.get("properties");
-            if (!payload.keySet().equals(PROPERTIES_PAYLOAD_FIELDS)
-                    || !(rawProperties instanceof Map<?, ?> values)) {
+            WorkerPropertiesCache.ObservationWrite write;
+            if (payload.keySet().equals(PROPERTIES_PAYLOAD_FIELDS)
+                    && payload.get("properties") instanceof Map<?, ?> properties) {
+                write = propertiesCache.observe(
+                        workerId, WorkerDeliveryCodec.copyWorkerProperties(properties)
+                );
+            } else if (payload.keySet().equals(PROPERTIES_PATCH_FIELDS)
+                    && payload.get("set") instanceof Map<?, ?> values
+                    && payload.get("remove") instanceof List<?> removals) {
+                List<String> remove = new ArrayList<>(removals.size());
+                for (Object value : removals) {
+                    if (!(value instanceof String key) || key.isBlank()) {
+                        return;
+                    }
+                    remove.add(key);
+                }
+                write = propertiesCache.patch(
+                        workerId, WorkerDeliveryCodec.copyWorkerProperties(values), remove
+                );
+            } else {
                 return;
             }
-            Map<String, Object> properties = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : values.entrySet()) {
-                if (!(entry.getKey() instanceof String key)) {
-                    return;
-                }
-                properties.put(key, entry.getValue());
-            }
-            WorkerPropertiesCache.ObservationWrite write =
-                    propertiesCache.observe(workerId, properties);
-            if (!routes.isCurrentConnected(workerId, currentChannel)) {
+            if (write != null && !routes.isCurrentConnected(workerId, channel)) {
                 propertiesCache.rollback(write);
             }
         } catch (RuntimeException ignored) {
-            // The original valid DeliveryReport still follows Result ingress.
+            // Invalid or baseline-less observations are local best-effort drops.
+        }
+    }
+
+    private void requestPropertiesSnapshot(String workerId, Channel channel) {
+        if (!routes.isCurrentConnected(workerId, channel)) {
+            return;
+        }
+        try {
+            DeliveryCommand command = DeliveryCommand.create(
+                    ADAPTER, WORKER, WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                    Math.addExact(System.currentTimeMillis(), sendTimeLimit.toMillis()),
+                    "null", ""
+            );
+            // This one-shot baseline request never enters the Command retry Queue.
+            networkServer.writeText(channel, codec.encodeDeliveryCommand(command));
+        } catch (RuntimeException ignored) {
+            // A later explicit full report or connection may calibrate the baseline.
         }
     }
 

@@ -61,7 +61,7 @@ public class AndroidWorkerTest {
     private Application application;
     private MockWebServer server;
     private AndroidWorker worker;
-    private AtomicReference<Map<String, Object>> properties;
+    private AtomicReference<Map<String, String>> properties;
 
     @Before
     public void setUp() throws Exception {
@@ -88,6 +88,54 @@ public class AndroidWorkerTest {
         if (server != null) {
             server.close();
         }
+    }
+
+    @Test
+    public void reportsFlatPropertiesAndAnswersAdapterBaselineThroughSharedCore() throws Exception {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        var reports = new java.util.concurrent.LinkedBlockingQueue<DeliveryReport>();
+        enqueuePrepare();
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
+            @Override
+            public void onMessage(WebSocket socket, String text) {
+                DeliveryReport report = codec.decodeDeliveryReport(text);
+                if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(report.messageType())) {
+                    socket.send(codec.encodeDeliveryCommand(DeliveryCommand.create(
+                            ADAPTER, DeliveryEndpoint.WORKER, "platform.worker.properties.snapshot",
+                            System.currentTimeMillis() + 30_000, "null", ""
+                    )));
+                } else {
+                    reports.add(report);
+                }
+            }
+        }));
+        worker = worker(context -> properties.get());
+        assertFalse(worker.reportProperties());
+        worker.start();
+        takeRequest();
+        takeRequest();
+        DeliveryReport baseline = reports.poll(5, TimeUnit.SECONDS);
+        assertNotNull(baseline);
+        assertEquals(ADAPTER, baseline.dst());
+        assertEquals("platform.worker.properties.reported", baseline.messageType());
+        assertEquals("", baseline.forward());
+        assertEquals(Map.of("properties", properties.get()), Jsons.parseObject(baseline.payload()));
+
+        properties.set(Map.of("network.type", "cellular", "battery", "88"));
+        assertTrue(worker.reportProperties(Map.of("network.type", "cellular"),
+                java.util.Set.of("region")));
+        DeliveryReport patch = reports.poll(5, TimeUnit.SECONDS);
+        assertNotNull(patch);
+        assertEquals(Map.of("set", Map.of("network.type", "cellular"), "remove", List.of("region")),
+                Jsons.parseObject(patch.payload()));
+        assertTrue(worker.reportProperties());
+        DeliveryReport full = reports.poll(5, TimeUnit.SECONDS);
+        assertNotNull(full);
+        assertEquals(Map.of("properties", properties.get()), Jsons.parseObject(full.payload()));
+        assertEquals(2, server.getRequestCount()); // One Prepare and one physical handshake.
+        assertTrue(reports.isEmpty()); // No extra ordinary snapshot Result.
+        worker.close();
+        assertFalse(worker.reportProperties());
     }
 
     @Test

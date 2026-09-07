@@ -62,8 +62,8 @@ class ScenarioWorkerControlServerTest {
                         "schemaVersion", 2,
                         "workerProperties", Map.of(
                                 "labInventoryKey", INVENTORY,
-                                "labInventoryLine", line,
-                                "labSlot", line
+                                "labInventoryLine", Integer.toString(line),
+                                "labSlot", Integer.toString(line)
                         )
             )));
         }
@@ -202,8 +202,8 @@ class ScenarioWorkerControlServerTest {
                 "schemaVersion", 2,
                 "workerProperties", Map.of(
                         "labInventoryKey", INVENTORY,
-                        "labInventoryLine", 1,
-                        "labSlot", 41
+                        "labInventoryLine", "1",
+                        "labSlot", "41"
                 )
         ));
         HttpResponse<String> replaced = request(

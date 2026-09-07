@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public final class WorkerDeliveryCodec {
 
@@ -134,6 +135,25 @@ public final class WorkerDeliveryCodec {
         payload.put("sourceId", report.sourceId());
         payload.put("src", report.src().wireValue());
         return Collections.unmodifiableMap(payload);
+    }
+
+    /** Captures the flat string properties wire contract in canonical key order. */
+    public static Map<String, String> copyWorkerProperties(Map<?, ?> properties) {
+        if (properties == null) {
+            throw new IllegalArgumentException("workerProperties must be present");
+        }
+        Map<String, String> captured = new TreeMap<>();
+        for (Map.Entry<?, ?> entry : properties.entrySet()) {
+            if (!(entry.getKey() instanceof String)
+                    || ((String) entry.getKey()).isBlank()
+                    || !(entry.getValue() instanceof String)) {
+                throw new IllegalArgumentException(
+                        "workerProperties require non-blank keys and string values"
+                );
+            }
+            captured.put((String) entry.getKey(), (String) entry.getValue());
+        }
+        return Collections.unmodifiableMap(captured);
     }
 
     private static String string(Object value) {

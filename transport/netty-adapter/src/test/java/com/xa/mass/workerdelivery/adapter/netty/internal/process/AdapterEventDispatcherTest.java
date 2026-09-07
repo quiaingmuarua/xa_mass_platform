@@ -201,14 +201,14 @@ class AdapterEventDispatcherTest {
                 "worker-1",
                 new WorkerPropertiesObservation(
                         123L,
-                        Map.of("battery", 87L)
+                        Map.of("battery", "87")
                 )
         );
         snapshots.put(
                 "older",
                 new WorkerPropertiesObservation(
                         100L,
-                        Map.of("battery", 40L)
+                        Map.of("battery", "40")
                 )
         );
         snapshots.put(
@@ -254,7 +254,7 @@ class AdapterEventDispatcherTest {
                         "properties"
                 )
                 .containsEntry("updatedAtMillis", 123L)
-                .containsEntry("properties", Map.of("battery", 87L))
+                .containsEntry("properties", Map.of("battery", "87"))
                 .doesNotContainKeys(
                         "connectionState",
                         "workerGroupId",
@@ -267,7 +267,7 @@ class AdapterEventDispatcherTest {
                 .get("older");
         assertThat(older)
                 .containsEntry("updatedAtMillis", 100L)
-                .containsEntry("properties", Map.of("battery", 40L));
+                .containsEntry("properties", Map.of("battery", "40"));
         @SuppressWarnings("unchecked")
         Map<String, Object> unknown = (Map<String, Object>) properties
                 .get("unknown");

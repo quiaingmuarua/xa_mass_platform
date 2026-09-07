@@ -93,7 +93,8 @@ final class JavaWorkerAssembly {
                                 options.requestTimeout(),
                                 options.reconnectPolicy()
                         ),
-                        dispatcher
+                        dispatcher,
+                        liveProperties
                 ),
                 platform.controlExecutor()
         );

@@ -228,18 +228,20 @@ public final class WorkerIdentityService {
             );
         }
         Object rawLine = workerProperties.get("labInventoryLine");
-        if (!(rawLine instanceof Byte
-                || rawLine instanceof Short
-                || rawLine instanceof Integer
-                || rawLine instanceof Long)) {
+        int line;
+        try {
+            if (!(rawLine instanceof String value) || !value.matches("[0-9]+")) {
+                throw new IllegalArgumentException("Expected decimal string");
+            }
+            line = Integer.parseInt(value);
+        } catch (IllegalArgumentException error) {
             throw failure(
                     ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
                     operation,
-                    "workerProperties.labInventoryLine must be an integer",
-                    null
+                    "workerProperties.labInventoryLine must be a decimal string",
+                    error
             );
         }
-        long line = ((Number) rawLine).longValue();
         if (line < 1L || line > 100L) {
             throw failure(
                     ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,

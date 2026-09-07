@@ -79,6 +79,8 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
 
 ## Java Kernel
 
+[Current Kernel documents](doc/kernel/README.md) own mechanism narratives.
+
 [`doc/kernel/`](doc/kernel/) is the current Kernel documentation entry. Stable
 mechanical Owners live in `kernel_jvm`; production policy and finite Pacer
 lifecycle live in `kernel_pacer_jvm`.
@@ -153,6 +155,8 @@ architectures.
 
 ## Kernel JVM
 
+[Mechanical Owners](kernel_jvm/README.md) own contracts, Score transitions and Redis shapes.
+
 `kernel_jvm/` is the more stable Java 21 mechanical-owner module.
 
 - Keep public mechanical contracts caller-driven and bounded. Semantic Result
@@ -183,6 +187,8 @@ architectures.
   owner proof.
 
 ## Kernel Pacer JVM
+
+[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) and its linked Policy documents own current workflows.
 
 `kernel_pacer_jvm/` is the Kernel-owned, faster-moving policy and lifecycle
 module. Its dependency direction is `server_jvm -> kernel_pacer_jvm ->
@@ -231,6 +237,8 @@ kernel_jvm`.
 
 ## Server JVM
 
+[Server Owner](server_jvm/README.md) owns API, assembly and use-case details.
+
 `server_jvm/` controllers and services depend on `kernel_jvm` and
 `worker_matching_jvm` owner contracts; Spring assembly additionally depends
 only on the public `kernel_pacer_jvm` runtime entry. Provider selection belongs
@@ -245,7 +253,7 @@ Server may own:
 - Runtime projections;
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
-- configured Adapter and Scenario startup.
+- configured Adapter startup and create-only advisory WorkerGroup seeds.
 
 Server coordinates cross-owner creation in a fixed order: persistent Matching
 facts or Rules first, then Kernel scheduling metadata. It may compose Runtime
@@ -301,6 +309,8 @@ WebSocket Adapter and no configured WorkerGroup or capability implementation.
 
 ## Worker Delivery Contract
 
+[Delivery Contract](transport/worker-delivery-contract/README.md) owns protocol DTOs and encoding.
+
 `transport/worker-delivery-contract/` is Java 11 compatible and transport
 neutral.
 
@@ -313,20 +323,11 @@ neutral.
 
 ## Netty Adapter
 
-The production cut is frozen:
+[Adapter Owner](transport/netty-adapter/README.md) owns the frozen production composition, queue bounds, cache rules and shutdown sequence.
 
-```text
-NettyWorkerDeliveryAdapter
-  -> AdapterProcessManager
-     -> BatchDispatcher<DeliveryCommandItem> -> DeliveryCommandProcess
-     -> DeliveryReportDispatcher
-        -> TASK / SYSTEM / KERNEL LinkedBlockingQueue<DeliveryReport>
-  -> WorkerConnectionInboundHandler
-     -> WorkerConnectionMechanism
-        -> WorkerRouteRegistry
-  -> NettyWorkerServer
-     -> complete WebSocket or line-Socket implementation
-```
+The linked Adapter composition is frozen. Preserve the aggregate, fixed Process
+Manager, Command and Report Dispatchers, connection mechanism/route Registry,
+and complete physical Server boundaries when changing their implementations.
 
 Rules:
 
@@ -395,9 +396,13 @@ Rules:
   Adapter snapshots do not add WorkerGroup state to the route owner.
 - Adapter-local Worker property observation is a separate projection cache;
   it must not be folded into RouteEntry or copied into Server/Kernel truth.
-- Only an explicit successful Worker properties snapshot Result from the exact
-  current Channel may refresh that projection; connection activation does not
-  request a snapshot and cache refresh never emits a Kernel Report.
+- Worker Properties observation must come from the exact current verified
+  Channel. Follow the Adapter Owner's full-baseline and patch contract; missing
+  baseline and invalid patches are local drops. Keep cache content immutable
+  with owner-local fingerprint and observation metadata, without field versions.
+  Baseline calibration and explicit SDK reporting remain best-effort observation,
+  never canonical Matching writes, upstream Reports or ACKs. Host publication
+  policy must not become a Core scheduler or a correctness prerequisite.
 - Connection snapshots read Route truth; properties snapshots pass through the
   Route evidence gate and then read the properties cache. They have no atomic
   join or shared version.
@@ -431,6 +436,8 @@ the `WorkerDeliveryAdapter` contract.
 
 ## Worker Core And Platform Workers
 
+[Worker Core](transport/worker-core/README.md), [Java Worker](transport/java-worker/README.md) and [Android Worker](transport/android-worker/README.md) own their mechanisms.
+
 `transport/worker-core` is Java 11 platform-neutral mechanism code.
 
 - Core depends only on the delivery contract.
@@ -450,8 +457,9 @@ the `WorkerDeliveryAdapter` contract.
   typed registration-key algorithm; it never enters the Redis key address.
   One WorkerGroup has one identity Hash, and the typed registration-key output
   prevents one algorithm from aliasing another. Transparent Client
-  reconnect sends only connection identity; there is no runtime
-  Properties-change event.
+  reconnect sends connection identity without re-Prepare. Explicit Properties
+  observation/reporting follows the Worker and Adapter contracts; it must not
+  update canonical Matching facts or add an automatic publication scheduler.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - Active `stop()` revokes the current run before closing its Client outside
@@ -491,6 +499,8 @@ Server, Kernel, Redis, score, Pacer or platform business handlers.
 
 ## Scenario And Android Capabilities
 
+[Scenario Host](scenario_workers_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
+
 `scenario_workers_jvm` is a finite standalone Java 21 Lab Worker Host, not a
 Kernel owner, Server profile, Adapter, production Worker platform or plugin
 system.
@@ -502,7 +512,7 @@ system.
 - Each direct `.jsonl` child is a strict line inventory: one schema-v2 Worker
   record per physical line, at most 100 lines per file and at most 15,000
   records per configured Group. Every record carries
-  immutable `labInventoryKey` and `labInventoryLine` Properties matching its
+  immutable string `labInventoryKey` and decimal-string `labInventoryLine` Properties matching its
   physical location. `<filename>:<line>` is only the Lab-local `labWorkerKey`,
   not a universal Worker identity field. Scenario uses `SCENARIO_LAB` batch
   Prepare for initial file batches and one-record Lab HTTP starts; ordinary
@@ -556,23 +566,18 @@ Adapter connectivity, Kernel state or schedulability.
 
 ## Integration And Frontend
 
+[Proof Registry](doc/testing/proof-registry.md) identifies Primary Owners; each Integration README owns its world, thresholds and complete scenario.
+
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
-- `:integrations:android-worker-proof` is the Java 21 assertion Owner for the
-  API 33 Android Worker lane. The Debug App owns single-Worker lifecycle claims;
-  it also proves one Task recovery after the App process dies inside a DELAY
-  Handler. Three fixed Lab application IDs add same-Group process isolation and
-  partial outage claims without repeating endpoint or Server restart proofs. Its
-  shell owns only Emulator, ADB, Server, App and Redis-scope processes, and
-  disables cached-app freezing on that disposable Emulator. This is not
-  background-survival evidence. The Java
-  Harness uses device-local state to establish mutations, then independently
-  observes public Network, Scheduling, Direct Call and finite Task APIs. It
-  retries only temporary HTTP observation failures; invalid contracts and
-  identity drift fail immediately. It never asserts business Result payloads
-  and is not a Java Worker witness. Dynamic Properties re-Prepare, Doze/OEM
-  policy, device matrices, throughput and arbitrary App counts are separate
-  claims.
+- [Android Worker Proof](integrations/android-worker-proof/README.md) owns real
+  Android assertions in Java. Its shell owns only external process choreography.
+  Device-local state establishes mutations; public Network, Scheduling, Direct
+  Call and Task observations independently establish system effects. Retry only
+  temporary HTTP observation failures; invalid contracts and identity drift
+  fail immediately. Never assert business Result payloads or promote disposable
+  Emulator controls into background-survival evidence. This lane is not a Java
+  Worker witness; new platform claims require an explicit scenario boundary.
 - One-shot Python proof runners may own process orchestration, but not database
   protocols. Redis scope cleanup uses
   `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a
@@ -585,33 +590,25 @@ Adapter connectivity, Kernel state or schedulability.
   Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
   record identities and projected states but never business payload. Failed or
   ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
-  its fixed world is 2 Groups x 500 Workers. Exact Network and Scheduling
-  observations page the existing 100-ID Runtime boundary; Runtime Preview is
-  only a bounded per-Group sample and must not be treated as enumeration of a
-  500-Worker Group.
+  exact Network and Scheduling observations page the bounded Runtime API.
+  Runtime Preview is only a per-Group sample, never fleet enumeration.
   Each deterministic scenario stops mutation injection and evaluates the
   actual observed local world instead of installing a preferred final world.
   It uses managed ON_DEMAND batch calls as offered load and `results:load` only
   for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
   offered Items to succeed, count `FAILED` as a successful witness, poll
-  `results:export`, or repeat PRECOMPUTED and topology claims owned by Runtime
-  Boundary.
-- Worker Loaded Capacity + Recovery Stability is a separate nightly/manual
-  Linux proof of sustained loaded operation, repeated Server recovery and
-  process-resource stability.
-  It may generate one 15,000-record Scenario Group, establish connection
-  headroom, stop a deterministic 5,000-run subset during loaded work, and run
-  four fixed sets of ten fully seeded same-Group 5,000-Item Tasks. One SIGTERM
-  and two SIGKILL Server restarts occur while their Tasks remain active and the
-  Host is retained. Existing Runtime APIs remain bounded to 100 Worker IDs;
-  each terminal Task is exported exactly once. Outside a planned Server-down
-  and reconnect interval, work requires at least 9,900 retained connections;
-  after drain it requires at least 9,900 retained connected-and-HOT Workers
-  while every stopped baseline identity remains present and inactive. `/proc`
-  evidence includes RSS, CPU, transient ceilings and three-sample stable thread
-  and file-descriptor checkpoints. The lane does not claim exact online
-  convergence, Task fairness, completion order, Handler concurrency,
-  throughput, latency or soak behavior.
+  `results:export`, or broaden the separate PRECOMPUTED Properties witness into
+  repeated topology claims owned by Runtime Boundary.
+- [Worker Loaded Recovery](integrations/worker-loaded-recovery/README.md) owns
+  sustained-load, repeated-recovery and resource-stability claims in its separate
+  nightly/manual Linux lane. Keep Runtime API observations bounded, retain Host
+  identity across Server failures, and export each terminal Task once. Mutations
+  require the scenario's established loaded-work preconditions. Connection
+  availability during work and connected/HOT convergence after drain are
+  different oracles; stopped identities must remain present and inactive.
+  Resource evidence must cover transient ceilings and stable drift. Do not
+  infer Task fairness, completion order, Handler concurrency, throughput,
+  latency or soak from this lane.
 - Worker Correctness inputs are caller-owned local files. Its perfect-world
   proof uses managed batch `items:call`, fixes exact Item statuses and treats
   Result payload as opaque. The frontend separately turns lines into ordinary
@@ -634,7 +631,7 @@ Adapter connectivity, Kernel state or schedulability.
 
 ## Verification
 
-Use [TESTING.md](TESTING.md) as the only proof-lane registry. At minimum, run
+Use [TESTING.md](TESTING.md) for proof selection and commands. At minimum, run
 the focused owner lane for touched behavior. Redis and runtime claims require
 their named real-infrastructure proof.
 

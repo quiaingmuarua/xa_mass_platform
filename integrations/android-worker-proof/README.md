@@ -96,7 +96,7 @@ data sandboxes and Host ports while joining the same `android-demo-workers`
 Group and WebSocket Adapter.
 
 Triad Correctness closes three distinct worker IDs and one DELAY Item per
-application. Each ON_DEMAND rule uses the known `workerId` as its exact target;
+application. Each ON_DEMAND Worker Selector uses the known `workerId` as its exact target;
 the independently observed `worker.packageName` Property proves the App-to-
 Worker relation but is not part of the Item Worker Selector. Triad
 Convergence force-stops only `lab2`, proves
@@ -139,7 +139,7 @@ Before extending this lane:
 4. Keep Shell limited to ADB, port mapping and process mutation.
 5. Use local Host state only to establish the mutation, never as Adapter or
    Kernel truth.
-6. Update the Proof Registry, Worker scenario document and proof-path selection
+6. Update this scenario contract, the Proof Registry and proof-path selection
    when the claim boundary changes.
 
 This lane deliberately does not prove dynamic Properties re-Prepare,

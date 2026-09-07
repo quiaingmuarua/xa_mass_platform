@@ -56,6 +56,26 @@ Only one active `AndroidWorker` for a package and WorkerGroup is allowed in
 one process. An `Application`, Service, or another Host owner decides its
 lifetime; Activity lifecycle is not part of the Worker contract.
 
+## Proactive Properties
+
+The existing Host Provider supplies one consistent flat `Map<String, String>`
+snapshot. Keys must be non-blank; values must be strings (including empty
+strings). Producers explicitly encode numeric/boolean facts as strings; Transport
+does not flatten or coerce them.
+
+`reportProperties()` sends a full snapshot from that Provider.
+`reportProperties(set, remove)` sends a patch without mutating the Host:
+update the Host's data first, then call it. The SDK retains no extra Map or
+history. Both return only Client acceptance; inactive, disconnected, stopped or
+closed sends return false, Provider failure returns false, and invalid patch
+arguments throw. Encoding is bounded to a 1,000,000-byte Report. No Prepare,
+retry, ACK, watcher or second Provider is introduced.
+
+Adapter requests one full snapshot after each verified connection/reconnection;
+Core answers it through the same `properties.reported` path. Explicit TASK/SYSTEM
+snapshot calls still return correlated Results. Loss may require an explicit full
+report or a later connection baseline; this is not guaranteed eventual delivery.
+
 ## Platform Resources
 
 Each `AndroidWorker` internally owns:

@@ -6,5 +6,5 @@ import java.util.Map;
 @FunctionalInterface
 public interface AndroidWorkerProperties {
 
-    Map<String, Object> getProperties(Context applicationContext);
+    Map<String, String> getProperties(Context applicationContext);
 }

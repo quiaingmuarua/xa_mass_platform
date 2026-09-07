@@ -392,14 +392,14 @@ class RuntimeApiControllerTest {
                                       "transportType":"WEBSOCKET",
                                       "workerProperties":{
                                       "labInventoryKey":"workers-a.jsonl",
-                                      "labInventoryLine":1
+                                      "labInventoryLine":"1"
                                     }},
                                     {
                                       "workerKind":"SCENARIO_LAB",
                                       "transportType":"WEBSOCKET",
                                       "workerProperties":{
                                       "labInventoryKey":"workers-a.jsonl",
-                                      "labInventoryLine":2
+                                      "labInventoryLine":"2"
                                     }}
                                 ]
                                 """))
@@ -421,14 +421,14 @@ class RuntimeApiControllerTest {
                                       "transportType":"WEBSOCKET",
                                       "workerProperties":{
                                       "labInventoryKey":"workers-a.jsonl",
-                                      "labInventoryLine":1
+                                      "labInventoryLine":"1"
                                     }},
                                     {
                                       "workerKind":"SCENARIO_LAB",
                                       "transportType":"WEBSOCKET",
                                       "workerProperties":{
                                       "labInventoryKey":"workers-a.jsonl",
-                                      "labInventoryLine":1
+                                      "labInventoryLine":"1"
                                     }}
                                 ]
                                 """))

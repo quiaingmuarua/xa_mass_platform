@@ -41,12 +41,12 @@ class WorkerManagementEventDefinitionsTest {
 
     @Test
     void propertiesSnapshotReadsTheLiveHostProviderEveryTime() {
-        AtomicReference<Map<String, Object>> properties =
-                new AtomicReference<>(Map.of("battery", 80));
+        AtomicReference<Map<String, String>> properties =
+                new AtomicReference<>(Map.of("battery", "80"));
         WorkerCommandDispatcher dispatcher = dispatcher(properties::get);
 
         assertEquals(
-                Map.of("properties", Map.of("battery", 80L)),
+                Map.of("properties", Map.of("battery", "80")),
                 Jsons.parseObject(execute(
                         dispatcher,
                         WorkerManagementEventDefinitions
@@ -55,12 +55,12 @@ class WorkerManagementEventDefinitionsTest {
                 ).payload())
         );
 
-        properties.set(Map.of("battery", 67, "charging", true));
+        properties.set(Map.of("battery", "67", "charging", "true"));
 
         assertEquals(
                 Map.of(
                         "properties",
-                        Map.of("battery", 67L, "charging", true)
+                        Map.of("battery", "67", "charging", "true")
                 ),
                 Jsons.parseObject(execute(
                         dispatcher,
@@ -101,7 +101,7 @@ class WorkerManagementEventDefinitionsTest {
                         () -> {
                             throw new IllegalStateException("unavailable");
                         },
-                        () -> Map.of("unsupported", new Object()),
+                        () -> Map.of(" ", "invalid-key"),
                         () -> Map.of("clientWorkerKey", "private")
                 );
 

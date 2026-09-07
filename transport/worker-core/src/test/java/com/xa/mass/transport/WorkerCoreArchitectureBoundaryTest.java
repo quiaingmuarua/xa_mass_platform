@@ -378,7 +378,6 @@ class WorkerCoreArchitectureBoundaryTest {
         assertFalse(polling.contains("UUID.fromString("));
         for (String forbidden : new String[]{
                 "WorkerIdentityStore",
-                "WorkerPropertiesProvider",
                 "WorkerControlClient",
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",

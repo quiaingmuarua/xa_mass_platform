@@ -463,7 +463,8 @@ class WorkerRunControllerTest {
                 preparation,
                 new TextMessageWorkerTransportFactory(
                         networks,
-                        command -> java.util.Optional.empty()
+                        command -> java.util.Optional.empty(),
+                        java.util.Map::of
                 ),
                 executor
         );

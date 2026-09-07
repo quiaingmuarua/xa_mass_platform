@@ -74,6 +74,5 @@ Focused module tests:
 .\gradlew.bat :integrations:worker-correctness:test
 ```
 
-See [`doc/testing/worker-proof-scenarios.md`](../../doc/testing/worker-proof-scenarios.md)
-for the scenario contract and [`TESTING.md`](../../TESTING.md) for lane
-selection.
+See [Proof Registry](../../doc/testing/proof-registry.md#worker_correctness)
+for claim boundaries and [TESTING.md](../../TESTING.md) for lane selection.

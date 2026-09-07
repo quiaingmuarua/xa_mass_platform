@@ -12,8 +12,9 @@ module map and common implementation boundaries.
 
 :transport:netty-adapter
   -> stable WebSocket and Socket Adapter facades
-  -> Adapter lifecycle and scheduled Command/Report Process rounds
-  -> one private finite queue per Process owner
+  -> aggregate lifecycle over fixed Command and Report Dispatchers
+  -> Command retry queue; three Report destination queues under one Report owner
+  -> stateless one-batch Command Process
   -> one shared Netty connection mechanism and route registry per instance
   -> one complete protocol-specific physical Server per instance
 
@@ -85,7 +86,7 @@ routing, and Result ingress; its WebSocket and Socket Servers independently
 own their complete physical network resources and protocols. This three-owner
 production cut is frozen. The two physical Servers share a behavior contract
 in tests rather than a lifecycle implementation, and each Server plus the
-Adapter scheduler enforces its own bounded shutdown budget. Source priority
+Adapter Process Manager enforces its own bounded shutdown budget. Source priority
 applies when Server answers a remote Command consume request; it does not
 reorder commands already in the Adapter queue or preempt a Worker Handler
 already running on the connection callback lane.
@@ -94,11 +95,14 @@ Within the connection owner, one per-Worker Route entry is pending, connected,
 or retained disconnected verification evidence. Only disconnected
 verification evidence is TTL/capacity cached; active connections are never
 cache-evicted, and Channel metadata contains only the claimed workerId for
-callback correlation. The separate properties projection is capacity bounded
-but not time deleted: age changes `FRESH` to `STALE`, while eviction changes it
-to `UNKNOWN`. Connection and properties expose independent snapshots without
-an atomic join or shared version. Neither cache is scheduling, Binding or
-Worker lifecycle truth.
+callback correlation. The separate flat string Properties projection is
+capacity bounded, not time deleted; retained verification evidence gates
+visibility, and eviction makes the projection unknown. After verified activation
+Adapter requests one full baseline; Java/Android Hosts can then send full or patch
+`properties.reported` observations using their same Provider. Only that event
+writes the local cache; ordinary snapshot Results only forward. Connection and
+Properties expose independent snapshots without an atomic join or shared
+version. Neither cache is scheduling, Binding or Worker lifecycle truth.
 
 See:
 

@@ -141,11 +141,11 @@ class WorkerPreparationServiceTest {
         WorkerBindingService bindings = mock(WorkerBindingService.class);
         Map<String, Object> first = Map.of(
                 "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", 1L
+                "labInventoryLine", "1"
         );
         Map<String, Object> second = Map.of(
                 "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", 2L
+                "labInventoryLine", "2"
         );
         when(identities.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,
@@ -241,7 +241,7 @@ class WorkerPreparationServiceTest {
         );
         Map<String, Object> duplicate = Map.of(
                 "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", 1L
+                "labInventoryLine", "1"
         );
         when(identities.registrationKey(
                 WorkerRegistrationKind.SCENARIO_LAB,

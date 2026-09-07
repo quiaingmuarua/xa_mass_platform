@@ -29,7 +29,8 @@ Status: current repository document index.
 - [Worker Correctness](../integrations/worker-correctness/README.md)
 - [Worker Convergence Health](../integrations/worker-convergence-health/README.md)
 - [Proof Registry](testing/proof-registry.md)
-- [Worker Proof Scenarios](testing/worker-proof-scenarios.md)
+- [Worker Loaded Recovery](../integrations/worker-loaded-recovery/README.md)
+- [Android Worker Proof](../integrations/android-worker-proof/README.md)
 - [Frontend](../frontend/README.md)
 
 Module READMEs explain only their assembly, public entrypoints, local owner

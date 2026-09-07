@@ -358,7 +358,7 @@ final class ScenarioWorkerLab {
                 sourceProperties
         );
         properties.put("labInventoryKey", inventoryFileName);
-        properties.put("labInventoryLine", (long) lineNumber);
+        properties.put("labInventoryLine", Integer.toString(lineNumber));
         Map<String, Object> seeded = new LinkedHashMap<>();
         seeded.put("schemaVersion", 2L);
         seeded.put("workerProperties", properties);

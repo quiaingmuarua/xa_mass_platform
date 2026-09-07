@@ -65,8 +65,8 @@ class ScenarioWorkerLabTest {
                         "labInventoryKey",
                         "workers-000.jsonl"
                 )
-                .containsEntry("labInventoryLine", 50L)
-                .containsEntry("labSlot", 50L)
+                .containsEntry("labInventoryLine", "50")
+                .containsEntry("labSlot", "50")
                 .containsEntry("convergenceSlot", "A");
         assertThat(root.resolve("unconfigured-data/preserved.txt"))
                 .content().isEqualTo("preserved");
@@ -175,7 +175,7 @@ class ScenarioWorkerLabTest {
     private static List<Map<String, Object>> properties(int count) {
         List<Map<String, Object>> values = new ArrayList<>();
         for (int index = 0; index < count; index++) {
-            values.add(Map.of("labSlot", index + 1));
+            values.add(Map.of("labSlot", Integer.toString(index + 1)));
         }
         return values;
     }
@@ -201,7 +201,7 @@ class ScenarioWorkerLabTest {
         for (int index = 0; index < properties.size(); index++) {
             Map<String, Object> complete = new java.util.LinkedHashMap<>();
             complete.put("labInventoryKey", path.getFileName().toString());
-            complete.put("labInventoryLine", index + 1);
+            complete.put("labInventoryLine", Integer.toString(index + 1));
             complete.putAll(properties.get(index));
             lines.add(Jsons.toJson(Map.of(
                     "schemaVersion", 2,
