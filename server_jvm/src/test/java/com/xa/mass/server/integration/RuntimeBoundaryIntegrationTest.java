@@ -14,9 +14,6 @@ import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
-import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
-import com.xa.mass.server.error.ServerErrorCode;
-import com.xa.mass.server.error.ServerException;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -69,7 +66,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -151,7 +147,7 @@ class RuntimeBoundaryIntegrationTest {
     @Autowired
     private ServerConfiguredRuntimeLifecycleHost workerAssemblyLifecycleHost;
 
-    @Autowired
+    @MockitoSpyBean
     private WorkerMatchingCatalog matchingCatalog;
     @Autowired
     private WorkerMatchQueue matchQueue;
@@ -159,8 +155,6 @@ class RuntimeBoundaryIntegrationTest {
     private CandidateWorkerCache candidateCache;
     @MockitoSpyBean
     private WorkerPreparationService preparationService;
-    @MockitoSpyBean
-    private WorkerResourceCommandService workerResources;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
@@ -267,11 +261,10 @@ class RuntimeBoundaryIntegrationTest {
                 if (snapshots.containsValue(host.get())) {
                     firstSubmissions.incrementAndGet();
                     firstObservation.countDown();
-                    throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
-                            "workerResource.replaceReportedProperties", null, null);
+                    throw new IllegalStateException("Matching facts unavailable");
                 }
                 return invocation.callRealMethod();
-            }).when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
+            }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
             try (JavaWorker worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port),
                     groupId, "live-host", type, host::get)) {
                 worker.start();
@@ -283,7 +276,7 @@ class RuntimeBoundaryIntegrationTest {
                 Thread.sleep(150); // SYSTEM failure has no automatic replay, including the first baseline.
                 assertThat(firstSubmissions).hasValue(1);
                 verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
-                doCallRealMethod().when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
+                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
                 assertThat(worker.reportProperties()).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
                 URI endpoint = worker.snapshot().endpointUri();
@@ -324,11 +317,10 @@ class RuntimeBoundaryIntegrationTest {
                     Map<String, ?> snapshots = invocation.getArgument(1);
                     if (snapshots.containsKey(workerId) && submissions.incrementAndGet() == 1) {
                         failedSubmission.countDown();
-                        throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
-                                "workerResource.replaceReportedProperties", null, null);
+                        throw new IllegalStateException("Matching facts unavailable");
                     }
                     return invocation.callRealMethod();
-                }).when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
+                }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
                 host.set(Map.of("network.type", "recovered"));
                 assertThat(worker.reportProperties(Map.of("network.type", "recovered"))).isTrue();
                 assertThat(failedSubmission.await(5, TimeUnit.SECONDS)).isTrue();
@@ -343,9 +335,92 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
                 verify(preparationService, times(2)).prepareAll(eq(groupId), any(), any(), anyList());
             } finally {
-                doCallRealMethod().when(workerResources).replaceReportedProperties(anyString(), anyMap());
+                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
             }
         }
+    }
+
+    @Test
+    void lostFullPropertiesPublicationIsReplacedByNextIncrementalObservationOnBothTextProtocols() throws Exception {
+        for (WorkerTransportType type : List.of(WorkerTransportType.WEBSOCKET, WorkerTransportType.SOCKET)) {
+            String groupId = "lost-properties-" + UUID.randomUUID();
+            String adapterId = type == WorkerTransportType.WEBSOCKET
+                    ? WEBSOCKET_ENDPOINT_MANAGER_ID : SOCKET_ENDPOINT_MANAGER_ID;
+            assertThat(send("POST", "/api/v1/worker-groups/" + groupId + ":register",
+                    "{\"eventCodes\":[]}").statusCode()).isEqualTo(200);
+            Map<String, String> original = Map.of("network.type", "wifi", "battery", "80", "ssid", "lab");
+            AtomicReference<Map<String, String>> host = new AtomicReference<>(original);
+            try (JavaWorker worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port),
+                    groupId, "lost-full-host", type, host::get)) {
+                worker.start();
+                awaitCondition(() -> worker.snapshot().workerId() != null);
+                String workerId = worker.snapshot().workerId();
+                URI endpoint = worker.snapshot().endpointUri();
+                awaitRuntimeProperties(groupId, workerId, adapterId, original);
+                assertAdapterProperties(adapterId, workerId, original);
+                assertThat(send("PATCH", "/api/v1/worker-groups/" + groupId + "/workers/"
+                        + workerId + "/platform-properties", "{\"pool\":\"retained\"}").statusCode()).isEqualTo(200);
+
+                Map<String, String> lostFull = Map.of("network.type", "cellular", "battery", "88");
+                CountDownLatch failedSubmission = new CountDownLatch(1);
+                AtomicInteger submissions = new AtomicInteger();
+                doAnswer(invocation -> {
+                    Map<String, Map<String, String>> snapshots = invocation.getArgument(1);
+                    if (lostFull.equals(snapshots.get(workerId)) && submissions.incrementAndGet() == 1) {
+                        failedSubmission.countDown();
+                        throw new IllegalStateException("Matching facts unavailable");
+                    }
+                    return invocation.callRealMethod();
+                }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+
+                host.set(lostFull);
+                assertThat(worker.reportProperties()).isTrue();
+                assertThat(failedSubmission.await(5, TimeUnit.SECONDS)).isTrue();
+                assertAdapterProperties(adapterId, workerId, lostFull);
+                Thread.sleep(150); // No SYSTEM replay across several configured Report backoffs.
+                assertThat(submissions).hasValue(1);
+                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                        .workerProperties()).isEqualTo(original);
+                awaitRuntimeProperties(groupId, workerId, adapterId, original);
+
+                Map<String, String> latest = Map.of("network.type", "cellular", "battery", "89");
+                host.set(latest);
+                assertThat(worker.reportProperties(Map.of("battery", "89"))).isTrue();
+                awaitRuntimeProperties(groupId, workerId, adapterId, latest);
+                assertAdapterProperties(adapterId, workerId, latest);
+                verify(matchingCatalog).upsertWorkerFactsBatch(groupId, Map.of(workerId, latest));
+                var facts = matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId);
+                assertThat(facts.workerProperties()).isEqualTo(latest).doesNotContainKey("ssid");
+                assertThat(facts.platformProperties()).isEqualTo(Map.of("pool", "retained"));
+
+                long holdUntil = System.currentTimeMillis() + 60_000;
+                long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
+                long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                matchNewFacts(groupId, workerId, held, holdUntil, Map.of(
+                        "worker.network.type", Map.of("$eq", "cellular"),
+                        "worker.battery", Map.of("$eq", "89"),
+                        "worker.ssid", Map.of("$exists", false),
+                        "platform.pool", Map.of("$eq", "retained")));
+                assertThat(worker.snapshot().workerId()).isEqualTo(workerId);
+                assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
+                verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
+            } finally {
+                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+            }
+        }
+    }
+
+    private void assertAdapterProperties(String adapterId, String workerId, Map<String, String> expected)
+            throws Exception {
+        var response = send("POST", "/api/v1/worker-delivery/endpoint-managers/" + adapterId + "/direct-calls",
+                JSON.writeValueAsString(Map.of(
+                        "messageType", "platform.adapter.worker-properties.snapshot",
+                        "opaquePayload", workerIdsPayload(workerId), "waitTimeoutMillis", 3_000)));
+        Map<String, Object> payload = Jsons.parseObject(observedDirectPayload(response, adapterId, "200"));
+        Map<?, ?> observations = (Map<?, ?>) payload.get("propertiesByWorkerId");
+        Map<?, ?> observation = (Map<?, ?>) observations.get(workerId);
+        assertThat(observation.get("properties")).isEqualTo(expected);
     }
 
     private String matchNewFacts(String groupId, String workerId, long held, long holdUntil,

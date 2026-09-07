@@ -266,7 +266,7 @@ class RuntimeApiControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                new WorkerResourceCommandService(matchingCatalog, workerCatalog)
+                                new WorkerResourceCommandService(matchingCatalog)
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(

@@ -589,8 +589,9 @@ error mapping.
 
 Worker Delivery is the machine-protocol exception to the single `200` success
 rule. Command Poll returns `200` with a Command or `204` when empty; Worker and
-Adapter Report append returns `202`; Binding verification returns `204`; and
-Adapter Command consume returns `200`. Delivery rejection still uses the same
+Adapter Report append returns `202`, and Adapter Command consume returns `200`.
+Route verification uses the asynchronous application port, not an HTTP endpoint.
+Delivery rejection still uses the same
 `400/503 + ApiErrorResponse` contract. No public operation declares a business
 `404`, `409` or `422` response.
 
@@ -717,14 +718,23 @@ are a complete flat string KV Map; the full encoded Report is limited to
 1,000,000 UTF-8 bytes. Event-level invalid input is rejected per item; mixed
 destinations and malformed Report DTOs still fail the whole HTTP batch first.
 
-The service collapses valid snapshots by Worker to the last valid input in
-that HTTP batch, retaining input counts. `WorkerResourceCommandService` reads
-Group and Endpoint from the same bounded Catalog Binding read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group,
-and calls `WorkerMatchingCatalog.upsertWorkerFactsBatch`. No registration,
+The same `WorkerDeliveryService` reception use case collapses valid snapshots
+by Worker to the last valid input in that HTTP batch, retaining input counts.
+It reads Group and Endpoint in one bounded `WorkerResourceCatalog` Binding
+read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group, and calls
+`WorkerMatchingCatalog.upsertWorkerFactsBatch` directly. No intermediate
+resource mutation service or separate Properties Report API participates. No registration,
 Prepare, Worker registration, score, Candidate or new identity index participates.
 APPLIED/UNCHANGED accepts all valid inputs collapsed into that Worker; other
 mutation outcomes reject them. Infrastructure failure returns `503` without
-rolling back earlier Group writes. SYSTEM then drops the batch, not retries it.
+rolling back earlier Group writes; the operation is
+`workerDelivery.appendAdapterPropertiesReports` with the existing Properties
+unavailable error code. SYSTEM then drops the batch, not retries it.
+
+`WorkerResourceCommandService.patchPlatformProperties` remains the independent
+management use case for `platform.*`. Its HTTP PATCH and nullable JSON values
+never modify the Worker-owned `worker.*` Map. Adapter observations always
+replace the complete Worker Map and leave Platform Properties unchanged.
 
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
@@ -735,6 +745,11 @@ fence; effective storage writes determine facts. A failed first publication can
 leave no facts, and a failed later publication can leave old facts. A later
 explicit complete report or connection baseline can supply new input. No
 quiet-network eventual repair, ACK, throttling or publication history is provided.
+If a full observation was installed in Adapter but lost upstream, a later
+Worker update publishes the Adapter's complete merged Map, including changes
+and deletions from that lost publication. Server never merges that update with
+its older facts. This does not repair Worker-to-Adapter input loss or guarantee
+that the Adapter cache always equals the latest Host state.
 
 Server-level route verification defaults to a `100000` request queue and a
 `5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner

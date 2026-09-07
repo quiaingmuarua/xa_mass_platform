@@ -275,7 +275,10 @@ Score membership in separate, retryable stages. Valid network evidence requests
 activation best-effort in every Pacer preset; Prepare itself is not evidence.
 It must not create or refresh Matching Properties, including for new Workers.
 First and later Worker facts enter through the same Adapter observation and
-Server admission path. Runtime Views may expose identity before facts exist,
+Server admission path. Delivery reception owns that complete bounded use case,
+including Binding validation and grouped Matching writes; it must not merge
+observations with old Worker facts. Platform Properties management is independent
+and cannot modify the Worker Properties Map. Runtime Views may expose identity before facts exist,
 but an empty display must never become a stored baseline or readiness claim.
 Server does not interpret Rules or select Workers.
 

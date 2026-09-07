@@ -6,9 +6,11 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
@@ -17,7 +19,9 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
-import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -26,9 +30,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.ArrayList;
 import com.xa.mass.workerdelivery.json.Jsons;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,7 +101,7 @@ class WorkerDeliveryServiceTest {
     private DirectCallService directCalls;
     private WorkerServiceabilityRuntime serviceability;
     private WorkerDeliveryService service;
-    private WorkerResourceCommandService workerResources;
+    private WorkerMatchingCatalog matchingCatalog;
 
     @BeforeEach
     void setUp() {
@@ -108,7 +112,7 @@ class WorkerDeliveryServiceTest {
                 .thenReturn(Map.of("worker-1", new WorkerDescriptor("worker-1", "group", POLLING)));
         directCalls = mock(DirectCallService.class);
         serviceability = mock(WorkerServiceabilityRuntime.class);
-        workerResources = mock(WorkerResourceCommandService.class);
+        matchingCatalog = mock(WorkerMatchingCatalog.class);
         when(serviceability.consumeProbeRequests(anyString(), anyInt()))
                 .thenReturn(List.of());
         when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
@@ -125,15 +129,17 @@ class WorkerDeliveryServiceTest {
                 bindings,
                 directCalls,
                 serviceability,
-                workerResources
+                matchingCatalog
         );
     }
 
     @Test
     void systemPropertiesUseLastValidSnapshotAndCountEveryAcceptedInput() {
         var latest = Map.of("network.type", "cellular", "empty", "");
-        when(workerResources.replaceReportedProperties("adapter-1", Map.of("w", latest, "missing", Map.of())))
-                .thenReturn(Set.of("w"));
+        when(bindings.getWorkerDescriptors(List.of("w", "missing")))
+                .thenReturn(Map.of("w", new WorkerDescriptor("w", "group", "adapter-1")));
+        when(matchingCatalog.upsertWorkerFactsBatch("group", Map.of("w", latest)))
+                .thenReturn(Map.of("w", new MutationResult(MutationStatus.APPLIED)));
         var reports = List.of(
                 propertiesReport("adapter-1", "w", Map.of("network.type", "wifi")),
                 propertiesReport("adapter-1", "w", latest),
@@ -142,8 +148,111 @@ class WorkerDeliveryServiceTest {
         );
         assertThat(service.appendAdapterReports("adapter-1", reports))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(2, 2));
-        verify(workerResources).replaceReportedProperties("adapter-1", Map.of("w", latest, "missing", Map.of()));
-        verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime, bindings);
+        verify(bindings).getWorkerDescriptors(List.of("w", "missing"));
+        verify(matchingCatalog).upsertWorkerFactsBatch("group", Map.of("w", latest));
+        verifyNoMoreInteractions(bindings, matchingCatalog);
+        verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime);
+    }
+
+    @Test
+    void systemPropertiesAdmitBoundWorkersAndWriteOneCompleteBatchPerGroup() {
+        List<String> ids = List.of("a", "b", "c", "wrong-adapter", "unknown");
+        var properties = Map.of("network.type", "wifi");
+        List<DeliveryReport> reports = ids.stream()
+                .map(id -> propertiesReport("adapter-1", id, properties)).toList();
+        when(bindings.getWorkerDescriptors(ids)).thenReturn(Map.of(
+                "a", new WorkerDescriptor("a", "g1", "adapter-1"),
+                "b", new WorkerDescriptor("b", "g1", "adapter-1"),
+                "c", new WorkerDescriptor("c", "g2", "adapter-1"),
+                "wrong-adapter", new WorkerDescriptor("wrong-adapter", "g1", "other")));
+        when(matchingCatalog.upsertWorkerFactsBatch("g1", Map.of("a", properties, "b", properties)))
+                .thenReturn(Map.of("a", new MutationResult(MutationStatus.APPLIED),
+                        "b", new MutationResult(MutationStatus.UNCHANGED)));
+        when(matchingCatalog.upsertWorkerFactsBatch("g2", Map.of("c", properties)))
+                .thenReturn(Map.of("c", new MutationResult(MutationStatus.APPLIED)));
+
+        assertThat(service.appendAdapterReports("adapter-1", reports))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(3, 2));
+        var order = inOrder(bindings, matchingCatalog);
+        order.verify(bindings).getWorkerDescriptors(ids);
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g1", Map.of("a", properties, "b", properties));
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g2", Map.of("c", properties));
+        verifyNoMoreInteractions(bindings, matchingCatalog);
+        verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime);
+    }
+
+    @Test
+    void systemPropertiesWithoutBindingsNeverCreateFacts() {
+        when(bindings.getWorkerDescriptors(List.of("unknown"))).thenReturn(Map.of());
+        assertThat(service.appendAdapterReports("adapter-1", List.of(
+                propertiesReport("adapter-1", "unknown", Map.of()))))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
+        verify(bindings).getWorkerDescriptors(List.of("unknown"));
+        verifyNoMoreInteractions(bindings);
+        verifyNoInteractions(matchingCatalog, directCalls, resultRuntime, serviceability, commandRuntime);
+    }
+
+    @Test
+    void systemPropertiesCountEachInputUsingItsWorkersMutationOutcome() {
+        List<DeliveryReport> reports = new ArrayList<>();
+        Map<String, WorkerDescriptor> descriptors = new LinkedHashMap<>();
+        Map<String, Map<String, String>> snapshots = new LinkedHashMap<>();
+        Map<String, MutationResult> results = new LinkedHashMap<>();
+        for (MutationStatus status : MutationStatus.values()) {
+            String workerId = status.name();
+            reports.add(propertiesReport("adapter-1", workerId, Map.of("old", "value")));
+            reports.add(propertiesReport("adapter-1", workerId, Map.of()));
+            descriptors.put(workerId, new WorkerDescriptor(workerId, "group", "adapter-1"));
+            snapshots.put(workerId, Map.of());
+            results.put(workerId, new MutationResult(status));
+        }
+        when(bindings.getWorkerDescriptors(List.copyOf(descriptors.keySet()))).thenReturn(descriptors);
+        when(matchingCatalog.upsertWorkerFactsBatch("group", snapshots)).thenReturn(results);
+
+        assertThat(service.appendAdapterReports("adapter-1", reports))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(4, reports.size() - 4));
+        verify(matchingCatalog).upsertWorkerFactsBatch("group", snapshots);
+        verifyNoMoreInteractions(matchingCatalog);
+    }
+
+    @Test
+    void systemPropertiesPartialGroupFailureDoesNotRollbackEarlierWrites() {
+        when(bindings.getWorkerDescriptors(List.of("a", "b"))).thenReturn(Map.of(
+                "a", new WorkerDescriptor("a", "g1", "adapter-1"),
+                "b", new WorkerDescriptor("b", "g2", "adapter-1")));
+        when(matchingCatalog.upsertWorkerFactsBatch("g1", Map.of("a", Map.of())))
+                .thenReturn(Map.of("a", new MutationResult(MutationStatus.APPLIED)));
+        var failure = new IllegalStateException("storage unavailable");
+        when(matchingCatalog.upsertWorkerFactsBatch("g2", Map.of("b", Map.of())))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> service.appendAdapterReports("adapter-1", List.of(
+                propertiesReport("adapter-1", "a", Map.of()),
+                propertiesReport("adapter-1", "b", Map.of()))))
+                .isInstanceOfSatisfying(ServerException.class, error -> {
+                    assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE);
+                    assertThat(error.operation()).isEqualTo("workerDelivery.appendAdapterPropertiesReports");
+                    assertThat(error.getCause()).isSameAs(failure);
+                });
+        var order = inOrder(bindings, matchingCatalog);
+        order.verify(bindings).getWorkerDescriptors(List.of("a", "b"));
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g1", Map.of("a", Map.of()));
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g2", Map.of("b", Map.of()));
+        verifyNoMoreInteractions(bindings, matchingCatalog);
+        verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime);
+    }
+
+    @Test
+    void systemPropertiesBindingFailureRemainsPropertiesUnavailable() {
+        when(bindings.getWorkerDescriptors(List.of("w")))
+                .thenThrow(new IllegalStateException("Binding unavailable"));
+        assertThatThrownBy(() -> service.appendAdapterReports("adapter-1", List.of(
+                propertiesReport("adapter-1", "w", Map.of()))))
+                .isInstanceOfSatisfying(ServerException.class, error -> {
+                    assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE);
+                    assertThat(error.operation()).isEqualTo("workerDelivery.appendAdapterPropertiesReports");
+                });
+        verifyNoInteractions(matchingCatalog, directCalls, resultRuntime, serviceability, commandRuntime);
     }
 
     @Test
@@ -159,6 +268,12 @@ class WorkerDeliveryServiceTest {
                 "platform.adapter.worker-properties.observed", "200", valid, "direct-call:v1:x"));
         reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
                 "platform.adapter.unknown", "200", valid, ""));
+        for (String event : List.of("platform.worker.properties.updated", "platform.worker.properties.replaced")) {
+            reports.add(DeliveryReport.create(DeliveryEndpoint.WORKER, "w", DeliveryEndpoint.SYSTEM,
+                    event, "200", "{\"network.type\":\"wifi\"}", ""));
+            reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                    event, "200", valid, ""));
+        }
         for (String payload : List.of("null", "[]", "not-json", "{}",
                 "{\"workerId\":\" \",\"properties\":{}}",
                 "{\"workerId\":\"w\",\"properties\":{},\"version\":1}",
@@ -172,7 +287,7 @@ class WorkerDeliveryServiceTest {
         reports.add(propertiesReport("adapter-1", "w", Map.of("large", "界".repeat(334_000))));
         assertThat(service.appendAdapterReports("adapter-1", reports))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, reports.size()));
-        verifyNoInteractions(workerResources, directCalls, resultRuntime, serviceability, bindings);
+        verifyNoInteractions(matchingCatalog, directCalls, resultRuntime, serviceability, bindings);
     }
 
     private static DeliveryReport propertiesReport(String adapterId, String workerId, Map<String, ?> properties) {

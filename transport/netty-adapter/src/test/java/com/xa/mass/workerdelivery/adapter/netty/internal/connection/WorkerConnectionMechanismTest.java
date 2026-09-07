@@ -294,6 +294,39 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
+    void laterUpdatePublishesTheWholeCacheAfterAFullPublicationWasDropped() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200",
+                    "{\"network.type\":\"wifi\",\"battery\":\"80\",\"ssid\":\"lab\"}"));
+            // The previous publication fills SYSTEM admission; this full observation stays local.
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200",
+                    "{\"network.type\":\"cellular\",\"battery\":\"88\"}"));
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1);
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1").properties())
+                    .isEqualTo(Map.of("network.type", "cellular", "battery", "88"));
+            fixture.reportQueues.get(SYSTEM).clear();
+
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", "{\"battery\":\"89\"}"));
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1);
+            assertThat(Jsons.parseObject(fixture.reportQueues.get(SYSTEM).getFirst().payload()))
+                    .isEqualTo(Map.of("workerId", "worker-1", "properties",
+                            Map.of("network.type", "cellular", "battery", "89")));
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+            assertThat(fixture.reportQueues.get(KERNEL)).hasSize(1); // Initial connection evidence only.
+            assertThat(fixture.reportQueues.get(TASK)).isEmpty();
+            assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void lostCurrentChannelAfterInstallationRollsBackWithoutPublishing() {
         WorkerRouteRegistry routes = org.mockito.Mockito.spy(new WorkerRouteRegistry(Duration.ofMinutes(10), 100));
         Fixture fixture = new Fixture(10, routes);

@@ -477,8 +477,17 @@ on the existing Report thread, outside Route/cache mutations. There is no
 pending/latest snapshot, retry, ACK or quiet-period repair. A new explicit full
 or later connection baseline can recover a lost publication.
 
-Server verifies the Adapter producer, current Binding and Worker Group before
-Matching creates or replaces its persistent Worker Properties. Transport owns no Matching
+A later valid Worker update also publishes the complete retained cache, not
+just its changed keys. Thus a prior full observation lost only on the upstream
+hop does not make Server combine the next update with its older Properties;
+changes and omitted-key deletions already installed in Adapter travel together.
+Worker-to-Adapter loss remains a separate best-effort boundary: retaining a
+complete cache is not proof that it equals the Host's latest complete data.
+
+Server's one delivery reception use case verifies the Adapter producer, current
+Binding and Worker Group before Matching creates or replaces its persistent
+Worker Properties. Independent Platform Properties management does not handle
+these observations. Transport owns no Matching
 or Redis access. Properties reporting never creates Worker identity/resources,
 rewrites score, revokes Candidates or emits connection evidence. Prepare never
 writes these facts, including for new Workers. A lost first observation may

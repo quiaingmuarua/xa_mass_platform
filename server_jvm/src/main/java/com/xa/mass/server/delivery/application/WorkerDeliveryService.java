@@ -16,7 +16,8 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
-import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,6 +25,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public final class WorkerDeliveryService {
@@ -51,7 +53,7 @@ public final class WorkerDeliveryService {
     private final WorkerResourceCatalog workerCatalog;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
-    private final WorkerResourceCommandService workerResources;
+    private final WorkerMatchingCatalog matchingCatalog;
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
@@ -59,14 +61,14 @@ public final class WorkerDeliveryService {
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
-            WorkerResourceCommandService workerResources
+            WorkerMatchingCatalog matchingCatalog
     ) {
         this.commandRuntime = commandRuntime;
         this.taskResults = taskResults;
         this.workerCatalog = workerCatalog;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
-        this.workerResources = workerResources;
+        this.matchingCatalog = Objects.requireNonNull(matchingCatalog, "matchingCatalog");
     }
 
     public DeliveryCommand pollWorkerCommand(
@@ -338,13 +340,40 @@ public final class WorkerDeliveryService {
                 // Invalid event input is a per-item rejection, never an Owner write.
             }
         }
-        int accepted = 0;
-        if (!snapshots.isEmpty()) {
-            for (String workerId : workerResources.replaceReportedProperties(adapterId, snapshots)) {
-                accepted += inputCounts.get(workerId);
-            }
+        if (snapshots.isEmpty()) {
+            return new WorkerResultAppendCounts(0, reports.size());
         }
-        return new WorkerResultAppendCounts(accepted, reports.size() - accepted);
+        try {
+            Map<String, WorkerDescriptor> bindings = workerCatalog.getWorkerDescriptors(
+                    List.copyOf(snapshots.keySet())
+            );
+            Map<String, Map<String, Map<String, String>>> byGroup = new LinkedHashMap<>();
+            snapshots.forEach((workerId, properties) -> {
+                WorkerDescriptor binding = bindings.get(workerId);
+                if (binding != null && adapterId.equals(binding.endpointManagerId())) {
+                    byGroup.computeIfAbsent(binding.workerGroupId(), ignored -> new LinkedHashMap<>())
+                            .put(workerId, properties);
+                }
+            });
+            int accepted = 0;
+            for (var group : byGroup.entrySet()) {
+                Map<String, MutationResult> results = matchingCatalog.upsertWorkerFactsBatch(
+                        group.getKey(), group.getValue()
+                );
+                for (String workerId : group.getValue().keySet()) {
+                    MutationResult result = Objects.requireNonNull(results.get(workerId), "Worker mutation result");
+                    switch (result.status()) {
+                        case APPLIED, UNCHANGED -> accepted += inputCounts.get(workerId);
+                        case NOT_FOUND, INVALID, CONFLICT -> { }
+                    }
+                }
+            }
+            return new WorkerResultAppendCounts(accepted, reports.size() - accepted);
+        } catch (RuntimeException error) {
+            // Earlier Group writes may already have committed. SYSTEM has no replay contract.
+            throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
+                    "workerDelivery.appendAdapterPropertiesReports", null, error);
+        }
     }
 
     private WorkerResultAppendCounts appendAdapterTaskReports(

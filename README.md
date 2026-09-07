@@ -51,14 +51,16 @@ an unconditional repair guarantee. The detailed failure windows are in
 Worker Prepare resolves Server-owned external identity, then establishes Kernel
 Binding and cold Score membership. Valid network observations request activation. Its Properties input supplies registration coordinates
 only; it does not create or refresh Matching facts. Transparent
-reconnect sends identity only. Adapter Route evidence may feed the optional
-Kernel Serviceability policy, but Route and local Properties snapshots are
+reconnect sends identity only. Adapter Route evidence feeds Kernel
+Serviceability best-effort, but Route and local Properties snapshots are
 observations, not scheduling truth. Adapter Properties reporting and baseline calibration follow the
 [connection Owner](transport/netty-adapter/README.md) and
 [Worker Core](transport/worker-core/README.md) contracts. After installing a
 complete observation, Adapter offers one SYSTEM Report; Server validates its
-producer, Binding and Group before creating or replacing Matching-owned Worker
-facts. Before the first valid observation, identity may exist without facts:
+producer, Binding and Group in one delivery reception use case before creating
+or replacing Matching-owned Worker facts. Every upstream observation replaces
+the complete Worker Map; independent Platform Properties management never
+patches that Map. Before the first valid observation, identity may exist without facts:
 PRECOMPUTED skips that Worker while ON_DEMAND can use its identity. Polling
 currently has no Properties reporting path and uses ON_DEMAND for new Workers.
 New Matching Demands read observed facts without re-Prepare. Reporting is lossy,

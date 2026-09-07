@@ -88,7 +88,12 @@ cross-request serialization.
 
 The upstream SYSTEM path is one-shot best-effort: a queue or HTTP failure can
 leave no facts or old facts until new Host input or a later connection baseline arrives.
-Server owns producer/Binding/Group admission, not Rule interpretation. Every
+One Server delivery reception use case owns producer/Binding/Group admission
+and complete batch writes, not Rule interpretation. Server never reads old
+Worker facts to apply an Adapter delta. Independently managed Platform
+Properties are a separate Map and are not part of this observation replacement.
+Complete upstream observations avoid old-fact merging at Server, but cannot
+repair input lost before reaching the Adapter cache. Every
 new Demand loads the current Catalog facts; there is no refresh notification,
 Matching facts cache or Candidate revocation. String comparison remains lexical;
 numeric-string coercion and new constraint semantics are not part of this path.

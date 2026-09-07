@@ -55,7 +55,7 @@ class WorkerDeliveryHttpCompositionTest {
                     );
 
     @Test
-    void assemblesWithoutTaskResourceOrPythonKernelOwners() {
+    void assemblesWithoutPlatformPropertiesManagementOrTaskResourceOwners() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
             assertThat(context).hasSingleBean(TaskResultRuntime.class);
@@ -63,7 +63,7 @@ class WorkerDeliveryHttpCompositionTest {
                     WorkerServiceabilityRuntime.class
             );
             assertThat(context).hasSingleBean(WorkerDeliveryService.class);
-            assertThat(context).hasSingleBean(WorkerResourceCommandService.class);
+            assertThat(context).doesNotHaveBean(WorkerResourceCommandService.class);
             assertThat(context)
                     .hasSingleBean(WorkerPointDeliveryController.class);
             assertThat(context)
@@ -87,7 +87,6 @@ class WorkerDeliveryHttpCompositionTest {
             KernelRedisConfiguration.class,
             WorkerDeliveryOwnerAssemblyConfiguration.class,
             WorkerDeliveryConfiguration.class,
-            WorkerResourceCommandService.class,
             WorkerPointDeliveryController.class,
             AdapterBatchDeliveryController.class,
             ApiExceptionHandler.class,
