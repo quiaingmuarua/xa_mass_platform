@@ -133,7 +133,7 @@ class PollingWorkerTransportTest {
     void commandForAnotherDestinationIsRejectedAtPollingBoundary() {
         FakePointClient client = new FakePointClient();
         DeliveryCommand misrouted = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.TASK,
                 "system.observe",
                 Long.MAX_VALUE,

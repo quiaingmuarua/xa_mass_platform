@@ -34,7 +34,7 @@ one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`, with
 one acceptor EventLoop and a CPU-bounded child EventLoop group
 one fixed `AdapterProcessManager` with Command and Report Dispatchers
-one retry-only Command Queue and three destination-specific Report Queues
+one retry-only Command Queue and four destination-specific Report Queues
 one pure `DeliveryCommandProcess` and one `DeliveryReportDispatcher`
 two resident daemon platform threads, one owned by each Dispatcher
 ```
@@ -47,7 +47,7 @@ batch, retry placement, interruptible backoff, stop intent, and named daemon
 platform thread. It also calls its fixed fresh supplier once per outer
 iteration. `DeliveryCommandProcess` processes one supplied batch once and owns
 no Queue, loop, sleep, thread, pending batch, or lifecycle state. The
-`DeliveryReportDispatcher` owns three finite destination Queues, one rotating
+`DeliveryReportDispatcher` owns four finite destination Queues, one rotating
 consumer, destination-specific failure policy, and the second named daemon
 platform thread. Queue count does not determine thread count.
 The stateless inbound Handler only forwards normalized text, inactive, and
@@ -219,10 +219,11 @@ Once bound, malformed JSON, repeated identity, unknown Adapter events,
 mismatched `src/sourceId`, unsupported destinations, and Worker-originated
 `2...` outcomes are logged and dropped without closing the Channel. A valid
 Worker Report must use `src=WORKER`, the bound workerId, and outcome `200` or a
-Worker-owned `3...`. `dst=TASK` and `dst=SYSTEM` enter their respective Report
-Queues as decoded `DeliveryReport` objects. A full or closed TASK Queue closes
-the exact Channel; best-effort SYSTEM backpressure drops the Report and keeps
-the Channel usable. Adapter-produced `dst=KERNEL` evidence uses the third Queue.
+Worker-owned `3...`. `dst=TASK`, `dst=SERVER` and `dst=SYSTEM` enter their
+respective Report Queues as decoded `DeliveryReport` objects. A full or closed
+TASK Queue closes the exact Channel; best-effort SERVER/SYSTEM backpressure
+drops the Report and keeps the Channel usable. Adapter-produced `dst=KERNEL`
+evidence uses the fourth Queue.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
 `workerId -> RouteEntry` truth in one Caffeine cache. One immutable entry holds
@@ -315,7 +316,7 @@ original batch indexes whose current Route asked for `RETRY_LATER`; the
 Dispatcher reconstructs those items and appends them to its Queue tail.
 Server may place a bounded prefix from its Adapter Direct FIFO in a
 `commands:consume` response. Remaining capacity first comes from one consume of
-the shared Worker Command Hash, whose fields may contain TASK or SYSTEM
+the shared Worker Command Hash, whose fields may contain TASK or SERVER
 Commands. If capacity still remains, Server may add one bounded Kernel
 Serviceability Adapter snapshot Command. This is remote acquisition priority,
 not local preemption: a full local retry queue never postpones the next Server
@@ -360,8 +361,8 @@ batch after stop.
 A remote response containing more Commands than the requested limit is a
 protocol failure and none of that response is dispatched.
 
-TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SYSTEM -> WORKER` or
-`SYSTEM -> ADAPTER`. Worker Serviceability uses only `KERNEL -> ADAPTER` with
+TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SERVER -> WORKER` or
+`SERVER -> ADAPTER`. Worker Serviceability uses only `KERNEL -> ADAPTER` with
 `platform.adapter.worker-connections.snapshot`; every other KERNEL Adapter
 event is rejected. A Worker Command entry key is its workerId; an Adapter
 Command entry key is opaque and ignored. No active Channel is temporary while
@@ -447,7 +448,7 @@ or the next successful connection baseline can restore it. Report encoding is
 bounded to the existing 1,000,000-byte frame limit.
 
 This event is not a callable Handler, forwarded to Report queues, or
-acknowledged. Ordinary TASK/SYSTEM snapshot Results still forward but never
+acknowledged. Ordinary TASK/SERVER snapshot Results still forward but never
 refresh the cache. Java and Android use their one Host Provider for full reports;
 the SDK does not store or merge Host properties. Server publication/coalescing,
 field timestamps, versions and reliable convergence remain out of scope.
@@ -455,14 +456,14 @@ Connection evidence behavior is unchanged; this observation never writes Kernel.
 
 ### Result ingress loop
 
-`DeliveryReportDispatcher` owns three finite
-`LinkedBlockingQueue<DeliveryReport>` lanes: TASK, SYSTEM, and KERNEL. It is
+`DeliveryReportDispatcher` owns four finite
+`LinkedBlockingQueue<DeliveryReport>` lanes: TASK, SERVER, SYSTEM, and KERNEL. It is
 both their non-blocking multi-producer admission boundary and their one shared
 consumer. Each accepted Report is decoded once before admission. The configured
 `reportQueueCapacity` is the external soft limit of each lane, so the aggregate
-external capacity is three times that value. The TASK Queue alone reserves 100
+external capacity is four times that value. The TASK Queue alone reserves 100
 additional physical positions for the single in-flight batch to return.
-SYSTEM and KERNEL admission drops use owner-local cumulative sampling rather
+SERVER, SYSTEM and KERNEL admission drops use owner-local cumulative sampling rather
 than one warning per Report, so a 10k disconnect wave cannot create a matching
 warning storm.
 
@@ -471,7 +472,7 @@ empty. Ingress to any lane wakes it. A rotating cursor selects one non-empty
 lane, `poll()` obtains its first item, and `drainTo(...)` takes at most 99 more
 from that same lane. Every remote batch is therefore non-empty, FIFO within its
 lane, at most 100 items, and homogeneous by `dst`; continuously busy TASK cannot
-permanently starve SYSTEM or KERNEL.
+permanently starve SERVER, SYSTEM or KERNEL.
 
 ```text
 select one non-empty lane, then drain up to the 100-Report batch limit
@@ -479,15 +480,19 @@ select one non-empty lane, then drain up to the 100-Report batch limit
 success or semantic rejection -> complete the batch
 TASK remote unavailable        -> append exact batch to TASK tail, then backoff
 TASK protocol/unclassified     -> drop batch, then backoff
-SYSTEM/KERNEL failure          -> drop batch, then backoff
+SERVER/SYSTEM/KERNEL failure   -> drop batch, then backoff
 ```
 
 All lanes use the one `POST /{adapterId}/results:append` endpoint. The request is
 an array of `DeliveryReport` objects, not encoded strings. Server validates the
 whole batch before an Owner side effect, rejects mixed or unsupported
-destinations, and selects exactly one semantic Owner from the first `dst`: TASK
-enters Kernel Task Result truth, SYSTEM enters the Server-local Direct Call
-owner, and KERNEL enters the Kernel Worker Serviceability handoff. Owner-local
+destinations, and selects one destination branch from the first `dst`: TASK
+enters Kernel Task Result truth, SERVER enters the Server-local Direct Call
+owner, and KERNEL enters the Kernel Worker Serviceability handoff. SYSTEM is a
+platform-event destination with no consumer installed yet: a valid batch returns
+`202` with zero accepted and all items rejected, without business Owner calls.
+SYSTEM never completes a Direct Call waiter, even with matching `forward`.
+Owner-local
 correlation then interprets opaque `forward` and contributes per-item accepted
 or rejected counts.
 
@@ -498,8 +503,8 @@ normally also stops fresh Command acquisition. Memory and work remain bounded
 by the finite external Queue, one in-flight batch, the 100-item retry reserve,
 one HTTP call, fixed backoff, and Adapter lifetime. This is continuous
 best-effort retransmission, not durable delivery; a lost response or partial
-Server application can still produce duplicates. SYSTEM and KERNEL evidence is
-time-sensitive and is dropped after any failed submission.
+Server application can still produce duplicates. SERVER replies and SYSTEM/KERNEL
+evidence are best-effort and are dropped after any failed submission.
 
 The fixed remote batch limit remains 100 and is independent of queue capacity.
 While the remote owner accepts batches, the resident Dispatcher continuously
@@ -508,7 +513,7 @@ outside the short per-lane admission gates. `reportBackoff` is used only after a
 failed submission; normal idle waits indefinitely for ingress. After stop, the
 Dispatcher clears current and queued data without another HTTP call.
 
-The Command Queue and three Report Queues remain private to their respective
+The Command Queue and four Report Queues remain private to their respective
 Dispatchers. Thread interrupt owns shutdown wakeup. Future Report concurrency,
 if justified by measurements, must be one bounded executor inside the Report
 owner with explicit in-flight, retry-reserve, and shutdown bounds; a Queue must

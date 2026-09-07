@@ -5,7 +5,7 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.Worke
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -125,7 +125,7 @@ class DeliveryCommandProcessTest {
         );
         AdapterEventDispatcher dispatcher = mock(AdapterEventDispatcher.class);
         DeliveryCommand command = DeliveryCommand.create(
-                SYSTEM,
+                SERVER,
                 ADAPTER,
                 "platform.adapter.probe",
                 2_000,

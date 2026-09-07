@@ -14,20 +14,22 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-/** Owns the three finite Report lanes and their one resident consumer. */
+/** Owns the four finite Report lanes and their one resident consumer. */
 public final class DeliveryReportDispatcher {
 
     private static final int BATCH_SIZE =
             WorkerDeliveryRemoteApi.MAX_RESULTS_PER_APPEND;
-    private static final int LANE_COUNT = 3;
+    private static final int LANE_COUNT = 4;
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportDispatcher.class.getName()
     );
 
     private final Object taskAdmissionGate = new Object();
+    private final Object serverAdmissionGate = new Object();
     private final Object systemAdmissionGate = new Object();
     private final Object kernelAdmissionGate = new Object();
     private final LinkedBlockingQueue<DeliveryReport> taskQueue;
+    private final LinkedBlockingQueue<DeliveryReport> serverQueue;
     private final LinkedBlockingQueue<DeliveryReport> systemQueue;
     private final LinkedBlockingQueue<DeliveryReport> kernelQueue;
     private final ReentrantLock availabilityGate = new ReentrantLock();
@@ -37,6 +39,7 @@ public final class DeliveryReportDispatcher {
     private final int softCapacity;
     private final long backoffMillis;
     private final Thread thread;
+    private final AtomicLong serverIngressDrops = new AtomicLong();
     private final AtomicLong systemIngressDrops = new AtomicLong();
     private final AtomicLong kernelIngressDrops = new AtomicLong();
     private volatile boolean accepting = true;
@@ -63,6 +66,7 @@ public final class DeliveryReportDispatcher {
         backoffMillis = requirePositiveMillis(backoff, "backoff");
         this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
         taskQueue = new LinkedBlockingQueue<>((int) taskPhysicalCapacity);
+        serverQueue = new LinkedBlockingQueue<>(softCapacity);
         systemQueue = new LinkedBlockingQueue<>(softCapacity);
         kernelQueue = new LinkedBlockingQueue<>(softCapacity);
         thread = new Thread(
@@ -80,6 +84,11 @@ public final class DeliveryReportDispatcher {
                     taskAdmissionGate,
                     taskQueue
             );
+            case SERVER -> admit(
+                    required,
+                    serverAdmissionGate,
+                    serverQueue
+            );
             case SYSTEM -> admit(
                     required,
                     systemAdmissionGate,
@@ -91,7 +100,7 @@ public final class DeliveryReportDispatcher {
                     kernelQueue
             );
             case ADAPTER, WORKER -> throw new IllegalArgumentException(
-                    "Report destination must be TASK, SYSTEM, or KERNEL"
+                    "Report destination must be TASK, SERVER, SYSTEM, or KERNEL"
             );
         };
         if (status != DispatchStatus.ACCEPTED
@@ -108,6 +117,7 @@ public final class DeliveryReportDispatcher {
     void stopIngress() {
         accepting = false;
         awaitAdmission(taskAdmissionGate);
+        awaitAdmission(serverAdmissionGate);
         awaitAdmission(systemAdmissionGate);
         awaitAdmission(kernelAdmissionGate);
     }
@@ -149,6 +159,7 @@ public final class DeliveryReportDispatcher {
         } finally {
             stopIngress();
             taskQueue.clear();
+            serverQueue.clear();
             systemQueue.clear();
             kernelQueue.clear();
         }
@@ -252,6 +263,7 @@ public final class DeliveryReportDispatcher {
 
     private boolean queuesAreEmpty() {
         return taskQueue.isEmpty()
+                && serverQueue.isEmpty()
                 && systemQueue.isEmpty()
                 && kernelQueue.isEmpty();
     }
@@ -261,6 +273,7 @@ public final class DeliveryReportDispatcher {
     ) {
         return switch (destination) {
             case TASK -> taskQueue;
+            case SERVER -> serverQueue;
             case SYSTEM -> systemQueue;
             case KERNEL -> kernelQueue;
             case ADAPTER, WORKER -> throw new IllegalArgumentException(
@@ -272,8 +285,9 @@ public final class DeliveryReportDispatcher {
     private static DeliveryEndpoint destination(int laneIndex) {
         return switch (laneIndex) {
             case 0 -> DeliveryEndpoint.TASK;
-            case 1 -> DeliveryEndpoint.SYSTEM;
-            case 2 -> DeliveryEndpoint.KERNEL;
+            case 1 -> DeliveryEndpoint.SERVER;
+            case 2 -> DeliveryEndpoint.SYSTEM;
+            case 3 -> DeliveryEndpoint.KERNEL;
             default -> throw new IllegalArgumentException(
                     "Unknown Report lane"
             );
@@ -305,9 +319,12 @@ public final class DeliveryReportDispatcher {
             DeliveryEndpoint destination,
             DispatchStatus status
     ) {
-        AtomicLong counter = destination == DeliveryEndpoint.SYSTEM
-                ? systemIngressDrops
-                : kernelIngressDrops;
+        AtomicLong counter = switch (destination) {
+            case SERVER -> serverIngressDrops;
+            case SYSTEM -> systemIngressDrops;
+            case KERNEL -> kernelIngressDrops;
+            default -> throw new IllegalArgumentException("Not a best-effort Report lane");
+        };
         long droppedCount = counter.incrementAndGet();
         if (droppedCount != 1L && droppedCount % 1_024L != 0L) {
             return;

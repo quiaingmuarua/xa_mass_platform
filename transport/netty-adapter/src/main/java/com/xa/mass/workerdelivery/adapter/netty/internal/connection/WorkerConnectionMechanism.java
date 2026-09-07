@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -393,7 +394,7 @@ public final class WorkerConnectionMechanism {
             }
             return;
         }
-        if (report.dst() != TASK && report.dst() != SYSTEM) {
+        if (report.dst() != TASK && report.dst() != SERVER && report.dst() != SYSTEM) {
             logDrop("dropUnsupportedDestination", report);
             return;
         }

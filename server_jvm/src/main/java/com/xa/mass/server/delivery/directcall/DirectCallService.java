@@ -393,7 +393,7 @@ public final class DirectCallService {
     ) {
         String correlationId = UUID.randomUUID().toString();
         DeliveryCommand command = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 destination,
                 messageType,
                 deadline,

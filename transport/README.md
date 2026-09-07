@@ -13,7 +13,7 @@ module map and common implementation boundaries.
 :transport:netty-adapter
   -> stable WebSocket and Socket Adapter facades
   -> aggregate lifecycle over fixed Command and Report Dispatchers
-  -> Command retry queue; three Report destination queues under one Report owner
+  -> Command retry queue; four Report destination queues under one Report owner
   -> stateless one-batch Command Process
   -> one shared Netty connection mechanism and route registry per instance
   -> one complete protocol-specific physical Server per instance

@@ -1,7 +1,7 @@
 package com.xa.mass.worker.execution;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -129,7 +129,7 @@ class WorkerCommandDispatcherTest {
                 "\"executed\"",
                 resultPayload(
                         dispatcher,
-                        SYSTEM,
+                        SERVER,
                         extensionName("shared.inspect")
                 )
         );
@@ -194,7 +194,7 @@ class WorkerCommandDispatcherTest {
 
         assertFailure(
                 dispatcher.execute(command(
-                        SYSTEM,
+                        SERVER,
                         extensionName("shared.missing"),
                         "{}",
                         ACTIVE_DEADLINE

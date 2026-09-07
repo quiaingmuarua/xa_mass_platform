@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -163,9 +164,9 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").updatedAtMillis()).isGreaterThan(observation.updatedAtMillis());
             fixture.flushReports();
-            assertThat(fixture.systemReports).isEmpty();
+            assertThat(fixture.serverReports).isEmpty();
             assertThat(fixture.reportQueues.get(TASK)).isEmpty();
-            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
+            assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
             assertThat(fixture.evidenceReports).hasSize(1); // Only CONNECTED evidence.
             assertThat(fixture.network.closedChannels).isEmpty();
         } finally {
@@ -210,7 +211,7 @@ class WorkerConnectionMechanismTest {
                     .isEqualTo(baseline);
             assertThat(current.isActive()).isTrue();
             assertThat(fixture.network.closeReasons).containsExactly(AdapterConnectionCloseReason.REPLACED);
-            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
+            assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
             assertThat(fixture.reportQueues.get(KERNEL)).hasSize(1);
             assertThat(fixture.reportQueues.get(TASK)).isEmpty();
         } finally {
@@ -370,7 +371,7 @@ class WorkerConnectionMechanismTest {
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, current);
             fixture.flushReports();
-            fixture.systemReports.clear();
+            fixture.serverReports.clear();
 
             replacement.writeInbound(fixture.identity("worker-1"));
 
@@ -378,7 +379,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(replacement);
             assertThat(fixture.routeVerifier.verificationCalls).isEqualTo(1);
-            assertThat(fixture.systemReports).isEmpty();
+            assertThat(fixture.serverReports).isEmpty();
 
             replacement.finishAndReleaseAll();
             assertThat(fixture.mechanism.connectionStates(List.of(
@@ -641,7 +642,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void systemResultBackpressureDoesNotCloseTheWorker() {
+    void serverResultBackpressureDoesNotCloseTheWorker() {
         Fixture fixture = new Fixture(2);
         EmbeddedChannel channel = fixture.channel();
         try {
@@ -649,27 +650,49 @@ class WorkerConnectionMechanismTest {
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
-            fixture.systemReports.clear();
+            fixture.serverReports.clear();
 
-            channel.writeInbound(fixture.systemResult("worker-1"));
+            channel.writeInbound(fixture.serverResult("worker-1"));
             fixture.flushReports();
-            assertThat(fixture.systemReports)
-                    .containsExactly(fixture.systemResult("worker-1"));
+            assertThat(fixture.serverReports)
+                    .containsExactly(fixture.serverResult("worker-1"));
 
             assertThat(fixture.ingressReports(fixture.report(
-                    SYSTEM,
+                    SERVER,
                     "occupied-1"
             ))).isEqualTo(
                     DeliveryReportDispatcher.DispatchStatus.ACCEPTED
             );
             assertThat(fixture.ingressReports(fixture.report(
-                    SYSTEM,
+                    SERVER,
                     "occupied-2"
             ))).isEqualTo(
                     DeliveryReportDispatcher.DispatchStatus.ACCEPTED
             );
-            channel.writeInbound(fixture.systemResult("worker-1"));
+            channel.writeInbound(fixture.serverResult("worker-1"));
 
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void systemIngressIsSeparateFromServerRepliesAndDoesNotCloseOnFull() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            DeliveryReport event = fixture.report(SYSTEM, "observation");
+            channel.writeInbound(fixture.codec.encodeDeliveryReport(event));
+            assertThat(fixture.reportQueues.get(SYSTEM)).containsExactly(event);
+            channel.writeInbound(fixture.codec.encodeDeliveryReport(event));
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1);
+            channel.writeInbound(fixture.serverResult("worker-1"));
+            assertThat(fixture.reportQueues.get(SERVER)).hasSize(1);
             assertThat(channel.isActive()).isTrue();
             assertThat(fixture.network.closedChannels).isEmpty();
         } finally {
@@ -685,7 +708,7 @@ class WorkerConnectionMechanismTest {
         fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
         awaitBound(fixture, channel);
         fixture.flushReports();
-        fixture.systemReports.clear();
+        fixture.serverReports.clear();
         assertThat(fixture.ingressReports(fixture.report(
                 TASK,
                 "occupied-1"
@@ -713,7 +736,7 @@ class WorkerConnectionMechanismTest {
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, channel);
             fixture.flushReports();
-            fixture.systemReports.clear();
+            fixture.serverReports.clear();
 
             String encoded = fixture.propertiesFull(
                     "worker-1",
@@ -732,7 +755,7 @@ class WorkerConnectionMechanismTest {
             )).containsEntry("worker-1", WorkerConnectionState.CONNECTED);
 
             String ordinary = fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER, "worker-1", SYSTEM, "platform.worker.properties.snapshot",
+                    WORKER, "worker-1", SERVER, "platform.worker.properties.snapshot",
                     "200", "{\"properties\":{\"battery\":\"99\"}}",
                     "direct-call:v1:properties"
             ));
@@ -740,7 +763,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1"))
                     .isEqualTo(snapshot);
             fixture.flushReports();
-            assertThat(fixture.systemReports).containsExactly(ordinary);
+            assertThat(fixture.serverReports).containsExactly(ordinary);
         } finally {
             channel.finishAndReleaseAll();
         }
@@ -756,7 +779,7 @@ class WorkerConnectionMechanismTest {
             fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
             awaitBound(fixture, first);
             fixture.flushReports();
-            fixture.systemReports.clear();
+            fixture.serverReports.clear();
             first.writeInbound(fixture.propertiesFull(
                     "worker-1",
                     "200",
@@ -789,7 +812,7 @@ class WorkerConnectionMechanismTest {
             assertThat(snapshot.updatedAtMillis()).isNotNull();
             assertThat(snapshot.properties()).containsEntry("battery", "87");
 
-            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
+            assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
         } finally {
             first.finishAndReleaseAll();
             replacement.finishAndReleaseAll();
@@ -964,7 +987,7 @@ class WorkerConnectionMechanismTest {
         private final PendingRouteVerifier routeVerifier =
                 new PendingRouteVerifier();
         private final List<String> reports = new CopyOnWriteArrayList<>();
-        private final List<String> systemReports =
+        private final List<String> serverReports =
                 new CopyOnWriteArrayList<>();
         private final List<String> evidenceReports =
                 new CopyOnWriteArrayList<>();
@@ -1001,6 +1024,7 @@ class WorkerConnectionMechanismTest {
             this.routes = routes;
             this.reportCapacity = reportCapacity;
             reportQueues.put(TASK, new ArrayDeque<>());
+            reportQueues.put(SERVER, new ArrayDeque<>());
             reportQueues.put(SYSTEM, new ArrayDeque<>());
             reportQueues.put(KERNEL, new ArrayDeque<>());
             reportServer = reportServer();
@@ -1058,7 +1082,7 @@ class WorkerConnectionMechanismTest {
         private synchronized List<DeliveryReport> takeReports() {
             ArrayDeque<DeliveryReport> queue = null;
             for (DeliveryEndpoint destination
-                    : List.of(TASK, SYSTEM, KERNEL)) {
+                    : List.of(TASK, SERVER, SYSTEM, KERNEL)) {
                 ArrayDeque<DeliveryReport> candidate =
                         reportQueues.get(destination);
                 if (!candidate.isEmpty()) {
@@ -1090,8 +1114,8 @@ class WorkerConnectionMechanismTest {
                         .toList();
                 for (DeliveryReport report : batch) {
                     String encoded = codec.encodeDeliveryReport(report);
-                    if (report.dst() == SYSTEM) {
-                        systemReports.add(encoded);
+                    if (report.dst() == SERVER) {
+                        serverReports.add(encoded);
                     } else if (report.dst() == KERNEL) {
                         evidenceReports.add(encoded);
                     } else {
@@ -1188,11 +1212,11 @@ class WorkerConnectionMechanismTest {
             ));
         }
 
-        private String systemResult(String workerId) {
+        private String serverResult(String workerId) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
                     WORKER,
                     workerId,
-                    SYSTEM,
+                    SERVER,
                     "platform.worker.properties.snapshot",
                     "200",
                     "{}",

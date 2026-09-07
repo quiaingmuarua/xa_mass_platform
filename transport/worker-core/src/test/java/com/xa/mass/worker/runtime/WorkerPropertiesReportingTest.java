@@ -62,7 +62,7 @@ class WorkerPropertiesReportingTest {
         try (WorkerRunController worker = f.worker) {
             worker.start();
             f.client.sent.clear();
-            for (var source : List.of(ADAPTER, TASK, SYSTEM)) {
+            for (var source : List.of(ADAPTER, TASK, SERVER)) {
                 DeliveryCommand command = DeliveryCommand.create(source, WORKER,
                         "platform.worker.properties.snapshot", System.currentTimeMillis() + 60_000,
                         "null", source == ADAPTER ? "" : "opaque-correlation");

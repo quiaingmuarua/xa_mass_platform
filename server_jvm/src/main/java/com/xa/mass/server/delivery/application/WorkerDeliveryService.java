@@ -277,11 +277,13 @@ public final class WorkerDeliveryService {
                     batch,
                     operation
             );
-            case SYSTEM -> appendAdapterSystemReports(
+            case SERVER -> appendAdapterServerReports(
                     endpointManagerId,
                     batch,
                     operation
             );
+            // No SYSTEM event consumer is installed. Never correlate these as replies.
+            case SYSTEM -> new WorkerResultAppendCounts(0, batch.size());
             case KERNEL -> appendAdapterKernelReports(
                     endpointManagerId,
                     batch,
@@ -337,7 +339,7 @@ public final class WorkerDeliveryService {
         return new WorkerResultAppendCounts(acceptedCount, rejectedCount);
     }
 
-    private WorkerResultAppendCounts appendAdapterSystemReports(
+    private WorkerResultAppendCounts appendAdapterServerReports(
             String endpointManagerId,
             List<DeliveryReport> reports,
             String operation
@@ -414,6 +416,7 @@ public final class WorkerDeliveryService {
         }
         DeliveryEndpoint destination = batch.get(0).dst();
         if (destination != DeliveryEndpoint.TASK
+                && destination != DeliveryEndpoint.SERVER
                 && destination != DeliveryEndpoint.SYSTEM
                 && destination != DeliveryEndpoint.KERNEL) {
             throw invalid(

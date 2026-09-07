@@ -34,7 +34,7 @@ Definitions. Their mechanism contract is owned by
 | `platform.worker.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observe the immutable Event Names loaded by this Worker process |
 
 `probe` is not schedulability, idleness, Binding, or connectivity truth.
-`properties.snapshot` reads flat string KV from the Host Provider. TASK/SYSTEM
+`properties.snapshot` reads flat string KV from the Host Provider. TASK/SERVER
 calls return ordinary correlated Results; an ADAPTER baseline request returns
 one full `properties.reported` instead. Neither updates canonical facts or
 scheduling truth.
@@ -55,7 +55,7 @@ events. Their detailed semantics are owned by the
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
 | `platform.adapter.worker-properties.snapshot` | `{"workerIds":["..."]}` | `{"propertiesByWorkerId":{"worker-1":{...}}}` | Observes Adapter-local cached Worker properties |
 
-All Adapter events are callable through the ordinary `SYSTEM -> ADAPTER`
+All Adapter events are callable through the ordinary `SERVER -> ADAPTER`
 Direct Call path. The Kernel may call only
 `platform.adapter.worker-connections.snapshot`, using `KERNEL -> ADAPTER`, for
 the optional Worker Serviceability convergence policy. The resulting

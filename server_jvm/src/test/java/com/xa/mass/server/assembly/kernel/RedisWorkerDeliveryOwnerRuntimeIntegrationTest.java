@@ -261,7 +261,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         String existing = commandJson(System.currentTimeMillis() + 30_000);
         redis.hset(key, "worker-occupied", existing);
         DeliveryCommand direct = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.WORKER,
                 "platform.worker.probe",
                 System.currentTimeMillis() + 30_000,
@@ -348,7 +348,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         DeliveryReport wrongEndpoint = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "platform.adapter.worker-connections.snapshot",
                 "200",
                 "{}",

@@ -1,6 +1,6 @@
 package com.xa.mass.worker.execution;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -231,7 +231,7 @@ class WorkerManagementEventDefinitionsTest {
             String payload
     ) {
         return dispatcher.execute(DeliveryCommand.create(
-                SYSTEM,
+                SERVER,
                 WORKER,
                 eventCode,
                 Long.MAX_VALUE,

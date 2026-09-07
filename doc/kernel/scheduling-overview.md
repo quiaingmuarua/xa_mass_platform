@@ -62,7 +62,8 @@ Candidate Cache. The detailed flow is
 Worker/Adapter Result evidence -> Server validates and selects its owner
   TASK -> Kernel Result Policy -> TaskItem and Worker semantic events
   KERNEL -> optional Serviceability Result Policy -> Worker semantic events
-  SYSTEM -> Server Direct Call waiter
+  SERVER -> Server Direct Call waiter
+  SYSTEM -> platform event destination; currently rejected without Owner calls
 ```
 
 SUCCESS stores the Result projection before separately requesting Item success

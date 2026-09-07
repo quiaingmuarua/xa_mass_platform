@@ -3,7 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -209,7 +209,7 @@ class NettyAdapterContractTest {
             // An unsent Host mutation is calibrated by the next physical connection, without Prepare.
             properties.set(Map.of("battery", "88", "network.type", "wifi", "empty", ""));
             remoteApi.commandBatches.add(Map.of("close-current", DeliveryCommand.create(
-                    SYSTEM, ADAPTER, "platform.adapter.worker-connections.close-current",
+                    SERVER, ADAPTER, "platform.adapter.worker-connections.close-current",
                     System.currentTimeMillis() + 30_000, Jsons.toJson(Map.of("workerIds", List.of(WORKER_ID))),
                     "close-for-reconnect"
             )));
@@ -231,7 +231,7 @@ class NettyAdapterContractTest {
         do {
             String forward = "properties-observe-" + System.nanoTime() + "-" + attempt++;
             remoteApi.commandBatches.add(Map.of("properties-query", DeliveryCommand.create(
-                    SYSTEM, ADAPTER, "platform.adapter.worker-properties.snapshot",
+                    SERVER, ADAPTER, "platform.adapter.worker-properties.snapshot",
                     System.currentTimeMillis() + 30_000,
                     Jsons.toJson(Map.of("workerIds", List.of(WORKER_ID))), forward
             )));

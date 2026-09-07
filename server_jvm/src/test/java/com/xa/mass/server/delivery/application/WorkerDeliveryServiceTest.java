@@ -88,7 +88,7 @@ class WorkerDeliveryServiceTest {
     @Test
     void adapterCommandsFillTheLimitBeforeAnyWorkerSourceIsRead() {
         DeliveryCommand first = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
@@ -96,7 +96,7 @@ class WorkerDeliveryServiceTest {
                 "direct-call:v1:first"
         );
         DeliveryCommand second = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.events.snapshot",
                 System.currentTimeMillis() + 10_000,
@@ -124,7 +124,7 @@ class WorkerDeliveryServiceTest {
     @Test
     void adapterPrefixUsesRemainingLimitFromSharedWorkerHash() {
         DeliveryCommand adapter = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
@@ -132,7 +132,7 @@ class WorkerDeliveryServiceTest {
                 "direct-call:v1:adapter"
         );
         DeliveryCommand control = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.WORKER,
                 "platform.worker.properties.snapshot",
                 System.currentTimeMillis() + 10_000,
@@ -152,7 +152,7 @@ class WorkerDeliveryServiceTest {
     @Test
     void sharedWorkerHashUsesTheRemainingLimitOnce() {
         DeliveryCommand adapter = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
@@ -274,7 +274,7 @@ class WorkerDeliveryServiceTest {
     @Test
     void acquiredAdapterCommandsSurviveLowerPrioritySourceFailure() {
         DeliveryCommand adapter = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
@@ -415,7 +415,7 @@ class WorkerDeliveryServiceTest {
         DeliveryReport wrongDestination = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "test.event",
                 "23002",
                 "null",
@@ -510,7 +510,7 @@ class WorkerDeliveryServiceTest {
         DeliveryReport direct = DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
                 "worker-1",
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "platform.worker.probe",
                 "200",
                 "{}",
@@ -535,10 +535,10 @@ class WorkerDeliveryServiceTest {
                         + "\"observedAtMillis\":123}",
                 "worker-serviceability-evidence:v1"
         );
-        DeliveryReport unknownSystem = DeliveryReport.create(
+        DeliveryReport unknownServer = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "platform.adapter.unknown",
                 "200",
                 "{}",
@@ -550,7 +550,7 @@ class WorkerDeliveryServiceTest {
         )).thenReturn(1);
         when(directCalls.completeReports(
                 "endpoint-1",
-                List.of(direct, unknownSystem)
+                List.of(direct, unknownServer)
         )).thenReturn(new DirectCallService.ResultAppendCounts(1, 1));
         when(serviceability.appendAdapterEvidenceResults(List.of(
                 kernel,
@@ -561,9 +561,9 @@ class WorkerDeliveryServiceTest {
                 "endpoint-1",
                 List.of(task)
         );
-        var systemCounts = service.appendAdapterReports(
+        var serverCounts = service.appendAdapterReports(
                 "endpoint-1",
-                List.of(direct, unknownSystem)
+                List.of(direct, unknownServer)
         );
         var kernelCounts = service.appendAdapterReports(
                 "endpoint-1",
@@ -572,7 +572,7 @@ class WorkerDeliveryServiceTest {
 
         assertThat(taskCounts).isEqualTo(new WorkerDeliveryService
                 .WorkerResultAppendCounts(1, 0));
-        assertThat(systemCounts).isEqualTo(new WorkerDeliveryService
+        assertThat(serverCounts).isEqualTo(new WorkerDeliveryService
                 .WorkerResultAppendCounts(1, 1));
         assertThat(kernelCounts).isEqualTo(new WorkerDeliveryService
                 .WorkerResultAppendCounts(2, 0));
@@ -582,12 +582,23 @@ class WorkerDeliveryServiceTest {
         );
         verify(directCalls).completeReports(
                 "endpoint-1",
-                List.of(direct, unknownSystem)
+                List.of(direct, unknownServer)
         );
         verify(serviceability).appendAdapterEvidenceResults(List.of(
                 kernel,
                 routeChange
         ));
+    }
+
+    @Test
+    void systemReportsAreRejectedWithoutCallingAnyBusinessOwner() {
+        DeliveryReport event = DeliveryReport.create(
+                DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.SYSTEM,
+                "platform.worker.probe", "200", "{}", "direct-call:v1:test"
+        );
+        assertThat(service.appendAdapterReports("endpoint-1", List.of(event)))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
+        verifyNoInteractions(directCalls, resultRuntime, serviceability, bindings, commandRuntime);
     }
 
     @Test

@@ -113,7 +113,7 @@ class DirectCallServiceTest {
                 captor.capture()
         );
         DeliveryCommand command = captor.getValue().get("worker-ok");
-        assertThat(command.src()).isEqualTo(DeliveryEndpoint.SYSTEM);
+        assertThat(command.src()).isEqualTo(DeliveryEndpoint.SERVER);
         assertThat(command.dst()).isEqualTo(DeliveryEndpoint.WORKER);
         assertThat(command.forward()).startsWith(
                 DirectCallRegistry.FORWARD_PREFIX
@@ -284,7 +284,7 @@ class DirectCallServiceTest {
                 List.of(DeliveryReport.create(
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         command.messageType(),
                         "23005",
                         "unsupported",
@@ -316,7 +316,7 @@ class DirectCallServiceTest {
                 List.of(DeliveryReport.create(
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         command.messageType(),
                         "200",
                         "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
@@ -406,7 +406,7 @@ class DirectCallServiceTest {
         return DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
                 workerId,
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 messageType,
                 "200",
                 "{\"reachable\":true}",

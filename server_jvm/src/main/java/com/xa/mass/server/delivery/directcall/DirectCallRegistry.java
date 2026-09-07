@@ -279,7 +279,7 @@ public final class DirectCallRegistry implements AutoCloseable {
     ) {
         if (closed
                 || report == null
-                || report.dst() != DeliveryEndpoint.SYSTEM
+                || report.dst() != DeliveryEndpoint.SERVER
                 || report.forward() == null
                 || !report.forward().startsWith(FORWARD_PREFIX)) {
             return null;

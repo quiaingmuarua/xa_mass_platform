@@ -197,7 +197,7 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     void authoritativeTaskAppendReplacesAnUnconsumedDirectCommand() {
         long deadline = redisTimeMillis() + 60_000;
         DeliveryCommand direct = DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.WORKER,
                 "extension.worker.direct",
                 deadline,

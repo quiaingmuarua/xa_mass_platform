@@ -4,7 +4,7 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.Worke
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
@@ -100,7 +100,7 @@ public final class DeliveryCommandProcess
                 retryIndexes.add(index);
             } else if (attempt == UNKNOWN
                     && (isTaskWorkerCommand(item)
-                    || isSystemWorkerCommand(item))) {
+                    || isServerWorkerCommand(item))) {
                 logUnknownDelivery(item);
             }
         }
@@ -122,7 +122,7 @@ public final class DeliveryCommandProcess
             offerAdapterEventResult(adapterEventDispatcher.dispatch(command));
             return WorkerConnectionMechanism.DeliveryAttempt.STARTED;
         }
-        if (isTaskWorkerCommand(item) || isSystemWorkerCommand(item)) {
+        if (isTaskWorkerCommand(item) || isServerWorkerCommand(item)) {
             return connectionMechanism.deliver(item.entryKey(), command);
         }
         logInvalidTarget(item.entryKey(), command);
@@ -200,8 +200,8 @@ public final class DeliveryCommandProcess
                 && item.command().dst() == WORKER;
     }
 
-    private static boolean isSystemWorkerCommand(DeliveryCommandItem item) {
-        return item.command().src() == SYSTEM
+    private static boolean isServerWorkerCommand(DeliveryCommandItem item) {
+        return item.command().src() == SERVER
                 && item.command().dst() == WORKER;
     }
 
@@ -213,7 +213,7 @@ public final class DeliveryCommandProcess
                 System.Logger.Level.WARNING,
                 "errorCode={0} operation={1} adapterId={2} target={3} "
                         + "messageType={4}",
-                (command.src() == SYSTEM
+                (command.src() == SERVER
                         ? WorkerDeliveryAdapterErrorCode
                         .ADAPTER_COMMAND_INVALID
                         : WorkerDeliveryAdapterErrorCode

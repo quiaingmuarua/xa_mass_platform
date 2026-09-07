@@ -95,10 +95,12 @@ not atomic. Detailed semantics belong to
 ## Report Handoff
 
 Server rejects mixed or unsupported destination batches before semantic Owner
-side effects. A homogeneous batch routes to exactly one owner:
+side effects. A homogeneous batch selects one destination branch:
 
 - TASK: producer/code validation selects the Kernel success or failure lane.
-- SYSTEM: the Server Direct Call waiter consumes correlated evidence.
+- SERVER: the Server Direct Call waiter consumes correlated evidence.
+- SYSTEM: platform events; no consumer is installed, so all items are rejected
+  without a Direct Call, Kernel or Matching side effect.
 - KERNEL: the Serviceability handoff validates path-consistent Adapter evidence.
 
 Kernel Result Policy parses and groups evidence, then invokes semantic TaskItem
@@ -116,7 +118,7 @@ and Score operations decide whether consumed late/duplicate evidence applies.
 | Physical send starts and later fails | Delivery is UNKNOWN; do not infer pre-execution rejection |
 | Worker Result send fails, Adapter queue is full or process exits | Evidence may be lost; no durable Worker/Adapter Result store |
 | TASK Report remote submission is unavailable | Adapter returns the batch to its TASK queue tail; an ambiguous response can cause duplicates |
-| SYSTEM/KERNEL Report submission fails | Batch is dropped; no retry or cross-lane atomicity |
+| SERVER/SYSTEM/KERNEL Report submission fails | Batch is dropped; no retry or cross-lane atomicity |
 | Server accepting a Direct Call exits or another replica receives the Result | Instance-local waiter/FIFO requires Server affinity; no distributed correlation recovery |
 | Kernel consumes evidence before all Result/finality/release calls finish | Independent writes may be partially applied; no unconditional Result-to-Score repair |
 

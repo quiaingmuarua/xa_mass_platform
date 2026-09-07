@@ -35,7 +35,7 @@ API -> Server coordinates Matching facts/Rules and Kernel Task/Item writes
 DIRECT_CALL
 caller-selected target -> Server admission and bounded correlation
     -> Adapter-local FIFO or non-overwriting Worker mailbox offer
-    -> the same Transport path -> Server SYSTEM waiter
+    -> the same Transport path -> Server Direct Call waiter
 ```
 
 DIRECT_CALL is best-effort and provides no scheduling exclusion, drain,

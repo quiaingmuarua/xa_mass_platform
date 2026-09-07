@@ -38,11 +38,11 @@ DeliveryReport(
 `src` and `dst` use the explicit wire enum:
 
 ```text
-TASK | SYSTEM | KERNEL | ADAPTER | WORKER
+TASK | SERVER | SYSTEM | KERNEL | ADAPTER | WORKER
 ```
 
 The DTO layer validates structure, not route policy. Current Worker execution
-uses `TASK|SYSTEM|ADAPTER -> WORKER`; Kernel Serviceability uses
+uses `TASK|SERVER|ADAPTER -> WORKER`; Kernel Serviceability uses
 `KERNEL -> ADAPTER`. The receiving Owner validates the route combination.
 `sourceId` is an opaque, non-blank identifier in the `src`
 namespace. Workers use `workerId`; Adapters use `adapterId`. It is consistency
@@ -62,14 +62,24 @@ For a Task command:
 
 For a Server-owned Direct Call:
 
-- a Worker target uses `SYSTEM -> WORKER` and the Server-selected map key is
+- a Worker target uses `SERVER -> WORKER` and the Server-selected map key is
   the workerId;
-- an Adapter target uses `SYSTEM -> ADAPTER`; its response-map key is a
+- an Adapter target uses `SERVER -> ADAPTER`; its response-map key is a
   response-local opaque entry key which Transport must ignore;
 - `DeliveryReport.fromCommand()` returns Worker or Adapter evidence to
-  `dst=SYSTEM` while preserving `messageType` and `forward`;
+  `dst=SERVER` while preserving `messageType` and `forward`;
 - the Server Direct Call owner alone interprets that `forward` for waiter
   correlation.
+
+`SERVER` names Server-owned requests and their correlated replies. `SYSTEM`
+names platform events, not a Server process or Direct Call alias. A Report's
+`src + sourceId` identifies its producer; its `messageType` contract defines the
+event's semantic owner. An unsolicited Worker event does not become Server-owned
+because its HTTP ingress is hosted by Server. No SYSTEM event consumer is
+installed in this slice: a valid homogeneous SYSTEM batch returns `202` with zero
+accepted and all items rejected, without interpreting `forward` or invoking a
+Direct Call waiter, Kernel or Matching owner. Existing Worker Properties
+full/patch reports remain `WORKER -> ADAPTER` and cache-local.
 
 `DIRECT_CALL` is therefore not a Delivery DTO field or another protocol
 envelope. Caller admission, Worker mailbox offer/replace policy, timeout,
@@ -141,7 +151,7 @@ The fixed connection-lifecycle control event is
 `ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields
 are empty JSON value and empty string respectively. Worker Transport consumes
 the non-expired Command and ends its current run without returning a Result.
-Connection lifecycle and direct SYSTEM controls both use the existing
+Connection lifecycle and direct SERVER controls both use the existing
 `DeliveryCommand` and `DeliveryReport` DTOs; there is no third connection DTO
 or transport-specific wrapper.
 

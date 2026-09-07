@@ -95,7 +95,7 @@ the full name `extension.worker.device.snapshot`. Core does not add a
 Direct mode, queue, executor, or special handler registry. Command
 `src` remains invocation evidence and does not participate in Handler lookup.
 `DeliveryReport.fromCommand()` naturally sends the result back to
-`dst=SYSTEM` and preserves the Server-owned opaque `forward` value.
+`dst=SERVER` and preserves the Server-owned opaque `forward` value.
 
 Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
 `forWorker(definitions)`. Java and Android assemblies call
@@ -199,7 +199,7 @@ diagnostics and do not end the run.
 On each verified connection Adapter sends one ADAPTER-origin
 `platform.worker.properties.snapshot` Command. A successful output becomes a
 single `WORKER -> ADAPTER platform.worker.properties.reported` full report.
-TASK/SYSTEM snapshot calls keep their normal Result destination and correlation.
+TASK/SERVER snapshot calls keep their normal Result destination and correlation.
 Client onOpen still sends only identity; no ready state or ACK is added.
 
 The report payload is either `{"properties":{...}}` (full replacement) or
@@ -249,7 +249,7 @@ mechanism.
 There is no local Command injection or Properties-refresh lifecycle method.
 Platform and extension capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
-messages. SYSTEM and TASK Commands share the same immutable Event Name map and
+messages. SERVER and TASK Commands share the same immutable Event Name map and
 physical connection callback path. A Direct Command cannot preempt a TASK
 Handler already executing on that same physical protocol path, but Core does
 not prevent overlap with a replaced Attempt or a newly started Run. Worker

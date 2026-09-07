@@ -232,7 +232,8 @@ Server routes result ownership only by destination:
 
 ```text
 TASK   -> Task Result Runtime
-SYSTEM -> Direct Call correlation
+SERVER -> Direct Call correlation
+SYSTEM -> platform events; no consumer installed, rejected without Kernel calls
 KERNEL -> Worker Serviceability Runtime
 ```
 

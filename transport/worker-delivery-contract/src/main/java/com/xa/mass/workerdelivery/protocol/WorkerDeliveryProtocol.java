@@ -17,6 +17,9 @@ public final class WorkerDeliveryProtocol {
 
     public enum DeliveryEndpoint {
         TASK("TASK"),
+        /** Server-owned calls and their correlated replies. */
+        SERVER("SERVER"),
+        /** Platform events; their message contract determines the semantic owner. */
         SYSTEM("SYSTEM"),
         KERNEL("KERNEL"),
         ADAPTER("ADAPTER"),

@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.protocol;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -133,6 +134,7 @@ final class WorkerDeliveryProtocolTest {
     @Test
     void endpointWireValuesAreExplicit() {
         assertEquals(TASK, DeliveryEndpoint.fromWire("TASK"));
+        assertEquals(SERVER, DeliveryEndpoint.fromWire("SERVER"));
         assertEquals(SYSTEM, DeliveryEndpoint.fromWire("SYSTEM"));
         assertEquals(KERNEL, DeliveryEndpoint.fromWire("KERNEL"));
         assertEquals(ADAPTER, DeliveryEndpoint.fromWire("ADAPTER"));
@@ -141,6 +143,25 @@ final class WorkerDeliveryProtocolTest {
                 IllegalArgumentException.class,
                 () -> DeliveryEndpoint.fromWire("task")
         );
+    }
+
+    @Test
+    void serverRepliesAndSystemEventsHaveDistinctWireDestinations() {
+        for (DeliveryEndpoint target : new DeliveryEndpoint[]{WORKER, ADAPTER}) {
+            DeliveryCommand call = DeliveryCommand.create(
+                    SERVER, target, "platform.probe", 1234L, "null", "direct-call:v1:test"
+            );
+            assertEquals(call, codec.decodeDeliveryCommand(codec.encodeDeliveryCommand(call)));
+            DeliveryReport reply = DeliveryReport.fromCommand(call, target, "producer", "200", "null");
+            assertEquals(SERVER, reply.dst());
+            assertEquals(call.forward(), reply.forward());
+            assertEquals(reply, codec.decodeDeliveryReport(codec.encodeDeliveryReport(reply)));
+        }
+        DeliveryReport event = DeliveryReport.create(
+                WORKER, "worker-1", SYSTEM, "test.observed", "200", "{}", ""
+        );
+        assertEquals(event, codec.decodeDeliveryReport(codec.encodeDeliveryReport(event)));
+        assertEquals(SYSTEM, event.dst());
     }
 
     @Test

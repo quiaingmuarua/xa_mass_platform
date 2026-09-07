@@ -72,7 +72,7 @@ arguments throw. Encoding is bounded to a 1,000,000-byte Report. No Prepare,
 retry, ACK, watcher or second Provider is introduced.
 
 Adapter requests one full snapshot after each verified connection/reconnection;
-Core answers it through the same `properties.reported` path. Explicit TASK/SYSTEM
+Core answers it through the same `properties.reported` path. Explicit TASK/SERVER
 snapshot calls still return correlated Results. Loss may require an explicit full
 report or a later connection baseline; this is not guaranteed eventual delivery.
 

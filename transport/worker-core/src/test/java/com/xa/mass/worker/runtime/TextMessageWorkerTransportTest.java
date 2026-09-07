@@ -215,7 +215,7 @@ class TextMessageWorkerTransportTest {
 
         client.message(CODEC.encodeDeliveryCommand(
                 DeliveryCommand.create(
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         DeliveryEndpoint.TASK,
                         "system.observe",
                         System.currentTimeMillis() + 60_000,

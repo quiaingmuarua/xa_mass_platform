@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -43,6 +44,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class DirectCallControllerTest {
@@ -146,7 +148,7 @@ class DirectCallControllerTest {
                         .content("100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$['worker-1'].src")
-                        .value("SYSTEM"))
+                        .value("SERVER"))
                 .andExpect(jsonPath("$['worker-2'].dst")
                         .value("WORKER"))
                 .andReturn();
@@ -160,7 +162,7 @@ class DirectCallControllerTest {
                 .map(entry -> DeliveryReport.create(
                         DeliveryEndpoint.WORKER,
                         entry.getKey(),
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         String.valueOf(entry.getValue().get("messageType")),
                         "200",
                         "{\"reachable\":true}",
@@ -168,6 +170,24 @@ class DirectCallControllerTest {
                 ))
                 .map(codec::encodeDeliveryReportFields)
                 .toList();
+        List<Map<String, Object>> systemReports = reports.stream().map(report -> {
+            Map<String, Object> event = new LinkedHashMap<>(report);
+            event.put("dst", "SYSTEM");
+            return event;
+        }).toList();
+        mockMvc.perform(post(path("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(List.of(reports.get(0), systemReports.get(1)))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post(path("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(systemReports)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.acceptedCount").value(0))
+                .andExpect(jsonPath("$.rejectedCount").value(2));
+        assertThat(WebAsyncUtils.getAsyncManager(call.getRequest())
+                .hasConcurrentResult()).isFalse();
+
         mockMvc.perform(post(path("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(reports)))

@@ -25,13 +25,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class DeliveryReportDispatcherTest {
 
     @Test
     void oneThreadRotatesAcrossHomogeneousLanes() throws Exception {
         List<List<DeliveryReport>> batches = new CopyOnWriteArrayList<>();
-        CountDownLatch submitted = new CountDownLatch(3);
+        CountDownLatch submitted = new CountDownLatch(4);
         WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
         doAnswer(invocation -> {
             batches.add(List.copyOf(invocation.getArgument(1)));
@@ -41,6 +43,7 @@ class DeliveryReportDispatcherTest {
         DeliveryReportDispatcher dispatcher = dispatcher(10, remoteApi);
         dispatcher.tryDispatch(report(DeliveryEndpoint.TASK, "task-1"));
         dispatcher.tryDispatch(report(DeliveryEndpoint.TASK, "task-2"));
+        dispatcher.tryDispatch(report(DeliveryEndpoint.SERVER, "server"));
         dispatcher.tryDispatch(report(DeliveryEndpoint.SYSTEM, "system"));
         dispatcher.tryDispatch(report(DeliveryEndpoint.KERNEL, "kernel"));
 
@@ -55,6 +58,7 @@ class DeliveryReportDispatcherTest {
         assertThat(batches).extracting(batch -> batch.get(0).dst())
                 .containsExactly(
                         DeliveryEndpoint.TASK,
+                        DeliveryEndpoint.SERVER,
                         DeliveryEndpoint.SYSTEM,
                         DeliveryEndpoint.KERNEL
                 );
@@ -64,8 +68,11 @@ class DeliveryReportDispatcherTest {
                 .containsOnly(batch.get(0).dst()));
     }
 
-    @Test
-    void drainsTaskReportsInBatchesOfOneHundred() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = DeliveryEndpoint.class,
+            names = {"TASK", "SERVER", "SYSTEM", "KERNEL"})
+    void drainsReportsInBatchesOfOneHundred(DeliveryEndpoint destination)
+            throws Exception {
         List<Integer> sizes = new CopyOnWriteArrayList<>();
         CountDownLatch submitted = new CountDownLatch(3);
         WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
@@ -77,8 +84,8 @@ class DeliveryReportDispatcherTest {
         DeliveryReportDispatcher dispatcher = dispatcher(300, remoteApi);
         for (int index = 0; index < 205; index++) {
             assertThat(dispatcher.tryDispatch(report(
-                    DeliveryEndpoint.TASK,
-                    "task-" + index
+                    destination,
+                    "report-" + index
             ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
         }
 
@@ -167,15 +174,21 @@ class DeliveryReportDispatcherTest {
     }
 
     @Test
-    void systemAndKernelFailuresDropOnceAndDoNotBlockTheNextLane()
+    void serverSystemAndKernelFailuresDropOnceAndDoNotBlockTheNextLane()
             throws Exception {
+        AtomicInteger serverAttempts = new AtomicInteger();
         AtomicInteger systemAttempts = new AtomicInteger();
         AtomicInteger kernelAttempts = new AtomicInteger();
-        CountDownLatch bestEffortAttempted = new CountDownLatch(2);
+        CountDownLatch bestEffortAttempted = new CountDownLatch(3);
         CountDownLatch taskCompleted = new CountDownLatch(1);
         WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
         doAnswer(invocation -> {
             List<DeliveryReport> batch = invocation.getArgument(1);
+            if (batch.get(0).dst() == DeliveryEndpoint.SERVER) {
+                serverAttempts.incrementAndGet();
+                bestEffortAttempted.countDown();
+                throw unavailable();
+            }
             if (batch.get(0).dst() == DeliveryEndpoint.SYSTEM) {
                 systemAttempts.incrementAndGet();
                 bestEffortAttempted.countDown();
@@ -190,6 +203,7 @@ class DeliveryReportDispatcherTest {
             return null;
         }).when(remoteApi).appendReports(anyString(), anyList());
         DeliveryReportDispatcher dispatcher = dispatcher(2, remoteApi);
+        dispatcher.tryDispatch(report(DeliveryEndpoint.SERVER, "server"));
         dispatcher.tryDispatch(report(DeliveryEndpoint.SYSTEM, "system"));
         dispatcher.tryDispatch(report(DeliveryEndpoint.KERNEL, "kernel"));
 
@@ -199,6 +213,7 @@ class DeliveryReportDispatcherTest {
         assertThat(taskCompleted.await(2, TimeUnit.SECONDS)).isTrue();
         stop(dispatcher);
 
+        assertThat(serverAttempts).hasValue(1);
         assertThat(systemAttempts).hasValue(1);
         assertThat(kernelAttempts).hasValue(1);
     }
@@ -211,6 +226,7 @@ class DeliveryReportDispatcherTest {
         );
         List<DeliveryEndpoint> destinations = List.of(
                 DeliveryEndpoint.TASK,
+                DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.SYSTEM,
                 DeliveryEndpoint.KERNEL
         );
@@ -222,7 +238,9 @@ class DeliveryReportDispatcherTest {
         ));
 
         IntStream.range(0, 60).parallel().forEach(index -> {
-            DeliveryEndpoint destination = destinations.get(index % 3);
+            DeliveryEndpoint destination = destinations.get(
+                    index % destinations.size()
+            );
             if (dispatcher.tryDispatch(report(
                     destination,
                     destination + "-" + index
@@ -233,6 +251,7 @@ class DeliveryReportDispatcherTest {
         dispatcher.stopIngress();
 
         assertThat(accepted.get(DeliveryEndpoint.TASK)).hasValue(5);
+        assertThat(accepted.get(DeliveryEndpoint.SERVER)).hasValue(5);
         assertThat(accepted.get(DeliveryEndpoint.SYSTEM)).hasValue(5);
         assertThat(accepted.get(DeliveryEndpoint.KERNEL)).hasValue(5);
     }
@@ -262,10 +281,15 @@ class DeliveryReportDispatcherTest {
 
         dispatcher.stopIngress();
 
-        assertThat(dispatcher.tryDispatch(report(
-                DeliveryEndpoint.KERNEL,
-                "late"
-        ))).isEqualTo(DeliveryReportDispatcher.DispatchStatus.CLOSED);
+        for (DeliveryEndpoint destination : List.of(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.SERVER,
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.KERNEL
+        )) {
+            assertThat(dispatcher.tryDispatch(report(destination, "late")))
+                    .isEqualTo(DeliveryReportDispatcher.DispatchStatus.CLOSED);
+        }
         assertThatThrownBy(() -> dispatcher.tryDispatch(DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
                 "worker-1",

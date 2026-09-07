@@ -358,6 +358,7 @@
     ],
     "DeliveryEndpoint": [
       "TASK",
+      "SERVER",
       "SYSTEM",
       "KERNEL",
       "ADAPTER",

@@ -5,18 +5,24 @@ internal mechanism. Its purpose is to prevent formal roadmap structure from
 hiding an incoherent runtime model; it does not prescribe one architecture,
 language, concurrency primitive, or retry strategy.
 
-## Required Evidence
+## Evidence For The Affected Mechanism
 
-Derive six compact artifacts from the live production entry and hot path before
-target types or slices:
+Answer the following questions from the affected production entry and flow
+before choosing a new execution model or abstraction. Reuse established evidence
+and combine answers in one compact sketch when that is sufficient; these are
+evidence dimensions, not six required documents or a repeated approval gate.
+Explain omitted dimensions when their relevance could be misunderstood. A
+prose-only change does not activate this review.
 
 1. **Representative-flow trace**: follow one real request, item, event, or state
    change through entry, validation/admission, owner transition, side effect,
    outcome/evidence, and termination or recovery.
-2. **State-owner ledger**: list every mutable field, store, queue, cache, or
-   registry; its mutation authority or gate; readers; lifetime; invariant; and
-   cleanup. Derived observation is not another state owner.
-3. **Failure/side-effect table**: for every failure boundary, record what was
+2. **State ownership**: identify the mutable facts, stores, queues, caches or
+   registries involved in the changed invariant; their mutation authority,
+   readers, lifetime and cleanup. Expand to field-level detail only when it
+   resolves a race or ownership question. Derived observation is not another
+   state owner.
+3. **Failure/side effects**: for each relevant failure boundary, record what was
    accepted, whether an external or irreversible effect definitely did not
    start, may have started, or completed, and which owner may retry, reconcile,
    compensate, fail, or drop.
@@ -28,10 +34,12 @@ target types or slices:
 6. **Complexity delta**: compare before/after mutable owners, stored facts,
    lifecycle states, queues/caches/registries, coordination gates, background
    work, retry/recovery paths, public contracts, and internal abstractions.
-   Every increase needs a production invariant and focused proof.
+   Explain material increases by the required invariant and its appropriate
+   proof; do not demand a new test solely because a local type was introduced.
 
-If the mechanism cannot be stated compactly, its owner or failure model is not
-understood. Use this neutral skeleton only to expose missing decisions:
+Use a compact mechanism description to expose uncertainty. A complex mechanism
+may need several bounded flows; inability to fit one table does not establish
+that the design is invalid. This skeleton is optional:
 
 ```text
 entry/input
@@ -75,18 +83,21 @@ entry/input
   effect requires owner-supplied idempotency, deduplication, exact fencing, or
   reconciliation before replay can be claimed safe.
 - Invalid input or an unsupported outcome is not repaired by retry.
-- Every retry/recovery path must name its trigger, state owner, storage/location,
-  ordering effect, capacity or attempt bound, delay policy, termination rule,
-  and duplicate/partial-effect consequence.
-- Multiple retry, replay, repair, or compensation paths require distinct,
-  non-overlapping invariants. Reject duplicate paths added only for defensive
-  comfort; they obscure authority and can amplify load or side effects.
+- For retry/recovery paths being changed, establish trigger, owner, state,
+  ordering, resource bound, delay and termination behavior, including duplicate
+  or partial effects. An attempt limit is not mandatory when the contract uses
+  lifetime-bounded retries with bounded storage; preserve the actual guarantee.
+- Multiple retry, replay, repair or compensation paths need explicit roles and
+  coordination at overlapping failure boundaries. They may legitimately cover
+  related failures at different layers; reject redundant paths that amplify
+  effects or load without adding a required guarantee.
 - Preserve strict order, exact pending state, epochs, versions, caches, or
   acknowledgements only when a named invariant requires them and the owning
   layer can repair or prove them.
 - Intermediate best-effort layers must not copy authoritative lifecycle,
-  consistency, or recovery state from the end owner. Prefer bounded loss or
-  eventual observation when that matches the contract and ROI.
+  consistency or recovery state from the end owner. Bounded loss or eventual
+  observation is appropriate only when the required contract permits it; cost
+  preference alone cannot weaken delivery, atomicity or recovery guarantees.
 
 ## Concurrency And Performance
 
@@ -114,13 +125,18 @@ model:
 1. State the invalidated assumption.
 2. Re-read the scoped production entry, representative flow, mutable state,
    callers, and tests.
-3. Remove target types, states, and proof derived from that assumption; do not
-   retain them for sunk cost, compatibility, documents, or existing tests.
-4. Rewrite minimal pseudocode and the failure/side-effect table from zero.
-5. Resume roadmap work only when the new model explains the correction without
-   an exception, duplicated owner, or compatibility layer.
+3. Discard the plan decisions derived from the rejected assumption. Retain
+   independently valid facts, required compatibility and useful tests. This
+   analysis does not authorize deleting production code before a working
+   replacement or changing unrelated owners.
+4. Revise the affected flow and failure decisions without preserving the rejected
+   shape for sunk cost. Leave unrelated decisions intact.
+5. Continue when the corrected mechanism satisfies the user's intent and current
+   contracts. Ask only if a material choice still needs user input; do not add a
+   new approval gate merely because the earlier sketch was rejected.
 
-After repeated mechanism corrections, stop producing longer roadmaps. Show the
-owner/state summary, minimal flow, failure decisions, and complexity delta
-first. Treat current documents and structure tests as evidence to classify, not
-implementation shapes to preserve.
+After repeated mechanism corrections, show the revised owner/state, flow and
+failure reasoning before expanding the roadmap. This is a communication step,
+not an automatic end to authorized work. Treat current documents and structural
+tests as evidence to assess against behavior and invariants, not shapes to
+preserve without justification.

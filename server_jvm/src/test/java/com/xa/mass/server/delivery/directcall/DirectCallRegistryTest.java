@@ -20,6 +20,29 @@ import org.junit.jupiter.api.Test;
 class DirectCallRegistryTest {
 
     @Test
+    void systemReportCannotCompleteAnOtherwiseMatchingServerCall() {
+        DirectCallRegistry registry = registry(10, 10);
+        try {
+            BatchHandle handle = registry.registerBatch(
+                    "batch", List.of(workerPlan("worker-1", "call-1"))
+            );
+            DeliveryReport reply = workerReport("worker-1", "call-1");
+            DeliveryReport event = DeliveryReport.create(
+                    reply.src(), reply.sourceId(), DeliveryEndpoint.SYSTEM,
+                    reply.messageType(), reply.outcomeCode(), reply.payload(), reply.forward()
+            );
+            assertThat(registry.completeReports("adapter", List.of(event)))
+                    .isEqualTo(new DirectCallRegistry.CompletionCounts(0, 1));
+            assertThat(handle.completion().toCompletableFuture().isDone()).isFalse();
+            assertThat(registry.completeReports("adapter", List.of(reply)))
+                    .isEqualTo(new DirectCallRegistry.CompletionCounts(1, 0));
+            assertThat(handle.completion().toCompletableFuture().isDone()).isTrue();
+        } finally {
+            registry.close();
+        }
+    }
+
+    @Test
     void adapterCommandsAreFifoAndBecomeResultEligibleOnConsume() {
         DirectCallRegistry registry = registry(10, 10);
         BatchHandle first = registry.registerBatch(
@@ -219,7 +242,7 @@ class DirectCallRegistryTest {
             long deadline
     ) {
         return DeliveryCommand.create(
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 destination,
                 "event",
                 deadline,
@@ -232,7 +255,7 @@ class DirectCallRegistryTest {
         return DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "adapter",
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "event",
                 "200",
                 "{}",
@@ -247,7 +270,7 @@ class DirectCallRegistryTest {
         return DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
                 workerId,
-                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.SERVER,
                 "event",
                 "200",
                 "{}",

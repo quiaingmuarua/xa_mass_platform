@@ -436,7 +436,13 @@ Adapter and Kernel Command keys are response-local and opaque.
 Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects.
 The complete batch must have one supported `dst`; Server rejects a mixed or
 unsupported batch before calling any semantic Owner, then routes the whole
-batch to TASK Result, SYSTEM Direct Call, or KERNEL Serviceability handling.
+batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
+SYSTEM is a supported platform-event destination, not Direct Call correlation:
+no event consumer is installed yet, so a valid SYSTEM batch returns `202` with
+`acceptedCount=0` and `rejectedCount=batch.size()`, without invoking any business
+Owner. Even a matching Direct Call `forward` cannot complete a waiter via SYSTEM.
+Direct Call Commands use `src=SERVER`; their Worker/Adapter replies target SERVER.
+The single HTTP endpoint and homogeneous-batch validation remain unchanged.
 Owner-local source, correlation, outcome and forward failures remain per-item
 rejections. Queue capacity remains an Adapter-local memory bound and is not an
 HTTP batch-size declaration. If Kernel Serviceability cannot admit the complete
@@ -792,7 +798,7 @@ application.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a
-custom `extension.worker.*` event through a SYSTEM Command and the default
+custom `extension.worker.*` event through a SERVER Command and the default
 probe/properties/events handlers, observes Adapter connection state, closes
 the current Channel, and proves transparent reconnect.
 

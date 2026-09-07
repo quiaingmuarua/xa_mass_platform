@@ -78,7 +78,7 @@ class WorkerNetworkObservationServiceTest {
                 ADAPTER_ID,
                 100
         ).getFirst();
-        assertThat(command.src()).isEqualTo(DeliveryEndpoint.SYSTEM);
+        assertThat(command.src()).isEqualTo(DeliveryEndpoint.SERVER);
         assertThat(command.dst()).isEqualTo(DeliveryEndpoint.ADAPTER);
         assertThat(command.messageType()).isEqualTo(
                 "platform.adapter.worker-connections.snapshot"
@@ -91,7 +91,7 @@ class WorkerNetworkObservationServiceTest {
                 List.of(DeliveryReport.create(
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         command.messageType(),
                         "200",
                         "{\"stateByWorkerId\":{"
@@ -144,7 +144,7 @@ class WorkerNetworkObservationServiceTest {
                 List.of(DeliveryReport.create(
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         rejectedCommand.messageType(),
                         "23005",
                         "null",
@@ -167,7 +167,7 @@ class WorkerNetworkObservationServiceTest {
                 List.of(DeliveryReport.create(
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
-                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.SERVER,
                         malformedCommand.messageType(),
                         "200",
                         "{\"stateByWorkerId\":{}}",

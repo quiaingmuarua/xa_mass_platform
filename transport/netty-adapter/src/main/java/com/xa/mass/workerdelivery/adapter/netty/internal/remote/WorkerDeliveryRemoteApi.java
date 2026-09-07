@@ -290,6 +290,7 @@ public final class WorkerDeliveryRemoteApi {
             DeliveryEndpoint destination
     ) {
         return destination == DeliveryEndpoint.TASK
+                || destination == DeliveryEndpoint.SERVER
                 || destination == DeliveryEndpoint.SYSTEM
                 || destination == DeliveryEndpoint.KERNEL;
     }

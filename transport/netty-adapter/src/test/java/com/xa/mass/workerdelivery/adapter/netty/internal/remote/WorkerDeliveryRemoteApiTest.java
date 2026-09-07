@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapt
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -104,10 +105,14 @@ class WorkerDeliveryRemoteApiTest {
             );
             remoteApi.appendReports(
                     "adapter-1",
+                    List.of(report(SERVER, "server"))
+            );
+            remoteApi.appendReports(
+                    "adapter-1",
                     List.of(report(KERNEL, "kernel"))
             );
 
-            assertThat(server.requests()).hasSize(3).allSatisfy(
+            assertThat(server.requests()).hasSize(4).allSatisfy(
                     request -> assertThat(request.rawPath()).isEqualTo(
                             "/api/v1/worker-delivery/endpoint-managers/"
                                     + "adapter-1/results:append"

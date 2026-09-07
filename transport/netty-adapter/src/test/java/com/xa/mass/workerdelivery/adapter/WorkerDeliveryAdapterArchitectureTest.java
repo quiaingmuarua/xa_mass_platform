@@ -188,6 +188,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("Executors.");
         assertThat(reportDispatcher)
                 .contains("LinkedBlockingQueue<DeliveryReport> taskQueue")
+                .contains("LinkedBlockingQueue<DeliveryReport> serverQueue")
                 .contains("LinkedBlockingQueue<DeliveryReport> systemQueue")
                 .contains("LinkedBlockingQueue<DeliveryReport> kernelQueue")
                 .contains("while (isActive())")

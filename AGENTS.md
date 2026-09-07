@@ -6,6 +6,28 @@ Read the root [architecture entrypoint](README.md) for current system behavior
 and [TESTING.md](TESTING.md) for proof ownership. This file governs how
 agents change the repository; it is not the canonical mechanism narrative.
 
+## Applying This Contract
+
+- Start with the current Git HEAD and worktree. Preserve unrelated edits and
+  read the affected Owner, callers and proof before changing their behavior.
+- Follow the user's requested outcome and scope. An authorized implementation
+  plan covers its necessary slices; a slice boundary, status label or missing
+  template field does not require another approval. Review-only requests remain
+  read-only. Ask only when a material unresolved choice affects the next action;
+  continue independent authorized work.
+- The ownership and composition rules below govern changes within the current
+  architecture. An explicitly requested migration may revise the affected
+  contract together with its callers, Owner document and proof. Words such as
+  "fixed" or "frozen" do not prohibit that authorized migration, and permission
+  to harden an implementation does not authorize unrelated boundary changes.
+- Owner links lead to the complete applicable contract. Keep mechanism flow,
+  storage shape, configuration values and scenario thresholds there; retain
+  change constraints here. Read the linked detail when changing that mechanism.
+- Skills and historical memory provide working guidance, not current project
+  truth or permission to expand the task. Retrieve historical versions only
+  when the requested investigation needs them; do not restore retired designs
+  or historical defects as default constraints.
+
 ## Mainline
 
 - `kernel_jvm/` owns stable Java mechanical contracts, Redis providers and
@@ -39,10 +61,14 @@ or Task finality into Server or Transport.
 2. Focused JVM tests and verified Redis behavior.
 3. Current Owner documents.
 4. Runtime Boundary and end-to-end proofs.
-5. Historical tag material only as failure-mode evidence.
+5. Historical material, when relevant, only as version-scoped evidence.
 
-When code and a current document disagree, report and repair the drift. Do not
-infer current behavior from `legacy-java-platform-final-2026-07-24`.
+Use code and tests to establish current behavior, and the requested outcome
+and applicable contracts to establish intended behavior. A planned migration
+will differ from its starting implementation. For documentation drift, correct
+the description within scope; do not change production behavior just to make
+it match prose. Report a confirmed code defect with its evidence and repair it
+only when the task covers that behavior.
 
 ## Repository-Wide Rules
 
@@ -66,8 +92,9 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
   queue capacity must be surfaced as retryable backpressure when the upstream
   already owns a bounded retry path; do not misclassify it as semantic input
   rejection.
-- Do not add bridges, compatibility aliases, mirrored DTOs, fallback owners or
-  speculative modules.
+- Do not add bridge layers, compatibility aliases, mirrored DTOs, fallback
+  owners or speculative modules. The bounded Pacer lifecycle bridges below
+  are the explicit internal assembly exception.
 - Keep module-coded exceptions local: `errorCode + owner.method operation +
   message + cause`. Context belongs in safe logs and traces.
 - JVM-only modules use `System.Logger`. Android-consumed Java 11 modules use
@@ -80,10 +107,6 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
 ## Java Kernel
 
 [Current Kernel documents](doc/kernel/README.md) own mechanism narratives.
-
-[`doc/kernel/`](doc/kernel/) is the current Kernel documentation entry. Stable
-mechanical Owners live in `kernel_jvm`; production policy and finite Pacer
-lifecycle live in `kernel_pacer_jvm`.
 
 - Task, TaskItem and Worker score truth remain independent.
 - Score is a scheduling coordinate, not a resource write lock.
@@ -102,29 +125,24 @@ lifecycle live in `kernel_pacer_jvm`.
   projection, while TaskItem Score is finality truth. The ordered Owner calls
   are not atomic, and no current replay or repair contract guarantees
   `Result.success => eventually FINAL_SUCCESS`.
-- DeliveryReport and raw Worker lease scores stop at Result Policy boundaries.
-  Task execution events may exact-release the correlated opaque Worker lease
-  but must not infer connection polarity. Adapter Route/delivery-expiry
+- DeliveryReport, JSON and lane identity stop at Result Policy boundaries.
+  Worker execution events receive correlated opaque `WorkerLeaseReference`
+  values rather than raw lease scores and must not infer connection polarity.
+  Adapter Route/delivery-expiry
   evidence is consumed only by the optional Worker Serviceability policy and
   its named event Mechanism.
 - All production Pacers run in `kernel_pacer_jvm` behind its finite
   `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Do not add
   a second Kernel host, Task business fallback, or alternate Pacer runtime.
-- Result Convergence and Dispatch Convergence each have one fixed Java
-  production application. Result Convergence owns the
-  two Task lanes and optional Adapter Evidence lane. Its one coordinator owns
-  shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
-  and Task FAILURE may borrow idle capacity for concurrent owner-fenced Batches,
-  while Adapter Evidence remains single-flight. Dispatch Convergence owns one
-  Main Scheduler, one bounded Redis-time RUNNING Task observation and four
-  fixed single-flight Resource Producers. The Main Scheduler plans the complete
-  root input for Initialization, Allocation, Task Dispatch and optional
-  Serviceability; a Producer may discover only vertical resources under those
-  supplied Task or WorkerGroup identities. Dispatch policies may retain and
-  return raw Score evidence to bounded Owner operations but must not decode or
-  calculate Score coordinates. Claimed Commands may be constructed only by
+- Result and Dispatch Convergence each have one fixed production application.
+  Preserve their separate capacity and lifecycle ownership and the concurrency
+  limits in [Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md).
+  Dispatch has one bounded Redis-time Task observation. Its Main Scheduler
+  supplies complete root input to single-flight Producers; discovery beneath
+  that input must stay vertical. Claimed Commands may be constructed only by
   the package-private exact assignment closure after Worker renewal and Item
-  claim.
+  claim. Result lane scheduling belongs to
+  [Result Policy](kernel_pacer_jvm/doc/result/result-routing-scheduling.md).
 - Do not add another language implementation without a named migration slice,
   one production owner and explicit proof of the cutover.
 
@@ -172,13 +190,12 @@ architectures.
   names or constraint operators; persistent Candidate Rules and their
   semantics belong to Worker Matching. It does own the closed ON_DEMAND
   `workerSelector` instruction and persists only normalized Worker IDs.
-- TaskRuntime owns the Task-scoped self-describing Result HASH. Each value
-  contains `code + non-empty opaqueResultPayload`; exact `200` is success.
-  Success replaces an earlier failed value, while terminal failed storage uses
-  one fixed internal failure description with `HSETNX` and cannot replace any
-  observed Result. Missing remains not observed; there is no companion
-  classification key. Result reads must not be used to infer TaskItem finality,
-  and Score reads must not be used to infer a Result code or payload.
+- TaskRuntime owns the self-describing Result projection and its
+  [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
+  A success may replace an earlier failed Result; storing terminal failure
+  cannot replace any observed Result. An absent Result remains not observed.
+  Do not add a companion classification key. Result reads must not infer
+  TaskItem finality; Score reads must not infer Result code or payload.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
@@ -207,20 +224,17 @@ kernel_jvm`.
   replace failed and request promotion of the existing score to
   `FINAL_SUCCESS`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
-- `TaskWorkerAllocationPolicy` owns PRECOMPUTED Candidate deficits, priority,
-  bounded due HOT observation, exact initial hold and ordered Match Demand
-  publication. `WorkerCandidateSelectionPolicy` is confined to Task Dispatch:
-  cached Candidate consumption, ON_DEMAND explicit-ID/ANY selection, exact
-  hold and endpoint-bearing Candidate assembly. Matching may filter the
-  PRECOMPUTED held pool and append accepted entries directly to the
-  Kernel-owned Candidate Cache; final dispatch exact-renews the cached score.
-  Unmatched and unselected holds expire naturally; do not compensate-release
-  them or add a pending lease registry.
-  They must not read Rule or Properties data or interpret constraint syntax.
-  There is no generic acquisition Strategy or cached-to-on-demand fallback.
-  `WorkerAllocationMechanism` is a fixed Producer workflow label;
-  PRECOMPUTED Candidate Rule matching and ON_DEMAND Worker Selector workflows
-  are mutually exclusive and do not exchange Candidate Cache entries.
+- [Allocation Policy](kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
+  owns PRECOMPUTED deficits, priority, initial holds and ordered Match Demand.
+  [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
+  belongs to Task Dispatch and owns acquisition and endpoint-bearing assembly.
+  Neither Pacer Policy may read Rules or Properties or interpret constraints;
+  [Matching](worker_matching_jvm/README.md) owns that interpretation and may
+  append accepted held candidates through the Kernel Cache Owner. Dispatch
+  exact-renews the cached score. Unmatched and unselected holds expire naturally;
+  do not compensate-release them or add a pending lease registry.
+  PRECOMPUTED and ON_DEMAND are mutually exclusive fixed workflows; do not add
+  a generic acquisition Strategy, Cache exchange or cached-to-on-demand fallback.
 - `WorkerMatchQueue` is the complete PRECOMPUTED handoff contract. Pacer
   offers, Matching consumes, and health reads size through the same Queue
   interface; do not split producer and consumer operations behind another
@@ -250,7 +264,6 @@ Server may own:
 - bounded use-case orchestration;
 - Worker Identity and Endpoint Binding;
 - create-only WorkerGroup registration and bounded Runtime projections;
-- Runtime projections;
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
@@ -292,20 +305,17 @@ observe or change Worker score and creates no Kernel mode or strong lock.
 Its only public call route is scoped by `adapterId`; an optional same-Group
 `workerId -> opaquePayload` map supplies Worker targets and per-target input,
 not a WorkerGroup authority.
-The unified Adapter consume endpoint may prefix a response with the Adapter
-Direct FIFO, then consumes once from the shared Worker Command Hash. Only
-remaining response capacity may carry one Kernel Serviceability Adapter
-snapshot Command. Worker Direct Calls use the owner `offer` operation and
-cannot replace an occupied slot; authoritative TASK append may replace an
-unconsumed Direct Command.
+Follow the [Server Owner](server_jvm/README.md) for bounded consume ordering
+and Serviceability snapshot admission. Worker Direct Calls use the owner
+`offer` operation and cannot replace an occupied slot; authoritative TASK
+append may replace an unconsumed Direct Command.
 Adapter-local Commands route by `dst`; only Worker Command map keys carry
 workerId address meaning. Direct Call passes `messageType` and opaque payload
 through without an event whitelist; future API Session authorization remains a
 separate owner.
 
-The default profile declares no Adapter instances and no Scenario WorkerGroup.
-The built-in `agentforge` Profile is a finite downstream preset with one
-WebSocket Adapter and no configured WorkerGroup or capability implementation.
+Profile contents and defaults belong to
+[Server assembly](server_jvm/README.md#worker-and-scenario-assembly).
 
 ## Worker Delivery Contract
 
@@ -316,6 +326,11 @@ neutral.
 
 - `DeliveryCommand` target identity remains outside the DTO.
 - `DeliveryReport` carries producer `src + sourceId`.
+- SERVER identifies Server-owned Direct Call requests and replies; only SERVER
+  Reports may complete its waiter. SYSTEM identifies platform events, whose
+  message contract determines the semantic owner, not the HTTP host. No SYSTEM
+  consumer is installed: valid homogeneous batches are rejected item-by-item
+  without Direct Call, Kernel or Matching side effects. Do not alias the two.
 - `forward` remains opaque until its downstream owner.
 - Do not add Server, Kernel, Redis, Netty, Android or scheduling dependencies.
 - Long-lived connections use an Adapter-directed identity Report followed by
@@ -323,31 +338,31 @@ neutral.
 
 ## Netty Adapter
 
-[Adapter Owner](transport/netty-adapter/README.md) owns the frozen production composition, queue bounds, cache rules and shutdown sequence.
+[Adapter Owner](transport/netty-adapter/README.md) owns production composition,
+queue bounds, cache rules and shutdown sequence.
 
-The linked Adapter composition is frozen. Preserve the aggregate, fixed Process
-Manager, Command and Report Dispatchers, connection mechanism/route Registry,
-and complete physical Server boundaries when changing their implementations.
+For implementation hardening, preserve the aggregate, fixed Process Manager,
+Command and Report Dispatchers, connection mechanism/route Registry, and
+complete physical Server boundaries. Apply the migration rule above when the
+user explicitly requests changing this owner cut.
 
 Rules:
 
 - The aggregate owns public lifecycle and network shutdown ordering.
   `AdapterProcessManager` owns exactly two same-lifetime Dispatchers and
   their shared join deadline; it is a fixed composition, not a dynamic list.
-- The Command `BatchDispatcher` owns one finite retry
-  `LinkedBlockingQueue`, one resident daemon platform thread, stop intent,
-  batch acquisition, retry-tail placement, exception classification and
-  backoff. `DeliveryCommandProcess` processes one batch once and owns no Queue,
-  thread, sleep, pending batch or lifecycle.
-- The Command Queue contains only deferred delivery items; one fresh remote
-  batch is processed directly after each retry slice.
-- `DeliveryReportDispatcher` owns three finite TASK, SYSTEM and KERNEL
+- The Command Dispatcher owns the bounded retry Queue, resident thread,
+  stop intent, batch acquisition and retry policy.
+  `DeliveryCommandProcess` processes one batch once and owns no Queue,
+  thread, sleep, pending batch or lifecycle. Preserve retry/fresh-batch progress
+  through the [Command loop contract](transport/netty-adapter/README.md#command-consumption-loop).
+- `DeliveryReportDispatcher` owns four finite TASK, SERVER, SYSTEM and KERNEL
   `LinkedBlockingQueue<DeliveryReport>` lanes, their non-blocking admission,
   rotating homogeneous batches, destination failure policy, and exactly one
   resident daemon platform thread. Queue count does not determine thread
-  count. The three lanes do not cross the Report owner boundary. SYSTEM and
-  KERNEL admission-drop diagnostics must remain aggregated rather than logging
-  once per Report.
+  count. The four lanes do not cross the Report owner boundary. SERVER, SYSTEM
+  and KERNEL admission-drop diagnostics must remain aggregated rather than
+  logging once per Report.
 - One process-scoped Adapter Factory owns the immutable Remote API facade and
   codec used by every Adapter it creates. The facade owns the fixed Command
   consume and Report append paths, wire JSON and method-specific status
@@ -360,14 +375,13 @@ Rules:
   destructures it so internal owners receive only their own values. Do not
   restore tagged Process lists, cache config wrappers, Server-side JSON schema
   parsing, global singleton configuration or compatibility aliases.
-- Each Report lane's configured capacity is a local external soft memory bound;
-  the TASK lane additionally reserves 100 physical positions for its one
-  in-flight batch. The Report Dispatcher submits fixed homogeneous `1..100`
-  object batches once through the single `results:append` path. TASK remote
-  unavailability appends that batch to the TASK Queue tail without a retry
-  count or deadline; SYSTEM and KERNEL failures drop their batch. This is
-  bounded best-effort retransmission, not a durable or exactly-once claim.
-  Shutdown drops current and queued Reports without a final synchronous flush.
+- Preserve the [Report loop contract](transport/netty-adapter/README.md#result-ingress-loop):
+  bounded per-lane admission, aggregate memory accounting, a physical TASK
+  retry reserve and bounded homogeneous batches through one append path.
+  TASK remote unavailability requeues the exact batch at the tail without a
+  retry count or deadline; SERVER, SYSTEM and KERNEL submission failures drop
+  their batch. Delivery may lose or duplicate evidence. Shutdown drops current
+  and queued Reports without a final synchronous flush.
 - Server rejects a mixed or unsupported Report batch before semantic Owner
   side effects, then routes the homogeneous batch by `dst`. New Report classes
   extend the Adapter lane and Server Owner switch, not the HTTP path.
@@ -378,7 +392,7 @@ Rules:
   current route use and valid Result ingress. Registry owns route truth.
 - First verification crosses only the injected single-item
   `WorkerRouteVerifier` port. Its Server batch owner may coordinate a bounded
-  queue and read at most 100 Bindings per batch, but neither side may expose
+  queue and bounded Binding reads, but neither side may expose
   Channel or Route state through that port. Verification has no HTTP endpoint.
 - Registry keeps one atomic pending, connected or disconnected Route entry per
   workerId; do not split route and verification facts across parallel Maps.
@@ -418,7 +432,7 @@ Rules:
   there is no runtime registration surface.
 - `platform.adapter.events.snapshot` reports that process-local immutable map;
   it is observation evidence, not configuration or routing truth.
-- Only valid bound Worker TASK/SYSTEM evidence follows the current destination
+- Only valid bound Worker TASK/SERVER/SYSTEM evidence follows the current destination
   rules; invalid unbound input and TASK result backpressure may close the exact
   connection.
 - Expired TASK delivery independently offers its 23002 TASK Report and a
@@ -445,21 +459,16 @@ the `WorkerDeliveryAdapter` contract.
 - Transport owns identity/Command/Result protocol and synchronous event
   execution.
 - `WorkerRunController` owns only the `RUNNING/STOPPED` run lifecycle.
-- Each ordinary explicit `start()` loads the complete Worker Properties and
-  refreshes canonical truth through one Prepare call. A Java Manager may
-  optionally batch up to 100 stopped replicas and inject the returned
-  `PreparedWorker` coordinates into those runs; Core owns neither that HTTP
-  batch nor Host Properties aggregation. Ordinary Java and Android identity
-  uses the default `CLIENT_KEY` Worker kind and `clientWorkerKey`; Android
-  sends that kind explicitly. A tagged batch may select another bounded
-  Server-owned identity policy; Core and Manager do not interpret it. Workers
-  do not persist or hint workerId. Worker kind only selects the Server-owned
-  typed registration-key algorithm; it never enters the Redis key address.
-  One WorkerGroup has one identity Hash, and the typed registration-key output
-  prevents one algorithm from aliasing another. Transparent Client
-  reconnect sends connection identity without re-Prepare. Explicit Properties
-  observation/reporting follows the Worker and Adapter contracts; it must not
-  update canonical Matching facts or add an automatic publication scheduler.
+- Follow the [Worker run contract](transport/worker-core/README.md#one-worker-run)
+  for complete Properties loading, single Prepare and optional Manager-prepared
+  starts. Core owns neither batch HTTP nor Host Properties aggregation.
+  [Server preparation](server_jvm/README.md#workergroup-and-worker-preparation)
+  owns Worker kind and identity policy; Core and Manager do not interpret it.
+  Workers must not persist or hint workerId. Worker kind selects a typed
+  registration-key algorithm, never a Redis key address; one Group retains one
+  identity Hash without algorithm aliasing. Transparent reconnect sends identity
+  without re-Prepare. Explicit Properties reports must not update canonical
+  Matching facts or add an automatic publication scheduler.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - Active `stop()` revokes the current run before closing its Client outside
@@ -509,14 +518,11 @@ system.
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
-- Each direct `.jsonl` child is a strict line inventory: one schema-v2 Worker
-  record per physical line, at most 100 lines per file and at most 15,000
-  records per configured Group. Every record carries
-  immutable string `labInventoryKey` and decimal-string `labInventoryLine` Properties matching its
-  physical location. `<filename>:<line>` is only the Lab-local `labWorkerKey`,
-  not a universal Worker identity field. Scenario uses `SCENARIO_LAB` batch
-  Prepare for initial file batches and one-record Lab HTTP starts; ordinary
-  Prepare remains available to other Java and Android Workers.
+- Preserve the [Lab inventory contract](scenario_workers_jvm/README.md#persistent-worker-lab)
+  for schema, string Properties, per-file and per-Group bounds and immutable
+  physical identity coordinates. `labWorkerKey` is Lab-local, not a universal
+  Worker identity field. Scenario uses the Server-owned `SCENARIO_LAB` Prepare
+  policy; ordinary Prepare remains available to other Java and Android Workers.
 - Batch Prepare holds no Manager lifecycle lock or cross-replica gate.
   Concurrent requests may repeat the Server-owned idempotent Prepare for one
   stopped replica, while its Controller still installs at most one run.
@@ -621,7 +627,6 @@ Adapter connectivity, Kernel state or schedulability.
   Adapter-scoped DIRECT_CALL API. That action remains caller-targeted and
   best-effort; its response must not be promoted to schedulability, capability,
   Worker identity or lifecycle truth.
-  It must not create scheduling, Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.
 - `distribution/server` is a packaging owner only. It assembles the current
@@ -631,13 +636,19 @@ Adapter connectivity, Kernel state or schedulability.
 
 ## Verification
 
-Use [TESTING.md](TESTING.md) for proof selection and commands. At minimum, run
-the focused owner lane for touched behavior. Redis and runtime claims require
-their named real-infrastructure proof.
+Use [TESTING.md](TESTING.md) for claim-based proof selection and commands.
+Behavior changes require the focused Owner lane; Redis and runtime claims
+require their named real-infrastructure proof. Documentation-only changes use
+Docs Contract and link/content review without selecting runtime proofs. A
+document that describes a runtime mechanism is still a documentation change.
 
 Before completion:
 
 - run `git diff --check`;
-- scan for removed names, routes, imports and stale current docs;
+- scan affected references when removing or renaming names, routes or files;
 - confirm archive material is not linked as current truth;
-- report any skipped infrastructure proof explicitly.
+- report which checks actually ran and any required proof that could not run;
+- distinguish source inspection from executed proof, and submitted changes from
+  externally applied results. Do not claim completion while a required external
+  step remains pending; finish the independent authorized work and state the
+  remaining dependency.

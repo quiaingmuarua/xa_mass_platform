@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -18,9 +19,35 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class AdapterEventDispatcherTest {
+
+    @Test
+    void systemCommandCannotEnterServerOwnedAdapterControls() {
+        AtomicInteger calls = new AtomicInteger();
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
+                "adapter-1", Map.of("platform.adapter.test", payload -> {
+                    calls.incrementAndGet();
+                    return "null";
+                })
+        );
+        DeliveryCommand oldCommand = DeliveryCommand.create(
+                SYSTEM, ADAPTER, "platform.adapter.test", Long.MAX_VALUE,
+                "null", "direct-call:v1:test"
+        );
+        assertThat(dispatcher.dispatch(oldCommand).outcomeCode())
+                .isEqualTo(String.valueOf(
+                        WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
+                ));
+        assertThat(calls).hasValue(0);
+        dispatcher.dispatch(DeliveryCommand.create(
+                SERVER, ADAPTER, "platform.adapter.test", Long.MAX_VALUE,
+                "null", "direct-call:v1:test"
+        ));
+        assertThat(calls).hasValue(1);
+    }
 
     @Test
     void staticallyAssembledHandlerMapDispatchesCustomEvent() {
@@ -364,7 +391,7 @@ class AdapterEventDispatcherTest {
 
     private static DeliveryCommand command(String event, String payload) {
         return DeliveryCommand.create(
-                SYSTEM,
+                SERVER,
                 ADAPTER,
                 event,
                 System.currentTimeMillis() + 10_000,
