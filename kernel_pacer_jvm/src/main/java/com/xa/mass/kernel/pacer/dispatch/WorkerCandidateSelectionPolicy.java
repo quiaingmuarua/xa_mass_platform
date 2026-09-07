@@ -6,7 +6,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -270,7 +270,6 @@ final class WorkerCandidateSelectionPolicy {
         }
         Map<String, WorkerDescriptor> descriptors =
                 workerCatalog.getWorkerDescriptors(
-                        workerGroupId,
                         List.copyOf(heldScores.keySet())
                 );
         LinkedHashMap<String, HeldWorkerCandidate> result =

@@ -39,13 +39,11 @@ TaskItem score        xa_mass:<scope>:task:<taskId>:item_score
 Task results          xa_mass:<scope>:task:<taskId>:results
 
 WorkerGroup catalog   xa_mass:<scope>:worker:groups
-Worker metadata       xa_mass:<scope>:worker:metadata:<workerGroupId>
-Worker ID owners      xa_mass:<scope>:worker:id_owners
+Worker Binding        xa_mass:<scope>:worker:bindings
 Worker score          xa_mass:<scope>:worker:score:<workerGroupId>
 Worker identity       xa_mass:<scope>:worker:identity:<workerGroupId>
-Worker binding        xa_mass:<scope>:worker:binding:<bucket>
 Probe requests        xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
-Adapter evidence      xa_mass:<scope>:worker:serviceability:evidence_results
+Network evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 
 Matching Worker facts xa_mass:<scope>:matching:worker:facts:<workerGroupId>
 Matching Platform     xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>

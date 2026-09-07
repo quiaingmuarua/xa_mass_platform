@@ -1,6 +1,6 @@
 package com.xa.mass.server.assembly.runtime;
 
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

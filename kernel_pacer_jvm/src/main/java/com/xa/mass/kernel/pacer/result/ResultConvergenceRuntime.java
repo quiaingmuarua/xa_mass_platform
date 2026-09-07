@@ -85,26 +85,22 @@ public final class ResultConvergenceRuntime {
                 ),
                 taskPolicy::handleFailure
         ));
-        if (serviceabilityEnabled(preset)) {
-            WorkerServiceabilityResultConfig serviceabilityConfig =
-                    serviceabilityConfigForPreset(preset);
-            WorkerServiceabilityResultPolicy evidencePolicy =
-                    new WorkerServiceabilityResultPolicy(
-                            workerServiceabilityEvents,
-                            serviceabilityConfig
-                    );
-            lanes.add(new ResultLane(
-                    ResultLaneId.ADAPTER_EVIDENCE,
-                    serviceabilityConfig.resultReportLimit(),
-                    convergence.adapterEvidenceIdleIntervalMillis(),
-                    ResultConvergenceConfig
-                            .ADAPTER_EVIDENCE_TARGET_CONCURRENCY,
-                    ResultConvergenceConfig
-                            .ADAPTER_EVIDENCE_MAX_CONCURRENCY,
-                    serviceability::consumeAdapterEvidenceResults,
-                    evidencePolicy::handle
-            ));
-        }
+        WorkerServiceabilityResultConfig serviceabilityConfig =
+                serviceabilityConfigForPreset(preset);
+        WorkerServiceabilityResultPolicy evidencePolicy =
+                new WorkerServiceabilityResultPolicy(
+                        workerServiceabilityEvents,
+                        serviceabilityConfig
+                );
+        lanes.add(new ResultLane(
+                ResultLaneId.NETWORK_EVIDENCE,
+                serviceabilityConfig.resultReportLimit(),
+                convergence.networkEvidenceIdleIntervalMillis(),
+                ResultConvergenceConfig.NETWORK_EVIDENCE_TARGET_CONCURRENCY,
+                ResultConvergenceConfig.NETWORK_EVIDENCE_MAX_CONCURRENCY,
+                serviceability::consumeNetworkEvidenceResults,
+                evidencePolicy::handle
+        ));
         return new ResultConvergenceRuntime(
                 new ResultConvergenceApplication(
                         lanes,
@@ -159,7 +155,4 @@ public final class ResultConvergenceRuntime {
         };
     }
 
-    private static boolean serviceabilityEnabled(PolicyPreset preset) {
-        return preset != PolicyPreset.DEFAULT;
-    }
 }

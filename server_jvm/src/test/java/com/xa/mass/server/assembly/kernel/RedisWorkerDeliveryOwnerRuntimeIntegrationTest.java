@@ -324,24 +324,24 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 "worker-3",
                 "DISCONNECTED"
         );
-        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(List.of(
+        assertThat(serviceabilityRuntime.appendNetworkEvidenceResults(List.of(
                 first,
                 second,
                 rejected
         ))).isZero();
         assertThat(redis.llen(serviceabilityResultKey())).isZero();
-        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(List.of(
+        assertThat(serviceabilityRuntime.appendNetworkEvidenceResults(List.of(
                 first,
                 second
         ))).isEqualTo(2);
         assertThat(redis.lrange(serviceabilityResultKey(), 0, -1))
                 .extracting(codec::decodeDeliveryReport)
                 .containsExactly(first, second);
-        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(
+        assertThat(serviceabilityRuntime.appendNetworkEvidenceResults(
                 List.of(rejected)
         )).isZero();
 
-        assertThat(serviceabilityRuntime.consumeAdapterEvidenceResults(2))
+        assertThat(serviceabilityRuntime.consumeNetworkEvidenceResults(2))
                 .containsExactly(first, second);
         assertThat(redis.llen(serviceabilityResultKey())).isZero();
 
@@ -360,7 +360,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec.encodeDeliveryReport(wrongEndpoint),
                 codec.encodeDeliveryReport(first)
         );
-        assertThat(serviceabilityRuntime.consumeAdapterEvidenceResults(100))
+        assertThat(serviceabilityRuntime.consumeNetworkEvidenceResults(100))
                 .containsExactly(first);
         assertThat(redis.llen(serviceabilityResultKey())).isZero();
     }

@@ -33,9 +33,9 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
@@ -53,9 +53,10 @@ import com.xa.mass.server.task.call.TaskRpcProperties;
 import com.xa.mass.server.task.call.TaskRpcWaitRegistry;
 import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointBinding;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerRegistrationResult;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.server.worker.identity.WorkerIdentityService;
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
@@ -83,7 +84,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class RuntimeApiControllerTest {
 
     private WorkerIdentityService workerIdentity;
-    private WorkerBindingService workerBinding;
+    private WorkerEndpointDirectory workerEndpoints;
     private WorkerResourceCatalog workerCatalog;
     private WorkerMatchingCatalog matchingCatalog;
     private TaskRuntime taskRuntime;
@@ -96,7 +97,7 @@ class RuntimeApiControllerTest {
     @BeforeEach
     void setUp() {
         workerIdentity = mock(WorkerIdentityService.class);
-        workerBinding = mock(WorkerBindingService.class);
+        workerEndpoints = mock(WorkerEndpointDirectory.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         taskRuntime = mock(TaskRuntime.class);
@@ -105,7 +106,7 @@ class RuntimeApiControllerTest {
         taskResultsExport = mock(TaskResultsExportService.class);
 
         when(workerCatalog.registerWorkerGroup(any()))
-                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+                .thenReturn(new RegistrationResult(RegistrationStatus.OK));
         when(workerCatalog.getWorkerGroupDescriptors(anyList()))
                 .thenAnswer(invocation -> {
                     List<String> workerGroupIds = invocation.getArgument(0);
@@ -125,24 +126,21 @@ class RuntimeApiControllerTest {
                     }
                     return descriptors;
                 });
-        when(workerIdentity.register(any(), any()))
-                .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
+        when(workerIdentity.registerAll(any(), anyList()))
+                .thenAnswer(call -> java.util.stream.IntStream.range(0, ((List<?>) call.getArgument(1)).size())
+                        .mapToObj(i -> "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c" + (i + 1)).toList());
+        var endpoint = new Endpoint( WorkerTransportType.WEBSOCKET,
+                URI.create("ws://127.0.0.1:18083/connect"));
+        when(workerEndpoints.defaultEndpointId(any())).thenReturn("scenario-websocket");
+        when(workerEndpoints.find(any())).thenReturn(endpoint);
+        when(workerCatalog.registerWorkers(any(), anyList(), any())).thenAnswer(call -> {
+            Map<String, WorkerRegistrationResult> results = new LinkedHashMap<>();
+            ((List<String>) call.getArgument(1)).forEach(id -> results.put(id,
+                    new WorkerRegistrationResult(RegistrationStatus.OK, "scenario-websocket", null)));
+            return results;
+        });
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
-        when(workerIdentity.register(any(), any(), any()))
-                .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
-        when(workerBinding.bind(any(), any(), any(), any()))
-                .thenReturn(new WorkerEndpointBinding(
-                        "scenario-websocket",
-                        WorkerTransportType.WEBSOCKET,
-                        URI.create("ws://127.0.0.1:18083/connect")
-                ));
-        when(workerBinding.bind(any(), any(), any(), any(), any()))
-                .thenReturn(new WorkerEndpointBinding(
-                        "scenario-websocket",
-                        WorkerTransportType.WEBSOCKET,
-                        URI.create("ws://127.0.0.1:18083/connect")
-                ));
         when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
                 any(),
@@ -268,9 +266,7 @@ class RuntimeApiControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                new WorkerResourceCommandService(
-                                        matchingCatalog, workerBinding, workerCatalog
-                                )
+                                new WorkerResourceCommandService(matchingCatalog, workerCatalog)
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
@@ -279,10 +275,7 @@ class RuntimeApiControllerTest {
                                 )
                         ),
                         new WorkerPreparationController(
-                                new WorkerPreparationService(
-                                        workerIdentity,
-                                        workerBinding
-                                )
+                                new WorkerPreparationService(workerIdentity, workerEndpoints, workerCatalog)
                         ),
                         new TaskControlController(
                                 taskCreation,
@@ -353,32 +346,8 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.workerId").value(
                         "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
                 ));
-        verify(workerIdentity).register(
-                "phone-tools",
-                WorkerRegistrationKind.CLIENT_KEY,
-                Map.of(
-                        "clientWorkerKey",
-                        "installation-1",
-                        "runtime",
-                        "java",
-                        "region",
-                        "local"
-                )
-        );
-        verify(workerBinding).bind(
-                "phone-tools",
-                "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                Map.of(
-                        "clientWorkerKey",
-                        "installation-1",
-                        "runtime",
-                        "java",
-                        "region",
-                        "local"
-                )
-        );
+        verify(workerIdentity).registerAll(eq("phone-tools"), anyList());
+        verify(workerCatalog).registerWorkers(eq("phone-tools"), anyList(), eq("scenario-websocket"));
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"

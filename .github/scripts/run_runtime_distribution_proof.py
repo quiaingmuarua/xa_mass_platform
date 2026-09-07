@@ -264,7 +264,7 @@ def _prove_runtime(
             f"--server.port={server_port}",
             "--xa.mass.worker-delivery.adapter.instances."
             f"scenario-websocket.listen-port={adapter_port}",
-            "--xa.mass.worker-binding.endpoints.scenario-websocket.public-uri="
+            "--xa.mass.worker-endpoints.endpoints.scenario-websocket.public-uri="
             f"ws://127.0.0.1:{adapter_port}/api/v1/worker-delivery/websocket",
         ],
     )

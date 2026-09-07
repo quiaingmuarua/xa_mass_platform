@@ -47,7 +47,7 @@
     "WorkerResourceCatalog": {
       "MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT": 100,
       "MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT": 100,
-      "MAX_WORKER_GROUP_LOOKUP_LIMIT": 100
+      "MAX_WORKER_BATCH_SIZE": 100
     },
     "TaskRuleMatchDemand": {
       "MAX_HELD_WORKERS": 100,
@@ -73,10 +73,16 @@
       "SLOT_FACTOR": 200,
       "SLOT_MILLIS": 100,
       "TIME_SCALE": 10,
-      "ZERO_SCORE": 0
+      "ZERO_SCORE": 0,
+      "MAX_REGISTRATION_BATCH_SIZE": 100
     }
   },
   "contracts": {
+    "WorkerServiceabilityEvents": [
+      "on_available",
+      "on_probe_unavailable",
+      "on_route_unavailable"
+    ],
     "CandidateWorkerCache": [
       "append_candidate_workers",
       "candidate_worker_counts",
@@ -92,8 +98,8 @@
       "consume_task_results"
     ],
     "WorkerServiceabilityRuntime": [
-      "append_adapter_evidence_results",
-      "consume_adapter_evidence_results",
+      "append_network_evidence_results",
+      "consume_network_evidence_results",
       "consume_probe_requests",
       "offer_probe_requests"
     ],
@@ -141,15 +147,13 @@
       "offer_worker_commands"
     ],
     "WorkerResourceCatalog": [
-        "get_worker_descriptors",
-        "get_worker_group_descriptors",
-        "get_worker_group_ids",
-        "register_worker_group",
-        "sample_worker_descriptors",
-        "sample_worker_group_descriptors"
-    ],
-    "WorkerRuntime": [
-      "upsert_worker"
+      "get_worker_descriptors",
+      "get_worker_descriptors_async",
+      "get_worker_group_descriptors",
+      "register_worker_group",
+      "register_workers",
+      "sample_worker_descriptors",
+      "sample_worker_group_descriptors"
     ],
     "WorkerScoreCore": [
       "acquire_hot_candidates_before",
@@ -160,7 +164,7 @@
       "exhaust_recovery_recheck",
       "get_score_states",
       "hold_observed_hot_for_serviceability_probes",
-      "initialize_hot_acquire_score",
+      "initialize_registered_scores",
       "mark_current_lease_dirty",
       "observe_active_hot_score_leases",
       "observe_due_hot_score_candidates",
@@ -169,10 +173,15 @@
       "release_score_holds",
       "renew_active_hot_score_leases",
       "rewrite_current_scores",
+      "sample_registered_worker_ids",
       "toggle_current_polarity"
     ]
   },
   "dtos": {
+    "NetworkObservation": [
+      "endpoint_manager_id",
+      "observed_at_millis"
+    ],
     "CandidateWorkerEntry": [
       "worker_id",
       "held_worker_lease_score"
@@ -257,11 +266,6 @@
       "payload",
       "forward"
     ],
-    "WorkerDeclaration": [
-      "worker_id",
-      "worker_group_id",
-      "endpoint_manager_id"
-    ],
     "WorkerDescriptor": [
       "worker_id",
       "worker_group_id",
@@ -272,7 +276,7 @@
       "attributes",
       "event_codes"
     ],
-    "WorkerRuntimeResult": [
+    "RegistrationResult": [
       "status",
       "reason"
     ],
@@ -287,6 +291,11 @@
     "WorkerScoreTransitionResult": [
       "status",
       "score"
+    ],
+    "WorkerRegistrationResult": [
+      "status",
+      "endpoint_manager_id",
+      "reason"
     ]
   },
   "enums": {
@@ -364,14 +373,12 @@
       "ADAPTER",
       "WORKER"
     ],
-    "WorkerRuntimeStatus": [
+    "RegistrationStatus": [
       "ok",
       "noop",
-      "rejected",
-      "not_found",
-      "stale",
       "conflict",
-      "invalid"
+      "invalid",
+      "not_found"
     ],
     "WorkerScorePolarity": [
       1,

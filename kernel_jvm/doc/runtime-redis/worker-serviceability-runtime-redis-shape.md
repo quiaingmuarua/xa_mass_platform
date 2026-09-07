@@ -1,7 +1,7 @@
 # Worker Serviceability Runtime Redis Shape
 
-Status: active Java Kernel Redis ABI for the optional Worker Serviceability
-policy.
+Status: active Java Kernel Redis ABI for network evidence and optional
+Worker Serviceability probes.
 
 ## Keys
 
@@ -31,20 +31,23 @@ Lua call. Consumption is unordered and destructive. A consumed request has no
 in-flight record, deadline, retry, generation, or acknowledgement. A later
 stale-score scan may offer the Worker again.
 
-The Java Kernel Dispatch Pacer implements offer. The Java Server provider
-implements request consumption because it is the bounded Adapter HTTP bridge.
-There is no fallback or dual-producer mode.
+The Kernel provider implements both operations. The Dispatch Pacer offers
+requests; Server consumes them for its bounded Adapter HTTP bridge. There is no
+fallback or dual-producer mode.
 
 ## Result LIST
 
-`append_adapter_evidence_results` accepts at most 100 standard
-`ADAPTER -> KERNEL` DeliveryReports. A Route-change Report carries one Worker;
+`append_network_evidence_results` accepts at most 100 standard
+`ADAPTER -> KERNEL` DeliveryReports or the fixed internal
+`SERVER -> KERNEL` Polling observation from `system-polling`. A Route-change Report carries one Worker;
 a periodic snapshot Report may carry up to 100. The append Lua script admits
 the complete batch only when it fits under the 10,000-item limit. Capacity
 returns zero without writing a prefix, allowing Server to expose temporary
-backpressure and Adapter to retry the unchanged batch.
+backpressure. Adapter KERNEL submission failure drops that batch under its
+existing best-effort lane policy. Internal Polling append failure or zero
+admission drops only the observation and does not fail Command consumption.
 
-`consume_adapter_evidence_results` destructively removes at most 100 items from
+`consume_network_evidence_results` destructively removes at most 100 items from
 the head. Corrupt or wrong-endpoint entries are discarded. There is no pending
 batch, lease, replay, or result HASH.
 
@@ -55,8 +58,10 @@ dual-consumer mode.
 ## Failure Model
 
 Both structures are best-effort evidence handoffs. Process failure after
-destructive consume can lose work, and Adapter-local queue pressure can still
-drop a retry. Redis LIST capacity alone does not turn evidence into a terminal
-semantic rejection. Request or result loss does not mutate score; the old score
-remains eligible for a future bounded scan. These keys are not Worker
+destructive consume can lose work, and Adapter-local queue pressure can also
+drop evidence. Redis LIST capacity alone does not turn evidence into a terminal
+semantic rejection. Request or result loss does not mutate Score. A cold registered Worker stays
+cold until a new valid connection or Polling observation; it has no cold scan
+or activation replay. Eligible HOT/recovery coordinates may still receive later
+periodic probes in presets that enable them. These keys are not Worker
 connection, Binding, lifecycle, or scheduling truth.

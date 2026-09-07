@@ -2,14 +2,30 @@ package com.xa.mass.server.worker.identity;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
 final class RedisWorkerIdentityRegistry
         implements WorkerIdentityRegistry, AutoCloseable {
+
+    private static final String REGISTER_SCRIPT = """
+            local result = {}
+            for i = 1, #ARGV, 2 do
+              local current = redis.call('HGET', KEYS[1], ARGV[i])
+              if not current then
+                current = ARGV[i + 1]
+                redis.call('HSET', KEYS[1], ARGV[i], current)
+              end
+              result[#result + 1] = current
+            end
+            return result
+            """;
 
     private final RedisClient redisClient;
     private final RedisKeyspace keyspace;
@@ -24,28 +40,14 @@ final class RedisWorkerIdentityRegistry
     }
 
     @Override
-    public String register(
-            String workerGroupId,
-            String registrationKey
-    ) {
-        String candidate = UUID.randomUUID().toString();
-        String key = workerIdsKey(workerGroupId);
-        commands().hsetnx(key, registrationKey, candidate);
-        return commands().hget(key, registrationKey);
-    }
-
-    @Override
-    public boolean matches(
-            String workerGroupId,
-            String registrationKey,
-            String workerId
-    ) {
-        return workerId.equals(
-                commands().hget(
-                        workerIdsKey(workerGroupId),
-                        registrationKey
-                )
-        );
+    public List<String> registerAll(String workerGroupId, List<String> registrationKeys) {
+        List<String> arguments = new ArrayList<>(registrationKeys.size() * 2);
+        for (String registrationKey : registrationKeys) {
+            arguments.add(registrationKey);
+            arguments.add(UUID.randomUUID().toString());
+        }
+        return commands().eval(REGISTER_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{workerIdsKey(workerGroupId)}, arguments.toArray(String[]::new));
     }
 
     private String workerIdsKey(String workerGroupId) {

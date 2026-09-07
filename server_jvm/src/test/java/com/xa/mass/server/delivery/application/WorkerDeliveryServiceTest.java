@@ -15,7 +15,8 @@ import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -35,13 +36,64 @@ import org.junit.jupiter.api.Test;
 
 class WorkerDeliveryServiceTest {
 
+    @Test
+    void emptyAndSuccessfulPollsPublishObservationBeforeCommandConsumption() {
+        long before = System.currentTimeMillis();
+        assertThat(service.pollWorkerCommand(POLLING, "worker-1")).isNull();
+        var command = DeliveryCommand.create(DeliveryEndpoint.TASK, DeliveryEndpoint.WORKER,
+                "event", before + 60_000, "opaque", "forward");
+        when(commandRuntime.consumeWorkerCommand(POLLING, "worker-1")).thenReturn(command);
+        assertThat(service.pollWorkerCommand(POLLING, "worker-1")).isSameAs(command);
+        var order = org.mockito.Mockito.inOrder(bindings, serviceability, commandRuntime);
+        for (int i = 0; i < 2; i++) {
+            order.verify(bindings).getWorkerDescriptors(List.of("worker-1"));
+            order.verify(serviceability).appendNetworkEvidenceResults(org.mockito.ArgumentMatchers.argThat(reports -> {
+                var report = reports.getFirst();
+                assertThat(report.src()).isEqualTo(DeliveryEndpoint.SERVER);
+                assertThat(report.sourceId()).isEqualTo(POLLING);
+                assertThat(report.dst()).isEqualTo(DeliveryEndpoint.KERNEL);
+                assertThat(report.messageType()).isEqualTo("platform.server.worker-poll.observed");
+                var payload = Jsons.parseObject(report.payload());
+                assertThat(payload.get("workerId")).isEqualTo("worker-1");
+                assertThat(((Number) payload.get("observedAtMillis")).longValue()).isBetween(before, System.currentTimeMillis());
+                return true;
+            }));
+            order.verify(commandRuntime).consumeWorkerCommand(POLLING, "worker-1");
+        }
+    }
+
+    @Test
+    void lostObservationDoesNotChangePollingOutcome() {
+        when(serviceability.appendNetworkEvidenceResults(anyList()))
+                .thenReturn(0).thenThrow(new IllegalStateException("handoff unavailable"));
+        assertThat(service.pollWorkerCommand(POLLING, "worker-1")).isNull();
+        var command = DeliveryCommand.create(DeliveryEndpoint.TASK, DeliveryEndpoint.WORKER,
+                "event", System.currentTimeMillis() + 60_000, "opaque", "forward");
+        when(commandRuntime.consumeWorkerCommand(POLLING, "worker-1")).thenReturn(command);
+        assertThat(service.pollWorkerCommand(POLLING, "worker-1")).isSameAs(command);
+    }
+
+    @Test
+    void invalidBindingAndPublicServerObservationCannotReachActivationHandoff() {
+        when(bindings.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of());
+        assertThatThrownBy(() -> service.pollWorkerCommand(POLLING, "worker-1")).isInstanceOf(ServerException.class);
+        when(bindings.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1",
+                new WorkerDescriptor("worker-1", "group", "other-endpoint")));
+        assertThatThrownBy(() -> service.pollWorkerCommand(POLLING, "worker-1")).isInstanceOf(ServerException.class);
+        var forged = DeliveryReport.create(DeliveryEndpoint.SERVER, POLLING, DeliveryEndpoint.KERNEL,
+                "platform.server.worker-poll.observed", "200", "{}", "worker-serviceability-evidence:v1");
+        assertThat(service.appendAdapterReports("adapter-1", List.of(forged)))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
+        verifyNoInteractions(serviceability, commandRuntime);
+    }
+
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private static final String POLLING =
             WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
     private WorkerCommandRuntime commandRuntime;
     private TaskResultRuntime resultRuntime;
-    private WorkerBindingService bindings;
+    private WorkerResourceCatalog bindings;
     private DirectCallService directCalls;
     private WorkerServiceabilityRuntime serviceability;
     private WorkerDeliveryService service;
@@ -51,7 +103,9 @@ class WorkerDeliveryServiceTest {
     void setUp() {
         commandRuntime = mock(WorkerCommandRuntime.class);
         resultRuntime = mock(TaskResultRuntime.class);
-        bindings = mock(WorkerBindingService.class);
+        bindings = mock(WorkerResourceCatalog.class);
+        when(bindings.getWorkerDescriptors(List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", new WorkerDescriptor("worker-1", "group", POLLING)));
         directCalls = mock(DirectCallService.class);
         serviceability = mock(WorkerServiceabilityRuntime.class);
         workerResources = mock(WorkerResourceCommandService.class);
@@ -141,7 +195,7 @@ class WorkerDeliveryServiceTest {
 
         assertThat(service.pollWorkerCommand(POLLING, "worker-1"))
                 .isNull();
-        verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
+        verify(bindings).getWorkerDescriptors(List.of("worker-1"));
     }
 
     @Test
@@ -401,7 +455,7 @@ class WorkerDeliveryServiceTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList()
         );
-        verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
+        verify(bindings).getWorkerDescriptors(List.of("worker-1"));
     }
 
     @Test
@@ -551,7 +605,7 @@ class WorkerDeliveryServiceTest {
                 "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                 "worker-serviceability:v1:123"
         );
-        when(serviceability.appendAdapterEvidenceResults(List.of(kernel)))
+        when(serviceability.appendNetworkEvidenceResults(List.of(kernel)))
                 .thenReturn(0);
 
         assertThatThrownBy(() -> service.appendAdapterReports(
@@ -611,7 +665,7 @@ class WorkerDeliveryServiceTest {
                 "endpoint-1",
                 List.of(direct, unknownServer)
         )).thenReturn(new DirectCallService.ResultAppendCounts(1, 1));
-        when(serviceability.appendAdapterEvidenceResults(List.of(
+        when(serviceability.appendNetworkEvidenceResults(List.of(
                 kernel,
                 routeChange
         ))).thenReturn(2);
@@ -643,7 +697,7 @@ class WorkerDeliveryServiceTest {
                 "endpoint-1",
                 List.of(direct, unknownServer)
         );
-        verify(serviceability).appendAdapterEvidenceResults(List.of(
+        verify(serviceability).appendNetworkEvidenceResults(List.of(
                 kernel,
                 routeChange
         ));
@@ -673,7 +727,7 @@ class WorkerDeliveryServiceTest {
                 "worker-serviceability-evidence:v1"
         );
         List<DeliveryReport> reports = Collections.nCopies(100, kernel);
-        when(serviceability.appendAdapterEvidenceResults(reports))
+        when(serviceability.appendNetworkEvidenceResults(reports))
                 .thenReturn(100);
 
         var counts = service.appendAdapterReports(
@@ -683,7 +737,7 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(100);
         assertThat(counts.rejectedCount()).isZero();
-        verify(serviceability).appendAdapterEvidenceResults(reports);
+        verify(serviceability).appendNetworkEvidenceResults(reports);
     }
 
     @Test

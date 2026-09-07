@@ -11,17 +11,16 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallRequest;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallResponse;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectTargetReason;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectTargetStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.binding.WorkerBindingProperties.EndpointProperties;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -43,28 +42,23 @@ class DirectCallServiceTest {
 
     private WorkerResourceCatalog catalog;
     private WorkerCommandRuntime commands;
-    private WorkerBindingService bindings;
     private DirectCallService service;
 
     @BeforeEach
     void setUp() {
         catalog = mock(WorkerResourceCatalog.class);
         commands = mock(WorkerCommandRuntime.class);
-        bindings = mock(WorkerBindingService.class);
         DirectCallProperties properties = new DirectCallProperties(
                 3_000,
                 10_000,
                 1_000,
                 10_000
         );
-        service = new DirectCallService(
-                catalog,
+        service = new DirectCallService(catalog,
                 commands,
-                bindings,
                 endpoints(),
                 new DirectCallRegistry(properties),
-                properties
-        );
+                properties);
     }
 
     @Test
@@ -75,23 +69,14 @@ class DirectCallServiceTest {
                 "worker-unbound",
                 "worker-other-adapter"
         );
-        when(catalog.getWorkerDescriptors(GROUP_ID, workerIds)).thenReturn(
+        when(catalog.getWorkerDescriptors(workerIds)).thenReturn(
                 linkedMap(
                         workerIds,
                         Map.of(
                                 "worker-ok", descriptor("worker-ok"),
-                                "worker-unbound", descriptor("worker-unbound"),
+                                "worker-unbound", new WorkerDescriptor("worker-unbound", "other-group", ADAPTER_ID),
                                 "worker-other-adapter",
-                                descriptor("worker-other-adapter")
-                        )
-                )
-        );
-        when(bindings.currentEndpointManagerIds(workerIds)).thenReturn(
-                linkedMap(
-                        workerIds,
-                        Map.of(
-                                "worker-ok", ADAPTER_ID,
-                                "worker-other-adapter", OTHER_ADAPTER_ID
+                                new WorkerDescriptor("worker-other-adapter", GROUP_ID, OTHER_ADAPTER_ID)
                         )
                 )
         );
@@ -134,14 +119,13 @@ class DirectCallServiceTest {
         assertThat(response.results().get("worker-ok").status())
                 .isEqualTo(DirectTargetStatus.OBSERVED);
         assertReason(response, "worker-missing", DirectTargetReason.NOT_FOUND);
-        assertReason(response, "worker-unbound", DirectTargetReason.NOT_BOUND);
+        assertReason(response, "worker-unbound", DirectTargetReason.NOT_FOUND);
         assertReason(
                 response,
                 "worker-other-adapter",
                 DirectTargetReason.ENDPOINT_MISMATCH
         );
-        verify(catalog).getWorkerDescriptors(GROUP_ID, workerIds);
-        verify(bindings).currentEndpointManagerIds(workerIds);
+        verify(catalog).getWorkerDescriptors(workerIds);
     }
 
     @Test
@@ -254,8 +238,7 @@ class DirectCallServiceTest {
         assertThat(response.results()).hasSize(100);
         assertThat(response.results().keySet())
                 .containsExactlyElementsOf(workerIds);
-        verify(catalog).getWorkerDescriptors(GROUP_ID, workerIds);
-        verify(bindings).currentEndpointManagerIds(workerIds);
+        verify(catalog).getWorkerDescriptors(workerIds);
         verify(commands).offerWorkerCommands(
                 org.mockito.ArgumentMatchers.eq(ADAPTER_ID),
                 anyMap()
@@ -295,7 +278,7 @@ class DirectCallServiceTest {
         DirectCallResponse response = response(deferred).getBody();
         assertThat(response.results().get(ADAPTER_ID).status())
                 .isEqualTo(DirectTargetStatus.OBSERVED);
-        verifyNoInteractions(catalog, commands, bindings);
+        verifyNoInteractions(catalog, commands);
     }
 
     @Test
@@ -331,7 +314,7 @@ class DirectCallServiceTest {
         assertThat(outcome.outcomeCode()).isEqualTo("200");
         assertThat(outcome.opaqueResultPayload()).contains("CONNECTED");
         assertThat(handle.timeoutMillis()).isEqualTo(3_000);
-        verifyNoInteractions(catalog, commands, bindings);
+        verifyNoInteractions(catalog, commands);
     }
 
     @Test
@@ -351,7 +334,7 @@ class DirectCallServiceTest {
                 ));
 
         List<String> workerIds = List.of("worker-1");
-        when(catalog.getWorkerDescriptors(GROUP_ID, workerIds))
+        when(catalog.getWorkerDescriptors(workerIds))
                 .thenThrow(new IllegalStateException("unavailable"));
         assertThatThrownBy(() -> service.call(
                 ADAPTER_ID,
@@ -369,10 +352,8 @@ class DirectCallServiceTest {
             workers.put(workerId, descriptor(workerId));
             endpointIds.put(workerId, ADAPTER_ID);
         });
-        when(catalog.getWorkerDescriptors(GROUP_ID, workerIds))
+        when(catalog.getWorkerDescriptors(workerIds))
                 .thenReturn(workers);
-        when(bindings.currentEndpointManagerIds(workerIds))
-                .thenReturn(endpointIds);
     }
 
     private static DirectCallRequest workerRequest(List<String> workerIds) {
@@ -417,21 +398,21 @@ class DirectCallServiceTest {
     private static WorkerEndpointDirectory endpoints() {
         return new WorkerEndpointDirectory(Map.of(
                 ADAPTER_ID,
-                new EndpointProperties(
+                new Endpoint(
                         WorkerTransportType.WEBSOCKET,
                         URI.create("ws://127.0.0.1:18083/worker")
                 ),
                 OTHER_ADAPTER_ID,
-                new EndpointProperties(
+                new Endpoint(
                         WorkerTransportType.WEBSOCKET,
                         URI.create("ws://127.0.0.1:18084/worker")
                 ),
                 "system-polling",
-                new EndpointProperties(
+                new Endpoint(
                         WorkerTransportType.POLLING,
                         URI.create("http://127.0.0.1:18082")
                 )
-        ));
+        ), Map.of(WorkerTransportType.WEBSOCKET, ADAPTER_ID, WorkerTransportType.POLLING, "system-polling"));
     }
 
     private static <T> LinkedHashMap<String, T> linkedMap(

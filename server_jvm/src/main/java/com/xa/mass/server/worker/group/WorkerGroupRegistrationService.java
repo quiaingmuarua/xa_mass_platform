@@ -1,8 +1,8 @@
 package com.xa.mass.server.worker.group;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
@@ -40,7 +40,7 @@ public final class WorkerGroupRegistrationService {
             List<String> eventCodes
     ) {
         requireValid(workerGroupId, attributes, eventCodes);
-        WorkerRuntimeResult result;
+        RegistrationResult result;
         try {
             result = workerCatalog.registerWorkerGroup(
                     new WorkerGroupDescriptor(
@@ -71,7 +71,7 @@ public final class WorkerGroupRegistrationService {
                     result.reason(),
                     null
             );
-            case INVALID, NOT_FOUND, REJECTED, STALE -> throw failure(
+            case INVALID, NOT_FOUND -> throw failure(
                     ServerErrorCode.WORKER_GROUP_REGISTRATION_UNAVAILABLE,
                     result.reason(),
                     null

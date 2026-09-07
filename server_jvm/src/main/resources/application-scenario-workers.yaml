@@ -21,7 +21,9 @@ xa:
             maximum-encoded-properties-bytes: 67108864
             send-time-limit: 5s
             shutdown-timeout: 5s
-    worker-binding:
+    worker-endpoints:
+      defaults:
+        WEBSOCKET: scenario-websocket
       endpoints:
         scenario-websocket:
           transport-type: WEBSOCKET

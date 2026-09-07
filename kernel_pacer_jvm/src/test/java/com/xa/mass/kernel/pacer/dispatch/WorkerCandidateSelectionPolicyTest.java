@@ -14,7 +14,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,9 +31,7 @@ class WorkerCandidateSelectionPolicyTest {
         when(cache.consumeCandidateWorkers("task-1", 1)).thenReturn(
                 List.of(new CandidateWorkerEntry("worker-1", 101L))
         );
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of("worker-1", workerDescriptor("worker-1")));
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", workerDescriptor("worker-1")));
 
         List<HeldWorkerCandidate> result = policy(
                 scores, cache, catalog
@@ -51,9 +49,7 @@ class WorkerCandidateSelectionPolicyTest {
         when(cache.consumeCandidateWorkers("task-1", 1)).thenReturn(
                 List.of(new CandidateWorkerEntry("worker-1", 101L))
         );
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of());
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of());
 
         assertEquals(
                 List.of(),
@@ -81,9 +77,7 @@ class WorkerCandidateSelectionPolicyTest {
         when(scores.acquireObservedHotScoreLeases(
                 "group-1", Map.of("worker-1", 101L), 5_000L
         )).thenReturn(Map.of("worker-1", transitioned(201L)));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-2", "worker-1")
-        )).thenReturn(Map.of(
+        when(catalog.getWorkerDescriptors(List.of("worker-2", "worker-1"))).thenReturn(Map.of(
                 "worker-1", workerDescriptor("worker-1"),
                 "worker-2", workerDescriptor("worker-2")
         ));
@@ -121,9 +115,7 @@ class WorkerCandidateSelectionPolicyTest {
         when(scores.acquireObservedHotScoreLeases(
                 "group-1", Map.of("worker-free", 102L), 5_000L
         )).thenReturn(Map.of("worker-free", transitioned(202L)));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-free")
-        )).thenReturn(Map.of(
+        when(catalog.getWorkerDescriptors(List.of("worker-free"))).thenReturn(Map.of(
                 "worker-free", workerDescriptor("worker-free")
         ));
 
@@ -167,10 +159,7 @@ class WorkerCandidateSelectionPolicyTest {
                         5_000L
                 )
         );
-        verify(catalog, never()).getWorkerDescriptors(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyList()
-        );
+        verify(catalog, never()).getWorkerDescriptors(org.mockito.ArgumentMatchers.anyList());
     }
 
     @Test

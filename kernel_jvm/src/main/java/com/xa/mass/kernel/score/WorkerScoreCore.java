@@ -3,6 +3,7 @@ package com.xa.mass.kernel.score;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 public interface WorkerScoreCore {
@@ -27,6 +28,7 @@ public interface WorkerScoreCore {
     int DIRTY_FACTOR = 2;
     int SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR;
     int MAX_SERVICEABILITY_BATCH_SIZE = 100;
+    int MAX_REGISTRATION_BATCH_SIZE = 100;
 
     Map<String, @Nullable WorkerScoreState> getScoreStates(
             String homeBucketId,
@@ -64,9 +66,16 @@ public interface WorkerScoreCore {
             int limit
     );
 
-    WorkerScoreTransitionResult initializeHotAcquireScore(
+    /** Initializes only absent members at the Owner's cold coordinate. */
+    Set<String> initializeRegisteredScores(
             String homeBucketId,
-            String workerId
+            List<String> workerIds
+    );
+
+    /** Samples registered members without interpreting their scheduling state. */
+    List<String> sampleRegisteredWorkerIds(
+            String homeBucketId,
+            int limit
     );
 
     Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(

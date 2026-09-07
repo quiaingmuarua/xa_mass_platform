@@ -15,7 +15,6 @@ import com.xa.mass.server.api.v1.controller.WorkerPointDeliveryController;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.server.assembly.redis.KernelRedisConfiguration;
 import com.xa.mass.server.assembly.redis.KernelRedisHealthIndicator;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
@@ -37,12 +36,6 @@ class WorkerDeliveryHttpCompositionTest {
                                     + "redis://127.0.0.1:6379/15",
                             "xa.mass.redis.scope="
                                     + "test_worker_delivery_composition"
-                    )
-                    .withBean(
-                            WorkerBindingService.class,
-                            () -> org.mockito.Mockito.mock(
-                                    WorkerBindingService.class
-                            )
                     )
                     .withBean(
                             WorkerResourceCatalog.class,
@@ -82,9 +75,6 @@ class WorkerDeliveryHttpCompositionTest {
 
             assertThat(context).doesNotHaveBean(TaskRuntime.class);
             assertThat(context).doesNotHaveBean(TaskResourceCatalog.class);
-            assertThat(context).doesNotHaveBean(
-                    com.xa.mass.kernel.worker.WorkerRuntime.class
-            );
             assertThat(context).hasSingleBean(WorkerResourceCatalog.class);
             assertThat(context).doesNotHaveBean(
                     TaskLifecycleCommands.class

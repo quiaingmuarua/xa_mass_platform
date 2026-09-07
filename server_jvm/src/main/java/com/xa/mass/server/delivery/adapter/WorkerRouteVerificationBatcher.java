@@ -1,6 +1,7 @@
 package com.xa.mass.server.delivery.adapter;
 
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -20,7 +21,7 @@ public final class WorkerRouteVerificationBatcher
 
     static final int MAX_BATCH_SIZE = 100;
 
-    private final WorkerBindingService bindings;
+    private final WorkerResourceCatalog workerCatalog;
     private final Duration timeout;
     private final ArrayBlockingQueue<Request> requests;
     private final Object lifecycleGate = new Object();
@@ -31,11 +32,11 @@ public final class WorkerRouteVerificationBatcher
     private CompletableFuture<?> activeLookup;
 
     public WorkerRouteVerificationBatcher(
-            WorkerBindingService bindings,
+            WorkerResourceCatalog workerCatalog,
             int queueCapacity,
             Duration timeout
     ) {
-        this.bindings = Objects.requireNonNull(bindings, "bindings");
+        this.workerCatalog = Objects.requireNonNull(workerCatalog, "workerCatalog");
         if (queueCapacity <= 0) {
             throw new IllegalArgumentException(
                     "queueCapacity must be positive"
@@ -194,12 +195,12 @@ public final class WorkerRouteVerificationBatcher
     }
 
     private void process(List<Request> batch) {
-        CompletableFuture<Map<String, String>> lookup;
+        CompletableFuture<Map<String, WorkerDescriptor>> lookup;
         try {
             List<String> workerIds = List.copyOf(new LinkedHashSet<>(
                     batch.stream().map(Request::workerId).toList()
             ));
-            lookup = bindings.currentEndpointManagerIdsAsync(workerIds)
+            lookup = workerCatalog.getWorkerDescriptorsAsync(workerIds)
                     .toCompletableFuture();
             synchronized (lifecycleGate) {
                 if (state != State.RUNNING || activeBatch != batch) {
@@ -208,7 +209,7 @@ public final class WorkerRouteVerificationBatcher
                 }
                 activeLookup = lookup;
             }
-            Map<String, String> endpoints = lookup.get(
+            Map<String, WorkerDescriptor> endpoints = lookup.get(
                     timeout.toNanos(),
                     TimeUnit.NANOSECONDS
             );
@@ -217,7 +218,8 @@ public final class WorkerRouteVerificationBatcher
             }
             batch.forEach(request -> request.completion().complete(
                     request.adapterId().equals(
-                            endpoints.get(request.workerId())
+                            endpoints.get(request.workerId()) == null ? null
+                                    : endpoints.get(request.workerId()).endpointManagerId()
                     ) ? Decision.VERIFIED : Decision.REJECTED
             ));
         } catch (InterruptedException error) {

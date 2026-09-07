@@ -23,11 +23,11 @@ class RedisWorkerServiceabilityRuntimeTest {
                      )) {
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> runtime.consumeAdapterEvidenceResults(0)
+                    () -> runtime.consumeNetworkEvidenceResults(0)
             );
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> runtime.consumeAdapterEvidenceResults(101)
+                    () -> runtime.consumeNetworkEvidenceResults(101)
             );
             assertEquals(
                     Map.of(),

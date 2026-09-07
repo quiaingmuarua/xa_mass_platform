@@ -22,7 +22,7 @@ owners needed by the two production applications plus one of its four checked
 `PolicyPreset` values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
 `RUNTIME_BOUNDARY_PROOF`. The Runtime
 owns fixed policy selection, one immutable HOT eligibility floor when
-Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
+periodic Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
 and aggregate failure state. It never closes the supplied owners.
 
 Implementation is grouped by mechanism instead of flattened into one package:
@@ -58,12 +58,12 @@ Result Convergence
 ```
 
 Result Convergence owns exactly three fixed lane definitions:
-`TASK_SUCCESS`, `TASK_FAILURE`, and optional `ADAPTER_EVIDENCE`. One platform
+`TASK_SUCCESS`, `TASK_FAILURE`, and `NETWORK_EVIDENCE` in every preset. One platform
 coordinator schedules at most ten bounded Batches by the smallest
 `inflight / targetConcurrency` ratio; priority only breaks equal ratios. Every
 non-empty Batch runs on a named virtual thread. Production target/max values
 are SUCCESS `6/10`, FAILURE `3/10`, and Evidence `1/1`. Both Task lanes may
-borrow idle capacity while Adapter Evidence remains single-flight.
+borrow idle capacity while Network Evidence remains single-flight.
 These values are internal constants, not configuration or a public lane model.
 Server validates endpoint-owned outcome codes and selects the Task lane; Task
 policy does not read `DeliveryReport.outcomeCode`. Result policies stop after
@@ -72,7 +72,7 @@ strict Report parsing, bounded last-wins grouping and publication to the fixed
 `WorkerServiceabilityEvents` ports. They do not import Task/TaskItem/Worker
 score owners or expose raw Worker lease scores. The default event Mechanisms in
 `kernel_jvm` implement the current store, promotion, exact release and
-Serviceability transitions. Adapter Evidence shares the same lifecycle without
+Serviceability transitions. Network Evidence shares the same lifecycle without
 becoming a general EventBus.
 
 Dispatch Convergence owns one Main Scheduler and four fixed single-flight

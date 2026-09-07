@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.result;
 
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
+import com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
@@ -90,27 +91,19 @@ final class WorkerServiceabilityResultPolicy {
             return;
         }
 
-        LinkedHashMap<String, Long> connected = new LinkedHashMap<>();
-        LinkedHashMap<String, Long> routeUnavailable = new LinkedHashMap<>();
-        LinkedHashMap<String, Long> probeUnavailable = new LinkedHashMap<>();
+        LinkedHashMap<String, NetworkObservation> available = new LinkedHashMap<>();
+        LinkedHashMap<String, NetworkObservation> routeUnavailable = new LinkedHashMap<>();
+        LinkedHashMap<String, NetworkObservation> probeUnavailable = new LinkedHashMap<>();
         latestEvidence.forEach((workerId, evidence) -> {
-            switch (evidence.kind()) {
-                case CONNECTED -> connected.put(
-                        workerId,
-                        evidence.observedAtMillis()
-                );
-                case ROUTE_UNAVAILABLE -> routeUnavailable.put(
-                        workerId,
-                        evidence.observedAtMillis()
-                );
-                case PROBE_UNAVAILABLE -> probeUnavailable.put(
-                        workerId,
-                        evidence.observedAtMillis()
-                );
-            }
+            Map<String, NetworkObservation> target = switch (evidence.kind()) {
+                case AVAILABLE -> available;
+                case ROUTE_UNAVAILABLE -> routeUnavailable;
+                case PROBE_UNAVAILABLE -> probeUnavailable;
+            };
+            target.put(workerId, new NetworkObservation(evidence.endpointManagerId(), evidence.observedAtMillis()));
         });
-        if (!connected.isEmpty()) {
-            workerEvents.onConnected(connected);
+        if (!available.isEmpty()) {
+            workerEvents.onAvailable(available);
         }
         if (!routeUnavailable.isEmpty()) {
             workerEvents.onRouteUnavailable(routeUnavailable);
@@ -126,7 +119,7 @@ final class WorkerServiceabilityResultPolicy {
             long evidenceMaxAgeMillis
     ) {
         if (report == null
-                || report.src() != DeliveryEndpoint.ADAPTER
+                || (report.src() != DeliveryEndpoint.ADAPTER && report.src() != DeliveryEndpoint.SERVER)
                 || report.dst() != DeliveryEndpoint.KERNEL
                 || !"200".equals(report.outcomeCode())
                 || report.sourceId() == null
@@ -134,10 +127,16 @@ final class WorkerServiceabilityResultPolicy {
             return null;
         }
         Map<String, WorkerEvidence> decoded;
-        if (CONNECTION_CHANGED_EVENT.equals(report.messageType())) {
+        if (report.src() == DeliveryEndpoint.SERVER) {
+            if (!"system-polling".equals(report.sourceId())
+                    || !"platform.server.worker-poll.observed".equals(report.messageType())) {
+                return null;
+            }
+            decoded = decodeObservation(report, EvidenceKind.AVAILABLE);
+        } else if (CONNECTION_CHANGED_EVENT.equals(report.messageType())) {
             decoded = decodeConnectionChange(report);
         } else if (DELIVERY_EXPIRED_EVENT.equals(report.messageType())) {
-            decoded = decodeDeliveryExpired(report);
+            decoded = decodeObservation(report, EvidenceKind.ROUTE_UNAVAILABLE);
         } else if (PROBE_EVENT.equals(report.messageType())) {
             decoded = decodeProbeSnapshot(report);
         } else {
@@ -153,6 +152,20 @@ final class WorkerServiceabilityResultPolicy {
             }
         }
         return decoded;
+    }
+
+    private Map<String, WorkerEvidence> decodeObservation(DeliveryReport report, EvidenceKind kind) {
+        if (!CONNECTION_EVIDENCE_FORWARD.equals(report.forward())) {
+            return null;
+        }
+        JsonNode payload = payload(report.payload());
+        if (!hasFields(payload, "workerId", "observedAtMillis")) {
+            return null;
+        }
+        String workerId = nonEmptyText(payload.get("workerId"));
+        Long observedAt = positiveLong(payload.get("observedAtMillis"));
+        return workerId == null || observedAt == null ? null : Map.of(workerId,
+                new WorkerEvidence(report.sourceId(), observedAt, kind));
     }
 
     private Map<String, WorkerEvidence> decodeConnectionChange(
@@ -177,34 +190,10 @@ final class WorkerServiceabilityResultPolicy {
         return Map.of(
                 workerId,
                 new WorkerEvidence(
-                        observedAt,
+                        report.sourceId(), observedAt,
                         CONNECTED.equals(state)
-                                ? EvidenceKind.CONNECTED
+                                ? EvidenceKind.AVAILABLE
                                 : EvidenceKind.ROUTE_UNAVAILABLE
-                )
-        );
-    }
-
-    private Map<String, WorkerEvidence> decodeDeliveryExpired(
-            DeliveryReport report
-    ) {
-        if (!CONNECTION_EVIDENCE_FORWARD.equals(report.forward())) {
-            return null;
-        }
-        JsonNode payload = payload(report.payload());
-        if (!hasFields(payload, "workerId", "observedAtMillis")) {
-            return null;
-        }
-        String workerId = nonEmptyText(payload.get("workerId"));
-        Long observedAt = positiveLong(payload.get("observedAtMillis"));
-        if (workerId == null || observedAt == null) {
-            return null;
-        }
-        return Map.of(
-                workerId,
-                new WorkerEvidence(
-                        observedAt,
-                        EvidenceKind.ROUTE_UNAVAILABLE
                 )
         );
     }
@@ -250,14 +239,14 @@ final class WorkerServiceabilityResultPolicy {
             String state = text(states.get(workerId));
             EvidenceKind kind;
             if (CONNECTED.equals(state)) {
-                kind = EvidenceKind.CONNECTED;
+                kind = EvidenceKind.AVAILABLE;
             } else if ("DISCONNECTED".equals(state)
                     || "UNKNOWN".equals(state)) {
                 kind = EvidenceKind.PROBE_UNAVAILABLE;
             } else {
                 return null;
             }
-            evidence.put(workerId, new WorkerEvidence(checkStarted, kind));
+            evidence.put(workerId, new WorkerEvidence(report.sourceId(), checkStarted, kind));
         }
         return evidence;
     }
@@ -306,12 +295,13 @@ final class WorkerServiceabilityResultPolicy {
     }
 
     private enum EvidenceKind {
-        CONNECTED,
+        AVAILABLE,
         ROUTE_UNAVAILABLE,
         PROBE_UNAVAILABLE
     }
 
     private record WorkerEvidence(
+            String endpointManagerId,
             long observedAtMillis,
             EvidenceKind kind
     ) {

@@ -1,6 +1,6 @@
 # Worker Serviceability Scheduling
 
-Status: active optional Java Kernel policy. Result and Dispatch Pacers are
+Status: active Java Kernel network-evidence policy with optional periodic probes. Result and Dispatch Pacers are
 production Java mechanisms.
 Transport evidence is stable; score thresholds and retry policy remain
 tunable.
@@ -8,13 +8,15 @@ tunable.
 ## Purpose
 
 Worker Serviceability keeps old scheduling coordinates from remaining ordinary
-HOT candidates forever. It consumes Adapter Route evidence; it does not mirror
+HOT candidates forever and activates cold registered members from valid network
+observations. Every preset consumes evidence; only configured presets probe. It
+consumes Adapter Route evidence and Server Polling observations; it does not mirror
 network state and does not call a Worker:
 
 ```text
 exact Route change or expired Worker delivery
   -> ADAPTER -> KERNEL DeliveryReport
-  -> Result Convergence ADAPTER_EVIDENCE lane
+  -> Result Convergence NETWORK_EVIDENCE lane
   -> Worker Serviceability Result Policy
   -> WorkerServiceabilityEvents
   -> Worker resource and score-owner primitives
@@ -22,7 +24,7 @@ exact Route change or expired Worker delivery
 or pre-epoch or stale ordinary HOT / due RECOVERY score
   -> Adapter-scoped snapshot request
   -> platform.adapter.worker-connections.snapshot
-  -> the same Adapter Evidence policy
+  -> the same Network Evidence policy
 ```
 
 `CONNECTED` means the Adapter observed a verified active route. It does not
@@ -32,7 +34,7 @@ Adapter delivery deadline.
 
 ## HOT Eligibility Epoch
 
-When Serviceability is configured, `KernelApplication` mints one immutable,
+When periodic Serviceability is configured, `KernelPacerRuntime` mints one immutable,
 100ms-aligned `hotEligibilityFloorMillis` for that process instance. Restarting
 the loops on the same Application does not change it; a new Kernel process has
 a new epoch.
@@ -45,9 +47,10 @@ PAUSE_TIME       pause hold
 ```
 
 Assignment passes the floor to both broad and explicit HOT reads. When
-Serviceability is absent it passes `None`, preserving the original `MIN_BASE`
-range. New Worker initialization uses current time and therefore starts after
-the active floor.
+periodic Serviceability is absent it passes `null`, preserving the original `MIN_BASE`
+range. New Workers start at the fixed negative cold coordinate outside all
+these scan ranges. A later valid network observation refreshes the time for HOT
+activation; registration does not consult current time.
 
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
@@ -80,8 +83,9 @@ The Adapter-partitioned HASH uses `HSETNX`, so repeated requests for one Worker
 coalesce. Server destructively selects up to 100 fields only when an Adapter
 Command response has remaining capacity. The LIST holds at most 10,000 ordinary
 Reports and admits each append batch atomically with respect to capacity. A
-full LIST produces Server backpressure, so the Adapter may retry the unchanged
-batch through its existing bounded process-local queue.
+full LIST produces Server backpressure. The Adapter's KERNEL submission policy
+drops the rejected batch; internal Polling publication also drops on capacity or
+failure. Neither path adds an evidence replay guarantee.
 
 There is no dispatched state, deadline index, batch registry, ack, retry queue,
 durable claim, global pending counter, or backlog watermark. Dispatch advances
@@ -159,12 +163,13 @@ a later round.
 hard-coded Polling branch. An excluded HOT score is exact-toggled to RECOVERY;
 an excluded RECOVERY score is used as observed. The exact negative score is
 then cold-parked with `laneRank=maxRecoveryAttempts`. PAUSE remains unchanged.
-No probe request is written. A future Polling wake/evidence owner must restore
-such Workers.
+No probe request is written. A later valid Polling observation can restore HOT
+availability for a Polling Worker; other excluded endpoints require fresh valid
+network evidence.
 
 ## Evidence Forms
 
-The fixed Java production Adapter Evidence batch policy accepts three strict
+The fixed Java production Network Evidence batch policy accepts three strict
 `ADAPTER -> KERNEL` forms:
 
 ```text
@@ -185,36 +190,62 @@ platform.adapter.worker-connections.snapshot
 Evidence in the future or older than `evidenceMaxAgeMillis` (default 30s) is
 dropped. Within one consumed round, the latest timestamp wins per Worker; equal
 timestamps use the later Report. The policy publishes only three bounded
-semantic facts: connected, route unavailable, and probe unavailable.
+semantic facts: available, route unavailable, and probe unavailable. Each carries
+the producing Endpoint and observation timestamp.
 Across consumed rounds there is no retained evidence timestamp or strict
 monotonic fence: Reports apply in arrival order and an older late Report may
 temporarily reverse a newer observation. A later connection transition or
 Probe supplies fresh evidence and drives eventual convergence. This mechanism
 does not claim an uninterrupted monotonic state history.
 `DeliveryReport`, JSON, forward values and Adapter Event Names stop at that
-policy. `WorkerServiceabilityEvents` resolves global workerId to WorkerGroup in
-bounded catalog reads and owns current-score interpretation. Missing owners,
+policy. `WorkerServiceabilityEvents` reads each bounded Binding batch once,
+checks the producing Endpoint against the stored Binding and obtains Group. It
+then delegates current-score interpretation to Score Owner. Missing Bindings,
 scores, or malformed Reports are dropped. There is no retry or retained
 current-state projection.
 
+## Polling Observation And Cold Activation
+
+After validating Binding and before consuming a Command, every valid Polling
+request attempts one internal append, including empty polls:
+
+```text
+SERVER (sourceId=system-polling) -> KERNEL
+platform.server.worker-poll.observed
+payload={"workerId":"...","observedAtMillis":<Server time>}
+forward=worker-serviceability-evidence:v1
+```
+
+This shares the existing evidence LIST and consumption lane; it adds no queue,
+thread or Server dedup cache. Public Adapter ingress rejects SERVER-source
+observations. A full queue or append exception drops the observation while
+normal Command consumption continues. The next valid poll supplies new input.
+The per-poll publication cost is intentional in this cut.
+
+Every initial registration, including Polling, is cold. Lost first connection
+or poll evidence leaves it cold until fresh valid evidence arrives. No ACK,
+replay or cold-member scan promises activation. Existing recovery exhaustion
+continues to use its cold parking coordinate. Network events do not initialize
+missing Scores, release leases, clear dirty or undo PAUSE.
+
 ## Score Convergence
 
-`DefaultWorkerServiceabilityEvents` resolves WorkerGroup ownership and calls
-one bounded Score-owner serviceability Evidence operation. The Adapter Evidence
+`DefaultWorkerServiceabilityEvents` checks Binding Endpoint and Group, then calls
+one bounded Score-owner serviceability Evidence operation. The Network Evidence
 policy cannot read a Worker score or select a concrete score mutation. The
 finite event interface is not a generic EventBus.
 
 The target is fixed by the semantic event:
 
 ```text
-CONNECTED                                      -> HOT
+CONNECTED or valid Polling observation          -> HOT
 DISCONNECTED / delivery expired / Probe miss  -> RECOVERY
 ```
 
 For each Worker, Evidence is accepted when its 100ms slot is at least the
 stored non-future slot, or when the stored Score is a future lease/hold. The
 same slot is accepted. Valid Evidence always preserves `laneRank` and dirty.
-Unavailable Evidence changes only the Score sign. Connected Evidence also
+Unavailable Evidence changes only the Score sign. Available Evidence also
 advances an older non-future coordinate to its Evidence slot, so a reconnect
 observed after Server startup crosses that process's HOT eligibility floor
 without depending on a separate Probe round. A future lease or PAUSE keeps its
@@ -251,9 +282,8 @@ close a Worker Channel merely because delivery expired.
 
 ## Lifecycle And Guardrails
 
-When Serviceability is absent, no floor, Adapter Evidence lane, or
-Serviceability Dispatch lane exists. The Server bridge owner may still be
-assembled but has no production Evidence consumer. Production mints the floor
+All presets install the Network Evidence lane. DEFAULT has no HOT floor or
+periodic Serviceability Dispatch lane. Production mints the floor
 once in Java and shares it only with Serviceability Dispatch and Assignment,
 and uses:
 
@@ -265,7 +295,7 @@ stop: Java Dispatch Convergence
    -> Java Result Convergence
 ```
 
-Serviceability Dispatch and Assignment use the same floor. Adapter Evidence
+Serviceability Dispatch and Assignment use the same floor. Network Evidence
 does not receive or rewrite it. This assembly has no duplicate consumers or
 Probe Request producers.
 
@@ -274,5 +304,5 @@ Probe Request producers.
 - Do not infer network state in Task Result Routing.
 - Do not let Server or Transport write score.
 - Do not treat best-effort evidence as a scheduling fence.
-- Binding generation, Polling wake, heartbeat, and multi-Kernel epoch
+- Binding migration/generation, heartbeat, and multi-Kernel epoch
   coordination remain later Fleet-convergence slices.

@@ -78,7 +78,8 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
         );
         registry.add(prefix + ".send-time-limit", () -> "5s");
         registry.add(prefix + ".shutdown-timeout", () -> "5s");
-        String endpoint = "xa.mass.worker-binding.endpoints"
+        registry.add("xa.mass.worker-endpoints.defaults.WEBSOCKET", () -> "embedded-websocket");
+        String endpoint = "xa.mass.worker-endpoints.endpoints"
                 + ".embedded-websocket";
         registry.add(endpoint + ".transport-type", () -> "WEBSOCKET");
         registry.add(

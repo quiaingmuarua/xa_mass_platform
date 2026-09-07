@@ -19,6 +19,29 @@ class WorkerServiceabilityResultPolicyTest {
     private static final long NOW = 50_000;
 
     @Test
+    void pollingHasItsOwnServerSourceAndRejectsForgedOrExpiredObservations() {
+        var events = org.mockito.Mockito.mock(WorkerServiceabilityEvents.class);
+        var policy = policy(events);
+        String type = "platform.server.worker-poll.observed";
+        String payload = "{\"workerId\":\"polling\",\"observedAtMillis\":49000}";
+        policy.handle(List.of(
+                DeliveryReport.create(DeliveryEndpoint.ADAPTER, "system-polling", DeliveryEndpoint.KERNEL,
+                        type, "200", payload, "worker-serviceability-evidence:v1"),
+                DeliveryReport.create(DeliveryEndpoint.SERVER, "adapter-1", DeliveryEndpoint.KERNEL,
+                        type, "200", payload, "worker-serviceability-evidence:v1"),
+                DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
+                        type, "200", payload.replace("49000", "19000"), "worker-serviceability-evidence:v1"),
+                DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
+                        type, "200", payload.replace("49000", "50001"), "worker-serviceability-evidence:v1")
+        ));
+        org.mockito.Mockito.verifyNoInteractions(events);
+        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
+                type, "200", payload, "worker-serviceability-evidence:v1")));
+        org.mockito.Mockito.verify(events).onAvailable(Map.of("polling",
+                new WorkerServiceabilityEvents.NetworkObservation("system-polling", 49_000L)));
+    }
+
+    @Test
     void publishesTheThreeFixedLatestEvidenceEvents() {
         RecordingEvents events = new RecordingEvents();
         WorkerServiceabilityResultPolicy policy = policy(events);
@@ -166,24 +189,32 @@ class WorkerServiceabilityResultPolicyTest {
             implements WorkerServiceabilityEvents {
 
         private final List<String> calls = new ArrayList<>();
+        private Map<String, Long> times(Map<String, NetworkObservation> observations) {
+            Map<String, Long> result = new java.util.LinkedHashMap<>();
+            observations.forEach((id, value) -> {
+                assertEquals("adapter-1", value.endpointManagerId());
+                result.put(id, value.observedAtMillis());
+            });
+            return result;
+        }
 
         @Override
-        public void onConnected(Map<String, Long> observedAtByWorkerId) {
-            calls.add("connected:" + observedAtByWorkerId);
+        public void onAvailable(Map<String, NetworkObservation> observedAtByWorkerId) {
+            calls.add("connected:" + times(observedAtByWorkerId));
         }
 
         @Override
         public void onRouteUnavailable(
-                Map<String, Long> observedAtByWorkerId
+                Map<String, NetworkObservation> observedAtByWorkerId
         ) {
-            calls.add("route:" + observedAtByWorkerId);
+            calls.add("route:" + times(observedAtByWorkerId));
         }
 
         @Override
         public void onProbeUnavailable(
-                Map<String, Long> observedAtByWorkerId
+                Map<String, NetworkObservation> observedAtByWorkerId
         ) {
-            calls.add("probe:" + observedAtByWorkerId);
+            calls.add("probe:" + times(observedAtByWorkerId));
         }
     }
 }

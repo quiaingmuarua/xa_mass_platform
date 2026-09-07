@@ -12,11 +12,11 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | Package | Responsibility |
 | --- | --- |
 | `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
-| `worker` | Minimal Worker scheduling metadata, catalog, opaque lease references and finite execution/serviceability events |
+| `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
 | `assignment` | Candidate Worker Cache owner plus the ordered PRECOMPUTED Match Demand port |
 | `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
-| `serviceability` | Adapter probe/evidence handoff owner |
+| `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
 
 Candidate Cache stays here because it is a bounded, disposable Kernel
@@ -33,6 +33,13 @@ and Adapter Event Names remain confined to `kernel_pacer_jvm` policies.
 `WorkerLeaseReference` keeps the assignment fence opaque outside the Worker
 owner package.
 
+`WorkerResourceCatalog` owns one Worker-ID Binding HASH with Group and actual
+Endpoint. Batch registration creates missing bindings and asks `WorkerScoreCore`
+to initialize missing cold members. Descriptors are read snapshots. Existing
+same-Group bindings win over changed defaults; Endpoint migration is not
+implemented. Score membership is registration existence, not online evidence.
+Every Pacer preset consumes network observations for best-effort activation.
+
 ## Production Call Closure
 
 The Java providers implement the operations currently called by the Runtime
@@ -48,8 +55,9 @@ API and the fixed production Pacers, including:
 - Candidate Cache operations;
 - Serviceability probe request offer/consume and evidence append/consume.
 
-These implementations preserve existing Redis keys, score encoding, Redis
-time semantics, bounded inputs and partial-result behavior. Redis-sensitive
+Worker Binding uses the new single-HASH layout and requires an exact-scope
+rebuild, with no compatibility reads. Score encoding and other owner keys remain
+unchanged; cold registration uses no Redis TIME or Score readback. Redis-sensitive
 claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
 Operations outside the production caller closure remain explicit gaps.
 

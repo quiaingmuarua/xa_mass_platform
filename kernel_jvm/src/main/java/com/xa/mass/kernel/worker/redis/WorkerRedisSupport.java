@@ -1,7 +1,8 @@
 package com.xa.mass.kernel.worker.redis;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -21,15 +22,8 @@ final class WorkerRedisSupport {
         return keyspace.base() + ":worker:groups";
     }
 
-    static String workerMetadataKey(
-            RedisKeyspace keyspace,
-            String workerGroupId
-    ) {
-        return keyspace.base() + ":worker:metadata:" + workerGroupId;
-    }
-
-    static String workerIdOwnersKey(RedisKeyspace keyspace) {
-        return keyspace.base() + ":worker:id_owners";
+    static String bindingsKey(RedisKeyspace keyspace) {
+        return keyspace.base() + ":worker:bindings";
     }
 
     static String encodeWorkerGroup(WorkerGroupDescriptor descriptor) {
@@ -44,19 +38,11 @@ final class WorkerRedisSupport {
         }
     }
 
-    static String encodeWorkerMetadata(WorkerMetadata metadata) {
-        try {
-            Map<String, Object> payload = new TreeMap<>();
-            payload.put("workerId", metadata.workerId());
-            payload.put("workerGroupId", metadata.workerGroupId());
-            payload.put(
-                    "endpointManagerId",
-                    metadata.endpointManagerId()
-            );
-            return encodeCanonical(payload);
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
+    static String encodeBinding(String workerGroupId, String endpointManagerId) {
+        return encodeCanonical(Map.of(
+                "workerGroupId", workerGroupId,
+                "endpointManagerId", endpointManagerId
+        ));
     }
 
     static WorkerGroupDescriptor decodeWorkerGroup(String raw) {
@@ -83,7 +69,7 @@ final class WorkerRedisSupport {
         }
     }
 
-    static WorkerMetadata decodeWorkerMetadata(String raw) {
+    static WorkerDescriptor decodeBinding(String workerId, String raw) {
         if (raw == null) {
             return null;
         }
@@ -92,30 +78,17 @@ final class WorkerRedisSupport {
             requireExactFields(
                     payload,
                     Set.of(
-                            "workerId",
                             "workerGroupId",
                             "endpointManagerId"
                     )
             );
-            return new WorkerMetadata(
-                    requireString(payload.get("workerId")),
+            return new WorkerDescriptor(
+                    workerId,
                     requireString(payload.get("workerGroupId")),
                     requireString(payload.get("endpointManagerId"))
             );
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
-        }
-    }
-
-    record WorkerMetadata(
-            String workerId,
-            String workerGroupId,
-            String endpointManagerId
-    ) {
-        WorkerMetadata {
-            requireString(workerId);
-            requireString(workerGroupId);
-            requireString(endpointManagerId);
         }
     }
 

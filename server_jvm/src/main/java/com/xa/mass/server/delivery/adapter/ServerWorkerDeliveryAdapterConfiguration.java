@@ -1,8 +1,9 @@
 package com.xa.mass.server.delivery.adapter;
 
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterFactory;
@@ -19,10 +20,10 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     @Bean
     WorkerRouteVerificationBatcher workerRouteVerificationBatcher(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerBindingService bindings
+            WorkerResourceCatalog workerCatalog
     ) {
         return new WorkerRouteVerificationBatcher(
-                bindings,
+                workerCatalog,
                 properties.verificationQueueCapacity(),
                 properties.verificationTimeout()
         );
@@ -62,7 +63,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             throw new IllegalArgumentException(
                     "Adapter "
                             + adapterId
-                            + ": a matching worker-binding endpoint must "
+                            + ": a matching worker-endpoints endpoint must "
                             + "be configured"
             );
         }

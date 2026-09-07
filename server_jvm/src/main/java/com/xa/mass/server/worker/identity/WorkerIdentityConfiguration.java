@@ -1,6 +1,5 @@
 package com.xa.mass.server.worker.identity;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import io.lettuce.core.RedisClient;
 import org.springframework.context.annotation.Bean;
@@ -22,9 +21,8 @@ public class WorkerIdentityConfiguration {
 
     @Bean
     WorkerIdentityService workerIdentityService(
-            WorkerIdentityRegistry registry,
-            WorkerResourceCatalog workerCatalog
+            WorkerIdentityRegistry registry
     ) {
-        return new WorkerIdentityService(registry, workerCatalog);
+        return new WorkerIdentityService(registry);
     }
 }

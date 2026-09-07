@@ -4,9 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import com.xa.mass.server.delivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
 import com.xa.mass.server.delivery.adapter
@@ -16,6 +14,7 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context
         .ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner
@@ -28,7 +27,8 @@ class ServerWorkerAssemblyPropertiesTest {
             new ApplicationContextRunner()
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,
-                            ServerWorkerAssemblyConfiguration.class
+                            ServerWorkerAssemblyConfiguration.class,
+                            EndpointConfiguration.class
                     )
                     .withBean(
                             "lifecycleProcessor",
@@ -44,22 +44,10 @@ class ServerWorkerAssemblyPropertiesTest {
                             () -> mock(
                                     WorkerGroupRegistrationService.class
                             )
-                    )
-                    .withBean(
-                            WorkerBindingService.class,
-                            () -> mock(WorkerBindingService.class)
-                    )
-                    .withBean(WorkerEndpointDirectory.class, () -> {
-                        WorkerEndpointDirectory directory = mock(
-                                WorkerEndpointDirectory.class
-                        );
-                        org.mockito.Mockito.when(directory.contains(
-                                org.mockito.ArgumentMatchers.anyString(),
-                                org.mockito.ArgumentMatchers
-                                        .any(WorkerTransportType.class)
-                        )).thenReturn(true);
-                        return directory;
-                    });
+                    );
+
+    @EnableConfigurationProperties(WorkerEndpointDirectory.class)
+    static class EndpointConfiguration {}
 
     @Test
     void absentConfigurationCreatesAnInertAggregate() {

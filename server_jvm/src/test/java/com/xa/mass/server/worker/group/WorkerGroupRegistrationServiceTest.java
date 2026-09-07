@@ -8,9 +8,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
@@ -48,8 +48,8 @@ class WorkerGroupRegistrationServiceTest {
                 Set.of("event.b", "event.a")
         );
         when(catalog.registerWorkerGroup(descriptor)).thenReturn(
-                new WorkerRuntimeResult(WorkerRuntimeStatus.OK),
-                new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+                new RegistrationResult(RegistrationStatus.OK),
+                new RegistrationResult(RegistrationStatus.NOOP)
         );
         when(taskCallRegistrations.register("group-1")).thenReturn(
                 new Registration("group-1", "scenario-rpc-group-1", true),
@@ -76,7 +76,7 @@ class WorkerGroupRegistrationServiceTest {
     void anEquivalentGroupBackfillsItsMissingTaskCallRegistration() {
         when(catalog.registerWorkerGroup(
                 org.mockito.ArgumentMatchers.any()
-        )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP));
+        )).thenReturn(new RegistrationResult(RegistrationStatus.NOOP));
         when(taskCallRegistrations.register("group-1")).thenReturn(
                 new Registration("group-1", "scenario-rpc-group-1", true)
         );
@@ -99,8 +99,8 @@ class WorkerGroupRegistrationServiceTest {
         when(catalog.registerWorkerGroup(
                 org.mockito.ArgumentMatchers.any()
         )).thenReturn(
-                new WorkerRuntimeResult(WorkerRuntimeStatus.OK),
-                new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+                new RegistrationResult(RegistrationStatus.OK),
+                new RegistrationResult(RegistrationStatus.NOOP)
         );
         when(taskCallRegistrations.register("group-1"))
                 .thenThrow(failure)
@@ -141,8 +141,8 @@ class WorkerGroupRegistrationServiceTest {
 
         when(catalog.registerWorkerGroup(
                 org.mockito.ArgumentMatchers.any()
-        )).thenReturn(new WorkerRuntimeResult(
-                WorkerRuntimeStatus.CONFLICT,
+        )).thenReturn(new RegistrationResult(
+                RegistrationStatus.CONFLICT,
                 "different descriptor"
         ));
         assertThatThrownBy(() -> service.register(
@@ -162,8 +162,8 @@ class WorkerGroupRegistrationServiceTest {
     void mapsOwnerCorruptionAndFailureToRegistrationUnavailable() {
         when(catalog.registerWorkerGroup(
                 org.mockito.ArgumentMatchers.any()
-        )).thenReturn(new WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
+        )).thenReturn(new RegistrationResult(
+                RegistrationStatus.INVALID,
                 "stored value is invalid"
         ));
         assertThatThrownBy(() -> service.register(

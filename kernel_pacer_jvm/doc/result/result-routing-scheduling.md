@@ -70,19 +70,19 @@ Queue members are destructive best-effort evidence, not pending/ack truth.
 
 ## Fixed Lanes And Shared Batch Capacity
 
-`ResultConvergenceApplication` owns three finite lane definitions; the two Task
-lanes are always present and the Adapter Evidence lane exists only when Worker
-Serviceability is enabled:
+`ResultConvergenceApplication` installs three finite lanes in every preset.
+Network Evidence consumption is independent of optional periodic Serviceability
+probes:
 
 | Priority | Lane | Owner source | Batch limit | Target | Max |
 | ---: | --- | --- | ---: | ---: | ---: |
 | 0 | `TASK_SUCCESS` | `TaskResultRuntime.SUCCESS` | 100 | 6 | 10 |
 | 1 | `TASK_FAILURE` | `TaskResultRuntime.FAILURE` | 100 | 3 | 10 |
-| 2 | `ADAPTER_EVIDENCE` | `WorkerServiceabilityRuntime` | configured | 1 | 1 |
+| 2 | `NETWORK_EVIDENCE` | `WorkerServiceabilityRuntime` | configured | 1 | 1 |
 
 Each Redis key is one homogeneous lane: the whole consumed batch is handed to
 one fixed policy function. Homogeneity does not require every Report in the
-Adapter Evidence batch to have the same `messageType`; that policy owns its
+Network Evidence batch to have the same producer or `messageType`; that policy owns its
 finite event interpretation. The Task queue lane remains the only result-class
 evidence visible to Kernel. A report whose raw `outcomeCode` contradicts its
 Task lane is still processed according to the lane; preventing that
@@ -101,7 +101,7 @@ FAILURE may each borrow every otherwise unused slot up to ten. Their Batch
 completion order is deliberately unspecified: Redis FIFO guarantees consumption
 order, not concurrent policy completion order. SUCCESS remains safe because
 Item promotion is monotonic and Worker release uses the completed-HOT exact
-fence; FAILURE only exact-releases the correlated Worker lease. Adapter Evidence
+fence; FAILURE only exact-releases the correlated Worker lease. Network Evidence
 retains `max=1` because it has no cross-Batch Evidence fence. Successful
 completion releases capacity immediately.
 A policy `RuntimeException` loses that best-effort Batch and delays future

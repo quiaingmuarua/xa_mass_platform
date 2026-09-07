@@ -11,7 +11,7 @@ Java Server
         -> ResultConvergenceApplication
            -> TASK_SUCCESS virtual batches
            -> TASK_FAILURE virtual batches
-           -> ADAPTER_EVIDENCE virtual batch             optional
+           -> NETWORK_EVIDENCE virtual batch             every preset
         -> DispatchConvergenceRuntime
            -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
@@ -37,10 +37,11 @@ Server passes the selected preset to `KernelPacerRuntime.assemble(...)`; it
 does not inspect lane policy. There is no production Pacer JSON, dynamic lane
 registry, or per-field Server override.
 
-When Serviceability is enabled, Runtime mints one Worker-Score-slot-aligned
+Every preset consumes Network Evidence. When periodic Serviceability is enabled,
+Runtime mints one Worker-Score-slot-aligned
 `hotEligibilityFloorMillis`. Serviceability Dispatch and Assignment candidate
-acquisition receive the same immutable value. Adapter Evidence changes only
-polarity and does not receive the floor. It is not stored in Redis or exposed
+acquisition receive the same immutable value. Network Evidence requests an
+availability transition and does not receive the floor. The floor is not stored in Redis or exposed
 through Health or Runtime APIs. Serviceability may widen only its own bounded
 HOT discovery up to the stale-HOT cutoff derived from its Probe retry interval;
 Assignment continues to use the immutable floor.
@@ -52,7 +53,7 @@ The finite Java caller closure is:
 ```text
 TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
-WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
+WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
 TaskInitializationPolicy
 TaskAssignmentDispatcher / TaskIdleSettlement
@@ -129,7 +130,7 @@ Convergence and therefore Kernel readiness.
 ## Result Convergence
 
 Result Convergence owns one coordinator and ten shared virtual-batch slots.
-Its fixed lanes are Task SUCCESS, Task FAILURE, and optional Adapter Evidence.
+Its fixed lanes are Task SUCCESS, Task FAILURE, and Network Evidence in every preset.
 Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
 and Dispatch Resource Producers do not share queues, lifecycle state, topology,
 or executors.

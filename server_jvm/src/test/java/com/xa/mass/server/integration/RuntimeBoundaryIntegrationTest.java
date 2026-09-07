@@ -181,12 +181,12 @@ class RuntimeBoundaryIntegrationTest {
                 () -> "2s"
         );
         registry.add(
-                "xa.mass.worker-binding.endpoints.system-polling."
+                "xa.mass.worker-endpoints.endpoints.system-polling."
                         + "transport-type",
                 () -> "POLLING"
         );
         registry.add(
-                "xa.mass.worker-binding.endpoints.system-polling.public-uri",
+                "xa.mass.worker-endpoints.endpoints.system-polling.public-uri",
                 () -> "http://127.0.0.1:" + SERVER_PORT
         );
         addWebSocketAdapter(
@@ -626,8 +626,12 @@ class RuntimeBoundaryIntegrationTest {
         WorkerScoreState initial = awaitWorkerScore(
                 workerGroupId,
                 workerId,
-                WorkerScorePolarity.HOT_ACQUIRE
+                WorkerScorePolarity.RECOVERY_RECHECK
         );
+        assertThat(initial.timeMillis()).isEqualTo(100);
+        assertThat(initial.laneRank()).isZero();
+        assertThat(initial.dirty()).isZero();
+        assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
 
         RunningWorker first = startWorker(
                 workerGroupId,
@@ -1510,7 +1514,8 @@ class RuntimeBoundaryIntegrationTest {
                 () -> Integer.toString(listenPort)
         );
         addAdapterConfig(registry, prefix);
-        String endpointPrefix = "xa.mass.worker-binding.endpoints."
+        registry.add("xa.mass.worker-endpoints.defaults.WEBSOCKET", () -> adapterId);
+        String endpointPrefix = "xa.mass.worker-endpoints.endpoints."
                 + adapterId;
         registry.add(
                 endpointPrefix + ".transport-type",
@@ -1537,7 +1542,8 @@ class RuntimeBoundaryIntegrationTest {
                 () -> Integer.toString(listenPort)
         );
         addAdapterConfig(registry, prefix);
-        String endpointPrefix = "xa.mass.worker-binding.endpoints."
+        registry.add("xa.mass.worker-endpoints.defaults.SOCKET", () -> adapterId);
+        String endpointPrefix = "xa.mass.worker-endpoints.endpoints."
                 + adapterId;
         registry.add(
                 endpointPrefix + ".transport-type",

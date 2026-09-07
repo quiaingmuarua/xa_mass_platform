@@ -12,7 +12,7 @@ configured Server runtime host.
 - fixed Pacer preset selection, Spring lifecycle delegation and Health
   projection for the
   single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
-- Worker Identity and persistent Endpoint Binding;
+- Worker external Identity, configured Endpoint defaults and Prepare orchestration;
 - bounded application use cases such as finite Task Result export, managed
   Task Call and DIRECT_CALL correlation;
 - configured WorkerGroup seed and Adapter startup order.
@@ -21,6 +21,35 @@ It does not own Kernel candidate selection, Worker lease, TaskItem claim,
 retry, recovery, Task finality, allocation-rule interpretation, Adapter
 connection routing or Worker event execution. See the root
 [architecture entrypoint](../README.md).
+
+Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
 
 ## Runtime Shape
 
@@ -37,14 +66,14 @@ WorkerMatchingAssembly
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
      -> Java ResultConvergenceApplication
-        -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE lanes
+        -> TASK_SUCCESS / TASK_FAILURE / NETWORK_EVIDENCE lanes
      -> Java DispatchConvergenceApplication
         -> RUNNING INITIAL initialization lane
         -> RUNNING NORMAL allocation / dispatch / optional serviceability lanes
      -> one bounded reverse shutdown
 
-Worker Identity / Binding
-  -> Server-owned Redis boundary
+Worker Identity -> Server-owned Redis boundary
+Worker Binding  -> Kernel WorkerResourceCatalog
 
 Worker Delivery
   -> point or Adapter batch API
@@ -68,9 +97,10 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND Item selectors are normalized by Kernel before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and optional Adapter Evidence lanes over Java owners |
+| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and Network Evidence lanes in every preset over Java owners |
 | Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
-| Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
+| Worker Identity / Endpoint directory | Server identity HASH; local default/URI configuration |
+| Persistent Worker Binding | Kernel WorkerResourceCatalog, one Worker ID HASH |
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
@@ -335,23 +365,32 @@ identity. A batch body is the direct array of `1..100` ordered Prepare items,
 all of which must share one kind and transport type. Both HTTP routes enter the
 same Server `prepareAll` path;
 the single route supplies a one-item list. Server validates the batch shape and
-every registration coordinate before side effects, then invokes Identity,
-Binding and minimal Kernel Worker owners sequentially.
+every registration coordinate before side effects, then reads Group once and resolves the configured default Endpoint before any
+identity write. One Identity Lua resolves the entire batch, one Catalog Binding
+Lua creates or reads actual Group/Endpoint pairs, and one Score Owner Lua
+initializes absent cold members. There is no per-Worker synchronous round trip
+or identity confirmation reread.
 The response is an ordered list of the ordinary Prepare response DTO. Only a
 complete response returns `200`; completed side effects are not rolled back,
-so callers may retry through the same derived coordinates.
+so callers may retry through the same derived coordinates. Failure does not
+imply that only a prefix of the request produced side effects.
 
 `workerKind` only selects the Server-owned registration-key algorithm. It is
 not part of the Redis key address: all identities for one WorkerGroup are
 fields in the same Group identity Hash. Each algorithm emits a typed,
 unambiguous field value, so an arbitrary `CLIENT_KEY` input cannot alias a
-`SCENARIO_LAB` coordinate. Existing typed coordinates and stored Worker IDs
-remain unchanged; removing Prepare's Properties write requires no data reset.
+`SCENARIO_LAB` coordinate. The registration-key algorithms remain unchanged. This Binding layout cutover
+requires a stopped, exact-scope rebuild; it has no compatibility reads. Retain
+source Properties/configuration and recreate Groups, Workers and Tasks as
+described in the [Worker Redis contract](../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md#scope-rebuild).
 
 `CLIENT_KEY` Prepare requires an existing Group and a non-blank
 `workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
-Worker identity, selects or reuses the persistent Endpoint Binding, and
-initializes missing Kernel scheduling metadata and Score. The HTTP field
+Worker identity and calls Kernel batch registration with the default Endpoint.
+Existing same-Group Binding wins over any changed default. Server validates the
+returned actual Endpoint type and resolves its URI; it does not persist address
+state. Kernel initializes only missing cold Score members and preserves every
+existing Score. The HTTP field
 `workerProperties` retains its existing shape, but Server consumes only the
 selected identity policy's coordinates. Non-identity fields are neither
 interpreted nor encoded or persisted as Matching facts. These are separate owners and
@@ -361,7 +400,9 @@ Group/client key coordinate and never send a Worker ID hint. Transparent
 reconnect reuses the current in-memory identity and Endpoint without preparing
 again.
 
-Prepare success does not imply connectivity or observed Properties. New Workers
+Prepare success does not imply connectivity, scheduling availability or observed
+Properties. All Workers, including Polling, initially remain cold. Valid network
+evidence may later request activation; evidence loss has no replay guarantee. New Workers
 have no Matching facts until an admitted Adapter observation creates them;
 even an unrestricted PRECOMPUTED Rule skips a Worker with no facts. ON_DEMAND
 does not require these facts. Polling has no current Adapter Properties path,
@@ -559,7 +600,7 @@ Production packages use stable functional roots. The versioned HTTP surface
 centralizes route adapters under `api.v1.controller` and groups wire types under
 `api.v1.contract` by Task, Worker, Runtime View and Delivery vocabulary. Task
 use cases remain under `task` (`call` and `result`); Worker responsibilities
-under `worker` (`group`, `preparation`, `identity`, `binding`, `resource` and
+under `worker` (`group`, `preparation`, `identity`, `endpoint`, `resource` and
 `scheduling`); delivery services under `delivery`; and process-wide provider or
 lifecycle wiring under `assembly` (`redis`, `kernel`, `pacer` and `runtime`).
 `runtimeview`, `operation`, `error` and `frontend` remain separate Server
@@ -574,11 +615,15 @@ Provider selection stays in Server assembly. The shared `assembly.redis`
 package owns connection and health only; Redis key operations live in
 owner-local provider packages.
 
-Worker Prepare composes Server-owned identity resolution, Endpoint Binding,
-and minimal Kernel Worker metadata/Score initialization in that order. Binding
-has no Matching dependency. The owners and registries remain separate.
+Worker Prepare composes Server identity resolution and Kernel
+`WorkerResourceCatalog.registerWorkers`. Catalog owns the unique persistent
+Binding and initializes missing members through Score Owner. A normal 1..100
+Worker Prepare uses four client commands: Group HMGET, Identity Lua, Binding
+Lua and Score Lua; Catalog alone uses two. This is a command budget, not a
+throughput/latency claim. `WorkerEndpointDirectory` binds the Endpoint configuration
+directly and retains its single immutable address model; it has no Redis connection.
 First and later Adapter observations create or replace Matching Properties
-without re-Prepare or Kernel Worker upsert. Transparent Client reconnect
+without re-Prepare or Kernel Worker registration. Transparent Client reconnect
 performs no Prepare operation.
 
 ### Worker Delivery
@@ -589,7 +634,8 @@ constructs active Adapters only through the finite public Netty factory.
 Adapter Command consume and Report append use the loopback Worker Delivery HTTP
 boundary. First route verification uses a Server-injected asynchronous port:
 one bounded Server queue is drained by one resident virtual thread, and current
-Endpoint Bindings are read in batches of at most 100 before the individual
+Catalog Binding snapshots are read asynchronously by one HMGET for at most 100
+IDs before the individual
 Adapter requests are completed. The queue is transient coordination, not Route
 or Binding truth. Adapter lifecycle, schedulers, queues, current route registry
 and physical Channels remain owned by `transport/netty-adapter`.
@@ -632,7 +678,36 @@ two projections. After verified connection/reconnection, Adapter requests one
 full Worker snapshot. Cache installation offers a distinct SYSTEM observation,
 never a KERNEL Properties Report.
 
-### Runtime Worker Properties Admission
+#Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
+
+## Runtime Worker Properties Admission
 
 `WorkerDeliveryService` recognizes only the fixed
 `ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` event here.
@@ -644,10 +719,9 @@ destinations and malformed Report DTOs still fail the whole HTTP batch first.
 
 The service collapses valid snapshots by Worker to the last valid input in
 that HTTP batch, retaining input counts. `WorkerResourceCommandService` reads
-current Endpoint Bindings and Worker Group IDs using the existing bounded
-batch owners, rejects unknown/unbound/wrong-Adapter Workers, groups by Group,
+Group and Endpoint from the same bounded Catalog Binding read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group,
 and calls `WorkerMatchingCatalog.upsertWorkerFactsBatch`. No registration,
-Prepare, Worker upsert, score, Candidate or new identity index participates.
+Prepare, Worker registration, score, Candidate or new identity index participates.
 APPLIED/UNCHANGED accepts all valid inputs collapsed into that Worker; other
 mutation outcomes reject them. Infrastructure failure returns `503` without
 rolling back earlier Group writes. SYSTEM then drops the batch, not retries it.
@@ -722,7 +796,7 @@ boundary; the Redis DB number is not a profile or test discriminator. Scope
 syntax and the complete physical ABI are owned by the Kernel
 [Redis Keyspace contract](../kernel_jvm/doc/runtime-redis/redis-keyspace.md).
 
-The optional Serviceability handoff uses
+The Serviceability handoff uses
 `xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests` and
 `xa_mass:<scope>:worker:serviceability:evidence_results`. These are
 Kernel-owned best-effort handoffs, not current connectivity truth. Server
@@ -732,7 +806,36 @@ that evidence LIST and owns its score policy.
 
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a
-matching Endpoint Binding entry.
+matching Endpoint directory entry.
+
+Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
 
 ## Run
 

@@ -16,16 +16,15 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.delivery.directcall.DirectCallProperties;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
-import com.xa.mass.server.worker.binding.WorkerBindingProperties.EndpointProperties;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -62,16 +61,12 @@ class DirectCallControllerTest {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         WorkerCommandRuntime commandRuntime = mock(WorkerCommandRuntime.class);
         TaskResultRuntime resultRuntime = mock(TaskResultRuntime.class);
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
         List<String> workerIds = List.of(WORKER_1, WORKER_2);
-        when(catalog.getWorkerDescriptors(GROUP_ID, workerIds)).thenReturn(
+        when(catalog.getWorkerDescriptors(workerIds)).thenReturn(
                 Map.of(
                         WORKER_1, descriptor(WORKER_1),
                         WORKER_2, descriptor(WORKER_2)
                 )
-        );
-        when(bindings.currentEndpointManagerIds(workerIds)).thenReturn(
-                Map.of(WORKER_1, ADAPTER_ID, WORKER_2, ADAPTER_ID)
         );
 
         AtomicReference<Map<String, DeliveryCommand>> mailbox =
@@ -98,28 +93,23 @@ class DirectCallControllerTest {
                 1_000,
                 10_000
         );
-        DirectCallService directCalls = new DirectCallService(
-                catalog,
+        DirectCallService directCalls = new DirectCallService(catalog,
                 commandRuntime,
-                bindings,
                 new WorkerEndpointDirectory(Map.of(
                         ADAPTER_ID,
-                        new EndpointProperties(
+                        new Endpoint(
                                 WorkerTransportType.WEBSOCKET,
                                 URI.create("ws://127.0.0.1:18083/worker")
                         )
-                )),
+                ), Map.of(WorkerTransportType.WEBSOCKET, ADAPTER_ID)),
                 new DirectCallRegistry(properties),
-                properties
-        );
-        WorkerDeliveryService workerDelivery = new WorkerDeliveryService(
-                commandRuntime,
+                properties);
+        WorkerDeliveryService workerDelivery = new WorkerDeliveryService(commandRuntime,
                 resultRuntime,
-                bindings,
+                catalog,
                 directCalls,
                 mock(WorkerServiceabilityRuntime.class),
-                mock(com.xa.mass.server.worker.resource.WorkerResourceCommandService.class)
-        );
+                mock(com.xa.mass.server.worker.resource.WorkerResourceCommandService.class));
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

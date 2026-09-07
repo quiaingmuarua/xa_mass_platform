@@ -58,7 +58,7 @@ public final class RedisWorkerServiceabilityRuntime
             return worker_ids
             """;
 
-    private static final String APPEND_ADAPTER_EVIDENCE_RESULTS = """
+    private static final String APPEND_NETWORK_EVIDENCE_RESULTS = """
             local batch_size = #ARGV - 1
             local current_size = redis.call('LLEN', KEYS[1])
             if current_size + batch_size > tonumber(ARGV[1]) then
@@ -208,7 +208,7 @@ public final class RedisWorkerServiceabilityRuntime
     }
 
     @Override
-    public int appendAdapterEvidenceResults(List<DeliveryReport> reports) {
+    public int appendNetworkEvidenceResults(List<DeliveryReport> reports) {
         if (reports == null) {
             throw new IllegalArgumentException("reports must be present");
         }
@@ -217,23 +217,21 @@ public final class RedisWorkerServiceabilityRuntime
         }
         if (reports.size() > MAX_BATCH_SIZE) {
             throw new IllegalArgumentException(
-                    "Adapter evidence append exceeds 100 Reports"
+                    "Network evidence append exceeds 100 Reports"
             );
         }
         List<String> arguments = new ArrayList<>(reports.size() + 1);
         arguments.add(Integer.toString(resultCapacity));
         for (DeliveryReport report : reports) {
-            if (report == null
-                    || report.src() != DeliveryEndpoint.ADAPTER
-                    || report.dst() != DeliveryEndpoint.KERNEL) {
+            if (!validEvidenceProducer(report)) {
                 throw new IllegalArgumentException(
-                        "Adapter evidence source or destination is invalid"
+                        "Network evidence source or destination is invalid"
                 );
             }
             arguments.add(codec.encodeDeliveryReport(report));
         }
         Long accepted = commands().eval(
-                APPEND_ADAPTER_EVIDENCE_RESULTS,
+                APPEND_NETWORK_EVIDENCE_RESULTS,
                 ScriptOutputType.INTEGER,
                 new String[]{resultKey()},
                 arguments.toArray(String[]::new)
@@ -242,14 +240,14 @@ public final class RedisWorkerServiceabilityRuntime
                 || accepted < 0L
                 || accepted > reports.size()) {
             throw new IllegalStateException(
-                    "Redis Adapter evidence append returned an invalid response"
+                    "Redis Network evidence append returned an invalid response"
             );
         }
         return accepted.intValue();
     }
 
     @Override
-    public List<DeliveryReport> consumeAdapterEvidenceResults(int limit) {
+    public List<DeliveryReport> consumeNetworkEvidenceResults(int limit) {
         requireLimit(limit);
         List<String> encoded = commands().lpop(resultKey(), limit);
         if (encoded == null || encoded.isEmpty()) {
@@ -258,13 +256,19 @@ public final class RedisWorkerServiceabilityRuntime
         List<DeliveryReport> reports = new ArrayList<>(encoded.size());
         for (String value : encoded) {
             DeliveryReport report = codec.decodeDeliveryReport(value);
-            if (report != null
-                    && report.src() == DeliveryEndpoint.ADAPTER
-                    && report.dst() == DeliveryEndpoint.KERNEL) {
+            if (validEvidenceProducer(report)) {
                 reports.add(report);
             }
         }
         return List.copyOf(reports);
+    }
+
+    private static boolean validEvidenceProducer(DeliveryReport report) {
+        return report != null && report.dst() == DeliveryEndpoint.KERNEL
+                && (report.src() == DeliveryEndpoint.ADAPTER
+                || report.src() == DeliveryEndpoint.SERVER
+                && "system-polling".equals(report.sourceId())
+                && "platform.server.worker-poll.observed".equals(report.messageType()));
     }
 
     private RedisCommands<String, String> commands() {

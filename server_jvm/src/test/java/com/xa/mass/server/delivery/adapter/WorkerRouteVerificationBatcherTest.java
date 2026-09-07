@@ -7,7 +7,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier.Decision;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -36,17 +37,14 @@ class WorkerRouteVerificationBatcherTest {
     @Test
     void submitsOneRequestImmediatelyOnTheResidentVirtualThread()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
         CountDownLatch called = new CountDownLatch(1);
         AtomicReference<Thread> ownerThread = new AtomicReference<>();
-        when(bindings.currentEndpointManagerIdsAsync(List.of("worker-1")))
+        when(bindings.getWorkerDescriptorsAsync(List.of("worker-1")))
                 .thenAnswer(ignored -> {
                     ownerThread.set(Thread.currentThread());
                     called.countDown();
-                    return CompletableFuture.completedFuture(Map.of(
-                            "worker-1",
-                            "adapter-1"
-                    ));
+                    return CompletableFuture.completedFuture(Map.of("worker-1", new WorkerDescriptor("worker-1", "group", "adapter-1")));
                 });
         WorkerRouteVerificationBatcher batcher = batcher(
                 bindings,
@@ -68,19 +66,19 @@ class WorkerRouteVerificationBatcherTest {
         assertThat(ownerThread.get().getName()).isEqualTo(
                 "worker-route-verification"
         );
-        verify(bindings).currentEndpointManagerIdsAsync(List.of("worker-1"));
+        verify(bindings).getWorkerDescriptorsAsync(List.of("worker-1"));
     }
 
     @Test
     void drainsTwoHundredAndFiveQueuedRequestsInBoundedBatches()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        CompletableFuture<Map<String, String>> firstLookup =
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
+        CompletableFuture<Map<String, WorkerDescriptor>> firstLookup =
                 new CompletableFuture<>();
         CountDownLatch firstCalled = new CountDownLatch(1);
         List<List<String>> ownerBatches = new CopyOnWriteArrayList<>();
         AtomicInteger calls = new AtomicInteger();
-        when(bindings.currentEndpointManagerIdsAsync(anyList()))
+        when(bindings.getWorkerDescriptorsAsync(anyList()))
                 .thenAnswer(invocation -> {
                     List<String> workerIds = List.copyOf(
                             invocation.getArgument(0)
@@ -90,11 +88,11 @@ class WorkerRouteVerificationBatcherTest {
                         firstCalled.countDown();
                         return firstLookup;
                     }
-                    LinkedHashMap<String, String> result =
+                    LinkedHashMap<String, WorkerDescriptor> result =
                             new LinkedHashMap<>();
                     workerIds.forEach(workerId -> result.put(
                             workerId,
-                            "adapter-1"
+                            new WorkerDescriptor(workerId, "group", "adapter-1")
                     ));
                     return CompletableFuture.completedFuture(result);
                 });
@@ -117,7 +115,7 @@ class WorkerRouteVerificationBatcherTest {
                     "worker-" + index
             ));
         }
-        firstLookup.complete(Map.of("warmup", "adapter-1"));
+        firstLookup.complete(Map.of("warmup", new WorkerDescriptor("warmup", "group", "adapter-1")));
 
         assertThat(warmup.get(1, TimeUnit.SECONDS)).isEqualTo(
                 Decision.VERIFIED
@@ -139,13 +137,13 @@ class WorkerRouteVerificationBatcherTest {
     @Test
     void deduplicatesBindingReadsButCompletesEachAdapterDecision()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        CompletableFuture<Map<String, String>> firstLookup =
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
+        CompletableFuture<Map<String, WorkerDescriptor>> firstLookup =
                 new CompletableFuture<>();
         CountDownLatch firstCalled = new CountDownLatch(1);
         List<List<String>> ownerBatches = new CopyOnWriteArrayList<>();
         AtomicInteger calls = new AtomicInteger();
-        when(bindings.currentEndpointManagerIdsAsync(anyList()))
+        when(bindings.getWorkerDescriptorsAsync(anyList()))
                 .thenAnswer(invocation -> {
                     List<String> ids = List.copyOf(invocation.getArgument(0));
                     ownerBatches.add(ids);
@@ -153,10 +151,7 @@ class WorkerRouteVerificationBatcherTest {
                         firstCalled.countDown();
                         return firstLookup;
                     }
-                    return CompletableFuture.completedFuture(Map.of(
-                            "worker-1",
-                            "adapter-a"
-                    ));
+                    return CompletableFuture.completedFuture(Map.of("worker-1", new WorkerDescriptor("worker-1", "group", "adapter-a")));
                 });
         WorkerRouteVerificationBatcher batcher = batcher(
                 bindings,
@@ -181,7 +176,7 @@ class WorkerRouteVerificationBatcherTest {
                 "adapter-a",
                 "worker-missing"
         );
-        firstLookup.complete(Map.of("warmup", "adapter-a"));
+        firstLookup.complete(Map.of("warmup", new WorkerDescriptor("warmup", "group", "adapter-a")));
 
         assertThat(warmup.get(1, TimeUnit.SECONDS)).isEqualTo(
                 Decision.VERIFIED
@@ -204,11 +199,11 @@ class WorkerRouteVerificationBatcherTest {
     @Test
     void queueFullAndCloseCompleteEveryRequestExceptionally()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        CompletableFuture<Map<String, String>> blocked =
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
+        CompletableFuture<Map<String, WorkerDescriptor>> blocked =
                 new CompletableFuture<>();
         CountDownLatch called = new CountDownLatch(1);
-        when(bindings.currentEndpointManagerIdsAsync(anyList()))
+        when(bindings.getWorkerDescriptorsAsync(anyList()))
                 .thenAnswer(ignored -> {
                     called.countDown();
                     return blocked;
@@ -252,20 +247,17 @@ class WorkerRouteVerificationBatcherTest {
     @Test
     void timeoutFailsCurrentBacklogWithoutBlockingLaterRequests()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
         CountDownLatch firstCalled = new CountDownLatch(1);
         AtomicInteger calls = new AtomicInteger();
-        when(bindings.currentEndpointManagerIdsAsync(anyList()))
+        when(bindings.getWorkerDescriptorsAsync(anyList()))
                 .thenAnswer(invocation -> {
                     if (calls.getAndIncrement() == 0) {
                         firstCalled.countDown();
-                        return new CompletableFuture<Map<String, String>>();
+                        return new CompletableFuture<Map<String, WorkerDescriptor>>();
                     }
                     List<String> ids = invocation.getArgument(0);
-                    return CompletableFuture.completedFuture(Map.of(
-                            ids.get(0),
-                            "adapter-1"
-                    ));
+                    return CompletableFuture.completedFuture(Map.of(ids.get(0), new WorkerDescriptor(ids.get(0), "group", "adapter-1")));
                 });
         WorkerRouteVerificationBatcher batcher = batcher(
                 bindings,
@@ -297,19 +289,16 @@ class WorkerRouteVerificationBatcherTest {
     @Test
     void ownerFailureIsNotRetriedAndDoesNotPoisonTheNextBatch()
             throws Exception {
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
+        WorkerResourceCatalog bindings = mock(WorkerResourceCatalog.class);
         AtomicInteger calls = new AtomicInteger();
         RuntimeException ownerFailure = new RuntimeException("offline");
-        when(bindings.currentEndpointManagerIdsAsync(anyList()))
+        when(bindings.getWorkerDescriptorsAsync(anyList()))
                 .thenAnswer(invocation -> {
                     if (calls.getAndIncrement() == 0) {
                         return CompletableFuture.failedFuture(ownerFailure);
                     }
                     List<String> ids = invocation.getArgument(0);
-                    return CompletableFuture.completedFuture(Map.of(
-                            ids.get(0),
-                            "adapter-1"
-                    ));
+                    return CompletableFuture.completedFuture(Map.of(ids.get(0), new WorkerDescriptor(ids.get(0), "group", "adapter-1")));
                 });
         WorkerRouteVerificationBatcher batcher = batcher(
                 bindings,
@@ -328,7 +317,7 @@ class WorkerRouteVerificationBatcherTest {
     }
 
     private WorkerRouteVerificationBatcher batcher(
-            WorkerBindingService bindings,
+            WorkerResourceCatalog bindings,
             int capacity,
             Duration timeout
     ) {

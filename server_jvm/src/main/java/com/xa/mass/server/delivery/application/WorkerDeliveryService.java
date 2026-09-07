@@ -14,7 +14,8 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public final class WorkerDeliveryService {
 
     private final WorkerCommandRuntime commandRuntime;
     private final TaskResultRuntime taskResults;
-    private final WorkerBindingService bindings;
+    private final WorkerResourceCatalog workerCatalog;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
     private final WorkerResourceCommandService workerResources;
@@ -55,14 +56,14 @@ public final class WorkerDeliveryService {
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             TaskResultRuntime taskResults,
-            WorkerBindingService bindings,
+            WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
             WorkerResourceCommandService workerResources
     ) {
         this.commandRuntime = commandRuntime;
         this.taskResults = taskResults;
-        this.bindings = bindings;
+        this.workerCatalog = workerCatalog;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
         this.workerResources = workerResources;
@@ -73,6 +74,7 @@ public final class WorkerDeliveryService {
             String workerId
     ) {
         requirePointBinding(endpointManagerId, workerId);
+        observePolling(workerId);
         try {
             DeliveryCommand command = commandRuntime.consumeWorkerCommand(
                     endpointManagerId,
@@ -421,7 +423,7 @@ public final class WorkerDeliveryService {
             return new WorkerResultAppendCounts(0, reports.size());
         }
         try {
-            int accepted = serviceability.appendAdapterEvidenceResults(
+            int accepted = serviceability.appendNetworkEvidenceResults(
                     acceptedReports
             );
             if (accepted != acceptedReports.size()) {
@@ -585,7 +587,36 @@ public final class WorkerDeliveryService {
                     "Point Worker access requires system-polling"
             );
         }
-        bindings.requireCurrentEndpoint(endpointManagerId, workerId);
+        WorkerDescriptor binding;
+        try {
+            binding = workerCatalog.getWorkerDescriptors(List.of(workerId)).get(workerId);
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_UNAVAILABLE, operation, null, error);
+        }
+        if (binding == null) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_NOT_FOUND, operation,
+                    "Worker has no valid Endpoint binding", null);
+        }
+        if (!endpointManagerId.equals(binding.endpointManagerId())) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_CONFLICT, operation,
+                    "Worker is bound to a different Endpoint; connection does not migrate bindings", null);
+        }
+    }
+
+    private void observePolling(String workerId) {
+        try {
+            serviceability.appendNetworkEvidenceResults(List.of(DeliveryReport.create(
+                    DeliveryEndpoint.SERVER,
+                    WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                    DeliveryEndpoint.KERNEL,
+                    "platform.server.worker-poll.observed",
+                    "200",
+                    Jsons.toJson(Map.of("workerId", workerId, "observedAtMillis", System.currentTimeMillis())),
+                    "worker-serviceability-evidence:v1"
+            )));
+        } catch (RuntimeException ignored) {
+            // Best-effort: Command consumption proceeds; the next valid poll supplies fresh evidence.
+        }
     }
 
     private static void requireNonBlank(

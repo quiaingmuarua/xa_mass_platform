@@ -56,6 +56,22 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
 
+Endpoint overrides use `xa.mass.worker-endpoints`. Each configured transport
+type must name an explicit default in `defaults`; `endpoints` supplies the URI
+directory. For example, the `agentforge` profile declares
+`defaults.WEBSOCKET=agentforge-websocket`. Multiple WebSocket or Socket Endpoints
+may share a type. A changed default affects new Bindings only; existing Workers
+keep their actual Endpoint, and connecting to a different Adapter is rejected.
+Prepare request and response fields are unchanged.
+
+This Worker Binding cutover requires a stopped scope rebuild. There are no old
+configuration aliases or runtime compatibility reads. Preserve configuration and
+source Properties, stop all users of the explicitly selected scope, clear only
+that scope with SCAN plus UNLINK, then register Groups, Workers and Tasks again.
+The [Worker Redis contract](../../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md#scope-rebuild)
+owns the precise cleanup and generated-file boundaries. All newly registered
+Workers remain cold until valid network evidence activates them best-effort.
+
 The Boot JAR leaves Redis lifecycle to the caller. The checked Profile selects
 its fixed Java Pacer preset; the archive contains no Pacer policy file and
 offers no per-field policy tuning. Server remains the sole Java Pacer lifecycle

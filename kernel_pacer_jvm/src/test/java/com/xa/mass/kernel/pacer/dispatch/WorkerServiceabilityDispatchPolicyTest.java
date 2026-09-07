@@ -15,7 +15,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime.ProbeRequestOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -44,9 +44,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                         0,
                         0
                 )));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.holdObservedHotForServiceabilityProbes(
                 "group-1", Map.of("worker-1", opaqueScore)
         )).thenReturn(Map.of("worker-1", transitioned(-123L)));
@@ -93,9 +91,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                         1,
                         0
                 )));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.advanceObservedRecoveryRechecks(
                 "group-1", Map.of("worker-1", opaqueScore)
         )).thenReturn(Map.of("worker-1", transitioned(-321L)));
@@ -134,9 +130,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                         0,
                         0
                 )));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of(
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of(
                 "worker-1",
                 worker("worker-1", "system-polling")
         ));
@@ -210,9 +204,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                         0,
                         0
                 )));
-        when(catalog.getWorkerDescriptors(
-                "group-1", List.of("worker-1")
-        )).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.holdObservedHotForServiceabilityProbes(
                 "group-1", Map.of("worker-1", opaqueScore)
         )).thenReturn(Map.of("worker-1", transitioned(-123L)));

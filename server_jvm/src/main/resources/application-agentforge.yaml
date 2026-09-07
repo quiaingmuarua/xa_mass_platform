@@ -24,7 +24,9 @@ xa:
             maximum-encoded-properties-bytes: 67108864
             send-time-limit: 5s
             shutdown-timeout: 5s
-    worker-binding:
+    worker-endpoints:
+      defaults:
+        WEBSOCKET: agentforge-websocket
       endpoints:
         agentforge-websocket:
           transport-type: WEBSOCKET

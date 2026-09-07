@@ -1,270 +1,110 @@
 package com.xa.mass.server.worker.preparation;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointBinding;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
-import com.xa.mass.server.worker.identity.WorkerIdentityService;
-import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.*;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.endpoint.*;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.identity.*;
 import java.net.URI;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
 
 class WorkerPreparationServiceTest {
+    private final WorkerIdentityService identities = mock(WorkerIdentityService.class);
+    private final WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+    private final WorkerEndpointDirectory endpoints = mock(WorkerEndpointDirectory.class);
+    private final WorkerPreparationService service = new WorkerPreparationService(identities, endpoints, catalog);
+    private final Endpoint endpoint = new Endpoint( WorkerTransportType.WEBSOCKET,
+            URI.create("ws://127.0.0.1:18083/connect"));
 
-    @Test
-    void resolvesIdentityBeforeBindingAndReturnsOnePreparedCoordinate() {
-        WorkerIdentityService identities = mock(WorkerIdentityService.class);
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        Map<String, Object> properties = Map.of(
-                "clientWorkerKey",
-                "installation-1"
-        );
-        when(identities.register(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                properties
-        ))
-                .thenReturn("worker-1");
-        when(bindings.bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                properties
-        )).thenReturn(new WorkerEndpointBinding(
-                "adapter-1",
-                WorkerTransportType.WEBSOCKET,
-                URI.create("ws://127.0.0.1:18083/connect")
-        ));
+    @BeforeEach
+    void setup() {
+        when(identities.registrationKey(eq(WorkerRegistrationKind.CLIENT_KEY), anyMap()))
+                .thenAnswer(call -> ((Map<?, ?>) call.getArgument(1)).get("clientWorkerKey"));
+        when(catalog.getWorkerGroupDescriptors(List.of("group"))).thenReturn(Map.of(
+                "group", new WorkerGroupDescriptor("group", Map.of(), Set.of())));
+        when(endpoints.defaultEndpointId(WorkerTransportType.WEBSOCKET)).thenReturn("default");
+        when(endpoints.find("default")).thenReturn(endpoint);
+        when(identities.registerAll(eq("group"), anyList())).thenAnswer(call -> call.getArgument(1));
+        when(catalog.registerWorkers(eq("group"), anyList(), eq("default"))).thenAnswer(call -> {
+            Map<String, WorkerRegistrationResult> result = new LinkedHashMap<>();
+            ((List<String>) call.getArgument(1)).forEach(id -> result.put(id,
+                    new WorkerRegistrationResult(RegistrationStatus.OK, "default", null)));
+            return result;
+        });
+    }
 
-        WorkerPreparationService.PreparedWorker prepared =
-                new WorkerPreparationService(
-                        identities,
-                        bindings
-                ).prepareAll(
-                        "group-1",
-                        WorkerRegistrationKind.CLIENT_KEY,
-                        WorkerTransportType.WEBSOCKET,
-                        List.of(properties)
-                ).get(0);
-
-        assertThat(prepared.workerId()).isEqualTo("worker-1");
-        assertThat(prepared.endpointUri()).isEqualTo(
-                URI.create("ws://127.0.0.1:18083/connect")
-        );
-        InOrder order = inOrder(identities, bindings);
-        order.verify(identities).register(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                properties
-        );
-        order.verify(bindings).bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                properties
-        );
+    private List<WorkerPreparationService.PreparedWorker> prepare(List<Map<String, Object>> properties) {
+        return service.prepareAll("group", WorkerRegistrationKind.CLIENT_KEY, WorkerTransportType.WEBSOCKET, properties);
     }
 
     @Test
-    void repeatedPrepareConvergesAfterACompletedIdentityStage() {
-        WorkerIdentityService identities = mock(WorkerIdentityService.class);
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        Map<String, Object> properties = Map.of(
-                "clientWorkerKey",
-                "installation-1"
-        );
-        when(identities.register(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                properties
-        ))
-                .thenReturn("worker-1");
-        when(bindings.bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                properties
-        )).thenThrow(new IllegalStateException("endpoint unavailable"))
-                .thenReturn(new WorkerEndpointBinding(
-                        "adapter-1",
-                        WorkerTransportType.WEBSOCKET,
-                        URI.create("ws://127.0.0.1:18083/connect")
-                ));
-        WorkerPreparationService service = new WorkerPreparationService(
-                identities,
-                bindings
-        );
-
-        assertThatThrownBy(() -> service.prepareAll(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                List.of(properties)
-        )).isInstanceOf(IllegalStateException.class);
-        assertThat(service.prepareAll(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                List.of(properties)
-        ).get(0).workerId()).isEqualTo("worker-1");
-
-        verify(identities, times(2)).register(
-                "group-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                properties
-        );
-        verify(bindings, times(2)).bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.CLIENT_KEY,
-                WorkerTransportType.WEBSOCKET,
-                properties
-        );
+    void validatesThenReadsGroupAndDefaultBeforeOneIdentityAndCatalogBatch() {
+        var properties = java.util.stream.IntStream.range(0, 100)
+                .mapToObj(i -> Map.<String, Object>of("clientWorkerKey", "worker-" + i)).toList();
+        var ids = java.util.stream.IntStream.range(0, 100).mapToObj(i -> "worker-" + i).toList();
+        assertThat(prepare(properties)).extracting(WorkerPreparationService.PreparedWorker::workerId)
+                .containsExactlyElementsOf(ids);
+        var order = inOrder(catalog, endpoints, identities);
+        order.verify(catalog).getWorkerGroupDescriptors(List.of("group"));
+        order.verify(endpoints).defaultEndpointId(WorkerTransportType.WEBSOCKET);
+        order.verify(identities).registerAll("group", ids);
+        order.verify(catalog).registerWorkers("group", ids, "default");
     }
 
     @Test
-    void validatesWholeBatchThenPreparesInRequestOrder() {
-        WorkerIdentityService identities = mock(WorkerIdentityService.class);
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        Map<String, Object> first = Map.of(
-                "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", "1"
-        );
-        Map<String, Object> second = Map.of(
-                "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", "2"
-        );
-        when(identities.registrationKey(
-                WorkerRegistrationKind.SCENARIO_LAB,
-                first
-        )).thenReturn("lab:workers.jsonl:1");
-        when(identities.registrationKey(
-                WorkerRegistrationKind.SCENARIO_LAB,
-                second
-        )).thenReturn("lab:workers.jsonl:2");
-        when(identities.register(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                first
-        ))
-                .thenReturn("worker-1");
-        when(identities.register(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                second
-        ))
-                .thenReturn("worker-2");
-        when(bindings.bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                WorkerTransportType.WEBSOCKET,
-                first
-        )).thenReturn(new WorkerEndpointBinding(
-                "adapter-1",
-                WorkerTransportType.WEBSOCKET,
-                URI.create("ws://127.0.0.1:18083/one")
-        ));
-        when(bindings.bind(
-                "group-1",
-                "worker-2",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                WorkerTransportType.WEBSOCKET,
-                second
-        )).thenReturn(new WorkerEndpointBinding(
-                "adapter-1",
-                WorkerTransportType.WEBSOCKET,
-                URI.create("ws://127.0.0.1:18083/two")
-        ));
-
-        List<WorkerPreparationService.PreparedWorker> prepared =
-                new WorkerPreparationService(identities, bindings)
-                        .prepareAll(
-                                "group-1",
-                                WorkerRegistrationKind.SCENARIO_LAB,
-                                WorkerTransportType.WEBSOCKET,
-                                List.of(first, second)
-                        );
-
-        assertThat(prepared)
-                .extracting(
-                        WorkerPreparationService.PreparedWorker::workerId
-                )
-                .containsExactly("worker-1", "worker-2");
-        InOrder order = inOrder(identities, bindings);
-        order.verify(identities).register(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                first
-        );
-        order.verify(bindings).bind(
-                "group-1",
-                "worker-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                WorkerTransportType.WEBSOCKET,
-                first
-        );
-        order.verify(identities).register(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                second
-        );
-        order.verify(bindings).bind(
-                "group-1",
-                "worker-2",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                WorkerTransportType.WEBSOCKET,
-                second
-        );
+    void actualEndpointWinsOverNewDefaultAndMustMatchRequestedType() {
+        when(catalog.registerWorkers("group", List.of("w"), "default"))
+                .thenReturn(Map.of("w", new WorkerRegistrationResult(RegistrationStatus.NOOP, "actual", null)));
+        when(endpoints.find("actual")).thenReturn(new Endpoint( WorkerTransportType.WEBSOCKET,
+                URI.create("ws://127.0.0.1:19000/actual")));
+        assertThat(prepare(List.of(Map.of("clientWorkerKey", "w"))).getFirst().endpointUri())
+                .isEqualTo(URI.create("ws://127.0.0.1:19000/actual"));
+        when(endpoints.find("actual")).thenReturn(new Endpoint( WorkerTransportType.SOCKET,
+                URI.create("tcp://127.0.0.1:19000")));
+        assertCode(() -> prepare(List.of(Map.of("clientWorkerKey", "w"))), ServerErrorCode.WORKER_BINDING_CONFLICT);
     }
 
     @Test
-    void invalidBatchCreatesNoIdentityOrBindingSideEffects() {
-        WorkerIdentityService identities = mock(WorkerIdentityService.class);
-        WorkerBindingService bindings = mock(WorkerBindingService.class);
-        WorkerPreparationService service = new WorkerPreparationService(
-                identities,
-                bindings
-        );
-        Map<String, Object> duplicate = Map.of(
-                "labInventoryKey", "workers.jsonl",
-                "labInventoryLine", "1"
-        );
-        when(identities.registrationKey(
-                WorkerRegistrationKind.SCENARIO_LAB,
-                duplicate
-        )).thenReturn("lab:workers.jsonl:1");
+    void missingGroupOrDefaultCreatesNoIdentityRecords() {
+        when(catalog.getWorkerGroupDescriptors(List.of("group"))).thenReturn(Map.of());
+        assertCode(() -> prepare(List.of(Map.of("clientWorkerKey", "w"))), ServerErrorCode.WORKER_GROUP_NOT_FOUND);
+        verify(identities, never()).registerAll(any(), any());
+        when(catalog.getWorkerGroupDescriptors(List.of("group"))).thenReturn(Map.of(
+                "group", new WorkerGroupDescriptor("group", Map.of(), Set.of())));
+        when(endpoints.defaultEndpointId(WorkerTransportType.WEBSOCKET)).thenReturn(null);
+        assertCode(() -> prepare(List.of(Map.of("clientWorkerKey", "w"))), ServerErrorCode.WORKER_ENDPOINT_UNAVAILABLE);
+        verify(identities, never()).registerAll(any(), any());
+        verify(catalog, never()).registerWorkers(any(), any(), any());
+    }
 
-        assertThatThrownBy(() -> service.prepareAll(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                WorkerTransportType.WEBSOCKET,
-                List.of(duplicate, duplicate)
-        )).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+    @Test
+    void invalidWholeBatchHasNoResourceSideEffects() {
+        var duplicate = Map.<String,Object>of("clientWorkerKey", "same");
+        assertCode(() -> prepare(List.of(duplicate, duplicate)), ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST);
+        verifyNoInteractions(catalog, endpoints);
+        verify(identities, never()).registerAll(any(), any());
+    }
 
-        verify(identities, times(0)).register(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any()
-        );
-        verify(bindings, times(0)).bind(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any()
-        );
+    @Test
+    void unknownRegistrationCompletionIsRetryableAndRetainsIdentity() {
+        when(catalog.registerWorkers("group", List.of("w"), "default"))
+                .thenThrow(new IllegalStateException("unknown completion"))
+                .thenReturn(Map.of("w", new WorkerRegistrationResult(RegistrationStatus.NOOP, "default", null)));
+        assertCode(() -> prepare(List.of(Map.of("clientWorkerKey", "w"))), ServerErrorCode.WORKER_BINDING_UNAVAILABLE);
+        assertThat(prepare(List.of(Map.of("clientWorkerKey", "w"))).getFirst().workerId()).isEqualTo("w");
+        verify(identities, times(2)).registerAll("group", List.of("w"));
+    }
+
+    private static void assertCode(Runnable action, ServerErrorCode code) {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(code));
     }
 }

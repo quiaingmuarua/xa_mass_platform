@@ -9,7 +9,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime.ProbeRequestOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -134,7 +134,6 @@ final class WorkerServiceabilityDispatchPolicy {
                     workerScores.getScoreStates(workerGroupId, workerIds);
             Map<String, WorkerDescriptor> descriptors =
                     workerCatalog.getWorkerDescriptors(
-                            workerGroupId,
                             workerIds
                     );
             LinkedHashMap<String, Long> hotScores = new LinkedHashMap<>();

@@ -3,7 +3,8 @@ package com.xa.mass.server.delivery;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
@@ -25,7 +26,7 @@ public class WorkerDeliveryConfiguration {
     WorkerDeliveryService workerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             TaskResultRuntime taskResults,
-            WorkerBindingService bindings,
+            WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
             WorkerResourceCommandService workerResources
@@ -33,7 +34,7 @@ public class WorkerDeliveryConfiguration {
         return new WorkerDeliveryService(
                 commandRuntime,
                 taskResults,
-                bindings,
+                workerCatalog,
                 directCalls,
                 serviceability,
                 workerResources

@@ -3,19 +3,21 @@ package com.xa.mass.server.assembly.kernel;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationStatus;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
-import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -27,10 +29,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
 
 @Tag("redis-owner")
 class RedisWorkerOwnerRuntimeIntegrationTest {
@@ -41,7 +45,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisWorkerScoreCore scoreCore;
-    private RedisWorkerRuntime runtime;
     private RedisWorkerResourceCatalog catalog;
 
     @BeforeEach
@@ -52,17 +55,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
         scoreCore = new RedisWorkerScoreCore(redisClient, keyspace);
-        runtime = new RedisWorkerRuntime(redisClient, scoreCore, keyspace);
-        catalog = new RedisWorkerResourceCatalog(redisClient, keyspace);
+        catalog = new RedisWorkerResourceCatalog(redisClient, scoreCore, keyspace);
     }
 
     @AfterEach
     void tearDown() {
         if (redis != null) {
             testScope.cleanup(redis);
-        }
-        if (runtime != null) {
-            runtime.close();
         }
         if (catalog != null) {
             catalog.close();
@@ -76,69 +75,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         if (redisClient != null) {
             redisClient.shutdown();
         }
-    }
-
-    @Test
-    void groupRegistrationIsCreateOnlyAndWorkerUpsertInitializesScore() {
-        WorkerGroupDescriptor initialGroup = group(
-                "group-1",
-                Map.of("kind", "initial"),
-                Set.of("event.b", "event.a")
-        );
-        assertThat(catalog.registerWorkerGroup(initialGroup).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        WorkerGroupDescriptor updatedGroup = group(
-                "group-1",
-                Map.of("kind", "updated"),
-                Set.of("event.other")
-        );
-        assertThat(catalog.registerWorkerGroup(initialGroup).status())
-                .isEqualTo(WorkerRuntimeStatus.NOOP);
-        assertThat(catalog.registerWorkerGroup(updatedGroup).status())
-                .isEqualTo(WorkerRuntimeStatus.CONFLICT);
-        assertThat(catalog.getWorkerGroupDescriptors(List.of("group-1")))
-                .containsEntry("group-1", initialGroup);
-
-        WorkerDeclaration first = worker(
-                "worker-1",
-                "group-1",
-                "endpoint-1"
-        );
-        assertThat(runtime.upsertWorker(first).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(redis.hget(metadataKey("group-1"), "worker-1"))
-                .isEqualTo(metadataJson(
-                        "worker-1",
-                        "group-1",
-                        "endpoint-1"
-                ));
-
-        var initialScore = scoreCore.getScoreStates(
-                "group-1",
-                List.of("worker-1")
-        ).get("worker-1");
-        assertThat(initialScore).isNotNull();
-        assertThat(initialScore.polarity())
-                .isEqualTo(WorkerScorePolarity.HOT_ACQUIRE);
-        assertThat(initialScore.laneRank())
-                .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
-
-        assertThat(runtime.upsertWorker(worker(
-                "worker-1",
-                "group-1",
-                "endpoint-1"
-        )).status()).isEqualTo(WorkerRuntimeStatus.NOOP);
-
-        assertThat(redis.hget(metadataKey("group-1"), "worker-1"))
-                .isEqualTo(metadataJson(
-                        "worker-1",
-                        "group-1",
-                        "endpoint-1"
-                ));
-        assertThat(scoreCore.getScoreStates(
-                "group-1",
-                List.of("worker-1")
-        ).get("worker-1").score()).isEqualTo(initialScore.score());
     }
 
     @Test
@@ -158,6 +94,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         var executor = Executors.newFixedThreadPool(2);
         try (var competing = new RedisWorkerResourceCatalog(
                 redisClient,
+                scoreCore,
                 keyspace
         )) {
             var firstResult = executor.submit(() -> {
@@ -174,8 +111,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     firstResult.get().status(),
                     secondResult.get().status()
             )).containsExactlyInAnyOrder(
-                    WorkerRuntimeStatus.OK,
-                    WorkerRuntimeStatus.CONFLICT
+                    RegistrationStatus.OK,
+                    RegistrationStatus.CONFLICT
             );
             WorkerGroupDescriptor stored = catalog
                     .getWorkerGroupDescriptors(List.of("group-race"))
@@ -196,7 +133,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "group-1",
                 Map.of(),
                 Set.of()
-        )).status()).isEqualTo(WorkerRuntimeStatus.INVALID);
+        )).status()).isEqualTo(RegistrationStatus.INVALID);
         assertThat(redis.hget(groupsKey(), "group-1")).isEqualTo(stored);
     }
 
@@ -207,7 +144,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     "group-%03d".formatted(index),
                     Map.of("index", index),
                     Set.of("event")
-            )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+            )).status()).isEqualTo(RegistrationStatus.OK);
         }
 
         assertThat(catalog.sampleWorkerGroupDescriptors(1)).hasSize(1);
@@ -236,184 +173,186 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void ownerFenceAndMissingStagesConvergeThroughUpsert() {
-        catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
-        catalog.registerWorkerGroup(group("group-2", Map.of(), Set.of("event")));
-        WorkerDeclaration declaration = worker(
-                "worker-1",
-                "group-1",
-                "endpoint-1"
-        );
-        assertThat(runtime.upsertWorker(declaration).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        double score = redis.zscore(scoreKey("group-1"), "worker-1");
-
-        assertThat(runtime.upsertWorker(worker(
-                "worker-1",
-                "group-2",
-                "endpoint-1"
-        )).status()).isEqualTo(WorkerRuntimeStatus.CONFLICT);
-        assertThat(runtime.upsertWorker(worker(
-                "worker-1",
-                "group-1",
-                "endpoint-other"
-        )).status()).isEqualTo(WorkerRuntimeStatus.CONFLICT);
-        assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
-                .isEqualTo(score);
-
-        redis.zrem(scoreKey("group-1"), "worker-1");
-        assertThat(runtime.upsertWorker(declaration).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
-                .isNotNull();
-
-        redis.hdel(metadataKey("group-1"), "worker-1");
-        assertThat(runtime.upsertWorker(declaration).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(redis.hget(metadataKey("group-1"), "worker-1"))
-                .isNotNull();
-
-        redis.hdel(workerIdOwnersKey(), "worker-1");
-        assertThat(runtime.upsertWorker(declaration).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(redis.hget(workerIdOwnersKey(), "worker-1"))
-                .isEqualTo("group-1");
-    }
-
-    @Test
-    void resolvesBoundedWorkerGroupOwnersWithoutDescriptorScan() {
-        assertThat(catalog.registerWorkerGroup(group(
-                "group-1",
-                Map.of(),
-                Set.of()
-        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(catalog.registerWorkerGroup(group(
-                "group-2",
-                Map.of(),
-                Set.of()
-        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(runtime.upsertWorker(worker(
-                "worker-1",
-                "group-1",
-                "endpoint-1"
-        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(runtime.upsertWorker(worker(
-                "worker-2",
-                "group-2",
-                "endpoint-1"
-        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
-
-        Map<String, String> owners = catalog.getWorkerGroupIds(List.of(
-                "worker-2",
-                "missing",
-                "worker-1"
-        ));
-
-        assertThat(owners.keySet()).containsExactly(
-                "worker-2",
-                "missing",
-                "worker-1"
-        );
-        assertThat(owners)
-                .containsEntry("worker-2", "group-2")
-                .containsEntry("missing", null)
-                .containsEntry("worker-1", "group-1");
-    }
-
-    @Test
-    void catalogSamplesOnlyMinimalWorkerMetadata() {
-        Map<String, String> metadata = new LinkedHashMap<>();
-        for (int index = 0; index < 120; index++) {
-            String workerId = "worker-%03d".formatted(index);
-            metadata.put(
-                    workerId,
-                    metadataJson(
-                            workerId,
-                            "group-1",
-                            "endpoint-1"
-                    )
-            );
-        }
-        redis.hset(metadataKey("group-1"), metadata);
-        redis.hset(
-                metadataKey("group-2"),
-                "other-worker",
-                metadataJson(
-                        "other-worker",
-                        "group-2",
-                        "endpoint-1"
-                )
-        );
-
-        Map<String, WorkerDescriptor> one =
-                catalog.sampleWorkerDescriptors("group-1", 1);
-        Map<String, WorkerDescriptor> hundred =
-                catalog.sampleWorkerDescriptors("group-1", 100);
-
-        assertThat(one).hasSize(1);
-        assertThat(hundred).hasSize(100);
-        assertThat(hundred).doesNotContainKey("other-worker");
-        assertThat(hundred.values()).allSatisfy(descriptor -> {
-            assertThat(descriptor).isNotNull();
-            assertThat(descriptor.workerGroupId()).isEqualTo("group-1");
+    void registersOneHundredColdMembersAndPreservesExistingBindings() {
+        var group = group("group-1", Map.of("kind", "initial"), Set.of("event"));
+        assertThat(catalog.registerWorkerGroup(group).status()).isEqualTo(RegistrationStatus.OK);
+        assertThat(catalog.registerWorkerGroup(group).status()).isEqualTo(RegistrationStatus.NOOP);
+        var ids = java.util.stream.IntStream.range(0, 100).mapToObj(i -> "worker-" + i).toList();
+        var first = catalog.registerWorkers("group-1", ids, "endpoint-1");
+        assertThat(first.keySet()).containsExactlyElementsOf(ids);
+        assertThat(first.values()).allSatisfy(result -> {
+            assertThat(result.status()).isEqualTo(RegistrationStatus.OK);
+            assertThat(result.endpointManagerId()).isEqualTo("endpoint-1");
         });
-
-        redis.hset(metadataKey("invalid-group"), Map.of(
-                "broken", "{not-json",
-                "wrong-id", metadataJson(
-                        "another-id",
-                        "invalid-group",
-                        "endpoint-1"
-                )
-        ));
-        Map<String, WorkerDescriptor> unreadable =
-                catalog.sampleWorkerDescriptors("invalid-group", 100);
-        assertThat(unreadable)
-                .containsOnlyKeys("broken", "wrong-id");
-        assertThat(unreadable.values()).containsOnlyNulls();
-
-        assertThatThrownBy(() -> catalog.sampleWorkerDescriptors("", 1))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() ->
-                catalog.sampleWorkerDescriptors("group-1", 0))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() ->
-                catalog.sampleWorkerDescriptors("group-1", 101))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(redis.hget(bindingsKey(), "worker-0"))
+                .isEqualTo("{\"endpointManagerId\":\"endpoint-1\",\"workerGroupId\":\"group-1\"}");
+        assertThat(redis.zmscore(scoreKey("group-1"), ids.toArray(String[]::new)))
+                .containsOnly(-200.0);
+        assertThat(catalog.registerWorkers("group-1", ids, "new-default").values()).allSatisfy(result -> {
+            assertThat(result.status()).isEqualTo(RegistrationStatus.NOOP);
+            assertThat(result.endpointManagerId()).isEqualTo("endpoint-1");
+        });
+        assertThat(scoreCore.observeDueHotScoreCandidates("group-1", null, 100)).isEmpty();
+        assertThat(scoreCore.acquireHotCandidatesBefore("group-1", redisTimeMillis(), Long.MAX_VALUE, 100)).isEmpty();
+        assertThat(scoreCore.acquireRecoveryRecheckCandidates("group-1", 0, 100)).isEmpty();
     }
 
     @Test
-    void repeatedUpsertPreservesAllExistingScoreShapes() {
-        catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
-        WorkerDeclaration declaration = worker(
-                "worker-1",
-                "group-1",
-                "endpoint-1"
-        );
-        runtime.upsertWorker(declaration);
-        long initialScore = redis.zscore(
-                scoreKey("group-1"),
-                "worker-1"
-        ).longValue();
-        long[] existingScores = {
-                initialScore,
-                initialScore + 1,
-                -initialScore,
-                initialScore + WorkerScoreCore.SLOT_FACTOR
-        };
-        for (long existingScore : existingScores) {
-            redis.zadd(scoreKey("group-1"), existingScore, "worker-1");
-            assertThat(runtime.upsertWorker(worker(
-                    "worker-1",
-                    "group-1",
-                    "endpoint-1"
-            )).status()).isIn(
-                    WorkerRuntimeStatus.OK,
-                    WorkerRuntimeStatus.NOOP
-            );
-            assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
-                    .isEqualTo((double) existingScore);
+    void missingGroupCrossGroupAndCorruptBindingDoNotWriteScores() {
+        assertThat(catalog.registerWorkers("missing", List.of("w"), "endpoint").get("w").status())
+                .isEqualTo(RegistrationStatus.NOT_FOUND);
+        assertThat(redis.hget(bindingsKey(), "w")).isNull();
+        catalog.registerWorkerGroup(group("g1", Map.of(), Set.of()));
+        catalog.registerWorkerGroup(group("g2", Map.of(), Set.of()));
+        catalog.registerWorkers("g1", List.of("w"), "endpoint");
+        assertThat(catalog.registerWorkers("g2", List.of("w"), "endpoint").get("w").status())
+                .isEqualTo(RegistrationStatus.CONFLICT);
+        assertThat(redis.zscore(scoreKey("g2"), "w")).isNull();
+        List<String> corrupt = List.of("not-json", "[]", "null", "{}",
+                "{\"workerGroupId\":\"g1\",\"endpointManagerId\":\"\"}",
+                "{\"workerGroupId\":\"g1\",\"endpointManagerId\":4}",
+                "{\"workerGroupId\":\"g1\",\"endpointManagerId\":\"e\",\"workerId\":\"bad\"}",
+                "{\"workerGroupId\":\"g1\",\"endpointManagerId\":\"e\",\"properties\":{}}");
+        for (String stored : corrupt) {
+            redis.hset(bindingsKey(), "bad", stored);
+            var results = catalog.registerWorkers("g1", List.of("bad", "accepted"), "endpoint");
+            assertThat(results.get("bad").status()).isEqualTo(RegistrationStatus.INVALID);
+            assertThat(results.get("accepted").status()).isIn(RegistrationStatus.OK, RegistrationStatus.NOOP);
+            assertThat(redis.hget(bindingsKey(), "bad")).isEqualTo(stored);
+            assertThat(redis.zscore(scoreKey("g1"), "bad")).isNull();
+            assertThat(catalog.getWorkerDescriptors(List.of("bad"))).containsEntry("bad", null);
         }
+    }
+
+    @Test
+    void concurrentDifferentDefaultsReturnTheSameWinner() throws Exception {
+        catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
+        CountDownLatch start = new CountDownLatch(1);
+        try (var competing = new RedisWorkerResourceCatalog(redisClient, scoreCore, keyspace);
+             var executor = Executors.newFixedThreadPool(8)) {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<String>>();
+            for (int i = 0; i < 32; i++) {
+                String endpoint = "endpoint-" + i % 2;
+                var owner = i % 2 == 0 ? catalog : competing;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    var result = owner.registerWorkers("g", List.of("w"), endpoint).get("w");
+                    assertThat(result.status()).isIn(RegistrationStatus.OK, RegistrationStatus.NOOP);
+                    return result.endpointManagerId();
+                }));
+            }
+            start.countDown();
+            String actual = futures.getFirst().get(10, TimeUnit.SECONDS);
+            for (var future : futures) assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo(actual);
+            assertThat(catalog.getWorkerDescriptors(List.of("w")))
+                    .containsEntry("w", worker("w", "g", actual));
+            assertThat(redis.zcard(scoreKey("g"))).isEqualTo(1);
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void unknownScoreCompletionLeavesBindingAndRetryFillsOnlyMissingMembers(boolean committed) {
+        catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
+        WorkerScoreCore failing = mock(WorkerScoreCore.class);
+        var failure = new IllegalStateException("unknown Score completion");
+        when(failing.initializeRegisteredScores("g", List.of("w"))).thenAnswer(call -> {
+            if (committed) scoreCore.initializeRegisteredScores("g", List.of("w"));
+            throw failure;
+        });
+        try (var resources = new RedisWorkerResourceCatalog(redisClient, failing, keyspace)) {
+            assertThatThrownBy(() -> resources.registerWorkers("g", List.of("w"), "endpoint"))
+                    .isSameAs(failure);
+        }
+        assertThat(catalog.getWorkerDescriptors(List.of("w"))).containsEntry("w", worker("w", "g", "endpoint"));
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(committed ? -200.0 : null);
+        var retry = catalog.registerWorkers("g", List.of("w"), "different-default").get("w");
+        assertThat(retry.status()).isEqualTo(committed ? RegistrationStatus.NOOP : RegistrationStatus.OK);
+        assertThat(retry.endpointManagerId()).isEqualTo("endpoint");
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-200.0);
+        redis.hdel(bindingsKey(), "w");
+        assertThat(catalog.registerWorkers("g", List.of("w"), "endpoint").get("w").status())
+                .isEqualTo(RegistrationStatus.OK);
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-200.0);
+    }
+
+    @Test
+    void registrationNxPreservesEveryScoreShapeIncludingInvalidAndPaused() {
+        catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
+        long now = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long[] shapes = {0, -200, -201, 1, -1,
+                workerScore(1, now, 5, 0), workerScore(1, now, 5, 1),
+                workerScore(-1, now, 5, 0), workerScore(-1, now, 5, 1),
+                workerScore(1, now + 600, 9, 1), workerScore(-1, now + 600, 9, 1),
+                workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0, 0),
+                workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 99, 1)};
+        for (long shape : shapes) {
+            redis.zadd(scoreKey("g"), shape, "w");
+            catalog.registerWorkers("g", List.of("w"), "endpoint");
+            assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo((double) shape);
+        }
+    }
+
+    @Test
+    void bindingReadsAreBoundedAndIndependentOfScoreWhileSamplesUseRegisteredMembers() {
+        var unused = mock(WorkerScoreCore.class);
+        redis.hset(bindingsKey(), Map.of("w", bindingJson("g", "endpoint"),
+                "address-only", bindingJson("g", "endpoint"), "wrong-group", bindingJson("other", "endpoint")));
+        try (var resources = new RedisWorkerResourceCatalog(redisClient, unused, keyspace)) {
+            assertThat(resources.getWorkerDescriptors(List.of("w", "missing")))
+                    .containsEntry("w", worker("w", "g", "endpoint")).containsEntry("missing", null);
+            assertThat(resources.getWorkerDescriptorsAsync(List.of("w")).join())
+                    .containsEntry("w", worker("w", "g", "endpoint"));
+            verifyNoInteractions(unused);
+        }
+        scoreCore.initializeRegisteredScores("g", List.of("w", "missing", "wrong-group"));
+        assertThat(catalog.sampleWorkerDescriptors("g", 100))
+                .containsOnlyKeys("w", "missing", "wrong-group")
+                .containsEntry("w", worker("w", "g", "endpoint"))
+                .containsEntry("missing", null).containsEntry("wrong-group", null);
+        var tooMany = java.util.stream.IntStream.range(0, 101).mapToObj(i -> "w" + i).toList();
+        assertThatThrownBy(() -> catalog.getWorkerDescriptors(tooMany)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.getWorkerDescriptorsAsync(tooMany)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.registerWorkers("g", List.of("w", "w"), "e")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.registerWorkers("g", tooMany, "e")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.registerWorkers("g", List.of(), "e")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void obsoleteStorageCannotSupplyBindingsOrRegisteredMembers() {
+        redis.hset(keyspace.base() + ":worker:id_owners", "old", "g");
+        redis.hset(keyspace.base() + ":worker:metadata:g", "old", bindingJson("g", "e"));
+        redis.hset(keyspace.base() + ":worker:binding:57", "old", "e");
+        assertThat(catalog.getWorkerDescriptors(List.of("old"))).containsEntry("old", null);
+        assertThat(catalog.sampleWorkerDescriptors("g", 100)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"adapter", "system-polling"})
+    void networkMechanismRequiresBindingAndPreservesLeaseDirtyAndPause(String endpoint) {
+        catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
+        catalog.registerWorkers("g", List.of("cold", "lease", "pause", "binding-only"), endpoint);
+        redis.zrem(scoreKey("g"), "binding-only");
+        long now = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long lease = workerScore(-1, now + 600, 5, 1);
+        long pause = workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 9, 1);
+        redis.zadd(scoreKey("g"), lease, "lease");
+        redis.zadd(scoreKey("g"), pause, "pause");
+        var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(catalog, scoreCore);
+        var wrong = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation("wrong", now * 100);
+        events.onAvailable(Map.of("cold", wrong, "lease", wrong, "pause", wrong));
+        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo(-200.0);
+        assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) lease);
+
+        // No retained first observation exists. A later actual observation alone activates.
+        var valid = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation(endpoint, now * 100);
+        events.onAvailable(Map.of("cold", valid, "lease", valid, "pause", valid,
+                "binding-only", valid, "missing", valid));
+        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0, 0));
+        assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) -lease);
+        assertThat(redis.zscore(scoreKey("g"), "pause")).isEqualTo((double) -pause);
+        assertThat(redis.zscore(scoreKey("g"), "binding-only")).isNull();
+        assertThat(redis.zscore(scoreKey("g"), "missing")).isNull();
     }
 
     @Test
@@ -1180,19 +1119,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(catalog.getWorkerGroupDescriptors(List.of("group-1")))
                 .containsEntry("group-1", null);
 
-        redis.hset(
-                metadataKey("group-1"),
-                "worker-1",
-                metadataJson(
-                        "another-worker",
-                        "group-1",
-                        "endpoint-1"
-                )
-        );
-        assertThat(catalog.getWorkerDescriptors(
-                "group-1",
-                List.of("worker-1")
-        )).containsEntry("worker-1", null);
     }
 
     private static WorkerGroupDescriptor group(
@@ -1207,39 +1133,25 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         );
     }
 
-    private static WorkerDeclaration worker(
+    private static WorkerDescriptor worker(
             String workerId,
             String workerGroupId,
             String endpointManagerId
     ) {
-        return new WorkerDeclaration(
+        return new WorkerDescriptor(
                 workerId,
                 workerGroupId,
                 endpointManagerId
         );
     }
 
-    private static String metadataJson(
-            String workerId,
-            String workerGroupId,
-            String endpointManagerId
-    ) {
-        return "{\"endpointManagerId\":\"" + endpointManagerId + "\","
-                + "\"workerGroupId\":\"" + workerGroupId + "\","
-                + "\"workerId\":\"" + workerId + "\"}";
+    private static String bindingJson(String group, String endpoint) {
+        return com.xa.mass.workerdelivery.json.Jsons.toJson(Map.of(
+                "workerGroupId", group, "endpointManagerId", endpoint));
     }
 
-    private String groupsKey() {
-        return keyspace.base() + ":worker:groups";
-    }
-
-    private String metadataKey(String workerGroupId) {
-        return keyspace.base() + ":worker:metadata:" + workerGroupId;
-    }
-
-    private String workerIdOwnersKey() {
-        return keyspace.base() + ":worker:id_owners";
-    }
+    private String groupsKey() { return keyspace.base() + ":worker:groups"; }
+    private String bindingsKey() { return keyspace.base() + ":worker:bindings"; }
 
     private String scoreKey(String workerGroupId) {
         return keyspace.base() + ":worker:score:" + workerGroupId;

@@ -12,7 +12,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
 | Worker Matching | Worker/Platform Properties, PRECOMPUTED Candidate Rules and ordered filtering of a bounded held pool |
-| Server | Runtime API, validation, identity/Binding, cross-owner use cases, routing, correlation and assembly |
+| Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
 
@@ -48,8 +48,8 @@ Result and requesting finality are ordered Owner calls, not a transaction or
 an unconditional repair guarantee. The detailed failure windows are in
 [Result storage](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
 
-Worker Prepare establishes Server-owned identity/Binding and initializes
-minimal Kernel resources. Its Properties input supplies registration coordinates
+Worker Prepare resolves Server-owned external identity, then establishes Kernel
+Binding and cold Score membership. Valid network observations request activation. Its Properties input supplies registration coordinates
 only; it does not create or refresh Matching facts. Transparent
 reconnect sends identity only. Adapter Route evidence may feed the optional
 Kernel Serviceability policy, but Route and local Properties snapshots are

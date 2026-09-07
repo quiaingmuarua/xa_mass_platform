@@ -24,9 +24,11 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 
 ## redis_owner
 
-- **Primary owner:** Java Redis providers and their Server-owned registries.
+- **Primary owner:** Java Redis providers and the Server Identity registry.
 - **Claim:** atomic owner operations preserve scores, resources, identities,
-  bindings and result transitions against real Redis.
+  bindings and result transitions against real Redis. Worker registration adds
+  cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
+  client-command cost oracles.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
 - **Contract:** [Server verification](../../server_jvm/README.md#verification).
 
@@ -35,11 +37,12 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Primary owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
 - **Claim:** one Java Server context closes the public Task, Result,
   DIRECT_CALL and Worker Serviceability boundaries through WebSocket, Socket
-  and Polling witnesses. Prepare establishes identity without Matching facts;
+  and Polling witnesses. Prepare establishes identity and cold registration
+  without Matching facts; network evidence activates scheduling availability;
   text-protocol observations independently create facts, and Polling executes
   ON_DEMAND without them. Preview can expose an identity before a baseline.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
-  capacity.
+  capacity, guaranteed activation after evidence loss or atomic registration.
 - **Contract:** [Runtime Boundary owner](../../server_jvm/README.md#verification).
 
 ## worker_correctness

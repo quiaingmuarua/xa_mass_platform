@@ -1,6 +1,6 @@
 package com.xa.mass.server.api.v1.contract.worker;
 
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;

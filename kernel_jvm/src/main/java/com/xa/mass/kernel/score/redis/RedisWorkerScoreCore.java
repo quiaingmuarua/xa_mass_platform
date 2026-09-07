@@ -7,7 +7,6 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.ScoredValue;
 import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -17,12 +16,22 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class RedisWorkerScoreCore
         implements WorkerScoreCore, AutoCloseable {
 
     private static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
     private static final long RECOVERY_LOOKBACK_MILLIS = 86_400_000;
+    private static final String INITIALIZE_REGISTERED_SCRIPT = """
+            local created = {}
+            for i = 2, #ARGV do
+              if redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[i]) == 1 then
+                created[#created + 1] = ARGV[i]
+              end
+            end
+            return created
+            """;
     private static final String CURRENT_REWRITE_SCRIPT = """
             local key = KEYS[1]
             local worker_id = ARGV[1]
@@ -542,48 +551,31 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public WorkerScoreTransitionResult initializeHotAcquireScore(
-            String homeBucketId,
-            String workerId
-    ) {
+    public Set<String> initializeRegisteredScores(String homeBucketId, List<String> workerIds) {
         requireNonBlank(homeBucketId, "homeBucketId");
-        requireNonBlank(workerId, "workerId");
-        long timeSlot = redisTimeMillis() / SLOT_MILLIS;
-        if (timeSlot < MIN_TIME_SLOT || timeSlot > MAX_TIME_SLOT) {
-            return new WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID,
-                    null
-            );
+        if (workerIds == null || workerIds.isEmpty() || workerIds.size() > MAX_REGISTRATION_BATCH_SIZE
+                || new LinkedHashSet<>(workerIds).size() != workerIds.size()) {
+            throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
         }
-        long initialScore = timeSlot * SLOT_FACTOR
-                + (long) MIN_LANE_RANK * DIRTY_FACTOR
-                + MIN_DIRTY;
-        Long added = commands().zadd(
-                scoreKey(homeBucketId),
-                ZAddArgs.Builder.nx(),
-                initialScore,
-                workerId
+        workerIds.forEach(id -> requireNonBlank(id, "workerId"));
+        List<String> arguments = new ArrayList<>(workerIds.size() + 1);
+        long coldScore = RECOVERY_RECHECK_POLARITY * COLD_PARK_TIME_SLOT * SLOT_FACTOR;
+        arguments.add(Long.toString(coldScore));
+        arguments.addAll(workerIds);
+        List<String> created = commands().eval(
+                INITIALIZE_REGISTERED_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey(homeBucketId)}, arguments.toArray(String[]::new)
         );
-        if (added != null && added == 1L) {
-            return new WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.TRANSITIONED,
-                    initialScore
-            );
+        return new LinkedHashSet<>(created);
+    }
+
+    @Override
+    public List<String> sampleRegisteredWorkerIds(String homeBucketId, int limit) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (limit < 1 || limit > MAX_REGISTRATION_BATCH_SIZE) {
+            throw new IllegalArgumentException("limit must be between 1 and 100");
         }
-        Double stored = commands().zscore(
-                scoreKey(homeBucketId),
-                workerId
-        );
-        if (stored == null) {
-            return new WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.STALE,
-                    null
-            );
-        }
-        return new WorkerScoreTransitionResult(
-                WorkerScoreTransitionStatus.NOOP,
-                scoreToLong(stored)
-        );
+        return commands().zrandmember(scoreKey(homeBucketId), limit);
     }
 
     @Override

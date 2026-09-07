@@ -2,8 +2,7 @@ package com.xa.mass.server.delivery.directcall;
 
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,7 +20,6 @@ public class DirectCallConfiguration {
     DirectCallService directCallService(
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
-            WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
             DirectCallRegistry registry,
             DirectCallProperties properties
@@ -29,7 +27,6 @@ public class DirectCallConfiguration {
         return new DirectCallService(
                 workerCatalog,
                 workerCommands,
-                workerBindings,
                 endpoints,
                 registry,
                 properties

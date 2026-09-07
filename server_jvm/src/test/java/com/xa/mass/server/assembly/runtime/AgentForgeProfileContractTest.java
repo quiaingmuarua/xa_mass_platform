@@ -35,7 +35,7 @@ class AgentForgeProfileContractTest {
                 "xa.mass.worker-assembly.group-config-json"
         )).isEqualTo("{}");
         assertThat(environment.getProperty(
-                "xa.mass.worker-binding.endpoints.agentforge-websocket"
+                "xa.mass.worker-endpoints.endpoints.agentforge-websocket"
                         + ".public-uri"
         )).isEqualTo(
                 "ws://127.0.0.1:18183"

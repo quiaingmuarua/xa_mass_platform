@@ -16,7 +16,7 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -34,9 +34,9 @@ import org.junit.jupiter.api.Test;
 class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
+            Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),
             Map.entry("TaskResourceCatalog", TaskResourceCatalog.class),
-            Map.entry("WorkerRuntime", WorkerRuntime.class),
             Map.entry(
                     "WorkerResourceCatalog",
                     WorkerResourceCatalog.class
@@ -64,6 +64,8 @@ class KernelOwnerContractManifestTest {
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
+            Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
+            Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),
             Map.entry(
                     "CandidateWorkerEntry",
                     CandidateWorkerCache.CandidateWorkerEntry.class
@@ -123,20 +125,16 @@ class KernelOwnerContractManifestTest {
                     WorkerDeliveryProtocol.DeliveryCommand.class
             ),
             Map.entry(
-                    "WorkerDeclaration",
-                    WorkerRuntime.WorkerDeclaration.class
-            ),
-            Map.entry(
                     "WorkerDescriptor",
-                    WorkerRuntime.WorkerDescriptor.class
+                    WorkerResourceCatalog.WorkerDescriptor.class
             ),
             Map.entry(
                     "WorkerGroupDescriptor",
-                    WorkerRuntime.WorkerGroupDescriptor.class
+                    WorkerResourceCatalog.WorkerGroupDescriptor.class
             ),
             Map.entry(
-                    "WorkerRuntimeResult",
-                    WorkerRuntime.WorkerRuntimeResult.class
+                    "RegistrationResult",
+                    WorkerResourceCatalog.RegistrationResult.class
             ),
             Map.entry(
                     "WorkerScoreState",
@@ -213,8 +211,8 @@ class KernelOwnerContractManifestTest {
                             WorkerDeliveryProtocol.DeliveryEndpoint.class
                     ),
                     Map.entry(
-                            "WorkerRuntimeStatus",
-                            WorkerRuntime.WorkerRuntimeStatus.class
+                            "RegistrationStatus",
+                            WorkerResourceCatalog.RegistrationStatus.class
                     ),
                     Map.entry(
                             "WorkerScorePolarity",
@@ -255,7 +253,7 @@ class KernelOwnerContractManifestTest {
 
     @Test
     void removedContractsRemainAbsent() {
-        assertFalse(Arrays.stream(WorkerRuntime.class.getDeclaredMethods())
+        assertFalse(Arrays.stream(WorkerResourceCatalog.class.getDeclaredMethods())
                 .anyMatch(method -> method.getName().equals(
                         "replaceWorkerProperties"
                 )));

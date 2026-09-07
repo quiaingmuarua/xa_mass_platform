@@ -12,7 +12,7 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
@@ -26,15 +26,13 @@ class WorkerResourceCommandServiceTest {
 
     private WorkerMatchingCatalog matchingCatalog;
     private WorkerResourceCommandService service;
-    private WorkerBindingService bindings;
     private WorkerResourceCatalog workers;
 
     @BeforeEach
     void setUp() {
         matchingCatalog = mock(WorkerMatchingCatalog.class);
-        bindings = mock(WorkerBindingService.class);
         workers = mock(WorkerResourceCatalog.class);
-        service = new WorkerResourceCommandService(matchingCatalog, bindings, workers);
+        service = new WorkerResourceCommandService(matchingCatalog, workers);
     }
 
     @Test
@@ -44,27 +42,24 @@ class WorkerResourceCommandServiceTest {
             snapshots.put(id, Map.of("network.type", "wifi"));
         }
         List<String> ids = List.copyOf(snapshots.keySet());
-        when(bindings.currentEndpointManagerIds(ids)).thenReturn(Map.of(
-                "a", "adapter", "b", "adapter", "c", "adapter", "wrong-adapter", "other", "missing-group", "adapter"));
-        when(workers.getWorkerGroupIds(ids)).thenReturn(Map.of(
-                "a", "g1", "b", "g1", "c", "g2", "wrong-adapter", "g1"));
+        when(workers.getWorkerDescriptors(ids)).thenReturn(Map.of(
+                "a", new WorkerDescriptor("a", "g1", "adapter"), "b", new WorkerDescriptor("b", "g1", "adapter"),
+                "c", new WorkerDescriptor("c", "g2", "adapter"), "wrong-adapter", new WorkerDescriptor("wrong-adapter", "g1", "other")));
         when(matchingCatalog.upsertWorkerFactsBatch("g1", Map.of("a", snapshots.get("a"), "b", snapshots.get("b"))))
                 .thenReturn(Map.of("a", result(MutationStatus.APPLIED), "b", result(MutationStatus.UNCHANGED)));
         when(matchingCatalog.upsertWorkerFactsBatch("g2", Map.of("c", snapshots.get("c"))))
                 .thenReturn(Map.of("c", result(MutationStatus.APPLIED)));
 
         assertThat(service.replaceReportedProperties("adapter", snapshots)).containsExactlyInAnyOrder("a", "b", "c");
-        verify(bindings).currentEndpointManagerIds(ids);
-        verify(workers).getWorkerGroupIds(ids);
+        verify(workers).getWorkerDescriptors(ids);
         verify(matchingCatalog).upsertWorkerFactsBatch("g1", Map.of("a", snapshots.get("a"), "b", snapshots.get("b")));
         verify(matchingCatalog).upsertWorkerFactsBatch("g2", Map.of("c", snapshots.get("c")));
-        verifyNoMoreInteractions(bindings, workers, matchingCatalog);
+        verifyNoMoreInteractions(workers, matchingCatalog);
     }
 
     @Test
     void missingIdentitiesNeverCreateMatchingFacts() {
-        when(bindings.currentEndpointManagerIds(List.of("unknown"))).thenReturn(Map.of());
-        when(workers.getWorkerGroupIds(List.of("unknown"))).thenReturn(Map.of());
+        when(workers.getWorkerDescriptors(List.of("unknown"))).thenReturn(Map.of());
         assertThat(service.replaceReportedProperties("adapter", Map.of("unknown", Map.of()))).isEmpty();
         verifyNoInteractions(matchingCatalog);
     }
@@ -74,8 +69,7 @@ class WorkerResourceCommandServiceTest {
         Map<String, Map<String, String>> snapshots = new LinkedHashMap<>();
         snapshots.put("a", Map.of());
         snapshots.put("b", Map.of());
-        when(bindings.currentEndpointManagerIds(List.of("a", "b"))).thenReturn(Map.of("a", "adapter", "b", "adapter"));
-        when(workers.getWorkerGroupIds(List.of("a", "b"))).thenReturn(Map.of("a", "g1", "b", "g2"));
+        when(workers.getWorkerDescriptors(List.of("a", "b"))).thenReturn(Map.of("a", new WorkerDescriptor("a", "g1", "adapter"), "b", new WorkerDescriptor("b", "g2", "adapter")));
         when(matchingCatalog.upsertWorkerFactsBatch("g1", Map.of("a", Map.of())))
                 .thenReturn(Map.of("a", result(MutationStatus.APPLIED)));
         when(matchingCatalog.upsertWorkerFactsBatch("g2", Map.of("b", Map.of())))

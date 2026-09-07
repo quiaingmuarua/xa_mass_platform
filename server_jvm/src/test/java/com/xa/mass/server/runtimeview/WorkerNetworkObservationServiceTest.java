@@ -13,10 +13,9 @@ import com.xa.mass.server.delivery.directcall.DirectCallRegistry;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.binding.WorkerBindingProperties.EndpointProperties;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
@@ -34,7 +33,6 @@ class WorkerNetworkObservationServiceTest {
 
     private WorkerResourceCatalog workerCatalog;
     private WorkerCommandRuntime workerCommands;
-    private WorkerBindingService workerBindings;
     private DirectCallRegistry registry;
     private DirectCallService directCalls;
     private WorkerNetworkObservationService service;
@@ -43,7 +41,6 @@ class WorkerNetworkObservationServiceTest {
     void setUp() {
         workerCatalog = mock(WorkerResourceCatalog.class);
         workerCommands = mock(WorkerCommandRuntime.class);
-        workerBindings = mock(WorkerBindingService.class);
         DirectCallProperties properties = new DirectCallProperties(
                 3_000,
                 10_000,
@@ -51,20 +48,17 @@ class WorkerNetworkObservationServiceTest {
                 10_000
         );
         registry = new DirectCallRegistry(properties);
-        directCalls = new DirectCallService(
-                workerCatalog,
+        directCalls = new DirectCallService(workerCatalog,
                 workerCommands,
-                workerBindings,
                 new WorkerEndpointDirectory(Map.of(
                         ADAPTER_ID,
-                        new EndpointProperties(
+                        new Endpoint(
                                 WorkerTransportType.WEBSOCKET,
                                 URI.create("ws://127.0.0.1:18083")
                         )
-                )),
+                ), Map.of(WorkerTransportType.WEBSOCKET, ADAPTER_ID)),
                 registry,
-                properties
-        );
+                properties);
         service = new WorkerNetworkObservationService(directCalls);
     }
 
@@ -123,8 +117,7 @@ class WorkerNetworkObservationServiceTest {
                 );
         verifyNoInteractions(
                 workerCatalog,
-                workerCommands,
-                workerBindings
+                workerCommands
         );
     }
 

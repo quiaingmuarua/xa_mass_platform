@@ -1,9 +1,7 @@
 package com.xa.mass.server.worker.identity;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -12,99 +10,40 @@ import java.util.UUID;
 public final class WorkerIdentityService {
 
     private final WorkerIdentityRegistry registry;
-    private final WorkerResourceCatalog workerCatalog;
-
-    WorkerIdentityService(
-            WorkerIdentityRegistry registry,
-            WorkerResourceCatalog workerCatalog
-    ) {
+    WorkerIdentityService(WorkerIdentityRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
-        this.workerCatalog = Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
-        );
     }
 
-    public String register(
-            String workerGroupId,
-            Map<String, Object> workerProperties
-    ) {
-        return register(
-                workerGroupId,
-                WorkerRegistrationKind.CLIENT_KEY,
-                workerProperties
-        );
-    }
-
-    public String register(
-            String workerGroupId,
-            WorkerRegistrationKind workerKind,
-            Map<String, Object> workerProperties
-    ) {
-        String operation = "workerIdentity.register";
+    /** Prepare has already checked Group and default Endpoint before entering here. */
+    public List<String> registerAll(String workerGroupId, List<String> registrationKeys) {
+        String operation = "workerIdentity.registerAll";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
-        String registrationKey = registrationKey(
-                workerKind,
-                workerProperties,
-                operation
-        );
-        return registerResolved(
-                workerGroupId,
-                registrationKey,
-                operation
-        );
-    }
-
-    public void requireRegistration(
-            String workerGroupId,
-            Map<String, Object> workerProperties,
-            String workerId
-    ) {
-        requireRegistration(
-                workerGroupId,
-                WorkerRegistrationKind.CLIENT_KEY,
-                workerProperties,
-                workerId
-        );
-    }
-
-    public void requireRegistration(
-            String workerGroupId,
-            WorkerRegistrationKind workerKind,
-            Map<String, Object> workerProperties,
-            String workerId
-    ) {
-        String operation = "workerIdentity.requireRegistration";
-        requireNonBlank(workerGroupId, "workerGroupId", operation);
-        String registrationKey = registrationKey(
-                workerKind,
-                workerProperties,
-                operation
-        );
-        requireResolvedRegistration(
-                workerGroupId,
-                registrationKey,
-                workerId,
-                operation
-        );
+        if (registrationKeys == null || registrationKeys.isEmpty() || registrationKeys.size() > 100
+                || new java.util.HashSet<>(registrationKeys).size() != registrationKeys.size()) {
+            throw failure(ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST, operation,
+                    "registrationKeys must contain 1..100 unique keys", null);
+        }
+        registrationKeys.forEach(key -> requireNonBlank(key, "registrationKey", operation));
+        try {
+            List<String> workerIds = registry.registerAll(workerGroupId, registrationKeys);
+            if (workerIds.size() != registrationKeys.size()
+                    || workerIds.stream().anyMatch(id -> !isCanonicalUuid(id))) {
+                throw failure(ServerErrorCode.WORKER_IDENTITY_CONFLICT, operation,
+                        "Stored Worker identity is invalid", null);
+            }
+            return List.copyOf(workerIds);
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw failure(ServerErrorCode.WORKER_IDENTITY_UNAVAILABLE, operation, null, error);
+        }
     }
 
     public String registrationKey(
             WorkerRegistrationKind workerKind,
             Map<String, Object> workerProperties
     ) {
-        return registrationKey(
-                workerKind,
-                workerProperties,
-                "workerIdentity.registrationKey"
-        );
-    }
-
-    private String registrationKey(
-            WorkerRegistrationKind workerKind,
-            Map<String, Object> workerProperties,
-            String operation
-    ) {
+        String operation = "workerIdentity.registrationKey";
         Objects.requireNonNull(workerKind, "workerKind");
         if (workerProperties == null) {
             throw failure(
@@ -123,86 +62,6 @@ public final class WorkerIdentityService {
                     operation
             );
         };
-    }
-
-    private String registerResolved(
-            String workerGroupId,
-            String registrationKey,
-            String operation
-    ) {
-        try {
-            if (workerCatalog.getWorkerGroupDescriptors(
-                    List.of(workerGroupId)
-            ).get(workerGroupId) == null) {
-                throw failure(
-                        ServerErrorCode.WORKER_GROUP_NOT_FOUND,
-                        operation,
-                        "WorkerGroup was not found",
-                        null
-                );
-            }
-            String workerId = registry.register(
-                    workerGroupId,
-                    registrationKey
-            );
-            if (!isCanonicalUuid(workerId)) {
-                throw failure(
-                        ServerErrorCode.WORKER_IDENTITY_CONFLICT,
-                        operation,
-                        "Stored Worker identity is invalid",
-                        null
-                );
-            }
-            return workerId;
-        } catch (ServerException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw failure(
-                    ServerErrorCode.WORKER_IDENTITY_UNAVAILABLE,
-                    operation,
-                    null,
-                    error
-            );
-        }
-    }
-
-    private void requireResolvedRegistration(
-            String workerGroupId,
-            String registrationKey,
-            String workerId,
-            String operation
-    ) {
-        if (!isCanonicalUuid(workerId)) {
-            throw failure(
-                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
-                    operation,
-                    "workerId must be a canonical UUID",
-                    null
-            );
-        }
-        try {
-            if (!registry.matches(
-                    workerGroupId,
-                    registrationKey,
-                    workerId
-            )) {
-                throw failure(
-                        ServerErrorCode.WORKER_IDENTITY_NOT_FOUND,
-                        operation,
-                        "Worker identity was not registered",
-                        null
-                );
-            }
-        } catch (ServerException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw failure(
-                    ServerErrorCode.WORKER_IDENTITY_UNAVAILABLE,
-                    operation,
-                    null,
-                    error
-            );
-        }
     }
 
     private static String scenarioLabRegistrationKey(
@@ -284,17 +143,8 @@ public final class WorkerIdentityService {
             Map<String, Object> workerProperties,
             String operation
     ) {
-        if (workerProperties == null) {
-            throw failure(
-                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
-                    operation,
-                    "workerProperties must be present",
-                    null
-            );
-        }
         Object value = workerProperties.get("clientWorkerKey");
-        if (!(value instanceof String)
-                || ((String) value).isBlank()) {
+        if (!(value instanceof String key) || key.isBlank()) {
             throw failure(
                     ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
                     operation,
@@ -303,7 +153,7 @@ public final class WorkerIdentityService {
                     null
             );
         }
-        return (String) value;
+        return key;
     }
 
     private static boolean isCanonicalUuid(String value) {

@@ -41,7 +41,7 @@ class ResultConvergenceApplicationTest {
                         policies
                 ),
                 endlessLane(
-                        ResultLaneId.ADAPTER_EVIDENCE,
+                        ResultLaneId.NETWORK_EVIDENCE,
                         3,
                         10,
                         policies
@@ -55,7 +55,7 @@ class ResultConvergenceApplicationTest {
             assertEquals(4, policies.active(ResultLaneId.TASK_SUCCESS));
             assertEquals(3, policies.active(ResultLaneId.TASK_FAILURE));
             assertEquals(3, policies.active(
-                    ResultLaneId.ADAPTER_EVIDENCE
+                    ResultLaneId.NETWORK_EVIDENCE
             ));
             assertEquals(10, policies.maximumGlobalActive.get());
             assertTrue(policies.allVirtual.get());
@@ -88,11 +88,11 @@ class ResultConvergenceApplicationTest {
                         policies
                 ),
                 endlessLane(
-                        ResultLaneId.ADAPTER_EVIDENCE,
+                        ResultLaneId.NETWORK_EVIDENCE,
                         ResultConvergenceConfig
-                                .ADAPTER_EVIDENCE_TARGET_CONCURRENCY,
+                                .NETWORK_EVIDENCE_TARGET_CONCURRENCY,
                         ResultConvergenceConfig
-                                .ADAPTER_EVIDENCE_MAX_CONCURRENCY,
+                                .NETWORK_EVIDENCE_MAX_CONCURRENCY,
                         policies
                 )
         );
@@ -103,7 +103,7 @@ class ResultConvergenceApplicationTest {
             assertEquals(6, policies.active(ResultLaneId.TASK_SUCCESS));
             assertEquals(3, policies.active(ResultLaneId.TASK_FAILURE));
             assertEquals(1, policies.active(
-                    ResultLaneId.ADAPTER_EVIDENCE
+                    ResultLaneId.NETWORK_EVIDENCE
             ));
             assertEquals(10, policies.maximumGlobalActive.get());
         } finally {

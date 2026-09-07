@@ -1,94 +1,107 @@
 # Worker Resource Model
 
-Status: active Java Kernel Worker scheduling metadata contract.
+Status: active Java Kernel Worker registration and persistent Binding contract.
 
 ## Owner Boundary
 
-Kernel stores only the identity and delivery coordinates needed after a Worker
-has already been selected:
+`WorkerResourceCatalog` owns the Group directory, persistent Worker Binding,
+registration and bounded resource reads. `WorkerScoreCore` owns registered
+members and their scheduling coordinates. Server owns external identity
+resolution, the configured Endpoint directory and Prepare orchestration.
+Adapter owns current Channels and verified Routes; Server observes actual
+Polling requests. Kernel interprets that network evidence into serviceability.
 
-```text
-WorkerDescriptor
-  workerId
-  workerGroupId
-  endpointManagerId
-```
+`WorkerDescriptor(workerId, workerGroupId, endpointManagerId)` is a Binding read
+snapshot. Worker ID identifies an execution slot; Group is its unique resource
+ownership and Endpoint is its current delivery address. Endpoint migration is
+not implemented. A changed default cannot overwrite an existing Binding, and
+a connection to a different Adapter is rejected. The address is not a permanent
+identity constraint.
 
-Kernel does not store or interpret Worker or Platform Properties. Canonical
-matching facts live in `worker_matching_jvm` and are joined by Server only for
-public runtime views.
+Kernel does not store or interpret Worker/Platform Properties or Rules.
+Prepare does not write Matching facts. An admitted Adapter Properties
+observation may create the first Matching facts later. PRECOMPUTED skips a
+Worker with no facts; ON_DEMAND requires no Matching facts. Both need eligible
+Worker Score coordinates before assignment. `WorkerGroup.eventCodes` is
+create-only directory metadata, not proof of loaded handlers.
 
-```text
-Server Worker Prepare
-  -> resolve or register workerId
-  -> persist endpoint binding
-  -> upsert complete Worker facts in WorkerMatchingCatalog
-  -> upsert minimal Worker scheduling metadata in Kernel
-  -> initialize or retain Worker score
-```
-
-The write sequence is intentionally not transactional across owners. A facts
-record without a Kernel Worker is an inert orphan: Matching can return evidence
-only after Kernel publishes a bounded demand, and Kernel still checks current
-score and takes an exact lease before dispatch.
-
-## Identity
-
-One `workerId` is one scheduler-visible execution slot and belongs to exactly
-one `workerGroupId`. `endpointManagerId` is the delivery address selected by
-Server binding; connection state remains Adapter evidence rather than Worker
-resource truth.
-
-`WorkerGroup.eventCodes` are create-only catalog metadata. They do not prove
-that a live Worker loaded a Handler and they are not consulted by Kernel
-matching or dispatch.
-
-## Commands
+## Registration
 
 ```java
-WorkerRuntime.upsertWorker(new WorkerDeclaration(
-        workerId,
-        workerGroupId,
-        endpointManagerId
-));
+workerCatalog.registerWorkers(workerGroupId, workerIds, defaultEndpointManagerId);
 ```
 
-An equivalent declaration is idempotent. A declaration that changes the fixed
-WorkerGroup conflicts. Updating the endpoint manager changes only the delivery
-coordinate; it does not change Properties or matching evidence.
-
-Platform Properties patching is not a Kernel command. Server sends that
-operation to `WorkerMatchingCatalog`, where Worker-reported and
-Platform-reported namespaces are owned and combined for matching.
-
-## Reads
-
-Kernel reads expose only the minimal descriptor. Public Worker runtime views
-are Server projections:
+This is the only Worker registration entry: 1..100 unique nonempty IDs for one
+Group and a nonempty default Endpoint. Invalid batch shape fails before Redis.
+The returned Map preserves ID order. Each `WorkerRegistrationResult` carries
+`status`, actual `endpointManagerId` on success, and optional `reason`.
 
 ```text
-Kernel Worker descriptor
-  + WorkerMatchingCatalog facts
-  + Adapter network and observation projections
-  + Kernel score projection
-  = public Runtime Worker view
+one bounded Binding Lua:
+  Group must exist
+  absent Binding -> create Group + default Endpoint
+  existing same Group -> retain and return actual Endpoint
+  other Group -> CONFLICT; malformed Binding -> INVALID
+one Score Owner batch for accepted IDs:
+  initialize absent registered members at the fixed cold coordinate using NX
+  retain all existing scores unchanged
 ```
 
-No component may infer Properties from score or connection state.
+The Binding and Score stages commit independently. Infrastructure failure
+throws and may leave any accepted subset partially complete. Retry fills
+missing stages without rollback, completion markers, confirmation reads or
+background repair. Score membership means Kernel registration exists; Binding
+alone does not prove membership. Neither means online, idle or deliverable.
 
-## Redis Shape
+| Status | Meaning |
+| --- | --- |
+| `OK` | Binding or Score membership was created |
+| `NOOP` | Binding and membership already exist; actual Endpoint is returned |
+| `CONFLICT` | Worker belongs to another Group, or a Group declaration differs |
+| `INVALID` | Stored Binding or Group declaration is invalid |
+| `NOT_FOUND` | Worker registration requires an existing Group |
 
-The Kernel Worker catalog stores exact minimal metadata. Legacy
-`workerProperties` and `platformProperties` fields are rejected rather than
-silently retained. Matching facts use the independent keyspace documented by
-[`worker_matching_jvm`](../../../worker_matching_jvm/README.md).
+Group registration retains `RegistrationResult(status, reason)` and produces
+only the first four statuses. Infrastructure errors have no registration
+status; Server maps them to its existing unavailable response.
 
-## Non-Owners
+## Reads And Cost
 
-Kernel Worker resource code does not own:
+`getWorkerDescriptors(workerIds)` and `getWorkerDescriptorsAsync(workerIds)`
+read at most 100 IDs across Groups with one HMGET on the same Binding HASH.
+Missing or corrupt entries map to null. Empty reads return an empty Map without
+Redis. Address reads, connection verification and Direct Call do not read Score
+to check registration completeness. Callers check the requested Group against
+the returned Group where required.
 
-- Worker or Platform Properties;
-- allocation rules or constraint operators;
-- connection truth or route verification;
-- candidate enumeration;
-- Worker selection policy, lease cadence, or result interpretation.
+`sampleWorkerDescriptors(group, limit)` asks Score Owner to sample at most 100
+registered members, then reads their Bindings once. Missing or wrong-Group
+Bindings map to null; address-only rows do not appear in the sample. Group
+directory reads retain their bounded HMGET and HRANDFIELD behavior.
+
+Normal Catalog registration is two Redis client commands, regardless of batch
+size. Normal Prepare is four: Group HMGET, Identity Lua, Binding Lua, Score Lua.
+One Binding lookup is one HMGET. These are command budgets, not measured
+throughput or latency guarantees.
+
+## Network Activation
+
+Every Worker starts cold, including Polling. The Score Owner uses
+RECOVERY_RECHECK / timeSlot=1 / laneRank=0 / dirty=0 (currently -200), outside
+ordinary allocation, stale-HOT and recovery-recheck scan ranges.
+
+All Pacer presets consume network evidence. Verified Adapter connections and
+valid Server Polling observations request HOT through `WorkerServiceabilityEvents`.
+Its `NetworkObservation` carries Endpoint and observation time. The mechanism
+loads Binding once, verifies the Endpoint and obtains Group, then calls Score
+Owner. It does not create missing Workers or shorten leases/PAUSE; the existing
+timestamp, polarity and dirty rules remain in Score Owner.
+
+Activation is best-effort. Lost evidence leaves a Worker cold until new valid
+evidence arrives. There is no activation ACK, replay or cold-member scan.
+Periodic probes and the HOT eligibility floor remain preset-controlled;
+DEFAULT installs no probes. Execution Result events and opaque lease references
+retain their separate responsibilities.
+
+Storage and rebuild procedure: [Worker Redis shape](../runtime-redis/worker-runtime-redis-shape.md).
+Policy: [Worker Serviceability](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).

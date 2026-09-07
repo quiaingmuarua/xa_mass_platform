@@ -15,7 +15,6 @@ import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
-import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import io.lettuce.core.RedisClient;
 import org.springframework.context.annotation.Bean;
@@ -95,25 +94,14 @@ public class KernelOwnerAssemblyConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    RedisWorkerRuntime workerRuntime(
+    RedisWorkerResourceCatalog workerResourceCatalog(
             RedisClient redisClient,
             RedisWorkerScoreCore scoreCore,
             XaMassRedisProperties properties
     ) {
-        return new RedisWorkerRuntime(
-                redisClient,
-                scoreCore,
-                properties.keyspace()
-        );
-    }
-
-    @Bean(destroyMethod = "close")
-    RedisWorkerResourceCatalog workerResourceCatalog(
-            RedisClient redisClient,
-            XaMassRedisProperties properties
-    ) {
         return new RedisWorkerResourceCatalog(
                 redisClient,
+                scoreCore,
                 properties.keyspace()
         );
     }

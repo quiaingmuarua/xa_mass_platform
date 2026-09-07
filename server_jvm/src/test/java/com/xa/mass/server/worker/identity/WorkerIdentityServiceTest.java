@@ -7,15 +7,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,107 +21,33 @@ class WorkerIdentityServiceTest {
     private static final String CLIENT_REGISTRATION_KEY =
             "client-key:14:installation-1";
     private WorkerIdentityRegistry registry;
-    private WorkerResourceCatalog catalog;
     private WorkerIdentityService service;
 
     @BeforeEach
     void setUp() {
         registry = mock(WorkerIdentityRegistry.class);
-        catalog = mock(WorkerResourceCatalog.class);
-        service = new WorkerIdentityService(registry, catalog);
+        service = new WorkerIdentityService(registry);
     }
 
     @Test
-    void registersOnlyInsideAnExistingWorkerGroup() {
-        when(catalog.getWorkerGroupDescriptors(List.of("group-1")))
-                .thenReturn(Map.of("group-1", group("group-1")));
-        when(registry.register(
-                "group-1",
-                CLIENT_REGISTRATION_KEY
-        ))
-                .thenReturn(WORKER_ID);
-
-        assertThat(service.register(
-                "group-1",
-                properties("installation-1", 1)
-        )).isEqualTo(WORKER_ID);
-        assertThat(service.register(
-                "group-1",
-                properties("installation-1", 2)
-        )).isEqualTo(WORKER_ID);
-        verify(registry, times(2)).register(
-                "group-1",
-                CLIENT_REGISTRATION_KEY
-        );
+    void oneBatchPreservesIdentityOrderAndValidatesStoredUuids() {
+        when(registry.registerAll("group-1", List.of(CLIENT_REGISTRATION_KEY)))
+                .thenReturn(List.of(WORKER_ID));
+        assertThat(service.registerAll("group-1", List.of(CLIENT_REGISTRATION_KEY))).containsExactly(WORKER_ID);
+        verify(registry).registerAll("group-1", List.of(CLIENT_REGISTRATION_KEY));
+        when(registry.registerAll("group-1", List.of(CLIENT_REGISTRATION_KEY)))
+                .thenReturn(List.of("not-a-uuid"));
+        assertThatThrownBy(() -> service.registerAll("group-1", List.of(CLIENT_REGISTRATION_KEY)))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_IDENTITY_CONFLICT));
     }
 
     @Test
-    void distinguishesMissingGroupAndInvalidStoredIdentity() {
-        var missingGroup = new LinkedHashMap<
-                String,
-                WorkerGroupDescriptor
-                >();
-        missingGroup.put("missing", null);
-        when(catalog.getWorkerGroupDescriptors(List.of("missing")))
-                .thenReturn(missingGroup);
-        assertThatThrownBy(() -> service.register(
-                "missing",
-                properties("installation-1", 1)
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode())
-                        .isEqualTo(ServerErrorCode.WORKER_GROUP_NOT_FOUND));
-
-        when(catalog.getWorkerGroupDescriptors(List.of("group-1")))
-                .thenReturn(Map.of("group-1", group("group-1")));
-        when(registry.register(
-                "group-1",
-                CLIENT_REGISTRATION_KEY
-        ))
-                .thenReturn("not-a-uuid");
-        assertThatThrownBy(() -> service.register(
-                "group-1",
-                properties("installation-1", 2)
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode())
-                        .isEqualTo(ServerErrorCode.WORKER_IDENTITY_CONFLICT));
-    }
-
-    @Test
-    void verifiesTheCompleteIdentityCoordinate() {
-        when(registry.matches(
-                "group-1",
-                CLIENT_REGISTRATION_KEY,
-                WORKER_ID
-        ))
-                .thenReturn(true);
-        service.requireRegistration(
-                "group-1",
-                properties("installation-1", 1),
-                WORKER_ID
-        );
-
-        when(registry.matches(
-                "group-1",
-                "client-key:5:other",
-                WORKER_ID
-        ))
-                .thenReturn(false);
-        assertThatThrownBy(() -> service.requireRegistration(
-                "group-1",
-                properties("other", 1),
-                WORKER_ID
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode())
-                        .isEqualTo(ServerErrorCode.WORKER_IDENTITY_NOT_FOUND));
-
-        assertThatThrownBy(() -> service.requireRegistration(
-                "group-1",
-                properties("installation-1", 2),
-                "not-a-uuid"
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode()).isEqualTo(
-                        ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST
-                ));
+    void malformedBatchesHaveNoIdentityWrites() {
+        assertThatThrownBy(() -> service.registerAll("group-1", List.of())).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.registerAll("group-1", List.of("same", "same"))).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.registerAll("", List.of("key"))).isInstanceOf(ServerException.class);
+        org.mockito.Mockito.verifyNoInteractions(registry);
     }
 
     @Test
@@ -161,21 +82,6 @@ class WorkerIdentityServiceTest {
                 changed
         )).isEqualTo(key);
 
-        when(catalog.getWorkerGroupDescriptors(List.of("group-1")))
-                .thenReturn(Map.of("group-1", group("group-1")));
-        when(registry.register(
-                "group-1",
-                key
-        )).thenReturn(WORKER_ID);
-        assertThat(service.register(
-                "group-1",
-                WorkerRegistrationKind.SCENARIO_LAB,
-                changed
-        )).isEqualTo(WORKER_ID);
-        verify(registry).register(
-                "group-1",
-                key
-        );
     }
 
     @Test
@@ -205,14 +111,6 @@ class WorkerIdentityServiceTest {
                         "clientWorkerKey", "must-not-be-used"
                 )
         )).isInstanceOf(ServerException.class);
-    }
-
-    private static WorkerGroupDescriptor group(String workerGroupId) {
-        return new WorkerGroupDescriptor(
-                workerGroupId,
-                Map.of(),
-                Set.of("event")
-        );
     }
 
     private static Map<String, Object> properties(

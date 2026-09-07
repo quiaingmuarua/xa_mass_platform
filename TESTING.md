@@ -33,6 +33,13 @@ imply all-offered success. A larger world does not replace correctness or create
 a throughput, latency or resource claim. Shared Inventory materialization does
 not transfer scenario or oracle ownership.
 
+Worker registration proofs distinguish persistent Binding, Score membership and
+network availability. Redis Owner proves cold NX initialization, concurrent
+Binding selection, partial-stage retries and the 4/2/1 client-command budgets
+for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
+cold Prepare followed by verified connection or Polling activation. These proofs
+do not promise activation after lost evidence or atomic Binding/Score commits.
+
 ## Selection Decision
 
 Use the lowest-cost proof that owns the changed claim:

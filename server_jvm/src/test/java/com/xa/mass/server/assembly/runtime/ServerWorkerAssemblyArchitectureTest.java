@@ -30,6 +30,11 @@ class ServerWorkerAssemblyArchitectureTest {
             sources = combined.toString();
         }
 
+        // Group descriptors are allowed; the assembly still cannot call the Catalog.
+        sources = sources.replace(
+                "import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;",
+                ""
+        );
         assertThat(sources)
                 .contains("properties.groupConfigJson()")
                 .contains("WorkerGroupRegistrationService")

@@ -17,7 +17,7 @@
       "reason": "Module documentation remains Docs-only even when production files select downstream proofs."
     },
     {
-      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/worker/WorkerRuntime.java",
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/worker/WorkerResourceCatalog.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

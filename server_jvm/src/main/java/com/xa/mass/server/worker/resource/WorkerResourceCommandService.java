@@ -4,7 +4,7 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.LinkedHashMap;
@@ -23,19 +23,16 @@ public final class WorkerResourceCommandService {
             "workerResource.patchPlatformProperties";
 
     private final WorkerMatchingCatalog matchingCatalog;
-    private final WorkerBindingService bindings;
     private final WorkerResourceCatalog workers;
 
     public WorkerResourceCommandService(
             WorkerMatchingCatalog matchingCatalog,
-            WorkerBindingService bindings,
             WorkerResourceCatalog workers
     ) {
         this.matchingCatalog = Objects.requireNonNull(
                 matchingCatalog,
                 "matchingCatalog"
         );
-        this.bindings = Objects.requireNonNull(bindings, "bindings");
         this.workers = Objects.requireNonNull(workers, "workers");
     }
 
@@ -52,12 +49,12 @@ public final class WorkerResourceCommandService {
         }
         List<String> workerIds = List.copyOf(propertiesByWorkerId.keySet());
         try {
-            Map<String, String> endpoints = bindings.currentEndpointManagerIds(workerIds);
-            Map<String, String> groups = workers.getWorkerGroupIds(workerIds);
+            Map<String, WorkerDescriptor> bindings = workers.getWorkerDescriptors(workerIds);
             Map<String, Map<String, Map<String, String>>> byGroup = new LinkedHashMap<>();
             for (String workerId : workerIds) {
-                String groupId = groups.get(workerId);
-                if (adapterId.equals(endpoints.get(workerId)) && groupId != null && !groupId.isBlank()) {
+                WorkerDescriptor binding = bindings.get(workerId);
+                if (binding != null && adapterId.equals(binding.endpointManagerId())) {
+                    String groupId = binding.workerGroupId();
                     byGroup.computeIfAbsent(groupId, ignored -> new LinkedHashMap<>())
                             .put(workerId, propertiesByWorkerId.get(workerId));
                 }

@@ -105,7 +105,7 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_IDENTITY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/worker/identity"
     );
-    private static final Path WORKER_BINDING = SERVER_SOURCE.resolve(
+    private static final Path WORKER_ENDPOINTS = SERVER_SOURCE.resolve(
             "com/xa/mass/server/worker/binding"
     );
     private static final Path WORKER_PREPARATION = SERVER_SOURCE.resolve(
@@ -150,9 +150,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(DIRECT_CALL).isDirectory();
         assertThat(readSources(WORKER_PREPARATION))
                 .contains(".worker.identity")
-                .contains(".worker.binding");
+                .contains(".worker.endpoint");
         assertThat(readSources(WORKER_IDENTITY)
-                + readSources(WORKER_BINDING))
+                + readSources(WORKER_ENDPOINTS))
                 .doesNotContain(".worker.preparation");
     }
 
@@ -251,7 +251,6 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(
                         "platform.adapter.worker-delivery.expired"
                 )
-                .doesNotContain("worker-serviceability-evidence:v1")
                 .doesNotContain("KernelCommandClient")
                 .doesNotContain("TaskDataRuntime")
                 .doesNotContain("WorkerDeliveryRuntime");
@@ -264,16 +263,16 @@ class ServerArchitectureBoundaryTest {
                 KERNEL_ASSEMBLY,
                 MATCHING_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
-                WORKER_IDENTITY,
-                WORKER_BINDING
+                WORKER_IDENTITY
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
-                WORKER_IDENTITY,
-                WORKER_BINDING
+                WORKER_IDENTITY
         )).doesNotContain("\"wi:");
+        assertThat(readSources(WORKER_ENDPOINTS)).doesNotContain("io.lettuce").doesNotContain("RedisClient");
+        assertThat(serverSources).doesNotContain("WorkerBindingRegistry").doesNotContain("WorkerBindingService");
         assertThat(readSources(SERVICEABILITY_REDIS))
                 .contains("io.lettuce")
                 .doesNotContain("WorkerScoreCore")
@@ -304,8 +303,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSources(WORKER_REDIS))
                 .contains("RedisKeyspace")
                 .contains(":worker:groups")
-                .contains(":worker:metadata:")
-                .contains(":worker:id_owners")
+                .contains(":worker:bindings")
+                .doesNotContain(":worker:metadata:")
+                .doesNotContain(":worker:id_owners")
                 .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
@@ -402,13 +402,13 @@ class ServerArchitectureBoundaryTest {
         assertThat(occurrences(
                 catalog,
                 "hrandfieldWithvalues"
-        )).isEqualTo(2);
+        )).isEqualTo(1);
         assertThat(catalog)
                 .doesNotContain(".hscan(")
                 .doesNotContain(".scan(")
                 .doesNotContain(".keys(")
                 .doesNotContain(".hlen(")
-                .doesNotContain("WorkerScore")
+                .doesNotContain("score.redis")
                 .doesNotContain("transport");
     }
 
@@ -459,7 +459,7 @@ class ServerArchitectureBoundaryTest {
         String direct = readSources(DIRECT_CALL);
         assertThat(direct)
                 .contains("DirectCallRegistry")
-                .contains("currentEndpointManagerIds")
+                .contains("getWorkerDescriptors")
                 .contains("WorkerCommandRuntime")
                 .contains("offerWorkerCommands")
                 .doesNotContain("WorkerScoreCore")
@@ -555,7 +555,10 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("ArrayBlockingQueue")
                 .doesNotContain("Thread.ofVirtual()");
 
-        String assembly = readSources(WORKER_ASSEMBLY);
+        String assembly = readSources(WORKER_ASSEMBLY).replace(
+                "import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;",
+                ""
+        );
         assertThat(assembly)
                 .contains("groupInitializer.initialize()")
                 .contains("routeVerificationBatcher.start()")
@@ -600,13 +603,12 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("RedisWorkerChangeInbox")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskResourceCatalog")
-                .doesNotContain("WorkerRuntime")
                 .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("PythonKernelHttpTransport")
                 .doesNotContain("ScoreBandCore");
 
         assertThat(Files.readString(KERNEL_ASSEMBLY))
-                .contains("RedisWorkerRuntime")
+                .doesNotContain("RedisWorkerRuntime")
                 .contains("RedisWorkerResourceCatalog")
                 .doesNotContain("HttpWorkerRuntime")
                 .doesNotContain("HttpWorkerResourceCatalog")

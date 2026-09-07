@@ -1,6 +1,6 @@
 package com.xa.mass.server.assembly.runtime;
 
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import java.util.ArrayList;
 import java.util.List;

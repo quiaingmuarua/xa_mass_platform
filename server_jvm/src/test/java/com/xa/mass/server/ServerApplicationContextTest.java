@@ -24,9 +24,7 @@ import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
-import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.assembly.kernel.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.assembly.pacer.KernelPacerAssembly;
 import com.xa.mass.server.assembly.pacer.KernelPacerProperties;
@@ -92,8 +90,8 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskResourceCatalog.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(WorkerRuntime.class))
-                .isInstanceOf(RedisWorkerRuntime.class);
+        assertThat(applicationContext.getBeansOfType(WorkerResourceCatalog.class))
+                .hasSize(1);
         assertThat(applicationContext.getBean(WorkerResourceCatalog.class))
                 .isInstanceOf(RedisWorkerResourceCatalog.class);
         assertThat(applicationContext.getBean(WorkerCommandRuntime.class))

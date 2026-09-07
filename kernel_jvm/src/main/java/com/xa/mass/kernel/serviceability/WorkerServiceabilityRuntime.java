@@ -18,9 +18,9 @@ public interface WorkerServiceabilityRuntime {
      *
      * @return {@code reports.size()} when admitted, otherwise {@code 0}
      */
-    int appendAdapterEvidenceResults(List<DeliveryReport> reports);
+    int appendNetworkEvidenceResults(List<DeliveryReport> reports);
 
-    List<DeliveryReport> consumeAdapterEvidenceResults(int limit);
+    List<DeliveryReport> consumeNetworkEvidenceResults(int limit);
 
     enum ProbeRequestOfferStatus {
         OFFERED,

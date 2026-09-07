@@ -24,7 +24,10 @@ convergence lane. Each Endpoint receives a bounded 600-attempt, 500-millisecond
 reconnect fixture so the deliberate Server restart stays within the same Worker
 run. This is a scenario boundary, not a reconnect SLA.
 
-Prepare creates identity and access resources without Matching facts. Bounded
+Prepare creates identity, Binding and cold Score membership without Matching
+facts. Verified connection evidence supplies initial HOT activation; this proof
+does not treat Prepare as a network observation or repair lost activation
+evidence. Bounded
 Worker discovery skips empty Properties projections until an observation
 supplies the Lab coordinate; malformed non-empty coordinates still fail.
 After an explicit restart, the Properties witness observes the new Adapter

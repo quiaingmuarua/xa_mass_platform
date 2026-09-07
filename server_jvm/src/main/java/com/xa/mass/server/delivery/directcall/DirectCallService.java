@@ -3,7 +3,7 @@ package com.xa.mass.server.delivery.directcall;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallRequest;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallResponse;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallStatus;
@@ -16,10 +16,9 @@ import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetOutcomeRe
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetPlan;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
-import com.xa.mass.server.worker.binding.WorkerEndpointBinding;
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
+import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -43,7 +42,6 @@ public final class DirectCallService {
 
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerCommandRuntime workerCommands;
-    private final WorkerBindingService workerBindings;
     private final WorkerEndpointDirectory endpoints;
     private final DirectCallRegistry registry;
     private final long defaultWaitTimeoutMillis;
@@ -52,7 +50,6 @@ public final class DirectCallService {
     public DirectCallService(
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
-            WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
             DirectCallRegistry registry,
             DirectCallProperties properties
@@ -64,10 +61,6 @@ public final class DirectCallService {
         this.workerCommands = Objects.requireNonNull(
                 workerCommands,
                 "workerCommands"
-        );
-        this.workerBindings = Objects.requireNonNull(
-                workerBindings,
-                "workerBindings"
         );
         this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -126,18 +119,12 @@ public final class DirectCallService {
         List<String> workerIds = List.copyOf(workerPayloads.keySet());
 
         Map<String, WorkerDescriptor> workers;
-        Map<String, String> endpointIds;
         try {
             workers = Objects.requireNonNull(
                     workerCatalog.getWorkerDescriptors(
-                            workerGroupId,
                             workerIds
                     ),
                     "Worker descriptor batch"
-            );
-            endpointIds = Objects.requireNonNull(
-                    workerBindings.currentEndpointManagerIds(workerIds),
-                    "Worker Binding batch"
             );
         } catch (RuntimeException error) {
             throw unavailable(
@@ -157,14 +144,7 @@ public final class DirectCallService {
                 ));
                 continue;
             }
-            String endpointId = endpointIds.get(workerId);
-            if (endpointId == null) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.NOT_BOUND
-                ));
-                continue;
-            }
+            String endpointId = worker.endpointManagerId();
             if (!adapterId.equals(endpointId)) {
                 plans.add(TargetPlan.rejected(
                         workerId,
@@ -484,16 +464,15 @@ public final class DirectCallService {
         };
     }
 
-    private WorkerEndpointBinding requireDirectAdapter(String adapterId) {
+    private void requireDirectAdapter(String adapterId) {
         requireNonBlank(adapterId, "adapterId");
-        WorkerEndpointBinding endpoint = endpoints.find(adapterId);
+        Endpoint endpoint = endpoints.find(adapterId);
         if (endpoint == null) {
             throw targetNotFound("Adapter was not found");
         }
         if (endpoint.transportType() == WorkerTransportType.POLLING) {
             throw invalid("Polling endpoints do not support Direct Calls");
         }
-        return endpoint;
     }
 
     private void requireDirectConsume(String adapterId, int limit) {

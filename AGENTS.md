@@ -128,8 +128,8 @@ only when the task covers that behavior.
 - DeliveryReport, JSON and lane identity stop at Result Policy boundaries.
   Worker execution events receive correlated opaque `WorkerLeaseReference`
   values rather than raw lease scores and must not infer connection polarity.
-  Adapter Route/delivery-expiry
-  evidence is consumed only by the optional Worker Serviceability policy and
+  Adapter Route/delivery-expiry and internal Server Polling
+  evidence is consumed by Worker Serviceability policy in every preset and
   its named event Mechanism.
 - All production Pacers run in `kernel_pacer_jvm` behind its finite
   `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Do not add
@@ -262,15 +262,18 @@ Server may own:
 
 - public API validation and error mapping;
 - bounded use-case orchestration;
-- Worker Identity and Endpoint Binding;
+- Worker external Identity, local Endpoint defaults and Prepare orchestration;
+  Kernel WorkerResourceCatalog owns persistent Group/Endpoint Binding.
 - create-only WorkerGroup registration and bounded Runtime projections;
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
 Server persists PRECOMPUTED Matching Rules before Kernel Task metadata.
-Worker Prepare establishes identity, Binding and minimal Kernel resources;
-it must not create or refresh Matching Properties, including for new Workers.
+Worker Prepare resolves identity and asks Kernel to establish Binding and cold
+Score membership in separate, retryable stages. Valid network evidence requests
+activation best-effort in every Pacer preset; Prepare itself is not evidence.
+It must not create or refresh Matching Properties, including for new Workers.
 First and later Worker facts enter through the same Adapter observation and
 Server admission path. Runtime Views may expose identity before facts exist,
 but an empty display must never become a stored baseline or readiness claim.
@@ -395,7 +398,8 @@ Rules:
   not create one thread or pool per Queue.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
-- First verification crosses only the injected single-item
+- First verification checks existing Kernel Binding and does not register or migrate
+  a Worker. First verification crosses only the injected single-item
   `WorkerRouteVerifier` port. Its Server batch owner may coordinate a bounded
   queue and bounded Binding reads, but neither side may expose
   Channel or Route state through that port. Verification has no HTTP endpoint.

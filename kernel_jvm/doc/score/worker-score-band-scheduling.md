@@ -46,8 +46,9 @@ the score model never coalesces multiple TaskItems behind one Worker lease.
 ## Owner Boundary
 
 `WorkerScoreCore` owns legal score encoding, exact fences and coordinate
-transitions. `WorkerRuntime` owns immutable scheduling identity, Group and
-Endpoint metadata; [Worker Matching](../../../worker_matching_jvm/README.md)
+transitions. `WorkerResourceCatalog` owns scheduling identity/Group metadata and the
+current Endpoint address; registration does not perform Endpoint migration.
+[Worker Matching](../../../worker_matching_jvm/README.md)
 owns Properties and Rule interpretation. Production allocation, dispatch and
 Serviceability policies live in `kernel_pacer_jvm`.
 
@@ -177,8 +178,9 @@ ON_DEMAND point-observes Kernel-normalized explicit Worker IDs or a bounded ANY
 pool and exact-holds directly. Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
-Worker score is not a Worker resource mutation lease. Worker upsert
-establishes the initial HOT_ACQUIRE score with `laneRank=0`, but
+Worker score is not a Worker resource mutation lease. Worker registration
+initializes only missing members at the fixed cold RECOVERY_RECHECK coordinate
+`timeSlot=1, laneRank=0, dirty=0` (currently -200), but
 later Platform/Worker Properties writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
 truth without acquiring or renewing worker score. HOT admission scheduling is
@@ -287,16 +289,16 @@ This is outside hot admission and outside routine recovery-recheck due ranges,
 but it does not create a third scheduling lane. Worker id remains long-lived;
 score does not say the worker was deleted or terminal.
 
-Owner reset / verified recovery can preserve the too-old coordinate when moving back
-to HOT_ACQUIRE:
+Validated available evidence refreshes an old cold coordinate to its observed
+time while preserving rank and dirty when moving back to HOT_ACQUIRE:
 
 ```text
 -base(coldTooOldTimeSlot, recoveryRetryCount, dirty)
-  -> +base(coldTooOldTimeSlot, 0, dirty)
+  -> +base(evidenceTimeSlot, recoveryRetryCount, dirty)
 ```
 
-Because HOT_ACQUIRE scans old due coordinates, the recovered worker becomes
-immediately eligible after verified recovery. This is why exhausted recovery
+The refreshed coordinate becomes due in a later slot and can cross the
+optional process HOT floor after verified recovery. This is why exhausted recovery
 must not be represented by far-future timeSlot.
 
 Manual disable / drain is different:
@@ -354,14 +356,14 @@ after Kernel normalizes an ON_DEMAND Worker Selector into TaskItem Worker IDs.
 Assignment-dispatch may pass a Worker into PRECOMPUTED matching
 only after an exact observed-score lease succeeds.
 
-When optional Worker Serviceability is enabled, Assignment supplies its
+When optional periodic Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
 Serviceability form returns only positive scores in
 `[MIN_BASE, base(hotCutoffTimeSlot,0,0))`. Its production caller supplies the
 later of that process floor and a stale-HOT compensation threshold.
 `maximumScoreExclusive=0` starts at the cutoff; otherwise the opaque score
 returned at the end of the previous page is the next exclusive upper bound.
-Without Serviceability, ordinary reads receive no floor and retain the original
+Without periodic Serviceability, ordinary reads receive no floor and retain the original
 `MIN_BASE` range.
 
 Recovery recheck acquisition:
@@ -449,6 +451,22 @@ assignment-dispatch. Kernel does not reload or reinterpret Properties after
 the hold; Evidence expiry and exact Score hold confirmation are the accepted
 stale-snapshot boundary in this cut.
 
+## Registration Members
+
+`initializeRegisteredScores(group, workerIds)` creates missing members in one
+bounded Lua using ZADD NX and returns newly created IDs. No TIME or Score
+confirmation read participates. Existing values, including invalid/reserved
+values, leases, dirty values and PAUSE, are never overwritten by registration.
+The cold initial negative coordinate is excluded from ordinary HOT allocation,
+stale-HOT probes and recovery rechecks, regardless of preset. Score membership
+is the registration source; it is not online evidence.
+
+Only later admitted network evidence can request activation through the finite
+Worker Serviceability mechanism. Evidence loss leaves the member cold until a
+new valid observation; no activation ACK, replay or cold scan is installed.
+`sampleRegisteredWorkerIds` returns at most 100 member IDs without exposing or
+interpreting their scheduling coordinates in Catalog.
+
 ## Transition Rules
 
 Worker score transitions are polarity-aware, not lifecycle-tag transitions.
@@ -514,10 +532,11 @@ continuation that will later revalidate or renew. Raw external observation
 never writes dirty.
 
 Raw socket, heartbeat, keepalive, session, latency observation, and
-`WorkerRuntime.upsertWorker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
-Upsert initializes only a missing score and preserves every existing score
-exactly. Worker Properties replacement belongs to Worker Matching during Prepare;
-Kernel WorkerRuntime stores only minimal identity/Group/Endpoint metadata. Only normalized
+`WorkerResourceCatalog.registerWorkers` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
+Registration initializes only a missing score and preserves every existing score
+exactly. Worker Properties replacement belongs to Worker Matching after validated
+Adapter observation; Prepare does not write facts. Kernel WorkerResourceCatalog
+stores only minimal identity/Group/Endpoint metadata. Only normalized
 Adapter Route evidence interpreted by the Kernel Serviceability Result Policy
 may reach `WorkerServiceabilityEvents`; its default event Mechanism composes
 bounded WorkerGroup resolution with the Score Owner's atomic Evidence fence.
@@ -667,7 +686,7 @@ RECOVERY coordinates, a newer lease, dirty drift, pause, or a missing score are
 
 The current release primitive has no companion reset-authorization state.
 Any future business authorization for manual release requires its own caller
-contract; it must not be inferred from Score or invented as WorkerRuntime data.
+contract; it must not be inferred from Score or invented as WorkerResourceCatalog data.
 
 ### Polarity Move
 
@@ -898,7 +917,7 @@ Serviceability policy and evidence classification are defined in
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
 | Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
-| Worker upsert during Server Prepare | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; preserve every existing score exactly |
+| Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
 | assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before PRECOMPUTED Demand or ON_DEMAND claim |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard the candidate |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
@@ -1002,7 +1021,7 @@ The following choices belong outside encoding; their presence here does not
 claim that every possible policy has a current production caller:
 
 ```text
-initial HOT_ACQUIRE score time coordinate; laneRank is fixed at 0
+network-evidence freshness and optional HOT eligibility floor
 candidate ranking / laneRank meaning
 platform scheduling signature policy
 dirty mark invocation and continuation revalidation rule, only when a
@@ -1067,7 +1086,7 @@ slot registry redesign
 - Do not add fake business strategy knobs to score-core methods before a real
   caller workflow owns the value.
 - Do not derive dirty directly from a Properties hash or store Matching
-  signatures in WorkerRuntime. Dirty is only a score-local lease fence; a new
+  signatures in WorkerResourceCatalog. Dirty is only a score-local lease fence; a new
   producer requires an explicit continuation invariant and owning caller.
 - Do not let heartbeat, session refresh, trace, diagnostics, or display-only
   metadata bump dirty bit.

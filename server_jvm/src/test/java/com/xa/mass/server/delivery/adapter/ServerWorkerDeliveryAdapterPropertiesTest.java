@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-import com.xa.mass.server.worker.binding.WorkerEndpointDirectory;
-import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
 import java.net.URI;
 import java.nio.file.Path;
@@ -14,13 +14,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context
         .ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class ServerWorkerDeliveryAdapterPropertiesTest {
 
-    private final ApplicationContextRunner contextRunner = contextRunner(true);
+    private final ApplicationContextRunner contextRunner =
+            new ApplicationContextRunner()
+                    .withUserConfiguration(
+                            ServerWorkerDeliveryAdapterConfiguration.class,
+                            EndpointConfiguration.class
+                    )
+                    .withBean(
+                            WorkerResourceCatalog.class,
+                            () -> mock(WorkerResourceCatalog.class)
+                    );
+
+    @EnableConfigurationProperties(WorkerEndpointDirectory.class)
+    static class EndpointConfiguration {}
 
     @Test
     void bindsCompleteFlatAdapterConfigs() {
@@ -158,13 +171,16 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     }
 
     @Test
-    void requiresMatchingWorkerBindingEndpoint() {
-        contextRunner(false)
+    void requiresMatchingEndpointType() {
+        contextRunner
                 .withPropertyValues(adapterProperties(
                         "adapter-1",
                         "WEBSOCKET",
                         18083
                 ).toArray(String[]::new))
+                .withPropertyValues(
+                        "xa.mass.worker-delivery.adapter.instances.adapter-1.type=SOCKET"
+                )
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -215,29 +231,6 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
-    private static ApplicationContextRunner contextRunner(
-            boolean endpointMatches
-    ) {
-        return new ApplicationContextRunner()
-                .withUserConfiguration(
-                        ServerWorkerDeliveryAdapterConfiguration.class
-                )
-                .withBean(WorkerEndpointDirectory.class, () -> {
-                    WorkerEndpointDirectory directory = mock(
-                            WorkerEndpointDirectory.class
-                    );
-                    org.mockito.Mockito.when(directory.contains(
-                            org.mockito.ArgumentMatchers.anyString(),
-                            org.mockito.ArgumentMatchers.any()
-                    )).thenReturn(endpointMatches);
-                    return directory;
-                })
-                .withBean(
-                        WorkerBindingService.class,
-                        () -> mock(WorkerBindingService.class)
-                );
-    }
-
     private static List<String> adapterProperties(
             String adapterId,
             String type,
@@ -247,6 +240,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 + adapterId
                 + ".";
         return List.of(
+                "xa.mass.worker-endpoints.defaults." + type + "=" + adapterId,
+                "xa.mass.worker-endpoints.endpoints." + adapterId + ".transport-type=" + type,
+                "xa.mass.worker-endpoints.endpoints." + adapterId + ".public-uri="
+                        + ("SOCKET".equals(type) ? "tcp" : "ws") + "://127.0.0.1:" + listenPort,
                 prefix + "type=" + type,
                 prefix + "listen-host=127.0.0.1",
                 prefix + "listen-port=" + listenPort,
