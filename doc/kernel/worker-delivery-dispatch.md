@@ -99,8 +99,9 @@ side effects. A homogeneous batch selects one destination branch:
 
 - TASK: producer/code validation selects the Kernel success or failure lane.
 - SERVER: the Server Direct Call waiter consumes correlated evidence.
-- SYSTEM: platform events; no consumer is installed, so all items are rejected
-  without a Direct Call, Kernel or Matching side effect.
+- SYSTEM: the fixed Adapter Properties observation passes Server source,
+  Binding and Group admission into Matching facts; unknown events are rejected.
+  It never completes Direct Calls or changes Kernel scores/Candidates.
 - KERNEL: the Serviceability handoff validates path-consistent Adapter evidence.
 
 Kernel Result Policy parses and groups evidence, then invokes semantic TaskItem

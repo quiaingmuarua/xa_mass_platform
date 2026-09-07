@@ -105,6 +105,12 @@ keys, replacement removes omitted keys. Only these events write the local cache;
 ordinary snapshot Results keep their wrapped payload and only forward. Connection and
 Properties expose independent snapshots without an atomic join or shared
 version. Neither cache is scheduling, Binding or Worker lifecycle truth.
+Each accepted Properties installation offers one complete
+`ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` Report. Server
+checks source, Binding and Group, then asks Matching to replace persistent
+Worker Properties. The existing Report owner provides bounded, one-shot
+best-effort delivery; no Prepare, Candidate revocation or scheduler wakeup is
+part of that path. See the [Adapter Owner](netty-adapter/README.md) for loss bounds.
 
 See:
 

@@ -25,6 +25,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,6 +49,9 @@ public final class WorkerConnectionMechanism {
             "platform.worker.properties.updated";
     private static final String WORKER_PROPERTIES_REPLACED_EVENT =
             "platform.worker.properties.replaced";
+    private static final String WORKER_PROPERTIES_OBSERVED_EVENT =
+            "platform.adapter.worker-properties.observed";
+    private static final int MAX_PROPERTIES_REPORT_BYTES = 1_000_000;
     private static final String WORKER_CONNECTION_CHANGED_EVENT =
             "platform.adapter.worker-connection.changed";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -445,11 +449,32 @@ public final class WorkerConnectionMechanism {
                     WORKER_PROPERTIES_REPLACED_EVENT.equals(report.messageType())
                             ? propertiesCache.observe(workerId, properties)
                             : propertiesCache.patch(workerId, properties);
-            if (write != null && !routes.isCurrentConnected(workerId, channel)) {
-                propertiesCache.rollback(write);
+            if (write == null) {
+                return;
             }
+            if (!routes.isCurrentConnected(workerId, channel)) {
+                propertiesCache.rollback(write);
+                return;
+            }
+            reportPropertiesObserved(workerId, write.written().properties());
         } catch (RuntimeException ignored) {
             // Invalid or baseline-less observations are local best-effort drops.
+        }
+    }
+
+    private void reportPropertiesObserved(String workerId, Map<String, String> properties) {
+        try {
+            DeliveryReport observation = DeliveryReport.create(
+                    ADAPTER, adapterId, SYSTEM, WORKER_PROPERTIES_OBSERVED_EVENT, "200",
+                    Jsons.toJson(Map.of("workerId", workerId, "properties", properties)), ""
+            );
+            if (codec.encodeDeliveryReport(observation).getBytes(StandardCharsets.UTF_8).length
+                    > MAX_PROPERTIES_REPORT_BYTES) {
+                return;
+            }
+            reportDispatcher.tryDispatch(observation);
+        } catch (RuntimeException ignored) {
+            // Publication is one-shot best-effort; the installed local observation survives.
         }
     }
 

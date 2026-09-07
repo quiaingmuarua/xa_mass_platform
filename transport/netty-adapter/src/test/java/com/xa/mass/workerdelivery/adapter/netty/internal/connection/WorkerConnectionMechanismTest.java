@@ -135,7 +135,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void updatedMergesOnlyWithCompleteBaselineAndPropertiesNeverEnterReportQueues() {
+    void installsAndPublishesCompletePropertiesOnlyAfterVerifiedBaseline() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         try {
@@ -153,10 +153,21 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(patch); // Verified but no complete baseline.
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").properties()).isNull();
+            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
             String baseline = fixture.propertiesFull("worker-1", "200",
                     "{\"battery\":\"87\",\"old\":\"true\",\"network.type\":\"wifi\"}");
             channel.writeInbound(baseline);
             channel.writeInbound(patch);
+            var published = List.copyOf(fixture.reportQueues.get(SYSTEM));
+            assertThat(published).hasSize(2);
+            assertThat(published.get(1).src()).isEqualTo(ADAPTER);
+            assertThat(published.get(1).sourceId()).isEqualTo("adapter-1");
+            assertThat(published.get(1).messageType()).isEqualTo("platform.adapter.worker-properties.observed");
+            assertThat(published.get(1).outcomeCode()).isEqualTo("200");
+            assertThat(published.get(1).forward()).isEmpty();
+            assertThat(Jsons.parseObject(published.get(1).payload())).isEqualTo(Map.of(
+                    "workerId", "worker-1", "properties", Map.of(
+                            "battery", "87", "old", "true", "network.type", "cellular", "empty", "")));
             var observation = fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1");
             assertThat(observation.properties()).containsOnlyKeys("battery", "old", "network.type", "empty")
                     .containsEntry("battery", "87")
@@ -171,6 +182,8 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{}"));
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").properties()).isEmpty();
+            assertThat(Jsons.parseObject(fixture.reportQueues.get(SYSTEM).getLast().payload()))
+                    .containsEntry("properties", Map.of());
             String ordinaryKeys = "{\"set\":\"x\",\"remove\":\"\",\"properties\":\"y\"}";
             channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", ordinaryKeys));
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
@@ -179,6 +192,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
                     .get("worker-1").properties()).isEqualTo(Map.of("properties", "z"));
             fixture.flushReports();
+            fixture.flushReports(); // SYSTEM observation and KERNEL connection evidence are separate batches.
             assertThat(fixture.serverReports).isEmpty();
             assertThat(fixture.reportQueues.get(TASK)).isEmpty();
             assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
@@ -230,10 +244,73 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.network.closeReasons).containsExactly(AdapterConnectionCloseReason.REPLACED);
             assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
             assertThat(fixture.reportQueues.get(KERNEL)).hasSize(1);
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1); // Only the original full baseline.
             assertThat(fixture.reportQueues.get(TASK)).isEmpty();
         } finally {
             old.finishAndReleaseAll();
             current.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void publicationPressureFailureAndOversizeKeepLocalObservationAndConnection() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            String full = fixture.propertiesFull("worker-1", "200", "{\"network.type\":\"wifi\"}");
+            channel.writeInbound(full);
+            channel.writeInbound(full); // FULL publication is lossy, not a cache rollback.
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1);
+            fixture.reportQueues.get(SYSTEM).clear();
+            channel.writeInbound(full); // Fingerprint equality does not prevent an explicit resubmission.
+            assertThat(fixture.reportQueues.get(SYSTEM)).hasSize(1);
+            fixture.reportQueues.get(SYSTEM).clear();
+            // Individually valid updates can make the complete upstream snapshot exceed a frame.
+            String large = "界".repeat(175_000);
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", Jsons.toJson(Map.of("a", large))));
+            fixture.reportQueues.get(SYSTEM).clear();
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", Jsons.toJson(Map.of("b", large))));
+            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1")
+                    .properties()).containsKeys("a", "b");
+            org.mockito.Mockito.doThrow(new IllegalStateException("publication unavailable"))
+                    .when(fixture.reportDispatcher).tryDispatch(any(DeliveryReport.class));
+            channel.writeInbound(full);
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1")
+                    .properties()).isEqualTo(Map.of("network.type", "wifi"));
+            org.mockito.Mockito.doReturn(DeliveryReportDispatcher.DispatchStatus.CLOSED)
+                    .when(fixture.reportDispatcher).tryDispatch(any(DeliveryReport.class));
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{}"));
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1")
+                    .properties()).isEmpty();
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void lostCurrentChannelAfterInstallationRollsBackWithoutPublishing() {
+        WorkerRouteRegistry routes = org.mockito.Mockito.spy(new WorkerRouteRegistry(Duration.ofMinutes(10), 100));
+        Fixture fixture = new Fixture(10, routes);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            channel.writeInbound(fixture.propertiesFull("worker-1", "200", "{\"v\":\"old\"}"));
+            fixture.reportQueues.get(SYSTEM).clear();
+            var before = fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1");
+            org.mockito.Mockito.doReturn(true, false).when(routes).isCurrentConnected("worker-1", channel);
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "200", "{\"v\":\"new\"}"));
+            assertThat(fixture.reportQueues.get(SYSTEM)).isEmpty();
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1")).get("worker-1")).isEqualTo(before);
+        } finally {
+            channel.finishAndReleaseAll();
         }
     }
 

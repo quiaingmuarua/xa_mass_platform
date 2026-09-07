@@ -16,6 +16,7 @@ import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -26,6 +27,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoi
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.ArrayList;
+import com.xa.mass.workerdelivery.json.Jsons;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +45,7 @@ class WorkerDeliveryServiceTest {
     private DirectCallService directCalls;
     private WorkerServiceabilityRuntime serviceability;
     private WorkerDeliveryService service;
+    private WorkerResourceCommandService workerResources;
 
     @BeforeEach
     void setUp() {
@@ -49,6 +54,7 @@ class WorkerDeliveryServiceTest {
         bindings = mock(WorkerBindingService.class);
         directCalls = mock(DirectCallService.class);
         serviceability = mock(WorkerServiceabilityRuntime.class);
+        workerResources = mock(WorkerResourceCommandService.class);
         when(serviceability.consumeProbeRequests(anyString(), anyInt()))
                 .thenReturn(List.of());
         when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
@@ -64,8 +70,61 @@ class WorkerDeliveryServiceTest {
                 resultRuntime,
                 bindings,
                 directCalls,
-                serviceability
+                serviceability,
+                workerResources
         );
+    }
+
+    @Test
+    void systemPropertiesUseLastValidSnapshotAndCountEveryAcceptedInput() {
+        var latest = Map.of("network.type", "cellular", "empty", "");
+        when(workerResources.replaceReportedProperties("adapter-1", Map.of("w", latest, "missing", Map.of())))
+                .thenReturn(Set.of("w"));
+        var reports = List.of(
+                propertiesReport("adapter-1", "w", Map.of("network.type", "wifi")),
+                propertiesReport("adapter-1", "w", latest),
+                propertiesReport("adapter-1", "w", Map.of("network.type", 87)),
+                propertiesReport("adapter-1", "missing", Map.of())
+        );
+        assertThat(service.appendAdapterReports("adapter-1", reports))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(2, 2));
+        verify(workerResources).replaceReportedProperties("adapter-1", Map.of("w", latest, "missing", Map.of()));
+        verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime, bindings);
+    }
+
+    @Test
+    void malformedOrUntrustedSystemEventsNeverCallThePropertiesOwner() {
+        List<DeliveryReport> reports = new ArrayList<>();
+        reports.add(propertiesReport("other-adapter", "w", Map.of()));
+        String valid = "{\"workerId\":\"w\",\"properties\":{}}";
+        reports.add(DeliveryReport.create(DeliveryEndpoint.WORKER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed", "200", valid, ""));
+        reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed", "23001", valid, ""));
+        reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed", "200", valid, "direct-call:v1:x"));
+        reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                "platform.adapter.unknown", "200", valid, ""));
+        for (String payload : List.of("null", "[]", "not-json", "{}",
+                "{\"workerId\":\" \",\"properties\":{}}",
+                "{\"workerId\":\"w\",\"properties\":{},\"version\":1}",
+                "{\"workerId\":\"w\",\"properties\":{\"x\":null}}",
+                "{\"workerId\":\"w\",\"properties\":{\"x\":true}}",
+                "{\"workerId\":\"w\",\"properties\":{\"x\":{}}}",
+                "{\"workerId\":\"w\",\"properties\":{\" \":\"value\"}}")) {
+            reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
+                    "platform.adapter.worker-properties.observed", "200", payload, ""));
+        }
+        reports.add(propertiesReport("adapter-1", "w", Map.of("large", "界".repeat(334_000))));
+        assertThat(service.appendAdapterReports("adapter-1", reports))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, reports.size()));
+        verifyNoInteractions(workerResources, directCalls, resultRuntime, serviceability, bindings);
+    }
+
+    private static DeliveryReport propertiesReport(String adapterId, String workerId, Map<String, ?> properties) {
+        return DeliveryReport.create(DeliveryEndpoint.ADAPTER, adapterId, DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed", "200",
+                Jsons.toJson(Map.of("workerId", workerId, "properties", properties)), "");
     }
 
     @Test

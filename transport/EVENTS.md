@@ -36,8 +36,9 @@ Definitions. Their mechanism contract is owned by
 `probe` is not schedulability, idleness, Binding, or connectivity truth.
 `properties.snapshot` reads flat string KV from the Host Provider. TASK/SERVER
 calls return ordinary correlated Results; an ADAPTER baseline request returns
-one full `properties.replaced` instead. Neither updates canonical facts or
-scheduling truth.
+one full `properties.replaced` instead. A normal query has no write effect;
+an installed Adapter observation may be published through SYSTEM and Server
+admission to Matching facts, without directly changing scheduling truth.
 `events.snapshot` includes itself and all Host extensions, but does not replace
 WorkerGroup `eventCodes` or authorization.
 
@@ -143,7 +144,7 @@ Hosts can call `reportProperties()` or update their one Provider then call
 `reportProperties(updates)`; Manager delegates by replica key. Automatic baseline
 reuses the successful snapshot output without reading the Provider again; explicit
 TASK/SERVER queries still return `{"properties":{...}}`. No SDK copy,
-history, ACK, retry or upstream Server publication is maintained. A missed full
+history, ACK or retry is maintained by the SDK. A missed full
 requires a later explicit full or connection baseline, not automatic repair.
 
 The cache keeps immutable complete Properties, CRC32C over key-sorted JSON,
@@ -155,6 +156,38 @@ version. `CONNECTED` does not prove properties exist or are recent, and cached
 properties may remain while the route is `DISCONNECTED` but still verified. A
 management caller that needs a combined view invokes both events and joins
 their ordered workerId maps.
+
+### Adapter-produced complete Properties observation
+
+After installing either valid Worker event and rechecking the exact Channel,
+Adapter attempts one publication from that immutable complete cache value:
+
+```text
+messageType = platform.adapter.worker-properties.observed
+src         = ADAPTER
+sourceId    = adapterId
+dst         = SYSTEM
+outcomeCode = 200
+forward     = ""
+payload     = {"workerId":"...","properties":{"network.type":"cellular"}}
+```
+
+This is not a callable Handler, raw Worker update, connection evidence or ACK.
+The complete encoded Report has the same 1,000,000 UTF-8 byte limit. Empty
+Properties clear the persistent Map; empty string values remain present. There
+are no timestamp, version, CRC or retry fields. Each valid installation offers
+once, including unchanged full reports and reconnect baselines. Missing baseline,
+rollback or invalid Channel/input offers nothing.
+
+The existing SYSTEM Queue submits homogeneous object batches through
+`results:append`. Oversize, encoding, queue and HTTP failures drop publication
+without undoing the cache or closing the Worker. There is no retry or automatic
+repair without new input. Server validates event source/shape, current Binding
+and Group, then replaces Worker facts through the Matching Catalog. Unknown
+SYSTEM events are per-item rejections, never Direct Call completions.
+Later Matching Demands read the facts; existing Candidates, Kernel scores,
+identity and Binding remain unchanged. Prepare still writes the same facts
+without a cross-path timestamp fence or special retention of registration keys.
 
 ## Extension Boundary
 

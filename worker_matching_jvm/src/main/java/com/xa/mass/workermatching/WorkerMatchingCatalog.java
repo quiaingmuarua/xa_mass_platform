@@ -17,6 +17,12 @@ public interface WorkerMatchingCatalog {
             Map<String, Object> workerProperties
     );
 
+    /** Replaces complete string Properties for 1..100 Workers in one Group. */
+    Map<String, MutationResult> upsertWorkerFactsBatch(
+            String workerGroupId,
+            Map<String, Map<String, String>> propertiesByWorkerId
+    );
+
     MutationResult patchWorkerPlatformProperties(
             String workerGroupId,
             String workerId,

@@ -328,9 +328,10 @@ neutral.
 - `DeliveryReport` carries producer `src + sourceId`.
 - SERVER identifies Server-owned Direct Call requests and replies; only SERVER
   Reports may complete its waiter. SYSTEM identifies platform events, whose
-  message contract determines the semantic owner, not the HTTP host. No SYSTEM
-  consumer is installed: valid homogeneous batches are rejected item-by-item
-  without Direct Call, Kernel or Matching side effects. Do not alias the two.
+  message contract determines the semantic owner, not the HTTP host. The fixed
+  Adapter Properties observation enters Matching only after Server admission;
+  unknown SYSTEM events are rejected item-by-item and never complete Direct
+  Calls. Do not alias the two.
 - `forward` remains opaque until its downstream owner.
 - Do not add Server, Kernel, Redis, Netty, Android or scheduling dependencies.
 - Long-lived connections use an Adapter-directed identity Report followed by
@@ -409,7 +410,9 @@ Rules:
 - Registry routes only by `workerId`; long-lived identity and Kernel-requested
   Adapter snapshots do not add WorkerGroup state to the route owner.
 - Adapter-local Worker property observation is a separate projection cache;
-  it must not be folded into RouteEntry or copied into Server/Kernel truth.
+  it must not be folded into RouteEntry or stored as another Server/Kernel truth.
+  Publishing observations crosses SYSTEM and Server admission; Adapter must
+  not access Matching storage directly.
 - Worker Properties observation must come from the exact current verified
   Channel. The fixed `properties.updated` and `properties.replaced` events carry
   direct string KV Maps: update merges supplied keys into a full baseline;
@@ -418,9 +421,11 @@ Rules:
   Explicit TASK/SERVER snapshot Results keep their wrapped query payload and
   never write the cache. Keep cache content immutable
   with owner-local fingerprint and observation metadata, without field versions.
-  Baseline calibration and explicit SDK reporting remain best-effort observation,
-  never canonical Matching writes, upstream Reports or ACKs. Host publication
-  policy must not become a Core scheduler or a correctness prerequisite.
+  After installation and current-Channel recheck, publish the complete Map once
+  through SYSTEM. Queue/HTTP failure leaves the cache intact and does not close
+  the Worker, retry, or create pending publication state. Server validates
+  Binding/Group and Matching owns full persistent replacement. Host publication
+  policy must not become a Core scheduler or an ACK/recovery prerequisite.
 - Connection snapshots read Route truth; properties snapshots pass through the
   Route evidence gate and then read the properties cache. They have no atomic
   join or shared version.
@@ -471,8 +476,9 @@ the `WorkerDeliveryAdapter` contract.
   Workers must not persist or hint workerId. Worker kind selects a typed
   registration-key algorithm, never a Redis key address; one Group retains one
   identity Hash without algorithm aliasing. Transparent reconnect sends identity
-  without re-Prepare. Explicit Properties reports must not update canonical
-  Matching facts or add an automatic publication scheduler.
+  without re-Prepare. Explicit Properties reports go through Adapter observation
+  and Server admission, never a direct Matching write or automatic Core
+  publication scheduler.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - Active `stop()` revokes the current run before closing its Client outside

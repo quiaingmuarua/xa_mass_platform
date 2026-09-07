@@ -429,8 +429,7 @@ verification reconnect, Adapter requests one `platform.worker.properties.snapsho
 directly on that exact Channel. The Command is ADAPTER -> WORKER, payload `null`,
 empty forward, with the configured `sendTimeLimit` deadline. It runs outside
 Route mutation, never enters a retry Queue and failure never closes a healthy
-connection. There is no request registry or compensation. Adapter does not publish
-attribute changes to Server or Kernel. Entries are keyed by workerId and do not
+connection. There is no request registry or compensation. Entries are keyed by workerId and do not
 repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
 only: no loader, refresh, listener, scheduler or cleanup thread is installed.
 
@@ -454,14 +453,37 @@ dropped without a compensating snapshot request. Host explicit full reporting
 or the next successful connection baseline can restore it. Report encoding is
 bounded to the existing 1,000,000-byte frame limit.
 
-Neither event is a callable Handler, forwarded to Report queues, or
-acknowledged. Ordinary TASK/SERVER snapshot Results retain their
+Neither Worker event is a callable Handler, forwarded verbatim to Report queues,
+or acknowledged. Ordinary TASK/SERVER snapshot Results retain their
 `{"properties":{...}}` query payload and still forward but never refresh the cache.
 Automatic baseline reuses that successful snapshot output as one `replaced`
 Report without a second Provider read. Java and Android use their one Host Provider for full reports;
-the SDK does not store or merge Host properties. Server publication/coalescing,
-field timestamps, versions and reliable convergence remain out of scope.
-Connection evidence behavior is unchanged; this observation never writes Kernel.
+the SDK does not store or merge Host properties.
+
+After a valid cache installation and current-Channel recheck, the connection
+mechanism uses that exact immutable `ObservationWrite.written` value to offer
+one `ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` Report.
+The payload is `{"workerId":"...","properties":{...}}`, with `sourceId=adapterId`,
+outcome `200` and empty forward. Full, incremental, initial and reconnect
+baselines all use this one path. Rollback, missing baseline and invalid input
+produce no publication. Fingerprint equality does not suppress a valid write
+or explicit full resubmission; no throttle or publication timestamp is stored.
+
+The complete encoded upstream Report must fit 1,000,000 UTF-8 bytes. A merged
+Map may exceed that even though each Worker update fit its own frame; encoding
+failure or oversize drops only this publication. SYSTEM admission FULL/CLOSED
+or HTTP failure likewise preserves the local cache and connection. HTTP stays
+on the existing Report thread, outside Route/cache mutations. There is no
+pending/latest snapshot, retry, ACK or quiet-period repair. A new explicit full
+or later connection baseline can recover a lost publication.
+
+Server verifies the Adapter producer, current Binding and Worker Group before
+Matching replaces its persistent Worker Properties. Transport owns no Matching
+or Redis access. Properties reporting never creates Worker identity/resources,
+rewrites score, revokes Candidates or emits connection evidence. Timing between
+Prepare and live reports is not fenced; their effective storage writes decide
+the current facts. Field timestamps, versions and reliable convergence remain
+out of scope.
 
 ### Result ingress loop
 
@@ -498,8 +520,8 @@ whole batch before an Owner side effect, rejects mixed or unsupported
 destinations, and selects one destination branch from the first `dst`: TASK
 enters Kernel Task Result truth, SERVER enters the Server-local Direct Call
 owner, and KERNEL enters the Kernel Worker Serviceability handoff. SYSTEM is a
-platform-event destination with no consumer installed yet: a valid batch returns
-`202` with zero accepted and all items rejected, without business Owner calls.
+platform-event destination: the fixed complete Properties observation passes
+Server admission into Matching, while unknown events are per-item rejected.
 SYSTEM never completes a Direct Call waiter, even with matching `forward`.
 Owner-local
 correlation then interprets opaque `forward` and contributes per-item accepted

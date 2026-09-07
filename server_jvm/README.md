@@ -437,10 +437,10 @@ Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects.
 The complete batch must have one supported `dst`; Server rejects a mixed or
 unsupported batch before calling any semantic Owner, then routes the whole
 batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
-SYSTEM is a supported platform-event destination, not Direct Call correlation:
-no event consumer is installed yet, so a valid SYSTEM batch returns `202` with
-`acceptedCount=0` and `rejectedCount=batch.size()`, without invoking any business
-Owner. Even a matching Direct Call `forward` cannot complete a waiter via SYSTEM.
+SYSTEM is a platform-event destination, not Direct Call correlation. Its fixed
+`platform.adapter.worker-properties.observed` event enters the Worker resource
+use case; unknown events are individually rejected. Even a matching Direct Call
+`forward` cannot complete a waiter via SYSTEM.
 Direct Call Commands use `src=SERVER`; their Worker/Adapter replies target SERVER.
 The single HTTP endpoint and homogeneous-batch validation remain unchanged.
 Owner-local source, correlation, outcome and forward failures remain per-item
@@ -557,8 +557,9 @@ owner-local provider packages.
 Worker Prepare composes Server-owned identity resolution and Endpoint Binding,
 complete Matching-owner Worker Facts replacement, and minimal Kernel Worker
 metadata/Score initialization in that order. The owners and registries remain
-separate. Prepare is the sole canonical Worker Properties refresh; a
-transparent Client reconnect performs no control operation.
+separate. Prepare remains unchanged; runtime observations can also replace
+Matching Properties without re-Prepare or Kernel Worker upsert. Transparent
+Client reconnect performs no Prepare operation.
 
 ### Worker Delivery
 
@@ -592,23 +593,52 @@ code namespace before mapping accepted reports to the Kernel-owned
 SUCCESS; Worker-owned `3...` and valid Adapter Task rejection are FAILURE.
 Kernel Result Routing receives that type and does not reinterpret the raw
 error code. Adapter delivery-expiry still emits a separate `dst=KERNEL`
-Serviceability report in the same HTTP batch.
+Serviceability report through its separate homogeneous Report batch.
 
-Adapter instances may configure `route-cache` and `properties-cache`. The
+Adapter instances configure flat Route retention and Properties budget fields. The
 defaults retain disconnected verification evidence for `10m` with at most
 `100000` disconnected Workers, and bound properties by a `64 MiB` encoded-data
 budget. Properties have no Server-defined freshness window; their visibility
 follows retained Adapter route identity and may also be lost under properties
 capacity pressure. These are Adapter-owned process-local policies; Server only
-validates configuration and passes the two finite config records into the
-Adapter factory. Callers read the properties projection by
+binds the complete Transport config and checks the corresponding Endpoint.
+Callers read the properties projection by
 DIRECT_CALL to `platform.adapter.worker-properties.snapshot`. Server treats the
 event name, opaque input and result payload transparently: it owns neither cache
 contents nor update time, route gate, TTL or eviction interpretation. Live
 connection state remains a separate
 `platform.adapter.worker-connections.snapshot` call; Server does not join the
-two projections. The Adapter does not automatically request Worker properties
-or turn its cache into a KERNEL Report.
+two projections. After verified connection/reconnection, Adapter requests one
+full Worker snapshot. Cache installation offers a distinct SYSTEM observation,
+never a KERNEL Properties Report.
+
+### Runtime Worker Properties Admission
+
+`WorkerDeliveryService` recognizes only the fixed
+`ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` event here.
+Its sourceId must match the path adapterId, outcome must be `200`, forward must
+be empty, and payload must contain exactly `workerId + properties`. Properties
+are a complete flat string KV Map; the full encoded Report is limited to
+1,000,000 UTF-8 bytes. Event-level invalid input is rejected per item; mixed
+destinations and malformed Report DTOs still fail the whole HTTP batch first.
+
+The service collapses valid snapshots by Worker to the last valid input in
+that HTTP batch, retaining input counts. `WorkerResourceCommandService` reads
+current Endpoint Bindings and Worker Group IDs using the existing bounded
+batch owners, rejects unknown/unbound/wrong-Adapter Workers, groups by Group,
+and calls `WorkerMatchingCatalog.upsertWorkerFactsBatch`. No registration,
+Prepare, Worker upsert, score, Candidate or new identity index participates.
+APPLIED/UNCHANGED accepts all valid inputs collapsed into that Worker; other
+mutation outcomes reject them. Infrastructure failure returns `503` without
+rolling back earlier Group writes. SYSTEM then drops the batch, not retries it.
+
+Matching owns the persistent facts, not Server. Replacement removes omitted
+keys without preserving Prepare-only metadata inside Properties; independent
+identity, Binding and Worker records remain intact. New Matching Demands read
+the new facts. Existing Candidates are not revoked and scheduling is not
+explicitly awakened. Prepare and live reports have no timestamp/version fence;
+effective storage writes determine facts. No quiet-network eventual repair,
+ACK, throttling or publication history is provided.
 
 Server-level route verification defaults to a `100000` request queue and a
 `5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner

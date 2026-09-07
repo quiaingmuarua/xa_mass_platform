@@ -29,6 +29,32 @@ import org.junit.jupiter.api.Test;
 class WorkerMatchingRuntimeTest {
 
     @Test
+    void eachNewDemandReadsCurrentFactsWithoutRevokingEarlierCandidates() {
+        FakeCatalog catalog = catalogWithWorkers("worker-a");
+        catalog.facts.put("worker-a", new WorkerFacts("worker-a", "group-1",
+                Map.of("network.type", "wifi", "ssid", "lab"), Map.of()));
+        catalog.rules.put("wifi-old", rule("wifi-old", Map.of("worker.network.type", Map.of("$eq", "wifi"))));
+        catalog.rules.put("cellular-new", rule("cellular-new", Map.of("worker.network.type", Map.of("$eq", "cellular"))));
+        catalog.rules.put("deleted-new", rule("deleted-new", Map.of("worker.ssid", Map.of("$exists", false))));
+        RecordingCandidateCache cache = new RecordingCandidateCache();
+        WorkerMatchQueue queue = queue(4);
+        try (WorkerMatchingRuntime runtime = runtime(catalog, cache, queue)) {
+            runtime.start();
+            assertTrue(queue.offer(singleTaskDemand("group-1", "wifi-old", "worker-a")));
+            await(() -> cache.appends.size() == 1);
+            catalog.facts.put("worker-a", new WorkerFacts("worker-a", "group-1",
+                    Map.of("network.type", "cellular", "ssid", "lab"), Map.of()));
+            assertTrue(queue.offer(singleTaskDemand("group-1", "cellular-new", "worker-a")));
+            await(() -> cache.appends.size() == 2);
+            catalog.facts.put("worker-a", new WorkerFacts("worker-a", "group-1", Map.of(), Map.of()));
+            assertTrue(queue.offer(singleTaskDemand("group-1", "deleted-new", "worker-a")));
+            await(() -> cache.appends.size() == 3);
+            assertEquals(List.of("wifi-old", "cellular-new", "deleted-new"),
+                    cache.appends.stream().map(Append::candidateId).toList());
+        }
+    }
+
+    @Test
     void writesCandidatesInPacerTaskAndWorkerOrder() {
         FakeCatalog catalog = catalogWithWorkers("worker-a", "worker-b");
         catalog.rules.put("task-first", rule("task-first", Map.of()));
@@ -382,6 +408,14 @@ class WorkerMatchingRuntimeTest {
                 String workerId,
                 String workerGroupId,
                 Map<String, Object> workerProperties
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Map<String, MutationResult> upsertWorkerFactsBatch(
+                String workerGroupId,
+                Map<String, Map<String, String>> propertiesByWorkerId
         ) {
             throw new UnsupportedOperationException();
         }

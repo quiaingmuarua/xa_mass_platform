@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -191,10 +192,12 @@ class NettyAdapterContractTest {
             adapter.start();
             worker.start();
             awaitProperties(remoteApi, properties.get());
+            awaitPropertiesPublication(remoteApi, protocol.adapterId, properties.get());
 
             properties.set(Map.of("battery", "87", "network.type", "cellular", "network.ssid", ""));
             assertThat(worker.reportProperties(Map.of("network.type", "cellular", "network.ssid", ""))).isTrue();
             awaitProperties(remoteApi, properties.get());
+            awaitPropertiesPublication(remoteApi, protocol.adapterId, properties.get());
 
             // Removing a Host key requires a full replacement; an empty value above kept it present.
             properties.set(Map.of("battery", "87", "network.type", "cellular"));
@@ -218,6 +221,7 @@ class NettyAdapterContractTest {
             )));
             awaitReport(remoteApi, "close-for-reconnect");
             awaitProperties(remoteApi, properties.get());
+            awaitPropertiesPublication(remoteApi, protocol.adapterId, properties.get());
             assertThat(remoteApi.verificationCount.get()).isEqualTo(1);
             assertThat(remoteApi.prepareCount.get()).isEqualTo(1);
             assertThat(remoteApi.appendedResults.stream().flatMap(List::stream))
@@ -226,6 +230,24 @@ class NettyAdapterContractTest {
             worker.stop();
             assertThat(worker.reportProperties()).isFalse();
         }
+    }
+
+    private void awaitPropertiesPublication(TestRemoteApi remoteApi, String adapterId,
+                                            Map<String, String> expected) throws InterruptedException {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        do {
+            if (remoteApi.appendedResults.stream().flatMap(List::stream).anyMatch(report ->
+                    report.src() == ADAPTER && report.sourceId().equals(adapterId)
+                            && report.dst() == SYSTEM && report.outcomeCode().equals("200")
+                            && report.forward().isEmpty()
+                            && report.messageType().equals("platform.adapter.worker-properties.observed")
+                            && Jsons.parseObject(report.payload()).equals(Map.of(
+                                    "workerId", WORKER_ID, "properties", expected)))) {
+                return;
+            }
+            Thread.sleep(10);
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Complete Properties observation was not published");
     }
 
     private void awaitProperties(TestRemoteApi remoteApi, Map<String, String> expected) throws Exception {

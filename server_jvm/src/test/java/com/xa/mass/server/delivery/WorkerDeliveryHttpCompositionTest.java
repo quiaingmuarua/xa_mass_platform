@@ -18,6 +18,8 @@ import com.xa.mass.server.assembly.redis.KernelRedisHealthIndicator;
 import com.xa.mass.server.worker.binding.WorkerBindingService;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -49,6 +51,10 @@ class WorkerDeliveryHttpCompositionTest {
                             )
                     )
                     .withBean(
+                            WorkerMatchingCatalog.class,
+                            () -> org.mockito.Mockito.mock(WorkerMatchingCatalog.class)
+                    )
+                    .withBean(
                             DirectCallService.class,
                             () -> org.mockito.Mockito.mock(
                                     DirectCallService.class
@@ -64,6 +70,7 @@ class WorkerDeliveryHttpCompositionTest {
                     WorkerServiceabilityRuntime.class
             );
             assertThat(context).hasSingleBean(WorkerDeliveryService.class);
+            assertThat(context).hasSingleBean(WorkerResourceCommandService.class);
             assertThat(context)
                     .hasSingleBean(WorkerPointDeliveryController.class);
             assertThat(context)
@@ -90,6 +97,7 @@ class WorkerDeliveryHttpCompositionTest {
             KernelRedisConfiguration.class,
             WorkerDeliveryOwnerAssemblyConfiguration.class,
             WorkerDeliveryConfiguration.class,
+            WorkerResourceCommandService.class,
             WorkerPointDeliveryController.class,
             AdapterBatchDeliveryController.class,
             ApiExceptionHandler.class,

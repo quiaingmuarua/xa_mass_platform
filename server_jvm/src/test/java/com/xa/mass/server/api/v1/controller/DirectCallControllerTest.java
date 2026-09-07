@@ -117,7 +117,8 @@ class DirectCallControllerTest {
                 resultRuntime,
                 bindings,
                 directCalls,
-                mock(WorkerServiceabilityRuntime.class)
+                mock(WorkerServiceabilityRuntime.class),
+                mock(com.xa.mass.server.worker.resource.WorkerResourceCommandService.class)
         );
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();

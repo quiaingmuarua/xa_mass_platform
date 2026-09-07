@@ -215,8 +215,11 @@ complete encoded Report must fit 1,000,000 UTF-8 bytes. A rejected
 or lost report is not retained or retried. Already-admitted work may finish
 after stop; the closed Client rejects its late send best effort. Concurrent
 reports have no cross-Attempt ordering promise; explicit full reporting or a
-later reconnect baseline can calibrate the Adapter cache. None of this publishes
-Server/Matching facts or changes scheduling truth.
+later reconnect baseline can calibrate the Adapter cache. Adapter offers its
+complete installed observation through SYSTEM; Server validates it before
+Matching persists Worker facts. Core has no upstream publisher, retry, Matching
+dependency or scheduling side effect. Loss still requires new Host input or a
+later connection baseline; there is no unconditional eventual-delivery promise.
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may

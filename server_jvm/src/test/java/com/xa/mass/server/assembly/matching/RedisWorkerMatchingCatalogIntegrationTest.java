@@ -2,6 +2,7 @@ package com.xa.mass.server.assembly.matching;
 
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.server.testsupport.RedisTestScope;
@@ -13,6 +14,11 @@ import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -51,6 +57,93 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         }
         if (redisClient != null) {
             redisClient.shutdown();
+        }
+    }
+
+    @Test
+    void boundedBatchReplacesWholeMapsAndPreservesIndependentPlatformProperties() {
+        catalog.upsertWorkerFacts("w1", "g", Map.of("old", 1, "clientWorkerKey", "prepare-key"));
+        catalog.patchWorkerPlatformProperties("g", "w1", Map.of("policy", "retained"));
+        Map<String, Map<String, String>> batch = new LinkedHashMap<>();
+        batch.put("w1", Map.of("network.type", "cellular", "empty", ""));
+        batch.put("w2", Map.of());
+        assertThat(catalog.upsertWorkerFactsBatch("g", batch).values())
+                .allMatch(result -> result.status() == MutationStatus.APPLIED);
+        var facts = catalog.loadWorkerFacts("g", List.of("w1", "w2"));
+        assertThat(facts.get("w1").workerProperties()).isEqualTo(batch.get("w1"));
+        assertThat(facts.get("w1").platformProperties()).isEqualTo(Map.of("policy", "retained"));
+        assertThat(facts.get("w2").workerProperties()).isEmpty();
+        Map<String, String> reversed = new LinkedHashMap<>();
+        reversed.put("empty", "");
+        reversed.put("network.type", "cellular");
+        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("w1", reversed, "w2", Map.of())).values())
+                .allMatch(result -> result.status() == MutationStatus.UNCHANGED);
+        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("w1", Map.of())).get("w1").status())
+                .isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.loadWorkerFacts("g", List.of("w1")).get("w1").workerProperties()).isEmpty();
+        // Prepare retains its wider input contract and may still write the same facts after a live report.
+        assertThat(catalog.upsertWorkerFacts("w1", "g", Map.of("legacy-number", 87)).status())
+                .isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.loadWorkerFacts("g", List.of("w1")).get("w1").workerProperties())
+                .isEqualTo(Map.of("legacy-number", 87L));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void runtimeBatchRejectsNonStringValuesAndBoundsBeforeWriting() {
+        Map<String, Map<String, String>> batch = new LinkedHashMap<>();
+        batch.put("valid", Map.of("key", "value"));
+        batch.put("numeric", (Map) Map.of("key", 87));
+        batch.put("nested", (Map) Map.of("key", Map.of()));
+        batch.put("null-value", Collections.singletonMap("key", null));
+        batch.put("blank-key", Map.of(" ", "value"));
+        var results = catalog.upsertWorkerFactsBatch("g", batch);
+        assertThat(results.get("valid").status()).isEqualTo(MutationStatus.APPLIED);
+        assertThat(results.entrySet()).filteredOn(entry -> !entry.getKey().equals("valid"))
+                .allMatch(entry -> entry.getValue().status() == MutationStatus.INVALID);
+        assertThat(redis.hlen(keyspace.base() + ":matching:worker:facts:g")).isEqualTo(1);
+        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        Map<String, Map<String, String>> maximum = new LinkedHashMap<>();
+        for (int i = 0; i < 100; i++) {
+            maximum.put("worker-" + i, Map.of("number", Integer.toString(i)));
+        }
+        assertThat(catalog.upsertWorkerFactsBatch("g", maximum)).hasSize(100);
+        maximum.put("overflow", Map.of());
+        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", maximum))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(redis.hexists(keyspace.base() + ":matching:worker:facts:g", "overflow")).isFalse();
+    }
+
+    @Test
+    void concurrentPrepareAndRuntimeWritesNeverExposeHalfAWorkerMap() throws Exception {
+        Map<String, String> live = Map.of("a", "live", "b", "live");
+        Map<String, Object> prepare = Map.of("a", "prepare", "b", "prepare");
+        catalog.upsertWorkerFactsBatch("g", Map.of("w", live));
+        CountDownLatch start = new CountDownLatch(1);
+        try (var competing = new RedisWorkerMatchingCatalog(redisClient, keyspace);
+             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                for (int i = 0; i < 100; i++) {
+                    catalog.upsertWorkerFactsBatch("g", Map.of("w", live));
+                }
+                return null;
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                for (int i = 0; i < 100; i++) {
+                    competing.upsertWorkerFacts("w", "g", prepare);
+                }
+                return null;
+            });
+            start.countDown();
+            for (int i = 0; i < 100; i++) {
+                assertThat(catalog.loadWorkerFacts("g", List.of("w")).get("w").workerProperties())
+                        .isIn(live, prepare);
+            }
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
         }
     }
 

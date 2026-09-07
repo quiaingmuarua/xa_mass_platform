@@ -75,13 +75,62 @@ public final class RedisWorkerMatchingCatalog
         } catch (IllegalArgumentException error) {
             return result(MutationStatus.INVALID, "invalid Worker properties");
         }
-        String key = workerFactsKey(workerGroupId);
-        String current = commands().hget(key, workerId);
-        if (encoded.equals(current)) {
-            return new MutationResult(MutationStatus.UNCHANGED);
+        return storeWorkerFacts(workerGroupId, Map.of(workerId, encoded)).get(workerId);
+    }
+
+    @Override
+    public Map<String, MutationResult> upsertWorkerFactsBatch(
+            String workerGroupId,
+            Map<String, Map<String, String>> propertiesByWorkerId
+    ) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Objects.requireNonNull(propertiesByWorkerId, "propertiesByWorkerId");
+        if (propertiesByWorkerId.isEmpty() || propertiesByWorkerId.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("Worker facts batch must contain 1..100 entries");
         }
-        commands().hset(key, workerId, encoded);
-        return new MutationResult(MutationStatus.APPLIED);
+        propertiesByWorkerId.keySet().forEach(id -> requireNonBlank(id, "workerId"));
+        Map<String, String> encoded = new LinkedHashMap<>();
+        Map<String, MutationResult> results = new LinkedHashMap<>();
+        propertiesByWorkerId.forEach((id, properties) -> {
+            if (properties == null || ((Map<?, ?>) properties).entrySet().stream().anyMatch(
+                    entry -> !(entry.getKey() instanceof String key) || key.isBlank()
+                            || !(entry.getValue() instanceof String))) {
+                results.put(id, result(MutationStatus.INVALID, "invalid Worker properties"));
+            } else {
+                encoded.put(id, encodeObject(properties));
+            }
+        });
+        results.putAll(storeWorkerFacts(workerGroupId, encoded));
+        return Collections.unmodifiableMap(results);
+    }
+
+    private Map<String, MutationResult> storeWorkerFacts(
+            String workerGroupId,
+            Map<String, String> encoded
+    ) {
+        if (encoded.isEmpty()) {
+            return Map.of();
+        }
+        String key = workerFactsKey(workerGroupId);
+        RedisCommands<String, String> commands = commands();
+        List<KeyValue<String, String>> current = commands.hmget(key, encoded.keySet().toArray(String[]::new));
+        Map<String, String> changed = new LinkedHashMap<>();
+        Map<String, MutationResult> results = new LinkedHashMap<>();
+        for (KeyValue<String, String> value : current) {
+            String replacement = encoded.get(value.getKey());
+            boolean unchanged = replacement.equals(value.getValueOrElse(null));
+            results.put(value.getKey(), new MutationResult(
+                    unchanged ? MutationStatus.UNCHANGED : MutationStatus.APPLIED
+            ));
+            if (!unchanged) {
+                changed.put(value.getKey(), replacement);
+            }
+        }
+        if (!changed.isEmpty()) {
+            // Whole JSON values, no ordering fence against Prepare or another batch.
+            commands.hset(key, changed);
+        }
+        return Collections.unmodifiableMap(results);
     }
 
     @Override

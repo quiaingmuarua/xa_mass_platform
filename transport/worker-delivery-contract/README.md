@@ -75,11 +75,12 @@ For a Server-owned Direct Call:
 names platform events, not a Server process or Direct Call alias. A Report's
 `src + sourceId` identifies its producer; its `messageType` contract defines the
 event's semantic owner. An unsolicited Worker event does not become Server-owned
-because its HTTP ingress is hosted by Server. No SYSTEM event consumer is
-installed in this slice: a valid homogeneous SYSTEM batch returns `202` with zero
-accepted and all items rejected, without interpreting `forward` or invoking a
-Direct Call waiter, Kernel or Matching owner. Existing Worker Properties
-full/patch reports remain `WORKER -> ADAPTER` and cache-local.
+because its HTTP ingress is hosted by Server. The fixed Adapter-produced
+`platform.adapter.worker-properties.observed` SYSTEM event carries a complete
+observation for Server admission and Matching persistence. Unknown SYSTEM
+events remain per-item rejections; none complete a Direct Call waiter.
+Worker Properties update/replace reports remain `WORKER -> ADAPTER`; the
+Adapter merges them before producing its distinct full upstream observation.
 
 `DIRECT_CALL` is therefore not a Delivery DTO field or another protocol
 envelope. Caller admission, Worker mailbox offer/replace policy, timeout,

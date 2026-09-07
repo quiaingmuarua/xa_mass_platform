@@ -8,6 +8,15 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
+import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
+import com.xa.mass.kernel.assignment.WorkerMatchQueue;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.server.worker.preparation.WorkerPreparationService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -36,6 +45,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Tag;
@@ -51,6 +65,16 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles({"test", "integration-test"})
@@ -127,6 +151,17 @@ class RuntimeBoundaryIntegrationTest {
     @Autowired
     private ServerConfiguredRuntimeLifecycleHost workerAssemblyLifecycleHost;
 
+    @Autowired
+    private WorkerMatchingCatalog matchingCatalog;
+    @Autowired
+    private WorkerMatchQueue matchQueue;
+    @Autowired
+    private CandidateWorkerCache candidateCache;
+    @MockitoSpyBean
+    private WorkerPreparationService preparationService;
+    @MockitoSpyBean
+    private WorkerResourceCommandService workerResources;
+
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
         registry.add(
@@ -164,6 +199,116 @@ class RuntimeBoundaryIntegrationTest {
                 SOCKET_ENDPOINT_MANAGER_ID,
                 ACTIVE_ADAPTER_PORTS[1]
         );
+    }
+
+    @Test
+    void runtimePropertiesReachMatchingWithoutAnotherPrepareOnBothTextProtocols() throws Exception {
+        for (WorkerTransportType type : List.of(WorkerTransportType.WEBSOCKET, WorkerTransportType.SOCKET)) {
+            String groupId = "live-properties-" + UUID.randomUUID();
+            String adapterId = type == WorkerTransportType.WEBSOCKET
+                    ? WEBSOCKET_ENDPOINT_MANAGER_ID : SOCKET_ENDPOINT_MANAGER_ID;
+            assertThat(send("POST", "/api/v1/worker-groups/" + groupId + ":register",
+                    "{\"eventCodes\":[]}").statusCode()).isEqualTo(200);
+            AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of(
+                    "network.type", "wifi", "ssid", "lab"));
+            try (JavaWorker worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port),
+                    groupId, "live-host", type, host::get)) {
+                worker.start();
+                awaitCondition(() -> worker.snapshot().workerId() != null);
+                String workerId = worker.snapshot().workerId();
+                // Exact equality also proves the automatic baseline replaced Prepare-only clientWorkerKey.
+                awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
+                URI endpoint = worker.snapshot().endpointUri();
+                long holdUntil = System.currentTimeMillis() + 60_000;
+                long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
+                long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                String oldCandidate = matchNewFacts(groupId, workerId, held, holdUntil,
+                        Map.of("worker.network.type", Map.of("$eq", "wifi")));
+
+                host.set(Map.of("network.type", "cellular", "ssid", "lab"));
+                assertThat(worker.reportProperties(Map.of("network.type", "cellular"))).isTrue();
+                awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
+                matchNewFacts(groupId, workerId, held, holdUntil,
+                        Map.of("worker.network.type", Map.of("$eq", "cellular")));
+                assertThat(candidateCache.candidateWorkerCounts(List.of(oldCandidate)).get(oldCandidate)).isEqualTo(1);
+
+                host.set(Map.of());
+                assertThat(worker.reportProperties()).isTrue();
+                awaitRuntimeProperties(groupId, workerId, adapterId, Map.of());
+                matchNewFacts(groupId, workerId, held, holdUntil,
+                        Map.of("worker.ssid", Map.of("$exists", false)));
+
+                CountDownLatch failedSubmission = new CountDownLatch(1);
+                AtomicInteger submissions = new AtomicInteger();
+                doAnswer(invocation -> {
+                    Map<String, ?> snapshots = invocation.getArgument(1);
+                    if (snapshots.containsKey(workerId) && submissions.incrementAndGet() == 1) {
+                        failedSubmission.countDown();
+                        throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
+                                "workerResource.replaceReportedProperties", null, null);
+                    }
+                    return invocation.callRealMethod();
+                }).when(workerResources).replaceReportedProperties(eq(adapterId), anyMap());
+                host.set(Map.of("network.type", "recovered"));
+                assertThat(worker.reportProperties(Map.of("network.type", "recovered"))).isTrue();
+                assertThat(failedSubmission.await(5, TimeUnit.SECONDS)).isTrue();
+                Thread.sleep(150); // Exceeds multiple configured 20ms Report backoffs; no automatic replay.
+                assertThat(submissions).hasValue(1);
+                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                        .workerProperties()).isEmpty();
+                assertThat(worker.reportProperties()).isTrue(); // New Host input, not transport repair.
+                awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
+                assertThat(submissions).hasValue(2);
+                assertThat(worker.snapshot().workerId()).isEqualTo(workerId);
+                assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
+                verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
+            } finally {
+                doCallRealMethod().when(workerResources).replaceReportedProperties(anyString(), anyMap());
+            }
+        }
+    }
+
+    private String matchNewFacts(String groupId, String workerId, long held, long holdUntil,
+                                 Map<String, Object> rule) throws Exception {
+        String candidateId = "properties-candidate-" + UUID.randomUUID();
+        assertThat(matchingCatalog.createCandidateRule(candidateId, groupId, rule).status())
+                .isEqualTo(WorkerMatchingCatalog.MutationStatus.APPLIED);
+        assertThat(matchQueue.offer(new TaskRuleMatchDemand(groupId,
+                List.of(new TaskCandidateNeed(candidateId, 1)), Map.of(workerId, held), holdUntil))).isTrue();
+        awaitCondition(() -> candidateCache.candidateWorkerCounts(List.of(candidateId)).get(candidateId) == 1);
+        return candidateId;
+    }
+
+    private void awaitRuntimeProperties(String groupId, String workerId, String adapterId,
+                                        Map<String, String> expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        do {
+            HttpResponse<String> response = send("POST", "/api/v1/runtime-view/worker-groups/"
+                    + groupId + "/workers:preview", "1");
+            assertThat(response.statusCode()).isEqualTo(200);
+            List<?> workers = (List<?>) Jsons.parseObject(response.body()).get("workers");
+            if (workers.size() == 1) {
+                Map<?, ?> view = (Map<?, ?>) workers.get(0);
+                assertThat(view.get("workerId")).isEqualTo(workerId);
+                assertThat(view.get("endpointManagerId")).isEqualTo(adapterId);
+                if (expected.equals(view.get("workerProperties"))) {
+                    return;
+                }
+            }
+            Thread.sleep(20);
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Runtime Worker Properties did not converge");
+    }
+
+    private static void awaitCondition(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("Runtime Properties boundary condition was not established");
+            }
+            Thread.sleep(10);
+        }
     }
 
     @Test

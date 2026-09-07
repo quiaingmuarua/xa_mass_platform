@@ -54,8 +54,11 @@ reconnect sends identity only. Adapter Route evidence may feed the optional
 Kernel Serviceability policy, but Route and local Properties snapshots are
 observations, not scheduling truth. Adapter Properties reporting and baseline calibration follow the
 [connection Owner](transport/netty-adapter/README.md) and
-[Worker Core](transport/worker-core/README.md) contracts. These projections never
-update canonical Matching facts.
+[Worker Core](transport/worker-core/README.md) contracts. After installing a
+complete observation, Adapter offers one SYSTEM Report; Server validates its
+producer, Binding and Group before replacing Matching-owned Worker facts.
+New Matching Demands read those facts without re-Prepare. Reporting is lossy,
+does not revoke existing Candidates, and does not directly change scheduling.
 WorkerGroup event declarations likewise do not prove that handlers are loaded;
 process-local event snapshots report the actual immutable assembly.
 

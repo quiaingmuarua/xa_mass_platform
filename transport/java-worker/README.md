@@ -117,6 +117,10 @@ Empty Maps are legal, and `set`, `remove`, and `properties` are ordinary keys.
 Explicit TASK/SERVER snapshot calls still return correlated `{"properties":{...}}`
 Results. Loss may require an explicit full
 report or a later connection baseline; this is not guaranteed eventual delivery.
+Adapter publishes its complete installed observation via SYSTEM and Server
+admission to Matching. A later Demand can read new persistent facts without
+another Prepare; existing Candidates are not revoked. The SDK owns no part of
+that upstream publication, persistence or recovery.
 
 JavaWorkerManager exposes these methods with a first `replicaKey` argument,
 delegating only to that Worker; there is no group broadcast.

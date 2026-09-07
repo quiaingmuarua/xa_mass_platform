@@ -2,6 +2,7 @@ package com.xa.mass.server.delivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -14,6 +15,8 @@ import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.binding.WorkerBindingService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -29,6 +32,10 @@ public final class WorkerDeliveryService {
     private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
     private static final String SERVICEABILITY_EVENT =
             "platform.adapter.worker-connections.snapshot";
+    private static final String PROPERTIES_OBSERVED_EVENT =
+            "platform.adapter.worker-properties.observed";
+    private static final int MAX_PROPERTIES_REPORT_BYTES = 1_000_000;
+    private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
     private static final String SERVICEABILITY_FORWARD_PREFIX =
             "worker-serviceability:v1:";
     private static final int SERVICEABILITY_PROBE_LIMIT = 100;
@@ -43,19 +50,22 @@ public final class WorkerDeliveryService {
     private final WorkerBindingService bindings;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
+    private final WorkerResourceCommandService workerResources;
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             TaskResultRuntime taskResults,
             WorkerBindingService bindings,
             DirectCallService directCalls,
-            WorkerServiceabilityRuntime serviceability
+            WorkerServiceabilityRuntime serviceability,
+            WorkerResourceCommandService workerResources
     ) {
         this.commandRuntime = commandRuntime;
         this.taskResults = taskResults;
         this.bindings = bindings;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
+        this.workerResources = workerResources;
     }
 
     public DeliveryCommand pollWorkerCommand(
@@ -282,8 +292,7 @@ public final class WorkerDeliveryService {
                     batch,
                     operation
             );
-            // No SYSTEM event consumer is installed. Never correlate these as replies.
-            case SYSTEM -> new WorkerResultAppendCounts(0, batch.size());
+            case SYSTEM -> appendAdapterPropertiesReports(endpointManagerId, batch);
             case KERNEL -> appendAdapterKernelReports(
                     endpointManagerId,
                     batch,
@@ -296,6 +305,44 @@ public final class WorkerDeliveryService {
         };
         logRejected(endpointManagerId, counts);
         return counts;
+    }
+
+    private WorkerResultAppendCounts appendAdapterPropertiesReports(
+            String adapterId,
+            List<DeliveryReport> reports
+    ) {
+        Map<String, Map<String, String>> snapshots = new LinkedHashMap<>();
+        Map<String, Integer> inputCounts = new LinkedHashMap<>();
+        for (DeliveryReport report : reports) {
+            if (report.src() != DeliveryEndpoint.ADAPTER || !adapterId.equals(report.sourceId())
+                    || !PROPERTIES_OBSERVED_EVENT.equals(report.messageType())
+                    || !"200".equals(report.outcomeCode()) || !report.forward().isEmpty()) {
+                continue;
+            }
+            try {
+                if (CODEC.encodeDeliveryReport(report).getBytes(StandardCharsets.UTF_8).length
+                        > MAX_PROPERTIES_REPORT_BYTES) {
+                    continue;
+                }
+                Map<String, Object> payload = Jsons.parseObject(report.payload());
+                if (!payload.keySet().equals(Set.of("workerId", "properties"))
+                        || !(payload.get("workerId") instanceof String workerId) || workerId.isBlank()
+                        || !(payload.get("properties") instanceof Map<?, ?> properties)) {
+                    continue;
+                }
+                snapshots.put(workerId, WorkerDeliveryCodec.copyWorkerProperties(properties));
+                inputCounts.merge(workerId, 1, Integer::sum);
+            } catch (RuntimeException ignored) {
+                // Invalid event input is a per-item rejection, never an Owner write.
+            }
+        }
+        int accepted = 0;
+        if (!snapshots.isEmpty()) {
+            for (String workerId : workerResources.replaceReportedProperties(adapterId, snapshots)) {
+                accepted += inputCounts.get(workerId);
+            }
+        }
+        return new WorkerResultAppendCounts(accepted, reports.size() - accepted);
     }
 
     private WorkerResultAppendCounts appendAdapterTaskReports(
