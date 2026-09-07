@@ -40,6 +40,13 @@ for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
 cold Prepare followed by verified connection or Polling activation. These proofs
 do not promise activation after lost evidence or atomic Binding/Score commits.
 
+Properties/Candidate invalidation is a Redis Owner claim: one bounded dirty
+command, exact one-time confirmation, both invalidation/confirmation orders,
+execution-fence release and subsequent dirty-clearing acquisition. Server tests
+own APPLIED-only ordering and best-effort response preservation. Runtime Boundary
+and Worker lanes remain downstream witnesses, not a facts/Score transaction or
+loss-repair guarantee.
+
 ## Selection Decision
 
 Use the lowest-cost proof that owns the changed claim:

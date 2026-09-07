@@ -94,6 +94,6 @@ Item claim.
 Allocation owns Task ordering, deficit computation, bounded Worker observation,
 exact initial hold, and Demand timing. Matching owns Rule and Properties
 interpretation. Candidate Cache owns atomic Candidate-address capacity.
-Dispatch owns final exact renewal, round uniqueness, Item claim, and Command
+Dispatch owns final exact confirmation, round uniqueness, Item claim, and Command
 publication. No failure path compensates by releasing an unmatched or
 unaccepted hold.

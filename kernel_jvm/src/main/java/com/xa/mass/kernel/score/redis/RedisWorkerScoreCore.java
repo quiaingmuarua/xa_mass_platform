@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.score.redis;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
@@ -76,6 +75,39 @@ public final class RedisWorkerScoreCore
             local target_score = sign * target_abs_score
             redis.call("ZADD", key, target_score, worker_id)
             return {"transitioned", target_score}
+            """;
+
+    private static final String MARK_CURRENT_DIRTY_SCRIPT = """
+            local max_abs_score = tonumber(ARGV[1])
+            local dirty_factor = tonumber(ARGV[2])
+            local result = {}
+            for index = 3, #ARGV do
+              local worker_id = ARGV[index]
+              local stored = redis.call('ZSCORE', KEYS[1], worker_id)
+              local status = 'stale'
+              local result_score = ''
+              if stored then
+                local score = tonumber(stored)
+                local absolute = math.abs(score)
+                if absolute == 0 or absolute > max_abs_score
+                    or absolute ~= math.floor(absolute) then
+                  status = 'invalid'
+                else
+                  result_score = score
+                  if absolute % dirty_factor == 1 then
+                    status = 'noop'
+                  else
+                    result_score = score + (score > 0 and 1 or -1)
+                    redis.call('ZADD', KEYS[1], result_score, worker_id)
+                    status = 'transitioned'
+                  end
+                end
+              end
+              result[#result + 1] = worker_id
+              result[#result + 1] = status
+              result[#result + 1] = result_score
+            end
+            return result
             """;
 
     private static final String CAS_UPDATE_SCRIPT = """
@@ -653,7 +685,7 @@ public final class RedisWorkerScoreCore
 
     @Override
     public Map<String, WorkerScoreTransitionResult>
-            renewActiveHotScoreLeases(
+            confirmActiveHotScoreLeases(
                     String homeBucketId,
                     Map<String, Long> observedScores,
                     long targetTimeMillis
@@ -670,7 +702,7 @@ public final class RedisWorkerScoreCore
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis,
-            boolean renewal
+            boolean confirmation
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (observedScores == null) {
@@ -730,26 +762,24 @@ public final class RedisWorkerScoreCore
                 );
                 return;
             }
-            if (!renewal && observedTimeSlot >= currentTimeSlot
-                    || renewal && (state.dirty() != MIN_DIRTY
-                    || observedTimeSlot < currentTimeSlot)) {
+            if (!confirmation && observedTimeSlot >= currentTimeSlot
+                    || confirmation && (state.dirty() != MIN_DIRTY
+                    || observedTimeSlot < currentTimeSlot
+                    || observedTimeSlot == PAUSE_TIME_SLOT)) {
                 immediate.put(
                         workerId,
                         new WorkerScoreTransitionResult(
                                 WorkerScoreTransitionStatus.STALE,
-                                renewal ? observedScore : null
+                                confirmation ? observedScore : null
                         )
                 );
                 return;
             }
-            long nextScore = renewal
-                    && targetTimeSlot <= observedTimeSlot
-                    ? observedScore
-                    : absoluteScore(
-                            targetTimeSlot,
-                            state.laneRank(),
-                            MIN_DIRTY
-                    );
+            long nextScore = absoluteScore(
+                    confirmation ? Math.max(targetTimeSlot, observedTimeSlot) : targetTimeSlot,
+                    state.laneRank(),
+                    confirmation ? MAX_DIRTY : MIN_DIRTY
+            );
             pending.put(
                     workerId,
                     new long[]{observedScore, nextScore}
@@ -787,11 +817,24 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public WorkerScoreTransitionResult markCurrentLeaseDirty(
+    public Map<String, WorkerScoreTransitionResult> markCurrentLeasesDirty(
             String homeBucketId,
-            String workerId
+            List<String> workerIds
     ) {
-        throw notImplemented("mark_current_lease_dirty");
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (workerIds == null || workerIds.isEmpty() || workerIds.size() > 100
+                || new LinkedHashSet<>(workerIds).size() != workerIds.size()) {
+            throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
+        }
+        workerIds.forEach(id -> requireNonBlank(id, "workerId"));
+        List<String> arguments = new ArrayList<>(workerIds.size() + 2);
+        arguments.add(Long.toString(absoluteScore(MAX_TIME_SLOT, MAX_LANE_RANK, MAX_DIRTY)));
+        arguments.add(Integer.toString(DIRTY_FACTOR));
+        arguments.addAll(workerIds);
+        return batchScriptResults(workerIds, commands().eval(
+                MARK_CURRENT_DIRTY_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey(homeBucketId)}, arguments.toArray(String[]::new)
+        ), "mark_current_leases_dirty");
     }
 
     @Override
@@ -1541,15 +1584,6 @@ public final class RedisWorkerScoreCore
         if (current != null) {
             current.close();
         }
-    }
-
-    private static KernelOperationNotImplementedException notImplemented(
-            String operation
-    ) {
-        return new KernelOperationNotImplementedException(
-                "WorkerScoreCore",
-                operation
-        );
     }
 
     private static void requireNonBlank(String value, String name) {

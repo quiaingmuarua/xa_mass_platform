@@ -3,9 +3,11 @@ package com.xa.mass.server.worker.resource;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -17,14 +19,17 @@ public final class WorkerResourceCommandService {
             "workerResource.patchPlatformProperties";
 
     private final WorkerMatchingCatalog matchingCatalog;
+    private final WorkerSchedulingService scheduling;
 
     public WorkerResourceCommandService(
-            WorkerMatchingCatalog matchingCatalog
+            WorkerMatchingCatalog matchingCatalog,
+            WorkerSchedulingService scheduling
     ) {
         this.matchingCatalog = Objects.requireNonNull(
                 matchingCatalog,
                 "matchingCatalog"
         );
+        this.scheduling = Objects.requireNonNull(scheduling, "scheduling");
     }
 
     public ActionOutcome patchPlatformProperties(
@@ -56,7 +61,10 @@ public final class WorkerResourceCommandService {
             throw failure(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE);
         }
         return switch (result.status()) {
-            case APPLIED -> ActionOutcome.applied();
+            case APPLIED -> {
+                scheduling.invalidateCandidates(workerGroupId, List.of(workerId));
+                yield ActionOutcome.applied();
+            }
             case UNCHANGED -> ActionOutcome.unchanged();
             case NOT_FOUND -> throw failure(
                     ServerErrorCode.WORKER_RESOURCE_NOT_FOUND

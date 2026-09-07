@@ -52,7 +52,7 @@ Main selects due PRECOMPUTED Tasks
   -> one ordered TaskRuleMatchDemand is offered for the Group
   -> Matching reads Candidate Rules and Worker facts
   -> Matching appends accepted workerId + opaque held score to Candidate buckets
-  -> Dispatch consumes a Candidate bucket and exact-renews before Item claim
+  -> Dispatch consumes a Candidate bucket and exact-confirms before Item claim
 ```
 
 The Demand contains:
@@ -107,7 +107,7 @@ Task Dispatch observes claimable Items in order
   -> enforce one Worker use per dispatch round
   -> exact-hold selected scores
   -> load current minimal Worker descriptor
-  -> final exact renewal, Item claim, and Delivery Command publication
+  -> final exact confirmation, Item claim, and Delivery Command publication
 ```
 
 There is no ON_DEMAND Match Demand, Evidence, resident Matching work, cursor,
@@ -119,7 +119,7 @@ are rejected by Kernel before TaskItem creation.
 `WorkerCandidateSelectionPolicy` owns scheduling operations:
 
 - bounded due HOT observation;
-- exact initial hold and final cached renewal;
+- exact initial hold and final cached confirmation;
 - explicit-target and ANY selection for ON_DEMAND;
 - one Worker use per dispatch round;
 - current `workerId + workerGroupId + endpointManagerId` loading after
@@ -134,7 +134,7 @@ decode, construct, or calculate score coordinates.
 After a candidate is selected, `TaskAssignmentDispatcher` preserves:
 
 ```text
-exact Worker lease renewal
+exact Worker hold confirmation (clean exact score -> execution fence with dirty=1)
   -> exact TaskItem claim
   -> construct ResultContext and DeliveryCommand
   -> append the Adapter-partitioned Worker mailbox
@@ -146,6 +146,13 @@ Dispatch separately owns Item expiry/exhaustion, failed-result-before-
 `FINAL_FAILED`, ordinary Task pacing, and idle close/park. Result routing and
 finality remain independent owners.
 
+Confirmation must return TRANSITIONED with a new execution fence even when the
+initial hold already covers the claim deadline. ResultContext stores that
+returned fence. Properties invalidation before confirmation rejects the old
+Candidate; after confirmation it preserves the dirty execution score.
+PRECOMPUTED and ON_DEMAND share this closure. Invalid Cache entries can retain
+capacity until consumption or expiry; no fan-out or compensation is added.
+
 ## Failure Semantics
 
 | Failure | Result |
@@ -153,7 +160,7 @@ finality remain independent owners.
 | PRECOMPUTED Demand queue full | offer is skipped; hold expires; a later due round recomputes deficit |
 | Matching catalog or Cache failure | consumed Demand is dropped; completed Cache writes remain; other holds expire |
 | missing or invalid Candidate Rule | Candidate is skipped inside the Demand; Workers remain available to later needs |
-| Candidate expiry or stale Worker score | Cache entry is dropped or final exact renewal fails |
+| Candidate expiry or stale Worker score | Cache entry is dropped or final exact confirmation fails |
 | invalid ON_DEMAND Worker Selector | public mutation fails before Kernel TaskItem append |
 | Matching runtime unexpected exit | Matching health DOWN; no silent restart or Pacer fallback |
 | Server restart | transient Demand is lost; persistent facts, Rules, Cache, and Score keep owner semantics |

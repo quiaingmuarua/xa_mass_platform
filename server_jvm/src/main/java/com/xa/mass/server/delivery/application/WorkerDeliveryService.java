@@ -14,6 +14,7 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
@@ -54,6 +55,7 @@ public final class WorkerDeliveryService {
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
     private final WorkerMatchingCatalog matchingCatalog;
+    private final WorkerSchedulingService scheduling;
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
@@ -61,7 +63,8 @@ public final class WorkerDeliveryService {
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchingCatalog matchingCatalog
+            WorkerMatchingCatalog matchingCatalog,
+            WorkerSchedulingService scheduling
     ) {
         this.commandRuntime = commandRuntime;
         this.taskResults = taskResults;
@@ -69,6 +72,7 @@ public final class WorkerDeliveryService {
         this.directCalls = directCalls;
         this.serviceability = serviceability;
         this.matchingCatalog = Objects.requireNonNull(matchingCatalog, "matchingCatalog");
+        this.scheduling = Objects.requireNonNull(scheduling, "scheduling");
     }
 
     public DeliveryCommand pollWorkerCommand(
@@ -360,12 +364,20 @@ public final class WorkerDeliveryService {
                 Map<String, MutationResult> results = matchingCatalog.upsertWorkerFactsBatch(
                         group.getKey(), group.getValue()
                 );
+                List<String> changed = new ArrayList<>();
                 for (String workerId : group.getValue().keySet()) {
                     MutationResult result = Objects.requireNonNull(results.get(workerId), "Worker mutation result");
                     switch (result.status()) {
-                        case APPLIED, UNCHANGED -> accepted += inputCounts.get(workerId);
+                        case APPLIED -> {
+                            accepted += inputCounts.get(workerId);
+                            changed.add(workerId);
+                        }
+                        case UNCHANGED -> accepted += inputCounts.get(workerId);
                         case NOT_FOUND, INVALID, CONFLICT -> { }
                     }
+                }
+                if (!changed.isEmpty()) {
+                    scheduling.invalidateCandidates(group.getKey(), changed);
                 }
             }
             return new WorkerResultAppendCounts(accepted, reports.size() - accepted);

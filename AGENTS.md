@@ -140,7 +140,7 @@ only when the task covers that behavior.
   Dispatch has one bounded Redis-time Task observation. Its Main Scheduler
   supplies complete root input to single-flight Producers; discovery beneath
   that input must stay vertical. Claimed Commands may be constructed only by
-  the package-private exact assignment closure after Worker renewal and Item
+  the package-private exact assignment closure after Worker confirmation and Item
   claim. Result lane scheduling belongs to
   [Result Policy](kernel_pacer_jvm/doc/result/result-routing-scheduling.md).
 - Do not add another language implementation without a named migration slice,
@@ -231,7 +231,9 @@ kernel_jvm`.
   Neither Pacer Policy may read Rules or Properties or interpret constraints;
   [Matching](worker_matching_jvm/README.md) owns that interpretation and may
   append accepted held candidates through the Kernel Cache Owner. Dispatch
-  exact-renews the cached score. Unmatched and unselected holds expire naturally;
+  exact-confirms the clean cached score, consumes its eligibility and carries the
+  returned execution fence into ResultContext. Properties invalidation uses the
+  Score Owner after APPLIED facts writes; never fan out to Candidate Caches. Unmatched and unselected holds expire naturally;
   do not compensate-release them or add a pending lease registry.
   PRECOMPUTED and ON_DEMAND are mutually exclusive fixed workflows; do not add
   a generic acquisition Strategy, Cache exchange or cached-to-on-demand fallback.

@@ -91,15 +91,17 @@ public interface WorkerScoreCore {
             long targetTimeMillis
     );
 
-    Map<String, WorkerScoreTransitionResult> renewActiveHotScoreLeases(
+    /** Consumes each exact, clean active hold once and returns its execution fence. */
+    Map<String, WorkerScoreTransitionResult> confirmActiveHotScoreLeases(
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis
     );
 
-    WorkerScoreTransitionResult markCurrentLeaseDirty(
+    /** Invalidates candidate eligibility for 1..100 unique IDs without changing deadlines. */
+    Map<String, WorkerScoreTransitionResult> markCurrentLeasesDirty(
             String homeBucketId,
-            String workerId
+            List<String> workerIds
     );
 
     WorkerScoreTransitionResult toggleCurrentPolarity(

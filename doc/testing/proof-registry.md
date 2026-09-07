@@ -28,7 +28,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** atomic owner operations preserve scores, resources, identities,
   bindings and result transitions against real Redis. Worker registration adds
   cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
-  client-command cost oracles.
+  client-command cost oracles. Candidate invalidation proves one-command dirty
+  batches, single-use exact confirmation, preserved execution release fences
+  and dirty-clearing reacquisition after expiry.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
 - **Contract:** [Server verification](../../server_jvm/README.md#verification).
 

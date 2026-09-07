@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.mockito.ArgumentMatchers.any;
@@ -266,7 +267,7 @@ class RuntimeApiControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                new WorkerResourceCommandService(matchingCatalog)
+                                new WorkerResourceCommandService(matchingCatalog, mock(WorkerSchedulingService.class))
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(

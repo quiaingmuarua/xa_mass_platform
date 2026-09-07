@@ -72,6 +72,34 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     }
 
     @Test
+    void cachedAndLatePublishedCandidatesRetainTheirInvalidatedFenceUntilConsumed() {
+        long now = redisTimeMillis();
+        String group = "g";
+        try (var scores = new com.xa.mass.kernel.score.redis.RedisWorkerScoreCore(redisClient, keyspace)) {
+            scores.initializeRegisteredScores(group, List.of("w"));
+            scores.applyServiceabilityEvidence(group, Map.of("w", now - 1000),
+                    com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE);
+            var due = scores.observeDueHotScores(group, List.of("w"), null);
+            long held = scores.acquireObservedHotScoreLeases(group, due, now + 30_000).get("w").score();
+            var entry = new CandidateWorkerEntry("w", held);
+            candidateCache.appendCandidateWorkers("cached", 1, List.of(entry), now + 30_000);
+            scores.markCurrentLeasesDirty(group, List.of("w"));
+            // A Matching consumer can finish an old Demand after invalidation.
+            candidateCache.appendCandidateWorkers("late", 1, List.of(entry), now + 30_000);
+            assertThat(candidateCache.candidateWorkerCounts(List.of("cached", "late")))
+                    .containsEntry("cached", 1).containsEntry("late", 1);
+            for (String candidate : List.of("cached", "late")) {
+                var consumed = candidateCache.consumeCandidateWorkers(candidate, 1).getFirst();
+                assertThat(consumed).isEqualTo(entry);
+                assertThat(scores.confirmActiveHotScoreLeases(group,
+                        Map.of(consumed.workerId(), consumed.heldWorkerLeaseScore()), now + 20_000)
+                        .get("w").status()).isEqualTo(
+                                com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
+            }
+        }
+    }
+
+    @Test
     void candidateCacheIsBoundedExpiringAndDestructivelyConsumed() {
         long nowMillis = redisTimeMillis();
         CandidateWorkerEntry first = new CandidateWorkerEntry(

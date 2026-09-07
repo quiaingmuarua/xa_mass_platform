@@ -3,7 +3,6 @@ package com.xa.mass.kernel.score.redis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
@@ -66,7 +65,7 @@ class RedisWorkerScoreCoreTest {
     }
 
     @Test
-    void unrelatedProductionGapsRemainExplicit() {
+    void dirtyInvalidationValidatesBoundsBeforeRedisAccess() {
         RedisClient redisClient = RedisClient.create(
                 "redis://127.0.0.1:1"
         );
@@ -75,13 +74,16 @@ class RedisWorkerScoreCoreTest {
                     redisClient,
                     new RedisKeyspace("test_worker_score_unit")
             );
-            assertOperation(
-                    "mark_current_lease_dirty",
-                    () -> scoreCore.markCurrentLeaseDirty(
-                            "group-1",
-                            "worker-1"
-                    )
-            );
+            for (List<String> ids : List.of(
+                    List.<String>of(), List.of("w", "w"), List.of(" "),
+                    java.util.stream.IntStream.range(0, 101).mapToObj(i -> "w" + i).toList())) {
+                assertThrows(IllegalArgumentException.class,
+                        () -> scoreCore.markCurrentLeasesDirty("group-1", ids));
+            }
+            assertThrows(IllegalArgumentException.class,
+                    () -> scoreCore.markCurrentLeasesDirty("group-1", null));
+            assertThrows(IllegalArgumentException.class,
+                    () -> scoreCore.markCurrentLeasesDirty(" ", List.of("w")));
         } finally {
             redisClient.shutdown();
         }
@@ -131,15 +133,4 @@ class RedisWorkerScoreCoreTest {
         }
     }
 
-    private static void assertOperation(
-            String operation,
-            Runnable invocation
-    ) {
-        KernelOperationNotImplementedException error = assertThrows(
-                KernelOperationNotImplementedException.class,
-                invocation::run
-        );
-        assertEquals("WorkerScoreCore", error.contractName());
-        assertEquals(operation, error.operationName());
-    }
 }

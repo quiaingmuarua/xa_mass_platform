@@ -15,7 +15,7 @@ Kernel Pacer sorts Task needs and exact-holds a bounded due Worker pool
   -> WorkerMatchingRuntime reads Candidate Rules and Worker facts
   -> evaluates held Workers in the supplied order
   -> appends accepted workerId + opaque held score to CandidateWorkerCache
-  -> Kernel Dispatch consumes the Candidate bucket and performs exact renewal,
+  -> Kernel Dispatch consumes the Candidate bucket and performs exact confirmation,
      Item claim, and Command publication
 
 ON_DEMAND
@@ -95,7 +95,7 @@ Properties are a separate Map and are not part of this observation replacement.
 Complete upstream observations avoid old-fact merging at Server, but cannot
 repair input lost before reaching the Adapter cache. Every
 new Demand loads the current Catalog facts; there is no refresh notification,
-Matching facts cache or Candidate revocation. String comparison remains lexical;
+Matching facts cache or Candidate Cache cleanup. String comparison remains lexical;
 numeric-string coercion and new constraint semantics are not part of this path.
 
 A Worker without usable facts is skipped even for an unrestricted Rule or a
@@ -160,8 +160,15 @@ failure and does not silently restart it.
 A Candidate entry proves only that a Worker matched the facts read before the
 supplied hold deadline and carries the exact opaque score produced by Kernel's
 hold. It is not current availability or a completed scheduling decision.
-Properties changes do not revoke an existing entry. Cache expiry and Kernel's
-final exact score renewal bound stale candidates before Item claim.
+After an APPLIED Worker or Platform facts write, Server requests best-effort
+Score dirty invalidation. Cache entries and in-flight Match Demands retain the
+original held score. Kernel's final exact confirmation rejects that fence once
+invalidation succeeds, including an entry appended later by an old Demand.
+Matching performs no Score reads and no Cache revocation. Facts-write and dirty
+invalidation are separate commits: an intervening confirmation may succeed,
+and an invalidation failure leaves existing deadlines as the fallback. An
+UNCHANGED write does not request invalidation. Only a new initial hold restores
+candidate eligibility before another PRECOMPUTED Matching round.
 
 ## Non-Owners
 

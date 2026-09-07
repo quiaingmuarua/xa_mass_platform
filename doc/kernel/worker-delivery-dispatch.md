@@ -12,7 +12,7 @@ below rather than reproduced here.
 | Boundary | Canonical contract |
 | --- | --- |
 | Command/Report structure, direction and codecs | [Worker Delivery Contract](../../transport/worker-delivery-contract/README.md) |
-| Task pairing, renewal, claim and publication | [Assignment Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md) |
+| Task pairing, confirmation, claim and publication | [Assignment Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md) |
 | Identity, Prepare, Binding, HTTP and DIRECT_CALL | [Runtime API Server](../../server_jvm/README.md) |
 | Route verification, retention, delivery queues and network lifecycle | [Netty Adapter](../../transport/netty-adapter/README.md) |
 | Event execution, identity protocol and run lifecycle | [Worker Core](../../transport/worker-core/README.md) |
@@ -47,7 +47,7 @@ projections without an atomic join or shared version.
 ## TASK Handoff
 
 ```text
-Kernel exact Worker renewal -> exact Item claim -> targeted DeliveryCommand
+Kernel exact Worker confirmation -> exact Item claim -> targeted DeliveryCommand
   -> Adapter-partitioned Worker mailbox
   -> Server point or bounded Adapter consume
   -> Adapter current route -> Worker event execution
@@ -115,7 +115,7 @@ and Score operations decide whether consumed late/duplicate evidence applies.
 
 | Interruption | Consequence and existing recovery |
 | --- | --- |
-| Worker renewal succeeds, Item claim or publication fails | No compensation release; Worker lease and Item claim expiry restore eligibility |
+| Worker confirmation succeeds, Item claim or publication fails | No compensation release; Worker lease and Item claim expiry restore eligibility |
 | Mailbox consume succeeds, response or Adapter process is lost | Command may be lost; there is no transport replay owner |
 | No current route before send | Adapter defers within its bounded delivery mechanism; expiry may emit TASK rejection |
 | Physical send starts and later fails | Delivery is UNKNOWN; do not infer pre-execution rejection |

@@ -7,6 +7,7 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -28,7 +29,8 @@ public class WorkerDeliveryConfiguration {
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchingCatalog matchingCatalog
+            WorkerMatchingCatalog matchingCatalog,
+            WorkerSchedulingService scheduling
     ) {
         return new WorkerDeliveryService(
                 commandRuntime,
@@ -36,7 +38,8 @@ public class WorkerDeliveryConfiguration {
                 workerCatalog,
                 directCalls,
                 serviceability,
-                matchingCatalog
+                matchingCatalog,
+                scheduling
         );
     }
 }

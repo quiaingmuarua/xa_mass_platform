@@ -17,12 +17,12 @@ class DispatchMechanismBoundaryTest {
     );
 
     @Test
-    void exactHeldScoreReachesFinalWorkerRenewal() throws IOException {
+    void exactHeldScoreReachesFinalWorkerConfirmation() throws IOException {
         String source = Files.readString(
                 ROOT.resolve("TaskAssignmentDispatcher.java")
         );
         assertTrue(source.contains("worker.heldWorkerLeaseScore()"));
-        assertTrue(source.contains("renewActiveHotScoreLeases("));
+        assertTrue(source.contains("confirmActiveHotScoreLeases("));
         for (String parallelInput : List.of(
                 "itemsByMessageId",
                 "observedItemScores",

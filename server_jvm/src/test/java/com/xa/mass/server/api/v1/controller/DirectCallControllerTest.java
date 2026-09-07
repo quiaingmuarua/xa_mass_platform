@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
@@ -109,7 +110,8 @@ class DirectCallControllerTest {
                 catalog,
                 directCalls,
                 mock(WorkerServiceabilityRuntime.class),
-                mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
+                mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class),
+                mock(WorkerSchedulingService.class));
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

@@ -156,19 +156,20 @@ encoded remaining budget. Deployments must clear or rebuild those persisted
 RECOVERY_RECHECK scores; the score owner does not provide a compatibility
 decoder or migration path.
 
-`dirty` is an assignment-continuation stale hint embedded in the worker score:
+`dirty` fences consumption of the current initial hold:
 
 ```text
 dirty = 0
-  clean relative to the current hot score lease / assignment continuation
+  current initial hold candidate eligibility is available
 
 dirty = 1
-  a score-owner caller has invalidated renewal of the current lease fence
+  candidate eligibility has been invalidated or consumed by confirmation
 ```
 
 The dirty bit is not a metadata hash, not a counter, not a lifecycle state, not
 a global worker state, and not a version. Worker Matching facts do not write
-Worker score. No current Properties update path sets dirty.
+Worker score. Server requests bounded dirty invalidation after actual Worker or
+Platform facts changes; final assignment confirmation also sets dirty=1.
 
 HOT candidate acquisition is a bounded read-only range query. It returns
 `(workerId, observedScore)` pairs to Kernel policy. PRECOMPUTED allocation
@@ -430,9 +431,9 @@ coordinate becomes due.
 
 `observedScore` remains an opaque full-score fence for operations that lower or
 replace a specific existing coordinate, including release, polarity move,
-recovery exhaustion, and active lease renewal. Recovery recheck acquisition may
-return it for those owner transitions. HOT candidate scan and due HOT lease
-acquisition neither expose nor accept it. No caller should decode, construct,
+recovery exhaustion, and active hold confirmation. Recovery recheck acquisition
+returns it for owner transitions. HOT due observation returns the exact score
+and initial acquisition must submit it unchanged. No caller should decode, construct,
 or trim an observed score.
 
 ## Candidate Validation
@@ -527,9 +528,9 @@ connected Evidence advances a non-future older coordinate to the Evidence slot.
 Future leases and PAUSE keep their exact coordinate. The two operations remain
 distinct because an explicit lane transition and a serviceability correction
 own different time and low-bit semantics. Dirty score
-primitives are implemented; policy may invoke them only for an active
-continuation that will later revalidate or renew. Raw external observation
-never writes dirty.
+primitives invalidate candidate eligibility after APPLIED facts writes and
+consume it at final confirmation. Raw external observations cannot write Score;
+Server validates and writes facts before requesting best-effort invalidation.
 
 Raw socket, heartbeat, keepalive, session, latency observation, and
 `WorkerResourceCatalog.registerWorkers` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
@@ -813,16 +814,19 @@ immediately due in HOT_ACQUIRE.
 
 ### Dirty Lease Fence
 
-Dirty remains an encoded score fence. Worker Matching Properties and Rules are
-independent facts and do not set, clear or interpret it. There is currently no
-production Properties-signature protocol attached to this bit.
+Dirty remains an encoded score fence. Worker Matching does not interpret or
+mutate it. Server coordinates facts-first, best-effort invalidation through the
+Score Owner; no Properties signature or version is stored in Score.
 
 `WorkerScoreCore` exposes bounded HOT observation and exact lease operations:
 
 ```text
-mark_current_lease_dirty(homeBucketId, workerId)
-  declared mechanical operation; current Redis implementation reports
-  not-implemented and no production caller depends on it
+mark_current_leases_dirty(homeBucketId, workerIds)
+  1..100 unique identities; one bounded Lua command on the Group Score ZSET
+  only sets dirty=1, preserving polarity, timeSlot and laneRank
+  clean -> TRANSITIONED; already dirty -> NOOP; missing -> STALE
+  invalid stored score -> INVALID without mutation; never creates a member
+  no TIME, client pre-read or confirmation read
 
 observe_due_hot_score_candidates(homeBucketId, hotEligibilityFloorMillis?, limit)
   reads positive due HOT_ACQUIRE scores at or above the optional floor
@@ -851,32 +855,34 @@ acquire_observed_hot_score_leases(
   independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   each generic CAS requires storedScore == observedScore
 
-renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
+confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   each observedScore must decode to HOT_ACQUIRE
   each storedScore must equal its observedScore
-  each observed timeSlot must be >= nowSlot
+  each observed timeSlot must be >= nowSlot and must not be PAUSE
   each observed dirty must be 0
   targetTimeMillis must describe a future slot
-  if the observed lease already covers targetTimeSlot, exact validation returns
-    NOOP plus the observed score
-  otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+  independently writes HOT_ACQUIRE(max(targetTimeSlot, observed timeSlot), observed laneRank, dirty=1)
+  even an already sufficient deadline must TRANSITION; no successful NOOP
+  returns the new execution fence for ResultContext and exact result release
   dirty entries return STALE and caller must discard the cached continuation
 
 ```
 
-These batch APIs operate on one WorkerGroup/ZSET key and shared target
-parameters. Redis pipelines the existing single-Worker Lua primitive; the
-pipeline reduces round trips but does not create cross-Worker atomicity.
+Initial hold and confirmation operate on one WorkerGroup/ZSET with a shared
+target. They pipeline independent single-Worker CAS operations and do not
+promise cross-Worker atomicity. Dirty invalidation uses one bounded batch Lua
+operation. Properties writes and invalidation remain separate commits.
 
 RECOVERY_RECHECK scores must not pass either hot score lease primitive. Recovery
 validation must first move the worker back to HOT_ACQUIRE through owner-validated
 polarity transition.
 
 Dirty clear is only available as part of a hot score lease transition. There is
-no standalone `clear_dirty` operation. Active cached renewal treats a dirty
-score as stale. Any future producer for dirty must define its own score-local
-continuation invariant; Properties updates must not acquire Worker score as a
-global resource lock.
+no standalone `clear_dirty` operation. Active confirmation treats a dirty
+score as stale. Due acquisition includes dirty=1 and clears it in the next
+initial hold. Properties invalidation never shortens or renews a hold; existing
+Candidate capacity and expiry remain unchanged. The HOT lease protocol owns
+the facts-write/dirty failure windows and upgrade behavior.
 
 ## Transition Matrix
 
@@ -900,7 +906,7 @@ hold, depending on owner reason.
 ## Cross-Owner Use
 
 The [HOT Lease Protocol](worker-hot-acquire-lease-protocol.md) owns the opaque
-fence from initial acquisition through matching, renewal, claim and Result
+fence from initial acquisition through matching, confirmation, claim and Result
 release. This Score Owner supplies bounded mechanical operations; it does not
 read TaskItems, interpret Rules, select physical routes or own Candidate Cache.
 Serviceability policy and evidence classification are defined in
@@ -919,7 +925,8 @@ Serviceability policy and evidence classification are defined in
 | Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
 | Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
 | assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before PRECOMPUTED Demand or ON_DEMAND claim |
-| assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and discard the candidate |
+| assignment owner consumes active clean HOT_ACQUIRE holds | yes | `confirm_active_hot_score_leases` exact-CAS sets dirty=1 and returns the execution fence; dirty entries return STALE |
+| Server after APPLIED Worker or Platform facts writes | best-effort | `mark_current_leases_dirty` preserves coordinates; failure does not undo the facts response |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
 | bounded-age Adapter Route evidence | yes | dedicated same-key evidence operation checks stored time against evidence time, with the future-coordinate exception described in Serviceability Evidence; this is not a total cross-batch ordering guarantee |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
@@ -1006,8 +1013,8 @@ Mechanism owns:
 signed score encoding
 positive hot acquire range
 negative recovery-recheck acquire range
-observed-score stale fence for active renewal, lowering, and polarity moves
-dirty bit mark / hot lease clear / stale-renew protocol
+observed-score stale fence for active confirmation, lowering, and polarity moves
+dirty bit mark / hot lease clear / stale-confirmation protocol
 same-polarity release
 owner-validated serviceability evidence boundary preserving laneRank and dirty
 RECOVERY_RECHECK lookback-window acquisition
@@ -1024,8 +1031,7 @@ claim that every possible policy has a current production caller:
 network-evidence freshness and optional HOT eligibility floor
 candidate ranking / laneRank meaning
 platform scheduling signature policy
-dirty mark invocation and continuation revalidation rule, only when a
-persisted assignment continuation exists
+facts-change dirty invalidation and exact candidate confirmation
 cooldown duration
 admission hold interval
 manual hold / enable rule
@@ -1090,10 +1096,11 @@ slot registry redesign
   producer requires an explicit continuation invariant and owning caller.
 - Do not let heartbeat, session refresh, trace, diagnostics, or display-only
   metadata bump dirty bit.
-- Do not invent a score lease just to justify dirty. Dirty only has a consumer
-  if a real persisted assignment plan / hot score lease continuation exists.
+- Do not invent a score lease just to justify dirty. Candidate confirmation
+  is its consumer; invalidation may mark any existing coordinate without
+  checking for an active hold or acquiring a resource lock.
 - Do not let non-lease owners clear dirty. A successful exact observed-score HOT
-  lease may clear dirty before matching; active renewal must return STALE on dirty.
+  lease may clear dirty before matching; active confirmation must return STALE on dirty.
 - Do not use RECOVERY_RECHECK scores as assignment leases. Recovery validation
   must move the worker back to HOT_ACQUIRE before any hot score lease primitive
   can run.

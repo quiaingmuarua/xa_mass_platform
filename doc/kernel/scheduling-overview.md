@@ -38,7 +38,7 @@ PRECOMPUTED allocation
 Task dispatch
   -> observe due Items and classify TTL/exhaustion
   -> consume cached PRECOMPUTED candidates or acquire ON_DEMAND IDs/ANY
-  -> exact Worker renewal -> exact Item claim -> targeted Command publication
+  -> exact Worker confirmation -> exact Item claim -> targeted Command publication
   -> complete ACTIVE recheck before exact Task close or idle park
 ```
 
@@ -50,7 +50,7 @@ lifecycle are defined in
 
 Matching owns facts and Rule interpretation, not priority, Score or assignment.
 A Candidate carries bounded matching evidence and an opaque held score; final
-renewal can reject it. Unmatched, unselected or rejected holds expire naturally
+confirmation rejects it after successful Properties dirty invalidation. Unmatched, unselected or rejected holds expire naturally
 without a compensation-release registry. ON_DEMAND selectors contain only
 normalized Worker IDs/ANY and neither interpret Properties nor fall back to
 Candidate Cache. The detailed flow is

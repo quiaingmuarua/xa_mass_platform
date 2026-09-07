@@ -25,6 +25,7 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -102,6 +103,7 @@ class WorkerDeliveryServiceTest {
     private WorkerServiceabilityRuntime serviceability;
     private WorkerDeliveryService service;
     private WorkerMatchingCatalog matchingCatalog;
+    private WorkerSchedulingService scheduling;
 
     @BeforeEach
     void setUp() {
@@ -113,6 +115,7 @@ class WorkerDeliveryServiceTest {
         directCalls = mock(DirectCallService.class);
         serviceability = mock(WorkerServiceabilityRuntime.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
+        scheduling = mock(WorkerSchedulingService.class);
         when(serviceability.consumeProbeRequests(anyString(), anyInt()))
                 .thenReturn(List.of());
         when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
@@ -129,7 +132,8 @@ class WorkerDeliveryServiceTest {
                 bindings,
                 directCalls,
                 serviceability,
-                matchingCatalog
+                matchingCatalog,
+                scheduling
         );
     }
 
@@ -173,12 +177,49 @@ class WorkerDeliveryServiceTest {
 
         assertThat(service.appendAdapterReports("adapter-1", reports))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(3, 2));
-        var order = inOrder(bindings, matchingCatalog);
+        var order = inOrder(bindings, matchingCatalog, scheduling);
         order.verify(bindings).getWorkerDescriptors(ids);
         order.verify(matchingCatalog).upsertWorkerFactsBatch("g1", Map.of("a", properties, "b", properties));
+        order.verify(scheduling).invalidateCandidates("g1", List.of("a"));
         order.verify(matchingCatalog).upsertWorkerFactsBatch("g2", Map.of("c", properties));
+        order.verify(scheduling).invalidateCandidates("g2", List.of("c"));
+        verifyNoMoreInteractions(scheduling);
         verifyNoMoreInteractions(bindings, matchingCatalog);
         verifyNoInteractions(directCalls, resultRuntime, serviceability, commandRuntime);
+    }
+
+    @Test
+    void propertiesRemainAcceptedWhenScoreInvalidationFailsAndUnchangedRetryDoesNotReplay() {
+        var scores = mock(com.xa.mass.kernel.score.WorkerScoreCore.class);
+        service = new WorkerDeliveryService(commandRuntime, resultRuntime, bindings, directCalls,
+                serviceability, matchingCatalog, new WorkerSchedulingService(scores));
+        when(bindings.getWorkerDescriptors(List.of("w")))
+                .thenReturn(Map.of("w", new WorkerDescriptor("w", "g", "adapter-1")));
+        when(matchingCatalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value"))))
+                .thenReturn(Map.of("w", new MutationResult(MutationStatus.APPLIED)),
+                        Map.of("w", new MutationResult(MutationStatus.UNCHANGED)));
+        when(scores.markCurrentLeasesDirty("g", List.of("w"))).thenThrow(new IllegalStateException("unavailable"));
+        var reports = List.of(propertiesReport("adapter-1", "w", Map.of("key", "value")));
+        for (int i = 0; i < 2; i++) {
+            assertThat(service.appendAdapterReports("adapter-1", reports))
+                    .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(1, 0));
+        }
+        var order = inOrder(matchingCatalog, scores);
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value")));
+        order.verify(scores).markCurrentLeasesDirty("g", List.of("w"));
+        order.verify(matchingCatalog).upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value")));
+        verifyNoMoreInteractions(scores);
+    }
+
+    @Test
+    void failedFactsWriteNeverInvalidatesCandidates() {
+        when(bindings.getWorkerDescriptors(List.of("w")))
+                .thenReturn(Map.of("w", new WorkerDescriptor("w", "g", "adapter-1")));
+        when(matchingCatalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of())))
+                .thenThrow(new IllegalStateException("unavailable"));
+        assertThatThrownBy(() -> service.appendAdapterReports("adapter-1",
+                List.of(propertiesReport("adapter-1", "w", Map.of())))).isInstanceOf(ServerException.class);
+        verifyNoInteractions(scheduling);
     }
 
     @Test

@@ -2,16 +2,22 @@ package com.xa.mass.server.worker.resource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
 import java.util.Map;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,11 +25,13 @@ class WorkerResourceCommandServiceTest {
 
     private WorkerMatchingCatalog matchingCatalog;
     private WorkerResourceCommandService service;
+    private WorkerSchedulingService scheduling;
 
     @BeforeEach
     void setUp() {
         matchingCatalog = mock(WorkerMatchingCatalog.class);
-        service = new WorkerResourceCommandService(matchingCatalog);
+        scheduling = mock(WorkerSchedulingService.class);
+        service = new WorkerResourceCommandService(matchingCatalog, scheduling);
     }
 
     @Test
@@ -41,6 +49,11 @@ class WorkerResourceCommandServiceTest {
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).isEqualTo(ActionOutcome.unchanged());
+        var order = inOrder(matchingCatalog, scheduling);
+        order.verify(matchingCatalog).patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east"));
+        order.verify(scheduling).invalidateCandidates("group-1", List.of("worker-1"));
+        order.verify(matchingCatalog).patchWorkerPlatformProperties("group-1", "worker-1", Map.of());
+        verifyNoMoreInteractions(scheduling);
     }
 
     @Test
@@ -75,6 +88,20 @@ class WorkerResourceCommandServiceTest {
                     "workerResource.patchPlatformProperties"
             );
         });
+        verifyNoInteractions(scheduling);
+    }
+
+    @Test
+    void appliedPlatformPatchSurvivesDirtyFailure() {
+        var scores = mock(com.xa.mass.kernel.score.WorkerScoreCore.class);
+        service = new WorkerResourceCommandService(matchingCatalog, new WorkerSchedulingService(scores));
+        when(matchingCatalog.patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
+                .thenReturn(result(MutationStatus.APPLIED));
+        when(scores.markCurrentLeasesDirty("group-1", List.of("worker-1")))
+                .thenThrow(new IllegalStateException("unavailable"));
+        assertThat(service.patchPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
+                .isEqualTo(ActionOutcome.applied());
+        verify(scores).markCurrentLeasesDirty("group-1", List.of("worker-1"));
     }
 
     private void assertBusinessError(
@@ -93,6 +120,7 @@ class WorkerResourceCommandServiceTest {
                     expectedCode.defaultMessage()
             );
         });
+        verifyNoInteractions(scheduling);
     }
 
     private static MutationResult result(MutationStatus status) {

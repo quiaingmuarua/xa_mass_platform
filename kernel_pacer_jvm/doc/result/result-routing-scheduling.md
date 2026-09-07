@@ -253,3 +253,11 @@ or Health state.
 - Do not promote an Item before storing its successful payload.
 - Do not add cross-lane precedence, winner aggregation or reliable queue state
   without a separately named invariant and Owner.
+
+Worker ResultContext carries the execution score returned by final confirmation,
+which has already consumed candidate eligibility. Subsequent Properties dirty
+invalidation is a NOOP for that fence. Result routing and execution events do
+not reconstruct the initial Candidate score or clear dirty; after release, only
+new initial HOT acquisition restores candidate eligibility. The
+[HOT lease protocol](../../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
+owns confirmation, invalidation races and upgrade limits.

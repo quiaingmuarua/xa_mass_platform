@@ -11,7 +11,7 @@ observe due Item scores
   -> load minimal TaskItems
   -> settle expired or exhausted Items
   -> obtain held Worker candidates by the Task's fixed mechanism
-  -> exact-renew Worker, claim Item, and publish Command
+  -> exact-confirm Worker, claim Item, and publish Command
   -> pace, close, or park the Task
 ```
 
@@ -28,7 +28,7 @@ For each Task, the policy:
    to `FINAL_FAILED`;
 4. identifies claimable Items in observation order;
 5. obtains Worker candidates through the Task's fixed allocation mechanism;
-6. delegates exact Worker renewal, Item claim, and Command publication;
+6. delegates exact Worker confirmation, Item claim, and Command publication;
 7. rewrites ordinary Task pacing in a `finally` boundary.
 
 If no claimable Item remains, `TaskIdleSettlement` performs the complete ACTIVE
@@ -40,7 +40,7 @@ recheck and exact close or private idle park.
 consume Candidate Cache entries for candidateId
   -> load current minimal Worker descriptors for the Task WorkerGroup
   -> pair candidates with claimable Items in bounded order
-  -> final exact renewal through TaskAssignmentDispatcher
+  -> final exact confirmation through TaskAssignmentDispatcher
 ```
 
 Each Cache entry carries the exact opaque score produced by the earlier
@@ -66,7 +66,7 @@ ANY targets      -> observe a bounded due HOT WorkerGroup pool
                   -> exclude Workers already used in this dispatch round
                   -> exact-hold selected Workers
                   -> load current minimal delivery descriptors
-                  -> final exact renewal, Item claim, and Command publication
+                  -> final exact confirmation, Item claim, and Command publication
 ```
 
 Kernel validates the public finite Worker Selector and persists only its
@@ -88,7 +88,7 @@ holds recover through expiry.
 `TaskAssignmentDispatcher` alone constructs a Delivery Command after:
 
 ```text
-exact Worker lease renewal against the carried score
+exact Worker hold confirmation against the carried score
   -> exact Item claim
   -> mailbox append
 ```
@@ -102,11 +102,12 @@ Properties.
 - Missing Item records are ignored for the current observation.
 - Invalid stored Kernel records fail at their owner boundary.
 - Empty or stale candidate observations leave Items due.
-- A changed Worker score prevents exact hold or renewal and therefore dispatch.
+- A changed Worker score prevents exact hold or confirmation and therefore dispatch.
 - Matching runtime failure blocks new PRECOMPUTED Cache fills but does not
   create an ON_DEMAND fallback.
-- Properties changes do not revoke existing PRECOMPUTED Cache entries; Cache
-  expiry and exact score renewal bound their stale window.
+- Properties changes request best-effort dirty invalidation after facts commit;
+  final confirmation rejects invalidated PRECOMPUTED fences. Cache entries remain
+  until consumption or expiry, with no proactive cleanup.
 
 ## Guardrails
 

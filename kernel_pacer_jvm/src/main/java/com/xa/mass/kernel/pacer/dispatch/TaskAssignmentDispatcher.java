@@ -107,7 +107,7 @@ final class TaskAssignmentDispatcher {
         }
 
         Map<String, WorkerScoreTransitionResult> verified =
-                workerScores.renewActiveHotScoreLeases(
+                workerScores.confirmActiveHotScoreLeases(
                         task.descriptor().workerGroupId(),
                         observedWorkers,
                         claimUntilMillis
@@ -115,10 +115,7 @@ final class TaskAssignmentDispatcher {
         LinkedHashMap<String, Long> verifiedScores = new LinkedHashMap<>();
         verified.forEach((workerId, result) -> {
             if (result.score() != null
-                    && (result.status()
-                    == WorkerScoreTransitionStatus.TRANSITIONED
-                    || result.status()
-                    == WorkerScoreTransitionStatus.NOOP)) {
+                    && result.status() == WorkerScoreTransitionStatus.TRANSITIONED) {
                 verifiedScores.put(workerId, result.score());
             }
         });

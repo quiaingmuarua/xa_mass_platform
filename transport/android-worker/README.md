@@ -83,8 +83,10 @@ Results. Loss may require an explicit full
 report or a later connection baseline; this is not guaranteed eventual delivery.
 Adapter publishes its complete installed observation via SYSTEM and Server
 admission to Matching. A later Demand can read new persistent facts without
-another Prepare; existing Candidates are not revoked. The SDK owns no part of
-that upstream publication, persistence or recovery.
+another Prepare. Server requests best-effort candidate invalidation after actual
+facts changes; Kernel exact confirmation enforces that fence without deleting
+Cache entries. The SDK owns no part of upstream publication, persistence or
+scheduling invalidation.
 
 ## Platform Resources
 

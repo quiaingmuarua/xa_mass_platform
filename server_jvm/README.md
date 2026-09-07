@@ -723,10 +723,12 @@ by Worker to the last valid input in that HTTP batch, retaining input counts.
 It reads Group and Endpoint in one bounded `WorkerResourceCatalog` Binding
 read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group, and calls
 `WorkerMatchingCatalog.upsertWorkerFactsBatch` directly. No intermediate
-resource mutation service or separate Properties Report API participates. No registration,
-Prepare, Worker registration, score, Candidate or new identity index participates.
+resource mutation service or separate Properties Report API participates.
+Prepare and registration do not participate. After each Group facts write,
+APPLIED members alone request one bounded Score invalidation through the
+existing `WorkerSchedulingService`; UNCHANGED members add no Score command.
 APPLIED/UNCHANGED accepts all valid inputs collapsed into that Worker; other
-mutation outcomes reject them. Infrastructure failure returns `503` without
+mutation outcomes reject them. Facts infrastructure failure returns `503` without
 rolling back earlier Group writes; the operation is
 `workerDelivery.appendAdapterPropertiesReports` with the existing Properties
 unavailable error code. SYSTEM then drops the batch, not retries it.
@@ -735,12 +737,27 @@ unavailable error code. SYSTEM then drops the batch, not retries it.
 management use case for `platform.*`. Its HTTP PATCH and nullable JSON values
 never modify the Worker-owned `worker.*` Map. Adapter observations always
 replace the complete Worker Map and leave Platform Properties unchanged.
+An APPLIED Platform patch requests the same Score invalidation with one Worker.
 
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
 identity, Binding and Worker records remain intact. New Matching Demands read
-the new facts. Existing Candidates are not revoked and scheduling is not
-explicitly awakened. Concurrent observation batches have no timestamp/version
+the new facts. Invalidation sets dirty on the current score, preserving its
+polarity, rank and deadline; missing scores are not created. Existing Candidate
+entries remain until consumption or expiry, but their old fences cannot pass
+final confirmation after invalidation. Scheduling is not explicitly awakened.
+
+Facts commit before Score invalidation. A confirmation can win in between;
+already confirmed assignments continue. Invalidation failure keeps the
+successful facts response and produces one aggregate diagnostic per Group
+batch. A retry returning UNCHANGED does not replay invalidation. Existing hold
+and Cache expiry bound stale candidates; no ACK, outbox, retry or background
+repair is added. Final confirmation already consumes eligibility with dirty=1,
+so later Properties writes preserve the execution fence used for result release.
+See the [HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
+for exact transitions and coordinated upgrade behavior.
+
+Concurrent observation batches have no timestamp/version
 fence; effective storage writes determine facts. A failed first publication can
 leave no facts, and a failed later publication can leave old facts. A later
 explicit complete report or connection baseline can supply new input. No

@@ -21,7 +21,7 @@ slot reuse or assign independent Items behind the same Worker lease.
 due HOT observation -> exact initial hold and dirty clear
   PRECOMPUTED -> ordered Match Demand -> accepted Candidate Cache entry
   ON_DEMAND  -> normalized explicit Worker ID or ANY selection
-  -> final exact Worker renewal -> exact Item claim -> Command publication
+  -> final exact Worker confirmation -> exact Item claim -> Command publication
   -> opaque ResultContext/WorkerLeaseReference -> exact result disposition
 ```
 
@@ -46,21 +46,24 @@ a stale candidate switches allocation mechanism.
 
 Unmatched, unselected, Cache-rejected and Demand-rejected holds expire
 naturally. Queue rejection is not a reason to add compensation release or a
-pending-lease registry. Properties updates do not revoke Candidate entries;
-expiry and exact renewal bound their use.
+pending-lease registry. Actual Properties changes request score-local dirty
+invalidation after the facts write; Candidate entries remain until consumption
+or expiry. Their original fence cannot pass final confirmation after invalidation.
 
-## Renewal Before Claim
+## Confirmation Before Claim
 
 Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
-closure renews the supplied clean, active HOT fences. An exact NOOP that covers
-the requested deadline is valid; a transition returns the renewed fence. Dirty,
-expired, negative or stale observations cannot proceed to Item claim.
+closure confirms supplied clean, active, non-PAUSE HOT fences. One CAS requires
+the entire original score, retains or extends its deadline, and sets dirty=1.
+Even a hold that already covers the requested deadline must transition: there
+is no successful NOOP. Dirty, expired, negative or stale observations cannot
+proceed to Item claim. One initial fence can be consumed only once.
 
-Only a successful renewal result participates in the Item claim batch. Only
-claimed Items become Commands. The returned Worker fence is encoded into
-ResultContext and carried opaquely by delivery. Item claim or Command append
-failure does not compensate-release the Worker: independent lease and claim
-expiry restore scheduling eligibility.
+Only a TRANSITIONED confirmation with a returned score participates in the Item
+claim batch. Only claimed Items become Commands. The returned execution fence,
+not the initial held score, is encoded into ResultContext and carried opaquely
+by delivery. Item claim or Command append failure does not compensate-release
+the Worker: independent lease and claim expiry restore scheduling eligibility.
 
 Policy may retain, associate, exact-compare and return raw Score evidence but
 must not decode or calculate it. Primitive preconditions and status results
@@ -69,11 +72,25 @@ are maintained once in the
 
 ## Dirty Fence
 
-Dirty invalidates renewal of an active lease; it is not a metadata version,
-network state, scheduling polarity or attribute write lock. A real continuation
-must justify a dirty producer. Non-lease owners never clear dirty. Initial due
-acquisition may clear it, while active renewal rejects it. Matching facts
-updates do not write Score or mark dirty.
+Dirty=0 means the current initial hold's candidate eligibility is available;
+dirty=1 means it has been invalidated or consumed. Dirty is not a Properties
+version, network state, scheduling polarity or attribute write lock.
+
+Server requests one bounded dirty operation per Group after APPLIED Worker or
+Platform facts writes. The operation preserves sign, deadline and rank and does
+not create missing members. An already confirmed execution fence is dirty=1,
+so subsequent Properties invalidation is a NOOP and preserves result release.
+
+Facts and Score commit independently. Confirmation may win between the facts
+write and invalidation; already confirmed work continues. Invalidation failure
+keeps the successful facts response and emits an aggregate diagnostic, with no
+replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
+scores and Cache entries remain bounded by their existing deadlines.
+
+Due scans include dirty=1. Only a new exact initial HOT hold clears dirty;
+PRECOMPUTED then matches again. ON_DEMAND uses the same confirmation fence but
+never enters Matching. Do not clear an active hold or fetch a newer score to
+rescue a stale Candidate. Cache counts may temporarily include invalid entries.
 
 ## Result Disposition
 
@@ -101,7 +118,7 @@ TaskItem movement and cannot prove that all preceding Owner calls completed.
 | --- | --- | --- |
 | Initial hold | CAS lost | Exclude the Worker from that held pool |
 | Match handoff | rejection, no match or partial publication | Accepted entries remain; unaccepted holds expire |
-| Renewal | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
+| Confirmation | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
 | Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
 | Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |
 | Result | missing or malformed context | No guessed mutation; expiry restores eligibility only |
@@ -121,3 +138,11 @@ interprets Adapter evidence and probe results through its dedicated time-fenced
 operation. It must not be collapsed into Task result lease disposition.
 Cadence, recovery ranking and cold parking belong to that policy; no generic
 Session, Attempt or Worker reservation owner is introduced here.
+
+## Deployment
+
+No Redis shape or data migration is required. Coordinate the Server/Pacer
+restart so old and new assignment code do not run concurrently in one scope.
+An old dirty=0 execution lease can lose its early-release fence if invalidated
+after upgrade; existing lease expiry provides the accepted best-effort recovery.
+Do not rewrite historical scores or add an upgrade repair process.

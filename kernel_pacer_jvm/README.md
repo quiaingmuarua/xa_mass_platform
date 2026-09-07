@@ -90,7 +90,7 @@ exact hold, selection, priority, deficits, retry cadence and Group rotation.
 For PRECOMPUTED Tasks they publish an ordered Group Demand containing the
 successfully held Worker IDs and opaque exact scores; Matching filters that
 pool and directly appends accepted entries to Candidate Cache. Dispatch later
-consumes and exact-renews those entries. ON_DEMAND Items carry normalized
+consumes and exact-confirms those entries. ON_DEMAND Items carry normalized
 explicit Worker IDs or ANY and acquire due HOT Workers directly without a
 Matching runtime round trip. Pacer code does not load Rules, Properties or
 interpret constraints. Package-private mechanisms in this module protect raw

@@ -28,7 +28,7 @@ TASK
 API -> Server coordinates Matching Rules and Kernel Task/Item writes
     -> PRECOMPUTED: Kernel holds a bounded pool; Matching filters into Candidate Cache
        ON_DEMAND: Kernel acquires normalized explicit Worker IDs or ANY
-    -> Kernel renews the Worker fence, claims the Item and publishes a Command
+    -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
 
@@ -63,8 +63,12 @@ the complete Worker Map; independent Platform Properties management never
 patches that Map. Before the first valid observation, identity may exist without facts:
 PRECOMPUTED skips that Worker while ON_DEMAND can use its identity. Polling
 currently has no Properties reporting path and uses ON_DEMAND for new Workers.
-New Matching Demands read observed facts without re-Prepare. Reporting is lossy,
-does not revoke existing Candidates, and does not directly change scheduling.
+New Matching Demands read observed facts without re-Prepare. Reporting is lossy.
+After actual Worker or Platform facts changes, Server requests best-effort
+candidate invalidation through the Score Owner. Existing Candidate entries
+remain, while final exact confirmation rejects invalidated holds. Confirmed
+work continues; the [HOT lease protocol](kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
+owns the separate commits and expiry limits.
 WorkerGroup event declarations likewise do not prove that handlers are loaded;
 process-local event snapshots report the actual immutable assembly.
 

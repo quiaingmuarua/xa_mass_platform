@@ -18,6 +18,7 @@ import com.xa.mass.server.assembly.redis.KernelRedisHealthIndicator;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -46,6 +47,10 @@ class WorkerDeliveryHttpCompositionTest {
                     .withBean(
                             WorkerMatchingCatalog.class,
                             () -> org.mockito.Mockito.mock(WorkerMatchingCatalog.class)
+                    )
+                    .withBean(
+                            WorkerSchedulingService.class,
+                            () -> org.mockito.Mockito.mock(WorkerSchedulingService.class)
                     )
                     .withBean(
                             DirectCallService.class,

@@ -17,6 +17,10 @@ import org.springframework.stereotype.Service;
 @Service
 public final class WorkerSchedulingService {
 
+    private static final System.Logger LOGGER = System.getLogger(
+            WorkerSchedulingService.class.getName()
+    );
+
     private static final String PAUSE_OPERATION =
             "workerScheduling.pause";
     private static final String RESUME_OPERATION =
@@ -32,6 +36,29 @@ public final class WorkerSchedulingService {
                 workerScores,
                 "workerScores"
         );
+    }
+
+    /** Facts have already committed; invalidation is best-effort and does not undo them. */
+    public void invalidateCandidates(String workerGroupId, List<String> workerIds) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        requireWorkerIds(workerIds);
+        try {
+            Map<String, WorkerScoreTransitionResult> results =
+                    workerScores.markCurrentLeasesDirty(workerGroupId, workerIds);
+            long invalid = workerIds.stream().filter(workerId -> {
+                WorkerScoreTransitionResult result = results == null ? null : results.get(workerId);
+                return result == null || result.status() == WorkerScoreCore.WorkerScoreTransitionStatus.INVALID;
+            }).count();
+            if (invalid > 0) {
+                LOGGER.log(System.Logger.Level.WARNING,
+                        "workerScheduling.invalidateCandidates: group={0}, workers={1}, invalidResults={2}",
+                        workerGroupId, workerIds.size(), invalid);
+            }
+        } catch (RuntimeException error) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "workerScheduling.invalidateCandidates: group=" + workerGroupId
+                            + ", workers=" + workerIds.size(), error);
+        }
     }
 
     public ActionOutcome pause(
