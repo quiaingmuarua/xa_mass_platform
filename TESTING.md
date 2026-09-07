@@ -72,6 +72,11 @@ The checked representative-path contract is:
 python .github/scripts/check_proof_selection.py
 ```
 
+The checker uses existing tracked and non-ignored untracked files, excluding
+uncommitted deletions so package moves fail locally before CI. Kernel Worker
+registration, Server Endpoint configuration and Prepare select both Java Worker
+Correctness and Android Worker Proof after the Binding ownership move.
+
 ## Lane Index
 
 | Lane | Primary command | External dependency |

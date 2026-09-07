@@ -22,10 +22,38 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
+        "worker_correctness",
         "worker_convergence_health",
+        "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Kernel mechanical changes require Owner, Redis, runtime, convergence and distribution proofs, but not the Worker correctness primary claim."
+      "reason": "Kernel Worker registration and Binding now own the persistent identity/address boundary consumed by Java and Android Worker proofs."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/endpoint/WorkerEndpointDirectory.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "The Endpoint directory replaces Server Binding address configuration for Java and Android Prepare."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/preparation/WorkerPreparationService.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "Prepare orchestrates identity, Kernel registration and actual Endpoint resolution for Java and Android Workers."
     },
     {
       "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java",

@@ -103,6 +103,7 @@ def repository_files() -> set[str]:
         [
             "git",
             "ls-files",
+            "-z",
             "--cached",
             "--others",
             "--exclude-standard",
@@ -113,7 +114,7 @@ def repository_files() -> set[str]:
         text=True,
         encoding="utf-8",
     )
-    return set(result.stdout.splitlines())
+    return {path for path in result.stdout.split("\0") if path and (ROOT / path).is_file()}
 
 
 def load_contract(path: Path = CONTRACT_FILE) -> list[dict[str, object]]:

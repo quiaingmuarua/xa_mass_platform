@@ -206,7 +206,7 @@ class JavaWorkerTest {
     @Test
     void websocketBusinessHandlerRunsOnTheOkHttpVirtualReader()
             throws Exception {
-        CountDownLatch handled = new CountDownLatch(1);
+        CountDownLatch resultReceived = new CountDownLatch(1);
         AtomicReference<Boolean> virtualHandler = new AtomicReference<>();
         AtomicBoolean commandSent = new AtomicBoolean();
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
@@ -236,7 +236,16 @@ class JavaWorkerTest {
                                     "task-correlation"
                             );
                             webSocket.send(codec.encodeDeliveryCommand(command));
+                        } else if ("task-correlation".equals(
+                                codec.decodeDeliveryReport(text).forward()
+                        )) {
+                            resultReceived.countDown();
                         }
+                    }
+
+                    @Override
+                    public void onClosing(okhttp3.WebSocket socket, int code, String reason) {
+                        socket.close(code, reason);
                     }
                 })
                 .build());
@@ -251,7 +260,6 @@ class JavaWorkerTest {
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> {
                             virtualHandler.set(Thread.currentThread().isVirtual());
-                            handled.countDown();
                             return "null";
                         }
                 )),
@@ -265,7 +273,7 @@ class JavaWorkerTest {
         takeRequest();
         takeRequest();
 
-        assertTrue(handled.await(5, TimeUnit.SECONDS));
+        assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
         assertEquals(Boolean.TRUE, virtualHandler.get());
     }
 
@@ -385,6 +393,10 @@ class JavaWorkerTest {
                 .build());
         server.enqueue(new MockResponse.Builder()
                 .webSocketUpgrade(new WebSocketListener() {
+                    @Override
+                    public void onClosing(okhttp3.WebSocket socket, int code, String reason) {
+                        socket.close(code, reason);
+                    }
                 })
                 .build());
     }
