@@ -270,6 +270,48 @@
         "runtime_distribution"
       ],
       "reason": "Distribution assembly changes are proved from the unpacked archive."
+    },
+    {
+      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkerControlServer.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
+    },
+    {
+      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkers.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Host persistence and SDK publication belong to the live Properties integration closure."
+    },
+    {
+      "path": "transport/netty-adapter/src/main/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerConnectionMechanism.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Current verified Channel admission and Properties cache publication require the live Properties proof."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/resource/WorkerResourceCommandService.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Server admission of dynamic Properties must select Worker Correctness through worker/resource."
     }
   ]
 }

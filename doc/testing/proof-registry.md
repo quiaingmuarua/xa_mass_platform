@@ -44,9 +44,12 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 
 - **Primary owner:** `:integrations:worker-correctness`.
 - **Claim:** exact Lab-to-Worker identity, route, Properties, extension and
-  successful Result closure, with identity preserved across graceful Host restart.
+  successful Result closure; running Host file mutations reach Adapter cache
+  and Server/Matching Runtime Properties without another Prepare, followed by
+  identity preservation across graceful Host restart.
 - **Deliberate nonclaims:** capability-specific payload values, executing
-  Worker, fault convergence, throughput and topology combinations.
+  Worker, fault convergence, reliable SYSTEM delivery under faults, production
+  latency SLA, throughput and topology combinations.
 - **Contract:** [Complete scenario](../../integrations/worker-correctness/README.md).
 
 ## worker_convergence_health

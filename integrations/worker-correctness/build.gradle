@@ -1,9 +1,14 @@
 plugins {
-    id 'java'
+    id 'application'
 }
 
 base {
     archivesName.set('xa-mass-worker-correctness')
+}
+
+application {
+    applicationName = 'xa-mass-worker-correctness'
+    mainClass = 'com.xa.mass.integration.workercorrectness.WorkerCorrectnessMain'
 }
 
 java {

@@ -71,6 +71,7 @@ worker_correctness:
   - 'server_jvm/src/main/java/com/xa/mass/server/task/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/assembly/runtime/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/worker/binding/**'
+  - 'server_jvm/src/main/java/com/xa/mass/server/worker/resource/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/delivery/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/worker/group/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/worker/identity/**'

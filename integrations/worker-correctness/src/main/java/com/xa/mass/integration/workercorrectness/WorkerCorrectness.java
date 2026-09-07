@@ -54,6 +54,10 @@ final class WorkerCorrectness {
 
     static void execute(CorrectnessOptions options) throws IOException {
         Phase phase = options.requiredPhase();
+        if (phase == Phase.LIVE_PROPERTIES) {
+            LivePropertiesProof.execute(options);
+            return;
+        }
         CorrectnessSpec spec = CorrectnessSpec.load(options.correctnessSpec());
         CorrectnessEvidence evidence = new CorrectnessEvidence(
                 options.proofId(),

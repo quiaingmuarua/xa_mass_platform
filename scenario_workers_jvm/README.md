@@ -172,11 +172,12 @@ one JavaWorkerManager for each non-empty configured WorkerGroup
 
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
-Worker until an explicit later Host start. Prepare in that explicit start is
-the only canonical Properties refresh. Initial file batches and later
-one-record batches both reopen the Worker's inventory file, so an atomic file
-update does not affect the current run and becomes
-visible on the next explicit start. A start requested while an earlier stop is
+Worker until an explicit later Host start. Initial file batches and later
+one-record batches reopen the Worker's inventory file. The ordinary file PUT
+remains a file-only edit: it does not publish to the current connection and is
+loaded on the next explicit start (or a later explicit full Properties report).
+The separate live Properties operations below persist and publish during an
+existing run, without Prepare. A start requested while an earlier stop is
 still converging is rejected with `409`; the caller must observe `STOPPED` and
 retry instead of relying on an implicit restart.
 
@@ -194,6 +195,8 @@ GET    /lab/v1/workers
 POST   /lab/v1/workers:stop
 GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
 PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
+PATCH  /lab/v1/workers/{workerGroupId}/{labWorkerKey}:properties
+PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:properties
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:stop
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:schedule-stop
@@ -214,6 +217,30 @@ The command checkpoint is a String-Worker-only reliability fixture for
 for at most 120 seconds; release, timeout, or Host close opens the gate. It is
 not a Core hook, generic fault DSL, Worker identity context, or production
 control event.
+
+The `:properties` operations accept a direct string KV Map for one known,
+running Worker. PATCH merges the supplied keys into the complete persisted
+record, then calls the existing Manager incremental publication method for
+`properties.updated`. PUT atomically replaces that record, then calls the
+existing full publication method for `properties.replaced`; its Provider
+reopens the file. Full replacement must retain both immutable inventory
+coordinates exactly and deletes all omitted mutable keys. Empty strings remain
+values. Neither operation starts, stops or prepares a Worker.
+
+Each Worker has a non-queuing Properties operation gate, acquired before the
+inventory monitor and retained through the SDK send. The ordinary file PUT
+uses the same gate. File read/modify/replace retains the existing serialized
+protection so other records in the same JSONL file survive concurrent edits.
+The SDK send runs outside the inventory monitor; stop/shutdown may revoke the
+run while publication is in progress. Closing the control listener interrupts
+its daemon handlers without joining a publication before Worker shutdown.
+Unknown Workers return 404, invalid
+Properties return 400, and a stopped/stopping Worker or occupied gate returns
+409. Successful local completion returns
+`200 {"persisted":true,"sendAccepted":true|false}`. False leaves the file in
+place, with no retry or compensation. This result is local send acceptance,
+not an Adapter/Server ACK. There is no file watcher, automatic scan, generic
+event injection or new Worker SDK API.
 
 The collection-level stop endpoint accepts `1..100` unique existing Worker
 coordinates. It validates the complete request before issuing any stop and

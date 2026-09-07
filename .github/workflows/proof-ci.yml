@@ -109,6 +109,9 @@ jobs:
           python3 -m unittest discover \
             -s integrations/worker-loaded-recovery \
             -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-correctness \
+            -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()
         run: >-
@@ -258,7 +261,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Worker Correctness:** workers=100, taskItems=100, restartIdentity=matched" \
+            echo "- **Worker Correctness:** workers=100, taskItems=100, liveProperties=8x32+9 replacements, prepareDelta=0, restartIdentity=matched" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **Worker Correctness:** failed; inspect evidence and process logs" \
@@ -270,7 +273,12 @@ jobs:
         with:
           name: worker-correctness-${{ github.run_attempt }}
           path: |
-            build/worker-correctness-proof/**
+            build/worker-correctness-proof/evidence/worker-correctness-initial.json
+            build/worker-correctness-proof/evidence/worker-correctness-live-properties.json
+            build/worker-correctness-proof/evidence/worker-correctness-restart.json
+            build/worker-correctness-proof/runtime-server.log
+            build/worker-correctness-proof/scenario-host-initial.log
+            build/worker-correctness-proof/scenario-host-restart.log
           if-no-files-found: ignore
           retention-days: 7
 

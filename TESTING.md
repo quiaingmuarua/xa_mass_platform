@@ -21,7 +21,7 @@ a prerequisite or Boundary Witness, not a second owner of that invariant.
 | --- | --- |
 | Owner Test | Local algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | Encoding and behavior across adjacent owners or processes |
-| [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, extension, Result and restart closure |
+| [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, live Properties without Prepare, extension, Result and restart closure |
 | [Worker Convergence Health](integrations/worker-convergence-health/README.md) | Named witness convergence after established state and process faults |
 | [Worker Loaded Capacity + Recovery Stability](integrations/worker-loaded-recovery/README.md) | Sustained work, repeated Server recovery and resource bounds |
 | [Android Worker](integrations/android-worker-proof/README.md) | Real Android lifecycle and fixed multi-process isolation |
@@ -145,6 +145,17 @@ The Runtime Boundary starts one Java Server context. Worker Correctness and
 Worker Convergence Health start Server and Scenario Host as independent
 processes. Worker Loaded Capacity + Recovery Stability is a separate
 nightly/manual workflow and is not part of the pull-request Proof Gate.
+
+Worker Correctness runs `initial -> live-properties -> Host restart -> restart`.
+The live phase uses Lab HTTP to persist and publish through the running Worker,
+then checks Adapter cache and Server Runtime independently. Its separate safe
+evidence includes the runner's unchanged Host PID, unchanged control records
+and zero additional Prepare requests, after proving that initial Prepare is
+visible in the private HTTP access log. See its Owner for fixed deadlines and
+full snapshot oracles; focused Host/Harness tests do not replace this real
+process proof. Selection includes Server `worker/resource/**` admission, with
+representative Host, Adapter Properties entry and Server admission paths checked
+by the selection contract.
 
 Android Host owns deterministic SDK, capability, Demo and proof-Harness tests
 plus Android library assembly. Android APK Assembly independently builds the

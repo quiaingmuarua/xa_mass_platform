@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -43,11 +46,14 @@ def main() -> int:
     options = parser.parse_args()
 
     output = options.output_root.resolve()
+    if not output.is_relative_to(ROOT / "build") or output == ROOT / "build":
+        raise ValueError("--output-root must be a child of the repository build directory")
     if output.exists():
         shutil.rmtree(output)
     evidence = output / "evidence"
     sandbox = output / "data" / "scenario-workers"
     evidence.mkdir(parents=True)
+    (output / "private").mkdir()
     sandbox.parent.mkdir(parents=True)
     materialize_inventory(sandbox, canonical_100_worker_world())
 
@@ -62,7 +68,7 @@ def main() -> int:
         "--no-daemon",
         ":server_jvm:bootJar",
         ":scenario_workers_jvm:installDist",
-        f"{MODULE}:classes",
+        f"{MODULE}:installDist",
     ], environment)
 
     server: subprocess.Popen[str] | None = None
@@ -85,6 +91,8 @@ def main() -> int:
 
         initial = evidence / "worker-correctness-initial.json"
         _run_phase("initial", proof_id, sandbox, initial, None, options, environment)
+
+        _run_live_properties(proof_id, sandbox, initial, output, host, server, options, environment)
 
         _stop_process(host, force=False)
         host = _start_host(output, sandbox, environment, "scenario-host-restart.log")
@@ -136,6 +144,7 @@ def _run_phase(
         f"--phase={phase}",
         f"--proof-id={proof_id}",
         f"--server-base-url={RUNTIME_API}",
+        f"--lab-base-url={LAB_API}",
         f"--correctness-spec={ROOT / 'integrations/worker-correctness/correctness-spec.json'}",
         f"--scenario-worker-lab-root={sandbox}",
         f"--phone-seed-path={ROOT / 'integrations/worker-correctness/phone-seed.txt'}",
@@ -146,13 +155,18 @@ def _run_phase(
     ]
     if baseline is not None:
         arguments.append(f"--baseline-file={baseline}")
-    encoded = " ".join(_gradle_argument(value) for value in arguments)
-    _run([
-        str(_gradle()),
-        "--no-daemon",
-        f"{MODULE}:runWorkerCorrectness",
-        f"--args={encoded}",
-    ], environment)
+    classpath = ROOT / "integrations/worker-correctness/build/install/xa-mass-worker-correctness/lib/*"
+    log_path = evidence.parent.parent / "private" / f"phase-{phase}.log"
+    process = _start_process([
+        "java", "-cp", str(classpath),
+        "com.xa.mass.integration.workercorrectness.WorkerCorrectnessMain", *arguments,
+    ], log_path, environment)
+    try:
+        timeout = 120 if phase == "live-properties" else 120 + options.maximum_wait_millis / 1000
+        if process.wait(timeout=timeout) != 0:
+            raise RuntimeError(f"Worker Correctness {phase} failed; inspect {evidence.name}")
+    finally:
+        _stop_process(process, force=True)
 
 
 def _start_server(
@@ -172,6 +186,13 @@ def _start_server(
         "-jar",
         str(jar),
         "--spring.profiles.active=scenario-workers",
+        "--server.tomcat.accesslog.enabled=true",
+        "--server.tomcat.accesslog.buffered=false",
+        "--server.tomcat.accesslog.rotate=false",
+        f"--server.tomcat.accesslog.directory={output / 'private'}",
+        "--server.tomcat.accesslog.prefix=runtime-http",
+        "--server.tomcat.accesslog.suffix=.log",
+        "--server.tomcat.accesslog.pattern=%m %U %s",
     ], output / "runtime-server.log", environment)
 
 
@@ -292,10 +313,95 @@ def _gradle() -> Path:
     return ROOT / ("gradlew.bat" if os.name == "nt" else "gradlew")
 
 
-def _gradle_argument(value: str) -> str:
-    if not any(character.isspace() for character in value) and '"' not in value:
-        return value
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+def _prepare_counts(access: bytes) -> dict[str, int]:
+    counts = {"prepare": 0, "prepareBatch": 0, "successful": 0}
+    if not access or not access.endswith(b"\n"):
+        raise RuntimeError("Missing or incomplete HTTP access records")
+    for line in access.decode("utf-8").splitlines():
+        record = re.fullmatch(r"([A-Z]+) (/\S*) ([1-5][0-9]{2})", line)
+        if record is None:
+            raise RuntimeError("Unexpected HTTP access record format")
+        method, path, status = record.groups()
+        route = re.fullmatch(r"/api/v1/worker-groups/[^/]+/workers:(prepare|prepare-batch)", path)
+        if route is not None:
+            name = "prepare" if route[1] == "prepare" else "prepareBatch"
+            counts[name] += 1  # Include rejected/failed requests and every HTTP method.
+            if method == "POST" and status == "200":
+                counts["successful"] += 1
+    return counts
+
+
+def _read_access(path: Path) -> bytes:
+    deadline = time.monotonic() + 2
+    while True:
+        data = path.read_bytes()
+        if data.endswith(b"\n") or time.monotonic() >= deadline:
+            _prepare_counts(data)
+            return data
+        time.sleep(0.01)
+
+
+def _prepare_audit(before: bytes, after: bytes) -> dict[str, object]:
+    initial = _prepare_counts(before)
+    final = _prepare_counts(after)
+    if initial["successful"] == 0:
+        raise RuntimeError("HTTP access log did not observe initial Prepare")
+    if not after.startswith(before):
+        raise RuntimeError("HTTP access log was truncated or rotated")
+    delta = {key: final[key] - initial[key] for key in ("prepare", "prepareBatch")}
+    return {"initialPrepareObserved": True, "before": initial, "after": final, "requestDelta": delta}
+
+
+def _control_records(sandbox: Path) -> dict[str, str]:
+    controls = {}
+    for role, group, index in (
+        ("same-file-control", "scenario-string-utils-workers", 1),
+        ("cross-group-control", "scenario-phone-number-workers", 0),
+    ):
+        records = (sandbox / group / "workers-000.jsonl").read_bytes().splitlines()
+        if len(records) != 50:
+            raise RuntimeError("Control inventory shape changed")
+        controls[role] = hashlib.sha256(records[index]).hexdigest()
+    return controls
+
+
+def _run_live_properties(proof_id, sandbox, initial, output, host, server, options, environment):
+    evidence_path = output / "evidence/worker-correctness-live-properties.json"
+    access_path = output / "private/runtime-http.log"
+    result = {"schemaVersion": 1, "proofId": proof_id, "phase": "live-properties", "status": "failed"}
+    try:
+        before = _read_access(access_path)
+        if _prepare_counts(before)["successful"] == 0:
+            raise RuntimeError("HTTP access log did not observe initial Prepare")
+        controls = _control_records(sandbox)
+        pid = host.pid
+        if host.poll() is not None or server.poll() is not None:
+            raise RuntimeError("Proof process exited before live Properties")
+        _run_phase("live-properties", proof_id, sandbox, evidence_path, initial, options, environment)
+        result = json.loads(evidence_path.read_text(encoding="utf-8"))
+        audit = _prepare_audit(before, _read_access(access_path))
+        result["prepareAudit"] = audit
+        result["hostPidBefore"] = pid
+        result["hostPidAfter"] = host.pid
+        result["hostProcessUnchanged"] = host.pid == pid and host.poll() is None
+        result["controlFileRecordsUnchanged"] = controls == _control_records(sandbox)
+        if not result["hostProcessUnchanged"] or server.poll() is not None:
+            raise RuntimeError("Proof process exited during live Properties")
+        if not result["controlFileRecordsUnchanged"]:
+            raise RuntimeError("Control file records changed")
+        if audit["requestDelta"] != {"prepare": 0, "prepareBatch": 0}:
+            raise RuntimeError("Prepare occurred during live Properties")
+        if result.get("harnessStatus") != "succeeded":
+            raise RuntimeError("Live Properties harness did not succeed")
+        result["status"] = "succeeded"
+    except Exception as error:
+        if evidence_path.exists() and "harnessStatus" not in result:
+            result = json.loads(evidence_path.read_text(encoding="utf-8"))
+        result["status"] = "failed"
+        result["runnerFailure"] = type(error).__name__
+        raise
+    finally:
+        evidence_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

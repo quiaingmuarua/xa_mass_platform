@@ -5,6 +5,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ScenarioWorkers implements AutoCloseable {
 
@@ -29,6 +31,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
     private final Map<String, ManagedGroup> managedGroupsById =
             new LinkedHashMap<>();
+    private final Set<ScenarioWorkerCoordinate> propertiesOperations =
+            ConcurrentHashMap.newKeySet();
 
     private boolean started;
     private boolean closed;
@@ -236,16 +240,67 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
     }
 
-    synchronized void replaceWorkerState(
+    void replaceWorkerState(
             String workerGroupId,
             String labWorkerKey,
             String encodedDocument
     ) {
-        ensureControllable();
-        ManagedGroup group = requireManagedGroup(workerGroupId);
-        requireReplica(group, labWorkerKey)
-                .stateFile()
-                .replace(encodedDocument);
+        ScenarioWorkerCoordinate target = beginPropertiesOperation(workerGroupId, labWorkerKey);
+        try {
+            synchronized (this) {
+                ensureControllable();
+                ManagedGroup group = requireManagedGroup(workerGroupId);
+                requireReplica(group, labWorkerKey).stateFile().replace(encodedDocument);
+            }
+        } finally {
+            propertiesOperations.remove(target);
+        }
+    }
+
+    boolean publishProperties(
+            String workerGroupId,
+            String labWorkerKey,
+            Map<String, String> properties,
+            boolean replace
+    ) {
+        ScenarioWorkerCoordinate target = beginPropertiesOperation(workerGroupId, labWorkerKey);
+        try {
+            Map<String, String> supplied = Map.copyOf(properties);
+            JavaWorkerManager manager;
+            synchronized (this) {
+                ensureControllable();
+                ManagedGroup group = requireManagedGroup(workerGroupId);
+                PreparedReplica replica = requireReplica(group, labWorkerKey);
+                manager = group.manager();
+                if (!manager.desiredRunning(labWorkerKey)
+                        || manager.snapshot(labWorkerKey).state() != WorkerLifecycle.State.RUNNING) {
+                    throw new IllegalStateException("Worker must be running to publish Properties");
+                }
+                Map<String, String> complete = new LinkedHashMap<>();
+                if (!replace) {
+                    complete.putAll(replica.stateFile().workerProperties());
+                }
+                complete.putAll(supplied);
+                replica.stateFile().replace(Jsons.toJson(Map.of(
+                        "schemaVersion", 2,
+                        "workerProperties", complete
+                )));
+            }
+            // Keep the per-Worker gate while the SDK reads/sends, without holding the
+            // inventory gate. Stop and shutdown may revoke this run concurrently.
+            return replace ? manager.reportProperties(labWorkerKey)
+                    : manager.reportProperties(labWorkerKey, supplied);
+        } finally {
+            propertiesOperations.remove(target);
+        }
+    }
+
+    private ScenarioWorkerCoordinate beginPropertiesOperation(String groupId, String key) {
+        ScenarioWorkerCoordinate target = new ScenarioWorkerCoordinate(groupId, key);
+        if (!propertiesOperations.add(target)) {
+            throw new IllegalStateException("Worker Properties operation is already in progress");
+        }
+        return target;
     }
 
     synchronized int initialWorkerCount() {

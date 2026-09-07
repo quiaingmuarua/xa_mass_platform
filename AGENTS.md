@@ -557,6 +557,13 @@ system.
   converging is a conflict; callers observe `STOPPED` before retrying.
 - Every explicit Worker start reopens its complete Properties file. There is no
   watcher, automatic reconcile, dynamic inventory, or generic fault DSL.
+- Lab `:properties` PATCH/PUT may persist and explicitly publish through the
+  existing Manager during a running Worker run. Preserve immutable inventory
+  coordinates and file-only PUT semantics. Use one non-queuing per-Worker gate
+  across persistence/publication, including the file-only PUT; retain serialized
+  file writes and keep SDK sends outside the inventory monitor. Stop/shutdown
+  must not wait for publication. Local acceptance is not remote ACK; never
+  compensate, retry or add pending publication state.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
 - Server never depends on, constructs, starts or stops the Host. The root local
   launcher and proof lanes own the two independent process lifecycles.
@@ -630,6 +637,14 @@ Adapter connectivity, Kernel state or schedulability.
   Result payload as opaque. The frontend separately turns lines into ordinary
   finite TaskItems through public Task APIs; Server owns no Lab input/output
   directory.
+- Worker Correctness live Properties mutations use Lab HTTP and the real
+  Scenario Host/SDK connection before its existing Host restart phase. Java
+  observes Adapter/Server through public APIs; it must not call implementations
+  or inject Reports. The runner owns process identity, control-file and initial
+  Prepare/access-log audits. Fixed budgets and full snapshot oracles belong in
+  the Integration Owner document. Keep Lab Properties and private phase data
+  outside the CI artifact whitelist; local Harness success requires the runner
+  audit before it can become phase success.
 - Frontend is read only for Runtime truth. Its finite Task file flow may create,
   append, approve, and export only through public Task APIs and must not infer
   scheduling state from elapsed time.

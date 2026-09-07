@@ -20,7 +20,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Loopback-only HTTP adapter for the Scenario Worker Lab. */
@@ -132,15 +131,9 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             closed = true;
             server.stop(0);
         }
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException interrupted) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        // Do not join a publishing HTTP Handler before the Host can revoke its
+        // Worker runs. Control threads are daemon threads; in-flight calls may fail.
+        executor.shutdownNow();
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -339,6 +332,24 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     workerGroupId,
                     labWorkerKey
             );
+            case PROPERTIES -> {
+                String method = exchange.getRequestMethod();
+                if (!"PATCH".equals(method) && !"PUT".equals(method)) {
+                    methodNotAllowed(exchange, "PATCH, PUT");
+                    return;
+                }
+                Map<String, String> properties = new LinkedHashMap<>();
+                Jsons.parseObject(readBody(exchange)).forEach((key, value) -> {
+                    if (!(value instanceof String text)) {
+                        throw new IllegalArgumentException("Properties values must be strings");
+                    }
+                    properties.put(key, text);
+                });
+                boolean accepted = workers.publishProperties(
+                        workerGroupId, labWorkerKey, properties, "PUT".equals(method)
+                );
+                respondJson(exchange, 200, Map.of("persisted", true, "sendAccepted", accepted));
+            }
         }
     }
 
@@ -645,7 +656,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         STOP,
         SCHEDULE_STOP,
         CANCEL_SCHEDULED_STOP,
-        COMMAND_CHECKPOINT
+        COMMAND_CHECKPOINT,
+        PROPERTIES
     }
 
     private record Action(
@@ -659,7 +671,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     ":stop", ActionKind.STOP,
                     ":schedule-stop", ActionKind.SCHEDULE_STOP,
                     ":scheduled-stop", ActionKind.CANCEL_SCHEDULED_STOP,
-                    ":command-checkpoint", ActionKind.COMMAND_CHECKPOINT
+                    ":command-checkpoint", ActionKind.COMMAND_CHECKPOINT,
+                    ":properties", ActionKind.PROPERTIES
             ).entrySet()) {
                 if (value.endsWith(suffix.getKey())) {
                     return new Action(

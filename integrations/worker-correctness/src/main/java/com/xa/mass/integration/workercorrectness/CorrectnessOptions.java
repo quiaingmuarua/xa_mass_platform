@@ -12,6 +12,7 @@ final class CorrectnessOptions {
             "phase",
             "proof-id",
             "server-base-url",
+            "lab-base-url",
             "correctness-spec",
             "scenario-worker-lab-root",
             "phone-seed-path",
@@ -62,9 +63,10 @@ final class CorrectnessOptions {
         String value = required("phase");
         return switch (value) {
             case "initial" -> Phase.INITIAL;
+            case "live-properties" -> Phase.LIVE_PROPERTIES;
             case "restart" -> Phase.RESTART;
             default -> throw new IllegalArgumentException(
-                    "--phase must be initial or restart"
+                    "--phase must be initial, live-properties or restart"
             );
         };
     }
@@ -95,6 +97,15 @@ final class CorrectnessOptions {
         ));
     }
 
+    URI labBaseUrl() {
+        URI value = URI.create(values.getOrDefault("lab-base-url", "http://127.0.0.1:18086"));
+        if (!"http".equals(value.getScheme())
+                || !("127.0.0.1".equals(value.getHost()) || "localhost".equals(value.getHost()))) {
+            throw new IllegalArgumentException("--lab-base-url must be a loopback HTTP URI");
+        }
+        return value;
+    }
+
     Path scenarioWorkerLabRoot() {
         return absolutePath(values.getOrDefault(
                 "scenario-worker-lab-root",
@@ -122,14 +133,14 @@ final class CorrectnessOptions {
 
     Path baselineFile(Phase phase) {
         String value = values.get("baseline-file");
-        if (phase == Phase.RESTART && value == null) {
+        if (phase != Phase.INITIAL && value == null) {
             throw new IllegalArgumentException(
-                    "--baseline-file is required for restart"
+                    "--baseline-file is required for restart or live-properties"
             );
         }
         if (phase == Phase.INITIAL && value != null) {
             throw new IllegalArgumentException(
-                    "--baseline-file is accepted only for restart"
+                    "--baseline-file is accepted only for restart or live-properties"
             );
         }
         return value == null ? null : absolutePath(value);
@@ -184,6 +195,7 @@ final class CorrectnessOptions {
 
     enum Phase {
         INITIAL("initial"),
+        LIVE_PROPERTIES("live-properties"),
         RESTART("restart");
 
         private final String wireValue;

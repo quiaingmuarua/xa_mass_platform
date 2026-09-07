@@ -213,6 +213,8 @@ class ScenarioWorkerControlServerTest {
         );
         assertThat(replaced.statusCode()).isEqualTo(200);
         assertThat(replaced.body()).contains("41");
+        verify(manager, never()).reportProperties(anyString());
+        verify(manager, never()).reportProperties(anyString(), org.mockito.ArgumentMatchers.anyMap());
 
         assertThat(request(
                 "GET",
@@ -451,6 +453,162 @@ class ScenarioWorkerControlServerTest {
                 .method(method, publisher)
                 .build();
         return http.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void persistsBeforePublishingDeltasAndFullReplacementWithoutTouchingOtherRows() throws Exception {
+        running();
+        List<String> before = Files.readAllLines(inventoryPath());
+        Map<String, String> delta = Map.of("sequence", "1", "empty", "");
+        when(manager.reportProperties(CLIENT, delta)).thenAnswer(call -> {
+            assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                    .containsAllEntriesOf(delta).containsEntry("labSlot", "1");
+            return true;
+        });
+        assertThat(Jsons.parseObject(request("PATCH", workerPath() + ":properties",
+                Jsons.toJson(delta)).body()))
+                .isEqualTo(Map.of("persisted", true, "sendAccepted", true));
+        Map<String, String> replacement = Map.of(
+                "labInventoryKey", INVENTORY, "labInventoryLine", "1");
+        when(manager.reportProperties(CLIENT)).thenAnswer(call -> {
+            assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                    .isEqualTo(replacement);
+            return true;
+        });
+        assertThat(request("PUT", workerPath() + ":properties",
+                Jsons.toJson(replacement)).statusCode()).isEqualTo(200);
+        assertThat(Files.readAllLines(inventoryPath()).subList(1, 100))
+                .isEqualTo(before.subList(1, 100));
+        verify(manager).reportProperties(CLIENT, delta);
+        verify(manager).reportProperties(CLIENT);
+        verify(manager, never()).prepareAndStart(org.mockito.ArgumentMatchers.anyList());
+        verify(manager, never()).stop(anyString());
+    }
+
+    @Test
+    void rejectedSendRetainsFileAndReleasesGateWithoutRetry() throws Exception {
+        running();
+        Map<String, String> delta = Map.of("changed", "persisted");
+        when(manager.reportProperties(CLIENT, delta)).thenReturn(false);
+        HttpResponse<String> response = request("PATCH", workerPath() + ":properties", Jsons.toJson(delta));
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(Jsons.parseObject(response.body()))
+                .isEqualTo(Map.of("persisted", true, "sendAccepted", false));
+        assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                .containsAllEntriesOf(delta);
+        verify(manager, times(1)).reportProperties(CLIENT, delta);
+        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void publicationConflictDoesNotQueueAndDoesNotBlockOtherRowsOrStopOrShutdown() throws Exception {
+        running();
+        CountDownLatch sending = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(manager.reportProperties(CLIENT, Map.of("changed", "yes"))).thenAnswer(call -> {
+            sending.countDown();
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Test publication was not released");
+            }
+            return false;
+        });
+        try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<HttpResponse<String>> publishing = callers.submit(() -> request(
+                    "PATCH", workerPath() + ":properties", "{\"changed\":\"yes\"}"));
+            try {
+                assertThat(sending.await(1, TimeUnit.SECONDS)).isTrue();
+                assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+                assertThat(request("PUT", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+                assertThat(request("PUT", workerPath(), "{}").statusCode()).isEqualTo(409);
+                String secondPath = "/lab/v1/workers/" + GROUP + "/" + INVENTORY + ":2";
+                assertThat(request("PATCH", secondPath + ":properties", "{\"other\":\"yes\"}")
+                        .statusCode()).isEqualTo(200);
+                assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                        .containsEntry("changed", "yes").doesNotContainKey("other");
+                assertThat(request("POST", workerPath() + ":stop", null).statusCode()).isEqualTo(202);
+                callers.submit(workers::close).get(1, TimeUnit.SECONDS);
+                verify(manager).close();
+            } finally {
+                release.countDown();
+            }
+            assertThat(publishing.get(1, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+        }
+    }
+
+    @Test
+    void closingControlListenerDoesNotWaitForAnInFlightPublication() throws Exception {
+        running();
+        CountDownLatch sending = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(manager.reportProperties(CLIENT, Map.of())).thenAnswer(call -> {
+            sending.countDown();
+            boolean released = false;
+            while (!released) {
+                try {
+                    released = release.await(5, TimeUnit.SECONDS);
+                    if (!released) {
+                        throw new IllegalStateException("Test publication was not released");
+                    }
+                } catch (InterruptedException ignored) {
+                    // Model a send that does not finish just because its caller is interrupted.
+                }
+            }
+            return false;
+        });
+        try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
+            callers.submit(() -> request("PATCH", workerPath() + ":properties", "{}"));
+            try {
+                assertThat(sending.await(1, TimeUnit.SECONDS)).isTrue();
+                callers.submit(() -> {
+                    server.close();
+                    workers.close();
+                }).get(1, TimeUnit.SECONDS);
+                verify(manager).close();
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void rejectsInvalidPropertiesCoordinatesUnknownAndStoppedWorkersBeforeSending() throws Exception {
+        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+        running();
+        List<String> before = Files.readAllLines(inventoryPath());
+        for (String body : List.of("{\"x\":1}", "{\"x\":null}", "[]",
+                "{\"labInventoryLine\":\"2\"}", "{\"clientWorkerKey\":\"invalid\"}")) {
+            assertThat(request("PATCH", workerPath() + ":properties", body).statusCode()).isEqualTo(400);
+        }
+        assertThat(request("PUT", workerPath() + ":properties", "{}").statusCode()).isEqualTo(400);
+        assertThat(request("PATCH", "/lab/v1/workers/missing/missing:properties", "{}").statusCode())
+                .isEqualTo(404);
+        when(manager.desiredRunning(CLIENT)).thenReturn(false);
+        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+        assertThat(Files.readAllLines(inventoryPath())).isEqualTo(before);
+        verify(manager, never()).reportProperties(anyString());
+        verify(manager, never()).reportProperties(anyString(), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void sendExceptionKeepsPersistedStateAndReleasesGate() throws Exception {
+        running();
+        when(manager.reportProperties(CLIENT, Map.of("changed", "yes")))
+                .thenThrow(new RuntimeException("SDK failure"));
+        assertThat(request("PATCH", workerPath() + ":properties", "{\"changed\":\"yes\"}")
+                .statusCode()).isEqualTo(500);
+        assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                .containsEntry("changed", "yes");
+        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(200);
+    }
+
+    private void running() {
+        when(manager.desiredRunning(anyString())).thenReturn(true);
+        when(manager.snapshot(anyString())).thenReturn(new WorkerLifecycle.Snapshot(
+                WorkerLifecycle.State.RUNNING, "worker-1", null, null));
+    }
+
+    private Path inventoryPath() {
+        return temporaryDirectory.resolve("data/scenario-workers").resolve(GROUP).resolve(INVENTORY);
     }
 
     private static String workerPath() {
