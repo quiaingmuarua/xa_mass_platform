@@ -153,6 +153,11 @@ claims require their own named evidence rather than a larger Worker fixture.
 
 ## Direct Call With 1,000 Workers
 
+The [2026-09-08 Direct Call report](baselines/2026-09-08-direct-baseline.md)
+records the first reference run: all 30,000 calls at 1,000/s succeeded within
+one second, with 130.85ms successful p99. Higher offered rates degraded and
+were generator limited; they do not establish a server capacity limit.
+
 `--suite direct` measures the existing caller-targeted DIRECT_CALL path with one
 Group, exactly 1,000 Java Workers and one WebSocket Adapter. The Lab Host creates
 1,000 real Worker connections in one process; this is not 1,000 physical devices.
