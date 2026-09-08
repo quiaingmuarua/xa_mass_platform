@@ -9,6 +9,45 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class CallLoadTest {
+    @Test void fixedWindowsSeparatePlannedCohortsFromActualResponses() {
+        long start = 1_000_000_000L;
+        var early = new CallLoad.Sample("early", start + 29_999_000_000L);
+        early.sent = early.planned + 110_000_000L;
+        early.ended = start + 30_200_000_000L;
+        early.httpStatus = 200;
+        early.outcome = CallLoad.Outcome.SUCCEEDED;
+        var boundary = new CallLoad.Sample("boundary", start + 30_000_000_000L);
+        boundary.sent = boundary.planned;
+        boundary.ended = boundary.planned + 1_000_000L;
+        boundary.httpStatus = 200;
+        boundary.outcome = CallLoad.Outcome.SUCCEEDED;
+        var tail = new CallLoad.Sample("tail", start + 119_999_000_000L);
+        tail.sent = tail.planned;
+        tail.ended = start + 120_001_000_000L;
+        tail.outcome = CallLoad.Outcome.UNKNOWN;
+        var batch = new CallLoad.Batch(List.of(early, boundary, tail), start, 120_000_000_000L, new java.util.concurrent.CountDownLatch(0));
+        var surge = DirectCallPerformance.summarize(batch, 0, 30);
+        var sustained = DirectCallPerformance.summarize(batch, 30, 120);
+        assertThat(surge).containsEntry("planned", 1).containsEntry("httpResponsesDuringWindow", 0L).containsEntry("generatorLimited", true);
+        assertThat(sustained).containsEntry("planned", 2).containsEntry("httpResponsesDuringWindow", 2L)
+                .containsEntry("generatorLimited", false).containsEntry("successRate", .5).containsEntry("outstandingHttpAtWindowEnd", 1L);
+        assertThat(batch.responseSummary()).containsEntry("planned", 3).containsEntry("generatorLimited", true);
+        assertThatThrownBy(() -> batch.responseSummary(0, 121_000_000_000L)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void continuousTwoThousandRateKeepsOneScheduleThroughTheThirtySecondBoundary() throws Exception {
+        var clock = new AtomicLong(1_000_000_000L);
+        var batch = CallLoad.schedule(2_000, 120, 4_096, "continuous", Runnable::run,
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.SUCCEEDED), clock::get, clock::set);
+        batch.await();
+        assertThat(batch.samples()).hasSize(240_000);
+        assertThat(batch.samples().get(60_000).planned).isEqualTo(batch.started() + 30_000_000_000L);
+        assertThat(batch.samples().getLast().planned).isEqualTo(batch.started() + 119_999_500_000L);
+        assertThat(batch.cohort(0, 30_000_000_000L)).hasSize(60_000);
+        assertThat(batch.cohort(30_000_000_000L, 120_000_000_000L)).hasSize(180_000);
+        assertThat(clock.get()).isEqualTo(batch.started() + 120_000_000_000L);
+    }
+
     @Test void scheduledArrivalTimesAndCountsIncludeUnknownAndUnobserved() throws Exception {
         var clock = new AtomicLong(1_000_000_000L);
         var batch = CallLoad.schedule(5, 1, 5, "call", Runnable::run, (id, index) -> {

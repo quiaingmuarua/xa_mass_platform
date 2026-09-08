@@ -18,7 +18,8 @@ import java.util.stream.Collectors;
 final class DirectCallPerformance {
     static final int WORKERS = 1_000;
     static final Map<String, Integer> CASES = Map.of("direct-100", 100, "direct-500", 500,
-            "direct-1000", 1_000, "direct-2000", 2_000, "direct-5000", 5_000);
+            "direct-1000", 1_000, "direct-2000", 2_000, "direct-5000", 5_000,
+            "direct-step-1000", 1_000, "direct-step-2000", 2_000);
 
     private DirectCallPerformance() {}
 
@@ -26,12 +27,13 @@ final class DirectCallPerformance {
         Path output = Path.of(options.get("--output"));
         Files.createDirectories(output);
         var summary = new LinkedHashMap<String, Object>();
-        summary.put("fixtureVersion", 1);
+        int seconds = name.startsWith("direct-step-") ? 120 : 30;
+        summary.put("fixtureVersion", seconds == 120 ? 2 : 1);
         summary.put("callPath", "DIRECT_CALL");
         summary.put("case", name);
         summary.put("workers", WORKERS);
         summary.put("offeredRate", CASES.get(name));
-        summary.put("measurementSeconds", 30);
+        summary.put("measurementSeconds", seconds);
         summary.put("waitTimeoutMillis", 1_000);
         summary.put("followupAvailable", false);
         summary.put("status", "failed");
@@ -55,7 +57,7 @@ final class DirectCallPerformance {
             requireNetwork(api, ids);
             summary.put("phase", "measurement");
             summary.put("measurementStartedEpochMillis", System.currentTimeMillis());
-            measured = CallLoad.schedule(CASES.get(name), 30, 4_096, prefix + "-measured", executor,
+            measured = CallLoad.schedule(CASES.get(name), seconds, 4_096, prefix + "-measured", executor,
                     (id, index) -> api.directCall(ids.get(index % WORKERS)));
             measured.await();
             requireValid(measured);
@@ -78,6 +80,14 @@ final class DirectCallPerformance {
             }
             if (measured != null) {
                 summary.putAll(summarize(measured));
+                if (seconds == 120) {
+                    summary.put("windows", Map.of("surge", summarize(measured, 0, 30),
+                            "sustained", summarize(measured, 30, 120)));
+                    var buckets = new ArrayList<Map<String, Object>>();
+                    for (int offset = 0; offset < seconds; offset += 5)
+                        buckets.add(summarize(measured, offset, offset + 5));
+                    summary.put("fiveSecondBuckets", buckets);
+                }
                 writeSamples(output.resolve("samples.jsonl"), measured);
             }
             Files.writeString(output.resolve("summary.json"), Jsons.toJson(summary), StandardOpenOption.CREATE_NEW);
@@ -86,16 +96,32 @@ final class DirectCallPerformance {
     }
 
     static Map<String, Object> summarize(CallLoad.Batch batch) {
-        var result = batch.responseSummary();
+        return summarize(batch, 0, (int) (batch.windowNanos() / 1_000_000_000L));
+    }
+
+    static Map<String, Object> summarize(CallLoad.Batch batch, int fromSeconds, int toSeconds) {
+        var result = batch.responseSummary(fromSeconds * 1_000_000_000L, toSeconds * 1_000_000_000L);
+        var cohort = batch.cohort(fromSeconds * 1_000_000_000L, toSeconds * 1_000_000_000L);
         long sent = ((Number) result.get("sent")).longValue();
-        long timely = batch.samples().stream().filter(s -> s.outcome == CallLoad.Outcome.SUCCEEDED
+        long timely = cohort.stream().filter(s -> s.outcome == CallLoad.Outcome.SUCCEEDED
                 && s.ended - s.planned <= 1_000_000_000L).count();
-        result.put("http200", batch.samples().stream().filter(s -> s.httpStatus == 200).count());
+        result.put("http200", cohort.stream().filter(s -> s.httpStatus == 200).count());
         result.put("successfulWithinOneSecond", timely);
         result.put("withinOneSecondRateOfSent", sent == 0 ? 0.0 : (double) timely / sent);
-        result.put("withinOneSecondRateOfPlanned", (double) timely / batch.samples().size());
-        result.put("details", batch.samples().stream().filter(s -> s.detail != null)
-                .collect(Collectors.groupingBy(s -> s.detail, java.util.TreeMap::new, Collectors.counting())));
+        result.put("withinOneSecondRateOfPlanned", cohort.isEmpty() ? 0.0 : (double) timely / cohort.size());
+        var details = cohort.stream().filter(s -> s.detail != null)
+                .collect(Collectors.groupingBy(s -> s.detail, java.util.TreeMap::new, Collectors.counting()));
+        result.put("details", details);
+        var rates = new LinkedHashMap<String, Object>();
+        for (var outcome : CallLoad.Outcome.values()) {
+            if (outcome == CallLoad.Outcome.NOT_SENT) continue;
+            long count = cohort.stream().filter(s -> s.outcome == outcome).count();
+            rates.put(outcome.name().toLowerCase(java.util.Locale.ROOT), sent == 0 ? null : count / (double) sent);
+        }
+        rates.put("command-slot-occupied", sent == 0 ? null : details.getOrDefault("command-slot-occupied", 0L) / (double) sent);
+        rates.put("http-429", sent == 0 ? null : details.getOrDefault("http-429", 0L) / (double) sent);
+        result.put("outcomeRatesOfSent", rates);
+        result.put("notSentRateOfPlanned", cohort.isEmpty() ? null : (cohort.size() - sent) / (double) cohort.size());
         return result;
     }
 

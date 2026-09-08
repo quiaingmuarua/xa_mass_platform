@@ -13,8 +13,17 @@ on:
         options:
           - task
           - direct
+          - direct-diagnosis
+      diagnostics:
+        description: "Private JFR diagnosis (separate from formal A/B comparisons)"
+        required: true
+        type: choice
+        default: 'off'
+        options:
+          - 'off'
+          - jfr
       baseline_ref:
-        description: "Optional immutable baseline commit for A/B, B/A, A/B"
+        description: "Immutable baseline: three formal pairs, or one separate A/B pair in JFR mode"
         required: false
         type: string
 
@@ -54,10 +63,14 @@ jobs:
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
           CALL_SUITE: ${{ inputs.suite || 'task' }}
+          DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
         run: |
-          args=(--suite "$CALL_SUITE")
+          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
+            if [ "$DIAGNOSTICS" = jfr ]; then
+              args+=(--diagnostic-pair)
+            fi
           fi
           python integrations/worker-call-performance/run_worker_call_performance.py "${args[@]}"
       - name: Publish independent performance summary

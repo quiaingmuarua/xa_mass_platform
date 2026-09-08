@@ -158,6 +158,7 @@ class RuntimeBoundaryIntegrationTest {
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        registry.add("xa.mass.diagnostics.enabled", () -> "true");
         registry.add(
                 "xa.mass.redis.scope",
                 REDIS_TEST_SCOPE::scope
@@ -565,6 +566,48 @@ class RuntimeBoundaryIntegrationTest {
         } finally {
             worker.close();
         }
+    }
+
+    @Autowired
+    private org.springframework.core.env.Environment environment;
+
+    @Test
+    void actualHttpExecutionAndAsyncCompletionAreObservedWithoutChangingTheDirectResponse() throws Exception {
+        var path = java.nio.file.Files.createTempFile("xa-mass-http-diagnostic-", ".jfr");
+        try (var recording = new jdk.jfr.Recording()) {
+            recording.enable("xa.mass.HttpInitial");
+            recording.enable("xa.mass.HttpCompletion");
+            recording.enable("xa.mass.HttpExecutor").withPeriod(Duration.ofMillis(100));
+            recording.start();
+            observedDirectPayload(adapterDirectCall("platform.adapter.events.snapshot", "null"),
+                    WEBSOCKET_ENDPOINT_MANAGER_ID, "200");
+            // Servlet completion may follow the client's receipt. Await diagnostic completion only, with a fixed budget.
+            List<jdk.jfr.consumer.RecordedEvent> events = List.of();
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            do {
+                recording.dump(path);
+                events = jdk.jfr.consumer.RecordingFile.readAllEvents(path);
+                if (events.stream().anyMatch(e -> e.getEventType().getName().equals("xa.mass.HttpCompletion")
+                        && e.getString("operation").equals("DIRECT_CALL"))
+                        && events.stream().anyMatch(e -> e.getEventType().getName().equals("xa.mass.HttpExecutor"))) break;
+                Thread.sleep(50);
+            } while (System.nanoTime() < deadline);
+            var initial = events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpInitial")
+                    && e.getString("operation").equals("DIRECT_CALL")).toList();
+            var completed = events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpCompletion")
+                    && e.getString("operation").equals("DIRECT_CALL")).toList();
+            assertThat(initial).hasSize(1);
+            assertThat(completed).hasSize(1);
+            boolean virtual = environment.getProperty("spring.threads.virtual.enabled", Boolean.class, false);
+            assertThat(initial.getFirst().getBoolean("virtualThread")).isEqualTo(virtual);
+            assertThat(completed.getFirst().getInt("httpStatus")).isEqualTo(200);
+            var executor = events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpExecutor")).findFirst().orElseThrow();
+            assertThat(executor.getBoolean("platformPool")).isEqualTo(!virtual);
+            assertThat(executor.getInt("maximum")).isEqualTo(virtual ? -1 : 200);
+            int expectedMinimum = virtual ? -1
+                    : environment.getProperty("server.tomcat.threads.min-spare", Integer.class, 10);
+            assertThat(executor.getInt("minimum")).isEqualTo(expectedMinimum);
+        } finally { java.nio.file.Files.deleteIfExists(path); }
     }
 
     @Test

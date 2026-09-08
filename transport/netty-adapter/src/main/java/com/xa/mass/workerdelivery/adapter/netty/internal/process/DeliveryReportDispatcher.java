@@ -107,6 +107,8 @@ public final class DeliveryReportDispatcher {
                 && required.dst() != DeliveryEndpoint.TASK) {
             recordBestEffortIngressDrop(required.dst(), status);
         }
+        if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(required.dst(),
+                status == DispatchStatus.ACCEPTED ? "ADMITTED" : "INGRESS_DROP", queue(required.dst()).size(), 1);
         return status;
     }
 
@@ -150,6 +152,8 @@ public final class DeliveryReportDispatcher {
             while (isActive()) {
                 ReportBatch batch = takeBatch();
                 if (batch == null || !isActive()) {
+                    if (batch != null && ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(batch.destination(),
+                            "SHUTDOWN_DROP", queue(batch.destination()).size(), batch.reports().size());
                     return;
                 }
                 processOnce(batch);
@@ -158,6 +162,10 @@ public final class DeliveryReportDispatcher {
             Thread.currentThread().interrupt();
         } finally {
             stopIngress();
+            if (ReportQueueEvent.recordingEnabled()) {
+                for (var destination : List.of(DeliveryEndpoint.TASK, DeliveryEndpoint.SERVER, DeliveryEndpoint.SYSTEM, DeliveryEndpoint.KERNEL))
+                    ReportQueueEvent.record(destination, "SHUTDOWN_DROP", queue(destination).size(), queue(destination).size());
+            }
             taskQueue.clear();
             serverQueue.clear();
             systemQueue.clear();
@@ -196,6 +204,7 @@ public final class DeliveryReportDispatcher {
             reports.add(first);
             queue.drainTo(reports, BATCH_SIZE - 1);
             nextLane = (laneIndex + 1) % LANE_COUNT;
+            if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(destination, "DRAINED", queue.size(), reports.size());
             return new ReportBatch(destination, List.copyOf(reports));
         }
         return null;
@@ -206,6 +215,8 @@ public final class DeliveryReportDispatcher {
             remoteApi.appendReports(adapterId, batch.reports());
         } catch (RuntimeException error) {
             if (!isActive()) {
+                if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(batch.destination(), "SHUTDOWN_DROP",
+                        queue(batch.destination()).size(), batch.reports().size());
                 return;
             }
             WorkerDeliveryAdapterException failure = normalize(error);
@@ -215,6 +226,12 @@ public final class DeliveryReportDispatcher {
                     .REMOTE_API_UNAVAILABLE) {
                 DispatchStatus status = requeueTask(batch.reports());
                 logRetryDropIfRejected(status, batch.reports().size());
+                if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(batch.destination(),
+                        status == DispatchStatus.ACCEPTED ? "REQUEUED" : "SUBMISSION_DROP",
+                        queue(batch.destination()).size(), batch.reports().size());
+            } else {
+                if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(batch.destination(), "SUBMISSION_DROP",
+                        queue(batch.destination()).size(), batch.reports().size());
             }
             logFailure(failure, batch);
             awaitBackoff();

@@ -108,6 +108,10 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Deliberate nonclaims:** absolute production SLA, larger-world correctness,
   fault recovery, actual executor, Handler concurrency, fairness and soak.
   Redis Owner separately proves client-command cost and mailbox concurrency.
+- **Diagnosis:** fixed 30-second surge and 90-second sustained windows distinguish
+  API responses from successful execution. Optional owner/JVM JFR explains cost
+  and actual Server HTTP execution without asserting Worker Handler concurrency;
+  limited windows and incomplete diagnostic coverage remain explicit.
 - **Contract:** [Complete scenario](../../integrations/worker-call-performance/README.md).
 
 ## android_host

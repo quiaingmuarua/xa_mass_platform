@@ -1,8 +1,15 @@
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: 18082
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
 
 spring:
+  threads:
+    virtual:
+      enabled: false
   jackson:
     deserialization:
       fail-on-unknown-properties: true

@@ -26,7 +26,8 @@ from integrations.worker_proof_support.scenario_inventory import materialize_inv
 
 CASES = ("any-100", "any-500", "any-1000", "any-2000", "targeted-500", "mixed-500")
 DIRECT_CASES = ("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000")
-SUITES = {"task": CASES, "direct": DIRECT_CASES}
+DIAGNOSIS_CASES = ("direct-step-1000", "direct-step-2000")
+SUITES = {"task": CASES, "direct": DIRECT_CASES, "direct-diagnosis": DIAGNOSIS_CASES}
 ORDER = (("A", "B"), ("B", "A"), ("A", "B"))
 GROUP = "scenario-string-utils-workers"
 REDIS_IMAGE = "redis:7.4.10"
@@ -113,16 +114,16 @@ class Sampler:
                         try:
                             sample = process_sample(process.pid)
                         except FileNotFoundError:
-                            if process.poll() is not None:
-                                continue
-                            raise
+                            # /proc may disappear while the runner concurrently reaps a successful Harness.
+                            # The runner owns process exit/status checks; retained window samples own coverage.
+                            continue
                         previous = self.previous.get(role)
                         sample["averageCpuCores"] = (sample["cpuSeconds"] - previous[1]) / (now - previous[0]) if previous else 0
                         self.previous[role] = (now, sample["cpuSeconds"])
                         sample.update(role=role, pid=process.pid, epochMillis=int(time.time() * 1000))
                         output.write(json.dumps(sample) + "\n")
                         self.counts[role] += 1
-                        if sample["nativeThreads"] > 512 or sample["openFileDescriptors"] > 8192:
+                        if sample["nativeThreads"] >= 512 or sample["openFileDescriptors"] >= 8192:
                             raise RuntimeError(f"Resource ceiling exceeded for {role}")
                     # Aggregate diagnostics only: no domain keys, command arguments or payloads.
                     stats = self.redis.info("stats")
@@ -232,7 +233,7 @@ def resource_summary(path, started, seconds=30):
 
 
 def markdown_summary(final):
-    if final.get("suite") == "direct":
+    if final.get("suite") in ("direct", "direct-diagnosis"):
         lines = ["# Worker Direct Call Performance", "",
             f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
             "1,000 connected Java Workers, caller round-robin, one Worker per HTTP request; no background Task.", "",
@@ -252,6 +253,19 @@ def markdown_summary(final):
             "Generator-limited rows cannot establish server capacity.", ""])
         if "comparison" in final:
             lines.extend([f"Comparison: **{final['comparison']['status']}**.", ""])
+        if final.get("suite") == "direct-diagnosis":
+            lines.extend(["## Fixed windows", "", "Cohorts use planned arrival; response rates use actual completion time. All original samples remain retained.", "",
+                "| Pair/version | Case | Window | HTTP responses/s | Successful cohort/s | Success | Occupied | 429 | Timeout | Unknown | Not sent | Success p99 ms | Limited |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"])
+            for row in final["runs"]:
+                for name, window in row.get("windows", {}).items():
+                    reasons, counts = window["details"], window["outcomes"]
+                    lines.append(f"| {row['pair'] + 1}/{row['version']} | {row['case']} | {name} "
+                        f"| {window['httpResponsesDuringWindowPerSecond']:.2f} | {window['successfulCohortPerSecond']:.2f} "
+                        f"| {window['successRate']:.2%} | {reasons.get('command-slot-occupied', 0)} | {reasons.get('http-429', 0)} "
+                        f"| {counts['timed_out']} | {counts['unknown']} | {counts['not_sent']} "
+                        f"| {window['successfulCallLatencyMillis']['p99']:.2f} | {window['generatorLimited']} |")
+            lines.extend(["", f"Diagnostics: **{final.get('diagnostics', 'off')}**. JFR observations are separate from performance acceptance.", ""])
         return "\n".join(lines)
     lines = ["# Worker Call Performance", "", f"Status: **{final['status']}**. "
              f"Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
@@ -272,7 +286,7 @@ def markdown_summary(final):
     return "\n".join(lines)
 
 
-def run_case(root, case, output, version, deadline):
+def run_case(root, case, output, version, deadline, diagnostics="off"):
     import redis
     output.mkdir(parents=True)
     evidence = output / "evidence"
@@ -286,7 +300,8 @@ def run_case(root, case, output, version, deadline):
     client = None
     result = {"case": case, "version": version, "status": "failed", "scope": scope}
     cleanup_errors = []
-    direct = case in DIRECT_CASES
+    direct = case in DIRECT_CASES + DIAGNOSIS_CASES
+    seconds = 120 if case in DIAGNOSIS_CASES else 30
     worker_count = 1000 if direct else 100
     try:
         for port in (18082, 18083, 18086):
@@ -318,6 +333,8 @@ def run_case(root, case, output, version, deadline):
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
         flags = dict(SERVER_FLAGS)
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
+        if diagnostics == "jfr":
+            flags["xa.mass.diagnostics.enabled"] = "true"
         if direct:
             flags.update({"xa.mass.direct-call.default-wait-timeout-millis": "3000",
                 "xa.mass.direct-call.max-wait-timeout-millis": "10000",
@@ -329,11 +346,14 @@ def run_case(root, case, output, version, deadline):
             "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 100,
                 "resultIdleIntervalMillis": 100, "serviceabilityDispatchEnabled": False},
             "redisImage": REDIS_IMAGE, "maximumInFlight": 4096, "warmupSeconds": 20,
-            "measurementSeconds": 30, "httpRequestTimeoutSeconds": 5, "waitTimeoutMillis": 1000,
+            "measurementSeconds": seconds, "httpRequestTimeoutSeconds": 5, "waitTimeoutMillis": 1000,
+            "diagnostics": diagnostics, "maximumPlannedRequests": 300000,
+            "diagnosticsSettingsSha256": hashlib.sha256((MODULE / "diagnostics.jfc").read_bytes()).hexdigest(),
+            "jfrOptionsByRole": {role: jfr_options(private, role, diagnostics) for role in ("server", "host", "harness")},
             "callPath": "DIRECT_CALL" if direct else "TASK", "drainSeconds": None if direct else 180})
         jars = [p for p in (root / "server_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
-        processes["server"] = start_process(["java", *JVM, "-jar", jar,
+        processes["server"] = start_process(["java", *JVM, *jfr_options(private, "server", diagnostics), "-jar", jar,
             *(f"--{key}={value}" for key, value in flags.items())], private / "server.log", env)
         sampler.register("server", processes["server"])
         wait_http("http://127.0.0.1:18082/actuator/health/readiness", processes["server"], sampler, min(deadline, time.monotonic() + 180))
@@ -344,13 +364,13 @@ def run_case(root, case, output, version, deadline):
             "requestTimeoutMillis": 60_000, "reconnectPolicy": {"maxUnstableAttempts": 600,
             "reconnectIntervalMillis": 500, "stableConnectionDurationMillis": 10_000}}})
         write_json(evidence / "host-configuration.json", json.loads(assembly.read_text()))
-        processes["host"] = start_process(["java", *JVM, "-cp", root / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*",
+        processes["host"] = start_process(["java", *JVM, *jfr_options(private, "host", diagnostics), "-cp", root / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*",
             "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--runtime-api-base-url=http://127.0.0.1:18082",
             f"--sandbox-root={inventory}", "--control-port=18086", f"--capability-assembly={assembly}"], private / "host.log", env)
         sampler.register("host", processes["host"])
         wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler, min(deadline, time.monotonic() + 180))
         harness_output = evidence / "harness"
-        processes["harness"] = start_process(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+        processes["harness"] = start_process(["java", *JVM, *jfr_options(private, "harness", diagnostics), "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
             "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", f"--case={case}",
             f"--output={harness_output}"], private / "harness.log", env)
         sampler.register("harness", processes["harness"])
@@ -381,7 +401,14 @@ def run_case(root, case, output, version, deadline):
             if "measurementStartedEpochMillis" in result:
                 try:
                     result["measurementResources"] = resource_summary(evidence / "process-resources.jsonl",
-                                                                       result["measurementStartedEpochMillis"])
+                                                                       result["measurementStartedEpochMillis"], seconds)
+                    for window in [*result.get("windows", {}).values(), *result.get("fiveSecondBuckets", [])]:
+                        window["measurementResources"] = resource_summary(evidence / "process-resources.jsonl",
+                            result["measurementStartedEpochMillis"] + window["fromSeconds"] * 1000,
+                            window["toSeconds"] - window["fromSeconds"])
+                        rate = window["httpResponsesDuringWindowPerSecond"]
+                        window["serverCpuSecondsPerHttpResponse"] = (window["measurementResources"]["server"]["meanCpuCores"] / rate
+                                                                    if rate else None)
                 except Exception as error:
                     result.update(status="failed", resourceSummaryFailure=type(error).__name__ + ": " + str(error))
         for process in reversed(tuple(processes.values())):
@@ -389,6 +416,8 @@ def run_case(root, case, output, version, deadline):
                 stop_process(process)
             except Exception as error:
                 cleanup_errors.append(type(error).__name__)
+        if diagnostics == "jfr" and "measurementStartedEpochMillis" in result:
+            result["diagnosticEvidence"] = export_diagnostics(private, evidence, result["measurementStartedEpochMillis"], seconds)
         if client:
             client.close()
         if container:
@@ -401,6 +430,35 @@ def run_case(root, case, output, version, deadline):
             result.update(status="failed", cleanupErrors=cleanup_errors)
         write_json(evidence / "case-summary.json", result)
     return result
+
+
+def jfr_options(private, role, diagnostics):
+    if diagnostics == "off":
+        return []
+    # Leave a final-chunk margin below the independently checked 256 MiB file limit.
+    return ["-XX:FlightRecorderOptions=maxchunksize=8m",
+            f"-XX:StartFlightRecording=name=call-proof,settings={MODULE / 'diagnostics.jfc'},"
+            f"filename={private / (role + '.jfr')},maxsize=240m,dumponexit=true"]
+
+
+def export_diagnostics(private, evidence, started, seconds):
+    result = {}
+    for role in ("server", "host", "harness"):
+        recording = private / (role + ".jfr")
+        destination = evidence / (role + "-diagnostics.json")
+        try:
+            if not recording.is_file() or recording.stat().st_size > 256 * 1024 * 1024:
+                raise RuntimeError("Recording absent or above its fixed size bound")
+            command(["java", "-Xmx512m", "-cp", MODULE / "build/install/xa-mass-worker-call-performance/lib/*",
+                     "com.xa.mass.integration.workercallperformance.JfrDiagnostics", recording, destination,
+                     str(int(started)), str(seconds), role], timeout=60)
+            result[role] = json.loads(destination.read_text(encoding="utf-8"))
+        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+            result[role] = {"complete": False, "failureType": type(error).__name__}
+            write_json(destination, result[role])
+    return {"complete": all(value.get("complete", False) for value in result.values()),
+            "roles": {role: {k: v for k, v in value.items() if k not in ("buckets", "stacks")}
+                      for role, value in result.items()}}
 
 
 def comparison(runs, cases=CASES):
@@ -436,16 +494,75 @@ def comparison(runs, cases=CASES):
     return {"status": status, "cases": findings}
 
 
+def diagnosis_comparison(runs, cases=DIAGNOSIS_CASES):
+    findings = []
+    for case in cases:
+        for window_name in ("surge", "sustained"):
+            observations = []
+            regressions = improvements = comparable = 0
+            for pair in range(3):
+                values = {r["version"]: r for r in runs if r["case"] == case and r["pair"] == pair}
+                if set(values) != {"A", "B"}:
+                    continue
+                a_run, b_run = values["A"], values["B"]
+                a, b = a_run.get("windows", {}).get(window_name), b_run.get("windows", {}).get(window_name)
+                if (not a or not b or any(r["status"] != "passed" for r in (a_run, b_run))
+                        or any(w.get("generatorLimited", True) for w in (a, b))):
+                    observations.append({"pair": pair, "comparable": False, "reason": "Missing, failed or generator-limited window"})
+                    continue
+                delta = b["successRate"] - a["successRate"]
+                pa, pb = a["successfulCallLatencyMillis"], b["successfulCallLatencyMillis"]
+                ratio = pb["p99"] / pa["p99"] if pa["p99"] > 0 and pa["samples"] and pb["samples"] else None
+                ca, cb = a.get("serverCpuSecondsPerHttpResponse"), b.get("serverCpuSecondsPerHttpResponse")
+                cpu_ratio = cb / ca if ca is not None and cb is not None and ca > 0 else None
+                regressed = delta < -.05 - 1e-12 or (abs(delta) <= .05 + 1e-12 and ratio is not None and ratio > 1.20)
+                if ratio is None and not regressed:
+                    observations.append({"pair": pair, "comparable": False, "reason": "Insufficient successful latency samples"})
+                    continue
+                improved = delta >= .05 - 1e-12 or (abs(delta) <= .01 + 1e-12 and (
+                    (ratio is not None and ratio <= .85 + 1e-12) or (cpu_ratio is not None and cpu_ratio <= .85 + 1e-12)))
+                comparable += 1
+                regressions += int(regressed)
+                improvements += int(improved and not regressed)
+                observations.append({"pair": pair, "comparable": True, "successRateDelta": delta,
+                    "p99Ratio": ratio, "serverCpuPerResponseRatio": cpu_ratio, "improved": improved and not regressed, "regressed": regressed})
+            status = "regressed" if regressions >= 2 else "inconclusive" if comparable < 3 else (
+                "improved" if improvements >= 2 else "no_clear_benefit")
+            findings.append({"case": case, "window": window_name, "status": status,
+                "comparablePairs": comparable, "regressedPairs": regressions, "improvedPairs": improvements, "observations": observations})
+    status = "regressed" if any(f["status"] == "regressed" for f in findings) else (
+        "inconclusive" if any(f["status"] == "inconclusive" for f in findings) else
+        "eligible_candidate" if any(f["status"] == "improved" for f in findings) else "no_clear_benefit")
+    return {"status": status, "windows": findings,
+            "meaning": "Eligibility still requires mechanism evidence and the existing Task/recovery checks; incomplete guard windows cannot be hidden by a benefit elsewhere."}
+
+
+def execution_mode(baseline, diagnostics, diagnostic_pair):
+    if diagnostic_pair:
+        if not baseline or diagnostics != "jfr":
+            raise ValueError("--diagnostic-pair requires --baseline-ref and --diagnostics jfr")
+        return "diagnostic_pair", (("A", "B"),)
+    if baseline and diagnostics != "off":
+        raise ValueError("Formal A/B comparisons require --diagnostics off; use --diagnostic-pair for separate JFR evidence")
+    return ("comparison", ORDER) if baseline else ("diagnostic" if diagnostics == "jfr" else "measurement", (("B",),))
+
+
 def main():
     run_started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=ROOT / "build/worker-call-performance-proof")
     parser.add_argument("--baseline-ref", help="Build this immutable Git commit as A; compare A/B, B/A, A/B")
     parser.add_argument("--suite", choices=SUITES, default="task", help="Fixed Task Call or 1000-Worker Direct Call fixture")
-    parser.add_argument("--case", choices=CASES + DIRECT_CASES, help="Diagnostic subset; never a complete suite result")
+    parser.add_argument("--case", choices=CASES + DIRECT_CASES + DIAGNOSIS_CASES, help="Diagnostic subset; never a complete suite result")
+    parser.add_argument("--diagnostics", choices=("off", "jfr"), default="off", help="Bounded private JFR recording; excluded from performance comparison")
+    parser.add_argument("--diagnostic-pair", action="store_true", help="One same-host A/B JFR pair, never a formal benefit comparison")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     options = parser.parse_args()
+    try:
+        purpose, orders = execution_mode(options.baseline_ref, options.diagnostics, options.diagnostic_pair)
+    except ValueError as error:
+        parser.error(str(error))
     cases = SUITES[options.suite]
     if options.case and options.case not in cases:
         parser.error("Selected case does not belong to --suite")
@@ -453,6 +570,8 @@ def main():
         parser.error("Linux with Docker and /proc is required")
     os_release = platform.freedesktop_os_release()
     reference = os_release.get("ID") == "ubuntu" and os_release.get("VERSION_ID") == "24.04"
+    if options.suite == "direct-diagnosis":
+        reference = reference and os.cpu_count() == 4
     if not reference and not options.allow_nonreference_host:
         parser.error("Reference environment is Ubuntu 24.04; use --allow-nonreference-host only for diagnostics")
     java = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
@@ -471,7 +590,9 @@ def main():
     runs = []
     final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
              "suite": options.suite,
-             "fixtureVersion": 1, "os": os_release, "java": java.strip(), "cpuCount": os.cpu_count(),
+             "fixtureVersion": 2 if options.suite == "direct-diagnosis" else 1, "diagnostics": options.diagnostics,
+             "purpose": purpose,
+             "os": os_release, "java": java.strip(), "cpuCount": os.cpu_count(),
              "machine": platform.machine(), "kernel": platform.release(),
              "redisImageId": image_id,
              "harnessCommit": versions["B"], "worktreeDirty": bool(command(["git", "status", "--porcelain"])),
@@ -486,19 +607,19 @@ def main():
         if not options.skip_build:
             build(ROOT, harness=True)
         deadline = run_started + (120 if baseline else 45) * 60
-        for pair, order in enumerate(ORDER if baseline else (("B",),)):
+        for pair, order in enumerate(orders):
             for version in order:
                 for case in (options.case,) if options.case else cases:
                     print(f"performance pair={pair + 1} version={version} case={case}", flush=True)
-                    result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline)
+                    result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline, options.diagnostics)
                     result["pair"] = pair
                     runs.append(result)
                     write_json(output / "evidence/summary.json", final)
                     if result["status"] != "passed":
                         raise RuntimeError(f"Case {case} failed")
         final["status"] = "passed"
-        if baseline:
-            final["comparison"] = comparison(runs, cases)
+        if baseline and not options.diagnostic_pair:
+            final["comparison"] = diagnosis_comparison(runs, cases) if options.suite == "direct-diagnosis" else comparison(runs, cases)
             if final["comparison"]["status"] == "regressed":
                 final["status"] = "regressed"
     except Exception as error:

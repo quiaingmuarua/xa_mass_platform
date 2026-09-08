@@ -76,6 +76,9 @@ Use the lowest-cost proof that owns the changed claim:
    nightly/manual workflow. A production optimization re-establishes its Owner
    claim and the selected existing lanes, then uses this lane for comparison;
    do not duplicate throughput or Worker-size tiers across lanes.
+   `--suite direct-diagnosis` adds fixed surge/sustained observations at 1k/2k
+   through the same performance owner. `--diagnostics jfr` is manual attribution,
+   with private recordings and whitelist export; formal comparisons keep it off.
 
 Inspect selection for a branch without running a proof:
 

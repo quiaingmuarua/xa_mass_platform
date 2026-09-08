@@ -79,7 +79,7 @@ class DirectCallPerformanceTest {
 
     @Test void fixedHighestRateHasAFiniteBudgetAndUnknownExecutionDoesNotFailMeasurement() {
         assertThat(DirectCallPerformance.CASES.get("direct-5000") * 30).isEqualTo(150_000);
-        assertThatThrownBy(() -> CallLoad.schedule(5_001, 30, 4_096, "large", Runnable::run,
+        assertThatThrownBy(() -> CallLoad.schedule(2_501, 120, 4_096, "large", Runnable::run,
                 (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.SUCCEEDED))).isInstanceOf(IllegalArgumentException.class);
         var clock = new AtomicLong(1_000_000_000L);
         var batch = CallLoad.schedule(1, 1, 1, "unknown", Runnable::run,

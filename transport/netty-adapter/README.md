@@ -497,6 +497,16 @@ timestamps, versions and reliable convergence remain out of scope.
 
 ### Result ingress loop
 
+Explicit JFR recording may enable the fixed `xa.mass.AdapterRemote` and
+`xa.mass.ReportQueue` observations. They are disabled by default and contain
+only operation/destination classes, HTTP status, durations, batch/depth and
+admission/drain/requeue/drop counts. They expose no Adapter/Worker identity,
+payload, result or URL, add no Queue or sampling thread, and preserve the
+existing retry, drop and shutdown sequence. Remote duration covers its existing
+HTTP facade call; Queue depth is a non-atomic diagnostic snapshot. The
+[Call Performance reader](../../integrations/worker-call-performance/README.md#direct-load-step-diagnosis)
+exports a bounded whitelist separately from formal throughput measurements.
+
 `DeliveryReportDispatcher` owns four finite
 `LinkedBlockingQueue<DeliveryReport>` lanes: TASK, SERVER, SYSTEM, and KERNEL. It is
 both their non-blocking multi-producer admission boundary and their one shared

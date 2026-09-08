@@ -1,5 +1,7 @@
 package com.xa.mass.server.delivery.application;
 
+import com.xa.mass.server.delivery.DeliveryStageEvent;
+
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -119,6 +121,7 @@ public final class WorkerDeliveryService {
         Map<String, DeliveryCommand> workerCommands = Map.of();
         RuntimeException workerSourceFailure = null;
         if (remaining > 0) {
+            var consumeEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.COMMAND_CONSUME, remaining);
             try {
                 workerCommands = activeCommands(
                         commandRuntime.consumeWorkerCommands(
@@ -126,9 +129,15 @@ public final class WorkerDeliveryService {
                                 remaining
                         )
                 );
+                if (consumeEvent != null) {
+                    consumeEvent.batchSize = workerCommands.size();
+                    consumeEvent.failed = false;
+                }
             } catch (RuntimeException error) {
                 workerSourceFailure = error;
                 workerCommands = Map.of();
+            } finally {
+                DeliveryStageEvent.finish(consumeEvent);
             }
         }
         remaining -= workerCommands.size();

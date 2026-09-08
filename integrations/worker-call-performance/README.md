@@ -97,7 +97,7 @@ scenario oracle, not an unconditional delivery/replay guarantee.
 
 Protocol/correlation errors, missing accepted Results, failed preconditions,
 unexpected process exits and incomplete evidence fail the case. Linux `/proc`
-samples every second must not exceed 512 native threads or 8,192 FDs per Java
+samples every second must remain below 512 native threads and 8,192 FDs per Java
 process. CPU/RSS are recorded without absolute SLA thresholds. Redis INFO
 stats/commandstats/memory/cpu are aggregate cost diagnostics only; they include
 internal script commands and are not a client round-trip count. Real Redis Owner
@@ -169,8 +169,8 @@ The five fixed offered rates are 100, 500, 1,000, 2,000 and 5,000 calls/s. Each
 case uses fresh processes and Redis, DEFAULT Pacer, the same fixed 64-byte MD5
 input, 20 seconds of warmup at 100/s, and 30 seconds of measurement. Direct wait
 is 1 second and client timeout is 5 seconds; maximum in-flight remains 4,096.
-The common finite scheduler permits at most 150,000 planned calls for the
-5,000/s case. The original six Task fixtures and their nightly selection remain
+The 5,000/s case plans 150,000 calls, within the common scheduler's 300,000-call
+bound. The original six Task fixtures and their nightly selection remain
 unchanged. Preparation checks the exact 1,000 Lab identities and bounded public
 network pages of 100; all warmup calls must succeed, covering every Worker twice.
 Connected routes are checked again before and after measurement. Scheduling and
@@ -206,3 +206,107 @@ The manual workflow accepts `suite=direct`; scheduled runs retain `suite=task`.
 Worker count fixes this requested Direct Call scenario rather than introducing
 another correctness/recovery scale tier. Different Worker fixtures and separate
 hosts prevent inferring a Direct-versus-Task speedup ratio from their raw QPS.
+
+## Direct Load-Step Diagnosis
+
+`--suite direct-diagnosis` keeps the same 1,000-Worker Direct world and adds two
+fixed cases: `direct-step-1000` and `direct-step-2000`. Each warms at 100/s for
+20 seconds, then offers its target rate continuously for 120 seconds with the
+same client. The first 30 seconds are the surge window; the next 90 seconds are
+the sustained observation window. These boundaries never wait for convergence.
+Every five-second bucket and every original sample remains in the evidence.
+The finite scheduler permits at most 300,000 planned calls; existing Task and
+Direct fixtures retain their previous offered rates and durations. The new
+reference suite additionally requires exactly four logical CPUs. Local runs
+with another CPU count require the existing nonreference diagnostic flag.
+
+Window outcome counts and exact latency percentiles use the cohort whose
+planned arrival falls in the half-open window. Actual sends and HTTP/success
+responses inside the window also include requests from earlier cohorts, and
+exclude responses after its end. Thus HTTP response QPS, successful-cohort QPS
+and actual successful-response QPS remain distinct. HTTP 200 still does not
+mean successful admission or execution. Rejection reasons, 429, timeout,
+uncertain effects, not sent, and in-flight counts at both boundaries are explicit.
+Each window independently applies the fixed not-sent / 100ms schedule-lag p99
+generator limit. A limited surge does not rewrite the sustained window, and
+neither window erases the whole-run limited flag. Samples reaching 512 native
+threads or 8,192 FDs fail the proof; CPU/RSS remain cost observations.
+
+`--diagnostics jfr` records bounded JFR for Server, Host and Harness. The runner
+enables the Server's optional `xa.mass.diagnostics.enabled` servlet/executor
+observations. Owner events additionally require their explicit JFR settings;
+normal operation has neither HTTP observation beans nor enabled Owner events.
+Recordings use 240 MiB plus an 8 MiB chunk allowance, and the reader separately
+rejects files larger than 256 MiB. Raw recordings remain under `private`, outside
+the artifact whitelist. An offline Java reader, depending only on the JDK and
+Delivery Contract, exports fixed event fields and bounded stack aggregates.
+It never exports environment, properties, URLs, identity, bodies, results,
+exception messages or arbitrary JFR event fields. CPU/GC/JIT/lock/socket/allocation
+and pinning samples are diagnostic observations, not new mechanical truth.
+
+Custom observations cover initial servlet execution, asynchronous completion,
+Server Binding/offer/consume duration and counts, Adapter remote-call duration,
+Report admission/drain/drop counts and Queue depth, and the HTTP executor.
+Servlet completion is not the client's receive timestamp. Platform executor
+metrics are null when inapplicable; virtual execution is separately observed on
+the real initial request thread. Queue snapshots are diagnostic and do not
+reconstruct a Command's execution history. Default-off observations add no
+business queue, Registry, public endpoint or Redis read. They preserve callback,
+timeout, best-effort drop, retry and bounded shutdown behavior.
+
+The reader exports five-second activity buckets and power-of-two duration
+histogram upper bounds; these approximate diagnostic percentiles do not replace
+the exact Harness latency distributions. Missing CPU or Server Owner/executor
+coverage, gaps over three seconds, JFR data loss, bounded stack or aggregation
+overflow, or reader failure make diagnosis
+incomplete without changing the recorded business outcomes. Stack sampling and
+any bounded stack overflow stay explicit. Formal comparisons reject JFR mode.
+For a mechanism comparison on the same host, explicitly combine
+`--diagnostic-pair --baseline-ref <D> --diagnostics jfr`. This runs one fresh A/B
+pair and records `purpose=diagnostic_pair`; it never runs or emits the formal
+benefit classifier. In the manual workflow, selecting JFR with a baseline ref
+selects this separate diagnostic mode. Its evidence is never pooled with the
+three formal pairs.
+
+```bash
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite direct-diagnosis --output-root build/direct-diagnosis
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite direct-diagnosis --diagnostics jfr --output-root build/direct-jfr
+```
+
+### Configuration Candidate Acceptance
+
+The diagnosis-only baseline D explicitly represents the existing HTTP defaults:
+virtual threads disabled, Tomcat maximum 200, minimum resident 10. Candidate B1
+changes only the minimum to 200. If B1 is not retained, B2 starts from D and
+changes only `spring.threads.virtual.enabled` to true. They are not combined;
+queue bounds, batch sizes, waiting windows and Pacer settings are unchanged.
+The first candidate meeting the acceptance contract ends this bounded round.
+
+Use the existing immutable `--baseline-ref` comparison for D/B, B/D, D/B on one
+host, with identical current Harness and JFR off. The new comparison considers
+the surge and sustained windows of both fixed cases. A benefit needs three
+valid pairs and an improvement in at least two: success fraction increases by
+at least five percentage points, or at success fractions within one point,
+successful p99 or Server CPU seconds per HTTP response decreases at least 15%.
+CPU per response uses sampled mean CPU divided by the actual window response
+rate; the sampled coverage remains visible. The established two-pair regression
+rules remain: success loses over five points, or p99 grows over 20% while success
+fractions are within five points. A benefit cannot hide another guard window's
+regression. Incomplete or generator-limited guard windows keep overall acceptance
+inconclusive. No clear benefit and no detected regression do not establish gain.
+
+Eligibility also requires mechanism evidence, all path-selected existing proofs,
+the original six Task cases in three pairs, and full Loaded Recovery for the
+final candidate. Limited Task cases retain their own inconclusive result.
+Without an eligible candidate, retain D and record confirmed causes, correlated
+clues and unresolved questions. These thresholds select a finite experiment;
+they do not establish production SLA, physical-device capacity or long soak.
+
+The new suite and JFR are initially manual. Once its reference acceptance is
+recorded, the existing 03:00 performance nightly will run the Task six cases and
+these two Direct cases serially, with JFR off. Original Direct five-rate replay,
+JFR and three-pair comparisons remain manual. No extra proof lane or PR QPS gate
+is introduced; single-version/comparison budgets remain 45/120 minutes and safe
+artifacts remain seven days.
