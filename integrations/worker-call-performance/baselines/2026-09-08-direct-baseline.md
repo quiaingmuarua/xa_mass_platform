@@ -127,4 +127,5 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
 ```
 
 也可手动运行 Worker Call Performance workflow，选择 `suite=direct`。
-默认 nightly 仍运行原有 Task Call 六案例。
+本次五档基线验收时，默认 nightly 运行原有 Task Call 六案例。后续的连续
+负载突升场景和 nightly 扩展见[归因报告](2026-09-08-direct-step-attribution.md)。

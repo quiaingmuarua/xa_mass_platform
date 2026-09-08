@@ -11,6 +11,10 @@ first three-pair comparison. Its same-key append candidate was withdrawn after
 targeted-call regression; the lane and Owner proofs remain. The baseline retains
 the rejected patch for isolated replay and does not describe active production behavior.
 
+The [Direct load-step attribution report](baselines/2026-09-08-direct-step-attribution.md)
+separates the fixed surge and sustained windows, records HTTP configuration
+candidates and preserves the scope of each causal conclusion.
+
 ## Owners And World
 
 The Python runner owns fresh Docker Redis containers, Runtime/Host/Harness
@@ -304,9 +308,12 @@ Without an eligible candidate, retain D and record confirmed causes, correlated
 clues and unresolved questions. These thresholds select a finite experiment;
 they do not establish production SLA, physical-device capacity or long soak.
 
-The new suite and JFR are initially manual. Once its reference acceptance is
-recorded, the existing 03:00 performance nightly will run the Task six cases and
-these two Direct cases serially, with JFR off. Original Direct five-rate replay,
+The 03:00 performance nightly runs the Task six cases and these two Direct cases
+serially, with JFR off. The workflow's manual `suite=nightly` replays this exact
+composition; the runner retains one invocation per suite. A failed Task suite
+does not suppress the Direct suite, and either failure fails the combined job.
+The attribution report records reference acceptance before mainline activation.
+Original Direct five-rate replay,
 JFR and three-pair comparisons remain manual. No extra proof lane or PR QPS gate
 is introduced; single-version/comparison budgets remain 45/120 minutes and safe
 artifacts remain seven days.
