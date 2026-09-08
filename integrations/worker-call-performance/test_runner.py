@@ -119,6 +119,26 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("failed", value)
         self.assertNotIn("100.00%", value)
 
+    def test_direct_suite_keeps_task_nightly_cases_and_does_not_invent_drain(self):
+        self.assertEqual(6, len(runner.SUITES["task"]))
+        self.assertEqual(("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000"), runner.SUITES["direct"])
+        row = dict(pair=0, version="B", case="direct-100", offeredRate=100,
+                   sent=3000, planned=3000, successfulCohortPerSecond=90, successRate=.9,
+                   withinOneSecondRateOfSent=.8, successfulCallLatencyMillis={"p99": 1200}, generatorLimited=False)
+        value = runner.markdown_summary(dict(suite="direct", status="passed", referenceHost=True, completeSuite=True, runs=[row]))
+        self.assertIn("90.00%", value)
+        self.assertIn("80.00%", value)
+        self.assertIn("no results:load", value)
+        self.assertNotIn("Result success after drain", value)
+
+    def test_direct_comparison_only_compares_the_named_direct_fixture(self):
+        runs = complete_runs()
+        for row in runs:
+            row["case"] = "direct-100"
+        value = runner.comparison(runs, ("direct-100",))
+        self.assertEqual("no_detected_regression", value["status"])
+        self.assertEqual(["direct-100"], [row["case"] for row in value["cases"]])
+
 
 if __name__ == "__main__":
     unittest.main()

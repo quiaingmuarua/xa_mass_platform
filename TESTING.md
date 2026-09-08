@@ -105,7 +105,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | `python integrations/worker-call-performance/run_worker_call_performance.py` | Ubuntu 24.04, Docker Redis 7.4.10, Java 21 |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | `python integrations/worker-call-performance/run_worker_call_performance.py` (Task nightly; `--suite direct` for the 1,000-Worker Direct Call fixture) | Ubuntu 24.04, Docker Redis 7.4.10, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |

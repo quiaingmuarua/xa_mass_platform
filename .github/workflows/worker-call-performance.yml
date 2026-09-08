@@ -5,6 +5,14 @@ on:
     - cron: '0 19 * * *' # 03:00 Asia/Shanghai
   workflow_dispatch:
     inputs:
+      suite:
+        description: "Task Call baseline or 1000-Worker Direct Call measurement"
+        required: true
+        type: choice
+        default: task
+        options:
+          - task
+          - direct
       baseline_ref:
         description: "Optional immutable baseline commit for A/B, B/A, A/B"
         required: false
@@ -45,8 +53,9 @@ jobs:
       - name: Run independent call performance proof
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
+          CALL_SUITE: ${{ inputs.suite || 'task' }}
         run: |
-          args=()
+          args=(--suite "$CALL_SUITE")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
           fi

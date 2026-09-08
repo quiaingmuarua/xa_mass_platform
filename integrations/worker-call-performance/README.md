@@ -1,9 +1,10 @@
 # Worker Call Performance
 
 Primary claim: offered online call load, observed completion, latency distributions
-and saturation behavior of the existing Task Call path, including coexistence
-with one finite PRECOMPUTED Task. The 100-Worker world fixes measurement conditions;
-it is not another correctness, recovery or scale tier.
+and saturation behavior of the existing Task Call and caller-targeted Direct
+Call paths. Task Call also measures coexistence with one finite PRECOMPUTED Task.
+Each suite's fixed Worker count is a measurement fixture, not another
+correctness, recovery or scale tier.
 
 The [2026-09-08 reference baseline](baselines/2026-09-08-baseline.md) records the
 first three-pair comparison. Its same-key append candidate was withdrawn after
@@ -59,6 +60,10 @@ not create additional work or retry mutation. Background Items use a 600-second
 TTL. This case does not impose fairness or an online-call priority guarantee.
 
 ## Measurement And Acceptance
+
+The following Result-drain contract applies to the Task Call suite. The separate
+Direct Call fixture below has its own outcome semantics inside this same
+performance lane.
 
 The finite open-loop scheduler retains each planned arrival time. Sending never
 waits for HTTP capacity: at most 4,096 tasks may be in flight, and a refused
@@ -145,3 +150,54 @@ The lane does not claim cross-machine network latency, production SLA, Handler
 concurrency, exact executor identity, Task fairness, process-fault recovery,
 long-running retention/soak, or larger active Task/Group cardinality. Those
 claims require their own named evidence rather than a larger Worker fixture.
+
+## Direct Call With 1,000 Workers
+
+`--suite direct` measures the existing caller-targeted DIRECT_CALL path with one
+Group, exactly 1,000 Java Workers and one WebSocket Adapter. The Lab Host creates
+1,000 real Worker connections in one process; this is not 1,000 physical devices.
+The caller rotates through the known sorted Worker IDs, sending one HTTP request
+per Worker invocation to the public Adapter-scoped `direct-calls` API. Server
+does not select Workers. No Task Items or background work are submitted.
+
+The five fixed offered rates are 100, 500, 1,000, 2,000 and 5,000 calls/s. Each
+case uses fresh processes and Redis, DEFAULT Pacer, the same fixed 64-byte MD5
+input, 20 seconds of warmup at 100/s, and 30 seconds of measurement. Direct wait
+is 1 second and client timeout is 5 seconds; maximum in-flight remains 4,096.
+The common finite scheduler permits at most 150,000 planned calls for the
+5,000/s case. The original six Task fixtures and their nightly selection remain
+unchanged. Preparation checks the exact 1,000 Lab identities and bounded public
+network pages of 100; all warmup calls must succeed, covering every Worker twice.
+Connected routes are checked again before and after measurement. Scheduling and
+Properties readiness are not Direct Call admission prerequisites.
+
+Direct evidence distinguishes successful observed replies (`outcomeCode=200`),
+observed non-success replies, unobserved timeouts, occupied-slot/HTTP-429
+rejections, uncertain submission/HTTP effects, not sent and protocol errors.
+Codes and reasons are counted separately. HTTP 200 does not imply admission or
+successful execution. Each response must name exactly the requested Worker;
+its aggregate status, fields, MD5 result and unique server Direct Call ID are
+checked. Missing/bad Binding, shutdown, wrong results and protocol errors fail
+this fixed-world fixture. Resource bounds and generator-limitation rules are
+the same as the Task suite. Direct timeouts and rejections are measured outcomes,
+not hard failures disguised as successful execution.
+
+DIRECT_CALL has no persistent Result lookup: there is no `results:load`, drain,
+replay or automatic retry. Timeout does not cancel an offered Command and does
+not establish execution failure. Unknown and timeout samples stay unclosed in
+safe evidence. Result/finality and Task recovery claims do not apply. In addition
+to original-response latency, successful cohort throughput and actual successes
+within the measurement window, the summary reports successes returned within
+one second of their planned arrival divided by both sent and planned requests.
+Successful p99 excludes unsuccessful/unknown requests, so read it alongside
+these fractions. A passed run means valid measurement, not an RPC SLA.
+
+```bash
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite direct --output-root build/direct-call-performance-proof
+```
+
+The manual workflow accepts `suite=direct`; scheduled runs retain `suite=task`.
+Worker count fixes this requested Direct Call scenario rather than introducing
+another correctness/recovery scale tier. Different Worker fixtures and separate
+hosts prevent inferring a Direct-versus-Task speedup ratio from their raw QPS.

@@ -100,9 +100,11 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 ## worker_call_performance
 
 - **Primary owner:** `:integrations:worker-call-performance` and its separate workflow.
-- **Claim:** fixed offered Task Call load, successful completion and latency
-  distributions, saturation and coexistence with one PRECOMPUTED background
-  Task, with explicit unknown/unobserved outcomes and generator limitations.
+- **Claim:** fixed offered Task Call and caller-targeted Direct Call load,
+  successful response and latency distributions, and saturation. Task Call also
+  measures coexistence with one PRECOMPUTED background Task and bounded Result
+  follow-up; Direct Call retains timeout/rejection/unknown outcomes without
+  inventing a persistent Result lookup. Generator limitations stay explicit.
 - **Deliberate nonclaims:** absolute production SLA, larger-world correctness,
   fault recovery, actual executor, Handler concurrency, fairness and soak.
   Redis Owner separately proves client-command cost and mailbox concurrency.

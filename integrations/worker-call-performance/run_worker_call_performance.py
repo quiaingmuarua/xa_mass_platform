@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT))
 from integrations.worker_proof_support.scenario_inventory import materialize_inventory
 
 CASES = ("any-100", "any-500", "any-1000", "any-2000", "targeted-500", "mixed-500")
+DIRECT_CASES = ("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000")
+SUITES = {"task": CASES, "direct": DIRECT_CASES}
 ORDER = (("A", "B"), ("B", "A"), ("A", "B"))
 GROUP = "scenario-string-utils-workers"
 REDIS_IMAGE = "redis:7.4.10"
@@ -230,6 +232,27 @@ def resource_summary(path, started, seconds=30):
 
 
 def markdown_summary(final):
+    if final.get("suite") == "direct":
+        lines = ["# Worker Direct Call Performance", "",
+            f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
+            "1,000 connected Java Workers, caller round-robin, one Worker per HTTP request; no background Task.", "",
+            "| Pair | Version | Offered /s | Sent / planned | Successful cohort /s | Success in original response | Within 1s / sent | Success p99 ms | Limited |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for row in final["runs"]:
+            if "sent" not in row:
+                lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['case']} | {row['status']} | — | — | — | — | — |")
+                continue
+            lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['offeredRate']} | {row['sent']} / {row['planned']} "
+                f"| {row['successfulCohortPerSecond']:.2f} | {row['successRate']:.2%} | {row['withinOneSecondRateOfSent']:.2%} "
+                f"| {row['successfulCallLatencyMillis']['p99']:.2f} | {row['generatorLimited']} |")
+        lines.extend(["", "Passed means the measurement contract passed, not an RPC service-level objective. "
+            "HTTP 200 may contain a timeout or rejected target. Outcome counts and reason/code counts are in the JSON. "
+            "Successful cohort /s includes this cohort's responses after the offered window; responses inside the window are also recorded. "
+            "Timeout is unobserved execution, not proof of business failure. Direct Call has no results:load or durable follow-up. "
+            "Generator-limited rows cannot establish server capacity.", ""])
+        if "comparison" in final:
+            lines.extend([f"Comparison: **{final['comparison']['status']}**.", ""])
+        return "\n".join(lines)
     lines = ["# Worker Call Performance", "", f"Status: **{final['status']}**. "
              f"Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
              "| Pair | Version | Case | Sent / planned | Response success | Result success after drain | Success p99 ms | Generator limited |",
@@ -263,6 +286,8 @@ def run_case(root, case, output, version, deadline):
     client = None
     result = {"case": case, "version": version, "status": "failed", "scope": scope}
     cleanup_errors = []
+    direct = case in DIRECT_CASES
+    worker_count = 1000 if direct else 100
     try:
         for port in (18082, 18083, 18086):
             with socket.socket() as probe:
@@ -293,13 +318,19 @@ def run_case(root, case, output, version, deadline):
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
         flags = dict(SERVER_FLAGS)
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
+        if direct:
+            flags.update({"xa.mass.direct-call.default-wait-timeout-millis": "3000",
+                "xa.mass.direct-call.max-wait-timeout-millis": "10000",
+                "xa.mass.direct-call.max-adapter-commands-per-adapter": "1000",
+                "xa.mass.direct-call.max-pending-calls": "10000"})
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM,
-            "configurationSourceSha256": fingerprint(root), "workers": 100, "group": GROUP,
+            "configurationSourceSha256": fingerprint(root), "workers": worker_count, "group": GROUP,
             "configurationSources": configuration_sources(root),
             "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 100,
                 "resultIdleIntervalMillis": 100, "serviceabilityDispatchEnabled": False},
             "redisImage": REDIS_IMAGE, "maximumInFlight": 4096, "warmupSeconds": 20,
-            "measurementSeconds": 30, "httpRequestTimeoutSeconds": 5, "drainSeconds": 180})
+            "measurementSeconds": 30, "httpRequestTimeoutSeconds": 5, "waitTimeoutMillis": 1000,
+            "callPath": "DIRECT_CALL" if direct else "TASK", "drainSeconds": None if direct else 180})
         jars = [p for p in (root / "server_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
         processes["server"] = start_process(["java", *JVM, "-jar", jar,
@@ -307,7 +338,7 @@ def run_case(root, case, output, version, deadline):
         sampler.register("server", processes["server"])
         wait_http("http://127.0.0.1:18082/actuator/health/readiness", processes["server"], sampler, min(deadline, time.monotonic() + 180))
         inventory = private / "data/scenario-workers"
-        materialize_inventory(inventory, {GROUP: tuple({"runtime": "java", "capability": "string-utils"} for _ in range(100))})
+        materialize_inventory(inventory, {GROUP: tuple({"runtime": "java", "capability": "string-utils"} for _ in range(worker_count))})
         assembly = private / "capabilities.json"
         write_json(assembly, {GROUP: {"eventCodes": ["extension.worker.string.md5", "extension.worker.lab.delay"],
             "requestTimeoutMillis": 60_000, "reconnectPolicy": {"maxUnstableAttempts": 600,
@@ -372,9 +403,9 @@ def run_case(root, case, output, version, deadline):
     return result
 
 
-def comparison(runs):
+def comparison(runs, cases=CASES):
     findings = []
-    for case in CASES:
+    for case in cases:
         regressions = 0
         comparable = 0
         observations = []
@@ -410,10 +441,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=ROOT / "build/worker-call-performance-proof")
     parser.add_argument("--baseline-ref", help="Build this immutable Git commit as A; compare A/B, B/A, A/B")
-    parser.add_argument("--case", choices=CASES, help="Diagnostic subset; never a complete lane result")
+    parser.add_argument("--suite", choices=SUITES, default="task", help="Fixed Task Call or 1000-Worker Direct Call fixture")
+    parser.add_argument("--case", choices=CASES + DIRECT_CASES, help="Diagnostic subset; never a complete suite result")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     options = parser.parse_args()
+    cases = SUITES[options.suite]
+    if options.case and options.case not in cases:
+        parser.error("Selected case does not belong to --suite")
     if sys.platform != "linux":
         parser.error("Linux with Docker and /proc is required")
     os_release = platform.freedesktop_os_release()
@@ -435,6 +470,7 @@ def main():
     baseline = None
     runs = []
     final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
+             "suite": options.suite,
              "fixtureVersion": 1, "os": os_release, "java": java.strip(), "cpuCount": os.cpu_count(),
              "machine": platform.machine(), "kernel": platform.release(),
              "redisImageId": image_id,
@@ -452,7 +488,7 @@ def main():
         deadline = run_started + (120 if baseline else 45) * 60
         for pair, order in enumerate(ORDER if baseline else (("B",),)):
             for version in order:
-                for case in (options.case,) if options.case else CASES:
+                for case in (options.case,) if options.case else cases:
                     print(f"performance pair={pair + 1} version={version} case={case}", flush=True)
                     result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline)
                     result["pair"] = pair
@@ -462,7 +498,7 @@ def main():
                         raise RuntimeError(f"Case {case} failed")
         final["status"] = "passed"
         if baseline:
-            final["comparison"] = comparison(runs)
+            final["comparison"] = comparison(runs, cases)
             if final["comparison"]["status"] == "regressed":
                 final["status"] = "regressed"
     except Exception as error:

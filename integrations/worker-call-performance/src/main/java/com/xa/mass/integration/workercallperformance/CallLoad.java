@@ -14,8 +14,10 @@ import java.util.function.LongSupplier;
 
 /** Finite open-loop offered load. Scheduling never waits for HTTP capacity. */
 final class CallLoad {
-    enum Outcome { SUCCEEDED, FAILED, NOT_OBSERVED, UNKNOWN, NOT_SENT, PROTOCOL_ERROR }
-    record Reply(int httpStatus, Outcome outcome) {}
+    enum Outcome { SUCCEEDED, FAILED, NOT_OBSERVED, UNKNOWN, NOT_SENT, PROTOCOL_ERROR, REJECTED, TIMED_OUT }
+    record Reply(int httpStatus, Outcome outcome, String directCallId, String detail) {
+        Reply(int httpStatus, Outcome outcome) { this(httpStatus, outcome, null, null); }
+    }
     @FunctionalInterface interface Sender { Reply send(String id, int index) throws Exception; }
     static final class ProtocolFailure extends IllegalStateException {
         ProtocolFailure(String message) { super(message); }
@@ -27,6 +29,8 @@ final class CallLoad {
         long sent;
         long ended;
         int httpStatus;
+        String directCallId;
+        String detail;
         Outcome outcome = Outcome.NOT_SENT;
         String observed = "not_observed";
         long observedAfterWaitMillis = -1;
@@ -40,6 +44,8 @@ final class CallLoad {
             row.put("sentOffsetMillis", sent == 0 ? -1 : millis(sent - started));
             row.put("endedOffsetMillis", ended == 0 ? -1 : millis(ended - started));
             row.put("httpStatus", httpStatus);
+            if (directCallId != null) row.put("directCallId", directCallId);
+            if (detail != null) row.put("detail", detail);
             row.put("outcome", outcome.name().toLowerCase(java.util.Locale.ROOT));
             row.put("accepted", accepted());
             row.put("observedResult", observed);
@@ -52,7 +58,7 @@ final class CallLoad {
         void await() throws InterruptedException {
             if (!completed.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("HTTP tasks did not stop");
         }
-        Map<String, Object> summary() {
+        Map<String, Object> responseSummary() {
             var counts = new LinkedHashMap<String, Object>();
             for (Outcome outcome : Outcome.values()) counts.put(outcome.name().toLowerCase(java.util.Locale.ROOT),
                     samples.stream().filter(s -> s.outcome == outcome).count());
@@ -65,7 +71,6 @@ final class CallLoad {
             var summary = new LinkedHashMap<String, Object>();
             summary.put("planned", samples.size());
             summary.put("sent", sent);
-            summary.put("accepted", samples.stream().filter(Sample::accepted).count());
             summary.put("outcomes", counts);
             summary.put("successRate", sent == 0 ? 0.0 : (double) succeeded / sent);
             summary.put("actualSendRate", sent / (windowNanos / 1e9));
@@ -77,6 +82,13 @@ final class CallLoad {
             summary.put("successfulCallLatencyMillis", percentiles(success));
             summary.put("scheduleLagMillis", percentiles(lag));
             summary.put("generatorLimited", sent != samples.size() || percentile(lag, .99) > 100_000_000L);
+            summary.put("outstandingHttpAtWindowEnd", samples.stream()
+                    .filter(s -> s.sent != 0 && s.ended > started + windowNanos).count());
+            return summary;
+        }
+        Map<String, Object> summary() {
+            var summary = responseSummary();
+            summary.put("accepted", samples.stream().filter(Sample::accepted).count());
             summary.put("unresolvedAcceptedIds", samples.stream().filter(s -> s.accepted() && s.observed.equals("not_observed"))
                     .map(s -> s.id).toList());
             summary.put("resultCounts", Map.of(
@@ -88,8 +100,6 @@ final class CallLoad {
                     .filter(s -> s.accepted() && s.observed.equals("succeeded")).count() / (double) accepted);
             summary.put("acceptedUnobservedAfterResponses", samples.stream()
                     .filter(s -> s.outcome == Outcome.NOT_OBSERVED).count());
-            summary.put("outstandingHttpAtWindowEnd", samples.stream()
-                    .filter(s -> s.sent != 0 && s.ended > started + windowNanos).count());
             summary.put("followupObservationMillis", percentiles(samples.stream()
                     .filter(s -> s.observedAfterWaitMillis >= 0).map(s -> s.observedAfterWaitMillis * 1_000_000).toList()));
             return summary;
@@ -102,7 +112,7 @@ final class CallLoad {
 
     static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender,
                           LongSupplier clock, LongConsumer waitUntil) {
-        if (rate < 1 || seconds < 1 || capacity < 1 || (long) rate * seconds > 100_000)
+        if (rate < 1 || seconds < 1 || capacity < 1 || (long) rate * seconds > 150_000)
             throw new IllegalArgumentException("Invalid finite load bounds");
         int count = rate * seconds;
         var done = new CountDownLatch(count);
@@ -123,6 +133,8 @@ final class CallLoad {
                         var reply = sender.send(sample.id, index);
                         sample.httpStatus = reply.httpStatus();
                         sample.outcome = reply.outcome();
+                        sample.directCallId = reply.directCallId();
+                        sample.detail = reply.detail();
                         if (reply.outcome() == Outcome.SUCCEEDED) sample.observed = "succeeded";
                         if (reply.outcome() == Outcome.FAILED) sample.observed = "failed";
                     } catch (ProtocolFailure error) {
