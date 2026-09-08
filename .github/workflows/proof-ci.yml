@@ -103,6 +103,7 @@ jobs:
           :integrations:worker-dynamic-matching:build
           :integrations:worker-convergence-health:build
           :integrations:worker-loaded-recovery:build
+          :integrations:worker-call-performance:build
           :distribution:server:verifyPlatformDiagnosticCodes
       - name: Verify Worker inventory and loaded recovery runner contracts
         run: |
@@ -116,6 +117,9 @@ jobs:
             -p 'test_*.py'
           python3 -m unittest discover \
             -s integrations/worker-dynamic-matching \
+            -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-call-performance \
             -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()

@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/WorkerCallPerformanceMain.java",
+      "lanes": ["jvm_contracts"],
+      "reason": "Call performance owns a distinct nightly/manual claim; ordinary CI builds and tests only its Harness."
+    },
+    {
+      "path": "integrations/worker-call-performance/run_worker_call_performance.py",
+      "lanes": ["jvm_contracts"],
+      "reason": "Deterministic runner and comparison contracts run without repeating performance in PR lanes."
+    },
+    {
+      "path": ".github/workflows/worker-call-performance.yml",
+      "lanes": ["jvm_contracts"],
+      "reason": "The independent performance workflow retains its own runtime claim."
+    },
+    {
       "path": "README.md",
       "lanes": [],
       "reason": "Documentation is owned by the always-running Docs Contract."

@@ -97,6 +97,17 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   topology breadth and soak.
 - **Contract:** [Complete scenario](../../integrations/worker-loaded-recovery/README.md).
 
+## worker_call_performance
+
+- **Primary owner:** `:integrations:worker-call-performance` and its separate workflow.
+- **Claim:** fixed offered Task Call load, successful completion and latency
+  distributions, saturation and coexistence with one PRECOMPUTED background
+  Task, with explicit unknown/unobserved outcomes and generator limitations.
+- **Deliberate nonclaims:** absolute production SLA, larger-world correctness,
+  fault recovery, actual executor, Handler concurrency, fairness and soak.
+  Redis Owner separately proves client-command cost and mailbox concurrency.
+- **Contract:** [Complete scenario](../../integrations/worker-call-performance/README.md).
+
 ## android_host
 
 - **Primary owner:** Android Worker and XA Android modules.
