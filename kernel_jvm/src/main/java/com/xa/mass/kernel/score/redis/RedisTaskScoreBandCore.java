@@ -267,10 +267,10 @@ public final class RedisTaskScoreBandCore
         if (limit == 0) {
             return Map.of();
         }
-        if (limit < 0 || limit > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+        if (limit < 0 || limit > MAX_TASK_SCHEDULING_BATCH_SIZE) {
             throw new IllegalArgumentException(
                     "limit must be between 0 and "
-                            + MAX_TASK_SCORE_PREVIEW_LIMIT
+                            + MAX_TASK_SCHEDULING_BATCH_SIZE
             );
         }
         long dueTimeSlot = redisTimeMillis() / SLOT_MILLIS - 1;
@@ -313,10 +313,10 @@ public final class RedisTaskScoreBandCore
                     "observedTaskScores must be present"
             );
         }
-        if (observedTaskScores.size() > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+        if (observedTaskScores.size() > MAX_TASK_SCHEDULING_BATCH_SIZE) {
             throw new IllegalArgumentException(
                     "observedTaskScores must contain at most "
-                            + MAX_TASK_SCORE_PREVIEW_LIMIT + " tasks"
+                            + MAX_TASK_SCHEDULING_BATCH_SIZE + " tasks"
             );
         }
         LinkedHashMap<String, Long> initialScores = new LinkedHashMap<>();
@@ -350,10 +350,10 @@ public final class RedisTaskScoreBandCore
         if (observedInitialScores.isEmpty()) {
             return Map.of();
         }
-        if (observedInitialScores.size() > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+        if (observedInitialScores.size() > MAX_TASK_SCHEDULING_BATCH_SIZE) {
             throw new IllegalArgumentException(
                     "observedInitialScores must contain at most "
-                            + MAX_TASK_SCORE_PREVIEW_LIMIT + " tasks"
+                            + MAX_TASK_SCHEDULING_BATCH_SIZE + " tasks"
             );
         }
         long nextTimeSlot = Math.max(

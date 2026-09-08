@@ -1,4 +1,6 @@
 import importlib.util
+import json
+from collections import Counter
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,11 +24,38 @@ class RunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             rows = runner.materialize(root)
-            self.assertEqual(100, len(rows))
-            self.assertEqual(10, sum(row["properties"].get("proofTarget") == "yes" for row in rows))
-            self.assertEqual(90, len(runner.control_records(root)))
+            self.assertEqual(1000, len(rows))
+            self.assertEqual({runner.STRING_GROUP: 500, runner.PHONE_GROUP: 500}, Counter(row["group"] for row in rows))
+            self.assertEqual(100, sum(row["properties"].get("proofTarget") == "yes" for row in rows))
+            self.assertEqual(900, len(runner.control_records(root)))
             self.assertTrue(all(row["properties"]["emptySentinel"] == "" for row in rows))
-            self.assertEqual(100, len({(row["group"], row["key"]) for row in rows}))
+            self.assertEqual(1000, len({(row["group"], row["key"]) for row in rows}))
+            string_rows = [row for row in rows if row["group"] == runner.STRING_GROUP]
+            self.assertEqual({("A", "no"): 200, ("B", "no"): 200, ("A", "yes"): 100},
+                             Counter((r["properties"]["proofPool"], r["properties"]["proofTarget"]) for r in string_rows))
+            self.assertEqual(5, len(list((root / runner.STRING_GROUP).glob("*.jsonl"))))
+
+    def test_control_audit_covers_each_file_and_uses_immutable_coordinates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.materialize(root)
+            for index in range(5):
+                path = root / runner.STRING_GROUP / f"workers-{index:03d}.jsonl"
+                lines = path.read_text(encoding="utf-8").splitlines()
+                rows = [json.loads(line) for line in lines]
+                self.assertEqual(20, sum(r["workerProperties"]["proofTarget"] == "yes" for r in rows))
+                baseline = runner.control_records(root)
+                rows[80]["workerProperties"]["proofPool"] = "B"
+                lines[80] = json.dumps(rows[80])
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                self.assertEqual(baseline, runner.control_records(root))
+                rows[79]["workerProperties"]["proofTarget"] = "yes"
+                lines[79] = json.dumps(rows[79])
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                changed = runner.control_records(root)
+                self.assertEqual(baseline.keys(), changed.keys())
+                self.assertEqual({f"{runner.STRING_GROUP}/{path.name}:80"},
+                                 {key for key in baseline if baseline[key] != changed[key]})
 
 
 if __name__ == "__main__":

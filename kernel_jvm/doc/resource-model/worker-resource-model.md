@@ -74,8 +74,9 @@ Redis. Address reads, connection verification and Direct Call do not read Score
 to check registration completeness. Callers check the requested Group against
 the returned Group where required.
 
-`sampleWorkerDescriptors(group, limit)` asks Score Owner to sample at most 100
-registered members, then reads their Bindings once. Missing or wrong-Group
+`sampleWorkerDescriptors(group, limit)` accepts `1..1000` and asks Score Owner
+to sample registered members once, then reads their Bindings in batches of at
+most 100 (at most ten HMGET calls). Missing or wrong-Group
 Bindings map to null; address-only rows do not appear in the sample. Group
 directory reads retain their bounded HMGET and HRANDFIELD behavior.
 

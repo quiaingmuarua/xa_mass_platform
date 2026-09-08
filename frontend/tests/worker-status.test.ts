@@ -257,6 +257,36 @@ describe("Worker status store", () => {
     setActivePinia(createPinia());
   });
 
+  it("observes a thousand-Worker preview through bounded status batches", async () => {
+    const source = new ControllableStatusDataSource();
+    const store = createWorkerStatusStore(source);
+    const workers = Array.from({ length: 1000 }, (_, i) =>
+      worker("group-a", `worker-${i}`)
+    );
+    await store.ensureSample("group-a", workers);
+    expect(source.observeNetwork).toHaveBeenCalledTimes(10);
+    expect(source.observeScheduling).toHaveBeenCalledTimes(10);
+    expect(source.observeNetwork.mock.calls.flatMap(([batch]) => batch)).toEqual(
+      workers
+    );
+    expect(source.observeScheduling.mock.calls.flatMap(([, ids]) => ids)).toEqual(
+      workers.map((w) => w.workerId)
+    );
+    expect(
+      source.observeNetwork.mock.calls.every(([batch]) => batch.length <= 100)
+    ).toBe(true);
+    expect(
+      source.observeScheduling.mock.calls.every(([, ids]) => ids.length <= 100)
+    ).toBe(true);
+    expect(
+      workers.every(
+        (w) =>
+          store.status(w).network.status === "ready" &&
+          store.status(w).scheduling.status === "ready"
+      )
+    ).toBe(true);
+  });
+
   it("loads both axes once for a sample and reuses the group cache", async () => {
     const source = new ControllableStatusDataSource();
     const store = createWorkerStatusStore(source);

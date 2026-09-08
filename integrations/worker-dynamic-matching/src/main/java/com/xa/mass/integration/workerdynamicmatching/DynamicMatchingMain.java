@@ -16,6 +16,7 @@ public final class DynamicMatchingMain {
     static final String PHONE = "scenario-phone-number-workers";
     static final String ADAPTER = "scenario-websocket";
     static final String EVENT = "extension.worker.lab.execution-witness";
+    static final int GROUP_SIZE = 500, TARGET_COUNT = 100, PAGE_SIZE = 100;
     private final ProofApi runtime;
     private final ProofApi lab;
     private final Path output;
@@ -23,6 +24,7 @@ public final class DynamicMatchingMain {
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
     private final Map<String, Task> tokenTasks = new ConcurrentHashMap<>();
     private final Map<String, Worker> coordinates = new HashMap<>();
+    private final Map<String, Worker> workersById = new HashMap<>();
     private final Map<Long, Map<String, Object>> entered = new HashMap<>();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private final AtomicBoolean stopping = new AtomicBoolean();
@@ -48,7 +50,9 @@ public final class DynamicMatchingMain {
             require(coordinates.put(w.coordinate(), w) == null, "duplicate-lab-coordinate");
             workers.add(w);
         }
-        require(workers.size() == 100 && targets().size() == 10, "fixed-world-size");
+        require(workers.size() == 2 * GROUP_SIZE && targets().size() == TARGET_COUNT, "fixed-world-size");
+        for (String group : List.of(STRING, PHONE))
+            require(workers.stream().filter(w -> w.group.equals(group)).count() == GROUP_SIZE, "fixed-group-size");
     }
 
     public static void main(String[] arguments) throws Exception {
@@ -97,6 +101,7 @@ public final class DynamicMatchingMain {
             }
             return seen.size() == workers.size();
         }, "initial-identities");
+        workers.forEach(w -> workersById.put(w.id, w));
         // First facts may legitimately be absent after Prepare. Do not install an empty baseline.
         until(deadline, () -> observeRuntime(true) && observeAdapter(true), "initial-facts");
         for (Worker w : workers) platform(w, "yes");
@@ -110,9 +115,9 @@ public final class DynamicMatchingMain {
 
     private void run() throws Exception {
         phase("seed-workload");
-        createTask("background-a", STRING, rule("A", false, true), 5_000, 1_000, false, "A", true);
-        createTask("background-b", STRING, rule("B", false, true), 5_000, 1_000, false, "B", true);
-        createTask("background-phone", PHONE, Map.of(), 5_000, 1_000, false, null, true);
+        createTask("background-a", STRING, rule("A", false, true), 50_000, 1_000, false, "A", true);
+        createTask("background-b", STRING, rule("B", false, true), 50_000, 1_000, false, "B", true);
+        createTask("background-phone", PHONE, Map.of(), 50_000, 1_000, false, null, true);
         workloadStarted = System.nanoTime();
         workloadDeadline = workloadStarted + TimeUnit.SECONDS.toNanos(600);
         for (Task t : tasks) approve(t);
@@ -197,7 +202,7 @@ public final class DynamicMatchingMain {
     }
 
     private Task witness(String label, String pool, boolean admitted) throws Exception {
-        Task t = createTask(label, STRING, rule(pool, true, true), 10, 100, true, pool, admitted);
+        Task t = createTask(label, STRING, rule(pool, true, true), TARGET_COUNT, 100, true, pool, admitted);
         approve(t);
         return t;
     }
@@ -206,7 +211,7 @@ public final class DynamicMatchingMain {
                             boolean witness, String pool, boolean admitted) throws Exception {
         var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group,
                 "allocationRule", rule, "priority", witness ? 10 : 50,
-                "maximumCandidateWorkers", witness ? 10 : 50, "maxRetryTimes", 3), false);
+                "maximumCandidateWorkers", witness ? TARGET_COUNT : GROUP_SIZE, "maxRetryTimes", 3), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {
@@ -236,6 +241,7 @@ public final class DynamicMatchingMain {
         if (t.mayExecute.get()) t.admit();
         var result = runtime.call("POST", "/api/v1/tasks/" + t.id + "/approve", null, false);
         require("applied".equals(result.get("status")), "task-approval-rejected");
+        t.approved = true;
     }
 
     private void blocked(Task t) throws Exception {
@@ -321,14 +327,15 @@ public final class DynamicMatchingMain {
     private boolean observeRuntime(boolean initial) throws Exception {
         boolean current = true;
         for (String group : List.of(STRING, PHONE)) {
-            var result = runtime.call("POST", "/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", 100, true);
+            var result = runtime.call("POST", "/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", GROUP_SIZE, true);
             require(number(result.get("unreadableCount")) == 0, "unreadable-worker");
             var rows = array(result.get("workers"));
-            require(rows.size() == 50, "runtime-worker-count");
+            require(rows.size() == GROUP_SIZE, "runtime-sample-count");
             Set<String> seen = new HashSet<>();
             for (Object raw : rows) {
                 var row = object(raw);
-                Worker w = workers.stream().filter(x -> x.id.equals(row.get("workerId"))).findFirst().orElseThrow();
+                Worker w = workersById.get(text(row.get("workerId")));
+                require(w != null, "unexpected-runtime-worker");
                 require(w.group.equals(group) && group.equals(row.get("workerGroupId"))
                         && ADAPTER.equals(row.get("endpointManagerId")) && seen.add(w.id), "runtime-binding-drift");
                 Map<String, String> properties = strings(row.get("workerProperties"));
@@ -346,16 +353,23 @@ public final class DynamicMatchingMain {
     private void observeRuntime() throws Exception { observeRuntime(false); }
 
     private boolean observeAdapter(boolean initial) throws Exception {
+        boolean current = true;
+        for (List<Worker> page : workerPages(workers)) current &= observeAdapterPage(page, initial);
+        adapterReads.incrementAndGet();
+        return current;
+    }
+
+    private boolean observeAdapterPage(List<Worker> page, boolean initial) throws Exception {
         var response = runtime.call("POST", "/api/v1/worker-delivery/endpoint-managers/" + ADAPTER + "/direct-calls",
                 Map.of("messageType", "platform.adapter.worker-properties.snapshot", "waitTimeoutMillis", 1_000,
-                        "opaquePayload", Jsons.toJson(Map.of("workerIds", workers.stream().map(w -> w.id).toList()))), true);
+                        "opaquePayload", Jsons.toJson(Map.of("workerIds", page.stream().map(w -> w.id).toList()))), true);
         var result = object(object(response.get("results")).get(ADAPTER));
         if ("unobserved".equals(result.get("status")) && "timeout".equals(result.get("reason"))) throw new TemporaryRead();
         require("observed".equals(result.get("status")) && "200".equals(result.get("outcomeCode")), "adapter-snapshot-rejected");
         var snapshots = object(Jsons.parseObject(text(result.get("opaqueResultPayload"))).get("propertiesByWorkerId"));
-        require(snapshots.size() == workers.size(), "adapter-worker-count");
+        require(snapshots.keySet().equals(new HashSet<>(page.stream().map(w -> w.id).toList())), "adapter-worker-set");
         boolean current = true;
-        for (Worker w : workers) {
+        for (Worker w : page) {
             var row = object(snapshots.get(w.id));
             if (initial && row.get("properties") == null) { current = false; continue; }
             require(row.get("updatedAtMillis") instanceof Number n && n.longValue() > 0, "adapter-baseline-missing");
@@ -364,27 +378,46 @@ public final class DynamicMatchingMain {
             w.adapter = properties;
             current &= properties.equals(w.expected);
         }
-        adapterReads.incrementAndGet();
         return current;
     }
     private void observeAdapter() throws Exception { observeAdapter(false); }
 
     private void checkWorld(boolean initial) throws Exception {
-        for (Worker w : workers) {
-            var row = retryRead(() -> lab.call("GET", w.path(), null, true));
-            requireRun(w, row);
-            require(w.expected.equals(strings(row.get("workerProperties"))), "lab-properties-drift");
+        try (ExecutorService checks = Executors.newFixedThreadPool(4)) {
+            List<Future<?>> pending = new ArrayList<>();
+            for (Worker w : workers) pending.add(checks.submit(() -> {
+                try {
+                    var row = retryRead(() -> lab.call("GET", w.path(), null, true));
+                    requireRun(w, row);
+                    require(w.expected.equals(strings(row.get("workerProperties"))), "lab-properties-drift");
+                } catch (Exception error) {
+                    failure.compareAndSet(null, error);
+                    throw new CompletionException(error);
+                }
+            }));
+            for (Future<?> check : pending) check.get();
         }
-        var network = object(retryRead(() -> runtime.call("POST", "/api/v1/runtime-view/endpoint-managers/" + ADAPTER
-                + "/workers:network-observe", workers.stream().map(w -> w.id).toList(), true)).get("statesByWorkerId"));
-        require(network.keySet().equals(new HashSet<>(workers.stream().map(w -> w.id).toList()))
-                && network.values().stream().allMatch("connected"::equals), "worker-connection-drift");
+        for (List<Worker> page : workerPages(workers)) {
+            var network = object(retryRead(() -> runtime.call("POST", "/api/v1/runtime-view/endpoint-managers/" + ADAPTER
+                    + "/workers:network-observe", page.stream().map(w -> w.id).toList(), true)).get("statesByWorkerId"));
+            require(network.keySet().equals(new HashSet<>(page.stream().map(w -> w.id).toList()))
+                    && network.values().stream().allMatch("connected"::equals), "worker-connection-drift");
+        }
         if (initial) for (String group : List.of(STRING, PHONE)) {
-            var scores = object(retryRead(() -> runtime.call("POST", "/api/v1/runtime-view/worker-groups/" + group
-                    + "/workers:scheduling-observe", workers.stream().filter(w -> w.group.equals(group)).map(w -> w.id).toList(), true)).get("statesByWorkerId"));
-            require(scores.keySet().equals(new HashSet<>(workers.stream().filter(w -> w.group.equals(group)).map(w -> w.id).toList()))
-                    && scores.values().stream().allMatch(s -> Set.of("hot-score-overdue", "held-hot").contains(s)), "initial-hot-activation");
+            for (List<Worker> page : workerPages(workers.stream().filter(w -> w.group.equals(group)).toList())) {
+                var scores = object(retryRead(() -> runtime.call("POST", "/api/v1/runtime-view/worker-groups/" + group
+                        + "/workers:scheduling-observe", page.stream().map(w -> w.id).toList(), true)).get("statesByWorkerId"));
+                require(scores.keySet().equals(new HashSet<>(page.stream().map(w -> w.id).toList()))
+                        && scores.values().stream().allMatch(s -> Set.of("hot-score-overdue", "held-hot").contains(s)), "initial-hot-activation");
+            }
         }
+    }
+
+    private static List<List<Worker>> workerPages(List<Worker> source) {
+        List<List<Worker>> pages = new ArrayList<>();
+        for (int offset = 0; offset < source.size(); offset += PAGE_SIZE)
+            pages.add(source.subList(offset, Math.min(offset + PAGE_SIZE, source.size())));
+        return pages;
     }
 
     private static void requireRun(Worker w, Map<String, Object> row) {
@@ -430,6 +463,7 @@ public final class DynamicMatchingMain {
 
     private void readResults() throws Exception { for (Task t : tasks) readResults(t); }
     private void readResults(Task t) throws Exception {
+        if (!t.approved) return;
         List<String> pending = t.tokens.stream().filter(token -> !t.succeeded.contains(token)).toList();
         for (int offset = 0; offset < pending.size(); offset += 1_000) {
             var page = pending.subList(offset, Math.min(offset + 1_000, pending.size()));
@@ -555,6 +589,7 @@ public final class DynamicMatchingMain {
         final boolean witness;
         final Set<String> allowed;
         final AtomicBoolean mayExecute;
+        volatile boolean approved;
         volatile long eligibleSince;
         final List<String> tokens = new ArrayList<>();
         final Set<String> succeeded = ConcurrentHashMap.newKeySet(), completed = ConcurrentHashMap.newKeySet(), executors = ConcurrentHashMap.newKeySet();

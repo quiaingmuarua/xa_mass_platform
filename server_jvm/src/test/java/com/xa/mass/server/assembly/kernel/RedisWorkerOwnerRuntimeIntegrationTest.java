@@ -327,6 +327,31 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(catalog.sampleWorkerDescriptors("g", 100)).isEmpty();
     }
 
+    @Test
+    void workerPreviewSamplesOneThousandWithoutExpandingBindingBatchReads() {
+        catalog.registerWorkerGroup(group("preview-group", Map.of(), Set.of()));
+        List<String> ids = java.util.stream.IntStream.range(0, 1001)
+                .mapToObj(i -> "preview-worker-" + i).toList();
+        for (int offset = 0; offset < ids.size(); offset += 100) {
+            catalog.registerWorkers("preview-group",
+                    ids.subList(offset, Math.min(offset + 100, ids.size())), "endpoint");
+        }
+        var sampled = catalog.sampleWorkerDescriptors("preview-group", 1000);
+        assertThat(sampled).hasSize(1000);
+        assertThat(ids).containsAll(sampled.keySet());
+        sampled.forEach((id, descriptor) ->
+                assertThat(descriptor).isEqualTo(worker(id, "preview-group", "endpoint")));
+        assertThat(catalog.sampleWorkerDescriptors("preview-group", 1)).hasSize(1);
+        assertThatThrownBy(() -> catalog.getWorkerDescriptors(ids.subList(0, 101)))
+                .isInstanceOf(IllegalArgumentException.class);
+        for (int limit : List.of(0, 1001)) {
+            assertThatThrownBy(() -> catalog.sampleWorkerDescriptors("preview-group", limit))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> scoreCore.sampleRegisteredWorkerIds("preview-group", limit))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"adapter", "system-polling"})
     void networkMechanismRequiresBindingAndPreservesLeaseDirtyAndPause(String endpoint) {

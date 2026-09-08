@@ -12,7 +12,7 @@ import java.util.Set;
 /** Bounded Host-local execution evidence, independent of requested Worker targets. */
 final class ScenarioWorkerExecutionWitnesses {
     static final String EVENT = "extension.worker.lab.execution-witness";
-    static final int CAPACITY = 65_536;
+    static final int CAPACITY = 655_360;
     private final List<Map<String, Object>> records = new ArrayList<>();
     private boolean overflowed;
 

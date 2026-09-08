@@ -268,7 +268,7 @@ class RuntimeViewControllerTest {
     @Test
     void taskPreviewRejectsOutOfRangeLimitsBeforeOwnerReads()
             throws Exception {
-        for (int limit : List.of(0, 101)) {
+        for (int limit : List.of(0, 1001)) {
             mockMvc.perform(post(
                             "/api/v1/runtime-view/tasks:preview"
                     ).contentType(MediaType.APPLICATION_JSON)
@@ -671,7 +671,7 @@ class RuntimeViewControllerTest {
     @Test
     void previewRejectsOutOfRangeSampleLimitsBeforeOwnerReads()
             throws Exception {
-        for (int limit : List.of(0, 101)) {
+        for (int limit : List.of(0, 1001)) {
             mockMvc.perform(post(
                                     "/api/v1/runtime-view/worker-groups/"
                                             + "group-a/workers:preview"
@@ -682,6 +682,57 @@ class RuntimeViewControllerTest {
                     .andExpect(jsonPath("$.code").value(19001));
         }
         verifyNoInteractions(workerCatalog);
+    }
+
+    @Test
+    void thousandWorkerPreviewLoadsEveryFactWithinMatchingBatchBounds() throws Exception {
+        when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
+                .thenReturn(groupLookup("group-a"));
+        var sampled = new LinkedHashMap<String, WorkerDescriptor>();
+        IntStream.range(0, 1000).forEach(i -> sampled.put("worker-" + i, worker("worker-" + i, "group-a")));
+        when(workerCatalog.sampleWorkerDescriptors("group-a", 1000)).thenReturn(sampled);
+        when(matchingCatalog.loadWorkerFacts(anyString(), anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(1);
+            org.assertj.core.api.Assertions.assertThat(ids).hasSize(100);
+            return ids.stream().collect(Collectors.toMap(id -> id, id -> new WorkerFacts(
+                    id, "group-a", Map.of("identityWitness", id), Map.of("enabled", "yes")
+            )));
+        });
+        mockMvc.perform(post("/api/v1/runtime-view/worker-groups/group-a/workers:preview")
+                        .contentType(MediaType.APPLICATION_JSON).content("1000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sampleLimit").value(1000))
+                .andExpect(jsonPath("$.returnedCount").value(1000))
+                .andExpect(jsonPath("$.workers[999].workerProperties.identityWitness").value("worker-999"));
+        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadWorkerFacts(anyString(), anyList());
+    }
+
+    @Test
+    void thousandTaskPreviewPreservesOrderAndBatchesMatchingRules() throws Exception {
+        List<String> ids = IntStream.range(0, 1000).mapToObj(i -> "task-" + i).toList();
+        when(taskScores.previewScoreStates(1000)).thenReturn(ids.stream()
+                .map(id -> scoreState(id, TaskScoreBand.RUNNING_VISIBLE)).toList());
+        when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
+                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(
+                        id, "group-a", WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                        TaskIdleDisposition.CLOSE_WHEN_IDLE, task(id, "group-a").config()
+                ))));
+        when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
+                .thenReturn(groupLookup("group-a"));
+        when(matchingCatalog.loadCandidateRules(anyList())).thenAnswer(invocation -> {
+            List<String> batch = invocation.getArgument(0);
+            org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
+            return batch.stream().collect(Collectors.toMap(id -> id,
+                    id -> new WorkerMatchingCatalog.CandidateRule(id, "group-a", Map.of())));
+        });
+        mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
+                        .contentType(MediaType.APPLICATION_JSON).content("1000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sampleLimit").value(1000))
+                .andExpect(jsonPath("$.entries.length()").value(1000))
+                .andExpect(jsonPath("$.entries[0].taskId").value("task-0"))
+                .andExpect(jsonPath("$.entries[999].taskId").value("task-999"));
+        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadCandidateRules(anyList());
     }
 
     @Test

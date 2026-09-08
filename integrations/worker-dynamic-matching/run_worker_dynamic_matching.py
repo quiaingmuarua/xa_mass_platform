@@ -20,7 +20,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
-    canonical_100_worker_world, materialize_inventory, STRING_GROUP, PHONE_GROUP,
+    canonical_1000_worker_world, materialize_inventory, STRING_GROUP, PHONE_GROUP,
 )
 
 EVENT = "extension.worker.lab.execution-witness"
@@ -64,31 +64,39 @@ def audit_prepare(before: bytes, after: bytes) -> dict:
 
 
 def materialize(root: Path) -> list[dict]:
-    world = canonical_100_worker_world()
+    world = canonical_1000_worker_world()
     for group, rows in world.items():
         for index, row in enumerate(rows):
             if group == STRING_GROUP:
-                row.update(proofPool="A" if index < 20 or index >= 40 else "B",
-                           proofTarget="yes" if index >= 40 else "no")
+                slot = index % 100
+                row.update(proofPool="A" if slot < 40 or slot >= 80 else "B",
+                           proofTarget="yes" if slot >= 80 else "no")
             row["emptySentinel"] = ""
     keys = materialize_inventory(root, world)
     spec = []
     for group, coordinates in keys.items():
-        rows = (root / group / "workers-000.jsonl").read_text(encoding="utf-8").splitlines()
-        for key, line in zip(coordinates, rows, strict=True):
-            spec.append({"group": group, "key": key, "properties": json.loads(line)["workerProperties"]})
+        files = {f"workers-{index:03d}.jsonl": (root / group / f"workers-{index:03d}.jsonl")
+                 .read_text(encoding="utf-8").splitlines() for index in range(5)}
+        for key in coordinates:
+            filename, line = key.rsplit(":", 1)
+            spec.append({"group": group, "key": key,
+                         "properties": json.loads(files[filename][int(line) - 1])["workerProperties"]})
     return spec
 
 
 def control_records(root: Path) -> dict[str, str]:
     result = {}
     for group in (STRING_GROUP, PHONE_GROUP):
-        lines = (root / group / "workers-000.jsonl").read_bytes().splitlines()
-        if len(lines) != 50:
+        paths = sorted((root / group).glob("*.jsonl"))
+        if [p.name for p in paths] != [f"workers-{index:03d}.jsonl" for index in range(5)]:
             raise ValueError("Inventory shape changed")
-        for index, line in enumerate(lines):
-            if group == PHONE_GROUP or index < 40:
-                result[f"{group}/{index + 1}"] = hashlib.sha256(line).hexdigest()
+        for path in paths:
+            lines = path.read_bytes().splitlines()
+            if len(lines) != 100:
+                raise ValueError("Inventory shape changed")
+            for index, line in enumerate(lines):
+                if group == PHONE_GROUP or index < 80:
+                    result[f"{group}/{path.name}:{index + 1}"] = hashlib.sha256(line).hexdigest()
     return result
 
 
@@ -208,7 +216,7 @@ def main() -> int:
             raise RuntimeError("Independent process or file audit failed")
         evidence["status"] = "succeeded"
         evidence["phase"] = "complete"
-        print("WORKER_DYNAMIC_MATCHING_OK workers=100 items=15040 prepareDelta=0")
+        print("WORKER_DYNAMIC_MATCHING_OK workers=1000 items=150400 prepareDelta=0")
         return 0
     except BaseException as error:
         if evidence_path.exists():

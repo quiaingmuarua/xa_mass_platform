@@ -604,8 +604,9 @@ public final class RedisWorkerScoreCore
     @Override
     public List<String> sampleRegisteredWorkerIds(String homeBucketId, int limit) {
         requireNonBlank(homeBucketId, "homeBucketId");
-        if (limit < 1 || limit > MAX_REGISTRATION_BATCH_SIZE) {
-            throw new IllegalArgumentException("limit must be between 1 and 100");
+        if (limit < 1 || limit > MAX_REGISTERED_WORKER_SAMPLE_LIMIT) {
+            throw new IllegalArgumentException("limit must be between 1 and "
+                    + MAX_REGISTERED_WORKER_SAMPLE_LIMIT);
         }
         return commands().zrandmember(scoreKey(homeBucketId), limit);
     }

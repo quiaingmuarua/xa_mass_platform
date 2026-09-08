@@ -465,7 +465,7 @@ is the registration source; it is not online evidence.
 Only later admitted network evidence can request activation through the finite
 Worker Serviceability mechanism. Evidence loss leaves the member cold until a
 new valid observation; no activation ACK, replay or cold scan is installed.
-`sampleRegisteredWorkerIds` returns at most 100 member IDs without exposing or
+`sampleRegisteredWorkerIds` accepts `1..1000` and returns at most 1000 member IDs without exposing or
 interpreting their scheduling coordinates in Catalog.
 
 ## Transition Rules

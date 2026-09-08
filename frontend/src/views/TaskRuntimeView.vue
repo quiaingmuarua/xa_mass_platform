@@ -133,6 +133,24 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
         <p>Task Score 高位窗口的只读投影，以及通过 Kernel Scheduling 的 Task 调试</p>
       </div>
       <div class="task-preview-heading__actions">
+        <label>
+          采样上限
+          <el-input
+            v-model.number="store.taskSampleLimit"
+            :min="1"
+            :max="1000"
+            type="number"
+            :step="1"
+            style="width: 140px"
+            aria-label="Task 采样上限"
+            @change="
+              store.taskSampleLimit = Math.min(
+                1000,
+                Math.max(1, Math.round(Number(store.taskSampleLimit) || 100))
+              )
+            "
+          />
+        </label>
         <el-button :icon="Tools" @click="openWorkbench()">
           Finite Task Workbench
         </el-button>
@@ -149,7 +167,7 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
 
     <el-alert class="runtime-semantics" type="info" :closable="false" show-icon>
       <template #title>
-        当前窗口由 Task Score 从高到低读取，最多 100
+        当前窗口由 Task Score 从高到低读取，采样上限可选 1–1000
         条；它不代表业务优先级，也不承诺全量、分页或稳定成员。 Running Visible
         只表示进入调度可见 Band，不证明正在执行。
       </template>

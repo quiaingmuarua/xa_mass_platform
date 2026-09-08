@@ -75,7 +75,7 @@ public class RuntimeViewController {
     })
     public TaskPreviewResponse previewTasks(
             @RequestBody
-            @NotNull @Min(1) @Max(100) Integer sampleLimit,
+            @NotNull @Min(1) @Max(1000) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewTasks(
@@ -195,7 +195,7 @@ public class RuntimeViewController {
     public WorkerPreviewResponse previewWorkers(
             @PathVariable @NotBlank String workerGroupId,
             @RequestBody
-            @NotNull @Min(1) @Max(100) Integer sampleLimit,
+            @NotNull @Min(1) @Max(1000) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewWorkers(

@@ -103,7 +103,7 @@ records ENTERED, waits outside the journal lock, records COMPLETED and returns
 JSON null through the ordinary Worker Result path. An interrupted wait records
 FAILED. This capability creates no thread, scheduler or runtime registration.
 
-The process-local journal retains at most 65,536 immutable records. Overflow is
+The process-local journal retains at most 655,360 immutable records. Overflow is
 sticky and explicit; it fails the invocation without eviction or reset. The
 loopback-only `GET /lab/v1/execution-witnesses?after=0&limit=100` returns
 `records`, `nextCursor` and `overflowed`. Sequence numbers start at one, each

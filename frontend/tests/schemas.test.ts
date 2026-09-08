@@ -14,6 +14,35 @@ import {
 } from "./fixtures";
 
 describe("Runtime View response schemas", () => {
+  it.each([1, 100, 1000])("accepts Task and Worker preview limit %i", (sampleLimit) => {
+    expect(
+      taskPreviewResponseSchema.safeParse({ ...taskPreview([]), sampleLimit }).success
+    ).toBe(true);
+    expect(
+      workerPreviewResponseSchema.safeParse({ ...preview("group-a", []), sampleLimit })
+        .success
+    ).toBe(true);
+  });
+
+  it.each([0, 1001, 1.5])("rejects Task and Worker preview limit %i", (sampleLimit) => {
+    expect(
+      taskPreviewResponseSchema.safeParse({ ...taskPreview([]), sampleLimit }).success
+    ).toBe(false);
+    expect(
+      workerPreviewResponseSchema.safeParse({ ...preview("group-a", []), sampleLimit })
+        .success
+    ).toBe(false);
+  });
+
+  it("retains the separate WorkerGroup preview limit", () => {
+    expect(
+      workerGroupPreviewResponseSchema.safeParse({
+        ...groupPreview([]),
+        sampleLimit: 101
+      }).success
+    ).toBe(false);
+  });
+
   it("accepts the bounded public preview DTO", () => {
     const value = preview("group-a", [
       worker("group-a", "worker-b"),

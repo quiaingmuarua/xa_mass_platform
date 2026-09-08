@@ -1068,7 +1068,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         );
 
         redis.del(scoreKey);
-        for (int index = 1; index <= 101; index++) {
+        for (int index = 1; index <= 1001; index++) {
             redis.zadd(
                     scoreKey,
                     taskScore(
@@ -1079,10 +1079,13 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                     "task-" + index
             );
         }
-        var bounded = scoreCore.previewScoreStates(100);
-        assertThat(bounded).hasSize(100);
-        assertThat(bounded.getFirst().taskId()).isEqualTo("task-101");
+        var bounded = scoreCore.previewScoreStates(1000);
+        assertThat(bounded).hasSize(1000);
+        assertThat(bounded.getFirst().taskId()).isEqualTo("task-1001");
         assertThat(bounded.getLast().taskId()).isEqualTo("task-2");
+        assertThat(scoreCore.previewScoreStates(1)).hasSize(1);
+        assertThatThrownBy(() -> scoreCore.previewScoreStates(1001))
+                .isInstanceOf(IllegalArgumentException.class);
 
         redis.del(scoreKey);
         redis.zadd(scoreKey, 0.5, "corrupt");

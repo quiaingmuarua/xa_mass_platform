@@ -230,11 +230,16 @@ public final class RedisWorkerResourceCatalog
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
         if (sampleLimit < 1 || sampleLimit > MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT) {
-            throw new IllegalArgumentException("sampleLimit must be between 1 and 100");
+            throw new IllegalArgumentException("sampleLimit must be between 1 and "
+                    + MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT);
         }
-        Map<String, WorkerDescriptor> sampled = getWorkerDescriptors(
-                scoreCore.sampleRegisteredWorkerIds(workerGroupId, sampleLimit)
-        );
+        List<String> ids = scoreCore.sampleRegisteredWorkerIds(workerGroupId, sampleLimit);
+        Map<String, WorkerDescriptor> sampled = new LinkedHashMap<>();
+        for (int offset = 0; offset < ids.size(); offset += MAX_WORKER_BATCH_SIZE) {
+            sampled.putAll(getWorkerDescriptors(ids.subList(
+                    offset, Math.min(offset + MAX_WORKER_BATCH_SIZE, ids.size())
+            )));
+        }
         if (sampled.isEmpty()) {
             return sampled;
         }

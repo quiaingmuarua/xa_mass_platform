@@ -43,7 +43,8 @@ class ScenarioWorkerExecutionWitnessesTest {
         assertThatThrownBy(() -> handler.execute(Map.of("probeToken", "overflow", "delayMillis", 0L)))
                 .isInstanceOf(WorkerException.class);
         assertThat(journal.read(0, 1).get("overflowed")).isEqualTo(true);
-        assertThat(journal.read(65_535, 1).get("nextCursor")).isEqualTo(65_536L);
+        assertThat(journal.read(ScenarioWorkerExecutionWitnesses.CAPACITY - 1, 1).get("nextCursor"))
+                .isEqualTo((long) ScenarioWorkerExecutionWitnesses.CAPACITY);
         assertThatThrownBy(() -> handler.execute(Map.of("probeToken", "invalid", "delayMillis", -1L)))
                 .isInstanceOf(WorkerException.class);
     }

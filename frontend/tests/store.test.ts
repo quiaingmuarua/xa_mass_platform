@@ -27,6 +27,49 @@ describe("runtime viewer store", () => {
     setActivePinia(createPinia());
   });
 
+  it("defaults to 100 and refreshes Task and Worker previews with independent limits", async () => {
+    const previewWorkers = vi.fn(
+      async (workerGroupId: string, sampleLimit: number) => ({
+        ...preview(workerGroupId, []),
+        sampleLimit
+      })
+    );
+    const dataSource = source(previewWorkers);
+    const store = createRuntimeViewerStore(config, dataSource);
+    await store.initializeTaskView();
+    await store.initializeWorkerView();
+    expect(previewWorkers).toHaveBeenLastCalledWith(
+      "group-a",
+      100,
+      expect.any(AbortSignal)
+    );
+    store.taskSampleLimit = 1000;
+    store.workerSampleLimit = 500;
+    await store.refreshTasks();
+    await store.refreshActiveGroup();
+    expect(dataSource.previewTasks).toHaveBeenLastCalledWith(
+      1000,
+      expect.any(AbortSignal)
+    );
+    expect(previewWorkers).toHaveBeenLastCalledWith(
+      "group-a",
+      500,
+      expect.any(AbortSignal)
+    );
+    await store.selectGroup("group-b");
+    store.workerSampleLimit = 1000;
+    await store.selectGroup("group-a");
+    expect(previewWorkers).toHaveBeenLastCalledWith(
+      "group-a",
+      1000,
+      expect.any(AbortSignal)
+    );
+    expect(dataSource.previewWorkerGroups).toHaveBeenCalledWith(
+      100,
+      expect.any(AbortSignal)
+    );
+  });
+
   it("loads only Task Preview for Tasks and lazily loads Groups for the Workbench", async () => {
     const previewWorkers = vi.fn(
       async (workerGroupId: string): Promise<WorkerPreviewResponse> =>

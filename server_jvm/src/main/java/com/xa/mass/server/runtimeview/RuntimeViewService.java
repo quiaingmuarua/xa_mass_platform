@@ -97,9 +97,12 @@ public final class RuntimeViewService {
                     }
                 }
             }
-            Map<String, CandidateRule> candidateRules = candidateIds.isEmpty()
-                    ? Map.of()
-                    : matchingCatalog.loadCandidateRules(candidateIds);
+            Map<String, CandidateRule> candidateRules = new LinkedHashMap<>();
+            for (int offset = 0; offset < candidateIds.size(); offset += WorkerMatchingCatalog.MAX_BATCH_SIZE) {
+                candidateRules.putAll(matchingCatalog.loadCandidateRules(candidateIds.subList(
+                        offset, Math.min(offset + WorkerMatchingCatalog.MAX_BATCH_SIZE, candidateIds.size())
+                )));
+            }
             Map<String, WorkerGroupDescriptor> groups = workerGroupIds.isEmpty()
                     ? Map.of()
                     : workerCatalog.getWorkerGroupDescriptors(
@@ -223,12 +226,13 @@ public final class RuntimeViewService {
                             workerGroupId,
                             sampleLimit
                     );
-            Map<String, WorkerFacts> facts = sampled.isEmpty()
-                    ? Map.of()
-                    : matchingCatalog.loadWorkerFacts(
-                            workerGroupId,
-                            List.copyOf(sampled.keySet())
-                    );
+            List<String> sampledIds = List.copyOf(sampled.keySet());
+            Map<String, WorkerFacts> facts = new LinkedHashMap<>();
+            for (int offset = 0; offset < sampledIds.size(); offset += WorkerMatchingCatalog.MAX_BATCH_SIZE) {
+                facts.putAll(matchingCatalog.loadWorkerFacts(workerGroupId, sampledIds.subList(
+                        offset, Math.min(offset + WorkerMatchingCatalog.MAX_BATCH_SIZE, sampledIds.size())
+                )));
+            }
             var workers = new ArrayList<WorkerView>();
             int unreadableCount = 0;
             for (Map.Entry<String, WorkerDescriptor> entry

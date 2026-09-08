@@ -29,6 +29,7 @@ public interface WorkerScoreCore {
     int SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR;
     int MAX_SERVICEABILITY_BATCH_SIZE = 100;
     int MAX_REGISTRATION_BATCH_SIZE = 100;
+    int MAX_REGISTERED_WORKER_SAMPLE_LIMIT = 1000;
 
     Map<String, @Nullable WorkerScoreState> getScoreStates(
             String homeBucketId,

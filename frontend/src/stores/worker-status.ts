@@ -148,10 +148,16 @@ export function createWorkerStatusStore(dataSource: WorkerStatusDataSource) {
       });
 
       try {
-        const observations = await dataSource.observeNetwork(
-          workers,
-          controller.signal
-        );
+        const observations: WorkerNetworkObservation[] = [];
+        for (let offset = 0; offset < workers.length; offset += 100) {
+          controller.signal.throwIfAborted();
+          observations.push(
+            ...(await dataSource.observeNetwork(
+              workers.slice(offset, offset + 100),
+              controller.signal
+            ))
+          );
+        }
         requireNetworkMatch(workers, observations);
         observations.forEach((observation, index) => {
           const worker = workers[index]!;
@@ -195,11 +201,17 @@ export function createWorkerStatusStore(dataSource: WorkerStatusDataSource) {
       });
 
       try {
-        const observations = await dataSource.observeScheduling(
-          workerGroupId,
-          workers.map((worker) => worker.workerId),
-          controller.signal
-        );
+        const observations: WorkerSchedulingObservation[] = [];
+        for (let offset = 0; offset < workers.length; offset += 100) {
+          controller.signal.throwIfAborted();
+          observations.push(
+            ...(await dataSource.observeScheduling(
+              workerGroupId,
+              workers.slice(offset, offset + 100).map((worker) => worker.workerId),
+              controller.signal
+            ))
+          );
+        }
         requireSchedulingMatch(workerGroupId, workers, observations);
         observations.forEach((observation, index) => {
           const worker = workers[index]!;

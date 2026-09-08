@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /** Worker and Group registration plus caller-bounded resource reads. */
 public interface WorkerResourceCatalog {
 
-    int MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100;
+    int MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 1000;
     int MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT = 100;
     int MAX_WORKER_BATCH_SIZE = 100;
 

@@ -277,6 +277,24 @@ function metricValue(value: number, observed: number): string {
         >
           刷新 Group 样本
         </el-button>
+        <label>
+          采样上限
+          <el-input
+            v-model.number="store.workerSampleLimit"
+            :min="1"
+            :max="1000"
+            type="number"
+            :step="1"
+            style="width: 140px"
+            aria-label="Worker 采样上限"
+            @change="
+              store.workerSampleLimit = Math.min(
+                1000,
+                Math.max(1, Math.round(Number(store.workerSampleLimit) || 100))
+              )
+            "
+          />
+        </label>
         <el-button
           type="primary"
           :icon="RefreshRight"

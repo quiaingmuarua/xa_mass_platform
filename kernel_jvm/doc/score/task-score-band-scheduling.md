@@ -208,7 +208,7 @@ owner no-ops for an INITIAL Task. Its new Item is discovered by Initialization.
 
 ## Runtime Preview
 
-`preview_score_states(1..100)` performs one descending ZSET read. It is a
+`preview_score_states(1..1000)` performs one descending ZSET read. It is a
 bounded operational window, not pagination or full inventory. Server projects
 an INITIAL score as `running-initial` and does not expose its fixed slot
 as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.

@@ -42,6 +42,8 @@ export function createRuntimeViewerStore(
   dataSource: RuntimeViewerDataSource
 ) {
   return defineStore("runtimeViewer", () => {
+    const taskSampleLimit = ref(100);
+    const workerSampleLimit = ref(100);
     const taskPreviewState = reactive<TaskPreviewState>({
       status: "idle",
       stale: false
@@ -106,7 +108,12 @@ export function createRuntimeViewerStore(
     }
 
     function loadTaskPreview(force: boolean): Promise<void> {
-      if (!force && taskPreviewState.status === "ready" && !taskPreviewState.stale) {
+      if (
+        !force &&
+        taskPreviewState.status === "ready" &&
+        !taskPreviewState.stale &&
+        taskPreviewState.preview?.sampleLimit === taskSampleLimit.value
+      ) {
         return Promise.resolve();
       }
       if (!force && taskPreviewPromise !== undefined) {
@@ -124,7 +131,10 @@ export function createRuntimeViewerStore(
 
       const request = (async () => {
         try {
-          const response = await dataSource.previewTasks(100, controller.signal);
+          const response = await dataSource.previewTasks(
+            taskSampleLimit.value,
+            controller.signal
+          );
           if (taskPreviewVersion !== version) {
             return;
           }
@@ -253,15 +263,7 @@ export function createRuntimeViewerStore(
         return;
       }
       activeWorkerGroupId.value = workerGroupId;
-      const state = samples[workerGroupId];
-      if (
-        groupById.value.has(workerGroupId) &&
-        state !== undefined &&
-        state.status === "idle" &&
-        state.sample === undefined
-      ) {
-        await loadSample(workerGroupId, false);
-      }
+      await loadSample(workerGroupId, false);
     }
 
     async function refreshActiveGroup(): Promise<void> {
@@ -277,7 +279,7 @@ export function createRuntimeViewerStore(
       if (state === undefined || !groupById.value.has(workerGroupId)) {
         return;
       }
-      if (!force && state.sample !== undefined) {
+      if (!force && state.sample?.sampleLimit === workerSampleLimit.value) {
         return;
       }
       if (!force && (state.status === "loading" || state.status === "refreshing")) {
@@ -297,7 +299,7 @@ export function createRuntimeViewerStore(
       try {
         const nextSample = await dataSource.previewWorkers(
           workerGroupId,
-          100,
+          workerSampleLimit.value,
           controller.signal
         );
         if (sampleVersions.get(workerGroupId) !== version) {
@@ -334,6 +336,8 @@ export function createRuntimeViewerStore(
 
     return {
       mode: config.mode,
+      taskSampleLimit,
+      workerSampleLimit,
       taskPreviewState,
       entries,
       workerGroupPreviewState,

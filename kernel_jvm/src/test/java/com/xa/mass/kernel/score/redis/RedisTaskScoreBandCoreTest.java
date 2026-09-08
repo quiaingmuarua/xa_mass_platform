@@ -57,7 +57,7 @@ class RedisTaskScoreBandCoreTest {
             );
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> scoreCore.previewScoreStates(101)
+                    () -> scoreCore.previewScoreStates(1001)
             );
         } finally {
             redisClient.shutdown();

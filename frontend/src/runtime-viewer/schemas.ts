@@ -74,7 +74,7 @@ const taskRuntimePreviewEntrySchema = z
 
 export const taskPreviewResponseSchema: z.ZodType<TaskPreviewResponse> = z
   .object({
-    sampleLimit: z.number().int().min(1).max(100),
+    sampleLimit: z.number().int().min(1).max(1000),
     generatedAt: z.string().datetime({ offset: true }),
     entries: z.array(taskRuntimePreviewEntrySchema)
   })
@@ -148,7 +148,7 @@ export const workerViewSchema = z
 export const workerPreviewResponseSchema: z.ZodType<WorkerPreviewResponse> = z
   .object({
     workerGroupId: z.string().min(1),
-    sampleLimit: z.number().int().min(1).max(100),
+    sampleLimit: z.number().int().min(1).max(1000),
     sampledCount: z.number().int().nonnegative(),
     returnedCount: z.number().int().nonnegative(),
     unreadableCount: z.number().int().nonnegative(),

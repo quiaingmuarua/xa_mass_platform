@@ -96,6 +96,12 @@ Score remain separate observation axes:
 connected != bound != schedulable != executing
 ```
 
+Worker and Task preview limits default to 100 and can be set to `1..1000`
+before refreshing. The choice remains in the current browser session. A Worker
+sample larger than 100 is observed in sequential batches of at most 100 per
+status axis; Network and Scheduling still progress independently. WorkerGroup
+Preview keeps its separate 100-Group request.
+
 Network values are `connected`, `disconnected`, or `unknown`. Scheduling values
 are bounded projections such as `hot-score-overdue`, `held-hot`, `paused`,
 `recovery`, `cold`, or `missing`; the browser never receives raw Score. Each
@@ -117,7 +123,7 @@ not fabricate a response.
 
 ## Task page
 
-`Task Runtime Preview` reads the highest `1..100` Task Score coordinates and
+`Task Runtime Preview` reads the highest `1..1000` Task Score coordinates and
 displays their Task and WorkerGroup descriptor projections in Owner order. It
 has no total, cursor, paging, stable-window or completeness meaning. The page
 shows only `Awaiting Review`, `Running Initial`, `Running Visible` and `Closed`;

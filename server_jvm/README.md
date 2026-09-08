@@ -184,7 +184,7 @@ inspect the bounded Task Runtime window:
 POST /api/v1/runtime-view/tasks:preview
 ```
 
-The request selects the highest `1..100` Task Score coordinates. Runtime View
+The request selects the highest `1..1000` Task Score coordinates. Runtime View
 then performs one bounded Task descriptor read and one bounded WorkerGroup
 descriptor read, preserving Task Score Owner order. A caller may select an
 expected Managed Task only by exact Group, allocation mechanism and idle
@@ -329,9 +329,10 @@ Batch-get reads at most 20 explicit IDs in request order. Preview performs one
 positive `HRANDFIELD ... WITHVALUES` for `1..100` random Groups. Preview has no
 cursor, total, stable order, or completeness meaning; unreadable sampled rows
 are counted and omitted from the returned views. Task Preview performs one
-descending `ZREVRANGE ... WITHSCORES` for the highest `1..100` Task Score
-coordinates, then projects Task and WorkerGroup descriptors with two bounded
-batch reads. It exposes only the Owner-defined Score Band, never the raw Score.
+descending `ZREVRANGE ... WITHSCORES` for the highest `1..1000` Task Score
+coordinates, then projects Task and WorkerGroup descriptors through their
+bounded Owner reads. PRECOMPUTED Rules are read from Matching in batches of at
+most 100. It exposes only the Owner-defined Score Band, never the raw Score.
 A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
 meaning, and its order is not business priority or execution evidence.
@@ -409,6 +410,13 @@ does not require these facts. Polling has no current Adapter Properties path,
 so new Polling Workers use ON_DEMAND. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never
 overwrites them, Platform Properties, an active Worker lease or PAUSE.
+
+Task and Worker Preview accept a required direct integer body in `1..1000`.
+The Runtime Viewer defaults to 100 and lets callers change the limit. Worker
+Preview samples one named Group once; Catalog Binding and Matching Properties
+reads use batches of at most 100. These reads have no shared atomic snapshot.
+WorkerGroup Preview retains its separate `1..100` limit; Network and Scheduling
+observation requests also retain their existing 100-identity bounds.
 
 Worker Preview still returns the Kernel-owned identity, Group and Endpoint when
 Matching returns no usable facts. Both Properties fields are then empty Maps,
