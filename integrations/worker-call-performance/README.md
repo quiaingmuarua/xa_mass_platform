@@ -15,6 +15,12 @@ The [Direct load-step attribution report](baselines/2026-09-08-direct-step-attri
 separates the fixed surge and sustained windows, records HTTP configuration
 candidates and preserves the scope of each causal conclusion.
 
+The [RPC mainline attribution report](baselines/2026-09-09-rpc-mainline-attribution.md)
+records three same-version Task/Direct repetitions, independent JFR diagnosis
+and the eight-case acceptance run under unchanged production configuration.
+It separates API response rate from successful calls and retains the 2k Task
+Result-closure failures that prevent enabling the new scheduled composition.
+
 ## RPC Mainline Diagnosis
 
 `--suite rpc-diagnosis` measures the primary `items:call` ON_DEMAND path and
@@ -65,7 +71,15 @@ at most 50 candidates. This independent coexistence witness is not included in
 aligned path-cost ratios. The runner checks exact case membership and continues
 collecting remaining case evidence after a case failure. It never calls this
 single mixed case a complete historical Task suite. Historical `task`, `direct`
-and `direct-diagnosis` suites remain manual with their original fixtures.
+and `direct-diagnosis` suites retain their original fixtures. The new eight-case
+manifest remains manual until fixed Result-closure acceptance passes. The first
+formal RPC run failed its six 2k Task cases; the existing scheduled composition
+therefore stays **Task six cases followed by Direct diagnosis two cases**.
+Case completion logs contain only status, generator limitation and the aggregate
+accepted-Result remainder; unavailable counts remain null. A missing/duplicate
+manifest is reported separately from a complete manifest containing failed cases.
+`completeSuite` records full-suite selection, not successful execution; the final
+status and each case's validation evidence determine acceptance.
 Single/nightly execution has a 45-minute budget; three repetitions have 120
 minutes, including setup and cleanup. Measurements are not shortened to fit.
 
@@ -289,7 +303,9 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
   --suite direct --output-root build/direct-call-performance-proof
 ```
 
-The manual workflow accepts `suite=direct`; scheduled runs use `suite=nightly`.
+The manual workflow accepts `suite=direct`. Scheduled runs retain the accepted
+Task six cases followed by Direct diagnosis two cases while the new RPC manifest
+awaits acceptance.
 Worker count fixes this requested Direct Call scenario rather than introducing
 another correctness/recovery scale tier. Different Worker fixtures and separate
 hosts prevent inferring a Direct-versus-Task speedup ratio from their raw QPS.
@@ -391,7 +407,8 @@ Without an eligible candidate, retain D and record confirmed causes, correlated
 clues and unresolved questions. These thresholds select a finite experiment;
 they do not establish production SLA, physical-device capacity or long soak.
 
-The 03:00 performance nightly now uses the exact eight-case RPC mainline
-composition described above, with one repetition and JFR off. Historical Direct
-replay, JFR, candidate comparisons and same-version repetitions remain manual.
+The 03:00 performance schedule retains Task six cases and Direct diagnosis two
+cases with JFR off. The new eight-case RPC mainline `--suite nightly` is a manual
+acceptance target; enable it only after its fixed acceptance conditions pass.
+Historical Direct replay, JFR, candidate comparisons and same-version repetitions remain manual.
 No extra proof lane or PR QPS gate is introduced. Safe artifacts remain seven days.

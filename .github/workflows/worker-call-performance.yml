@@ -71,10 +71,24 @@ jobs:
       - name: Run independent call performance proof
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
-          CALL_SUITE: ${{ github.event_name == 'schedule' && 'nightly' || inputs.suite || 'task' }}
+          CALL_SUITE: ${{ inputs.suite || 'task' }}
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
           DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
           REPETITIONS: ${{ inputs.repetitions || '1' }}
         run: |
+          # RPC 2k has not passed fixed Result-closure acceptance. Keep the
+          # previously accepted schedule until the new manual manifest passes.
+          if [ "$SCHEDULED_RUN" = true ]; then
+            status=0
+            for suite in task direct-diagnosis; do
+              if ! python integrations/worker-call-performance/run_worker_call_performance.py \
+                --suite "$suite" --diagnostics off \
+                --output-root "build/worker-call-performance-proof/$suite"; then
+                status=1
+              fi
+            done
+            exit "$status"
+          fi
           args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
@@ -89,6 +103,11 @@ jobs:
           if [ -f build/worker-call-performance-proof/evidence/summary.md ]; then
             cat build/worker-call-performance-proof/evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+          for suite in task direct-diagnosis; do
+            if [ -f "build/worker-call-performance-proof/$suite/evidence/summary.md" ]; then
+              cat "build/worker-call-performance-proof/$suite/evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Upload safe performance evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1

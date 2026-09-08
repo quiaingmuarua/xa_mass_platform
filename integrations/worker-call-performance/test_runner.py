@@ -52,9 +52,16 @@ class RunnerTest(unittest.TestCase):
     def test_nightly_manifest_rejects_missing_duplicate_or_failed_cases(self):
         runs = [dict(pair=0, case=case, status="passed") for case in runner.NIGHTLY_CASES]
         runner.require_manifest(runs, runner.NIGHTLY_CASES, 1)
-        for changed in (runs[:-1], runs + [runs[-1]], [dict(pair=0, case="mixed-500", status="passed")],
-                        runs[:-1] + [dict(runs[-1], status="failed")]):
-            with self.assertRaises(RuntimeError): runner.require_manifest(changed, runner.NIGHTLY_CASES, 1)
+        for changed in (runs[:-1], runs + [runs[-1]], [dict(pair=0, case="mixed-500", status="passed")]):
+            with self.assertRaisesRegex(RuntimeError, "Incomplete or duplicate"):
+                runner.require_manifest(changed, runner.NIGHTLY_CASES, 1)
+        failed = runs[:-1] + [dict(runs[-1], status="failed", acceptedResultsAfterDrain={"not_observed": 3})]
+        with self.assertRaisesRegex(RuntimeError, "validation failed: repetition 1: mixed-500"):
+            runner.require_manifest(failed, runner.NIGHTLY_CASES, 1)
+        summary = runner.markdown_summary(dict(suite="nightly", status="failed", referenceHost=True,
+                                               completeSuite=True, runs=failed))
+        self.assertIn("3 accepted Items remain unobserved", summary)
+        self.assertIn("Full suite selected: True", summary)
 
     def test_jfr_pair_is_explicit_and_cannot_enter_the_formal_three_pair_schedule(self):
         self.assertEqual(("comparison", runner.ORDER), runner.execution_mode("immutable", "off", False))

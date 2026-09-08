@@ -243,12 +243,13 @@ def resource_summary(path, started, seconds=30):
 def markdown_summary(final):
     if final.get("suite") in ("rpc-diagnosis", "nightly"):
         lines = ["# RPC mainline attribution", "",
-            f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Complete manifest: {final['completeSuite']}.", "",
+            f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Full suite selected: {final['completeSuite']}.", "",
             "Same-version observations under unchanged policy. Each main case uses 1000 Workers; mixed-500 retains its original 100 Workers and 30 seconds.", "",
             "| Repetition | Case | Window | Sent / planned | HTTP responses/s | Original success | Successful cohort/s | Accepted success after drain | Success p99 ms | Limited |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for row in final["runs"]:
-            for name, window in {"whole": row, **row.get("windows", {})}.items():
+            windows = [("whole", row)] + [(name, row["windows"][name]) for name in ("surge", "sustained") if name in row.get("windows", {})]
+            for name, window in windows:
                 if "sent" not in window:
                     lines.append(f"| {row['pair'] + 1} | {row['case']} | {name}: {row['status']} | — | — | — | — | — | — | — |")
                     continue
@@ -257,6 +258,13 @@ def markdown_summary(final):
                     f"| {window['httpResponsesDuringWindowPerSecond']:.2f} | {window['successRate']:.2%} "
                     f"| {window['successfulCohortPerSecond']:.2f} | {drained} "
                     f"| {window['successfulCallLatencyMillis']['p99']:.2f} | {window['generatorLimited']} |")
+        failed = [row for row in final["runs"] if row["status"] != "passed"]
+        if failed:
+            lines += ["", "Case validation failures:", ""]
+            for row in failed:
+                unresolved = row.get("acceptedResultsAfterDrain", {}).get("not_observed", 0)
+                reason = f"{unresolved} accepted Items remain unobserved after the fixed drain budget" if unresolved else "see case-summary.json for the failed prerequisite or evidence check"
+                lines.append(f"- Repetition {row['pair'] + 1}, {row['case']}: {reason}.")
         lines += ["", "Original success uses sent requests; drain uses HTTP-accepted Items and never rewrites call latency. "
             "Planned cohorts and responses arriving within a window are separate. Limited windows cannot quantify capacity. "
             "Pass means the finite measurement contract passed, not a QPS SLA or an A/B improvement. "
@@ -598,8 +606,11 @@ def validate_repetitions(suite, repetitions, baseline, diagnostics, diagnostic_p
 def require_manifest(runs, cases, repetitions):
     expected = Counter((rep, case) for rep in range(repetitions) for case in cases)
     actual = Counter((run["pair"], run["case"]) for run in runs)
-    if actual != expected or any(run["status"] != "passed" for run in runs):
+    if actual != expected:
         raise RuntimeError("Incomplete or duplicate performance case manifest")
+    failed = [f"repetition {run['pair'] + 1}: {run['case']}" for run in runs if run["status"] != "passed"]
+    if failed:
+        raise RuntimeError("Performance case validation failed: " + ", ".join(failed))
 
 
 def main():
@@ -680,6 +691,9 @@ def main():
                     result["pair"] = pair
                     runs.append(result)
                     write_json(output / "evidence/summary.json", final)
+                    print("performance result " + json.dumps({"repetition": pair + 1, "version": version,
+                        "case": case, "status": result["status"], "generatorLimited": result.get("generatorLimited"),
+                        "unobservedAcceptedAfterDrain": result.get("acceptedResultsAfterDrain", {}).get("not_observed")}), flush=True)
                     if result["status"] != "passed" and options.suite not in ("rpc-diagnosis", "nightly"):
                         raise RuntimeError(f"Case {case} failed")
         if options.suite in ("rpc-diagnosis", "nightly"):
