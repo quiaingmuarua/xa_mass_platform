@@ -388,7 +388,12 @@ def comparison(runs):
             success_delta = b["successRate"] - a["successRate"]
             pa, pb = a["successfulCallLatencyMillis"], b["successfulCallLatencyMillis"]
             p99_ratio = pb["p99"] / pa["p99"] if pa["p99"] > 0 and pa["samples"] and pb["samples"] else None
-            regressed = success_delta < -.05 - 1e-12 or (abs(success_delta) <= .05 + 1e-12 and p99_ratio is not None and p99_ratio > 1.20)
+            completion_regressed = success_delta < -.05 - 1e-12
+            if p99_ratio is None and not completion_regressed:
+                observations.append({"pair": pair, "successRateDelta": success_delta,
+                                     "p99Ratio": None, "reason": "Insufficient successful latency samples"})
+                continue
+            regressed = completion_regressed or (abs(success_delta) <= .05 + 1e-12 and p99_ratio is not None and p99_ratio > 1.20)
             comparable += 1
             regressions += int(regressed)
             observations.append({"pair": pair, "successRateDelta": success_delta, "p99Ratio": p99_ratio, "regressed": regressed})

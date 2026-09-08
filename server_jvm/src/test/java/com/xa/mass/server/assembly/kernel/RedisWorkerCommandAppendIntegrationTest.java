@@ -4,7 +4,6 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.delegatesTo;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -18,7 +17,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
@@ -63,7 +61,7 @@ class RedisWorkerCommandAppendIntegrationTest {
     }
 
     @ParameterizedTest @ValueSource(ints = {0, 1, 100, 101})
-    void appendCostIsOneTimePlusOneCommandPerHundred(int count) {
+    void currentAppendCostIsOneTimePlusOneInsertAttemptPerWorker(int count) {
         var input = commands(count);
         var calls = new CopyOnWriteArrayList<String>();
         var listener = new CommandListener() {
@@ -83,7 +81,7 @@ class RedisWorkerCommandAppendIntegrationTest {
             else assertThat(result.values()).containsOnly(WorkerCommandAppendStatus.APPENDED);
             var expected = new ArrayList<String>();
             if (count > 0) expected.add("TIME");
-            for (int offset = 0; offset < count; offset += 100) expected.add("EVAL");
+            for (int offset = 0; offset < count; offset++) expected.add("HSETNX");
             assertThat(calls).containsExactlyElementsOf(expected);
         } finally {
             client.removeListener(listener);
@@ -120,7 +118,7 @@ class RedisWorkerCommandAppendIntegrationTest {
         assertThat(owner.consumeWorkerCommands("adapter", 100)).isEqualTo(replacements);
     }
 
-    @Test void invalidLastMemberCannotWriteAnEarlierChunk() {
+    @Test void invalidLastMemberCannotWriteEarlierCommands() {
         var input = commands(101);
         input.put("w100", null);
         assertThatThrownBy(() -> owner.appendWorkerCommands("adapter", input))
@@ -133,7 +131,7 @@ class RedisWorkerCommandAppendIntegrationTest {
         assertThat(redis.exists(key())).isZero();
     }
 
-    @Test void encodingFailureCannotWriteAnEarlierChunk() {
+    @Test void encodingFailureCannotWriteEarlierCommands() {
         WorkerDeliveryCodec failing = mock(WorkerDeliveryCodec.class, delegatesTo(codec));
         var input = commands(101);
         var last = input.get("w100");
@@ -161,19 +159,18 @@ class RedisWorkerCommandAppendIntegrationTest {
         assertThat(owner.consumeWorkerCommand("adapter", "w0")).isEqualTo(replacement);
     }
 
-    @Test void closedConnectionBeforeSecondChunkLeavesFirstChunkApplied() {
+    @Test void closedConnectionAfterOneHundredWritesLeavesEarlierCommandsApplied() {
         try (var failingConnection = client.connect(StringCodec.UTF8)) {
             var intercepted = intercept(failingConnection);
-            var scripts = new AtomicInteger();
+            var writes = new AtomicInteger();
             doAnswer(invocation -> {
-                if (scripts.incrementAndGet() == 2) failingConnection.close();
+                if (writes.incrementAndGet() == 101) failingConnection.close();
                 try {
                     return invocation.getMethod().invoke(failingConnection.sync(), invocation.getRawArguments());
                 } catch (java.lang.reflect.InvocationTargetException error) {
                     throw error.getCause();
                 }
-            }).when(intercepted).eval(anyString(), any(ScriptOutputType.class),
-                    any(String[].class), any(String[].class));
+            }).when(intercepted).hsetnx(anyString(), anyString(), anyString());
             try (var tested = interceptedOwner(intercepted)) {
                 assertThatThrownBy(() -> tested.appendWorkerCommands("adapter", commands(101)))
                         .isInstanceOf(RuntimeException.class);

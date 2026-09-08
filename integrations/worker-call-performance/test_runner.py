@@ -44,6 +44,18 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual("no_detected_regression", runner.comparison(runs)["status"])
         self.assertEqual("inconclusive", runner.comparison([])["status"])
 
+    def test_missing_success_latencies_are_inconclusive_unless_completion_clearly_regressed(self):
+        runs = complete_runs()
+        for row in runs:
+            row["successRate"] = 0
+            row["successfulCallLatencyMillis"] = {"samples": 0, "p99": 0}
+        self.assertEqual("inconclusive", runner.comparison(runs)["status"])
+        for row in runs:
+            if row["version"] == "A":
+                row["successRate"] = .9
+                row["successfulCallLatencyMillis"] = {"samples": 900, "p99": 100}
+        self.assertEqual("regressed", runner.comparison(runs)["status"])
+
     def test_proc_parsing_handles_spaces_in_process_name(self):
         stat = "5 (java worker thread) " + " ".join(["S"] + ["0"] * 10 + ["250", "150"] + ["0"] * 10)
         row = runner.parse_proc("Threads:\t8\nVmRSS:\t1024 kB\n", stat, 19, 100)

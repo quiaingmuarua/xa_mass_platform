@@ -62,13 +62,13 @@ replacement is preserved, but consumed commands have no pending/ack state.
 Expired or corrupt mailbox values are removed without delivery.
 
 Authoritative append reads Redis TIME once and validates and encodes the complete
-input before writing. It then uses one same-key Lua HSET batch per at most 100
-Workers, returning APPENDED for a new field and REPLACED for an occupied field
-in caller iteration order. Empty input sends no commands; nonempty input costs
-`1 + ceil(workerCount / 100)` client commands. This bounds each script without
-restricting the existing caller input size. A failed later batch leaves earlier
-batches applied; an ambiguous response may follow writes. There is no whole-call
-transaction, retry, compensation deletion or additional pending state.
+input before writing. It attempts HSETNX for each Worker, returning APPENDED for
+a new field and REPLACED for an occupied field in caller iteration order.
+Occupied fields are collected and overwritten with one final same-key HSET.
+Empty input sends no commands; nonempty input costs `1 + workerCount`, plus one
+command if any field needs replacement. Earlier writes may survive a later
+failure or an ambiguous response. The complete input has no rollback guarantee;
+there is no automatic retry, compensation deletion or additional pending state.
 
 The mailbox ABI and operation contract are defined by
 [WorkerCommandRuntime](../../kernel_jvm/src/main/java/com/xa/mass/kernel/delivery/WorkerCommandRuntime.java)

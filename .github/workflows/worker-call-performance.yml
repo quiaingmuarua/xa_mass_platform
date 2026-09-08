@@ -1,6 +1,8 @@
 name: Worker Call Performance
 
 on:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Asia/Shanghai
   workflow_dispatch:
     inputs:
       baseline_ref:
@@ -19,7 +21,7 @@ jobs:
   worker-call-performance:
     name: Worker Call Performance
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.baseline_ref != '' && 120 || 45 }}
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '' && 120 || 45 }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:

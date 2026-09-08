@@ -19,15 +19,6 @@ import java.util.Map;
 public final class RedisWorkerCommandRuntime
         implements WorkerCommandRuntime, AutoCloseable {
 
-    private static final int APPEND_BATCH_SIZE = 100;
-    private static final String APPEND = """
-            local results = {}
-            for index = 1, #ARGV, 2 do
-                table.insert(results, redis.call('HSET', KEYS[1], ARGV[index], ARGV[index + 1]))
-            end
-            return results
-            """;
-
     private static final String OFFER = """
             local results = {}
             for index = 1, #ARGV, 2 do
@@ -123,27 +114,21 @@ public final class RedisWorkerCommandRuntime
 
         LinkedHashMap<String, WorkerCommandAppendStatus> results =
                 new LinkedHashMap<>();
-        List<Map.Entry<String, String>> entries = new ArrayList<>(encoded.entrySet());
-        for (int offset = 0; offset < entries.size(); offset += APPEND_BATCH_SIZE) {
-            int end = Math.min(offset + APPEND_BATCH_SIZE, entries.size());
-            String[] arguments = new String[(end - offset) * 2];
-            for (int index = offset; index < end; index++) {
-                arguments[(index - offset) * 2] = entries.get(index).getKey();
-                arguments[(index - offset) * 2 + 1] = entries.get(index).getValue();
+        LinkedHashMap<String, String> replacements = new LinkedHashMap<>();
+        encoded.forEach((workerId, command) -> {
+            boolean inserted = commands().hsetnx(key, workerId, command);
+            results.put(
+                    workerId,
+                    inserted
+                            ? WorkerCommandAppendStatus.APPENDED
+                            : WorkerCommandAppendStatus.REPLACED
+            );
+            if (!inserted) {
+                replacements.put(workerId, command);
             }
-            List<?> raw = commands().eval(APPEND, ScriptOutputType.MULTI, new String[]{key}, arguments);
-            if (raw == null || raw.size() != end - offset) {
-                throw new IllegalStateException("Redis Worker command append returned an invalid response");
-            }
-            for (int index = offset; index < end; index++) {
-                Object value = raw.get(index - offset);
-                if (!(value instanceof Number number)
-                        || (number.longValue() != 0 && number.longValue() != 1)) {
-                    throw new IllegalStateException("Redis Worker command append returned an invalid response");
-                }
-                results.put(entries.get(index).getKey(), number.longValue() == 1
-                        ? WorkerCommandAppendStatus.APPENDED : WorkerCommandAppendStatus.REPLACED);
-            }
+        });
+        if (!replacements.isEmpty()) {
+            commands().hset(key, replacements);
         }
         return Collections.unmodifiableMap(results);
     }

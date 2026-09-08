@@ -5,6 +5,11 @@ and saturation behavior of the existing Task Call path, including coexistence
 with one finite PRECOMPUTED Task. The 100-Worker world fixes measurement conditions;
 it is not another correctness, recovery or scale tier.
 
+The [2026-09-08 reference baseline](baselines/2026-09-08-baseline.md) records the
+first three-pair comparison. Its same-key append candidate was withdrawn after
+targeted-call regression; the lane and Owner proofs remain. The baseline retains
+the rejected patch for isolated replay and does not describe active production behavior.
+
 ## Owners And World
 
 The Python runner owns fresh Docker Redis containers, Runtime/Host/Harness
@@ -23,7 +28,7 @@ persistent Properties. Bootstrap is a prerequisite, not a second identity proof.
 
 All Java processes use `-Xms256m -Xmx1g -XX:+ExitOnOutOfMemoryError`.
 The evidence records JVM options, server overrides, complete configuration sources and hashes,
-Git versions, OS/kernel/CPU inventory and the Redis image identity. DEFAULT
+Git versions, OS/kernel, CPU count and the Redis image identity. DEFAULT
 production queue, retry and Task Call settings remain represented by the checked
 profile and explicit runner configuration. Private inventory, process logs and
 capability files are excluded from CI artifacts.
@@ -133,6 +138,8 @@ ordinary Proof Gate. JVM Contracts compiles this module and runs deterministic
 Harness/runner tests. Full performance stays nightly/manual; other lanes retain
 their existing claims. Single-version and comparison workflows have 45-minute
 and 120-minute budgets, with safe evidence retained for seven days.
+The nightly schedule is 03:00 Asia/Shanghai (19:00 UTC) and uses the current
+default-branch version; manual runs can select an immutable comparison baseline.
 
 The lane does not claim cross-machine network latency, production SLA, Handler
 concurrency, exact executor identity, Task fairness, process-fault recovery,

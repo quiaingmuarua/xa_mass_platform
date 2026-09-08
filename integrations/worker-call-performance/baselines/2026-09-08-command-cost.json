@@ -3,6 +3,8 @@
   "claim": "Redis Worker Command append client command count",
   "baselineCommit": "733b5d693420f7f0ba9215477f0fe02b5278d5d1",
   "candidateCommit": "83ca04b37968c9fdc53e3e3e6f494609852ca6fb",
+  "candidateDisposition": "Withdrawn after the targeted-500 reference regression; production retains baseline append cost.",
+  "referenceReport": "2026-09-08-baseline.md",
   "environment": {
     "client": "Windows, Java 21.0.1, Lettuce CommandListener",
     "redis": "WSL Ubuntu 22.04, Redis 7.4.10",
