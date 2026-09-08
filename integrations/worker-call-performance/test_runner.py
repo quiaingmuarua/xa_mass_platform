@@ -82,6 +82,31 @@ class RunnerTest(unittest.TestCase):
             self.assertIn("Resource ceiling", sampler.failure)
             self.assertEqual(1, sampler.counts["server"])
 
+    def test_resource_summary_excludes_startup_and_keeps_redis_commands_aggregate(self):
+        rows = []
+        for timestamp, cpu, memory in ((0, 0, 99999), (1000, 2, 100), (3000, 3, 150), (10000, 10, 99999)):
+            for role in ("server", "host", "harness"):
+                rows.append(dict(role=role, epochMillis=timestamp, cpuSeconds=cpu, rssBytes=memory,
+                                 nativeThreads=20, openFileDescriptors=40))
+            rows.append(dict(role="redis", epochMillis=timestamp, cpuUserSeconds=cpu, cpuSystemSeconds=0,
+                             usedMemory=memory, usedMemoryRss=memory,
+                             commandStats={"cmdstat_hset": {"calls": timestamp}}))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "samples.jsonl"
+            path.write_text("\n".join(json.dumps(row) for row in rows))
+            result = runner.resource_summary(path, 1000, 3)
+            self.assertEqual(.5, result["server"]["meanCpuCores"])
+            self.assertEqual(150, result["server"]["peakRssBytes"])
+            self.assertEqual(2000, result["redis"]["aggregateCommandCallDeltas"]["cmdstat_hset"])
+            with self.assertRaises(RuntimeError):
+                runner.resource_summary(path, 20000)
+
+    def test_failed_bootstrap_summary_does_not_invent_measurements(self):
+        value = runner.markdown_summary(dict(status="failed", referenceHost=True, completeSuite=True,
+                runs=[dict(pair=0, version="A", case="any-100", status="failed")]))
+        self.assertIn("failed", value)
+        self.assertNotIn("100.00%", value)
+
 
 if __name__ == "__main__":
     unittest.main()

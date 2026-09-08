@@ -39,6 +39,9 @@ final class LoadedRecoveryWorkload {
             tasks.add(task);
             appendBatchCount += task.appendBatchCount();
         }
+        int connected = scanNetwork(options, api, activeWorkerIds, "pre-approval-workload");
+        requireNetworkThreshold(options, connected);
+        long nextNetworkScan = System.nanoTime() + options.scanInterval().toNanos();
         for (TaskTracker task : tasks) {
             api.approveTask(task.taskId());
         }
@@ -46,8 +49,42 @@ final class LoadedRecoveryWorkload {
                 options,
                 List.copyOf(tasks),
                 List.copyOf(activeWorkerIds),
-                appendBatchCount
+                appendBatchCount,
+                connected,
+                nextNetworkScan
         );
+    }
+
+    private static int scanNetwork(
+            LoadedRecoveryOptions options,
+            LoadedRecoveryApiClient api,
+            List<String> activeWorkerIds,
+            String checkpoint
+    ) {
+        int connected = 0;
+        for (int offset = 0; offset < activeWorkerIds.size(); offset += APPEND_PAGE_SIZE) {
+            List<String> chunk = activeWorkerIds.subList(
+                    offset, Math.min(offset + APPEND_PAGE_SIZE, activeWorkerIds.size()));
+            for (String state : api.observeNetwork(options.endpointManagerId(), chunk).values()) {
+                if ("connected".equals(state)) connected++;
+            }
+        }
+        LoadedRecoveryEvidence.appendTimeline(options.timelineFile(), Map.of(
+                "atEpochMillis", System.currentTimeMillis(),
+                "stage", options.stage().wireValue(),
+                "event", "network-scan",
+                "checkpoint", checkpoint,
+                "activeWorkers", activeWorkerIds.size(),
+                "connectedWorkers", connected
+        ));
+        return connected;
+    }
+
+    private static void requireNetworkThreshold(LoadedRecoveryOptions options, int connected) {
+        if (connected < options.minimumRetainedConverged()) {
+            throw new IllegalStateException(
+                    "Active Worker connections fell below the loaded operation threshold");
+        }
     }
 
     static boolean progressDeadlineExceeded(
@@ -130,7 +167,9 @@ final class LoadedRecoveryWorkload {
                 LoadedRecoveryOptions options,
                 List<TaskTracker> tasks,
                 List<String> activeWorkerIds,
-                int appendBatchCount
+                int appendBatchCount,
+                int initiallyConnected,
+                long nextNetworkScan
         ) {
             this.options = options;
             this.tasks = tasks;
@@ -142,9 +181,9 @@ final class LoadedRecoveryWorkload {
             );
             this.started = System.nanoTime();
             this.overallDeadline = started + options.taskResultWait().toNanos();
-            this.nextNetworkScan = started;
+            this.nextNetworkScan = nextNetworkScan;
             this.lastProgress = started;
-            this.minimumConnected = activeWorkerIds.size();
+            this.minimumConnected = initiallyConnected;
         }
 
         MutationCheckpoint awaitMutationCheckpoint(LoadedRecoveryApiClient api) {
@@ -335,46 +374,14 @@ final class LoadedRecoveryWorkload {
             }
             int connected = scanNetwork(api);
             minimumConnected = Math.min(minimumConnected, connected);
-            if (connected < options.minimumRetainedConverged()) {
-                throw new IllegalStateException(
-                        "Active Worker connections fell below the loaded "
-                                + "operation threshold"
-                );
-            }
+            requireNetworkThreshold(options, connected);
             nextNetworkScan = System.nanoTime()
                     + options.scanInterval().toNanos();
         }
 
         private int scanNetwork(LoadedRecoveryApiClient api) {
-            int connected = 0;
-            for (int offset = 0;
-                    offset < activeWorkerIds.size();
-                    offset += APPEND_PAGE_SIZE) {
-                List<String> chunk = activeWorkerIds.subList(
-                        offset,
-                        Math.min(
-                                offset + APPEND_PAGE_SIZE,
-                                activeWorkerIds.size()
-                        )
-                );
-                for (String state : api.observeNetwork(
-                        options.endpointManagerId(),
-                        chunk
-                ).values()) {
-                    if ("connected".equals(state)) {
-                        connected++;
-                    }
-                }
-            }
-            LoadedRecoveryEvidence.appendTimeline(options.timelineFile(), Map.of(
-                    "atEpochMillis", System.currentTimeMillis(),
-                    "stage", options.stage().wireValue(),
-                    "event", "network-scan",
-                    "checkpoint", "loaded-recovery-workload",
-                    "activeWorkers", activeWorkerIds.size(),
-                    "connectedWorkers", connected
-            ));
-            return connected;
+            return LoadedRecoveryWorkload.scanNetwork(
+                    options, api, activeWorkerIds, "loaded-recovery-workload");
         }
 
         private Map<String, String> requireTaskScoreBands(LoadedRecoveryApiClient api) {

@@ -88,7 +88,8 @@ class LoadedRecoveryWorkloadTest {
                 workload.awaitCompletion(client, recovery, true);
 
         assertThat(createdTasks).hasValue(10);
-        assertThat(operations.indexOf("approve-task-01")).isEqualTo(20);
+        assertThat(operations.indexOf("approve-task-01")).isEqualTo(21);
+        assertThat(operations.get(20)).isEqualTo("network");
         assertThat(operations.subList(0, 20))
                 .allMatch(entry -> !entry.startsWith("approve-"));
         for (int ordinal = 1; ordinal <= 10; ordinal++) {
@@ -151,6 +152,24 @@ class LoadedRecoveryWorkloadTest {
     }
 
     @Test
+    void networkBaselinePrecedesApprovalAndDoesNotDelayTheFirstMutationObservation() {
+        var workload = LoadedRecoveryWorkload.start(
+                options(100, Duration.ofDays(1)), client, List.of("worker-a"));
+        workload.awaitMutationCheckpoint(client);
+        assertThat(operations).containsOnlyOnce("network");
+        assertThat(operations.indexOf("network")).isLessThan(operations.indexOf("approve-task-01"));
+    }
+
+    @Test
+    void disconnectedBaselineRejectsBeforeApprovingAnyTask() {
+        disconnectedNetworkScans.set(1);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> LoadedRecoveryWorkload.start(
+                options(100), client, List.of("worker-a")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("connection");
+        assertThat(operations).noneMatch(operation -> operation.startsWith("approve-"));
+    }
+
+    @Test
     void hardRestartRejectsAFirstSnapshotWithoutBacklog() {
         LoadedRecoveryWorkload.InFlightWorkload workload =
                 LoadedRecoveryWorkload.start(
@@ -200,6 +219,10 @@ class LoadedRecoveryWorkloadTest {
     }
 
     private LoadedRecoveryOptions options(int itemsPerTask) {
+        return options(itemsPerTask, Duration.ofMillis(10));
+    }
+
+    private LoadedRecoveryOptions options(int itemsPerTask, Duration scanInterval) {
         return new LoadedRecoveryOptions(
                 LoadedRecoveryOptions.Stage.INITIAL_CONTRACTION,
                 "proof-a",
@@ -214,7 +237,7 @@ class LoadedRecoveryWorkloadTest {
                 itemsPerTask,
                 Duration.ofSeconds(10),
                 Duration.ZERO,
-                Duration.ofMillis(10),
+                scanInterval,
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(2),
                 temporaryDirectory.resolve("topology.json"),
@@ -230,6 +253,7 @@ class LoadedRecoveryWorkloadTest {
     }
 
     private void networkObservation(HttpExchange exchange) throws IOException {
+        operations.add("network");
         List<Object> requested = parseArray(exchange);
         Map<String, Object> states = new LinkedHashMap<>();
         boolean disconnected = disconnectedNetworkScans.getAndUpdate(

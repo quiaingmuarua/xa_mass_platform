@@ -200,6 +200,55 @@ def configuration_sources(root):
     return {path: (root / path).read_text(encoding="utf-8") for path in files}
 
 
+def resource_summary(path, started, seconds=30):
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    result = {}
+    for role in ("server", "host", "harness", "redis"):
+        window = [row for row in rows if row["role"] == role
+                  and started <= row["epochMillis"] <= started + seconds * 1000]
+        if len(window) < 2:
+            raise RuntimeError(f"Measurement resource evidence incomplete for {role}")
+        first, last = window[0], window[-1]
+        covered = (last["epochMillis"] - first["epochMillis"]) / 1000
+        if covered <= 0:
+            raise RuntimeError("Resource sample clock did not advance")
+        values = {"samples": len(window), "coveredSeconds": covered}
+        if role == "redis":
+            values.update(peakUsedMemoryBytes=max(row["usedMemory"] for row in window),
+                peakRssBytes=max(row["usedMemoryRss"] for row in window),
+                meanCpuCores=((last["cpuUserSeconds"] + last["cpuSystemSeconds"])
+                              - (first["cpuUserSeconds"] + first["cpuSystemSeconds"])) / covered,
+                aggregateCommandCallDeltas={name: value["calls"] - first["commandStats"].get(name, {}).get("calls", 0)
+                                           for name, value in last["commandStats"].items()})
+        else:
+            values.update(meanCpuCores=(last["cpuSeconds"] - first["cpuSeconds"]) / covered,
+                peakRssBytes=max(row["rssBytes"] for row in window),
+                peakNativeThreads=max(row["nativeThreads"] for row in window),
+                peakFileDescriptors=max(row["openFileDescriptors"] for row in window))
+        result[role] = values
+    return result
+
+
+def markdown_summary(final):
+    lines = ["# Worker Call Performance", "", f"Status: **{final['status']}**. "
+             f"Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
+             "| Pair | Version | Case | Sent / planned | Response success | Result success after drain | Success p99 ms | Generator limited |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for row in final["runs"]:
+        if "sent" not in row:
+            lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['case']} | {row['status']} | — | — | — | — |")
+            continue
+        lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['case']} | {row['sent']} / {row['planned']} "
+                     f"| {row['successRate']:.2%} | {row['acceptedSuccessRateAfterDrain']:.2%} "
+                     f"| {row['successfulCallLatencyMillis']['p99']:.2f} | {row['generatorLimited']} |")
+    if "comparison" in final:
+        lines.extend(["", f"Comparison: **{final['comparison']['status']}**. No detected regression does not establish speedup."])
+    lines.extend(["", "Response success uses all sent requests; drained success uses HTTP-accepted requests. "
+                  "Follow-up observations are excluded from original call latency. "
+                  "Raw safe samples, resource windows and aggregate Redis diagnostics accompany this summary.", ""])
+    return "\n".join(lines)
+
+
 def run_case(root, case, output, version, deadline):
     import redis
     output.mkdir(parents=True)
@@ -298,6 +347,12 @@ def run_case(root, case, output, version, deadline):
             if sampler.failure:
                 result.update(status="failed", resourceFailure=sampler.failure)
             result["resourceSampleCounts"] = dict(sampler.counts)
+            if "measurementStartedEpochMillis" in result:
+                try:
+                    result["measurementResources"] = resource_summary(evidence / "process-resources.jsonl",
+                                                                       result["measurementStartedEpochMillis"])
+                except Exception as error:
+                    result.update(status="failed", resourceSummaryFailure=type(error).__name__ + ": " + str(error))
         for process in reversed(tuple(processes.values())):
             try:
                 stop_process(process)
@@ -415,6 +470,7 @@ def main():
                 # Build products are ignored; preserve the checkout if unexpected edits prevent removal.
                 final["baselineCheckoutRetained"] = True
         write_json(output / "evidence/summary.json", final)
+        (output / "evidence/summary.md").write_text(markdown_summary(final), encoding="utf-8")
     print(json.dumps({"status": final["status"], "runs": len(runs), "evidence": str(output / "evidence/summary.json")}), flush=True)
     return 0 if final["status"] == "passed" else 1
 

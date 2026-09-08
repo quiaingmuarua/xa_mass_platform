@@ -66,7 +66,11 @@ Kernel scheduling truth even though the Lab snapshot no longer exposes a
 stopped run's `workerId`.
 
 Each loaded workload creates ten Tasks and appends 5,000 valid Items to each
-in 50 requests. All ten are nonterminal when mutation occurs, with 1..25,000
+in 50 requests. A complete active-network scan establishes the required
+connection baseline immediately before approval; subsequent scans retain their
+normal interval from that observation. This keeps the initial Fleet scan outside
+the finite mutation window while retaining its threshold and sampled minimum.
+All ten are nonterminal when mutation occurs, with 1..25,000
 successes and at least 25,000 unresolved Items. Missing that window fails rather
 than reshaping the workload. The first successful Result must appear within
 120 seconds; after progress starts, a global 90-second success gap outside the

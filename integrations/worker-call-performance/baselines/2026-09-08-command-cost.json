@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "claim": "Redis Worker Command append client command count",
+  "baselineCommit": "733b5d693420f7f0ba9215477f0fe02b5278d5d1",
+  "candidateCommit": "83ca04b37968c9fdc53e3e3e6f494609852ca6fb",
+  "environment": {
+    "client": "Windows, Java 21.0.1, Lettuce CommandListener",
+    "redis": "WSL Ubuntu 22.04, Redis 7.4.10",
+    "warmupExcluded": true,
+    "scope": "Unique test_command_append scopes; owner cleanup after each case"
+  },
+  "newSlotCases": [
+    {"workers": 0, "baselineCommands": 0, "candidateCommands": 0},
+    {"workers": 1, "baselineCommands": 2, "candidateCommands": 2},
+    {"workers": 100, "baselineCommands": 101, "candidateCommands": 2},
+    {"workers": 101, "baselineCommands": 102, "candidateCommands": 3}
+  ],
+  "method": "Run the candidate's warmed-connection cost test against each production owner. The isolated baseline checkout changes only the test's expected command sequence to TIME then N HSETNX calls. Its production code remains at the pinned baseline.",
+  "baselineTestResult": {
+    "tests": 4, "failures": 0, "errors": 0, "skipped": 0,
+    "timestampUtc": "2026-09-08T08:14:26.683Z",
+    "xmlSha256": "d76f2cbd88a73a54d0754bade40fcef9b49c17d2f1a477641e0b40075980aa4d"
+  },
+  "candidateTestResult": {
+    "tests": 10, "failures": 0, "errors": 0, "skipped": 0,
+    "timestampUtc": "2026-09-08T08:08:45.796Z",
+    "xmlSha256": "23f91370d00df96687e28144f6b46fda4ddbfddb625c7146f35236e0c6a87b2c"
+  },
+  "limits": [
+    "Counts describe client commands after connection warmup; internal Lua HSET calls are not additional client round trips.",
+    "This artifact records operation cost. End-to-end success and latency require the independent reference comparison.",
+    "Candidate occupancy, exact-consume interleaving, complete prewrite validation and failure after the first chunk passed their separate assertions."
+  ]
+}

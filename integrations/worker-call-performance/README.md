@@ -92,6 +92,9 @@ process. CPU/RSS are recorded without absolute SLA thresholds. Redis INFO
 stats/commandstats/memory/cpu are aggregate cost diagnostics only; they include
 internal script commands and are not a client round-trip count. Real Redis Owner
 tests independently own the append operation's client-command budget.
+Measurement summaries select resource samples inside the 30-second window,
+record the covered duration, and report mean CPU cores and peak RSS/threads/FDs.
+The complete resource stream also retains startup and drain samples for the caps.
 
 The runner stops writers and sampling, bounds process shutdown, and removes only
 its exact Docker container. Containers are disposable; no shared Redis cleanup,
