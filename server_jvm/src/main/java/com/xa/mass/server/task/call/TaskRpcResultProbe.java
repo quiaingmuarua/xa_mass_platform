@@ -99,7 +99,8 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
                             taskId,
                             messageIds
                     );
-            TaskRpcStageEvent.batch(started, "RESULT_PROBE", messageIds.size(), results.size(), false);
+            if (started != 0) TaskRpcStageEvent.batch(started, "RESULT_PROBE", messageIds.size(),
+                    (int) results.values().stream().filter(java.util.Objects::nonNull).count(), false);
             for (TaskRpcWaitRegistry.ProbeRequest request : requests) {
                 TaskItemResult result = results.get(request.messageId());
                 if (result != null) {

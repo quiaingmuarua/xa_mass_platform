@@ -82,8 +82,11 @@ Per-Item events use SHA-256 of UTF-8 `taskId + NUL + messageId`; the low six bit
 of the first byte select 1/64. Only the offline reader joins these hashes, within
 the Server JVM. It retains at most 10,000 keys and 64 events per key and exports
 aggregates, not per-Item traces. Duplicate, missing, retried, overlapping and
-overflowed chains stay explicit; ambiguous chains are excluded from interval
-quantiles. Stage edges bracket Owner calls, not Redis commit instants. No
+overflowed chains stay explicit. Each interval uses its own two unique,
+nonoverlapping edges; a missing HTTP observation does not discard its earlier
+dispatch or Result intervals. Timeout positions use only unambiguous same-JVM
+edge ordering; missing evidence remains unclassified. Stage edges bracket Owner
+calls, not Redis commit instants. No
 cross-process monotonic-clock subtraction or percentile subtraction is valid.
 Post-measurement Result evidence may close a sampled chain without changing the
 original HTTP outcome. Recording coverage and sampled-chain completeness are

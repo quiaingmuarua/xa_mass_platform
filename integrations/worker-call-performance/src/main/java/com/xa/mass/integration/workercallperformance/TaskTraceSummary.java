@@ -29,8 +29,14 @@ final class TaskTraceSummary {
         var stages = new TreeMap<String, Long>();
         var missing = new TreeMap<String, Long>();
         var gaps = new LinkedHashMap<String, List<Long>>();
+        var excludedGaps = new LinkedHashMap<String, Map<String, Long>>();
         for (String gap : List.of("initializedEndToClaimStart", "publishEndToResultWriteStart", "resultWriteEndToObservedStart"))
+        {
             gaps.put(gap, new ArrayList<>());
+            excludedGaps.put(gap, new TreeMap<>());
+        }
+        var timeoutPositions = new TreeMap<String, Long>();
+        long failedMarkerKeys = 0;
         long cohorts = 0, complete = 0, ambiguous = 0, overlaps = 0, timedOut = 0, overflowCohorts = 0;
         for (var entry : keys.entrySet()) {
             var events = entry.getValue();
@@ -39,12 +45,30 @@ final class TaskTraceSummary {
             cohorts++;
             if (truncated.contains(entry.getKey())) { overflowCohorts++; continue; }
             if (events.stream().anyMatch(p -> p.stage.equals("WAIT_TIMEOUT"))) timedOut++;
+            if (events.stream().anyMatch(p -> p.stage.equals("FAILED_RESULT_STORED"))) failedMarkerKeys++;
             var phases = new LinkedHashMap<String, List<Point>>();
             for (String stage : CHAIN) {
                 var observations = events.stream().filter(p -> p.stage.equals(stage) && !p.failed).distinct().toList();
                 phases.put(stage, observations);
                 if (!observations.isEmpty()) stages.merge(stage, 1L, Long::sum);
                 else missing.merge(stage, 1L, Long::sum);
+            }
+            addGap("initializedEndToClaimStart", phases.get("ITEM_INITIALIZED"), phases.get("CLAIMED"), gaps, excludedGaps);
+            addGap("publishEndToResultWriteStart", phases.get("COMMAND_PUBLISHED"), phases.get("RESULT_STORED"), gaps, excludedGaps);
+            addGap("resultWriteEndToObservedStart", phases.get("RESULT_STORED"), phases.get("OBSERVED"), gaps, excludedGaps);
+            var timeouts = events.stream().filter(p -> p.stage.equals("WAIT_TIMEOUT")).distinct().toList();
+            if (!timeouts.isEmpty()) {
+                String position = "incomplete_or_ambiguous";
+                if (timeouts.size() == 1) {
+                    var timeout = timeouts.getFirst();
+                    var claims = phases.get("CLAIMED");
+                    var results = phases.get("RESULT_STORED");
+                    if (claims.size() == 1 && timeout.to < claims.getFirst().from) position = "before_claim_started";
+                    else if (results.size() == 1 && results.getFirst().to < timeout.from) position = "after_result_write_returned";
+                    else if (claims.size() == 1 && claims.getFirst().to < timeout.from
+                            && results.size() == 1 && timeout.to < results.getFirst().from) position = "after_claim_before_result_write";
+                }
+                timeoutPositions.merge(position, 1L, Long::sum);
             }
             if (phases.values().stream().anyMatch(p -> p.size() > 1)) { ambiguous++; continue; }
             if (phases.values().stream().anyMatch(List::isEmpty)) continue;
@@ -57,15 +81,13 @@ final class TaskTraceSummary {
                 overlaps++; continue;
             }
             complete++;
-            gaps.get("initializedEndToClaimStart").add(claim.from - init.to);
-            gaps.get("publishEndToResultWriteStart").add(result.from - publish.to);
-            gaps.get("resultWriteEndToObservedStart").add(observed.from - result.to);
         }
         var durations = new LinkedHashMap<String, Object>();
         gaps.forEach((name, values) -> durations.put(name, Map.of("samples", values.size(),
                 "p50Millis", CallLoad.percentile(values, .5) / 1e6,
                 "p95Millis", CallLoad.percentile(values, .95) / 1e6,
-                "p99Millis", CallLoad.percentile(values, .99) / 1e6)));
+                "p99Millis", CallLoad.percentile(values, .99) / 1e6,
+                "excludedKeys", excludedGaps.get(name))));
         var result = new LinkedHashMap<String, Object>();
         result.put("sampleAlgorithm", "SHA-256(UTF-8(taskId + NUL + messageId)); low six bits of first byte zero (1/64)");
         result.put("retainedKeys", keys.size());
@@ -76,6 +98,8 @@ final class TaskTraceSummary {
         result.put("retryOrRepeatedStageKeys", ambiguous);
         result.put("overlappingIntervalKeys", overlaps);
         result.put("timedOutWaiterKeys", timedOut);
+        result.put("timeoutPositions", timeoutPositions);
+        result.put("failedResultMarkerKeys", failedMarkerKeys);
         result.put("truncatedMeasuredKeys", overflowCohorts);
         result.put("duplicateEvents", duplicateEvents);
         result.put("keyOverflowEvents", keyOverflowEvents);
@@ -83,7 +107,15 @@ final class TaskTraceSummary {
         result.put("invalidEvents", invalid);
         result.put("complete", cohorts > 0 && complete == cohorts && keyOverflowEvents == 0 && eventOverflow == 0 && invalid == 0 && duplicateEvents == 0);
         result.put("intervals", durations);
-        result.put("meaning", "Same Server JVM observation edges only, not Redis commit timestamps. Missing/retried/overlapping chains are counted and excluded from duration quantiles. End-to-end success and drain remain Harness evidence; stages after the HTTP timeout may still arrive.");
+        result.put("meaning", "Same Server JVM observation edges only, not Redis commit timestamps. Each interval uses its own two unique nonoverlapping edges; missing/retried pairs are excluded explicitly. A missing HTTP observation does not discard earlier stage intervals. End-to-end success and drain remain Harness evidence; stages after the HTTP timeout may still arrive.");
         return result;
+    }
+
+    private static void addGap(String name, List<Point> before, List<Point> after,
+                               Map<String, List<Long>> gaps, Map<String, Map<String, Long>> excluded) {
+        String reason = before.isEmpty() || after.isEmpty() ? "missing" : before.size() != 1 || after.size() != 1 ? "repeated" :
+                after.getFirst().from < before.getFirst().to ? "overlapping" : null;
+        if (reason == null) gaps.get(name).add(after.getFirst().from - before.getFirst().to);
+        else excluded.get(name).merge(reason, 1L, Long::sum);
     }
 }
