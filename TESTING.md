@@ -175,7 +175,11 @@ Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
 Service container. A proof that needs a Server or Scenario Host owns those
 process lifecycles and stops all writers before a local cleanup attempt.
 
-The Runtime Boundary starts one Java Server context. Worker Correctness and
+The Runtime Boundary starts the Java Server for its full traversal. A separate
+finite HTTP configuration test starts isolated contexts for the default pool,
+prestarted pool and virtual execution; real HTTP and Redis establish Direct
+success, occupied-slot rejection, timeout, late-report rejection and Owner
+shutdown, with exactly one servlet completion per request. Worker Correctness and
 Worker Convergence Health start Server and Scenario Host as independent
 processes. Worker Loaded Capacity + Recovery Stability is a separate
 nightly/manual workflow and is not part of the pull-request Proof Gate.

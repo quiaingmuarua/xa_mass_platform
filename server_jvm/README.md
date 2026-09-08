@@ -651,6 +651,13 @@ inapplicable for virtual-thread execution. Diagnostics do not change admission,
 callback ordering or failure classification. The finite measurement and safe
 export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#direct-load-step-diagnosis).
 
+Runtime Boundary checks the actual request thread and executor under the default
+200/10 pool, the 200/200 pool and virtual execution. Its finite HTTP/Redis test
+preserves observed success, occupied-slot rejection, unobserved timeout, rejection
+of late Reports and Owner shutdown. All six requests per configuration emit one
+initial and one completion observation. This is a correctness check, not load
+or capacity evidence.
+
 Server owns the Worker Delivery HTTP and owner-provider composition. It
 constructs active Adapters only through the finite public Netty factory.
 
