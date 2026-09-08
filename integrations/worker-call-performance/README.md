@@ -15,6 +15,86 @@ The [Direct load-step attribution report](baselines/2026-09-08-direct-step-attri
 separates the fixed surge and sustained windows, records HTTP configuration
 candidates and preserves the scope of each causal conclusion.
 
+## RPC Mainline Diagnosis
+
+`--suite rpc-diagnosis` measures the primary `items:call` ON_DEMAND path and
+uses Direct Call as a control for the shared HTTP/Transport path. It freezes
+production configuration, including the 100-Item per-Task check bound and the
+DEFAULT 100ms completion-relative Dispatch interval. No tuning parameter is added.
+
+| Case | API and selector | Offered calls/s |
+| --- | --- | --- |
+| `rpc-any-500` | Task ANY | 500 |
+| `rpc-any-1000` | Task ANY | 1,000 |
+| `rpc-any-2000` | Task ANY | 2,000 |
+| `rpc-targeted-1000` | Task explicit Worker, round-robin | 1,000 |
+| `rpc-targeted-2000` | Task explicit Worker, round-robin | 2,000 |
+| `direct-step-1000` | Direct explicit Worker, round-robin | 1,000 |
+| `direct-step-2000` | Direct explicit Worker, round-robin | 2,000 |
+
+Every main case uses Ubuntu 24.04 with four logical CPUs, Java 21, Redis 7.4.10,
+one Group, 1,000 real connections in one Scenario Host JVM and one WebSocket
+Adapter. Task calls share the Group's managed ON_DEMAND Task. Sorted known IDs,
+64-byte MD5 input, single-item requests, one-second HTTP wait, five-second client
+timeout and 4,096 in-flight bound match across the paths. Each case starts fresh,
+warms at 100/s for 20 seconds and closes warmup before continuous 120-second
+measurement. It reports whole, first-30-second and last-90-second cohorts plus
+five-second buckets, with separate actual-response flux and generator limits.
+Task TTL remains 120 seconds and public Result follow-up remains bounded at 180
+seconds. Direct has no follow-up. Missing accepted Task Results fail the case;
+observed failed Results are counted separately from successful throughput.
+
+`--repetitions 3` runs the same immutable version on one host, with JFR off.
+Each repetition starts with ANY 500. At both 1k and 2k, the path orders are
+Direct/targeted/ANY, targeted/ANY/Direct, then ANY/Direct/targeted. This is an
+attribution experiment, not a production candidate comparison; baseline-ref
+and diagnostic-pair are rejected. One repetition also supports separate JFR.
+
+```bash
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite rpc-diagnosis --repetitions 3 --output-root build/rpc-repetitions
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite rpc-diagnosis --diagnostics jfr --output-root build/rpc-jfr
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite nightly --output-root build/rpc-nightly
+```
+
+The nightly manifest contains these seven main cases plus **only** the original
+`mixed-500`: 100 Workers, 30 seconds, 50,000 PRECOMPUTED Items, 100ms Handler,
+at most 50 candidates. This independent coexistence witness is not included in
+aligned path-cost ratios. The runner checks exact case membership and continues
+collecting remaining case evidence after a case failure. It never calls this
+single mixed case a complete historical Task suite. Historical `task`, `direct`
+and `direct-diagnosis` suites remain manual with their original fixtures.
+Single/nightly execution has a 45-minute budget; three repetitions have 120
+minutes, including setup and cleanup. Measurements are not shortened to fit.
+
+Default-off Owner JFR adds submission/activation, Item HASH and Score
+initialization, Dispatch round/check/deferral, candidate/confirm/claim/publish,
+TASK Result consume/process/store/release and Task RPC admission/probe/observation
+stages. It uses existing arguments and returned counts, never another Redis
+read, queue, public endpoint, Worker label or Score interpretation. Probe
+lateness records each activated batch's oldest actual DelayQueue due time (the
+batch maximum, not per-Item latency); probe frequency is
+not modeled as a fixed batch size divided by 100ms.
+
+Per-Item events use SHA-256 of UTF-8 `taskId + NUL + messageId`; the low six bits
+of the first byte select 1/64. Only the offline reader joins these hashes, within
+the Server JVM. It retains at most 10,000 keys and 64 events per key and exports
+aggregates, not per-Item traces. Duplicate, missing, retried, overlapping and
+overflowed chains stay explicit; ambiguous chains are excluded from interval
+quantiles. Stage edges bracket Owner calls, not Redis commit instants. No
+cross-process monotonic-clock subtraction or percentile subtraction is valid.
+Post-measurement Result evidence may close a sampled chain without changing the
+original HTTP outcome. Recording coverage and sampled-chain completeness are
+reported separately. Raw JFR remains private and bounded to 256 MiB per process.
+
+The structural single-Task budget is at most `100 / (0.1 + round_seconds)` checked
+Items per second for continuously full rounds. Checked Items, assignment attempts
+and unique successful calls differ. The budget proof exercises real scheduling
+decisions with a controlled clock/executor, including a slow single-flight round;
+it does not assert a platform SLA or a Worker-count capacity tier.
+
 ## Owners And World
 
 The Python runner owns fresh Docker Redis containers, Runtime/Host/Harness
@@ -25,7 +105,7 @@ Inventory generation reuses `worker_proof_support`, without transferring any
 existing lane's primary claim.
 
 Reference runs use Ubuntu 24.04, Java 21, Redis 7.4.10 and the explicitly selected
-DEFAULT Pacer preset. One Group contains 100 Java Workers behind one WebSocket
+DEFAULT Pacer preset. The historical Task suite has one Group with 100 Java Workers behind one WebSocket
 Adapter. Host assembly uses existing MD5 and 100ms Lab delay capabilities. Every
 case has a fresh Redis container, scope, Server and Host. Bootstrap waits for all
 100 known Lab identities, connected routes, HOT scheduling observations and
@@ -174,8 +254,8 @@ case uses fresh processes and Redis, DEFAULT Pacer, the same fixed 64-byte MD5
 input, 20 seconds of warmup at 100/s, and 30 seconds of measurement. Direct wait
 is 1 second and client timeout is 5 seconds; maximum in-flight remains 4,096.
 The 5,000/s case plans 150,000 calls, within the common scheduler's 300,000-call
-bound. The original six Task fixtures and their nightly selection remain
-unchanged. Preparation checks the exact 1,000 Lab identities and bounded public
+bound. The original six Task fixtures remain available manually.
+Preparation checks the exact 1,000 Lab identities and bounded public
 network pages of 100; all warmup calls must succeed, covering every Worker twice.
 Connected routes are checked again before and after measurement. Scheduling and
 Properties readiness are not Direct Call admission prerequisites.
@@ -206,7 +286,7 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
   --suite direct --output-root build/direct-call-performance-proof
 ```
 
-The manual workflow accepts `suite=direct`; scheduled runs retain `suite=task`.
+The manual workflow accepts `suite=direct`; scheduled runs use `suite=nightly`.
 Worker count fixes this requested Direct Call scenario rather than introducing
 another correctness/recovery scale tier. Different Worker fixtures and separate
 hosts prevent inferring a Direct-versus-Task speedup ratio from their raw QPS.
@@ -308,12 +388,7 @@ Without an eligible candidate, retain D and record confirmed causes, correlated
 clues and unresolved questions. These thresholds select a finite experiment;
 they do not establish production SLA, physical-device capacity or long soak.
 
-The 03:00 performance nightly runs the Task six cases and these two Direct cases
-serially, with JFR off. The workflow's manual `suite=nightly` replays this exact
-composition; the runner retains one invocation per suite. A failed Task suite
-does not suppress the Direct suite, and either failure fails the combined job.
-The attribution report records reference acceptance before mainline activation.
-Original Direct five-rate replay,
-JFR and three-pair comparisons remain manual. No extra proof lane or PR QPS gate
-is introduced; single-version/comparison budgets remain 45/120 minutes and safe
-artifacts remain seven days.
+The 03:00 performance nightly now uses the exact eight-case RPC mainline
+composition described above, with one repetition and JFR off. Historical Direct
+replay, JFR, candidate comparisons and same-version repetitions remain manual.
+No extra proof lane or PR QPS gate is introduced. Safe artifacts remain seven days.

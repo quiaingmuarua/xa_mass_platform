@@ -79,6 +79,7 @@ public final class HttpCallDiagnosticsFilter extends OncePerRequestFilter {
     }
 
     static String operation(String path) {
+        if (path.startsWith("/api/v1/tasks/") && path.endsWith("/items:call")) return "ITEMS_CALL";
         if (!path.startsWith("/api/v1/worker-delivery/endpoint-managers/")) return null;
         if (path.endsWith("/direct-calls")) return "DIRECT_CALL";
         if (path.endsWith("/commands:consume")) return "COMMAND_CONSUME";

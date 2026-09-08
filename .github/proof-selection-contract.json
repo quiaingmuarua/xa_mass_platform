@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/TaskTraceSummary.java",
+      "lanes": ["jvm_contracts"],
+      "reason": "Bounded same-JVM sampled joins are Harness contracts; aligned RPC load and repetitions remain exclusively in worker_call_performance."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/DispatchStageEvent.java",
+      "lanes": ["jvm_contracts", "redis_owner", "runtime_boundary", "worker_dynamic_matching", "worker_convergence_health", "android_emulator", "runtime_distribution"],
+      "reason": "Default-off Dispatch observation stays in its Owner and preserves all existing path-selected scheduling and delivery claims."
+    },
+    {
       "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/JfrDiagnostics.java",
       "lanes": ["jvm_contracts"],
       "reason": "Offline JFR whitelist and bounded aggregation are deterministic contracts; full diagnostic performance stays in its own lane."

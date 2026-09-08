@@ -19,4 +19,9 @@
   <event name="xa.mass.HttpInitial"><setting name="enabled">true</setting></event>
   <event name="xa.mass.HttpCompletion"><setting name="enabled">true</setting></event>
   <event name="xa.mass.HttpExecutor"><setting name="enabled">true</setting><setting name="period">1 s</setting></event>
+  <event name="xa.mass.TaskSubmission"><setting name="enabled">true</setting></event>
+  <event name="xa.mass.TaskStorage"><setting name="enabled">true</setting></event>
+  <event name="xa.mass.TaskDispatch"><setting name="enabled">true</setting></event>
+  <event name="xa.mass.TaskResult"><setting name="enabled">true</setting></event>
+  <event name="xa.mass.TaskRpc"><setting name="enabled">true</setting></event>
 </configuration>

@@ -108,7 +108,11 @@ final class CallLoad {
             return samples.stream().filter(s -> s.planned >= started + fromNanos && s.planned < started + toNanos).toList();
         }
         Map<String, Object> summary() {
-            var summary = responseSummary();
+            return summary(0, windowNanos);
+        }
+        Map<String, Object> summary(long fromNanos, long toNanos) {
+            var summary = responseSummary(fromNanos, toNanos);
+            var samples = cohort(fromNanos, toNanos);
             summary.put("accepted", samples.stream().filter(Sample::accepted).count());
             summary.put("unresolvedAcceptedIds", samples.stream().filter(s -> s.accepted() && s.observed.equals("not_observed"))
                     .map(s -> s.id).toList());
@@ -121,6 +125,13 @@ final class CallLoad {
                     .filter(s -> s.accepted() && s.observed.equals("succeeded")).count() / (double) accepted);
             summary.put("acceptedUnobservedAfterResponses", samples.stream()
                     .filter(s -> s.outcome == Outcome.NOT_OBSERVED).count());
+            summary.put("http429", samples.stream().filter(s -> s.httpStatus == 429).count());
+            summary.put("unknownSubmissions", samples.stream().filter(s -> s.outcome == Outcome.UNKNOWN).count());
+            summary.put("clientTimeouts", samples.stream().filter(s -> "client-timeout".equals(s.detail)).count());
+            summary.put("acceptedResultsAfterDrain", Map.of(
+                    "succeeded", samples.stream().filter(s -> s.accepted() && s.observed.equals("succeeded")).count(),
+                    "failed", samples.stream().filter(s -> s.accepted() && s.observed.equals("failed")).count(),
+                    "not_observed", samples.stream().filter(s -> s.accepted() && s.observed.equals("not_observed")).count()));
             summary.put("followupObservationMillis", percentiles(samples.stream()
                     .filter(s -> s.observedAfterWaitMillis >= 0).map(s -> s.observedAfterWaitMillis * 1_000_000).toList()));
             return summary;
@@ -161,6 +172,9 @@ final class CallLoad {
                     } catch (ProtocolFailure error) {
                         sample.httpStatus = 200;
                         sample.outcome = Outcome.PROTOCOL_ERROR;
+                    } catch (java.net.http.HttpTimeoutException error) {
+                        sample.outcome = Outcome.UNKNOWN;
+                        sample.detail = "client-timeout";
                     } catch (InterruptedException error) {
                         Thread.currentThread().interrupt();
                         sample.outcome = Outcome.UNKNOWN;

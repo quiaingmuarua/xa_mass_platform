@@ -102,6 +102,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
 
         assertThat(registration.taskId())
                 .isEqualTo("scenario-rpc-phone-tools");
+        assertThat(service.register("phone-tools").taskId()).isEqualTo(registration.taskId());
         assertThat(registration.newlyRegistered()).isFalse();
         verify(taskRuntime, never()).createTask(any());
     }

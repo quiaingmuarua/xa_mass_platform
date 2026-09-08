@@ -337,9 +337,12 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return orderedResults(orderedItems.keySet(), results);
         }
 
+        long storedAt = TaskStorageEvent.start();
         try {
             commands().hset(itemsKey(taskId), records);
+            TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), records.size(), false);
         } catch (RuntimeException error) {
+            TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), 0, true);
             records.keySet().forEach(messageId -> results.put(
                     messageId,
                     new TaskItemAppendResult(TaskItemAppendStatus.RETRYABLE)
@@ -347,6 +350,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return orderedResults(orderedItems.keySet(), results);
         }
 
+        long initializedAt = TaskStorageEvent.start();
         try {
             itemScoreBand.initializeItemScores(
                     taskId,
@@ -367,7 +371,10 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                         );
                     }
             ));
+            if (initializedAt != 0) TaskStorageEvent.items(initializedAt, "ITEM_INITIALIZED", taskId, dueMillis.keySet(),
+                    (int) results.values().stream().filter(r -> r.status() == TaskItemAppendStatus.APPENDED).count(), false);
         } catch (RuntimeException error) {
+            TaskStorageEvent.items(initializedAt, "ITEM_INITIALIZED", taskId, dueMillis.keySet(), 0, true);
             records.keySet().forEach(messageId -> results.put(
                     messageId,
                     new TaskItemAppendResult(TaskItemAppendStatus.RETRYABLE)

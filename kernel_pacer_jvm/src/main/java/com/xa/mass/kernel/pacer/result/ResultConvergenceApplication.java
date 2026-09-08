@@ -252,6 +252,7 @@ final class ResultConvergenceApplication {
             }
             LaneRuntime runtime = runtimes.get(lane.id());
             List<DeliveryReport> batch;
+            long consumedAt = ResultStageEvent.start();
             try {
                 batch = lane.consumer().consume(lane.batchLimit());
                 if (batch == null) {
@@ -259,7 +260,11 @@ final class ResultConvergenceApplication {
                             "Result lane consumer returned null"
                     );
                 }
+                if (lane.id() != ResultLaneId.NETWORK_EVIDENCE)
+                    ResultStageEvent.batch(consumedAt, "TASK_RESULT_CONSUME", lane.batchLimit(), batch.size(), false);
             } catch (RuntimeException failure) {
+                if (lane.id() != ResultLaneId.NETWORK_EVIDENCE)
+                    ResultStageEvent.batch(consumedAt, "TASK_RESULT_CONSUME", lane.batchLimit(), 0, true);
                 deferLane(runtime);
                 logFailure(lane, "consume", 0, failure);
                 continue;

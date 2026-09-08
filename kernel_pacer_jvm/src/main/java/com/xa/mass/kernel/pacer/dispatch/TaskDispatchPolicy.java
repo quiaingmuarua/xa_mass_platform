@@ -89,11 +89,13 @@ final class TaskDispatchPolicy {
         Set<String> roundWorkerIds = new LinkedHashSet<>();
         int published = 0;
         for (ObservedTask task : tasks) {
+            long checkedAt = DispatchStageEvent.start();
             Map<String, TaskItemScoreObservation> observed =
                     itemScores.acquireItemScoreCandidates(
                             task.taskId(),
                             PER_TASK_DISPATCH_LIMIT
                     );
+            DispatchStageEvent.items(checkedAt, "DISPATCH_CHECK", task.taskId(), observed.keySet(), observed.size(), false);
             List<String> loadIds = observed.entrySet().stream()
                     .filter(entry -> entry.getValue().remainingBudget() > 0)
                     .map(Map.Entry::getKey)
@@ -111,10 +113,12 @@ final class TaskDispatchPolicy {
                     .map(Map.Entry::getKey)
                     .toList();
             if (!failedIds.isEmpty()) {
+                long failureStarted = DispatchStageEvent.start();
                 taskRuntime.storeTaskItemFailedResults(
                         task.taskId(),
                         failedIds
                 );
+                DispatchStageEvent.items(failureStarted, "FAILED_RESULT_STORED", task.taskId(), failedIds, failedIds.size(), false);
                 itemScores.promoteItemOutcomes(
                         task.taskId(),
                         failedIds,
@@ -139,6 +143,7 @@ final class TaskDispatchPolicy {
             }
 
             try {
+                long selectedAt = DispatchStageEvent.start();
                 Map<String, HeldWorkerCandidate> assignments =
                         assignments(
                                 task,
@@ -147,6 +152,7 @@ final class TaskDispatchPolicy {
                                 claimUntilMillis,
                                 roundWorkerIds
                         );
+                DispatchStageEvent.items(selectedAt, "CANDIDATES", task.taskId(), claimableIds, assignments.size(), false);
                 List<TaskAssignmentDispatcher.AssignmentAttempt> attempts =
                         new ArrayList<>(assignments.size());
                 assignments.forEach((messageId, worker) -> attempts.add(

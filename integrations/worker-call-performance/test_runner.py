@@ -29,6 +29,33 @@ def diagnosis_runs():
 
 
 class RunnerTest(unittest.TestCase):
+    def test_rpc_rotates_only_paths_and_retains_the_exact_seven_case_manifest(self):
+        expected = ("direct-step", "rpc-targeted", "rpc-any")
+        for repetition in range(3):
+            cases = runner.repetition_cases(repetition)
+            self.assertEqual("rpc-any-500", cases[0])
+            self.assertCountEqual(runner.RPC_CASES, cases)
+            order = expected[repetition:] + expected[:repetition]
+            self.assertEqual(tuple(f"{p}-1000" for p in order), cases[1:4])
+            self.assertEqual(tuple(f"{p}-2000" for p in order), cases[4:7])
+        self.assertEqual(runner.RPC_CASES + ("mixed-500",), runner.SUITES["nightly"])
+        self.assertEqual(8, len(set(runner.NIGHTLY_CASES)))
+
+    def test_rpc_formal_repetitions_cannot_be_candidate_or_diagnostic_comparisons(self):
+        runner.validate_repetitions("rpc-diagnosis", 3, None, "off", False)
+        runner.validate_repetitions("rpc-diagnosis", 1, None, "jfr", False)
+        for args in (("rpc-diagnosis", 3, None, "jfr", False), ("nightly", 3, None, "off", False),
+                     ("task", 3, None, "off", False), ("rpc-diagnosis", 1, "baseline", "off", False),
+                     ("nightly", 1, None, "jfr", False)):
+            with self.assertRaises(ValueError): runner.validate_repetitions(*args)
+
+    def test_nightly_manifest_rejects_missing_duplicate_or_failed_cases(self):
+        runs = [dict(pair=0, case=case, status="passed") for case in runner.NIGHTLY_CASES]
+        runner.require_manifest(runs, runner.NIGHTLY_CASES, 1)
+        for changed in (runs[:-1], runs + [runs[-1]], [dict(pair=0, case="mixed-500", status="passed")],
+                        runs[:-1] + [dict(runs[-1], status="failed")]):
+            with self.assertRaises(RuntimeError): runner.require_manifest(changed, runner.NIGHTLY_CASES, 1)
+
     def test_jfr_pair_is_explicit_and_cannot_enter_the_formal_three_pair_schedule(self):
         self.assertEqual(("comparison", runner.ORDER), runner.execution_mode("immutable", "off", False))
         self.assertEqual(("diagnostic_pair", (("A", "B"),)), runner.execution_mode("immutable", "jfr", True))

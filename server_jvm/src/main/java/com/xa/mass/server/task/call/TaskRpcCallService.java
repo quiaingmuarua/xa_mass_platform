@@ -1,6 +1,7 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -84,8 +85,11 @@ public final class TaskRpcCallService {
             );
         }
         TaskCallSubmissionResult submission;
+        long submissionStarted = TaskRpcStageEvent.start();
+        boolean submitted = false;
         try {
             submission = taskCallSubmission.submit(taskId, submittedItems);
+            submitted = submission != null && submission.status() == TaskCallSubmissionStatus.SUBMITTED;
         } catch (RuntimeException error) {
             throw new ServerException(
                     ServerErrorCode.TASK_DATA_UNAVAILABLE,
@@ -93,6 +97,8 @@ public final class TaskRpcCallService {
                     null,
                     error
             );
+        } finally {
+            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
         }
         if (submission == null) {
             throw new ServerException(
@@ -104,13 +110,16 @@ public final class TaskRpcCallService {
         }
         requireAcceptedSubmission(submission, messageIds);
 
+        long immediateStarted = TaskRpcStageEvent.start();
         Map<String, TaskItemResult> observed = loadImmediateResults(
                 taskId,
                 messageIds
         );
+        TaskRpcStageEvent.batch(immediateStarted, "IMMEDIATE_PROBE", messageIds.size(), observed.size(), false);
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 new DeferredResult<>(timeoutMillis);
         if (allObserved(messageIds, observed)) {
+            TaskRpcStageEvent.items(immediateStarted, "OBSERVED", taskId, observed.keySet(), observed.size(), false);
             deferred.setResult(TaskItemResultResponse.fromObservedResults(
                     messageIds,
                     observed

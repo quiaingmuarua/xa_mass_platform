@@ -106,6 +106,7 @@ final class TaskAssignmentDispatcher {
             );
         }
 
+        long confirmedAt = DispatchStageEvent.start();
         Map<String, WorkerScoreTransitionResult> verified =
                 workerScores.confirmActiveHotScoreLeases(
                         task.descriptor().workerGroupId(),
@@ -119,6 +120,7 @@ final class TaskAssignmentDispatcher {
                 verifiedScores.put(workerId, result.score());
             }
         });
+        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM", observedWorkers.size(), verifiedScores.size(), false);
 
         LinkedHashMap<String, Long> claimScores = new LinkedHashMap<>();
         attemptsByMessageId.forEach((messageId, attempt) -> {
@@ -130,6 +132,7 @@ final class TaskAssignmentDispatcher {
         if (claimScores.isEmpty()) {
             return 0;
         }
+        long claimedAt = DispatchStageEvent.start();
         Map<String, TaskItemScoreBandCore.TaskItemScoreTransitionResult>
                 claims = itemScores.rewriteObservedItemScores(
                         task.taskId(),
@@ -137,6 +140,12 @@ final class TaskAssignmentDispatcher {
                         claimUntilMillis,
                         -1
                 );
+        if (claimedAt != 0) {
+            var claimedIds = claims.entrySet().stream().filter(e -> e.getValue().status() == TaskItemScoreTransitionStatus.TRANSITIONED
+                    && e.getValue().score() != null).map(Map.Entry::getKey).toList();
+            DispatchStageEvent.batch(claimedAt, "ITEM_CLAIM", claimScores.size(), claimedIds.size(), false);
+            DispatchStageEvent.items(claimedAt, "CLAIMED", task.taskId(), claimedIds, claimedIds.size(), false);
+        }
 
         LinkedHashMap<String, Map<String, DeliveryCommand>> byAdapter =
                 new LinkedHashMap<>();
@@ -175,6 +184,7 @@ final class TaskAssignmentDispatcher {
         int published = 0;
         for (Map.Entry<String, Map<String, DeliveryCommand>> adapter
                 : byAdapter.entrySet()) {
+            long appendedAt = DispatchStageEvent.start();
             Map<String, WorkerCommandAppendStatus> results =
                     workerCommands.appendWorkerCommands(
                             adapter.getKey(),
@@ -186,6 +196,14 @@ final class TaskAssignmentDispatcher {
                                     || status
                                     == WorkerCommandAppendStatus.REPLACED)
                     .count();
+            if (appendedAt != 0) {
+                var publishedIds = attemptsByMessageId.entrySet().stream().filter(e -> {
+                    var status = results.get(e.getValue().worker().workerId());
+                    return status == WorkerCommandAppendStatus.APPENDED || status == WorkerCommandAppendStatus.REPLACED;
+                }).map(Map.Entry::getKey).toList();
+                DispatchStageEvent.batch(appendedAt, "COMMAND_APPEND", adapter.getValue().size(), publishedIds.size(), false);
+                DispatchStageEvent.items(appendedAt, "COMMAND_PUBLISHED", task.taskId(), publishedIds, publishedIds.size(), false);
+            }
         }
         return published;
     }

@@ -27,7 +27,11 @@ from integrations.worker_proof_support.scenario_inventory import materialize_inv
 CASES = ("any-100", "any-500", "any-1000", "any-2000", "targeted-500", "mixed-500")
 DIRECT_CASES = ("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000")
 DIAGNOSIS_CASES = ("direct-step-1000", "direct-step-2000")
-SUITES = {"task": CASES, "direct": DIRECT_CASES, "direct-diagnosis": DIAGNOSIS_CASES}
+RPC_TASK_CASES = ("rpc-any-500", "rpc-any-1000", "rpc-any-2000", "rpc-targeted-1000", "rpc-targeted-2000")
+RPC_CASES = RPC_TASK_CASES + DIAGNOSIS_CASES
+NIGHTLY_CASES = RPC_CASES + ("mixed-500",)
+SUITES = {"task": CASES, "direct": DIRECT_CASES, "direct-diagnosis": DIAGNOSIS_CASES,
+          "rpc-diagnosis": RPC_CASES, "nightly": NIGHTLY_CASES}
 ORDER = (("A", "B"), ("B", "A"), ("A", "B"))
 GROUP = "scenario-string-utils-workers"
 REDIS_IMAGE = "redis:7.4.10"
@@ -237,6 +241,27 @@ def resource_summary(path, started, seconds=30):
 
 
 def markdown_summary(final):
+    if final.get("suite") in ("rpc-diagnosis", "nightly"):
+        lines = ["# RPC mainline attribution", "",
+            f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Complete manifest: {final['completeSuite']}.", "",
+            "Same-version observations under unchanged policy. Each main case uses 1000 Workers; mixed-500 retains its original 100 Workers and 30 seconds.", "",
+            "| Repetition | Case | Window | Sent / planned | HTTP responses/s | Original success | Successful cohort/s | Accepted success after drain | Success p99 ms | Limited |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for row in final["runs"]:
+            for name, window in {"whole": row, **row.get("windows", {})}.items():
+                if "sent" not in window:
+                    lines.append(f"| {row['pair'] + 1} | {row['case']} | {name}: {row['status']} | — | — | — | — | — | — | — |")
+                    continue
+                drained = f"{window['acceptedSuccessRateAfterDrain']:.2%}" if "acceptedSuccessRateAfterDrain" in window else "N/A (Direct)"
+                lines.append(f"| {row['pair'] + 1} | {row['case']} | {name} | {window['sent']}/{window['planned']} "
+                    f"| {window['httpResponsesDuringWindowPerSecond']:.2f} | {window['successRate']:.2%} "
+                    f"| {window['successfulCohortPerSecond']:.2f} | {drained} "
+                    f"| {window['successfulCallLatencyMillis']['p99']:.2f} | {window['generatorLimited']} |")
+        lines += ["", "Original success uses sent requests; drain uses HTTP-accepted Items and never rewrites call latency. "
+            "Planned cohorts and responses arriving within a window are separate. Limited windows cannot quantify capacity. "
+            "Pass means the finite measurement contract passed, not a QPS SLA or an A/B improvement. "
+            "Task budget is at most 100 checked Items per round plus 100ms after completion; sampled stages are observations, not finality.", ""]
+        return "\n".join(lines)
     if final.get("suite") in ("direct", "direct-diagnosis"):
         lines = ["# Worker Direct Call Performance", "",
             f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
@@ -305,8 +330,8 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
     result = {"case": case, "version": version, "status": "failed", "scope": scope}
     cleanup_errors = []
     direct = case in DIRECT_CASES + DIAGNOSIS_CASES
-    seconds = 120 if case in DIAGNOSIS_CASES else 30
-    worker_count = 1000 if direct else 100
+    seconds = 120 if case in RPC_CASES else 30
+    worker_count = 1000 if direct or case in RPC_TASK_CASES else 100
     try:
         for port in (18082, 18083, 18086):
             with socket.socket() as probe:
@@ -339,7 +364,7 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
         if diagnostics == "jfr":
             flags["xa.mass.diagnostics.enabled"] = "true"
-        if direct:
+        if direct or case in RPC_TASK_CASES:
             flags.update({"xa.mass.direct-call.default-wait-timeout-millis": "3000",
                 "xa.mass.direct-call.max-wait-timeout-millis": "10000",
                 "xa.mass.direct-call.max-adapter-commands-per-adapter": "1000",
@@ -421,7 +446,8 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
             except Exception as error:
                 cleanup_errors.append(type(error).__name__)
         if diagnostics == "jfr" and "measurementStartedEpochMillis" in result:
-            result["diagnosticEvidence"] = export_diagnostics(private, evidence, result["measurementStartedEpochMillis"], seconds)
+            result["diagnosticEvidence"] = export_diagnostics(private, evidence, result["measurementStartedEpochMillis"], seconds,
+                                                               "DIRECT_CALL" if direct else "TASK")
         if client:
             client.close()
         if container:
@@ -445,7 +471,7 @@ def jfr_options(private, role, diagnostics):
             f"filename={private / (role + '.jfr')},maxsize=240m,dumponexit=true"]
 
 
-def export_diagnostics(private, evidence, started, seconds):
+def export_diagnostics(private, evidence, started, seconds, call_path="DIRECT_CALL"):
     result = {}
     for role in ("server", "host", "harness"):
         recording = private / (role + ".jfr")
@@ -455,7 +481,7 @@ def export_diagnostics(private, evidence, started, seconds):
                 raise RuntimeError("Recording absent or above its fixed size bound")
             command(["java", "-Xmx512m", "-cp", MODULE / "build/install/xa-mass-worker-call-performance/lib/*",
                      "com.xa.mass.integration.workercallperformance.JfrDiagnostics", recording, destination,
-                     str(int(started)), str(seconds), role], timeout=60)
+                     str(int(started)), str(seconds), role, call_path], timeout=60)
             result[role] = json.loads(destination.read_text(encoding="utf-8"))
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
             result[role] = {"complete": False, "failureType": type(error).__name__}
@@ -551,20 +577,50 @@ def execution_mode(baseline, diagnostics, diagnostic_pair):
     return ("comparison", ORDER) if baseline else ("diagnostic" if diagnostics == "jfr" else "measurement", (("B",),))
 
 
+def repetition_cases(repetition):
+    """Same-version path rotation; no production A/B candidate verdict."""
+    paths = ("direct-step", "rpc-targeted", "rpc-any")
+    paths = paths[repetition % 3:] + paths[:repetition % 3]
+    return ("rpc-any-500",) + tuple(f"{path}-{rate}" for rate in (1000, 2000) for path in paths)
+
+
+def validate_repetitions(suite, repetitions, baseline, diagnostics, diagnostic_pair):
+    if repetitions not in (1, 3):
+        raise ValueError("Repetitions must be 1 or 3")
+    if suite in ("rpc-diagnosis", "nightly") and (baseline or diagnostic_pair):
+        raise ValueError("RPC attribution uses one immutable version, not candidate A/B comparisons")
+    if repetitions != 1 and (suite != "rpc-diagnosis" or diagnostics != "off"):
+        raise ValueError("Three repetitions require rpc-diagnosis with JFR off")
+    if suite == "nightly" and diagnostics != "off":
+        raise ValueError("Nightly requires JFR off")
+
+
+def require_manifest(runs, cases, repetitions):
+    expected = Counter((rep, case) for rep in range(repetitions) for case in cases)
+    actual = Counter((run["pair"], run["case"]) for run in runs)
+    if actual != expected or any(run["status"] != "passed" for run in runs):
+        raise RuntimeError("Incomplete or duplicate performance case manifest")
+
+
 def main():
     run_started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=ROOT / "build/worker-call-performance-proof")
     parser.add_argument("--baseline-ref", help="Build this immutable Git commit as A; compare A/B, B/A, A/B")
     parser.add_argument("--suite", choices=SUITES, default="task", help="Fixed Task Call or 1000-Worker Direct Call fixture")
-    parser.add_argument("--case", choices=CASES + DIRECT_CASES + DIAGNOSIS_CASES, help="Diagnostic subset; never a complete suite result")
+    parser.add_argument("--case", choices=CASES + DIRECT_CASES + DIAGNOSIS_CASES + RPC_TASK_CASES, help="Diagnostic subset; never a complete suite result")
+    parser.add_argument("--repetitions", type=int, choices=(1, 3), default=1,
+                        help="Same-version RPC repetitions with rotated path order; formal measurements only")
     parser.add_argument("--diagnostics", choices=("off", "jfr"), default="off", help="Bounded private JFR recording; excluded from performance comparison")
     parser.add_argument("--diagnostic-pair", action="store_true", help="One same-host A/B JFR pair, never a formal benefit comparison")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     options = parser.parse_args()
     try:
+        validate_repetitions(options.suite, options.repetitions, options.baseline_ref, options.diagnostics, options.diagnostic_pair)
         purpose, orders = execution_mode(options.baseline_ref, options.diagnostics, options.diagnostic_pair)
+        if options.repetitions == 3:
+            purpose, orders = "same_version_repetitions", (("B",),) * 3
     except ValueError as error:
         parser.error(str(error))
     cases = SUITES[options.suite]
@@ -574,7 +630,7 @@ def main():
         parser.error("Linux with Docker and /proc is required")
     os_release = platform.freedesktop_os_release()
     reference = os_release.get("ID") == "ubuntu" and os_release.get("VERSION_ID") == "24.04"
-    if options.suite == "direct-diagnosis":
+    if options.suite in ("direct-diagnosis", "rpc-diagnosis", "nightly"):
         reference = reference and os.cpu_count() == 4
     if not reference and not options.allow_nonreference_host:
         parser.error("Reference environment is Ubuntu 24.04; use --allow-nonreference-host only for diagnostics")
@@ -594,7 +650,9 @@ def main():
     runs = []
     final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
              "suite": options.suite,
-             "fixtureVersion": 2 if options.suite == "direct-diagnosis" else 1, "diagnostics": options.diagnostics,
+             "fixtureVersion": 3 if options.suite in ("rpc-diagnosis", "nightly") else 2 if options.suite == "direct-diagnosis" else 1,
+             "repetitions": options.repetitions, "expectedCases": list((options.case,) if options.case else cases),
+             "diagnostics": options.diagnostics,
              "purpose": purpose,
              "os": os_release, "java": java.strip(), "cpuCount": os.cpu_count(),
              "machine": platform.machine(), "kernel": platform.release(),
@@ -610,17 +668,22 @@ def main():
             build(baseline)
         if not options.skip_build:
             build(ROOT, harness=True)
-        deadline = run_started + (120 if baseline else 45) * 60
+        deadline = run_started + (120 if baseline or options.repetitions == 3 else 45) * 60
         for pair, order in enumerate(orders):
             for version in order:
-                for case in (options.case,) if options.case else cases:
+                ordered_cases = repetition_cases(pair) if options.suite in ("rpc-diagnosis", "nightly") else cases
+                if options.suite == "nightly":
+                    ordered_cases += ("mixed-500",)
+                for case in (options.case,) if options.case else ordered_cases:
                     print(f"performance pair={pair + 1} version={version} case={case}", flush=True)
                     result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline, options.diagnostics)
                     result["pair"] = pair
                     runs.append(result)
                     write_json(output / "evidence/summary.json", final)
-                    if result["status"] != "passed":
+                    if result["status"] != "passed" and options.suite not in ("rpc-diagnosis", "nightly"):
                         raise RuntimeError(f"Case {case} failed")
+        if options.suite in ("rpc-diagnosis", "nightly"):
+            require_manifest(runs, (options.case,) if options.case else cases, options.repetitions)
         final["status"] = "passed"
         if baseline and not options.diagnostic_pair:
             final["comparison"] = diagnosis_comparison(runs, cases) if options.suite == "direct-diagnosis" else comparison(runs, cases)
