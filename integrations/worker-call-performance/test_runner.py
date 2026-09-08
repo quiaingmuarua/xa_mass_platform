@@ -183,6 +183,28 @@ class RunnerTest(unittest.TestCase):
                 sampler.run()
             self.assertIsNone(sampler.failure)
             self.assertEqual(1, sampler.counts["redis"])
+            process.wait.assert_called_once_with(timeout=.05)
+
+    def test_sampler_only_ignores_revoked_proc_access_after_confirmed_exit(self):
+        for exited in (False, True):
+            with self.subTest(exited=exited), tempfile.TemporaryDirectory() as directory:
+                redis = Mock()
+                redis.info.side_effect = [{"total_commands_processed": 10}, {"used_memory": 10, "used_memory_rss": 20},
+                                         {"used_cpu_user": 1, "used_cpu_sys": 1}, {}]
+                sampler = runner.Sampler(Path(directory) / "resources.jsonl", redis)
+                process = Mock(pid=10)
+                process.poll.return_value = None
+                if not exited:
+                    process.wait.side_effect = subprocess.TimeoutExpired("java", .05)
+                sampler.register("harness", process)
+                def revoked(_):
+                    sampler.stopped.set()
+                    raise PermissionError("/proc fd access revoked")
+                with patch.object(runner, "process_sample", side_effect=revoked):
+                    sampler.run()
+                self.assertEqual(sampler.failure is None, exited)
+                if not exited:
+                    self.assertIn("PermissionError", sampler.failure)
 
     def test_resource_summary_excludes_startup_and_keeps_redis_commands_aggregate(self):
         rows = []

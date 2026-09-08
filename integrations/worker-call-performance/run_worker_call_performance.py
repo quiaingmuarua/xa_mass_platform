@@ -113,9 +113,13 @@ class Sampler:
                         now = time.monotonic()
                         try:
                             sample = process_sample(process.pid)
-                        except FileNotFoundError:
-                            # /proc may disappear while the runner concurrently reaps a successful Harness.
-                            # The runner owns process exit/status checks; retained window samples own coverage.
+                        except (FileNotFoundError, PermissionError) as sample_error:
+                            # Linux may revoke /proc access during exit before Popen's concurrent poll observes it.
+                            # Confirm exit with a bounded wait; permission/coverage failures for a live process stay fatal.
+                            try:
+                                process.wait(timeout=.05)
+                            except subprocess.TimeoutExpired:
+                                raise sample_error
                             continue
                         previous = self.previous.get(role)
                         sample["averageCpuCores"] = (sample["cpuSeconds"] - previous[1]) / (now - previous[0]) if previous else 0
