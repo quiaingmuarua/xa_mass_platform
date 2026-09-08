@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+"""One finite call-performance lane; public API assertions live in its Java Harness."""
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+import uuid
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from integrations.worker_proof_support.scenario_inventory import materialize_inventory
+
+CASES = ("any-100", "any-500", "any-1000", "any-2000", "targeted-500", "mixed-500")
+ORDER = (("A", "B"), ("B", "A"), ("A", "B"))
+GROUP = "scenario-string-utils-workers"
+REDIS_IMAGE = "redis:7.4.10"
+JVM = ("-Xms256m", "-Xmx1g", "-XX:+ExitOnOutOfMemoryError")
+MODULE = ROOT / "integrations/worker-call-performance"
+SERVER_FLAGS = {
+    "spring.profiles.active": "scenario-workers",
+    "server.address": "127.0.0.1", "server.port": "18082",
+    "xa.mass.kernel-pacer.preset": "DEFAULT",
+    "xa.mass.kernel-pacer.enabled": "true",
+    "xa.mass.task-rpc.default-wait-timeout-millis": "30000",
+    "xa.mass.task-rpc.max-wait-timeout-millis": "60000",
+    "xa.mass.task-rpc.max-waiters": "10000",
+    "xa.mass.task-rpc.max-pending-observations": "100000",
+    "xa.mass.task-rpc.max-probe-items-per-round": "256",
+    "xa.mass.task-rpc.initial-probe-interval-millis": "50",
+    "xa.mass.task-rpc.normal-probe-interval-millis": "100",
+    "xa.mass.task-rpc.long-probe-interval-millis": "250",
+    "xa.mass.worker-assembly.group-config-json": json.dumps({GROUP: {
+        "attributes": {"capability": "string-utils"},
+        "eventCodes": ["extension.worker.string.md5", "extension.worker.lab.delay"]}}),
+}
+
+
+def command(args, *, cwd=ROOT, timeout=600):
+    return subprocess.run([str(x) for x in args], cwd=cwd, check=True, text=True,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout).stdout.strip()
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def fresh_output(path):
+    path = path.resolve()
+    build = (ROOT / "build").resolve()
+    if not path.is_relative_to(build) or path == build or path.exists():
+        raise ValueError("Output must be a fresh directory below repository build")
+    path.mkdir(parents=True)
+    return path
+
+
+def parse_proc(status, stat, open_files, ticks):
+    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    tail = stat[stat.rfind(")") + 2:].split()
+    return {"nativeThreads": int(fields["Threads"].strip()),
+            "rssBytes": int(fields.get("VmRSS", "0 kB").split()[0]) * 1024,
+            "cpuSeconds": (int(tail[11]) + int(tail[12])) / ticks,
+            "openFileDescriptors": open_files}
+
+
+def process_sample(pid):
+    proc = Path("/proc") / str(pid)
+    return parse_proc((proc / "status").read_text(), (proc / "stat").read_text(),
+                      len(list((proc / "fd").iterdir())), os.sysconf("SC_CLK_TCK"))
+
+
+class Sampler:
+    def __init__(self, path, redis_client):
+        self.path, self.redis = path, redis_client
+        self.processes = {}
+        self.lock = threading.Lock()
+        self.stopped = threading.Event()
+        self.failure = None
+        self.counts = Counter()
+        self.previous = {}
+        self.thread = threading.Thread(target=self.run, name="performance-resource-sampler", daemon=True)
+
+    def register(self, role, process):
+        with self.lock:
+            self.processes[role] = process
+
+    def run(self):
+        try:
+            with self.path.open("x", encoding="utf-8") as output:
+                while not self.stopped.is_set():
+                    with self.lock:
+                        processes = tuple(self.processes.items())
+                    for role, process in processes:
+                        if process.poll() is not None:
+                            continue
+                        now = time.monotonic()
+                        try:
+                            sample = process_sample(process.pid)
+                        except FileNotFoundError:
+                            if process.poll() is not None:
+                                continue
+                            raise
+                        previous = self.previous.get(role)
+                        sample["averageCpuCores"] = (sample["cpuSeconds"] - previous[1]) / (now - previous[0]) if previous else 0
+                        self.previous[role] = (now, sample["cpuSeconds"])
+                        sample.update(role=role, pid=process.pid, epochMillis=int(time.time() * 1000))
+                        output.write(json.dumps(sample) + "\n")
+                        self.counts[role] += 1
+                        if sample["nativeThreads"] > 512 or sample["openFileDescriptors"] > 8192:
+                            raise RuntimeError(f"Resource ceiling exceeded for {role}")
+                    # Aggregate diagnostics only: no domain keys, command arguments or payloads.
+                    stats = self.redis.info("stats")
+                    memory = self.redis.info("memory")
+                    cpu = self.redis.info("cpu")
+                    output.write(json.dumps({"role": "redis", "epochMillis": int(time.time() * 1000),
+                        "totalCommandsProcessed": stats["total_commands_processed"],
+                        "usedMemory": memory["used_memory"], "usedMemoryRss": memory["used_memory_rss"],
+                        "cpuUserSeconds": cpu["used_cpu_user"], "cpuSystemSeconds": cpu["used_cpu_sys"],
+                        "commandStats": self.redis.info("commandstats")}) + "\n")
+                    self.counts["redis"] += 1
+                    output.flush()
+                    self.stopped.wait(1)
+        except Exception as error:
+            self.failure = type(error).__name__ + ": " + str(error)
+
+    def stop(self):
+        self.stopped.set()
+        self.thread.join(5)
+        if self.thread.is_alive():
+            raise RuntimeError("Resource sampler did not stop")
+
+
+def stop_process(process):
+    if process.poll() is None:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+
+
+def start_process(args, path, env):
+    with path.open("x", encoding="utf-8") as output:
+        return subprocess.Popen([str(x) for x in args], cwd=ROOT, env=env,
+                                stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+
+
+def wait_http(url, process, sampler, deadline):
+    while time.monotonic() < deadline:
+        if process.poll() is not None or sampler.failure:
+            raise RuntimeError("Process failed during readiness or resource sampling")
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status == 200:
+                    return
+        except (OSError, urllib.error.URLError):
+            pass
+        time.sleep(.25)
+    raise RuntimeError("Readiness deadline exceeded")
+
+
+def build(root, harness=False):
+    tasks = [":server_jvm:bootJar", ":scenario_workers_jvm:installDist"]
+    if harness:
+        tasks.append(":integrations:worker-call-performance:installDist")
+    # Keep builds outside all measurement windows.
+    result = subprocess.run([str(root / "gradlew"), "--no-daemon", *tasks], cwd=root, timeout=900)
+    result.check_returncode()
+
+
+def fingerprint(root):
+    files = ("server_jvm/src/main/resources/application.yaml", "server_jvm/src/main/resources/application-scenario-workers.yaml")
+    return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in files}
+
+
+def configuration_sources(root):
+    # These are repository configuration inputs, never runtime payloads or environment secrets.
+    files = [*fingerprint(root),
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerPolicyConfig.java",
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/AssignmentDispatchConfig.java",
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/DispatchConvergenceRuntime.java",
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/result/ResultConvergenceConfig.java",
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/result/ResultConvergenceRuntime.java",
+        "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/result/WorkerServiceabilityResultConfig.java"]
+    return {path: (root / path).read_text(encoding="utf-8") for path in files}
+
+
+def resource_summary(path, started, seconds=30):
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    result = {}
+    for role in ("server", "host", "harness", "redis"):
+        window = [row for row in rows if row["role"] == role
+                  and started <= row["epochMillis"] <= started + seconds * 1000]
+        if len(window) < 2:
+            raise RuntimeError(f"Measurement resource evidence incomplete for {role}")
+        first, last = window[0], window[-1]
+        covered = (last["epochMillis"] - first["epochMillis"]) / 1000
+        if covered <= 0:
+            raise RuntimeError("Resource sample clock did not advance")
+        values = {"samples": len(window), "coveredSeconds": covered}
+        if role == "redis":
+            values.update(peakUsedMemoryBytes=max(row["usedMemory"] for row in window),
+                peakRssBytes=max(row["usedMemoryRss"] for row in window),
+                meanCpuCores=((last["cpuUserSeconds"] + last["cpuSystemSeconds"])
+                              - (first["cpuUserSeconds"] + first["cpuSystemSeconds"])) / covered,
+                aggregateCommandCallDeltas={name: value["calls"] - first["commandStats"].get(name, {}).get("calls", 0)
+                                           for name, value in last["commandStats"].items()})
+        else:
+            values.update(meanCpuCores=(last["cpuSeconds"] - first["cpuSeconds"]) / covered,
+                peakRssBytes=max(row["rssBytes"] for row in window),
+                peakNativeThreads=max(row["nativeThreads"] for row in window),
+                peakFileDescriptors=max(row["openFileDescriptors"] for row in window))
+        result[role] = values
+    return result
+
+
+def markdown_summary(final):
+    lines = ["# Worker Call Performance", "", f"Status: **{final['status']}**. "
+             f"Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
+             "| Pair | Version | Case | Sent / planned | Response success | Result success after drain | Success p99 ms | Generator limited |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for row in final["runs"]:
+        if "sent" not in row:
+            lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['case']} | {row['status']} | — | — | — | — |")
+            continue
+        lines.append(f"| {row['pair'] + 1} | {row['version']} | {row['case']} | {row['sent']} / {row['planned']} "
+                     f"| {row['successRate']:.2%} | {row['acceptedSuccessRateAfterDrain']:.2%} "
+                     f"| {row['successfulCallLatencyMillis']['p99']:.2f} | {row['generatorLimited']} |")
+    if "comparison" in final:
+        lines.extend(["", f"Comparison: **{final['comparison']['status']}**. No detected regression does not establish speedup."])
+    lines.extend(["", "Response success uses all sent requests; drained success uses HTTP-accepted requests. "
+                  "Follow-up observations are excluded from original call latency. "
+                  "Raw safe samples, resource windows and aggregate Redis diagnostics accompany this summary.", ""])
+    return "\n".join(lines)
+
+
+def run_case(root, case, output, version, deadline):
+    import redis
+    output.mkdir(parents=True)
+    evidence = output / "evidence"
+    evidence.mkdir()
+    private = output / "private"
+    private.mkdir()
+    scope = "test_worker_call_performance_" + uuid.uuid4().hex[:16]
+    container = None
+    processes = {}
+    sampler = None
+    client = None
+    result = {"case": case, "version": version, "status": "failed", "scope": scope}
+    cleanup_errors = []
+    try:
+        for port in (18082, 18083, 18086):
+            with socket.socket() as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(("127.0.0.1", port))
+        container = command(["docker", "run", "--rm", "-d", "--label", f"xa-mass-proof={scope}",
+                             "-p", "127.0.0.1::6379", REDIS_IMAGE])
+        if not re.fullmatch(r"[0-9a-f]{64}", container):
+            container = None
+            raise RuntimeError("Docker did not return an exact container identity")
+        port = int(command(["docker", "port", container, "6379/tcp"]).split(":")[-1])
+        redis_url = f"redis://127.0.0.1:{port}/15"
+        client = redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+        for attempt in range(40):
+            try:
+                client.ping()
+                break
+            except redis.ConnectionError:
+                if attempt == 39:
+                    raise
+                time.sleep(.25)
+        if client.info("server")["redis_version"] != "7.4.10":
+            raise RuntimeError("Unexpected Redis version")
+        sampler = Sampler(evidence / "process-resources.jsonl", client)
+        sampler.thread.start()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("XA_MASS_", "SPRING_"))
+               and k not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}}
+        env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
+        flags = dict(SERVER_FLAGS)
+        flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
+        write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM,
+            "configurationSourceSha256": fingerprint(root), "workers": 100, "group": GROUP,
+            "configurationSources": configuration_sources(root),
+            "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 100,
+                "resultIdleIntervalMillis": 100, "serviceabilityDispatchEnabled": False},
+            "redisImage": REDIS_IMAGE, "maximumInFlight": 4096, "warmupSeconds": 20,
+            "measurementSeconds": 30, "httpRequestTimeoutSeconds": 5, "drainSeconds": 180})
+        jars = [p for p in (root / "server_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
+        jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
+        processes["server"] = start_process(["java", *JVM, "-jar", jar,
+            *(f"--{key}={value}" for key, value in flags.items())], private / "server.log", env)
+        sampler.register("server", processes["server"])
+        wait_http("http://127.0.0.1:18082/actuator/health/readiness", processes["server"], sampler, min(deadline, time.monotonic() + 180))
+        inventory = private / "data/scenario-workers"
+        materialize_inventory(inventory, {GROUP: tuple({"runtime": "java", "capability": "string-utils"} for _ in range(100))})
+        assembly = private / "capabilities.json"
+        write_json(assembly, {GROUP: {"eventCodes": ["extension.worker.string.md5", "extension.worker.lab.delay"],
+            "requestTimeoutMillis": 60_000, "reconnectPolicy": {"maxUnstableAttempts": 600,
+            "reconnectIntervalMillis": 500, "stableConnectionDurationMillis": 10_000}}})
+        write_json(evidence / "host-configuration.json", json.loads(assembly.read_text()))
+        processes["host"] = start_process(["java", *JVM, "-cp", root / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*",
+            "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--runtime-api-base-url=http://127.0.0.1:18082",
+            f"--sandbox-root={inventory}", "--control-port=18086", f"--capability-assembly={assembly}"], private / "host.log", env)
+        sampler.register("host", processes["host"])
+        wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler, min(deadline, time.monotonic() + 180))
+        harness_output = evidence / "harness"
+        processes["harness"] = start_process(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+            "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", f"--case={case}",
+            f"--output={harness_output}"], private / "harness.log", env)
+        sampler.register("harness", processes["harness"])
+        while processes["harness"].poll() is None:
+            if time.monotonic() >= deadline or sampler.failure or any(processes[r].poll() is not None for r in ("server", "host")):
+                raise RuntimeError("Deadline, resource evidence or process survival failed")
+            time.sleep(.25)
+        path = harness_output / "summary.json"
+        if path.is_file():
+            result.update(json.loads(path.read_text()))
+        if processes["harness"].returncode != 0 or result["status"] != "passed":
+            raise RuntimeError("Java Harness failed; inspect evidence/harness/summary.json")
+        if any(processes[r].poll() is not None for r in ("server", "host")):
+            raise RuntimeError("Server or Host exited unexpectedly")
+        if sampler.failure or any(sampler.counts[r] < 1 for r in ("server", "host", "harness", "redis")):
+            raise RuntimeError("Resource evidence incomplete")
+    except Exception as error:
+        result.update(status="failed", runnerFailure=type(error).__name__ + ": " + str(error))
+    finally:
+        if sampler:
+            try:
+                sampler.stop()
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+            if sampler.failure:
+                result.update(status="failed", resourceFailure=sampler.failure)
+            result["resourceSampleCounts"] = dict(sampler.counts)
+            if "measurementStartedEpochMillis" in result:
+                try:
+                    result["measurementResources"] = resource_summary(evidence / "process-resources.jsonl",
+                                                                       result["measurementStartedEpochMillis"])
+                except Exception as error:
+                    result.update(status="failed", resourceSummaryFailure=type(error).__name__ + ": " + str(error))
+        for process in reversed(tuple(processes.values())):
+            try:
+                stop_process(process)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+        if client:
+            client.close()
+        if container:
+            try:
+                command(["docker", "rm", "--force", container], timeout=20)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+        # Each case owns a disposable container; no key deletion or shared Redis is used.
+        if cleanup_errors:
+            result.update(status="failed", cleanupErrors=cleanup_errors)
+        write_json(evidence / "case-summary.json", result)
+    return result
+
+
+def comparison(runs):
+    findings = []
+    for case in CASES:
+        regressions = 0
+        comparable = 0
+        observations = []
+        for pair in range(3):
+            values = {r["version"]: r for r in runs if r["case"] == case and r["pair"] == pair}
+            if set(values) != {"A", "B"}:
+                continue
+            a, b = values["A"], values["B"]
+            if any(r["status"] != "passed" or r.get("generatorLimited", True) for r in (a, b)):
+                continue
+            success_delta = b["successRate"] - a["successRate"]
+            pa, pb = a["successfulCallLatencyMillis"], b["successfulCallLatencyMillis"]
+            p99_ratio = pb["p99"] / pa["p99"] if pa["p99"] > 0 and pa["samples"] and pb["samples"] else None
+            completion_regressed = success_delta < -.05 - 1e-12
+            if p99_ratio is None and not completion_regressed:
+                observations.append({"pair": pair, "successRateDelta": success_delta,
+                                     "p99Ratio": None, "reason": "Insufficient successful latency samples"})
+                continue
+            regressed = completion_regressed or (abs(success_delta) <= .05 + 1e-12 and p99_ratio is not None and p99_ratio > 1.20)
+            comparable += 1
+            regressions += int(regressed)
+            observations.append({"pair": pair, "successRateDelta": success_delta, "p99Ratio": p99_ratio, "regressed": regressed})
+        findings.append({"case": case, "comparablePairs": comparable, "regressedPairs": regressions,
+                         "status": "regressed" if regressions >= 2 else "no_detected_regression" if comparable == 3 else "inconclusive",
+                         "observations": observations})
+    status = "regressed" if any(f["status"] == "regressed" for f in findings) else (
+        "no_detected_regression" if all(f["status"] == "no_detected_regression" for f in findings) else "inconclusive")
+    return {"status": status, "cases": findings}
+
+
+def main():
+    run_started = time.monotonic()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", type=Path, default=ROOT / "build/worker-call-performance-proof")
+    parser.add_argument("--baseline-ref", help="Build this immutable Git commit as A; compare A/B, B/A, A/B")
+    parser.add_argument("--case", choices=CASES, help="Diagnostic subset; never a complete lane result")
+    parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
+    options = parser.parse_args()
+    if sys.platform != "linux":
+        parser.error("Linux with Docker and /proc is required")
+    os_release = platform.freedesktop_os_release()
+    reference = os_release.get("ID") == "ubuntu" and os_release.get("VERSION_ID") == "24.04"
+    if not reference and not options.allow_nonreference_host:
+        parser.error("Reference environment is Ubuntu 24.04; use --allow-nonreference-host only for diagnostics")
+    java = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
+    if not re.search(r'version "21[.\"]', java):
+        parser.error("Java 21 is required")
+    command(["docker", "info", "--format", "{{.ServerVersion}}"])
+    try:
+        image_id = command(["docker", "image", "inspect", REDIS_IMAGE, "--format", "{{.Id}}"])
+    except subprocess.CalledProcessError:
+        command(["docker", "pull", REDIS_IMAGE])
+        image_id = command(["docker", "image", "inspect", REDIS_IMAGE, "--format", "{{.Id}}"])
+    output = fresh_output(options.output_root)
+    versions = {"B": command(["git", "rev-parse", "HEAD"])}
+    roots = {"B": ROOT}
+    baseline = None
+    runs = []
+    final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
+             "fixtureVersion": 1, "os": os_release, "java": java.strip(), "cpuCount": os.cpu_count(),
+             "machine": platform.machine(), "kernel": platform.release(),
+             "redisImageId": image_id,
+             "harnessCommit": versions["B"], "worktreeDirty": bool(command(["git", "status", "--porcelain"])),
+             "versions": versions, "runs": runs}
+    try:
+        if options.baseline_ref:
+            versions["A"] = command(["git", "rev-parse", "--verify", options.baseline_ref + "^{commit}"])
+            baseline = output / "baseline-checkout"
+            command(["git", "worktree", "add", "--detach", baseline, versions["A"]])
+            roots["A"] = baseline
+            build(baseline)
+        if not options.skip_build:
+            build(ROOT, harness=True)
+        deadline = run_started + (120 if baseline else 45) * 60
+        for pair, order in enumerate(ORDER if baseline else (("B",),)):
+            for version in order:
+                for case in (options.case,) if options.case else CASES:
+                    print(f"performance pair={pair + 1} version={version} case={case}", flush=True)
+                    result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline)
+                    result["pair"] = pair
+                    runs.append(result)
+                    write_json(output / "evidence/summary.json", final)
+                    if result["status"] != "passed":
+                        raise RuntimeError(f"Case {case} failed")
+        final["status"] = "passed"
+        if baseline:
+            final["comparison"] = comparison(runs)
+            if final["comparison"]["status"] == "regressed":
+                final["status"] = "regressed"
+    except Exception as error:
+        final.update(status="failed", failure=type(error).__name__ + ": " + str(error))
+    finally:
+        if baseline and baseline.exists():
+            try:
+                command(["git", "worktree", "remove", baseline], timeout=30)
+            except subprocess.CalledProcessError:
+                # Build products are ignored; preserve the checkout if unexpected edits prevent removal.
+                final["baselineCheckoutRetained"] = True
+        write_json(output / "evidence/summary.json", final)
+        (output / "evidence/summary.md").write_text(markdown_summary(final), encoding="utf-8")
+    print(json.dumps({"status": final["status"], "runs": len(runs), "evidence": str(output / "evidence/summary.json")}), flush=True)
+    return 0 if final["status"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

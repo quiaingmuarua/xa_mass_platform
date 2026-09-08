@@ -650,6 +650,13 @@ Adapter connectivity, Kernel state or schedulability.
   Resource evidence must cover transient ceilings and stable drift. Do not
   infer Task fairness, completion order, Handler concurrency, throughput,
   latency or soak from this lane.
+- [Worker Call Performance](integrations/worker-call-performance/README.md) owns
+  offered-load, completion and latency evidence in its separate nightly/manual
+  workflow. Keep HTTP acceptance, successful Result observation, unknown
+  submission and generator limitations distinct. Fixed Worker counts are
+  fixtures, not extra proof levels. JVM Contracts owns only deterministic
+  Harness/runner tests; Redis Owner retains mailbox concurrency and command-cost
+  proof. Aggregate Redis diagnostics never replace public-API assertions.
 - Worker Correctness inputs are caller-owned local files. Its perfect-world
   proof uses managed batch `items:call`, fixes exact Item statuses and treats
   Result payload as opaque. The frontend separately turns lines into ordinary

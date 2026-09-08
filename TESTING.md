@@ -71,6 +71,11 @@ Use the lowest-cost proof that owns the changed claim:
    unless its loaded recovery or resource-stability claim must be re-established.
 7. Documentation-only changes run Docs Contract. They do not select runtime
    proofs.
+8. Call-performance Harness or runner changes run their deterministic JVM/Python
+   tests. Full offered-load and latency proof belongs to the independent
+   nightly/manual workflow. A production optimization re-establishes its Owner
+   claim and the selected existing lanes, then uses this lane for comparison;
+   do not duplicate throughput or Worker-size tiers across lanes.
 
 Inspect selection for a branch without running a proof:
 
@@ -100,6 +105,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | `python integrations/worker-call-performance/run_worker_call_performance.py` | Ubuntu 24.04, Docker Redis 7.4.10, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |

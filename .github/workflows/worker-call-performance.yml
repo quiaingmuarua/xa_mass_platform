@@ -1,0 +1,69 @@
+name: Worker Call Performance
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Asia/Shanghai
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: "Optional immutable baseline commit for A/B, B/A, A/B"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-call-performance
+  cancel-in-progress: false
+
+jobs:
+  worker-call-performance:
+    name: Worker Call Performance
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '' && 120 || 45 }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Verify Harness and runner contracts
+        run: |
+          ./gradlew --no-daemon :integrations:worker-call-performance:test
+          python -m unittest discover -s integrations/worker-call-performance -p 'test_*.py'
+      - name: Run independent call performance proof
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+        run: |
+          args=()
+          if [ -n "$BASELINE_REF" ]; then
+            args+=(--baseline-ref "$BASELINE_REF")
+          fi
+          python integrations/worker-call-performance/run_worker_call_performance.py "${args[@]}"
+      - name: Publish independent performance summary
+        if: always()
+        run: |
+          if [ -f build/worker-call-performance-proof/evidence/summary.md ]; then
+            cat build/worker-call-performance-proof/evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload safe performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-call-performance-${{ github.run_attempt }}
+          path: |
+            build/worker-call-performance-proof/**/evidence/**
+            integrations/worker-call-performance/build/test-results/test/**
+          if-no-files-found: error
+          retention-days: 7
