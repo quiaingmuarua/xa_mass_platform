@@ -106,6 +106,23 @@ its complete root input. A busy Producer skips that source snapshot and retains
 no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
+DEFAULT Task Dispatch checks at most 100 Items per Task per round. Its next
+eligibility is set 100ms after the Main Scheduler processes producer completion;
+the interval does not start at dispatch launch. Slow producers remain single-flight
+and do not catch up with overlapping rounds. A continuously full single Task is
+therefore bounded above by `100 / (0.1 + round_seconds)` checked Items/s, before
+scan/observation delay and unsuccessful assignments. This is a policy budget,
+not a platform QPS guarantee. Group-managed ON_DEMAND calls share that Task budget.
+`DispatchBudgetTest` proves the bounded check and completion-relative scheduling
+with controlled execution and time. These values remain preset-owned and have no
+Server override.
+
+Default-off `xa.mass.TaskDispatch` and `xa.mass.TaskResult` JFR events observe
+existing round/check/candidate/claim/publish and Result consume/process/release
+calls. Counts describe attempts or batches, not unique completed Items. Owner-local
+events add no registry, queue, Redis operation or Score interpretation; sampled
+correlation is joined only by the offline [call proof](../../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+
 The fixed Producers are:
 
 | Producer | Main-planned root input | Responsibility |

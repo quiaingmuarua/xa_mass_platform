@@ -27,8 +27,12 @@ class HttpCallDiagnosticsFilterTest {
                 (supplied, target) -> assertThat(supplied).isSameAs(request));
     }
 
-    @Test void asyncTimeoutAndRepeatedCompletionProduceExactlyOneFinalObservation() throws Exception {
-        var request = new MockHttpServletRequest("POST", "/api/v1/worker-delivery/endpoint-managers/private-id/direct-calls");
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "/api/v1/worker-delivery/endpoint-managers/private-id/direct-calls,DIRECT_CALL",
+            "/api/v1/tasks/private-id/items:call,ITEMS_CALL"})
+    void asyncTimeoutAndRepeatedCompletionProduceExactlyOneFinalObservation(String path, String operation) throws Exception {
+        var request = new MockHttpServletRequest("POST", path);
         request.setAsyncSupported(true);
         var response = new MockHttpServletResponse();
         var async = new AtomicReference<MockAsyncContext>();
@@ -54,7 +58,7 @@ class HttpCallDiagnosticsFilterTest {
         var completions = events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpCompletion")).toList();
         assertThat(completions).hasSize(1);
         assertThat(completions.getFirst().getString("reason")).isEqualTo("timeout");
-        assertThat(completions.getFirst().getString("operation")).isEqualTo("DIRECT_CALL");
+        assertThat(completions.getFirst().getString("operation")).isEqualTo(operation);
         assertThat(completions.getFirst().getEventType().getFields()).extracting(jdk.jfr.ValueDescriptor::getName)
                 .doesNotContain("url", "workerId", "payload", "result", "requestId");
     }

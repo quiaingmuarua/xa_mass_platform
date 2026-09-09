@@ -60,7 +60,9 @@ final class TaskResultBatchPolicy {
     }
 
     void handleSuccess(List<DeliveryReport> batch) {
+        long started = ResultStageEvent.start();
         DecodedBatch decoded = decode(batch);
+        ResultStageEvent.batch(started, "RESULT_DECODE", batch.size(), decoded.decodedCount(), false);
         if (decoded.decodedCount() == 0) {
             return;
         }
@@ -73,17 +75,29 @@ final class TaskResultBatchPolicy {
                         result.opaqueResultPayload()
                 );
             }
-            taskItemEvents.onItemsSucceeded(
-                    taskId,
-                    payloads,
-                    resultTimeMillis
-            );
+            long storedAt = ResultStageEvent.start();
+            boolean stored = false;
+            try {
+                taskItemEvents.onItemsSucceeded(taskId, payloads, resultTimeMillis);
+                stored = true;
+            } finally {
+                ResultStageEvent.items(storedAt, "RESULT_PROCESS", taskId, payloads.keySet(), stored ? payloads.size() : 0, !stored);
+            }
         });
-        publishWorkerEvents(decoded.resultsByWorkerGroup(), true);
+        long releasedAt = ResultStageEvent.start();
+        boolean released = false;
+        try {
+            publishWorkerEvents(decoded.resultsByWorkerGroup(), true);
+            released = true;
+        } finally {
+            ResultStageEvent.batch(releasedAt, "WORKER_RELEASE", decoded.decodedCount(), released ? decoded.decodedCount() : 0, !released);
+        }
     }
 
     void handleFailure(List<DeliveryReport> batch) {
+        long started = ResultStageEvent.start();
         DecodedBatch decoded = decode(batch);
+        ResultStageEvent.batch(started, "RESULT_FAILURE_DECODE", batch.size(), decoded.decodedCount(), false);
         if (decoded.decodedCount() == 0) {
             return;
         }

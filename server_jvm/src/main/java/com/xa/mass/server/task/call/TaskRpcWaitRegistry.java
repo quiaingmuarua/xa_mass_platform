@@ -47,6 +47,7 @@ public final class TaskRpcWaitRegistry {
             Map<String, TaskItemResult> observedResults,
             DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
+        long admittedAt = TaskRpcStageEvent.start();
         List<String> orderedIds = List.copyOf(messageIds);
         var observed = new LinkedHashMap<String, TaskItemResult>();
         orderedIds.forEach(messageId -> {
@@ -70,13 +71,16 @@ public final class TaskRpcWaitRegistry {
         }
 
         BatchWaiter waiter;
+        int admittedPending;
         synchronized (this) {
             if (closed) {
+                TaskRpcStageEvent.batch(admittedAt, "WAIT_CLOSED", orderedIds.size(), 0, false);
                 return false;
             }
             if (waiterCount >= maxWaiters
                     || pending.size() > maxPendingObservations
                             - pendingObservationCount) {
+                TaskRpcStageEvent.batch(admittedAt, "WAIT_REJECTED", orderedIds.size(), 0, false);
                 return false;
             }
             waiter = new BatchWaiter(
@@ -99,8 +103,10 @@ public final class TaskRpcWaitRegistry {
             }
             waiterCount++;
             pendingObservationCount += pending.size();
+            admittedPending = pending.size();
         }
-        deferred.onTimeout(waiter::completeNotObserved);
+        TaskRpcStageEvent.items(admittedAt, "WAIT_ADMITTED", taskId, orderedIds, admittedPending, false);
+        deferred.onTimeout(() -> waiter.completeNotObserved("WAIT_TIMEOUT"));
         deferred.onError(ignored -> waiter.cancel());
         deferred.onCompletion(waiter::cancel);
         return true;
@@ -179,7 +185,7 @@ public final class TaskRpcWaitRegistry {
                     .distinct()
                     .toList();
         }
-        waiters.forEach(BatchWaiter::completeNotObserved);
+        waiters.forEach(waiter -> waiter.completeNotObserved("WAIT_SHUTDOWN"));
         dueItems.clear();
     }
 
@@ -205,6 +211,7 @@ public final class TaskRpcWaitRegistry {
             List<DueItem> dueBatch
     ) {
         var requests = new ArrayList<ProbeRequest>(dueBatch.size());
+        long oldestDue = Long.MAX_VALUE;
         for (DueItem due : dueBatch) {
             ItemWaitGroup group = groups.get(due.key);
             if (group == null
@@ -218,11 +225,14 @@ public final class TaskRpcWaitRegistry {
                 continue;
             }
             group.inFlight = true;
+            oldestDue = Math.min(oldestDue, due.dueAtNanos);
             requests.add(new ProbeRequest(
                     group.key.taskId,
                     group.key.messageId
             ));
         }
+        if (!requests.isEmpty() && TaskRpcStageEvent.start() != 0)
+            TaskRpcStageEvent.batch(oldestDue, "PROBE_LATENESS", requests.size(), requests.size(), false);
         return List.copyOf(requests);
     }
 
@@ -311,6 +321,7 @@ public final class TaskRpcWaitRegistry {
                 return false;
             }
             observedResults.put(key.messageId, result);
+            TaskRpcStageEvent.items(TaskRpcStageEvent.start(), "OBSERVED", key.taskId, List.of(key.messageId), 1, false);
             boolean finished = pending.isEmpty();
             if (finished) {
                 completed = true;
@@ -322,12 +333,15 @@ public final class TaskRpcWaitRegistry {
             return deferred.setResult(response());
         }
 
-        private synchronized boolean completeNotObserved() {
+        private synchronized boolean completeNotObserved(String reason) {
             if (completed) {
                 return false;
             }
             completed = true;
             Set<ItemKey> remaining = Set.copyOf(pending);
+            long observation = TaskRpcStageEvent.start();
+            if (observation != 0) for (ItemKey key : remaining)
+                TaskRpcStageEvent.items(observation, reason, key.taskId, List.of(key.messageId), 0, false);
             pending.clear();
             registry.remove(this, remaining, true);
             return deferred.setResult(response());
@@ -339,6 +353,9 @@ public final class TaskRpcWaitRegistry {
             }
             completed = true;
             Set<ItemKey> remaining = Set.copyOf(pending);
+            long observation = TaskRpcStageEvent.start();
+            if (observation != 0) for (ItemKey key : remaining)
+                TaskRpcStageEvent.items(observation, "WAIT_CANCELLED", key.taskId, List.of(key.messageId), 0, false);
             pending.clear();
             registry.remove(this, remaining, true);
         }

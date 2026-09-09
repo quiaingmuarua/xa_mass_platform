@@ -21,6 +21,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 final class DispatchMainScheduler {
 
@@ -85,7 +86,7 @@ final class DispatchMainScheduler {
                 batchThreads
         );
         try {
-            new SchedulerRun(executor).execute();
+            new SchedulerRun(executor, System::nanoTime).execute();
         } finally {
             executor.shutdownNow();
         }
@@ -119,15 +120,17 @@ final class DispatchMainScheduler {
         return List.copyOf(tasks);
     }
 
-    private final class SchedulerRun {
+    final class SchedulerRun {
 
         private final ExecutorService executor;
+        private final LongSupplier nanoTime;
         private final BlockingQueue<ProducerCompletion> completions =
                 new LinkedBlockingQueue<>();
         private final Map<DispatchProducerId, ProducerRuntime> runtimes;
 
-        private SchedulerRun(ExecutorService executor) {
+        SchedulerRun(ExecutorService executor, LongSupplier nanoTime) {
             this.executor = Objects.requireNonNull(executor, "executor");
+            this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
             this.runtimes = createRuntimes(
                     assignmentConfig,
                     serviceabilityConfig
@@ -137,8 +140,7 @@ final class DispatchMainScheduler {
         private void execute() {
             try {
                 while (isRunning()) {
-                    drainCompletions();
-                    dispatchEligible();
+                    step();
                     if (!isRunning()) {
                         break;
                     }
@@ -150,6 +152,12 @@ final class DispatchMainScheduler {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             }
+        }
+
+        /** One scheduler decision, also exercised with a deterministic clock and executor. */
+        void step() {
+            drainCompletions();
+            dispatchEligible();
         }
 
         private void dispatchEligible() {
@@ -251,7 +259,17 @@ final class DispatchMainScheduler {
                 startProducer(
                         DispatchProducerId.TASK_DISPATCH,
                         normalTasks.size(),
-                        () -> dispatch.dispatchTasks(normalTasks)
+                        () -> {
+                            long started = DispatchStageEvent.start();
+                            int published = 0;
+                            boolean failed = true;
+                            try {
+                                published = dispatch.dispatchTasks(normalTasks);
+                                failed = false;
+                            } finally {
+                                DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), published, failed);
+                            }
+                        }
                 );
             }
             if (eligible.contains(DispatchProducerId.WORKER_SERVICEABILITY)) {
@@ -318,7 +336,7 @@ final class DispatchMainScheduler {
         }
 
         private Set<DispatchProducerId> eligibleProducers() {
-            long now = System.nanoTime();
+            long now = nanoTime.getAsLong();
             Set<DispatchProducerId> eligible = EnumSet.noneOf(
                     DispatchProducerId.class
             );
@@ -363,7 +381,7 @@ final class DispatchMainScheduler {
 
         private ProducerCompletion waitForWork()
                 throws InterruptedException {
-            long now = System.nanoTime();
+            long now = nanoTime.getAsLong();
             long waitNanos = Long.MAX_VALUE;
             boolean inflight = false;
             for (ProducerRuntime runtime : runtimes.values()) {
@@ -396,6 +414,12 @@ final class DispatchMainScheduler {
 
         private boolean isRunning() {
             return !Thread.currentThread().isInterrupted();
+        }
+
+        private void deferProducer(ProducerRuntime runtime) {
+            runtime.nextEligibleNanos = Math.addExact(nanoTime.getAsLong(), runtime.intervalNanos);
+            if (runtime.id == DispatchProducerId.TASK_DISPATCH)
+                DispatchStageEvent.batch(DispatchStageEvent.start(), "DISPATCH_DEFER", 0, 0, false);
         }
     }
 
@@ -437,13 +461,6 @@ final class DispatchMainScheduler {
             );
         }
         return result;
-    }
-
-    private static void deferProducer(ProducerRuntime runtime) {
-        runtime.nextEligibleNanos = Math.addExact(
-                System.nanoTime(),
-                runtime.intervalNanos
-        );
     }
 
     private static void logFailure(

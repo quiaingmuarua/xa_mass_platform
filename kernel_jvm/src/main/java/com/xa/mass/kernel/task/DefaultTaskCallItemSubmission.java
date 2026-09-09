@@ -41,13 +41,18 @@ public final class DefaultTaskCallItemSubmission
         }
 
         TaskScoreTransitionResult before;
+        long activationBefore = TaskStageEvent.start();
+        boolean activated = false;
         try {
             before = taskScore.tryReleaseIdlePark(taskId);
+            activated = accepted(before.status());
         } catch (RuntimeException error) {
             return result(
                     TaskCallSubmissionStatus.RETRYABLE,
                     "Task Call submission owner is unavailable"
             );
+        } finally {
+            TaskStageEvent.batch(activationBefore, "ACTIVATE_BEFORE", items.size(), activated ? items.size() : 0, !activated);
         }
         if (!accepted(before.status())) {
             return transitionFailure(before);
@@ -66,11 +71,15 @@ public final class DefaultTaskCallItemSubmission
         }
 
         TaskScoreTransitionResult after;
+        long activationAfter = TaskStageEvent.start();
         try {
             after = taskScore.tryReleaseIdlePark(taskId);
         } catch (RuntimeException error) {
             after = null;
         }
+        if (activationAfter != 0) TaskStageEvent.items(activationAfter, "ACTIVATE_AFTER", taskId,
+                items.stream().map(TaskItem::messageId).toList(), after != null && accepted(after.status()) ? items.size() : 0,
+                after == null || !accepted(after.status()));
         if (after == null || !accepted(after.status())) {
             return new TaskCallSubmissionResult(
                     TaskCallSubmissionStatus.RETRYABLE,

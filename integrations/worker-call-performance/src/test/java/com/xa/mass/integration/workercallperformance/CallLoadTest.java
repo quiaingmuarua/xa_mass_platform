@@ -9,6 +9,20 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class CallLoadTest {
+    @Test void taskWindowClosureIsKeptWithItsOriginalCohortAndDoesNotRewriteCallSuccess() {
+        var clock = new AtomicLong(1_000_000_000L);
+        var batch = CallLoad.schedule(1, 120, 1, "rpc", Runnable::run,
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.NOT_OBSERVED), clock::get, clock::set);
+        for (var sample : batch.samples()) {
+            sample.observed = "succeeded";
+            sample.observedAfterWaitMillis = 500;
+        }
+        var surge = batch.summary(0, 30_000_000_000L);
+        assertThat(surge).containsEntry("accepted", 30L).containsEntry("successRate", 0.0)
+                .containsEntry("acceptedSuccessRateAfterDrain", 1.0).containsEntry("acceptedUnobservedAfterResponses", 30L);
+        assertThat(CallApi.object(surge.get("successfulCallLatencyMillis"))).containsEntry("samples", 0);
+        assertThat(WorkerCallPerformanceMain.RPC_CASES).hasSize(5).containsEntry("rpc-targeted-2000", 2000);
+    }
     @Test void fixedWindowsSeparatePlannedCohortsFromActualResponses() {
         long start = 1_000_000_000L;
         var early = new CallLoad.Sample("early", start + 29_999_000_000L);

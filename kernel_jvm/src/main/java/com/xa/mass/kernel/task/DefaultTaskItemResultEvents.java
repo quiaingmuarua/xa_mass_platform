@@ -39,7 +39,14 @@ public final class DefaultTaskItemResultEvents
         if (payloads.isEmpty()) {
             return;
         }
-        taskRuntime.storeTaskItemSuccessResults(taskId, payloads);
+        long started = TaskStageEvent.start();
+        boolean stored = false;
+        try {
+            taskRuntime.storeTaskItemSuccessResults(taskId, payloads);
+            stored = true;
+        } finally {
+            TaskStageEvent.items(started, "RESULT_STORED", taskId, payloads.keySet(), stored ? payloads.size() : 0, !stored);
+        }
         itemScores.promoteItemOutcomes(
                 taskId,
                 List.copyOf(payloads.keySet()),

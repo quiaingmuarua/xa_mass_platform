@@ -640,7 +640,11 @@ performs no Prepare operation.
 Optional call diagnosis uses `xa.mass.diagnostics.enabled=true` plus explicit
 JFR event settings. The default has no HTTP diagnostic Filter or executor
 sampler. Server-owned events time Direct Binding reads, mailbox offers and
-Command consumption without additional Redis operations. They carry fixed
+Command consumption, Task Call submission and immediate/probed Result observation
+without additional Redis operations. Task RPC observations include waiter
+admission, each activated batch's maximum due-item lateness, probe batch/hit counts and deduplicated observation,
+timeout, cancellation and shutdown. The servlet filter also covers `items:call`.
+They carry fixed
 stages, counts and failure flags, never Worker identity, payload or results.
 The servlet observation registers its listener during `startAsync`, records
 initial execution separately, and emits at most one completion after timeout,
@@ -649,7 +653,10 @@ HTTP executor snapshots use JFR's periodic lifecycle and are removed on context
 shutdown; Server creates no sampling thread. Platform-pool metrics are
 inapplicable for virtual-thread execution. Diagnostics do not change admission,
 callback ordering or failure classification. The finite measurement and safe
-export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#direct-load-step-diagnosis).
+export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+Sampled Task correlations are stateless SHA-256 identifiers at 1/64; no identity
+or payload is a metric label. Offline joins stay inside one Server JVM, explicitly
+retain incomplete/overlapping evidence and do not infer TaskItem finality.
 
 Runtime Boundary checks the actual request thread and executor under the default
 200/10 pool, the 200/200 pool and virtual execution. Its finite HTTP/Redis test

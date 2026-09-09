@@ -475,8 +475,32 @@ class RuntimeBoundaryIntegrationTest {
     @Test
     void registeredTaskCallWaitsForWebSocketAndSocketWorkerResults()
             throws Exception {
-        runWorkerGroupTaskCall(TransportProfile.WEBSOCKET);
-        runWorkerGroupTaskCall(TransportProfile.SOCKET);
+        var path = java.nio.file.Files.createTempFile("xa-mass-task-observation-", ".jfr");
+        try (var recording = new jdk.jfr.Recording()) {
+            for (String event : List.of("xa.mass.HttpInitial", "xa.mass.HttpCompletion", "xa.mass.TaskSubmission",
+                    "xa.mass.TaskStorage", "xa.mass.TaskDispatch", "xa.mass.TaskResult", "xa.mass.TaskRpc")) recording.enable(event);
+            recording.start();
+            runWorkerGroupTaskCall(TransportProfile.WEBSOCKET);
+            runWorkerGroupTaskCall(TransportProfile.SOCKET);
+            List<jdk.jfr.consumer.RecordedEvent> events;
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            do {
+                recording.dump(path);
+                events = jdk.jfr.consumer.RecordingFile.readAllEvents(path);
+                if (events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpCompletion")
+                        && e.getString("operation").equals("ITEMS_CALL")).count() == 4) break;
+                Thread.sleep(50);
+            } while (System.nanoTime() < deadline);
+            var completions = events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpCompletion")
+                    && e.getString("operation").equals("ITEMS_CALL")).toList();
+            assertThat(completions).hasSize(4).allMatch(e -> e.getInt("httpStatus") == 200);
+            assertThat(events.stream().filter(e -> e.getEventType().getName().equals("xa.mass.HttpInitial")
+                    && e.getString("operation").equals("ITEMS_CALL")))
+                    .hasSize(4).allMatch(e -> e.getBoolean("virtualThread")
+                            == environment.getProperty("spring.threads.virtual.enabled", Boolean.class, false));
+            assertThat(events.stream().filter(e -> e.hasField("stage")).map(e -> e.getString("stage")))
+                    .contains("ITEM_STORED", "ITEM_INITIALIZED", "COMMAND_PUBLISHED", "RESULT_STORED", "OBSERVED");
+        } finally { java.nio.file.Files.deleteIfExists(path); }
     }
 
     @Test

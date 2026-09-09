@@ -6,15 +6,23 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "One performance suite, or the serial Task + Direct nightly suite"
+        description: "RPC attribution, legacy fixtures, or seven RPC cases plus original mixed witness"
         required: true
         type: choice
-        default: task
+        default: rpc-diagnosis
         options:
           - task
           - direct
           - direct-diagnosis
+          - rpc-diagnosis
           - nightly
+      repetitions:
+        description: "Same-version RPC repetitions; three rotates paths on one host and requires JFR off"
+        type: choice
+        default: '1'
+        options:
+          - '1'
+          - '3'
       diagnostics:
         description: "Private JFR diagnosis (separate from formal A/B comparisons)"
         required: true
@@ -39,7 +47,7 @@ jobs:
   worker-call-performance:
     name: Worker Call Performance
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.baseline_ref != '' && 120 || 45 }}
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline_ref != '' || inputs.repetitions == '3') && 120 || 45 }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -63,14 +71,14 @@ jobs:
       - name: Run independent call performance proof
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
-          CALL_SUITE: ${{ github.event_name == 'schedule' && 'nightly' || inputs.suite || 'task' }}
+          CALL_SUITE: ${{ inputs.suite || 'task' }}
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
           DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
+          REPETITIONS: ${{ inputs.repetitions || '1' }}
         run: |
-          if [ "$CALL_SUITE" = nightly ]; then
-            if [ -n "$BASELINE_REF" ] || [ "$DIAGNOSTICS" != off ]; then
-              echo "The serial nightly fixture requires JFR off and no comparison baseline." >&2
-              exit 2
-            fi
+          # RPC 2k has not passed fixed Result-closure acceptance. Keep the
+          # previously accepted schedule until the new manual manifest passes.
+          if [ "$SCHEDULED_RUN" = true ]; then
             status=0
             for suite in task direct-diagnosis; do
               if ! python integrations/worker-call-performance/run_worker_call_performance.py \
@@ -81,7 +89,7 @@ jobs:
             done
             exit "$status"
           fi
-          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS")
+          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
             if [ "$DIAGNOSTICS" = jfr ]; then

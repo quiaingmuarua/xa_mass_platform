@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class WorkerCallPerformanceMain {
     static final Map<String, Integer> CASES = Map.of("any-100", 100, "any-500", 500,
             "any-1000", 1_000, "any-2000", 2_000, "targeted-500", 500, "mixed-500", 500);
+    static final Map<String, Integer> RPC_CASES = Map.of("rpc-any-500", 500, "rpc-any-1000", 1_000,
+            "rpc-any-2000", 2_000, "rpc-targeted-1000", 1_000, "rpc-targeted-2000", 2_000);
     private WorkerCallPerformanceMain() {}
 
     public static void main(String[] args) throws Exception {
@@ -31,14 +33,22 @@ public final class WorkerCallPerformanceMain {
             DirectCallPerformance.run(name, options);
             return;
         }
-        if (!CASES.containsKey(name) || !options.containsKey("--output")) throw new IllegalArgumentException("case and output required");
+        if ((!CASES.containsKey(name) && !RPC_CASES.containsKey(name)) || !options.containsKey("--output"))
+            throw new IllegalArgumentException("case and output required");
+        boolean diagnosis = RPC_CASES.containsKey(name);
+        boolean targeted = name.contains("targeted");
+        int seconds = diagnosis ? 120 : 30;
+        int workers = diagnosis ? 1_000 : 100;
+        int rate = diagnosis ? RPC_CASES.get(name) : CASES.get(name);
         Path output = Path.of(options.get("--output"));
         Files.createDirectories(output);
         var summary = new LinkedHashMap<String, Object>();
-        summary.put("fixtureVersion", 1);
+        summary.put("fixtureVersion", diagnosis ? 3 : 1);
+        summary.put("callPath", "TASK");
+        summary.put("workers", workers);
         summary.put("case", name);
-        summary.put("offeredRate", CASES.get(name));
-        summary.put("measurementSeconds", 30);
+        summary.put("offeredRate", rate);
+        summary.put("measurementSeconds", seconds);
         summary.put("waitTimeoutMillis", 1_000);
         summary.put("itemTtlMillis", 120_000);
         summary.put("status", "failed");
@@ -49,17 +59,19 @@ public final class WorkerCallPerformanceMain {
         try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
                 options.getOrDefault("--lab-url", "http://127.0.0.1:18086"));
              var execution = Executors.newVirtualThreadPerTaskExecutor()) {
-            var ids = readyWorkers(api);
+            var ids = readyWorkers(api, workers);
             var registration = api.post("/api/v1/worker-groups/" + CallApi.GROUP + ":register", Map.of(
                     "attributes", Map.of("capability", "string-utils"),
                     "eventCodes", List.of("extension.worker.string.md5", "extension.worker.lab.delay")));
             if (!CallApi.GROUP.equals(registration.get("workerGroupId")))
                 throw new CallLoad.ProtocolFailure("Registration Group changed");
             String task = CallApi.string(registration, "taskId");
+            summary.put("taskId", task);
+            summary.put("workerIds", ids);
             String prefix = UUID.randomUUID().toString();
             summary.put("phase", "warmup");
             warmup = CallLoad.schedule(100, 20, 4_096, prefix + "-warmup", execution,
-                    (id, index) -> api.call(task, id, null));
+                    (id, index) -> api.call(task, id, diagnosis && targeted ? ids.get(index % ids.size()) : null));
             warmup.await();
             settle(api, task, warmup, 180);
             requireHealthy(warmup);
@@ -78,8 +90,8 @@ public final class WorkerCallPerformanceMain {
             try {
                 summary.put("phase", "measurement");
                 summary.put("measurementStartedEpochMillis", System.currentTimeMillis());
-                measured = CallLoad.schedule(CASES.get(name), 30, 4_096, prefix + "-measured", execution,
-                        (id, index) -> api.call(task, id, name.startsWith("targeted") ? ids.get(index % ids.size()) : null));
+                measured = CallLoad.schedule(rate, seconds, 4_096, prefix + "-measured", execution,
+                        (id, index) -> api.call(task, id, targeted ? ids.get(index % ids.size()) : null));
                 measured.await();
                 if (background != null) requireBackground(api, background, prefix);
             } finally {
@@ -107,6 +119,14 @@ public final class WorkerCallPerformanceMain {
             }
             if (measured != null) {
                 summary.putAll(measured.summary());
+                if (diagnosis) {
+                    summary.put("windows", Map.of("surge", measured.summary(0, 30_000_000_000L),
+                            "sustained", measured.summary(30_000_000_000L, 120_000_000_000L)));
+                    var buckets = new ArrayList<Map<String, Object>>();
+                    for (int offset = 0; offset < seconds; offset += 5)
+                        buckets.add(measured.summary(offset * 1_000_000_000L, (offset + 5L) * 1_000_000_000L));
+                    summary.put("fiveSecondBuckets", buckets);
+                }
                 writeSamples(output.resolve("samples.jsonl"), measured);
             }
             Files.writeString(output.resolve("summary.json"), Jsons.toJson(summary), StandardOpenOption.CREATE_NEW);
@@ -154,23 +174,24 @@ public final class WorkerCallPerformanceMain {
             throw new IllegalStateException("Accepted Items remain unobserved after drain budget");
     }
 
-    private static List<String> readyWorkers(CallApi api) throws Exception {
+    private static List<String> readyWorkers(CallApi api, int expectedWorkers) throws Exception {
         long deadline = System.nanoTime() + 180_000_000_000L;
         do {
             Object raw = api.workers().get("workers");
-            if (!(raw instanceof List<?> workers)) throw new CallLoad.ProtocolFailure("Missing Lab workers");
+            if (!(raw instanceof List<?> workers) || workers.size() != expectedWorkers)
+                throw new CallLoad.ProtocolFailure("Unexpected Lab Worker count");
             var ids = new ArrayList<String>();
             for (var entry : workers) {
                 var worker = CallApi.object(entry);
                 if (!CallApi.GROUP.equals(worker.get("workerGroupId"))) throw new CallLoad.ProtocolFailure("Wrong Lab Group");
                 if ("RUNNING".equals(worker.get("runtimeState")) && worker.get("workerId") instanceof String id) ids.add(id);
             }
-            if (ids.size() == 100 && Set.copyOf(ids).size() == 100) {
+            if (ids.size() == expectedWorkers && Set.copyOf(ids).size() == expectedWorkers) {
                 boolean network = states(api, "/api/v1/runtime-view/endpoint-managers/scenario-websocket/workers:network-observe", ids, Set.of("connected"));
                 boolean scheduling = states(api, "/api/v1/runtime-view/worker-groups/" + CallApi.GROUP + "/workers:scheduling-observe", ids, Set.of("held-hot", "hot-score-overdue"));
-                var preview = api.post("/api/v1/runtime-view/worker-groups/" + CallApi.GROUP + "/workers:preview", 100);
+                var preview = api.post("/api/v1/runtime-view/worker-groups/" + CallApi.GROUP + "/workers:preview", expectedWorkers);
                 Object entries = preview.get("workers");
-                boolean facts = entries instanceof List<?> list && list.size() == 100 && list.stream().allMatch(e -> {
+                boolean facts = entries instanceof List<?> list && list.size() == expectedWorkers && list.stream().allMatch(e -> {
                     var worker = CallApi.object(e);
                     return ids.contains(worker.get("workerId")) && worker.get("workerProperties") instanceof Map<?, ?> map && !map.isEmpty();
                 }) && list.stream().map(e -> CallApi.object(e).get("workerId"))
@@ -179,13 +200,17 @@ public final class WorkerCallPerformanceMain {
             }
             Thread.sleep(500);
         } while (System.nanoTime() < deadline);
-        throw new IllegalStateException("100 Workers did not become ready with facts");
+        throw new IllegalStateException(expectedWorkers + " Workers did not become ready with facts");
     }
 
     private static boolean states(CallApi api, String path, List<String> ids, Set<String> expected) throws Exception {
-        var states = CallApi.object(api.post(path, ids).get("statesByWorkerId"));
-        if (!states.keySet().equals(Set.copyOf(ids))) throw new CallLoad.ProtocolFailure("Worker observation identity changed");
-        return states.values().stream().allMatch(expected::contains);
+        for (int offset = 0; offset < ids.size(); offset += 100) {
+            var page = ids.subList(offset, Math.min(offset + 100, ids.size()));
+            var states = CallApi.object(api.post(path, page).get("statesByWorkerId"));
+            if (!states.keySet().equals(Set.copyOf(page))) throw new CallLoad.ProtocolFailure("Worker observation identity changed");
+            if (!states.values().stream().allMatch(expected::contains)) return false;
+        }
+        return true;
     }
 
     private static String createBackground(CallApi api, String prefix) throws Exception {

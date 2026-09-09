@@ -89,6 +89,7 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
             String taskId,
             List<TaskRpcWaitRegistry.ProbeRequest> requests
     ) {
+        long started = TaskRpcStageEvent.start();
         try {
             List<String> messageIds = requests.stream()
                     .map(TaskRpcWaitRegistry.ProbeRequest::messageId)
@@ -98,6 +99,8 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
                             taskId,
                             messageIds
                     );
+            if (started != 0) TaskRpcStageEvent.batch(started, "RESULT_PROBE", messageIds.size(),
+                    (int) results.values().stream().filter(java.util.Objects::nonNull).count(), false);
             for (TaskRpcWaitRegistry.ProbeRequest request : requests) {
                 TaskItemResult result = results.get(request.messageId());
                 if (result != null) {
@@ -110,6 +113,7 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
                 registry.finishProbe(taskId, request.messageId(), 0);
             }
         } catch (RuntimeException error) {
+            TaskRpcStageEvent.batch(started, "RESULT_PROBE", requests.size(), 0, true);
             requests.forEach(request -> registry.finishProbe(
                     taskId,
                     request.messageId(),
