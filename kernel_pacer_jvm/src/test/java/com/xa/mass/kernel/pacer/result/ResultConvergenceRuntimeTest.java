@@ -34,9 +34,11 @@ class ResultConvergenceRuntimeTest {
                 DeliveryEndpoint.SERVER,
                 "system-polling",
                 DeliveryEndpoint.KERNEL,
-                "platform.server.worker-poll.observed", "200",
+                "platform.server.worker-poll.observed",
+                "",
                 "{\"workerId\":\"worker-1\",\"observedAtMillis\":" + now + "}",
-                "worker-serviceability-evidence:v1");
+                "worker-serviceability-evidence:v1"
+        );
         when(handoff.consumeNetworkEvidenceResults(anyInt()))
                 .thenReturn(List.of(report)).thenReturn(List.of());
         var runtime = ResultConvergenceRuntime.assemble(preset,

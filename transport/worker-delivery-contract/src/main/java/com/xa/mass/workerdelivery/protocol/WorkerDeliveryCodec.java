@@ -25,7 +25,7 @@ public final class WorkerDeliveryCodec {
             "dst",
             "forward",
             "messageType",
-            "outcomeCode",
+            "diagnosticCode",
             "payload",
             "sourceId",
             "src"
@@ -95,7 +95,7 @@ public final class WorkerDeliveryCodec {
                     || string(payload.get("sourceId")) == null
                     || string(payload.get("dst")) == null
                     || string(payload.get("messageType")) == null
-                    || string(payload.get("outcomeCode")) == null
+                    || string(payload.get("diagnosticCode")) == null
                     || string(payload.get("payload")) == null
                     || string(payload.get("forward")) == null) {
                 return null;
@@ -105,7 +105,7 @@ public final class WorkerDeliveryCodec {
                     string(payload.get("sourceId")),
                     DeliveryEndpoint.fromWire(string(payload.get("dst"))),
                     string(payload.get("messageType")),
-                    string(payload.get("outcomeCode")),
+                    string(payload.get("diagnosticCode")),
                     string(payload.get("payload")),
                     string(payload.get("forward"))
             );
@@ -130,7 +130,7 @@ public final class WorkerDeliveryCodec {
         payload.put("dst", report.dst().wireValue());
         payload.put("forward", report.forward());
         payload.put("messageType", report.messageType());
-        payload.put("outcomeCode", report.outcomeCode());
+        payload.put("diagnosticCode", report.diagnosticCode());
         payload.put("payload", report.payload());
         payload.put("sourceId", report.sourceId());
         payload.put("src", report.src().wireValue());

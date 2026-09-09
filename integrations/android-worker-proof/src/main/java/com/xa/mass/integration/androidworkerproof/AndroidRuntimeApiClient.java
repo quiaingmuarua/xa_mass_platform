@@ -368,9 +368,10 @@ final class AndroidRuntimeApiClient {
             );
             targets.put(targetId, new DirectTarget(
                     JsonValues.requiredString(target, "status"),
+                    JsonValues.optionalString(target.get("messageType"), "messageType"),
                     JsonValues.optionalString(
-                            target.get("outcomeCode"),
-                            "outcomeCode"
+                            target.get("diagnosticCode"),
+                            "diagnosticCode"
                     ),
                     JsonValues.optionalString(
                             target.get("opaqueResultPayload"),
@@ -426,12 +427,14 @@ final class AndroidRuntimeApiClient {
 
     record DirectTarget(
             String status,
-            String outcomeCode,
+            String messageType,
+            String diagnosticCode,
             String opaqueResultPayload
     ) {
         void requireSuccessful(String operation) {
             if (!"observed".equals(status)
-                    || !"200".equals(outcomeCode)
+                    || !("platform.worker.command.succeeded".equals(messageType)
+                    || "platform.adapter.command.succeeded".equals(messageType))
                     || opaqueResultPayload == null) {
                 throw new ProofFailure(
                         "direct-call.outcome",

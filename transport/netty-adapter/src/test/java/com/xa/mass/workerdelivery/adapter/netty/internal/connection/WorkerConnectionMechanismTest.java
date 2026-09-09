@@ -163,7 +163,7 @@ class WorkerConnectionMechanismTest {
             assertThat(published.get(1).src()).isEqualTo(ADAPTER);
             assertThat(published.get(1).sourceId()).isEqualTo("adapter-1");
             assertThat(published.get(1).messageType()).isEqualTo("platform.adapter.worker-properties.observed");
-            assertThat(published.get(1).outcomeCode()).isEqualTo("200");
+            assertThat(published.get(1).diagnosticCode()).isEqualTo("");
             assertThat(published.get(1).forward()).isEmpty();
             assertThat(Jsons.parseObject(published.get(1).payload())).isEqualTo(Map.of(
                     "workerId", "worker-1", "properties", Map.of(
@@ -219,15 +219,37 @@ class WorkerConnectionMechanismTest {
             old.writeInbound(fixture.propertiesUpdate("worker-1", "200", validPatch));
             old.writeInbound(fixture.propertiesFull("worker-1", "200", validPatch));
             current.writeInbound(fixture.propertiesUpdate("other-worker", "200", validPatch));
-            current.writeInbound(fixture.propertiesUpdate("worker-1", "3301", validPatch));
             current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                    ADAPTER, "worker-1", ADAPTER, "platform.worker.properties.updated", "200", validPatch, "")));
+                    WORKER, "worker-1", ADAPTER, "platform.worker.command.failed", "200", validPatch, "")));
             current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER, "worker-1", ADAPTER, "platform.worker.properties.replaced", "200", validPatch, "not-empty")));
+                    ADAPTER,
+                    "worker-1",
+                    ADAPTER,
+                    "platform.worker.properties.updated",
+                    "",
+                    validPatch,
+                    ""
+            )));
+            current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER,
+                    "worker-1",
+                    ADAPTER,
+                    "platform.worker.properties.replaced",
+                    "",
+                    validPatch,
+                    "not-empty"
+            )));
             // The removed event is not a second cache write path, with either payload shape.
             for (String payload : List.of(validPatch, "{\"properties\":{\"battery\":\"1\"}}")) {
                 current.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                        WORKER, "worker-1", ADAPTER, "platform.worker.properties.reported", "200", payload, "")));
+                        WORKER,
+                        "worker-1",
+                        ADAPTER,
+                        "platform.worker.properties.reported",
+                        "",
+                        payload,
+                        ""
+                )));
             }
             for (String invalid : List.of(
                     "{\"battery\":87}", "{\"battery\":true}", "{\"battery\":null}",
@@ -882,8 +904,12 @@ class WorkerConnectionMechanismTest {
             )).containsEntry("worker-1", WorkerConnectionState.CONNECTED);
 
             String ordinary = fixture.codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER, "worker-1", SERVER, "platform.worker.properties.snapshot",
-                    "200", "{\"properties\":{\"battery\":\"99\"}}",
+                    WORKER,
+                    "worker-1",
+                    SERVER,
+                    "platform.worker.command.succeeded",
+                    "",
+                    "{\"properties\":{\"battery\":\"99\"}}",
                     "direct-call:v1:properties"
             ));
             channel.writeInbound(ordinary);
@@ -927,11 +953,9 @@ class WorkerConnectionMechanismTest {
                     "200",
                     "{\"unexpected\":true}"
             ));
-            replacement.writeInbound(fixture.propertiesFull(
-                    "worker-1",
-                    "3303",
-                    "{\"battery\":\"2\"}"
-            ));
+            replacement.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER, "worker-1", ADAPTER, "platform.worker.command.failed",
+                    "200", "{\"battery\":\"2\"}", "")));
 
             var snapshot = fixture.mechanism.workerProperties(
                     List.of("worker-1")
@@ -1072,6 +1096,38 @@ class WorkerConnectionMechanismTest {
             if (reconnect != null) {
                 reconnect.finishAndReleaseAll();
             }
+        }
+    }
+
+    @Test
+    void exactCommandEventsAdmitResultsWithoutNumericClassification() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            for (var destination : List.of(TASK, SERVER)) {
+                for (String event : List.of("test.event", "extension.worker.probe.failed",
+                        "platform.adapter.command.succeeded", "platform.worker.properties.replaced")) {
+                    channel.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                            WORKER, "worker-1", destination, event, "200", "{}", "context")));
+                }
+                assertThat(fixture.reportQueues.get(destination)).isEmpty();
+                DeliveryReport succeeded = DeliveryReport.create(WORKER, "worker-1", destination,
+                        "platform.worker.command.succeeded", "3303", "{}", "context");
+                DeliveryReport failed = DeliveryReport.create(WORKER, "worker-1", destination,
+                        "platform.worker.command.failed", "200", "{}", "context");
+                channel.writeInbound(fixture.codec.encodeDeliveryReport(succeeded));
+                channel.writeInbound(fixture.codec.encodeDeliveryReport(failed));
+                assertThat(fixture.reportQueues.get(destination)).containsExactly(succeeded, failed);
+            }
+            channel.writeInbound(fixture.propertiesFull("worker-1", "3303", "{\"battery\":\"87\"}"));
+            channel.writeInbound(fixture.propertiesUpdate("worker-1", "", "{\"battery\":\"88\"}"));
+            assertThat(fixture.mechanism.workerProperties(List.of("worker-1"))
+                    .get("worker-1").properties()).isEqualTo(Map.of("battery", "88"));
+        } finally {
+            channel.finishAndReleaseAll();
         }
     }
 
@@ -1293,7 +1349,7 @@ class WorkerConnectionMechanismTest {
             assertThat(report.messageType()).isEqualTo(
                     "platform.adapter.worker-connection.changed"
             );
-            assertThat(report.outcomeCode()).isEqualTo("200");
+            assertThat(report.diagnosticCode()).isEqualTo("");
             assertThat(report.forward()).isEqualTo(
                     "worker-serviceability-evidence:v1"
             );
@@ -1321,7 +1377,7 @@ class WorkerConnectionMechanismTest {
                     source == ADAPTER ? "adapter-1" : "worker-1",
                     destination,
                     "test.report",
-                    "200",
+                    "",
                     payload,
                     destination == TASK ? "context" : "direct-call:v1:test"
             );
@@ -1332,8 +1388,8 @@ class WorkerConnectionMechanismTest {
                     WORKER,
                     workerId,
                     TASK,
-                    "test.observe",
-                    "200",
+                    "platform.worker.command.succeeded",
+                    "",
                     "null",
                     "context"
             ));
@@ -1344,8 +1400,8 @@ class WorkerConnectionMechanismTest {
                     WORKER,
                     workerId,
                     SERVER,
-                    "platform.worker.properties.snapshot",
-                    "200",
+                    "platform.worker.command.succeeded",
+                    "",
                     "{}",
                     "direct-call:v1:test"
             ));
@@ -1353,7 +1409,7 @@ class WorkerConnectionMechanismTest {
 
         private String propertiesFull(
                 String workerId,
-                String outcomeCode,
+                String diagnosticCode,
                 String payload
         ) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
@@ -1361,16 +1417,16 @@ class WorkerConnectionMechanismTest {
                     workerId,
                     ADAPTER,
                     "platform.worker.properties.replaced",
-                    outcomeCode,
+                    diagnosticCode,
                     payload,
                     ""
             ));
         }
 
-        private String propertiesUpdate(String workerId, String outcomeCode, String payload) {
+        private String propertiesUpdate(String workerId, String diagnosticCode, String payload) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
                     WORKER, workerId, ADAPTER, "platform.worker.properties.updated",
-                    outcomeCode, payload, ""
+                    diagnosticCode, payload, ""
             ));
         }
 
@@ -1384,7 +1440,7 @@ class WorkerConnectionMechanismTest {
                     workerId,
                     ADAPTER,
                     WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
-                    "200",
+                    "",
                     payload,
                     ""
             ));

@@ -105,14 +105,20 @@ not atomic. Detailed semantics belong to
 
 ## Report Handoff
 
+Report names describe facts, not Command intents. Required `diagnosticCode`
+strings are diagnostic only. Worker/Adapter command success and failure events
+retain opaque output and forward; delivery-failed is a distinct expired TASK
+fact. None adds a queue, Handler or completion registry.
+
 Server rejects mixed or unsupported destination batches before semantic Owner
 side effects. A homogeneous batch selects one destination branch:
 
-- TASK: producer/code validation selects the Kernel success or failure lane.
+- TASK: producer/exact-result-event validation selects the Kernel success or failure lane.
 - SERVER: the Server Direct Call waiter consumes correlated evidence.
 - SYSTEM: the fixed Adapter Properties observation passes Server source,
   Binding and Group admission into Matching facts; unknown events are rejected.
-  It never completes Direct Calls or changes Kernel scores/Candidates.
+  It never completes Direct Calls. APPLIED facts use the existing Score
+  invalidation request, not Candidate-cache fan-out.
 - KERNEL: the Serviceability handoff validates path-consistent Adapter evidence.
 
 Kernel Result Policy parses and groups evidence, then invokes semantic TaskItem

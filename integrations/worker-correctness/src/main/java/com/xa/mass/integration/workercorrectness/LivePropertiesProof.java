@@ -215,7 +215,7 @@ final class LivePropertiesProof {
         if ("unobserved".equals(result.get("status")) && "timeout".equals(result.get("reason"))) {
             throw new TemporaryReadFailure();
         }
-        require("observed".equals(result.get("status")) && "200".equals(result.get("outcomeCode")),
+        require("observed".equals(result.get("status")) && "platform.adapter.command.succeeded".equals(result.get("messageType")),
                 "adapter-snapshot-rejected");
         Map<String, Object> snapshots = object(Jsons.parseObject(text(result.get("opaqueResultPayload")))
                 .get("propertiesByWorkerId"));

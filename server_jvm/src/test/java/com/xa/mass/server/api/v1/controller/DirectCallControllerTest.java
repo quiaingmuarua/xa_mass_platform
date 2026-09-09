@@ -156,8 +156,8 @@ class DirectCallControllerTest {
                         DeliveryEndpoint.WORKER,
                         entry.getKey(),
                         DeliveryEndpoint.SERVER,
-                        String.valueOf(entry.getValue().get("messageType")),
-                        "200",
+                        "platform.worker.command.succeeded",
+                        "",
                         "{\"reachable\":true}",
                         String.valueOf(entry.getValue().get("forward"))
                 ))
@@ -195,6 +195,9 @@ class DirectCallControllerTest {
                 .andExpect(jsonPath("$.status").value("observed"))
                 .andExpect(jsonPath("$.results['worker-1'].status")
                         .value("observed"))
+                .andExpect(jsonPath("$.results['worker-1'].messageType")
+                        .value("platform.worker.command.succeeded"))
+                .andExpect(jsonPath("$.results['worker-1'].diagnosticCode").value(""))
                 .andExpect(jsonPath("$.results['worker-2'].status")
                         .value("observed"));
     }

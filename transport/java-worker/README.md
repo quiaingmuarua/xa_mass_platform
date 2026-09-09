@@ -269,3 +269,12 @@ proof prepares 15,000 identities, retains 10,000 active connections, closes 40
 loaded Tasks across one graceful and two hard Server restarts, and checks
 connection, thread and file-descriptor recovery. It is not a throughput or soak
 claim.
+
+## Report Event Semantics
+
+The shared Core emits `platform.worker.command.succeeded` or
+`platform.worker.command.failed`, preserving opaque Handler output and the
+Command forward. `diagnosticCode` is diagnostic only (empty for success).
+Properties and identity use their distinct Report names, not callable Handler
+entries. See the [Delivery contract](../worker-delivery-contract/README.md#report-semantics)
+for coordinated Server, Adapter, SDK and client upgrade requirements.

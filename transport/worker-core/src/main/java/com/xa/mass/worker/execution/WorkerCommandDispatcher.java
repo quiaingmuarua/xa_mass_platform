@@ -87,12 +87,12 @@ public final class WorkerCommandDispatcher
         if (payload == null || payload.isEmpty()) {
             return failure(WorkerErrorCode.EVENT_RESULT_INVALID);
         }
-        return WorkerCommandOutcome.of("200", payload);
+        return WorkerCommandOutcome.succeeded(payload);
     }
 
     private static WorkerCommandOutcome failure(WorkerErrorCode errorCode) {
-        return WorkerCommandOutcome.of(
-                Integer.toString(errorCode.code()),
+        return WorkerCommandOutcome.failed(
+                errorCode,
                 errorCode.defaultMessage()
         );
     }

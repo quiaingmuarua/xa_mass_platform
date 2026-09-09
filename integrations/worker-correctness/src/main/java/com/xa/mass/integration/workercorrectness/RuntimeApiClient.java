@@ -240,7 +240,8 @@ final class RuntimeApiClient {
             );
             results.put(targetId, new TargetOutcome(
                     optionalString(target.get("status")),
-                    optionalString(target.get("outcomeCode")),
+                    optionalString(target.get("messageType")),
+                    optionalString(target.get("diagnosticCode")),
                     optionalString(target.get("opaqueResultPayload"))
             ));
         });
@@ -374,13 +375,15 @@ final class RuntimeApiClient {
 
     record TargetOutcome(
             String status,
-            String outcomeCode,
+            String messageType,
+            String diagnosticCode,
             String opaqueResultPayload
     ) {
 
         boolean successful() {
             return "observed".equals(status)
-                    && "200".equals(outcomeCode)
+                    && ("platform.worker.command.succeeded".equals(messageType)
+                    || "platform.adapter.command.succeeded".equals(messageType))
                     && opaqueResultPayload != null;
         }
     }

@@ -148,11 +148,11 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
             );
         }
         WorkerCommandOutcome outcome = executed.get();
-        if ("200".equals(outcome.outcomeCode())) {
+        if (outcome.isSuccess()) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("status", "succeeded");
             body.put("eventCode", eventCode);
-            body.put("outcomeCode", outcome.outcomeCode());
+            body.put("diagnosticCode", outcome.diagnosticCode());
             body.put("result", logicalJson(outcome.payload()));
             return json(Response.Status.OK, body);
         }
@@ -164,18 +164,16 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
             WorkerCommandOutcome outcome
     ) {
         Response.Status status;
-        if (Integer.toString(WorkerErrorCode.EVENT_INPUT_INVALID.code())
-                .equals(outcome.outcomeCode())) {
+        if (outcome.errorCode() == WorkerErrorCode.EVENT_INPUT_INVALID) {
             status = Response.Status.BAD_REQUEST;
-        } else if (Integer.toString(WorkerErrorCode.EVENT_NOT_FOUND.code())
-                .equals(outcome.outcomeCode())) {
+        } else if (outcome.errorCode() == WorkerErrorCode.EVENT_NOT_FOUND) {
             status = Response.Status.NOT_FOUND;
         } else {
             status = Response.Status.INTERNAL_ERROR;
         }
         Map<String, Object> body = failureBody(
                 eventCode,
-                outcome.outcomeCode(),
+                outcome.diagnosticCode(),
                 outcome.payload()
         );
         return json(status, body);
@@ -231,7 +229,7 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
 
     private static Map<String, Object> failureBody(
             String eventCode,
-            String outcomeCode,
+            String diagnosticCode,
             String message
     ) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -239,8 +237,8 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
         if (eventCode != null) {
             body.put("eventCode", eventCode);
         }
-        if (outcomeCode != null) {
-            body.put("outcomeCode", outcomeCode);
+        if (diagnosticCode != null) {
+            body.put("diagnosticCode", diagnosticCode);
         }
         body.put("message", message);
         return body;

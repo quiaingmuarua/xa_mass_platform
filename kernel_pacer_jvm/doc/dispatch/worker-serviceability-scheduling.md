@@ -182,10 +182,16 @@ platform.adapter.worker-delivery.expired
   payload={"workerId":"...","observedAtMillis":...}
   forward=worker-serviceability-evidence:v1
 
-platform.adapter.worker-connections.snapshot
+platform.adapter.command.succeeded
   payload={"stateByWorkerId":{"worker-id":"CONNECTED|DISCONNECTED|UNKNOWN"}}
   forward=worker-serviceability:v1:<checkStartedAtMillis>
 ```
+
+The snapshot request remains `platform.adapter.worker-connections.snapshot`.
+Its generic Adapter success event is recognized only with the dedicated probe
+forward and strict snapshot schema. Failed results and Command-name echoes
+produce no observation. No request registry is added; diagnostics never gate
+snapshot, connection, expiry or polling evidence.
 
 Evidence in the future or older than `evidenceMaxAgeMillis` (default 30s) is
 dropped. Within one consumed round, the latest timestamp wins per Worker; equal

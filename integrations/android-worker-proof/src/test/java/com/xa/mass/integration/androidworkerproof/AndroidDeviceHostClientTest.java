@@ -138,7 +138,7 @@ final class AndroidDeviceHostClientTest {
             response = Map.of(
                     "status", "succeeded",
                     "eventCode", eventName,
-                    "outcomeCode", "200",
+                    "diagnosticCode", "200",
                     "result", result
             );
         }

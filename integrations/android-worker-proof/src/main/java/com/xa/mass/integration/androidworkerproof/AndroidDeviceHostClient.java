@@ -145,7 +145,6 @@ final class AndroidDeviceHostClient {
         requireStatus(response, 200, "Android device event " + eventName);
         if (!"succeeded".equals(response.body().get("status"))
                 || !eventName.equals(response.body().get("eventCode"))
-                || !"200".equals(response.body().get("outcomeCode"))
                 || !response.body().containsKey("result")) {
             throw new ProofFailure(
                     "device.event.outcome",

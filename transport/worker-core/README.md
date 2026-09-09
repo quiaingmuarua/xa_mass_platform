@@ -51,7 +51,7 @@ TextMessageClient
 WorkerCommandDispatcher
   -> immutable Definitions assembled from platform defaults + Host extensions
   -> synchronous Definition resolution and Handler execution
-  -> optional WorkerCommandOutcome(outcomeCode, payload)
+  -> optional WorkerCommandOutcome.succeeded(payload) / failed(WorkerErrorCode, payload)
 ```
 
 Core creates or closes no execution resource. `WorkerRunController` submits
@@ -126,19 +126,27 @@ input, output, semantics or side effects require a new full name such as
 `extension.worker.device.snapshot.v2`. Dispatcher lookup remains exact: Core
 does not provide aliases, wildcard or prefix matching, dual lookup or fallback.
 
-| Outcome | Meaning |
+| Local diagnostic | Explicit outcome |
 | --- | --- |
-| `200` | Handler returned a non-empty result payload |
+| empty string | Success: Handler returned a non-empty result payload |
 | `3301` | Resolver or handler rejected event input |
 | `3302` | No definition exists for `messageType` |
 | `3303` | Handler execution failed |
 | `3304` | Handler returned invalid output |
 
+Success/failure is selected by the actual Dispatcher branch, not by parsing a
+code. TextMessage and Polling produce the fixed `platform.worker.command.succeeded`
+or `platform.worker.command.failed` event and retain the original Command
+`forward` and opaque output. Report events are not installed in the Handler map.
+Local typed errors still support Android capability HTTP status mapping;
+Report diagnostic strings have no routing meaning.
+
 Expired Commands are dropped before Handler invocation. A malformed frame or
 an unexpected processing failure is logged with a Worker-owned `3xxx` code and
 does not make the Worker reconnect. If a Result send is not accepted, the
-Result is discarded. Commands and Results are never queued, cached, or
-replayed.
+Result is discarded. Long-connection Commands and Results are never queued, cached, or
+replayed. Polling retains only its existing pending-result submission behavior;
+this event migration does not change either delivery guarantee.
 
 On every physical connection open, Transport first sends
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`

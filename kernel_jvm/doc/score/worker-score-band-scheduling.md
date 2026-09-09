@@ -932,7 +932,7 @@ Serviceability policy and evidence classification are defined in
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |
-| trusted Worker execution result (`200` or Worker-owned `3...`) | yes | exact release of the correlated Worker lease fence |
+| trusted Worker command succeeded/failed event | yes | exact release of the correlated Worker lease fence |
 | trusted Adapter pre-execution rejection (`COMMAND_EXPIRED` for command expiry) | yes | exact release of the correlated Worker lease fence, preserving polarity |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |
 | read projection / trace | no | diagnostics only |

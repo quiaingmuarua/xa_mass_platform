@@ -82,17 +82,9 @@ class WorkerNetworkObservationServiceTest {
 
         directCalls.completeReports(
                 ADAPTER_ID,
-                List.of(DeliveryReport.create(
-                        DeliveryEndpoint.ADAPTER,
-                        ADAPTER_ID,
-                        DeliveryEndpoint.SERVER,
-                        command.messageType(),
-                        "200",
-                        "{\"stateByWorkerId\":{"
+                List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, ADAPTER_ID, DeliveryEndpoint.SERVER, "platform.adapter.command.succeeded", "", "{\"stateByWorkerId\":{"
                                 + "\"worker-2\":\"DISCONNECTED\","
-                                + "\"worker-1\":\"CONNECTED\"}}",
-                        command.forward()
-                ))
+                                + "\"worker-1\":\"CONNECTED\"}}", command.forward()))
         );
 
         assertThat(deferred.getResult())
@@ -138,7 +130,7 @@ class WorkerNetworkObservationServiceTest {
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
                         DeliveryEndpoint.SERVER,
-                        rejectedCommand.messageType(),
+                        "platform.adapter.command.failed",
                         "23005",
                         "null",
                         rejectedCommand.forward()
@@ -161,8 +153,8 @@ class WorkerNetworkObservationServiceTest {
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
                         DeliveryEndpoint.SERVER,
-                        malformedCommand.messageType(),
-                        "200",
+                        "platform.adapter.command.succeeded",
+                        "",
                         "{\"stateByWorkerId\":{}}",
                         malformedCommand.forward()
                 ))

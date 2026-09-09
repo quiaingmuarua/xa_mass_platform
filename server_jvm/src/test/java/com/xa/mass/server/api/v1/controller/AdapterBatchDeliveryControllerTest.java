@@ -187,6 +187,35 @@ class AdapterBatchDeliveryControllerTest {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void retiredDiagnosticFieldIsRejectedBeforeCallingTheService() throws Exception {
+        for (String body : java.util.List.of(
+                successResult().replace("\"diagnosticCode\"", "\"outcomeCode\""),
+                successResult().replace("\"diagnosticCode\":\"\"",
+                        "\"diagnosticCode\":\"\",\"outcomeCode\":\"\""))) {
+            mockMvc.perform(post(batchPath("results:append"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("[" + body + "]"))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void diagnosticsMustBePresentNonNullStringsAtTheHttpBoundary() throws Exception {
+        for (String body : java.util.List.of(
+                successResult().replace("\"diagnosticCode\":\"\",", ""),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":null"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":200"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":true"))) {
+            mockMvc.perform(post(batchPath("results:append"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("[" + body + "]"))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
     private static DeliveryCommand command() {
         return COMMAND;
     }
@@ -194,7 +223,7 @@ class AdapterBatchDeliveryControllerTest {
     private static String successResult() {
         return """
                 {"dst":"TASK","forward":"context",\
-                "messageType":"test.event","outcomeCode":"200",\
+                "messageType":"platform.worker.command.succeeded","diagnosticCode":"",\
                 "payload":"null","sourceId":"worker-1","src":"WORKER"}\
                 """;
     }
@@ -204,8 +233,8 @@ class AdapterBatchDeliveryControllerTest {
                 DeliveryEndpoint.WORKER,
                 "worker-1",
                 DeliveryEndpoint.TASK,
-                "test.event",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "null",
                 "context"
         );

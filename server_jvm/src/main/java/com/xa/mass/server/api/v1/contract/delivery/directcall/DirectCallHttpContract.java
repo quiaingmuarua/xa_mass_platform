@@ -57,17 +57,20 @@ public final class DirectCallHttpContract {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record DirectTargetCallResponse(
             DirectTargetStatus status,
-            @Nullable String outcomeCode,
+            @Nullable String messageType,
+            @Nullable String diagnosticCode,
             @Nullable String opaqueResultPayload,
             @Nullable DirectTargetReason reason
     ) {
         public static DirectTargetCallResponse observed(
-                String outcomeCode,
+                String messageType,
+                String diagnosticCode,
                 String payload
         ) {
             return new DirectTargetCallResponse(
                     DirectTargetStatus.OBSERVED,
-                    outcomeCode,
+                    java.util.Objects.requireNonNull(messageType, "messageType"),
+                    java.util.Objects.requireNonNull(diagnosticCode, "diagnosticCode"),
                     payload,
                     null
             );
@@ -80,6 +83,7 @@ public final class DirectCallHttpContract {
                     DirectTargetStatus.UNOBSERVED,
                     null,
                     null,
+                    null,
                     reason
             );
         }
@@ -89,6 +93,7 @@ public final class DirectCallHttpContract {
         ) {
             return new DirectTargetCallResponse(
                     DirectTargetStatus.REJECTED,
+                    null,
                     null,
                     null,
                     reason

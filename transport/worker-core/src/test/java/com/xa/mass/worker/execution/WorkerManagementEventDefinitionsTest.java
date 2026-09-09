@@ -32,7 +32,7 @@ class WorkerManagementEventDefinitionsTest {
                 "null"
         );
 
-        assertEquals("200", outcome.outcomeCode());
+        assertEquals("", outcome.diagnosticCode());
         assertEquals(Map.of("reachable", true), Jsons.parseObject(
                 outcome.payload()
         ));
@@ -88,7 +88,7 @@ class WorkerManagementEventDefinitionsTest {
                     Integer.toString(
                             WorkerErrorCode.EVENT_INPUT_INVALID.code()
                     ),
-                    outcome.outcomeCode()
+                    outcome.diagnosticCode()
             );
         }
     }
@@ -116,7 +116,7 @@ class WorkerManagementEventDefinitionsTest {
                     Integer.toString(
                             WorkerErrorCode.EVENT_EXECUTION_FAILED.code()
                     ),
-                    outcome.outcomeCode()
+                    outcome.diagnosticCode()
             );
         }
     }

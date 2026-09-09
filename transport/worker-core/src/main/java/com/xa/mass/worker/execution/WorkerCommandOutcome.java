@@ -1,31 +1,40 @@
 package com.xa.mass.worker.execution;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
 import java.util.Objects;
 
 public final class WorkerCommandOutcome {
 
-    private final String outcomeCode;
+    private final WorkerErrorCode errorCode;
     private final String payload;
 
-    private WorkerCommandOutcome(String outcomeCode, String payload) {
-        if (outcomeCode == null || outcomeCode.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "outcomeCode must be non-blank"
-            );
-        }
-        this.outcomeCode = outcomeCode;
+    private WorkerCommandOutcome(WorkerErrorCode errorCode, String payload) {
+        this.errorCode = errorCode;
         this.payload = Objects.requireNonNull(payload, "payload");
     }
 
-    public static WorkerCommandOutcome of(
-            String outcomeCode,
-            String payload
-    ) {
-        return new WorkerCommandOutcome(outcomeCode, payload);
+    public static WorkerCommandOutcome succeeded(String payload) {
+        return new WorkerCommandOutcome(null, payload);
     }
 
-    public String outcomeCode() {
-        return outcomeCode;
+    public static WorkerCommandOutcome failed(
+            WorkerErrorCode errorCode,
+            String payload
+    ) {
+        return new WorkerCommandOutcome(Objects.requireNonNull(errorCode, "errorCode"), payload);
+    }
+
+    public boolean isSuccess() {
+        return errorCode == null;
+    }
+
+    /** The local typed failure, or null for success; not a wire discriminator. */
+    public WorkerErrorCode errorCode() {
+        return errorCode;
+    }
+
+    public String diagnosticCode() {
+        return errorCode == null ? "" : Integer.toString(errorCode.code());
     }
 
     public String payload() {

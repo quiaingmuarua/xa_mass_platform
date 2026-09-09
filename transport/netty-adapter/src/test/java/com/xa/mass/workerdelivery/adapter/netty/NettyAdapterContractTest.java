@@ -90,7 +90,8 @@ class NettyAdapterContractTest {
                     command,
                     WORKER,
                     WORKER_ID,
-                    "200",
+                    "platform.worker.command.succeeded",
+                    "",
                     "{\"observed\":true}"
             );
             String encodedReport = codec.encodeDeliveryReport(report);
@@ -238,7 +239,7 @@ class NettyAdapterContractTest {
         do {
             if (remoteApi.appendedResults.stream().flatMap(List::stream).anyMatch(report ->
                     report.src() == ADAPTER && report.sourceId().equals(adapterId)
-                            && report.dst() == SYSTEM && report.outcomeCode().equals("200")
+                            && report.dst() == SYSTEM && report.diagnosticCode().isEmpty()
                             && report.forward().isEmpty()
                             && report.messageType().equals("platform.adapter.worker-properties.observed")
                             && Jsons.parseObject(report.payload()).equals(Map.of(
@@ -367,7 +368,7 @@ class NettyAdapterContractTest {
                 WORKER_ID,
                 ADAPTER,
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
-                "200",
+                "",
                 "null",
                 ""
         ));

@@ -14,7 +14,8 @@ export const workerDirectTargetResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("observed"),
-      outcomeCode: z.string().min(1),
+      messageType: z.string().min(1),
+      diagnosticCode: z.string(),
       opaqueResultPayload: z.string().optional()
     })
     .strict(),

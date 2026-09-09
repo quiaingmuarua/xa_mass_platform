@@ -105,11 +105,7 @@ class DirectCallServiceTest {
         );
         service.completeReports(
                 ADAPTER_ID,
-                List.of(workerReport(
-                        "worker-ok",
-                        command.messageType(),
-                        command.forward()
-                ))
+                List.of(workerReport("worker-ok", "platform.worker.command.succeeded", command.forward()))
         );
 
         DirectCallResponse response = response(deferred).getBody();
@@ -190,11 +186,7 @@ class DirectCallServiceTest {
                     DeliveryCommand command = offered.get("worker-1");
                     service.completeReports(
                             ADAPTER_ID,
-                            List.of(workerReport(
-                                    "worker-1",
-                                    command.messageType(),
-                                    command.forward()
-                            ))
+                            List.of(workerReport("worker-1", "platform.worker.command.succeeded", command.forward()))
                     );
                     return Map.of(
                             "worker-1",
@@ -268,7 +260,7 @@ class DirectCallServiceTest {
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
                         DeliveryEndpoint.SERVER,
-                        command.messageType(),
+                        "platform.adapter.command.failed",
                         "23005",
                         "unsupported",
                         command.forward()
@@ -300,8 +292,8 @@ class DirectCallServiceTest {
                         DeliveryEndpoint.ADAPTER,
                         ADAPTER_ID,
                         DeliveryEndpoint.SERVER,
-                        command.messageType(),
-                        "200",
+                        "platform.adapter.command.succeeded",
+                        "",
                         "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                         command.forward()
                 ))
@@ -311,7 +303,8 @@ class DirectCallServiceTest {
                 .toCompletableFuture()
                 .join();
         assertThat(outcome.observed()).isTrue();
-        assertThat(outcome.outcomeCode()).isEqualTo("200");
+        assertThat(outcome.messageType()).isEqualTo("platform.adapter.command.succeeded");
+        assertThat(outcome.diagnosticCode()).isEmpty();
         assertThat(outcome.opaqueResultPayload()).contains("CONNECTED");
         assertThat(handle.timeoutMillis()).isEqualTo(3_000);
         verifyNoInteractions(catalog, commands);
@@ -389,7 +382,7 @@ class DirectCallServiceTest {
                 workerId,
                 DeliveryEndpoint.SERVER,
                 messageType,
-                "200",
+                "",
                 "{\"reachable\":true}",
                 forward
         );

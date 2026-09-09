@@ -33,9 +33,9 @@ decide TaskItem finality.
 
 ## Protocol Boundary And Queues
 
-`DeliveryReport.outcomeCode` remains an endpoint-owned Wire fact. Transport and
-Server validate the producer and code namespace, then Server maps accepted
-Task evidence to `TaskResultClass.SUCCESS` or `TaskResultClass.FAILURE`.
+`DeliveryReport.diagnosticCode` is diagnostic only. Transport and Server validate
+producer and exact event contracts; Server maps accepted Task evidence to
+`TaskResultClass.SUCCESS` or `TaskResultClass.FAILURE`.
 Kernel `TaskResultRuntime`, the fixed Result lane consumer, and
 `TaskResultBatchPolicy` receive only that class; they never classify or branch
 on the raw code.
@@ -43,9 +43,9 @@ on the raw code.
 The accepted mappings are:
 
 ```text
-Worker 200                    -> SUCCESS
-Worker-owned 3...             -> FAILURE
-Adapter-owned Task rejection  -> FAILURE
+WORKER / platform.worker.command.succeeded         -> SUCCESS
+WORKER / platform.worker.command.failed            -> FAILURE
+ADAPTER / platform.adapter.command.delivery-failed -> FAILURE (validated payload)
 ```
 
 Adapter Route changes, delivery-expiry evidence and connection snapshots use
@@ -84,9 +84,9 @@ Each Redis key is one homogeneous lane: the whole consumed batch is handed to
 one fixed policy function. Homogeneity does not require every Report in the
 Network Evidence batch to have the same producer or `messageType`; that policy owns its
 finite event interpretation. The Task queue lane remains the only result-class
-evidence visible to Kernel. A report whose raw `outcomeCode` contradicts its
-Task lane is still processed according to the lane; preventing that
-contradiction is the Server ingress invariant.
+evidence visible to Kernel. Diagnostic `diagnosticCode` has no success/failure
+meaning, even when it contains `200` or `3303`. Server establishes the lane
+from exact Report semantics; Kernel does not reclassify the carried event.
 
 One non-daemon coordinator owns all dynamic lane counters and schedules at most
 ten in-flight batches globally. Among eligible lanes below their maximum, it

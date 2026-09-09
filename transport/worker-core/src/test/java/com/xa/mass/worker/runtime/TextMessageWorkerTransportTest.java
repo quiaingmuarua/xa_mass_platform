@@ -571,10 +571,7 @@ class TextMessageWorkerTransportTest {
     }
 
     private static WorkerCommandOutcome outcome(DeliveryCommand command) {
-        return WorkerCommandOutcome.of(
-                "200",
-                command.payload()
-        );
+        return WorkerCommandOutcome.succeeded(command.payload());
     }
 
     private static void assertIdentity(String encoded) {
@@ -590,7 +587,7 @@ class TextMessageWorkerTransportTest {
                 "worker.connection.identify",
                 result.messageType()
         );
-        assertEquals("200", result.outcomeCode());
+        assertEquals("", result.diagnosticCode());
         assertEquals("null", result.payload());
         assertEquals("", result.forward());
         return result;

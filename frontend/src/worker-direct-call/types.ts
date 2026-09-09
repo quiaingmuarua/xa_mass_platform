@@ -21,7 +21,8 @@ export interface WorkerDirectCallRequest {
 export type WorkerDirectCallTargetResult =
   | {
       status: "observed";
-      outcomeCode: string;
+      messageType: string;
+      diagnosticCode: string;
       opaqueResultPayload?: string;
     }
   | {

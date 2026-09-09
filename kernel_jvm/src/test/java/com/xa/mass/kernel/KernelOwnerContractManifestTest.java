@@ -149,11 +149,6 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
                     Map.entry(
-                            "DeliveryReportOutcomeClass",
-                            WorkerDeliveryProtocol
-                                    .DeliveryReportOutcomeClass.class
-                    ),
-                    Map.entry(
                             "TaskResultClass",
                             TaskResultRuntime.TaskResultClass.class
                     ),

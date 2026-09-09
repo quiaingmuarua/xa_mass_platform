@@ -79,7 +79,7 @@ public final class AndroidCapabilityHttpServerTest {
                 "extension.worker.demo.echo",
                 call.body.get("eventCode")
         );
-        assertEquals("200", call.body.get("outcomeCode"));
+        assertEquals("", call.body.get("diagnosticCode"));
         assertEquals(
                 Collections.singletonMap("value", "hello"),
                 call.body.get("result")
@@ -291,11 +291,11 @@ public final class AndroidCapabilityHttpServerTest {
     private static void assertFailure(
             HttpResult result,
             int status,
-            String outcomeCode
+            String diagnosticCode
     ) {
         assertEquals(status, result.status);
         assertEquals("failed", result.body.get("status"));
-        assertEquals(outcomeCode, result.body.get("outcomeCode"));
+        assertEquals(diagnosticCode, result.body.get("diagnosticCode"));
     }
 
     private static final class HttpResult {

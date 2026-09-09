@@ -62,7 +62,8 @@ class PollingWorkerTransportTest {
                         COMMAND,
                         DeliveryEndpoint.WORKER,
                         WORKER_ID,
-                        "200",
+                        "platform.worker.command.succeeded",
+                        "",
                         "{\"observed\":\"input\"}"
                 ),
                 CODEC.decodeDeliveryReport(
@@ -155,6 +156,28 @@ class PollingWorkerTransportTest {
         transport.close();
     }
 
+    @Test
+    void pendingFailureKeepsItsEventAndDoesNotExecuteTheCommandAgain() throws Exception {
+        FakePointClient client = new FakePointClient();
+        client.commands.add(Optional.of(CODEC.encodeDeliveryCommand(COMMAND)));
+        client.submitFailures = 1;
+        java.util.concurrent.atomic.AtomicInteger executions = new java.util.concurrent.atomic.AtomicInteger();
+        try (PollingWorkerTransport transport = transport(client, command -> {
+            executions.incrementAndGet();
+            return Optional.of(WorkerCommandOutcome.failed(
+                    com.xa.mass.worker.error.WorkerErrorCode.EVENT_EXECUTION_FAILED, "opaque-failure"));
+        })) {
+            assertThrows(IOException.class, transport::runOnce);
+            assertTrue(transport.hasPendingResult());
+            assertTrue(transport.runOnce());
+            assertEquals(1, executions.get());
+            DeliveryReport report = CODEC.decodeDeliveryReport(client.submittedResults.get(0));
+            assertEquals("platform.worker.command.failed", report.messageType());
+            assertEquals(COMMAND.forward(), report.forward());
+            assertEquals("opaque-failure", report.payload());
+        }
+    }
+
     private static PollingWorkerTransport transport(
             WorkerPointClient client,
             WorkerCommandExecutor executor
@@ -163,10 +186,7 @@ class PollingWorkerTransportTest {
     }
 
     private static WorkerCommandOutcome outcome() {
-        return WorkerCommandOutcome.of(
-                "200",
-                "{\"observed\":\"input\"}"
-        );
+        return WorkerCommandOutcome.succeeded("{\"observed\":\"input\"}");
     }
 
     private static final class FakePointClient

@@ -44,7 +44,7 @@ deadline.
 
 The convergence proof establishes four separate mutations:
 
-1. `extension.worker.lab.fail` returns a Worker `3xxx` outcome while the run and
+1. `extension.worker.lab.fail` returns `platform.worker.command.failed` with Worker diagnostics while the run and
    subsequent Probe remain usable.
 2. A ten-second DELAY enters the Handler, then Adapter close-current closes the
    physical route. The same Worker ID reconnects and the accepted Task Item

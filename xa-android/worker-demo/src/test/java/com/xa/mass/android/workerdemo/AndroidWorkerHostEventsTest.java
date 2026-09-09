@@ -166,7 +166,7 @@ public final class AndroidWorkerHostEventsTest {
                 dispatcher,
                 AndroidWorkerHostEvents.START_EVENT
         );
-        assertEquals("3303", failure.outcomeCode());
+        assertEquals("3303", failure.diagnosticCode());
     }
 
     private static Map<String, Object> result(
@@ -174,7 +174,7 @@ public final class AndroidWorkerHostEventsTest {
             String eventName
     ) {
         WorkerCommandOutcome outcome = execute(dispatcher, eventName);
-        assertEquals("200", outcome.outcomeCode());
+        assertEquals("", outcome.diagnosticCode());
         return Jsons.parseObject(outcome.payload());
     }
 

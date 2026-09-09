@@ -151,7 +151,7 @@ Adapter-directed identity Report:
   "dst":"ADAPTER",
   "forward":"",
   "messageType":"worker.connection.identify",
-  "outcomeCode":"200",
+  "diagnosticCode":"",
   "payload":"null",
   "sourceId":"server-issued-worker-id",
   "src":"WORKER"
@@ -216,10 +216,11 @@ established connection are logged and dropped. Before identity, a malformed,
 invalid, or non-identity Report closes the physical Channel.
 
 Once bound, malformed JSON, repeated identity, unknown Adapter events,
-mismatched `src/sourceId`, unsupported destinations, and Worker-originated
-`2...` outcomes are logged and dropped without closing the Channel. A valid
-Worker Report must use `src=WORKER`, the bound workerId, and outcome `200` or a
-Worker-owned `3...`. `dst=TASK`, `dst=SERVER` and `dst=SYSTEM` enter their
+mismatched `src/sourceId`, unsupported destinations, and invalid result events
+are logged and dropped without closing the Channel. TASK/SERVER Worker Reports
+must use the bound Worker producer and exactly `platform.worker.command.succeeded`
+or `platform.worker.command.failed`. Diagnostic strings never decide admission.
+SYSTEM event semantics remain downstream-owned. These destinations enter their
 respective Report Queues as decoded `DeliveryReport` objects. A full or closed
 TASK Queue closes the exact Channel; best-effort SERVER/SYSTEM backpressure
 drops the Report and keeps the Channel usable. Adapter-produced `dst=KERNEL`
@@ -330,7 +331,7 @@ the pure Processor applies these rules once to that batch:
 
 ```text
 expired TASK
-  -> independently offer the 23002 TASK Report and one KERNEL
+  -> independently offer command.delivery-failed to TASK and one KERNEL
      worker-delivery.expired Report, then remove
 any other expired Command
   -> remove without synthetic evidence
@@ -341,6 +342,17 @@ physical Server write started
 dst=ADAPTER
   -> ignore the entry key and dispatch through the immutable map
 ```
+
+Expired TASK delivery uses `platform.adapter.command.delivery-failed`,
+diagnostic `23002`, original forward and JSON payload
+`{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`. It leaves retry before
+reporting. `RETRY_LATER` and `UNKNOWN` never synthesize this event. The
+independent KERNEL expiry observation has no execution-result correlation or
+diagnostic gate. Direct Call expiry and shutdown remain best-effort drops.
+
+Adapter Handler results are `platform.adapter.command.succeeded / failed`,
+not echoes of Handler names. They retain the opaque Handler output, reply
+destination and forward. Report event names do not enter the Handler map.
 
 After a retry slice, the Dispatcher makes one `commands:consume` acquisition
 before serving another retained slice. A non-empty fresh batch is processed
@@ -435,7 +447,7 @@ only: no loader, refresh, listener, scheduler or cleanup thread is installed.
 
 The fixed Worker-produced `WORKER -> ADAPTER` events
 `platform.worker.properties.updated` and `platform.worker.properties.replaced`
-accept outcome `200`, empty forward, and a direct string KV Map payload. Only
+accept empty forward and a direct string KV Map payload; diagnosticCode is diagnostic only. Only
 the Event Name selects merge or replacement. Update copies the full baseline
 and applies `putAll`; replacement installs the supplied full Map, removing
 omitted keys. Both retain the existing per-Worker atomic installation and
@@ -464,7 +476,7 @@ After a valid cache installation and current-Channel recheck, the connection
 mechanism uses that exact immutable `ObservationWrite.written` value to offer
 one `ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` Report.
 The payload is `{"workerId":"...","properties":{...}}`, with `sourceId=adapterId`,
-outcome `200` and empty forward. Full, incremental, initial and reconnect
+empty diagnostic and empty forward. Full, incremental, initial and reconnect
 baselines all use this one path. Rollback, missing baseline and invalid input
 produce no publication. Fingerprint equality does not suppress a valid write
 or explicit full resubmission; no throttle or publication timestamp is stored.

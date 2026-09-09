@@ -40,10 +40,8 @@ class DeliveryCommandProcessTest {
                 .thenReturn(STARTED);
         when(connection.deliver("worker-unknown", taskCommand(2_000)))
                 .thenReturn(UNKNOWN);
-        DeliveryCommandProcess process = process(
-                connection,
-                acceptingReportDispatcher()
-        );
+        List<DeliveryReport> offered = new ArrayList<>();
+        DeliveryCommandProcess process = process(connection, reportDispatcher(offered));
         DeliveryCommandItem retry = new DeliveryCommandItem(
                 "worker-retry",
                 taskCommand(2_000)
@@ -68,6 +66,7 @@ class DeliveryCommandProcessTest {
                         .WORKER_DELIVERY_RETRY_LATER
         );
         assertThat(result.requeueIndexes()).containsExactly(0);
+        assertThat(offered).isEmpty(); // Neither RETRY_LATER nor UNKNOWN proves delivery failed.
         verify(connection).deliver("worker-retry", retry.command());
         verify(connection).deliver("worker-started", started.command());
         verify(connection).deliver("worker-unknown", unknown.command());
@@ -92,16 +91,10 @@ class DeliveryCommandProcessTest {
 
         assertThat(offered).hasSize(2);
         assertThat(offered).anySatisfy(report -> assertThat(report)
-                    .isEqualTo(DeliveryReport.fromCommand(
-                            expired,
-                            ADAPTER,
-                            "adapter-1",
-                            Integer.toString(
+                    .isEqualTo(DeliveryReport.fromCommand(expired, ADAPTER, "adapter-1", "platform.adapter.command.delivery-failed", Integer.toString(
                                     WorkerDeliveryAdapterErrorCode
                                             .COMMAND_EXPIRED.code()
-                            ),
-                            "null"
-                    )));
+                            ), com.xa.mass.workerdelivery.json.Jsons.toJson(java.util.Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED")))));
         assertThat(offered).anySatisfy(report -> {
             assertThat(report.dst()).isEqualTo(KERNEL);
             assertThat(report.messageType()).isEqualTo(
@@ -136,7 +129,8 @@ class DeliveryCommandProcessTest {
                 command,
                 ADAPTER,
                 "adapter-1",
-                "200",
+                "platform.adapter.command.succeeded",
+                "",
                 "null"
         );
         when(dispatcher.dispatch(command)).thenReturn(report);

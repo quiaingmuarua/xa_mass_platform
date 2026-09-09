@@ -12,17 +12,25 @@ export function presentWorkerDirectCallTarget(
   target: WorkerDirectCallTargetResult
 ): WorkerDirectCallPresentation {
   if (target.status === "observed") {
-    return target.outcomeCode === "200"
+    const succeeded =
+      target.messageType === "platform.worker.command.succeeded" ||
+      target.messageType === "platform.adapter.command.succeeded";
+    const failed =
+      target.messageType === "platform.worker.command.failed" ||
+      target.messageType === "platform.adapter.command.failed";
+    const diagnostic = target.diagnosticCode ? ` · ${target.diagnosticCode}` : "";
+    return succeeded
       ? {
-          label: "Observed · 200",
+          label: `Observed · Succeeded${diagnostic}`,
           tone: "success",
-          description: "已观察到 Worker 成功 Result。"
+          description: "已观察到命令处理成功。"
         }
       : {
-          label: `Observed · ${target.outcomeCode}`,
+          label: `Observed · ${failed ? "Failed" : target.messageType}${diagnostic}`,
           tone: "warning",
-          description:
-            "已观察到 Worker Result，但 outcomeCode 不是 200，不能描述为执行成功。"
+          description: failed
+            ? "已观察到命令处理失败；诊断码不决定结果语义。"
+            : "已观察到未识别的结果事件，不能推断执行成功。"
         };
   }
   if (target.status === "unobserved") {

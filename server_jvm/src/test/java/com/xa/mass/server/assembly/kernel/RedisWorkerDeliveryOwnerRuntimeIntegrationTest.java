@@ -1,5 +1,7 @@
 package com.xa.mass.server.assembly.kernel;
 
+import com.xa.mass.workerdelivery.json.Jsons;
+
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -115,12 +117,12 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         )).isNotNull();
 
         List<DeliveryReport> results = List.of(
-                result("success", "200"),
+                result("success", DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", ""),
                 DeliveryReport.create(
                         DeliveryEndpoint.WORKER,
                         "worker-1",
                         DeliveryEndpoint.TASK,
-                        "test.event",
+                        "platform.worker.command.failed",
                         "3500",
                         "null",
                         "failure"
@@ -129,9 +131,9 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                         DeliveryEndpoint.ADAPTER,
                         "endpoint-1",
                         DeliveryEndpoint.TASK,
-                        "test.event",
+                        "platform.adapter.command.delivery-failed",
                         "23002",
-                        "null",
+                        com.xa.mass.workerdelivery.json.Jsons.toJson(java.util.Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED")),
                         "rejection"
                 )
         );
@@ -159,8 +161,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     @Test
     void resultConsumeIsFifoAndDropsConsumedMalformedMembers() {
-        DeliveryReport first = result("first", "200");
-        DeliveryReport second = result("second", "200");
+        DeliveryReport first = result("first", DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
+        DeliveryReport second = result("second", DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         redis.rpush(
                 resultKey("success"),
                 codec.encodeDeliveryReport(first),
@@ -349,8 +351,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
                 DeliveryEndpoint.SERVER,
-                "platform.adapter.worker-connections.snapshot",
-                "200",
+                "platform.adapter.command.succeeded",
+                "",
                 "{}",
                 "worker-serviceability:v1:1"
         );
@@ -394,21 +396,21 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     private static DeliveryReport result(
             String forward,
-            String outcomeCode
+            DeliveryEndpoint source,
+            String messageType,
+            String diagnosticCode
     ) {
-        DeliveryEndpoint source = !"200".equals(outcomeCode)
-                && outcomeCode.startsWith("2")
-                ? DeliveryEndpoint.ADAPTER
-                : DeliveryEndpoint.WORKER;
         return DeliveryReport.create(
                 source,
                 source == DeliveryEndpoint.ADAPTER
                         ? "endpoint-1"
                         : "worker-1",
                 DeliveryEndpoint.TASK,
-                "test.event",
-                outcomeCode,
-                "null",
+                messageType,
+                diagnosticCode,
+                source == DeliveryEndpoint.ADAPTER
+                        ? Jsons.toJson(Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED"))
+                        : "null",
                 forward
         );
     }
@@ -417,18 +419,10 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
             String workerId,
             String state
     ) {
-        return DeliveryReport.create(
-                DeliveryEndpoint.ADAPTER,
-                "endpoint-1",
-                DeliveryEndpoint.KERNEL,
-                "platform.adapter.worker-connections.snapshot",
-                "200",
-                "{\"stateByWorkerId\":{\""
+        return DeliveryReport.create(DeliveryEndpoint.ADAPTER, "endpoint-1", DeliveryEndpoint.KERNEL, "platform.adapter.command.succeeded", "", "{\"stateByWorkerId\":{\""
                         + workerId
                         + "\":\""
                         + state
-                        + "\"}}",
-                "worker-serviceability:v1:123"
-        );
+                        + "\"}}", "worker-serviceability:v1:123");
     }
 }

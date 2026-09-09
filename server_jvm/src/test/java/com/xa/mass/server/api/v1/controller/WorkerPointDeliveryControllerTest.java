@@ -129,6 +129,21 @@ class WorkerPointDeliveryControllerTest {
                         .value(13002));
     }
 
+    @Test
+    void diagnosticsMustBePresentNonNullStringsAtTheHttpBoundary() throws Exception {
+        for (String body : java.util.List.of(
+                successResult().replace("\"diagnosticCode\":\"\",", ""),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":null"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":200"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":true"))) {
+            mockMvc.perform(post(pointPath("results"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
     private static DeliveryCommand command() {
         return COMMAND;
     }
@@ -136,8 +151,8 @@ class WorkerPointDeliveryControllerTest {
     private static String successResult() {
         return """
                 {"src":"WORKER","sourceId":"worker-1",\
-                "dst":"TASK","messageType":"test.event",\
-                "outcomeCode":"200","payload":"null","forward":"context"}\
+                "dst":"TASK","messageType":"platform.worker.command.succeeded",\
+                "diagnosticCode":"","payload":"null","forward":"context"}\
                 """;
     }
 

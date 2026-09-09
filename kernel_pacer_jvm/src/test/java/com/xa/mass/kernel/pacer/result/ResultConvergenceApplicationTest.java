@@ -406,8 +406,8 @@ class ResultConvergenceApplicationTest {
                 DeliveryEndpoint.WORKER,
                 "worker-1",
                 DeliveryEndpoint.TASK,
-                "extension.worker.test",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "payload",
                 "forward"
         );

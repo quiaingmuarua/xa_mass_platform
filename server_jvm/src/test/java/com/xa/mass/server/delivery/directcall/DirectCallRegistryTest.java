@@ -29,7 +29,7 @@ class DirectCallRegistryTest {
             DeliveryReport reply = workerReport("worker-1", "call-1");
             DeliveryReport event = DeliveryReport.create(
                     reply.src(), reply.sourceId(), DeliveryEndpoint.SYSTEM,
-                    reply.messageType(), reply.outcomeCode(), reply.payload(), reply.forward()
+                    reply.messageType(), reply.diagnosticCode(), reply.payload(), reply.forward()
             );
             assertThat(registry.completeReports("adapter", List.of(event)))
                     .isEqualTo(new DirectCallRegistry.CompletionCounts(0, 1));
@@ -193,6 +193,57 @@ class DirectCallRegistryTest {
                 ));
     }
 
+    @Test
+    void resultEventsNotDiagnosticCodesCompleteOnlyTheirProducerTarget() {
+        try (DirectCallRegistry registry = registry(10, 10)) {
+            BatchHandle workers = registry.registerBatch("workers", List.of(
+                    workerPlan("worker-1", "success"), workerPlan("worker-2", "failure")));
+            BatchHandle adapters = registry.registerBatch("adapters",
+                    List.of(adapterPlan("adapter", "adapter-success", 20_000)));
+            registry.consumeAdapterCommands("adapter", 10, 10_000);
+            for (String event : List.of("event", "extension.worker.probe.failed",
+                    "platform.adapter.command.succeeded", "platform.worker.properties.replaced")) {
+                DeliveryReport invalid = DeliveryReport.create(
+                        DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.SERVER,
+                        event, "200", "{}", DirectCallRegistry.FORWARD_PREFIX + "success");
+                assertThat(registry.completeReports("adapter", List.of(invalid)).rejectedCount())
+                        .isEqualTo(1);
+            }
+            DeliveryReport wrongProducer = DeliveryReport.create(
+                    DeliveryEndpoint.ADAPTER, "adapter", DeliveryEndpoint.SERVER,
+                    "platform.worker.command.succeeded", "200", "{}",
+                    DirectCallRegistry.FORWARD_PREFIX + "adapter-success");
+            assertThat(registry.completeReports("adapter", List.of(wrongProducer)).rejectedCount())
+                    .isEqualTo(1);
+            assertThat(workers.completion().toCompletableFuture().isDone()).isFalse();
+            assertThat(adapters.completion().toCompletableFuture().isDone()).isFalse();
+
+            DeliveryReport success = DeliveryReport.create(
+                    DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.SERVER,
+                    "platform.worker.command.succeeded", "3303", "opaque-success",
+                    DirectCallRegistry.FORWARD_PREFIX + "success");
+            DeliveryReport failure = DeliveryReport.create(
+                    DeliveryEndpoint.WORKER, "worker-2", DeliveryEndpoint.SERVER,
+                    "platform.worker.command.failed", "200", "opaque-failure",
+                    DirectCallRegistry.FORWARD_PREFIX + "failure");
+            DeliveryReport adapter = DeliveryReport.create(
+                    DeliveryEndpoint.ADAPTER, "adapter", DeliveryEndpoint.SERVER,
+                    "platform.adapter.command.succeeded", "", "opaque-adapter",
+                    DirectCallRegistry.FORWARD_PREFIX + "adapter-success");
+            assertThat(registry.completeReports("adapter", List.of(success, failure, adapter)))
+                    .isEqualTo(new DirectCallRegistry.CompletionCounts(3, 0));
+            var outcomes = workers.completion().toCompletableFuture().join().results();
+            assertThat(outcomes.get("worker-1").messageType()).isEqualTo(success.messageType());
+            assertThat(outcomes.get("worker-1").diagnosticCode()).isEqualTo("3303");
+            assertThat(outcomes.get("worker-2").messageType()).isEqualTo(failure.messageType());
+            assertThat(outcomes.get("worker-2").diagnosticCode()).isEqualTo("200");
+            assertThat(adapters.completion().toCompletableFuture().join().results()
+                    .get("adapter").messageType()).isEqualTo(adapter.messageType());
+            assertThat(registry.completeReports("adapter", List.of(success)).rejectedCount())
+                    .isEqualTo(1);
+        }
+    }
+
     private static DirectCallRegistry registry(
             int adapterCapacity,
             int pendingCapacity
@@ -256,8 +307,8 @@ class DirectCallRegistryTest {
                 DeliveryEndpoint.ADAPTER,
                 "adapter",
                 DeliveryEndpoint.SERVER,
-                "event",
-                "200",
+                "platform.adapter.command.succeeded",
+                "",
                 "{}",
                 DirectCallRegistry.FORWARD_PREFIX + correlationId
         );
@@ -271,8 +322,8 @@ class DirectCallRegistryTest {
                 DeliveryEndpoint.WORKER,
                 workerId,
                 DeliveryEndpoint.SERVER,
-                "event",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "{}",
                 DirectCallRegistry.FORWARD_PREFIX + correlationId
         );

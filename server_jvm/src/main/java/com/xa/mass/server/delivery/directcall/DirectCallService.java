@@ -413,7 +413,8 @@ public final class DirectCallService {
             switch (target.status()) {
                 case OBSERVED -> response =
                         DirectTargetCallResponse.observed(
-                                target.outcomeCode(),
+                                target.messageType(),
+                                target.diagnosticCode(),
                                 target.payload()
                         );
                 case UNOBSERVED -> {
@@ -456,7 +457,8 @@ public final class DirectCallService {
         return new AdapterCallOutcome(
                 target.status()
                         == DirectCallRegistry.TargetOutcomeStatus.OBSERVED,
-                target.outcomeCode(),
+                target.messageType(),
+                target.diagnosticCode(),
                 target.payload()
         );
     }
@@ -597,7 +599,8 @@ public final class DirectCallService {
 
     public record AdapterCallOutcome(
             boolean observed,
-            String outcomeCode,
+            String messageType,
+            String diagnosticCode,
             String opaqueResultPayload
     ) {
     }

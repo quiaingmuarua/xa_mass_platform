@@ -105,8 +105,7 @@ final class AndroidWorkerConvergenceHealth {
                 Jsons.toJson(Map.of())
         );
         if (!"observed".equals(failed.status())
-                || failed.outcomeCode() == null
-                || !failed.outcomeCode().matches("3\\d{3}")) {
+                || !"platform.worker.command.failed".equals(failed.messageType())) {
             throw new ProofFailure(
                     "convergence.fail-isolation",
                     "Android Worker FAIL was not observed as a Worker failure"
@@ -123,7 +122,7 @@ final class AndroidWorkerConvergenceHealth {
                 workerId,
                 maximumWait
         );
-        evidence.check("failOutcomeCode", failed.outcomeCode());
+        evidence.check("failDiagnosticCode", failed.diagnosticCode());
         evidence.check("postFailProbeObserved", true);
 
         AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(

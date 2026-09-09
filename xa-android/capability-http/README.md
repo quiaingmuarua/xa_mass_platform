@@ -22,7 +22,9 @@ POST /events/{eventCode}:call
 ```
 
 Calls require an `application/json` object body. Successful handler JSON is
-returned as logical JSON together with the original Worker `outcomeCode`.
+returned as logical JSON together with the Worker diagnostic `diagnosticCode`
+(empty on success). Local HTTP status mapping uses the typed Worker outcome and
+`WorkerErrorCode`, not numeric interpretation of a Report diagnostic.
 Worker input, missing-event, execution, and result errors retain their Worker
 codes while using HTTP 400, 404, or 500 respectively.
 

@@ -14,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
@@ -41,15 +40,16 @@ final class WorkerDeliveryProtocolTest {
                 command(),
                 WORKER,
                 "worker-1",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "{\"isValid\":true}"
         );
         String encoded = codec.encodeDeliveryReport(report);
 
         assertEquals(
                 "{\"dst\":\"TASK\",\"forward\":\"context\","
-                        + "\"messageType\":\"telecom.phone.inspect\","
-                        + "\"outcomeCode\":\"200\","
+                        + "\"messageType\":\"platform.worker.command.succeeded\","
+                        + "\"diagnosticCode\":\"\","
                         + "\"payload\":\"{\\\"isValid\\\":true}\","
                         + "\"sourceId\":\"worker-1\",\"src\":\"WORKER\"}",
                 encoded
@@ -77,13 +77,14 @@ final class WorkerDeliveryProtocolTest {
                 command,
                 ADAPTER,
                 "adapter-1",
+                "platform.adapter.command.delivery-failed",
                 "23002",
                 "null"
         );
         assertEquals(ADAPTER, report.src());
         assertEquals("adapter-1", report.sourceId());
         assertEquals(command.src(), report.dst());
-        assertEquals(command.messageType(), report.messageType());
+        assertEquals("platform.adapter.command.delivery-failed", report.messageType());
         assertEquals(command.forward(), report.forward());
 
         DeliveryReport active = DeliveryReport.create(
@@ -152,7 +153,14 @@ final class WorkerDeliveryProtocolTest {
                     SERVER, target, "platform.probe", 1234L, "null", "direct-call:v1:test"
             );
             assertEquals(call, codec.decodeDeliveryCommand(codec.encodeDeliveryCommand(call)));
-            DeliveryReport reply = DeliveryReport.fromCommand(call, target, "producer", "200", "null");
+            DeliveryReport reply = DeliveryReport.fromCommand(
+                    call,
+                    target,
+                    "producer",
+                    target == WORKER ? "platform.worker.command.succeeded" : "platform.adapter.command.succeeded",
+                    "",
+                    "null"
+            );
             assertEquals(SERVER, reply.dst());
             assertEquals(call.forward(), reply.forward());
             assertEquals(reply, codec.decodeDeliveryReport(codec.encodeDeliveryReport(reply)));
@@ -181,14 +189,15 @@ final class WorkerDeliveryProtocolTest {
         assertNull(codec.decodeDeliveryReport(
                 "{\"dst\":\"TASK\",\"forward\":\"context\","
                         + "\"messageType\":\"event\","
-                        + "\"outcomeCode\":\"200\",\"payload\":\"null\"}"
+                        + "\"diagnosticCode\":\"200\",\"payload\":\"null\"}"
         ));
         String report = codec.encodeDeliveryReport(
                 DeliveryReport.fromCommand(
                         command(),
                         WORKER,
                         "worker-1",
-                        "200",
+                        "platform.worker.command.succeeded",
+                        "",
                         "null"
                 )
         );
@@ -211,24 +220,34 @@ final class WorkerDeliveryProtocolTest {
     }
 
     @Test
-    void outcomeClassificationUsesOwnerPrefixWithoutWidthValidation() {
-        assertEquals(
-                DeliveryReportOutcomeClass.SUCCESS,
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("200")
-        );
-        assertEquals(
-                DeliveryReportOutcomeClass.WORKER_FAILURE,
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("33001")
-        );
-        assertEquals(
-                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("23001")
-        );
-        assertEquals(
-                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("1400")
-        );
-        assertNull(WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(" "));
+    void diagnosticsAreNonNullStringsAndDoNotDefineEventSemantics() {
+        for (String diagnostic : new String[]{"", "200", "3303", "23002", "opaque diagnostic"}) {
+            DeliveryReport report = DeliveryReport.create(WORKER, "worker-1", TASK,
+                    WorkerDeliveryProtocol.WORKER_COMMAND_FAILED, diagnostic, "null", "context");
+            assertEquals(report, codec.decodeDeliveryReport(codec.encodeDeliveryReport(report)));
+            assertEquals(WorkerDeliveryProtocol.WORKER_COMMAND_FAILED, report.messageType());
+        }
+        DeliveryReport report = DeliveryReport.create(WORKER, "worker-1", TASK,
+                WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED, "", "null", "context");
+        java.util.Map<String, Object> fields = new java.util.LinkedHashMap<>(codec.encodeDeliveryReportFields(report));
+        fields.remove("diagnosticCode");
+        assertNull(codec.decodeDeliveryReport(fields));
+        fields.put("diagnosticCode", null);
+        assertNull(codec.decodeDeliveryReport(fields));
+        fields.put("diagnosticCode", 200);
+        assertNull(codec.decodeDeliveryReport(fields));
+    }
+
+    @Test
+    void retiredDiagnosticFieldIsNotAnAlias() {
+        DeliveryReport report = DeliveryReport.create(WORKER, "worker-1", TASK,
+                WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED, "", "null", "context");
+        java.util.Map<String, Object> fields = new java.util.LinkedHashMap<>(codec.encodeDeliveryReportFields(report));
+        assertEquals("", fields.get("diagnosticCode"));
+        fields.put("outcomeCode", fields.remove("diagnosticCode"));
+        assertNull(codec.decodeDeliveryReport(fields));
+        fields.put("diagnosticCode", "");
+        assertNull(codec.decodeDeliveryReport(fields));
     }
 
     @Test

@@ -295,7 +295,7 @@ class DeliveryReportDispatcherTest {
                 "worker-1",
                 DeliveryEndpoint.ADAPTER,
                 "test.report",
-                "200",
+                "",
                 "{}",
                 ""
         ))).isInstanceOf(IllegalArgumentException.class);
@@ -385,19 +385,11 @@ class DeliveryReportDispatcherTest {
         DeliveryEndpoint source = destination == DeliveryEndpoint.KERNEL
                 ? DeliveryEndpoint.ADAPTER
                 : DeliveryEndpoint.WORKER;
-        return DeliveryReport.create(
-                source,
-                source == DeliveryEndpoint.ADAPTER
+        return DeliveryReport.create(source, source == DeliveryEndpoint.ADAPTER
                         ? "adapter-1"
-                        : "worker-1",
-                destination,
-                "test.report",
-                "200",
-                payload,
-                destination == DeliveryEndpoint.TASK
+                        : "worker-1", destination, "test.report", "", payload, destination == DeliveryEndpoint.TASK
                         ? "task-context"
-                        : "context"
-        );
+                        : "context");
     }
 
     private static WorkerDeliveryAdapterException unavailable() {

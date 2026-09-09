@@ -10,7 +10,28 @@ public final class WorkerDeliveryProtocol {
             "worker.connection.identify";
     public static final String WORKER_CONNECTION_CLOSE_EVENT_CODE =
             "worker.connection.close";
-    private static final String SUCCESS_OUTCOME_CODE = "200";
+    public static final String WORKER_COMMAND_SUCCEEDED =
+            "platform.worker.command.succeeded";
+    public static final String WORKER_COMMAND_FAILED =
+            "platform.worker.command.failed";
+    public static final String ADAPTER_COMMAND_SUCCEEDED =
+            "platform.adapter.command.succeeded";
+    public static final String ADAPTER_COMMAND_FAILED =
+            "platform.adapter.command.failed";
+    public static final String ADAPTER_COMMAND_DELIVERY_FAILED =
+            "platform.adapter.command.delivery-failed";
+    public static final String WORKER_PROPERTIES_UPDATED =
+            "platform.worker.properties.updated";
+    public static final String WORKER_PROPERTIES_REPLACED =
+            "platform.worker.properties.replaced";
+    public static final String ADAPTER_WORKER_PROPERTIES_OBSERVED =
+            "platform.adapter.worker-properties.observed";
+    public static final String ADAPTER_WORKER_CONNECTION_CHANGED =
+            "platform.adapter.worker-connection.changed";
+    public static final String ADAPTER_WORKER_DELIVERY_EXPIRED =
+            "platform.adapter.worker-delivery.expired";
+    public static final String SERVER_WORKER_POLL_OBSERVED =
+            "platform.server.worker-poll.observed";
 
     private WorkerDeliveryProtocol() {
     }
@@ -45,12 +66,6 @@ public final class WorkerDeliveryProtocol {
                     "Unknown delivery endpoint: " + value
             );
         }
-    }
-
-    public enum DeliveryReportOutcomeClass {
-        SUCCESS,
-        WORKER_FAILURE,
-        ADAPTER_REJECTION
     }
 
     public static final class DeliveryCommand {
@@ -196,7 +211,7 @@ public final class WorkerDeliveryProtocol {
         private final String sourceId;
         private final DeliveryEndpoint dst;
         private final String messageType;
-        private final String outcomeCode;
+        private final String diagnosticCode;
         private final String payload;
         private final String forward;
 
@@ -205,7 +220,7 @@ public final class WorkerDeliveryProtocol {
                 String sourceId,
                 DeliveryEndpoint dst,
                 String messageType,
-                String outcomeCode,
+                String diagnosticCode,
                 String payload,
                 String forward
         ) {
@@ -213,11 +228,7 @@ public final class WorkerDeliveryProtocol {
             requireNonBlank(sourceId, "sourceId");
             this.dst = Objects.requireNonNull(dst, "dst");
             requireNonBlank(messageType, "messageType");
-            if (classifyDeliveryReportOutcomeCode(outcomeCode) == null) {
-                throw new IllegalArgumentException(
-                        "outcomeCode must be non-blank"
-                );
-            }
+            Objects.requireNonNull(diagnosticCode, "diagnosticCode");
             Objects.requireNonNull(payload, "payload");
             Objects.requireNonNull(forward, "forward");
             if (dst == DeliveryEndpoint.TASK && forward.isEmpty()) {
@@ -227,7 +238,7 @@ public final class WorkerDeliveryProtocol {
             }
             this.sourceId = sourceId;
             this.messageType = messageType;
-            this.outcomeCode = outcomeCode;
+            this.diagnosticCode = diagnosticCode;
             this.payload = payload;
             this.forward = forward;
         }
@@ -236,7 +247,8 @@ public final class WorkerDeliveryProtocol {
                 DeliveryCommand command,
                 DeliveryEndpoint src,
                 String sourceId,
-                String outcomeCode,
+                String reportMessageType,
+                String diagnosticCode,
                 String payload
         ) {
             DeliveryCommand source = Objects.requireNonNull(
@@ -247,8 +259,8 @@ public final class WorkerDeliveryProtocol {
                     src,
                     sourceId,
                     source.src(),
-                    source.messageType(),
-                    outcomeCode,
+                    reportMessageType,
+                    diagnosticCode,
                     payload,
                     source.forward()
             );
@@ -259,7 +271,7 @@ public final class WorkerDeliveryProtocol {
                 String sourceId,
                 DeliveryEndpoint dst,
                 String messageType,
-                String outcomeCode,
+                String diagnosticCode,
                 String payload,
                 String forward
         ) {
@@ -268,7 +280,7 @@ public final class WorkerDeliveryProtocol {
                     sourceId,
                     dst,
                     messageType,
-                    outcomeCode,
+                    diagnosticCode,
                     payload,
                     forward
             );
@@ -279,7 +291,7 @@ public final class WorkerDeliveryProtocol {
                 String sourceId,
                 DeliveryEndpoint dst,
                 String messageType,
-                String outcomeCode,
+                String diagnosticCode,
                 String payload,
                 String forward
         ) {
@@ -288,7 +300,7 @@ public final class WorkerDeliveryProtocol {
                     sourceId,
                     dst,
                     messageType,
-                    outcomeCode,
+                    diagnosticCode,
                     payload,
                     forward
             );
@@ -310,8 +322,8 @@ public final class WorkerDeliveryProtocol {
             return messageType;
         }
 
-        public String outcomeCode() {
-            return outcomeCode;
+        public String diagnosticCode() {
+            return diagnosticCode;
         }
 
         public String payload() {
@@ -335,7 +347,7 @@ public final class WorkerDeliveryProtocol {
                     && sourceId.equals(other.sourceId)
                     && dst == other.dst
                     && messageType.equals(other.messageType)
-                    && outcomeCode.equals(other.outcomeCode)
+                    && diagnosticCode.equals(other.diagnosticCode)
                     && payload.equals(other.payload)
                     && forward.equals(other.forward);
         }
@@ -347,7 +359,7 @@ public final class WorkerDeliveryProtocol {
                     sourceId,
                     dst,
                     messageType,
-                    outcomeCode,
+                    diagnosticCode,
                     payload,
                     forward
             );
@@ -359,24 +371,9 @@ public final class WorkerDeliveryProtocol {
                     + ", sourceId=" + sourceId
                     + ", dst=" + dst
                     + ", messageType=" + messageType
-                    + ", outcomeCode=" + outcomeCode
+                    + ", diagnosticCode=" + diagnosticCode
                     + ", payload=<opaque>, forward=<opaque>]";
         }
-    }
-
-    public static DeliveryReportOutcomeClass classifyDeliveryReportOutcomeCode(
-            String outcomeCode
-    ) {
-        if (SUCCESS_OUTCOME_CODE.equals(outcomeCode)) {
-            return DeliveryReportOutcomeClass.SUCCESS;
-        }
-        if (outcomeCode == null || outcomeCode.isBlank()) {
-            return null;
-        }
-        if (outcomeCode.charAt(0) == '3') {
-            return DeliveryReportOutcomeClass.WORKER_FAILURE;
-        }
-        return DeliveryReportOutcomeClass.ADAPTER_REJECTION;
     }
 
     private static void requireNonBlank(String value, String name) {

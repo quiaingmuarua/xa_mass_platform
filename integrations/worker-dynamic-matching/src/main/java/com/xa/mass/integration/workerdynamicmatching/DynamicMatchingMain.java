@@ -365,7 +365,7 @@ public final class DynamicMatchingMain {
                         "opaquePayload", Jsons.toJson(Map.of("workerIds", page.stream().map(w -> w.id).toList()))), true);
         var result = object(object(response.get("results")).get(ADAPTER));
         if ("unobserved".equals(result.get("status")) && "timeout".equals(result.get("reason"))) throw new TemporaryRead();
-        require("observed".equals(result.get("status")) && "200".equals(result.get("outcomeCode")), "adapter-snapshot-rejected");
+        require("observed".equals(result.get("status")) && "platform.adapter.command.succeeded".equals(result.get("messageType")), "adapter-snapshot-rejected");
         var snapshots = object(Jsons.parseObject(text(result.get("opaqueResultPayload"))).get("propertiesByWorkerId"));
         require(snapshots.keySet().equals(new HashSet<>(page.stream().map(w -> w.id).toList())), "adapter-worker-set");
         boolean current = true;

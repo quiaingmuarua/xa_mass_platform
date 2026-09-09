@@ -1,8 +1,12 @@
 package com.xa.mass.server.delivery.directcall;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_FAILED;
+
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -181,7 +185,8 @@ public final class DirectCallRegistry implements AutoCloseable {
                 completeTargetLocked(
                         target,
                         TargetOutcome.observed(
-                                report.outcomeCode(),
+                                report.messageType(),
+                                report.diagnosticCode(),
                                 report.payload()
                         ),
                         completions
@@ -291,27 +296,21 @@ public final class DirectCallRegistry implements AutoCloseable {
         if (target == null
                 || target.outcome != null
                 || !target.resultEligible
-                || !target.adapterId.equals(adapterId)
-                || !target.messageType.equals(report.messageType())) {
+                || !target.adapterId.equals(adapterId)) {
             return null;
         }
-        WorkerDeliveryProtocol.DeliveryReportOutcomeClass outcome =
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
-                        report.outcomeCode()
-                );
         if (target.target.type() == DirectTargetType.WORKER) {
             return report.src() == DeliveryEndpoint.WORKER
                     && target.target.targetId().equals(report.sourceId())
-                    && (outcome == WorkerDeliveryProtocol
-                            .DeliveryReportOutcomeClass.SUCCESS
-                    || outcome == WorkerDeliveryProtocol
-                            .DeliveryReportOutcomeClass.WORKER_FAILURE)
+                    && (WORKER_COMMAND_SUCCEEDED.equals(report.messageType())
+                    || WORKER_COMMAND_FAILED.equals(report.messageType()))
                     ? target
                     : null;
         }
         return report.src() == DeliveryEndpoint.ADAPTER
                 && target.adapterId.equals(report.sourceId())
-                && report.outcomeCode().startsWith("2")
+                && (ADAPTER_COMMAND_SUCCEEDED.equals(report.messageType())
+                || ADAPTER_COMMAND_FAILED.equals(report.messageType()))
                 ? target
                 : null;
     }
@@ -518,17 +517,20 @@ public final class DirectCallRegistry implements AutoCloseable {
 
     public record TargetOutcome(
             TargetOutcomeStatus status,
-            String outcomeCode,
+            String messageType,
+            String diagnosticCode,
             String payload,
             TargetOutcomeReason reason
     ) {
         public static TargetOutcome observed(
-                String outcomeCode,
+                String messageType,
+                String diagnosticCode,
                 String payload
         ) {
             return new TargetOutcome(
                     TargetOutcomeStatus.OBSERVED,
-                    outcomeCode,
+                    messageType,
+                    diagnosticCode,
                     payload,
                     null
             );
@@ -539,6 +541,7 @@ public final class DirectCallRegistry implements AutoCloseable {
                     TargetOutcomeStatus.UNOBSERVED,
                     null,
                     null,
+                    null,
                     reason
             );
         }
@@ -546,6 +549,7 @@ public final class DirectCallRegistry implements AutoCloseable {
         public static TargetOutcome rejected(TargetOutcomeReason reason) {
             return new TargetOutcome(
                     TargetOutcomeStatus.REJECTED,
+                    null,
                     null,
                     null,
                     reason
@@ -683,7 +687,6 @@ public final class DirectCallRegistry implements AutoCloseable {
         private final String correlationId;
         private final String adapterId;
         private final DirectTarget target;
-        private final String messageType;
         private boolean resultEligible;
         private TargetOutcome outcome;
 
@@ -692,9 +695,6 @@ public final class DirectCallRegistry implements AutoCloseable {
             this.correlationId = plan.correlationId();
             this.adapterId = plan.adapterId();
             this.target = plan.target();
-            this.messageType = plan.command() == null
-                    ? null
-                    : plan.command().messageType();
             this.resultEligible = plan.target() != null
                     && plan.target().type() == DirectTargetType.WORKER;
             this.outcome = plan.initialOutcome();

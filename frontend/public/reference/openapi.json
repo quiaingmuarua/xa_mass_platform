@@ -80,10 +80,13 @@
       },
       "DirectTargetCallResponse" : {
         "properties" : {
-          "opaqueResultPayload" : {
+          "diagnosticCode" : {
             "type" : "string"
           },
-          "outcomeCode" : {
+          "messageType" : {
+            "type" : "string"
+          },
+          "opaqueResultPayload" : {
             "type" : "string"
           },
           "reason" : {
@@ -485,6 +488,9 @@
       },
       "WorkerResultRequest" : {
         "properties" : {
+          "diagnosticCode" : {
+            "type" : "string"
+          },
           "dst" : {
             "minLength" : 1,
             "type" : "string"
@@ -493,10 +499,6 @@
             "type" : "string"
           },
           "messageType" : {
-            "minLength" : 1,
-            "type" : "string"
-          },
-          "outcomeCode" : {
             "minLength" : 1,
             "type" : "string"
           },
@@ -512,7 +514,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "dst", "forward", "messageType", "outcomeCode", "payload", "sourceId", "src" ],
+        "required" : [ "diagnosticCode", "dst", "forward", "messageType", "payload", "sourceId", "src" ],
         "type" : "object"
       },
       "WorkerSchedulingObserveResponse" : {

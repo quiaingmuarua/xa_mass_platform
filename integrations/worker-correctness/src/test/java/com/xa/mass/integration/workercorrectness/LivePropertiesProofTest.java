@@ -114,7 +114,7 @@ class LivePropertiesProofTest {
                     snapshot.put(workerId, Map.of("updatedAtMillis", 1, "properties", fixtureProperties(line)));
                 }
                 response = Map.of("status", "observed", "results", Map.of(spec.endpointManagerId(),
-                        Map.of("status", "observed", "outcomeCode", "200", "opaqueResultPayload",
+                        Map.of("status", "observed", "messageType", "platform.adapter.command.succeeded", "diagnosticCode", "", "opaqueResultPayload",
                                 Jsons.toJson(Map.of("propertiesByWorkerId", snapshot)))));
             } else if (path.endsWith("/workers:preview")) {
                 String group = path.split("/")[5];

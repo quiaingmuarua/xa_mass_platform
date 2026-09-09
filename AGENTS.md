@@ -337,7 +337,12 @@ Profile contents and defaults belong to
 neutral.
 
 - `DeliveryCommand` target identity remains outside the DTO.
-- `DeliveryReport` carries producer `src + sourceId`.
+- `DeliveryReport` carries producer `src + sourceId`. Command messageType is
+  intent; Report messageType is an event contract, never a Command-name echo.
+  Required string diagnosticCode (including empty) is diagnostic only. Admission,
+  correlation and result lanes use exact event names plus producer/target.
+  Keep command results, delivery facts, observations and identity distinct;
+  Report names are not callable Handler capabilities.
 - SERVER identifies Server-owned Direct Call requests and replies; only SERVER
   Reports may complete its waiter. SYSTEM identifies platform events, whose
   message contract determines the semantic owner, not the HTTP host. The fixed
@@ -457,7 +462,9 @@ Rules:
 - Only valid bound Worker TASK/SERVER/SYSTEM evidence follows the current destination
   rules; invalid unbound input and TASK result backpressure may close the exact
   connection.
-- Expired TASK delivery independently offers its 23002 TASK Report and a
+- Expired TASK delivery independently offers its correlated
+  `platform.adapter.command.delivery-failed` TASK Report (diagnostic 23002,
+  workerId and DEADLINE_EXCEEDED reason) and a
   separate `platform.adapter.worker-delivery.expired` KERNEL Report to their
   Report lanes; Transport does not interpret either as score policy and does
   not promise cross-lane atomic admission.

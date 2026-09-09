@@ -145,7 +145,8 @@ class DirectCallHttpExecutionIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode target = JSON.readTree(response.body()).get("results").get(worker);
         assertThat(target.get("status").asText()).isEqualTo("observed");
-        assertThat(target.get("outcomeCode").asText()).isEqualTo("200");
+        assertThat(target.get("messageType").asText()).isEqualTo("platform.worker.command.succeeded");
+        assertThat(target.get("diagnosticCode").asText()).isEmpty();
         assertThat(target.get("opaqueResultPayload").asText()).isEqualTo("fixture-result");
     }
 
@@ -183,8 +184,8 @@ class DirectCallHttpExecutionIntegrationTest {
         }
         HttpResponse<String> report(String worker, JsonNode command) throws Exception {
             return post(ROUTE + "/results:append", JSON.writeValueAsString(List.of(Map.of(
-                    "src", "WORKER", "sourceId", worker, "dst", "SERVER", "messageType", MESSAGE,
-                    "outcomeCode", "200", "payload", "fixture-result", "forward", command.get("forward").asText()))));
+                    "src", "WORKER", "sourceId", worker, "dst", "SERVER", "messageType", "platform.worker.command.succeeded",
+                    "diagnosticCode", "", "payload", "fixture-result", "forward", command.get("forward").asText()))));
         }
     }
 }

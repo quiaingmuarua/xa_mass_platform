@@ -264,7 +264,8 @@ final class AndroidRuntimeApiClientTest {
                         target,
                         Map.of(
                                 "status", "observed",
-                                "outcomeCode", "200",
+                                "messageType", "platform.worker.command.succeeded",
+                                "diagnosticCode", "",
                                 "opaqueResultPayload", payload
                         )
                 )

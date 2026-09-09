@@ -19,7 +19,7 @@ consumeTaskResults(resultClass, limit)
 ```
 
 The Runtime validates the class, bounded input and Report encoding only. It
-does not read `outcomeCode`, decode `forward`, interpret `messageType`, verify
+does not read `diagnosticCode`, decode `forward`, interpret `messageType`, verify
 the producer, or derive the lane. Server Worker Delivery ingress owns producer
 and endpoint-code validation before append.
 
@@ -30,7 +30,7 @@ append is promised.
 
 There is no endpoint-manager, Task, WorkerGroup or producer partition,
 pending/ack state, retry, replay, repair scan or cross-key Lua. `src`,
-`sourceId`, raw `outcomeCode` and `forward` remain encoded evidence fields.
+`sourceId`, raw `diagnosticCode` and `forward` remain encoded evidence fields.
 
 ## TaskItem Result Projection
 

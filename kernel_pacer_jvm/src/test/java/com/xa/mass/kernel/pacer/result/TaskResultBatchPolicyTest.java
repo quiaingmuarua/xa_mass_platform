@@ -106,7 +106,7 @@ class TaskResultBatchPolicyTest {
                         "worker-1",
                         DeliveryEndpoint.SYSTEM,
                         "extension.worker.test",
-                        "200",
+                        "",
                         "payload",
                         context(1)
                 ),
@@ -114,8 +114,8 @@ class TaskResultBatchPolicyTest {
                         DeliveryEndpoint.WORKER,
                         "worker-1",
                         DeliveryEndpoint.TASK,
-                        "extension.worker.test",
-                        "200",
+                        "platform.worker.command.succeeded",
+                        "",
                         "payload",
                         "not-json"
                 )
@@ -167,7 +167,7 @@ class TaskResultBatchPolicyTest {
     }
 
     private static DeliveryReport report(
-            String outcomeCode,
+            String diagnosticCode,
             String payload,
             long score
     ) {
@@ -176,7 +176,7 @@ class TaskResultBatchPolicyTest {
                 "worker-1",
                 DeliveryEndpoint.TASK,
                 "extension.worker.test",
-                outcomeCode,
+                diagnosticCode,
                 payload,
                 context(score)
         );

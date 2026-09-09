@@ -65,8 +65,8 @@ non-empty Batch runs on a named virtual thread. Production target/max values
 are SUCCESS `6/10`, FAILURE `3/10`, and Evidence `1/1`. Both Task lanes may
 borrow idle capacity while Network Evidence remains single-flight.
 These values are internal constants, not configuration or a public lane model.
-Server validates endpoint-owned outcome codes and selects the Task lane; Task
-policy does not read `DeliveryReport.outcomeCode`. Result policies stop after
+Server validates exact Report event contracts and producers and selects the Task lane; Task
+policy does not read `DeliveryReport.diagnosticCode`. Result policies stop after
 strict Report parsing, bounded last-wins grouping and publication to the fixed
 `TaskItemResultEvents`, `WorkerExecutionResultEvents`, and
 `WorkerServiceabilityEvents` ports. They do not import Task/TaskItem/Worker

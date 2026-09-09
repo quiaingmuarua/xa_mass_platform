@@ -1,6 +1,8 @@
 package com.xa.mass.worker.transport.polling;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
@@ -78,7 +80,8 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 command,
                 WORKER,
                 workerId,
-                outcome.outcomeCode(),
+                outcome.isSuccess() ? WORKER_COMMAND_SUCCEEDED : WORKER_COMMAND_FAILED,
+                outcome.diagnosticCode(),
                 outcome.payload()
         );
         submitPendingResult(pendingResult);

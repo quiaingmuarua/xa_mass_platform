@@ -193,7 +193,7 @@
       "source_id",
       "dst",
       "message_type",
-      "outcome_code",
+      "diagnostic_code",
       "payload",
       "forward"
     ],
@@ -301,11 +301,6 @@
     ]
   },
   "enums": {
-    "DeliveryReportOutcomeClass": [
-      "SUCCESS",
-      "WORKER_FAILURE",
-      "ADAPTER_REJECTION"
-    ],
     "TaskResultClass": [
       "SUCCESS",
       "FAILURE"

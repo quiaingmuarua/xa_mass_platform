@@ -1,5 +1,8 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_FAILED;
+
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SERVER;
@@ -195,7 +198,8 @@ public final class AdapterEventDispatcher {
                 command,
                 ADAPTER,
                 adapterId,
-                "200",
+                ADAPTER_COMMAND_SUCCEEDED,
+                "",
                 payload
         );
     }
@@ -209,6 +213,7 @@ public final class AdapterEventDispatcher {
                 command,
                 ADAPTER,
                 adapterId,
+                ADAPTER_COMMAND_FAILED,
                 Integer.toString(errorCode.code()),
                 payload
         );

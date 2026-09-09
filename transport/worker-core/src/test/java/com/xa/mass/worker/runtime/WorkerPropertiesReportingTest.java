@@ -80,7 +80,7 @@ class WorkerPropertiesReportingTest {
                     assertFull(report, Map.of("network.type", "wifi"));
                 } else {
                     assertEquals(source, report.dst());
-                    assertEquals(command.messageType(), report.messageType());
+                    assertEquals("platform.worker.command.succeeded", report.messageType());
                     assertEquals(command.forward(), report.forward());
                     assertEquals(Map.of("properties", Map.of("network.type", "wifi")),
                             Jsons.parseObject(report.payload()));
@@ -194,7 +194,7 @@ class WorkerPropertiesReportingTest {
         assertEquals(WORKER, report.src());
         assertEquals("worker-1", report.sourceId());
         assertEquals(ADAPTER, report.dst());
-        assertEquals("200", report.outcomeCode());
+        assertEquals("", report.diagnosticCode());
         assertEquals("", report.forward());
         assertEquals("platform.worker.properties.replaced", report.messageType());
         assertEquals(properties, Jsons.parseObject(report.payload()));

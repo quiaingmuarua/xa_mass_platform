@@ -1,5 +1,8 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_DELIVERY_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_DELIVERY_EXPIRED;
+
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
@@ -23,8 +26,6 @@ import java.util.function.LongSupplier;
 public final class DeliveryCommandProcess
         implements AdapterBatchProcessor<DeliveryCommandItem> {
 
-    private static final String WORKER_DELIVERY_EXPIRED_EVENT =
-            "platform.adapter.worker-delivery.expired";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
             "worker-serviceability-evidence:v1";
 
@@ -137,17 +138,21 @@ public final class DeliveryCommandProcess
                 item.command(),
                 ADAPTER,
                 adapterId,
+                ADAPTER_COMMAND_DELIVERY_FAILED,
                 Integer.toString(
                         WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
                 ),
-                "null"
+                Jsons.toJson(Map.of(
+                        "workerId", item.entryKey(),
+                        "reason", "DEADLINE_EXCEEDED"
+                ))
         );
         DeliveryReport evidence = DeliveryReport.create(
                 ADAPTER,
                 adapterId,
                 KERNEL,
-                WORKER_DELIVERY_EXPIRED_EVENT,
-                "200",
+                ADAPTER_WORKER_DELIVERY_EXPIRED,
+                "",
                 Jsons.toJson(Map.of(
                         "workerId", item.entryKey(),
                         "observedAtMillis", observedAtMillis

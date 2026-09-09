@@ -2,6 +2,10 @@ package com.xa.mass.worker.runtime;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_UPDATED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_REPLACED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
@@ -39,10 +43,6 @@ final class TextMessageWorkerTransport
             TextMessageWorkerTransport.class.getName()
     );
 
-    private static final String PROPERTIES_UPDATED_EVENT =
-            "platform.worker.properties.updated";
-    private static final String PROPERTIES_REPLACED_EVENT =
-            "platform.worker.properties.replaced";
     private static final int MAX_REPORT_BYTES = 1_000_000;
 
     private final TextMessageClient client;
@@ -116,9 +116,9 @@ final class TextMessageWorkerTransport
             if (command.src() == ADAPTER
                     && WorkerManagementEventDefinitions.PROPERTIES_SNAPSHOT_EVENT
                             .equals(command.messageType())) {
-                if ("200".equals(outcome.outcomeCode())) {
+                if (outcome.isSuccess()) {
                     Map<String, Object> snapshot = Jsons.parseObject(outcome.payload());
-                    sendProperties(PROPERTIES_REPLACED_EVENT,
+                    sendProperties(WORKER_PROPERTIES_REPLACED,
                             WorkerDeliveryCodec.copyWorkerProperties(
                                     (Map<?, ?>) snapshot.get("properties")
                             ));
@@ -129,7 +129,8 @@ final class TextMessageWorkerTransport
                     command,
                     WORKER,
                     workerId,
-                    outcome.outcomeCode(),
+                    outcome.isSuccess() ? WORKER_COMMAND_SUCCEEDED : WORKER_COMMAND_FAILED,
+                    outcome.diagnosticCode(),
                     outcome.payload()
             );
             String encoded = codec.encodeDeliveryReport(report);
@@ -159,7 +160,7 @@ final class TextMessageWorkerTransport
                         "workerProperties must not expose clientWorkerKey"
                 );
             }
-            return sendProperties(PROPERTIES_REPLACED_EVENT, properties);
+            return sendProperties(WORKER_PROPERTIES_REPLACED, properties);
         } catch (Exception failure) {
             log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.report", failure);
             return false;
@@ -167,14 +168,14 @@ final class TextMessageWorkerTransport
     }
 
     boolean reportProperties(Map<String, String> updates) {
-        return sendProperties(PROPERTIES_UPDATED_EVENT, updates);
+        return sendProperties(WORKER_PROPERTIES_UPDATED, updates);
     }
 
     private boolean sendProperties(String eventName, Map<String, String> properties) {
         try {
             String encoded = codec.encodeDeliveryReport(DeliveryReport.create(
                     WORKER, workerId, ADAPTER, eventName,
-                    "200", Jsons.toJson(properties), ""
+                    "", Jsons.toJson(properties), ""
             ));
             if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_REPORT_BYTES) {
                 log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "properties.size", null);
@@ -209,7 +210,7 @@ final class TextMessageWorkerTransport
                     workerId,
                     ADAPTER,
                     WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
-                    "200",
+                    "",
                     "null",
                     ""
             );

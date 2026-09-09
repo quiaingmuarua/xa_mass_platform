@@ -85,8 +85,15 @@ class WorkerDeliveryServiceTest {
         when(bindings.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1",
                 new WorkerDescriptor("worker-1", "group", "other-endpoint")));
         assertThatThrownBy(() -> service.pollWorkerCommand(POLLING, "worker-1")).isInstanceOf(ServerException.class);
-        var forged = DeliveryReport.create(DeliveryEndpoint.SERVER, POLLING, DeliveryEndpoint.KERNEL,
-                "platform.server.worker-poll.observed", "200", "{}", "worker-serviceability-evidence:v1");
+        var forged = DeliveryReport.create(
+                DeliveryEndpoint.SERVER,
+                POLLING,
+                DeliveryEndpoint.KERNEL,
+                "platform.server.worker-poll.observed",
+                "",
+                "{}",
+                "worker-serviceability-evidence:v1"
+        );
         assertThat(service.appendAdapterReports("adapter-1", List.of(forged)))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
         verifyNoInteractions(serviceability, commandRuntime);
@@ -301,19 +308,54 @@ class WorkerDeliveryServiceTest {
         List<DeliveryReport> reports = new ArrayList<>();
         reports.add(propertiesReport("other-adapter", "w", Map.of()));
         String valid = "{\"workerId\":\"w\",\"properties\":{}}";
-        reports.add(DeliveryReport.create(DeliveryEndpoint.WORKER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-properties.observed", "200", valid, ""));
+        reports.add(DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "adapter-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed",
+                "",
+                valid,
+                ""
+        ));
         reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-properties.observed", "23001", valid, ""));
-        reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-properties.observed", "200", valid, "direct-call:v1:x"));
-        reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                "platform.adapter.unknown", "200", valid, ""));
+                "platform.adapter.worker-properties.observed", "23001", "[]", ""));
+        reports.add(DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "adapter-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed",
+                "",
+                valid,
+                "direct-call:v1:x"
+        ));
+        reports.add(DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "adapter-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.unknown",
+                "",
+                valid,
+                ""
+        ));
         for (String event : List.of("platform.worker.properties.updated", "platform.worker.properties.replaced")) {
-            reports.add(DeliveryReport.create(DeliveryEndpoint.WORKER, "w", DeliveryEndpoint.SYSTEM,
-                    event, "200", "{\"network.type\":\"wifi\"}", ""));
-            reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                    event, "200", valid, ""));
+            reports.add(DeliveryReport.create(
+                    DeliveryEndpoint.WORKER,
+                    "w",
+                    DeliveryEndpoint.SYSTEM,
+                    event,
+                    "",
+                    "{\"network.type\":\"wifi\"}",
+                    ""
+            ));
+            reports.add(DeliveryReport.create(
+                    DeliveryEndpoint.ADAPTER,
+                    "adapter-1",
+                    DeliveryEndpoint.SYSTEM,
+                    event,
+                    "",
+                    valid,
+                    ""
+            ));
         }
         for (String payload : List.of("null", "[]", "not-json", "{}",
                 "{\"workerId\":\" \",\"properties\":{}}",
@@ -322,8 +364,15 @@ class WorkerDeliveryServiceTest {
                 "{\"workerId\":\"w\",\"properties\":{\"x\":true}}",
                 "{\"workerId\":\"w\",\"properties\":{\"x\":{}}}",
                 "{\"workerId\":\"w\",\"properties\":{\" \":\"value\"}}")) {
-            reports.add(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.SYSTEM,
-                    "platform.adapter.worker-properties.observed", "200", payload, ""));
+            reports.add(DeliveryReport.create(
+                    DeliveryEndpoint.ADAPTER,
+                    "adapter-1",
+                    DeliveryEndpoint.SYSTEM,
+                    "platform.adapter.worker-properties.observed",
+                    "",
+                    payload,
+                    ""
+            ));
         }
         reports.add(propertiesReport("adapter-1", "w", Map.of("large", "界".repeat(334_000))));
         assertThat(service.appendAdapterReports("adapter-1", reports))
@@ -332,9 +381,15 @@ class WorkerDeliveryServiceTest {
     }
 
     private static DeliveryReport propertiesReport(String adapterId, String workerId, Map<String, ?> properties) {
-        return DeliveryReport.create(DeliveryEndpoint.ADAPTER, adapterId, DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-properties.observed", "200",
-                Jsons.toJson(Map.of("workerId", workerId, "properties", properties)), "");
+        return DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                adapterId,
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-properties.observed",
+                "",
+                Jsons.toJson(Map.of("workerId", workerId, "properties", properties)),
+                ""
+        );
     }
 
     @Test
@@ -564,11 +619,8 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void pointWorkerResultsAreMappedToSuccessAndFailureLanes() {
-        DeliveryReport success = result(COMMAND_ID, "200");
-        DeliveryReport failure = result(
-                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                "3500"
-        );
+        DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
+        DeliveryReport failure = result("9f0d983c-8010-4d59-a6d2-e8fedb8d0059", DeliveryEndpoint.WORKER, "platform.worker.command.failed", "3500");
         when(resultRuntime.appendTaskResults(
                 TaskResultClass.SUCCESS,
                 List.of(success)
@@ -593,7 +645,7 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void workerResultRejectsAdapterEvidence() {
-        DeliveryReport result = result(COMMAND_ID, "23002");
+        DeliveryReport result = result(COMMAND_ID, DeliveryEndpoint.ADAPTER, "platform.adapter.command.delivery-failed", "23002");
 
         assertThatThrownBy(() -> service.appendWorkerResult(
                 POLLING,
@@ -620,8 +672,8 @@ class WorkerDeliveryServiceTest {
                 DeliveryEndpoint.WORKER,
                 "worker-2",
                 DeliveryEndpoint.TASK,
-                "test.event",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "null",
                 "context"
         );
@@ -639,15 +691,9 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void taskBatchAcceptsSuccessFailureAndAdapterRejection() {
-        DeliveryReport success = result(COMMAND_ID, "200");
-        DeliveryReport failure = result(
-                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                "3500"
-        );
-        DeliveryReport forgedRejection = result(
-                "66f60ac8-e68f-4783-90e3-13b20a54ca13",
-                "23002"
-        );
+        DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
+        DeliveryReport failure = result("9f0d983c-8010-4d59-a6d2-e8fedb8d0059", DeliveryEndpoint.WORKER, "platform.worker.command.failed", "3500");
+        DeliveryReport forgedRejection = result("66f60ac8-e68f-4783-90e3-13b20a54ca13", DeliveryEndpoint.ADAPTER, "platform.adapter.command.delivery-failed", "23002");
         when(resultRuntime.appendTaskResults(
                 TaskResultClass.SUCCESS,
                 List.of(success)
@@ -680,12 +726,12 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void mixedDestinationBatchFailsBeforeOwnerSideEffects() {
-        DeliveryReport success = result(COMMAND_ID, "200");
+        DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         DeliveryReport wrongDestination = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
                 DeliveryEndpoint.SERVER,
-                "test.event",
+                "platform.adapter.command.failed",
                 "23002",
                 "null",
                 "context"
@@ -706,7 +752,7 @@ class WorkerDeliveryServiceTest {
                 "worker-1",
                 DeliveryEndpoint.ADAPTER,
                 "test.event",
-                "200",
+                "",
                 "null",
                 "context"
         );
@@ -722,14 +768,14 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void adapterBatchRejectsAnotherAdapterSourceId() {
-        DeliveryReport success = result(COMMAND_ID, "200");
+        DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         DeliveryReport foreignAdapter = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-2",
                 DeliveryEndpoint.TASK,
-                "test.event",
+                "platform.adapter.command.delivery-failed",
                 "23002",
-                "null",
+                com.xa.mass.workerdelivery.json.Jsons.toJson(java.util.Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED")),
                 "context"
         );
         when(resultRuntime.appendTaskResults(
@@ -756,8 +802,8 @@ class WorkerDeliveryServiceTest {
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
                 DeliveryEndpoint.KERNEL,
-                "platform.adapter.worker-connections.snapshot",
-                "200",
+                "platform.adapter.command.succeeded",
+                "",
                 "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                 "worker-serviceability:v1:123"
         );
@@ -775,13 +821,13 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void homogeneousBatchesRouteOnlyToTheirOwner() {
-        DeliveryReport task = result(COMMAND_ID, "200");
+        DeliveryReport task = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         DeliveryReport direct = DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
                 "worker-1",
                 DeliveryEndpoint.SERVER,
-                "platform.worker.probe",
-                "200",
+                "platform.worker.command.succeeded",
+                "",
                 "{}",
                 "direct-call:v1:test"
         );
@@ -789,27 +835,19 @@ class WorkerDeliveryServiceTest {
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
                 DeliveryEndpoint.KERNEL,
-                "platform.adapter.worker-connections.snapshot",
-                "200",
+                "platform.adapter.command.succeeded",
+                "",
                 "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                 "worker-serviceability:v1:123"
         );
-        DeliveryReport routeChange = DeliveryReport.create(
-                DeliveryEndpoint.ADAPTER,
-                "endpoint-1",
-                DeliveryEndpoint.KERNEL,
-                "platform.adapter.worker-connection.changed",
-                "200",
-                "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
-                        + "\"observedAtMillis\":123}",
-                "worker-serviceability-evidence:v1"
-        );
+        DeliveryReport routeChange = DeliveryReport.create(DeliveryEndpoint.ADAPTER, "endpoint-1", DeliveryEndpoint.KERNEL, "platform.adapter.worker-connection.changed", "", "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
+                        + "\"observedAtMillis\":123}", "worker-serviceability-evidence:v1");
         DeliveryReport unknownServer = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
                 DeliveryEndpoint.SERVER,
                 "platform.adapter.unknown",
-                "200",
+                "",
                 "{}",
                 "unknown"
         );
@@ -862,8 +900,13 @@ class WorkerDeliveryServiceTest {
     @Test
     void systemReportsAreRejectedWithoutCallingAnyBusinessOwner() {
         DeliveryReport event = DeliveryReport.create(
-                DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.SYSTEM,
-                "platform.worker.probe", "200", "{}", "direct-call:v1:test"
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.worker.probe",
+                "",
+                "{}",
+                "direct-call:v1:test"
         );
         assertThat(service.appendAdapterReports("endpoint-1", List.of(event)))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
@@ -872,16 +915,8 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void adapterBatchAcceptsOneHundredKernelReports() {
-        DeliveryReport kernel = DeliveryReport.create(
-                DeliveryEndpoint.ADAPTER,
-                "endpoint-1",
-                DeliveryEndpoint.KERNEL,
-                "platform.adapter.worker-connection.changed",
-                "200",
-                "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
-                        + "\"observedAtMillis\":123}",
-                "worker-serviceability-evidence:v1"
-        );
+        DeliveryReport kernel = DeliveryReport.create(DeliveryEndpoint.ADAPTER, "endpoint-1", DeliveryEndpoint.KERNEL, "platform.adapter.worker-connection.changed", "", "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
+                        + "\"observedAtMillis\":123}", "worker-serviceability-evidence:v1");
         List<DeliveryReport> reports = Collections.nCopies(100, kernel);
         when(serviceability.appendNetworkEvidenceResults(reports))
                 .thenReturn(100);
@@ -900,7 +935,7 @@ class WorkerDeliveryServiceTest {
     void oversizedAdapterBatchFailsBeforeOwnerSideEffects() {
         assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                Collections.nCopies(101, result(COMMAND_ID, "200"))
+                Collections.nCopies(101, result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", ""))
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(error -> ((ServerException) error).errorCode())
@@ -916,7 +951,7 @@ class WorkerDeliveryServiceTest {
                 "endpoint-2",
                 DeliveryEndpoint.KERNEL,
                 "platform.adapter.worker-connection.changed",
-                "200",
+                "",
                 "{}",
                 "worker-serviceability-evidence:v1"
         );
@@ -933,7 +968,7 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void incompleteRuntimeAppendIsUnavailableForRetry() {
-        DeliveryReport success = result(COMMAND_ID, "200");
+        DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         when(resultRuntime.appendTaskResults(
                 TaskResultClass.SUCCESS,
                 List.of(success)
@@ -957,27 +992,71 @@ class WorkerDeliveryServiceTest {
         assertThatThrownBy(() -> service.appendAdapterReports(
                 WorkerDeliveryProtocol
                         .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                List.of(result(COMMAND_ID, "200"))
+                List.of(result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", ""))
         )).isInstanceOf(ServerException.class);
+    }
+
+    @Test
+    void taskClassificationUsesExactEventsNotDiagnostics() {
+        var success = result("success", DeliveryEndpoint.WORKER,
+                "platform.worker.command.succeeded", "3303");
+        var failure = result("failure", DeliveryEndpoint.WORKER,
+                "platform.worker.command.failed", "200");
+        var delivery = result("delivery", DeliveryEndpoint.ADAPTER,
+                "platform.adapter.command.delivery-failed", "");
+        when(resultRuntime.appendTaskResults(TaskResultClass.SUCCESS, List.of(success))).thenReturn(1);
+        when(resultRuntime.appendTaskResults(TaskResultClass.FAILURE, List.of(failure, delivery))).thenReturn(2);
+        assertThat(service.appendAdapterReports("endpoint-1", List.of(success, failure, delivery)))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(3, 0));
+        verify(resultRuntime).appendTaskResults(TaskResultClass.SUCCESS, List.of(success));
+        verify(resultRuntime).appendTaskResults(TaskResultClass.FAILURE, List.of(failure, delivery));
+    }
+
+    @Test
+    void taskRejectsEchoSuffixSpoofsAndMalformedDeliveryFactsWithoutOwnerWrites() {
+        var validDelivery = result("delivery", DeliveryEndpoint.ADAPTER,
+                "platform.adapter.command.delivery-failed", "200");
+        List<DeliveryReport> invalid = new ArrayList<>();
+        for (String event : List.of("event", "extension.worker.probe.failed",
+                "platform.worker.properties.replaced", "platform.adapter.command.succeeded",
+                "platform.adapter.command.delivery-failed")) {
+            invalid.add(result("x", DeliveryEndpoint.WORKER, event, "200"));
+        }
+        invalid.add(result("x", DeliveryEndpoint.ADAPTER, "platform.worker.command.succeeded", "200"));
+        for (String payload : List.of("null", "{}", "{\"workerId\":\"w\"}",
+                "{\"workerId\":\"w\",\"reason\":\"UNKNOWN\"}",
+                "{\"workerId\":\" \",\"reason\":\"DEADLINE_EXCEEDED\"}",
+                "{\"workerId\":\"w\",\"reason\":\"DEADLINE_EXCEEDED\",\"extra\":1}")) {
+            invalid.add(DeliveryReport.create(validDelivery.src(), validDelivery.sourceId(),
+                    validDelivery.dst(), validDelivery.messageType(), "200", payload, validDelivery.forward()));
+        }
+        assertThat(service.appendAdapterReports("endpoint-1", invalid))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, invalid.size()));
+        verifyNoInteractions(resultRuntime);
+        for (DeliveryReport report : invalid) {
+            assertThatThrownBy(() -> service.appendWorkerResult(POLLING, "worker-1", report))
+                    .isInstanceOf(ServerException.class);
+        }
+        verifyNoInteractions(resultRuntime);
     }
 
     private static DeliveryReport result(
             String messageId,
-            String outcomeCode
+            DeliveryEndpoint source,
+            String messageType,
+            String diagnosticCode
     ) {
-        DeliveryEndpoint source = !"200".equals(outcomeCode)
-                && outcomeCode.startsWith("2")
-                ? DeliveryEndpoint.ADAPTER
-                : DeliveryEndpoint.WORKER;
         return DeliveryReport.create(
                 source,
                 source == DeliveryEndpoint.ADAPTER
                         ? "endpoint-1"
                         : "worker-1",
                 DeliveryEndpoint.TASK,
-                "test.event",
-                outcomeCode,
-                "null",
+                messageType,
+                diagnosticCode,
+                source == DeliveryEndpoint.ADAPTER
+                        ? Jsons.toJson(Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED"))
+                        : "null",
                 "context"
         );
     }

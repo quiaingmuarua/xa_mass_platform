@@ -174,3 +174,12 @@ lifecycle behavior and same-Group process isolation through a real API 33
 emulator, Server, Adapter, Kernel projection, and managed Task Call.
 Real-device runs remain the manual proof for vendor systems, physical Battery
 behavior, and background execution limits.
+
+## Report Event Semantics
+
+The shared Core emits `platform.worker.command.succeeded` or
+`platform.worker.command.failed`, preserving opaque Handler output and the
+Command forward. `diagnosticCode` is diagnostic only (empty for success).
+Properties and identity use their distinct Report names, not callable Handler
+entries. See the [Delivery contract](../worker-delivery-contract/README.md#report-semantics)
+for coordinated Server, Adapter, SDK and client upgrade requirements.

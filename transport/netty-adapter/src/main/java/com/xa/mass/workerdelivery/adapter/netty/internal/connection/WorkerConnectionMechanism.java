@@ -1,5 +1,11 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_CONNECTION_CHANGED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_PROPERTIES_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_REPLACED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_UPDATED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
@@ -8,9 +14,6 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass.SUCCESS;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass.WORKER_FAILURE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
@@ -45,15 +48,7 @@ public final class WorkerConnectionMechanism {
 
     private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
             "platform.worker.properties.snapshot";
-    private static final String WORKER_PROPERTIES_UPDATED_EVENT =
-            "platform.worker.properties.updated";
-    private static final String WORKER_PROPERTIES_REPLACED_EVENT =
-            "platform.worker.properties.replaced";
-    private static final String WORKER_PROPERTIES_OBSERVED_EVENT =
-            "platform.adapter.worker-properties.observed";
     private static final int MAX_PROPERTIES_REPORT_BYTES = 1_000_000;
-    private static final String WORKER_CONNECTION_CHANGED_EVENT =
-            "platform.adapter.worker-connection.changed";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
             "worker-serviceability-evidence:v1";
 
@@ -400,9 +395,10 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        var outcome = classifyDeliveryReportOutcomeCode(report.outcomeCode());
-        if (outcome != SUCCESS && outcome != WORKER_FAILURE) {
-            logDrop("dropWorkerOutcome", report);
+        if ((report.dst() == TASK || report.dst() == SERVER)
+                && !WORKER_COMMAND_SUCCEEDED.equals(report.messageType())
+                && !WORKER_COMMAND_FAILED.equals(report.messageType())) {
+            logDrop("dropWorkerCommandResult", report);
             return;
         }
         boolean taskReport = report.dst() == TASK;
@@ -431,13 +427,13 @@ public final class WorkerConnectionMechanism {
     }
 
     private static boolean isPropertiesEvent(String eventName) {
-        return WORKER_PROPERTIES_UPDATED_EVENT.equals(eventName)
-                || WORKER_PROPERTIES_REPLACED_EVENT.equals(eventName);
+        return WORKER_PROPERTIES_UPDATED.equals(eventName)
+                || WORKER_PROPERTIES_REPLACED.equals(eventName);
     }
 
     private void observeProperties(Channel channel, DeliveryReport report) {
         String workerId = report.sourceId();
-        if (!"200".equals(report.outcomeCode()) || !report.forward().isEmpty()
+        if (!report.forward().isEmpty()
                 || !routes.isCurrentConnected(workerId, channel)) {
             return;
         }
@@ -446,7 +442,7 @@ public final class WorkerConnectionMechanism {
                     Jsons.parseObject(report.payload())
             );
             WorkerPropertiesCache.ObservationWrite write =
-                    WORKER_PROPERTIES_REPLACED_EVENT.equals(report.messageType())
+                    WORKER_PROPERTIES_REPLACED.equals(report.messageType())
                             ? propertiesCache.observe(workerId, properties)
                             : propertiesCache.patch(workerId, properties);
             if (write == null) {
@@ -465,7 +461,7 @@ public final class WorkerConnectionMechanism {
     private void reportPropertiesObserved(String workerId, Map<String, String> properties) {
         try {
             DeliveryReport observation = DeliveryReport.create(
-                    ADAPTER, adapterId, SYSTEM, WORKER_PROPERTIES_OBSERVED_EVENT, "200",
+                    ADAPTER, adapterId, SYSTEM, ADAPTER_WORKER_PROPERTIES_OBSERVED, "",
                     Jsons.toJson(Map.of("workerId", workerId, "properties", properties)), ""
             );
             if (codec.encodeDeliveryReport(observation).getBytes(StandardCharsets.UTF_8).length
@@ -565,8 +561,8 @@ public final class WorkerConnectionMechanism {
                     ADAPTER,
                     adapterId,
                     KERNEL,
-                    WORKER_CONNECTION_CHANGED_EVENT,
-                    "200",
+                    ADAPTER_WORKER_CONNECTION_CHANGED,
+                    "",
                     Jsons.toJson(Map.of(
                             "workerId", workerId,
                             "state", state,
@@ -622,7 +618,6 @@ public final class WorkerConnectionMechanism {
                 && WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                 report.messageType()
         )
-                && "200".equals(report.outcomeCode())
                 && "null".equals(report.payload())
                 && report.forward().isEmpty();
     }

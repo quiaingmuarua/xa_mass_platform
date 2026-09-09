@@ -253,15 +253,7 @@ class WorkerDeliveryRemoteApiTest {
             assertFailure(
                     () -> remoteApi.appendReports(
                             "adapter-1",
-                            List.of(DeliveryReport.create(
-                                    WORKER,
-                                    "worker-1",
-                                    ADAPTER,
-                                    "test.report",
-                                    "200",
-                                    "{}",
-                                    ""
-                            ))
+                            List.of(DeliveryReport.create(WORKER, "worker-1", ADAPTER, "test.report", "", "{}", ""))
                     ),
                     REMOTE_API_PROTOCOL_ERROR,
                     "deliveryReport.encodeRemoteRequest"
@@ -409,7 +401,7 @@ class WorkerDeliveryRemoteApiTest {
                 source == ADAPTER ? "adapter-1" : "worker-1",
                 destination,
                 "test.report",
-                "200",
+                "",
                 payload,
                 destination == TASK ? "task-context" : "context"
         );

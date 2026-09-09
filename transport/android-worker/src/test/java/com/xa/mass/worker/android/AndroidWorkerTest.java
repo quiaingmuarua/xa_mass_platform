@@ -203,13 +203,13 @@ public class AndroidWorkerTest {
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                 identity.get().messageType()
         );
-        assertEquals("200", identity.get().outcomeCode());
+        assertEquals("", identity.get().diagnosticCode());
         assertEquals(DeliveryEndpoint.WORKER, identity.get().src());
         assertEquals(WORKER_ID, identity.get().sourceId());
         assertEquals("null", identity.get().payload());
         assertEquals("", identity.get().forward());
         assertNotNull(result.get());
-        assertEquals("200", result.get().outcomeCode());
+        assertEquals("", result.get().diagnosticCode());
         assertEquals(
                 "visible",
                 Jsons.parseObject(result.get().payload()).get("observed")

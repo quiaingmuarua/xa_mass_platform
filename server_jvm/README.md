@@ -130,8 +130,18 @@ exclusive, and Server never partitions one Direct Call across Adapters.
 `messageType` and each opaque payload pass through unchanged. Server does not
 enumerate event support or convert an unknown event into an HTTP admission
 error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
-result. Future API Session authorization may restrict caller/target/event
+result event: `platform.adapter.command.failed` or
+`platform.worker.command.failed`. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a DIRECT_CALL event whitelist.
+
+Direct Call completion matches the exact Worker or Adapter command success/failure
+event for the pending target, not the original Command name. Existing forward,
+Adapter, producer, deadline and completion guards remain. Properties and
+connection observations cannot complete a waiter. An observed target exposes
+`messageType + diagnosticCode + opaqueResultPayload`; unobserved/rejected targets
+expose only status/reason. Observed means a result was received, not success.
+Network observation requires the Adapter success event before decoding its
+known snapshot output. No extra execution-status field is introduced.
 
 Generic public Task creation is scoped by an existing WorkerGroup and has no
 profile selector:
@@ -690,12 +700,17 @@ Adapter-produced single-Worker Route changes or TASK delivery-expiry evidence.
 Server parses neither event nor payload semantics, does not resolve
 WorkerGroup, and never invokes the Worker score owner.
 
-For `dst=TASK`, Worker Delivery validates producer identity and the endpoint
-code namespace before mapping accepted reports to the Kernel-owned
-`TaskResultClass.SUCCESS` or `TaskResultClass.FAILURE` lane. A Worker `200` is
-SUCCESS; Worker-owned `3...` and valid Adapter Task rejection are FAILURE.
-Kernel Result Routing receives that type and does not reinterpret the raw
-error code. Adapter delivery-expiry still emits a separate `dst=KERNEL`
+For `dst=TASK`, Worker Delivery validates producer identity and exact event
+contracts before mapping to the Kernel-owned lanes. WORKER plus
+`platform.worker.command.succeeded` maps to `TaskResultClass.SUCCESS`;
+WORKER plus `platform.worker.command.failed` maps to FAILURE. Path-matching
+ADAPTER plus `platform.adapter.command.delivery-failed` also maps to FAILURE
+only with exactly `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`.
+Other event/producer combinations are rejected. Polling point results accept
+only the matching Worker producer. Server never parses the opaque ResultContext.
+Kernel Result Routing receives the selected lane and does not reclassify it.
+`diagnosticCode` is required string diagnostics, allows empty and arbitrary
+values, and never controls acceptance, classification or correlation. Adapter delivery-expiry still emits a separate `dst=KERNEL`
 Serviceability report through its separate homogeneous Report batch.
 
 Adapter instances configure flat Route retention and Properties budget fields. The
@@ -748,7 +763,7 @@ dedup cache, activation ACK or replay is installed.
 
 `WorkerDeliveryService` recognizes only the fixed
 `ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` event here.
-Its sourceId must match the path adapterId, outcome must be `200`, forward must
+Its sourceId must match the path adapterId, diagnostics are non-authoritative, forward must
 be empty, and payload must contain exactly `workerId + properties`. Properties
 are a complete flat string KV Map; the full encoded Report is limited to
 1,000,000 UTF-8 bytes. Event-level invalid input is rejected per item; mixed

@@ -37,7 +37,7 @@ class AdapterEventDispatcherTest {
                 SYSTEM, ADAPTER, "platform.adapter.test", Long.MAX_VALUE,
                 "null", "direct-call:v1:test"
         );
-        assertThat(dispatcher.dispatch(oldCommand).outcomeCode())
+        assertThat(dispatcher.dispatch(oldCommand).diagnosticCode())
                 .isEqualTo(String.valueOf(
                         WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
                 ));
@@ -65,7 +65,7 @@ class AdapterEventDispatcherTest {
                 "{\"value\":1}"
         ));
 
-        assertThat(report.outcomeCode()).isEqualTo("200");
+        assertThat(report.diagnosticCode()).isEqualTo("");
         assertThat(report.payload()).isEqualTo("{\"value\":1}");
     }
 
@@ -86,7 +86,7 @@ class AdapterEventDispatcherTest {
                 "null"
         ));
 
-        assertThat(report.outcomeCode()).isEqualTo("200");
+        assertThat(report.diagnosticCode()).isEqualTo("");
         assertThat(Jsons.parseObject(report.payload()).get("eventNames"))
                 .isEqualTo(List.of(
                         "platform.adapter.alpha",
@@ -113,7 +113,7 @@ class AdapterEventDispatcherTest {
         assertThat(dispatcher.dispatch(command(
                 AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                 "{}"
-        )).outcomeCode()).isEqualTo(Integer.toString(
+        )).diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
     }
@@ -132,7 +132,7 @@ class AdapterEventDispatcherTest {
                 "null"
         ));
 
-        assertThat(report.outcomeCode()).isEqualTo(Integer.toString(
+        assertThat(report.diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode
                         .ADAPTER_EVENT_EXECUTION_FAILED.code()
         ));
@@ -153,7 +153,7 @@ class AdapterEventDispatcherTest {
                 "null"
         ));
 
-        assertThat(report.outcomeCode()).isEqualTo(Integer.toString(
+        assertThat(report.diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode
                         .ADAPTER_EVENT_EXECUTION_FAILED.code()
         ));
@@ -195,7 +195,7 @@ class AdapterEventDispatcherTest {
 
         assertThat(report.src()).isEqualTo(ADAPTER);
         assertThat(report.dst()).isEqualTo(KERNEL);
-        assertThat(report.outcomeCode()).isEqualTo("200");
+        assertThat(report.diagnosticCode()).isEqualTo("");
         assertThat(Jsons.parseObject(report.payload()))
                 .containsEntry(
                         "stateByWorkerId",
@@ -210,7 +210,7 @@ class AdapterEventDispatcherTest {
                 "{\"workerIds\":[\"worker-1\"]}",
                 "worker-serviceability:v1:123"
         );
-        assertThat(dispatcher.dispatch(forbidden).outcomeCode())
+        assertThat(dispatcher.dispatch(forbidden).diagnosticCode())
                 .isEqualTo(Integer.toString(
                         WorkerDeliveryAdapterErrorCode
                                 .ADAPTER_COMMAND_INVALID.code()
@@ -260,7 +260,7 @@ class AdapterEventDispatcherTest {
                 "{\"workerIds\":[\"worker-1\",\"older\",\"unknown\"]}"
         ));
 
-        assertThat(report.outcomeCode()).isEqualTo("200");
+        assertThat(report.diagnosticCode()).isEqualTo("");
         Map<String, Object> payload = Jsons.parseObject(report.payload());
         assertThat(payload).containsOnlyKeys("propertiesByWorkerId");
         @SuppressWarnings("unchecked")
@@ -321,7 +321,7 @@ class AdapterEventDispatcherTest {
         assertThat(dispatcher.dispatch(command(
                 "platform.adapter.worker-observations.snapshot",
                 "{\"workerIds\":[\"worker-1\"]}"
-        )).outcomeCode()).isEqualTo(Integer.toString(
+        )).diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_EVENT_UNSUPPORTED.code()
         ));
     }
@@ -359,32 +359,32 @@ class AdapterEventDispatcherTest {
         assertThat(dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 "{\"workerIds\":[\"worker-0\"]}"
-        )).outcomeCode()).isEqualTo("200");
+        )).diagnosticCode()).isEqualTo("");
 
         var accepted = dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", workerIds))
         ));
-        assertThat(accepted.outcomeCode()).isEqualTo("200");
+        assertThat(accepted.diagnosticCode()).isEqualTo("");
 
         List<String> tooMany = new ArrayList<>(workerIds);
         tooMany.add("worker-100");
         assertThat(dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", tooMany))
-        )).outcomeCode()).isEqualTo(Integer.toString(
+        )).diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
         assertThat(dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 "{\"workerIds\":[]}"
-        )).outcomeCode()).isEqualTo(Integer.toString(
+        )).diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
         assertThat(dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 "{\"workerIds\":[\"worker-1\",\"worker-1\"]}"
-        )).outcomeCode()).isEqualTo(Integer.toString(
+        )).diagnosticCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
     }

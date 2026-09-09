@@ -25,18 +25,53 @@ class WorkerServiceabilityResultPolicyTest {
         String type = "platform.server.worker-poll.observed";
         String payload = "{\"workerId\":\"polling\",\"observedAtMillis\":49000}";
         policy.handle(List.of(
-                DeliveryReport.create(DeliveryEndpoint.ADAPTER, "system-polling", DeliveryEndpoint.KERNEL,
-                        type, "200", payload, "worker-serviceability-evidence:v1"),
-                DeliveryReport.create(DeliveryEndpoint.SERVER, "adapter-1", DeliveryEndpoint.KERNEL,
-                        type, "200", payload, "worker-serviceability-evidence:v1"),
-                DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
-                        type, "200", payload.replace("49000", "19000"), "worker-serviceability-evidence:v1"),
-                DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
-                        type, "200", payload.replace("49000", "50001"), "worker-serviceability-evidence:v1")
+                DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload,
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "adapter-1",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload,
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload.replace("49000", "19000"),
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload.replace("49000", "50001"),
+                        "worker-serviceability-evidence:v1"
+                )
         ));
         org.mockito.Mockito.verifyNoInteractions(events);
-        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.SERVER, "system-polling", DeliveryEndpoint.KERNEL,
-                type, "200", payload, "worker-serviceability-evidence:v1")));
+        policy.handle(List.of(DeliveryReport.create(
+                DeliveryEndpoint.SERVER,
+                "system-polling",
+                DeliveryEndpoint.KERNEL,
+                type,
+                "",
+                payload,
+                "worker-serviceability-evidence:v1"
+        )));
         org.mockito.Mockito.verify(events).onAvailable(Map.of("polling",
                 new WorkerServiceabilityEvents.NetworkObservation("system-polling", 49_000L)));
     }
@@ -75,7 +110,7 @@ class WorkerServiceabilityResultPolicyTest {
                         "adapter-1",
                         DeliveryEndpoint.KERNEL,
                         "unknown.event",
-                        "200",
+                        "",
                         "{}",
                         "worker-serviceability-evidence:v1"
                 ),
@@ -93,12 +128,31 @@ class WorkerServiceabilityResultPolicyTest {
         WorkerServiceabilityResultPolicy policy = policy(events);
 
         policy.handle(List.of(report(
-                "platform.adapter.worker-connections.snapshot",
+                "platform.adapter.command.succeeded",
                 "{\"stateByWorkerId\":{\"worker-1\":\"INVALID\"}}",
                 "worker-serviceability:v1:49000"
         )));
 
         assertEquals(List.of(), events.calls);
+    }
+
+    @Test
+    void snapshotRequiresExactSuccessEventAndProbeCorrelationNotSuccessDiagnostic() {
+        RecordingEvents events = new RecordingEvents();
+        var policy = policy(events);
+        var snapshot = snapshot(49_000, Map.of("worker", "CONNECTED"));
+        for (String event : List.of("platform.adapter.worker-connections.snapshot",
+                "platform.adapter.command.failed", "extension.adapter.probe.succeeded",
+                "platform.worker.command.succeeded")) {
+            policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                    DeliveryEndpoint.KERNEL, event, "200", snapshot.payload(), snapshot.forward())));
+        }
+        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                DeliveryEndpoint.KERNEL, snapshot.messageType(), "200", snapshot.payload(), "direct-call:v1:test")));
+        assertEquals(List.of(), events.calls);
+        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                DeliveryEndpoint.KERNEL, snapshot.messageType(), "3303", snapshot.payload(), snapshot.forward())));
+        assertEquals(List.of("connected:{worker=49000}"), events.calls);
     }
 
     private static WorkerServiceabilityResultPolicy policy(
@@ -163,7 +217,7 @@ class WorkerServiceabilityResultPolicyTest {
         }
         payload.append("}}");
         return report(
-                "platform.adapter.worker-connections.snapshot",
+                "platform.adapter.command.succeeded",
                 payload.toString(),
                 "worker-serviceability:v1:" + observedAtMillis
         );
@@ -179,7 +233,7 @@ class WorkerServiceabilityResultPolicyTest {
                 "adapter-1",
                 DeliveryEndpoint.KERNEL,
                 event,
-                "200",
+                "",
                 payload,
                 forward
         );

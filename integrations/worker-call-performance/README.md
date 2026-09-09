@@ -277,7 +277,7 @@ network pages of 100; all warmup calls must succeed, covering every Worker twice
 Connected routes are checked again before and after measurement. Scheduling and
 Properties readiness are not Direct Call admission prerequisites.
 
-Direct evidence distinguishes successful observed replies (`outcomeCode=200`),
+Direct evidence distinguishes successful observed replies (`platform.worker.command.succeeded`),
 observed non-success replies, unobserved timeouts, occupied-slot/HTTP-429
 rejections, uncertain submission/HTTP effects, not sent and protocol errors.
 Codes and reasons are counted separately. HTTP 200 does not imply admission or

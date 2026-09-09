@@ -1,5 +1,11 @@
 package com.xa.mass.server.delivery.application;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_DELIVERY_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_PROPERTIES_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SERVER_WORKER_POLL_OBSERVED;
+
 import com.xa.mass.server.delivery.DeliveryStageEvent;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
@@ -8,7 +14,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
@@ -38,8 +43,6 @@ public final class WorkerDeliveryService {
     private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
     private static final String SERVICEABILITY_EVENT =
             "platform.adapter.worker-connections.snapshot";
-    private static final String PROPERTIES_OBSERVED_EVENT =
-            "platform.adapter.worker-properties.observed";
     private static final int MAX_PROPERTIES_REPORT_BYTES = 1_000_000;
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
     private static final String SERVICEABILITY_FORWARD_PREFIX =
@@ -265,24 +268,14 @@ public final class WorkerDeliveryService {
     ) {
         String operation = "workerDelivery.appendWorkerResult";
         requirePointBinding(endpointManagerId, workerId);
-        DeliveryReportOutcomeClass outcomeClass =
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
-                        result.outcomeCode()
-        );
+        TaskResultClass resultClass = taskResultClass(endpointManagerId, result);
         if (result.src() != DeliveryEndpoint.WORKER
                 || !workerId.equals(result.sourceId())
-                || result.dst() != DeliveryEndpoint.TASK
-                || outcomeClass == DeliveryReportOutcomeClass.ADAPTER_REJECTION) {
-            throw invalid(
-                    operation,
-                    "Worker result must target TASK with outcome 200 "
-                            + "or a Worker-owned 3... code"
-            );
+                || resultClass == null) {
+            throw invalid(operation, "Worker result must be a TASK command succeeded or failed event");
         }
         appendTaskResults(
-                outcomeClass == DeliveryReportOutcomeClass.SUCCESS
-                        ? TaskResultClass.SUCCESS
-                        : TaskResultClass.FAILURE,
+                resultClass,
                 List.of(result),
                 operation
         );
@@ -332,8 +325,8 @@ public final class WorkerDeliveryService {
         Map<String, Integer> inputCounts = new LinkedHashMap<>();
         for (DeliveryReport report : reports) {
             if (report.src() != DeliveryEndpoint.ADAPTER || !adapterId.equals(report.sourceId())
-                    || !PROPERTIES_OBSERVED_EVENT.equals(report.messageType())
-                    || !"200".equals(report.outcomeCode()) || !report.forward().isEmpty()) {
+                    || !ADAPTER_WORKER_PROPERTIES_OBSERVED.equals(report.messageType())
+                    || !report.forward().isEmpty()) {
                 continue;
             }
             try {
@@ -557,25 +550,28 @@ public final class WorkerDeliveryService {
         if (report == null || report.dst() != DeliveryEndpoint.TASK) {
             return null;
         }
-        DeliveryReportOutcomeClass outcome =
-                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
-                        report.outcomeCode()
-                );
         if (report.src() == DeliveryEndpoint.WORKER) {
-            if (outcome == DeliveryReportOutcomeClass.SUCCESS) {
-                return TaskResultClass.SUCCESS;
-            }
-            if (outcome == DeliveryReportOutcomeClass.WORKER_FAILURE) {
-                return TaskResultClass.FAILURE;
-            }
+            return switch (report.messageType()) {
+                case WORKER_COMMAND_SUCCEEDED -> TaskResultClass.SUCCESS;
+                case WORKER_COMMAND_FAILED -> TaskResultClass.FAILURE;
+                default -> null;
+            };
+        }
+        if (report.src() != DeliveryEndpoint.ADAPTER
+                || !endpointManagerId.equals(report.sourceId())
+                || !ADAPTER_COMMAND_DELIVERY_FAILED.equals(report.messageType())) {
             return null;
         }
-        return report.src() == DeliveryEndpoint.ADAPTER
-                && endpointManagerId.equals(report.sourceId())
-                && report.outcomeCode().startsWith("2")
-                && outcome == DeliveryReportOutcomeClass.ADAPTER_REJECTION
-                ? TaskResultClass.FAILURE
-                : null;
+        try {
+            Map<String, Object> payload = Jsons.parseObject(report.payload());
+            return payload.keySet().equals(Set.of("workerId", "reason"))
+                    && payload.get("workerId") instanceof String workerId
+                    && !workerId.isBlank()
+                    && "DEADLINE_EXCEEDED".equals(payload.get("reason"))
+                    ? TaskResultClass.FAILURE : null;
+        } catch (RuntimeException invalidPayload) {
+            return null;
+        }
     }
 
     private void appendTaskResults(
@@ -659,8 +655,8 @@ public final class WorkerDeliveryService {
                     DeliveryEndpoint.SERVER,
                     WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
                     DeliveryEndpoint.KERNEL,
-                    "platform.server.worker-poll.observed",
-                    "200",
+                    SERVER_WORKER_POLL_OBSERVED,
+                    "",
                     Jsons.toJson(Map.of("workerId", workerId, "observedAtMillis", System.currentTimeMillis())),
                     "worker-serviceability-evidence:v1"
             )));

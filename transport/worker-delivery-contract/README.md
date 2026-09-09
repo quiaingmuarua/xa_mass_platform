@@ -3,7 +3,7 @@
 Status: repository-local Java 11 protocol boundary.
 
 This module contains the transport-neutral Worker Delivery DTOs, strict
-deterministic codec, outcome classification, and `Jsons` facade shared by
+deterministic codec, fixed Report event names, and `Jsons` facade shared by
 `kernel_jvm`, `server_jvm`, `transport/netty-adapter`, and
 `transport/worker-core`. Java and Android Worker modules consume the protocol
 through that Core boundary rather than defining platform-specific wire DTOs.
@@ -29,7 +29,7 @@ DeliveryReport(
   sourceId,
   dst,
   messageType,
-  outcomeCode,
+  diagnosticCode,
   payload,
   forward
 )
@@ -49,9 +49,9 @@ namespace. Workers use `workerId`; Adapters use `adapterId`. It is consistency
 evidence, not authentication.
 
 Delivery has no outer message or correlation ID. `DeliveryReport.fromCommand()`
-copies the Command message type and opaque forward context, then routes the
-Report to the Command source. TaskItem identity remains inside its owning Task
-contract and the opaque Result Context; Delivery does not inspect it.
+requires an explicit Report event name, copies the opaque forward context, and
+routes the Report to the Command source. It never copies the Command name.
+TaskItem identity remains inside its owning Task contract and the opaque Result Context; Delivery does not inspect it.
 
 For a Task command:
 
@@ -67,7 +67,7 @@ For a Server-owned Direct Call:
 - an Adapter target uses `SERVER -> ADAPTER`; its response-map key is a
   response-local opaque entry key which Transport must ignore;
 - `DeliveryReport.fromCommand()` returns Worker or Adapter evidence to
-  `dst=SERVER` while preserving `messageType` and `forward`;
+  `dst=SERVER` with an explicit result event and the original `forward`;
 - the Server Direct Call owner alone interprets that `forward` for waiter
   correlation.
 
@@ -87,7 +87,7 @@ envelope. Caller admission, Worker mailbox offer/replace policy, timeout,
 Adapter FIFO priority and aggregate HTTP results remain outside this
 transport-neutral module.
 
-The Worker supplies `src=WORKER`, `sourceId=workerId`, `outcomeCode`, and its
+The Worker supplies `src=WORKER`, `sourceId=workerId`, `diagnosticCode`, and its
 opaque payload. An Adapter may instead report a pre-delivery rejection as
 `src=ADAPTER`, `sourceId=adapterId` while preserving the Command routing
 fields needed by downstream owners.
@@ -107,7 +107,7 @@ WebSocket and line Socket send a direct `DeliveryReport` as their first value:
   "dst":"ADAPTER",
   "forward":"",
   "messageType":"worker.connection.identify",
-  "outcomeCode":"200",
+  "diagnosticCode":"",
   "payload":"null",
   "sourceId":"server-issued-worker-id",
   "src":"WORKER"
@@ -140,7 +140,9 @@ Command
 Report
   src=ADAPTER
   dst=KERNEL
-  same messageType and forward
+  messageType=platform.adapter.command.succeeded
+  diagnosticCode=""
+  same forward
   payload={stateByWorkerId:{...}}
 ```
 
@@ -156,6 +158,49 @@ Connection lifecycle and direct SERVER controls both use the existing
 `DeliveryCommand` and `DeliveryReport` DTOs; there is no third connection DTO
 or transport-specific wrapper.
 
+## Report Semantics
+
+Command `messageType` identifies an execution intent. Report `messageType`
+identifies an event that has happened; the names need not and normally do not
+match. There are three business categories and one protocol category:
+
+| Category | Contract |
+| --- | --- |
+| Command result | `platform.worker.command.succeeded / failed` or `platform.adapter.command.succeeded / failed`; opaque Handler output, original `forward`, destination is the Command source |
+| Delivery fact | `platform.adapter.command.delivery-failed` ends an expired TASK delivery; independent `platform.adapter.worker-delivery.expired` supplies KERNEL serviceability evidence |
+| Observation | Properties updated/replaced/observed, connection.changed and worker-poll.observed; each name defines its own payload and semantic Owner |
+| Connection protocol | `worker.connection.identify`; close remains a Command with no Result |
+
+These categories are documentation, not a classification field, queue or
+registry. The complete names, payloads and boundaries are in
+[the event catalog](../EVENTS.md#report-event-contracts).
+Event names identify contracts, not every possible error or state value.
+Ordinary extension Commands share the fixed command-result events; Report
+names are never callable capabilities or entries in `events.snapshot`.
+
+`diagnosticCode` is a required non-null string, including `""`, used only for
+diagnostics. It has no numeric format or namespace requirement and cannot
+determine success, failure, admission, correlation or scheduling evidence.
+Producers normally use `""` for success, identity and observations, and may
+use local error codes for failure. Receivers select exact event names plus
+source/destination/correlation, never code prefixes or event suffixes.
+Codec validates structure without a global event allowlist.
+
+`DeliveryReport.fromCommand(command, producer, sourceId, reportMessageType,
+diagnosticCode, payload)` copies only the reply destination and opaque correlation.
+Command results retain opaque output; no result envelope is added.
+
+### Coordinated Upgrade
+
+This is a direct protocol cutover. Server, Adapter, Java/Android Worker SDKs,
+Polling clients and API clients must upgrade together. There is no old
+Command-name echo, numeric classification fallback, overload or dual reader.
+Observed Direct Call responses now require `messageType`; `diagnosticCode`
+remains diagnostic, and `observed` can represent a failed command.
+Reports and observed Direct Call results use only the `diagnosticCode` field
+name; the retired diagnostic field spelling is not an accepted alias.
+Existing Redis data is not cleared or rewritten by this migration.
+
 ## JSON Boundary
 
 `Jsons` exposes only JDK JSON values:
@@ -167,7 +212,7 @@ Map / List / String / Boolean / Number / null
 The private JSON engine is fixed inside this module. Gson types, arbitrary
 POJO reflection, runtime engine selection, and fallback decoding are not part
 of the public contract. Protocol codecs reject missing fields, extra fields,
-wrong types, blank Report source IDs, invalid outcome codes, and non-positive
+wrong types, blank Report source IDs, missing/null/non-string diagnostics, and non-positive
 deadlines. A legacy outer `messageId` is rejected as an extra field; missing
 `src/sourceId` is not accepted as a legacy Report shape.
 

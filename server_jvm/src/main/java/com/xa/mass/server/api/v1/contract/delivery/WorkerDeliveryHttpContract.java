@@ -1,6 +1,6 @@
 package com.xa.mass.server.api.v1.contract.delivery;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -54,17 +54,30 @@ public final class WorkerDeliveryHttpContract {
             @NotBlank String sourceId,
             @NotBlank String dst,
             @NotBlank String messageType,
-            @NotBlank String outcomeCode,
+            @NotNull String diagnosticCode,
             @NotNull String payload,
             @NotNull String forward
     ) {
+        // Bind raw JSON before Jackson can coerce numbers/booleans to strings.
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+        public static WorkerResultRequest fromJson(Map<String, Object> fields) {
+            DeliveryReport report = new WorkerDeliveryCodec().decodeDeliveryReport(fields);
+            if (report == null) {
+                throw invalid("DeliveryReport is invalid");
+            }
+            return new WorkerResultRequest(
+                    report.src().wireValue(), report.sourceId(), report.dst().wireValue(),
+                    report.messageType(), report.diagnosticCode(), report.payload(), report.forward()
+            );
+        }
+
         public DeliveryReport toDeliveryReport() {
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("src", src);
             fields.put("sourceId", sourceId);
             fields.put("dst", dst);
             fields.put("messageType", messageType);
-            fields.put("outcomeCode", outcomeCode);
+            fields.put("diagnosticCode", diagnosticCode);
             fields.put("payload", payload);
             fields.put("forward", forward);
             DeliveryReport report = new WorkerDeliveryCodec()
@@ -73,13 +86,6 @@ public final class WorkerDeliveryHttpContract {
                 throw invalid("DeliveryReport is invalid");
             }
             return report;
-        }
-
-        @JsonAnySetter
-        void rejectUnknownField(String name, Object value) {
-            throw invalid(
-                    "Unknown DeliveryReport field: " + name
-            );
         }
     }
 

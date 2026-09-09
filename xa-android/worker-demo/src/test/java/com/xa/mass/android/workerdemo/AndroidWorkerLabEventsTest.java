@@ -53,7 +53,7 @@ public final class AndroidWorkerLabEventsTest {
 
         assertFalse(execution.isAlive());
         assertEquals(0, events.activeDelayCount());
-        assertEquals("200", outcome.get().outcomeCode());
+        assertEquals("", outcome.get().diagnosticCode());
         assertEquals("null", outcome.get().payload());
     }
 
@@ -81,7 +81,7 @@ public final class AndroidWorkerLabEventsTest {
                             dispatcher,
                             AndroidWorkerLabEvents.DELAY_EVENT,
                             payload
-                    ).outcomeCode()
+                    ).diagnosticCode()
             );
         }
     }
@@ -111,7 +111,7 @@ public final class AndroidWorkerLabEventsTest {
 
         assertFalse(execution.isAlive());
         assertEquals(0, events.activeDelayCount());
-        assertEquals("3303", outcome.get().outcomeCode());
+        assertEquals("3303", outcome.get().diagnosticCode());
         assertTrue(interrupted.get());
     }
 
@@ -127,7 +127,7 @@ public final class AndroidWorkerLabEventsTest {
                         dispatcher,
                         AndroidWorkerLabEvents.FAIL_EVENT,
                         Map.of()
-                ).outcomeCode()
+                ).diagnosticCode()
         );
         assertEquals(
                 "3301",
@@ -135,15 +135,14 @@ public final class AndroidWorkerLabEventsTest {
                         dispatcher,
                         AndroidWorkerLabEvents.FAIL_EVENT,
                         Map.of("extra", true)
-                ).outcomeCode()
+                ).diagnosticCode()
         );
-        assertEquals(
-                "200",
+        assertEquals("",
                 execute(
                         dispatcher,
                         AndroidWorkerLabEvents.DELAY_EVENT,
                         Map.of("delayMillis", 1L)
-                ).outcomeCode()
+                ).diagnosticCode()
         );
     }
 

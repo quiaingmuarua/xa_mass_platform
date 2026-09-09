@@ -69,7 +69,8 @@ describe("HttpWorkerDirectCallClient", () => {
         results: {
           "worker-1": {
             status: "observed",
-            outcomeCode: "200",
+            messageType: "platform.worker.command.succeeded",
+            diagnosticCode: "",
             opaqueResultPayload: '{"valid":true}'
           }
         }
@@ -82,7 +83,11 @@ describe("HttpWorkerDirectCallClient", () => {
     await expect(client.callWorker(request())).resolves.toMatchObject({
       directCallId: "call-1",
       status: "observed",
-      target: { status: "observed", outcomeCode: "200" }
+      target: {
+        status: "observed",
+        messageType: "platform.worker.command.succeeded",
+        diagnosticCode: ""
+      }
     });
 
     expect(post).toHaveBeenCalledWith(
@@ -114,20 +119,39 @@ describe("HttpWorkerDirectCallClient", () => {
         directCallId: "call-1",
         status: "observed",
         results: {
-          "worker-1": { status: "observed", outcomeCode: "200" },
-          "worker-2": { status: "observed", outcomeCode: "200" }
+          "worker-1": {
+            status: "observed",
+            messageType: "platform.worker.command.succeeded",
+            diagnosticCode: ""
+          },
+          "worker-2": {
+            status: "observed",
+            messageType: "platform.worker.command.succeeded",
+            diagnosticCode: ""
+          }
         }
       },
       {
         directCallId: "call-1",
         status: "partial",
-        results: { "worker-1": { status: "observed", outcomeCode: "200" } }
+        results: {
+          "worker-1": {
+            status: "observed",
+            messageType: "platform.worker.command.succeeded",
+            diagnosticCode: ""
+          }
+        }
       },
       {
         directCallId: "call-1",
         status: "observed",
         results: {
-          "worker-1": { status: "observed", outcomeCode: "200", internal: true }
+          "worker-1": {
+            status: "observed",
+            messageType: "platform.worker.command.succeeded",
+            diagnosticCode: "",
+            internal: true
+          }
         }
       }
     ];
@@ -142,9 +166,14 @@ describe("HttpWorkerDirectCallClient", () => {
     }
   });
 
-  it("accepts all target outcome variants and keeps non-200 observed distinct", async () => {
+  it("accepts all target outcome variants and keeps failed events distinct", async () => {
     for (const target of [
-      { status: "observed", outcomeCode: "3302", opaqueResultPayload: "{}" },
+      {
+        status: "observed",
+        messageType: "platform.worker.command.failed",
+        diagnosticCode: "3302",
+        opaqueResultPayload: "{}"
+      },
       { status: "unobserved", reason: "timeout" },
       { status: "rejected", reason: "command-slot-occupied" }
     ] as const) {
@@ -162,11 +191,90 @@ describe("HttpWorkerDirectCallClient", () => {
     }
 
     expect(
-      presentWorkerDirectCallTarget({ status: "observed", outcomeCode: "3302" })
+      presentWorkerDirectCallTarget({
+        status: "observed",
+        messageType: "platform.worker.command.failed",
+        diagnosticCode: "3302"
+      })
     ).toMatchObject({ tone: "warning" });
     expect(
-      presentWorkerDirectCallTarget({ status: "observed", outcomeCode: "200" })
+      presentWorkerDirectCallTarget({
+        status: "observed",
+        messageType: "platform.worker.command.succeeded",
+        diagnosticCode: ""
+      })
     ).toMatchObject({ tone: "success" });
+  });
+
+  it("uses exact result events and treats codes only as diagnostics", () => {
+    for (const messageType of [
+      "platform.worker.command.succeeded",
+      "platform.adapter.command.succeeded"
+    ]) {
+      expect(
+        presentWorkerDirectCallTarget({
+          status: "observed",
+          messageType,
+          diagnosticCode: "3303"
+        })
+      ).toMatchObject({
+        tone: "success",
+        description: "已观察到命令处理成功。"
+      });
+    }
+    for (const messageType of [
+      "platform.worker.command.failed",
+      "platform.adapter.command.failed",
+      "extension.worker.probe.succeeded",
+      "platform.worker.properties.replaced"
+    ]) {
+      expect(
+        presentWorkerDirectCallTarget({
+          status: "observed",
+          messageType,
+          diagnosticCode: "200"
+        }).tone
+      ).toBe("warning");
+    }
+  });
+
+  it("rejects missing event, invalid diagnostics and the retired field name", async () => {
+    for (const target of [
+      { status: "observed", diagnosticCode: "200", opaqueResultPayload: "{}" },
+      {
+        status: "observed",
+        messageType: "platform.worker.command.succeeded",
+        outcomeCode: "200",
+        opaqueResultPayload: "{}"
+      },
+      {
+        status: "observed",
+        messageType: "platform.worker.command.succeeded",
+        diagnosticCode: "",
+        outcomeCode: "200",
+        opaqueResultPayload: "{}"
+      },
+      ...[undefined, null, 200].map((diagnosticCode) => ({
+        status: "observed",
+        messageType: "platform.worker.command.succeeded",
+        diagnosticCode,
+        opaqueResultPayload: "{}"
+      }))
+    ]) {
+      const client = new HttpWorkerDirectCallClient("/api", {
+        post: vi.fn().mockResolvedValue({
+          status: 200,
+          data: {
+            directCallId: "call-1",
+            status: "observed",
+            results: { "worker-1": target }
+          }
+        })
+      } as unknown as AxiosInstance);
+      await expect(client.callWorker(request())).rejects.toMatchObject({
+        kind: "schema"
+      });
+    }
   });
 
   it("maps Direct Call API errors to safe messages and keeps the request ID", async () => {
@@ -354,7 +462,8 @@ function successResult(directCallId: string): WorkerDirectCallResult {
     status: "observed",
     target: {
       status: "observed",
-      outcomeCode: "200",
+      messageType: "platform.worker.command.succeeded",
+      diagnosticCode: "",
       opaqueResultPayload: '{"valid":true}'
     }
   };

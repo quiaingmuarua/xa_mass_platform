@@ -22,12 +22,15 @@ class DirectCallPerformanceTest {
     }
 
     @Test void observedFailureCannotCountAsSuccessAndWrongTargetOrPayloadFails() {
-        var good = observed("200", Jsons.toJson(Map.of("input", CallApi.INPUT, "valid", true,
+        var good = observed("platform.worker.command.succeeded", "3303", Jsons.toJson(Map.of("input", CallApi.INPUT, "valid", true,
                 "md5", "c1bb4f81d892b2d57947682aeb252456")));
         assertThat(CallApi.checkedDirectResult(good, "worker").outcome()).isEqualTo(CallLoad.Outcome.SUCCEEDED);
-        assertThat(CallApi.checkedDirectResult(observed("23002", "opaque"), "worker").outcome()).isEqualTo(CallLoad.Outcome.FAILED);
+        assertThat(CallApi.checkedDirectResult(observed("platform.worker.command.failed", "200", "opaque"), "worker").outcome()).isEqualTo(CallLoad.Outcome.FAILED);
+        assertThatThrownBy(() -> CallApi.checkedDirectResult(
+                observed("extension.worker.string.md5", "200", "{}"), "worker"))
+                .isInstanceOf(CallLoad.ProtocolFailure.class);
         assertThatThrownBy(() -> CallApi.checkedDirectResult(good, "another-worker")).isInstanceOf(CallLoad.ProtocolFailure.class);
-        assertThatThrownBy(() -> CallApi.checkedDirectResult(observed("200", "{}"), "worker"))
+        assertThatThrownBy(() -> CallApi.checkedDirectResult(observed("platform.worker.command.succeeded", "200", "{}"), "worker"))
                 .isInstanceOf(CallLoad.ProtocolFailure.class);
         assertThatThrownBy(() -> CallApi.checkedDirectResult(Map.of("directCallId", "call", "status", "observed",
                 "results", Map.of("worker", Map.of("status", "unobserved", "reason", "timeout"))), "worker"))
@@ -93,8 +96,8 @@ class DirectCallPerformanceTest {
                 "results", Map.of("worker", Map.of("status", state, "reason", reason))), "worker");
     }
 
-    private static Map<String, Object> observed(String code, String payload) {
+    private static Map<String, Object> observed(String event, String code, String payload) {
         return Map.of("directCallId", "call", "status", "observed", "results",
-                Map.of("worker", Map.of("status", "observed", "outcomeCode", code, "opaqueResultPayload", payload)));
+                Map.of("worker", Map.of("status", "observed", "messageType", event, "diagnosticCode", code, "opaqueResultPayload", payload)));
     }
 }

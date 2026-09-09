@@ -40,6 +40,18 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
+    void reportEventsAreNotCallableCapabilities() {
+        WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
+                WorkerManagementEventDefinitions.assemble(Map::of, List.of()));
+        for (String reportName : List.of(
+                "platform.worker.command.succeeded", "platform.worker.command.failed",
+                "platform.worker.properties.updated", "platform.worker.properties.replaced")) {
+            assertFailure(dispatcher.execute(command(TASK, reportName, "{}", ACTIVE_DEADLINE)),
+                    WorkerErrorCode.EVENT_NOT_FOUND);
+        }
+    }
+
+    @Test
     void definitionExtensionsAreDefensivelyCopied() {
         List<WorkerEventDefinition<?>> extensions = new ArrayList<>();
         extensions.add(definition("test.observe", "\"copied\""));
@@ -107,7 +119,8 @@ class WorkerCommandDispatcherTest {
                 ACTIVE_DEADLINE
         )).orElseThrow();
 
-        assertEquals("200", result.outcomeCode());
+        assertTrue(result.isSuccess());
+        assertEquals("", result.diagnosticCode());
         assertEquals("{\"observed\":\"ready\"}", result.payload());
     }
 
@@ -340,7 +353,7 @@ class WorkerCommandDispatcherTest {
         )).orElseThrow();
 
         assertEquals("\"not-json\"", result.payload());
-        assertEquals("200", result.outcomeCode());
+        assertEquals("", result.diagnosticCode());
     }
 
     @Test
@@ -433,9 +446,11 @@ class WorkerCommandDispatcherTest {
             WorkerErrorCode errorCode
     ) {
         WorkerCommandOutcome failure = result.orElseThrow();
+        assertFalse(failure.isSuccess());
+        assertEquals(errorCode, failure.errorCode());
         assertEquals(
                 Integer.toString(errorCode.code()),
-                failure.outcomeCode()
+                failure.diagnosticCode()
         );
         assertEquals(errorCode.defaultMessage(), failure.payload());
     }

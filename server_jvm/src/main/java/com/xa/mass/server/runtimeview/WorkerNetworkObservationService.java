@@ -1,5 +1,7 @@
 package com.xa.mass.server.runtimeview;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
+
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveResponse;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.delivery.directcall.DirectCallService.AdapterCallHandle;
@@ -94,7 +96,7 @@ public final class WorkerNetworkObservationService {
             AdapterCallOutcome outcome
     ) {
         if (!outcome.observed()
-                || !"200".equals(outcome.outcomeCode())) {
+                || !ADAPTER_COMMAND_SUCCEEDED.equals(outcome.messageType())) {
             throw new IllegalStateException(
                     "Adapter Network observation was not successful"
             );

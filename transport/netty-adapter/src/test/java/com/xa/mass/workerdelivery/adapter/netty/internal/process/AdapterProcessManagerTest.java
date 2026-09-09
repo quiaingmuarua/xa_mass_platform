@@ -213,7 +213,7 @@ class AdapterProcessManagerTest {
                 "worker-1",
                 DeliveryEndpoint.SYSTEM,
                 "test.observe",
-                "200",
+                "",
                 payload,
                 "direct-call:v1:test"
         );

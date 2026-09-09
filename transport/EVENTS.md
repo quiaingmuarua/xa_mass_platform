@@ -3,12 +3,13 @@
 Status: current human-readable projection of Transport-owned platform events.
 
 This catalog answers which complete platform Event Names Transport itself
-installs. It is not a registry, cross-module capability catalog, discovery
+installs or produces. Report event names below are not callable capabilities.
+This is not a registry, cross-module capability catalog, discovery
 service, Server whitelist, WorkerGroup declaration, or scheduling input. The
 immutable Handler map loaded by a running endpoint remains execution truth and
 is observable through that endpoint's `events.snapshot` event.
 
-Event Names have this shape:
+Callable Worker/Adapter Command Event Names have this shape:
 
 ```text
 (platform|extension).(worker|adapter).<capability>
@@ -20,6 +21,46 @@ and is not part of Worker Handler lookup. Extension Hosts register a short
 capability such as `string.md5`; TaskItem `eventCode`, WorkerGroup `eventCodes`,
 Direct Call `messageType`, and Delivery Command `messageType` always carry the
 full Event Name.
+
+## Report Event Contracts
+
+The three business categories are **command results**, **delivery facts**, and
+**observations**. Identity is a connection protocol Report. Categories do not
+create a runtime router or new queues. `diagnosticCode` is required string
+diagnostics, normally empty; event contracts alone determine semantics.
+A reason or state value stays in payload, not a new event name.
+
+| Complete Report name | Producer → receiver | Payload and correlation | Produced when / does not mean |
+| --- | --- | --- | --- |
+| `platform.worker.command.succeeded` | WORKER → TASK/SERVER | Original opaque output and Command `forward` | Handler completed; not TaskItem finality |
+| `platform.worker.command.failed` | WORKER → TASK/SERVER | Original opaque error output and Command `forward` | Input, missing Handler, execution or output failure; not final Task failure |
+| `platform.adapter.command.succeeded` | ADAPTER → SERVER/KERNEL | Original opaque Handler output and Command `forward` | Adapter Handler completed; not Worker execution |
+| `platform.adapter.command.failed` | ADAPTER → SERVER/KERNEL | Original opaque error output and Command `forward` | Adapter Handler failed; not availability evidence |
+| `platform.adapter.command.delivery-failed` | ADAPTER → TASK | `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`, original Command `forward` | TASK delivery expired and leaves retry; not a Handler failure or proof of disconnected Channel |
+| `platform.adapter.worker-delivery.expired` | ADAPTER → KERNEL | `{"workerId":"...","observedAtMillis":...}`; `worker-serviceability-evidence:v1` | Independent serviceability evidence for that expiry; not atomically paired with TASK |
+| `platform.adapter.worker-connection.changed` | ADAPTER → KERNEL | `{"workerId":"...","state":"CONNECTED\|DISCONNECTED","observedAtMillis":...}`; same evidence forward | Exact Route transition; not schedulability |
+| `platform.server.worker-poll.observed` | SERVER/system-polling → KERNEL | `{"workerId":"...","observedAtMillis":...}`; same evidence forward | Binding-validated point poll, including empty; not a lease |
+| `platform.worker.properties.updated` | WORKER → ADAPTER | Direct string KV Map, empty forward | Merge supplied keys into a full baseline; not upstream patch |
+| `platform.worker.properties.replaced` | WORKER → ADAPTER | Direct string KV Map, empty forward | Replace full baseline including omissions; not a query reply |
+| `platform.adapter.worker-properties.observed` | ADAPTER → SYSTEM | `{"workerId":"...","properties":{...}}`, empty forward | Complete installed observation for Server admission and Matching; not registration |
+| `worker.connection.identify` | WORKER → ADAPTER | `null`, empty forward; workerId in sourceId | New physical connection identity declaration; not authentication or readiness ACK |
+
+All payloads in this table are encoded into the existing Report **string**
+field. Command results do not wrap or reinterpret Handler output. The ordinary
+extension Command name is not copied into the Report and has no generated
+success/failure event pair.
+
+KERNEL connection snapshot results use `platform.adapter.command.succeeded`
+with `worker-serviceability:v1:<checkStartedAtMillis>` and the existing
+`stateByWorkerId` payload. Only that exact event/correlation/schema combination
+is interpreted as a snapshot; failure is not an availability observation.
+
+No active Route or a temporarily non-writable Channel keeps Command
+`RETRY_LATER` internal and produces no failure Report. An `UNKNOWN` physical
+write cannot assert non-delivery. Direct Call expiry, queue exhaustion and
+shutdown retain timeout/best-effort drop semantics. Only expired TASK delivery
+uses `command.delivery-failed`, with diagnostic `23002`; no other reason is
+defined in this slice.
 
 ## Platform Worker Events
 
@@ -79,7 +120,7 @@ platform.adapter.worker-delivery.expired
 ```
 
 One connection Report represents one exact Route availability transition. One
-delivery-expired Report accompanies the ordinary 23002 TASK Report when a
+delivery-expired Report accompanies the correlated command.delivery-failed TASK Report when a
 TASK-to-Worker Command misses its Adapter delivery deadline. It does not claim
 that the Channel is disconnected. Both carry no WorkerGroup, Binding,
 Properties, generation, or score. Several Reports may be submitted together by
@@ -117,7 +158,8 @@ Worker resource truth nor evidence of Binding validity or schedulability.
 
 Two fixed `WORKER -> ADAPTER` Reports carry property observations. Neither is a
 callable management Handler or part of `events.snapshot`. Both require the bound
-Worker sourceId, outcome `200`, empty forward, and a direct string KV Map payload:
+Worker sourceId, empty forward, and a direct string KV Map payload; diagnostic
+codes are not admission criteria:
 
 - `platform.worker.properties.updated`, `{"network.type":"cellular"}`:
   overwrite supplied keys, retaining omitted keys.
@@ -167,7 +209,7 @@ messageType = platform.adapter.worker-properties.observed
 src         = ADAPTER
 sourceId    = adapterId
 dst         = SYSTEM
-outcomeCode = 200
+diagnosticCode = ""
 forward     = ""
 payload     = {"workerId":"...","properties":{"network.type":"cellular"}}
 ```
@@ -185,8 +227,9 @@ without undoing the cache or closing the Worker. There is no retry or automatic
 repair without new input. Server validates event source/shape, current Binding
 and Group, then creates or replaces Worker facts through the Matching Catalog. Unknown
 SYSTEM events are per-item rejections, never Direct Call completions.
-Later Matching Demands read the facts; existing Candidates, Kernel scores,
-identity and Binding remain unchanged. Prepare creates no Matching facts; the
+Later Matching Demands read the facts. APPLIED writes request the existing
+Score invalidation; this does not fan out to Candidate caches or change
+identity and Binding. Prepare creates no Matching facts; the
 first observation uses this same event. No observation-order fence or special
 retention of registration keys is provided.
 

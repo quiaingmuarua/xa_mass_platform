@@ -101,13 +101,18 @@ final class CallApi implements AutoCloseable {
         if (!java.util.Objects.equals(response.get("status"), state.equals("observed") ? "observed" : "partial"))
             throw new CallLoad.ProtocolFailure("Direct aggregate status disagrees with target");
         if (state.equals("observed")) {
-            if (!target.keySet().equals(Set.of("status", "outcomeCode", "opaqueResultPayload")))
+            if (!target.keySet().equals(Set.of("status", "messageType", "diagnosticCode", "opaqueResultPayload")))
                 throw new CallLoad.ProtocolFailure("Unexpected observed Direct fields");
-            String code = string(target, "outcomeCode");
+            String event = string(target, "messageType");
+            if (!(target.get("diagnosticCode") instanceof String code))
+                throw new CallLoad.ProtocolFailure("Missing Direct diagnostic");
+            if (!Set.of("platform.worker.command.succeeded", "platform.worker.command.failed").contains(event))
+                throw new CallLoad.ProtocolFailure("Unexpected Worker result event");
+            boolean succeeded = event.equals("platform.worker.command.succeeded");
             if (!(target.get("opaqueResultPayload") instanceof String)) throw new CallLoad.ProtocolFailure("Missing Direct payload");
-            if (code.equals("200")) checkedResult(Map.of("status", "succeeded",
+            if (succeeded) checkedResult(Map.of("status", "succeeded",
                     "opaqueResultPayload", target.get("opaqueResultPayload")), ExpectedResult.MD5);
-            return new CallLoad.Reply(200, code.equals("200") ? CallLoad.Outcome.SUCCEEDED : CallLoad.Outcome.FAILED, id, code);
+            return new CallLoad.Reply(200, succeeded ? CallLoad.Outcome.SUCCEEDED : CallLoad.Outcome.FAILED, id, code);
         }
         if (!target.keySet().equals(Set.of("status", "reason"))) throw new CallLoad.ProtocolFailure("Unexpected Direct reason fields");
         String reason = string(target, "reason");

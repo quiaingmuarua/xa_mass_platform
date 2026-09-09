@@ -39,7 +39,7 @@ class ScenarioWorkerLabEventsTest {
         long elapsedMillis = java.util.concurrent.TimeUnit.NANOSECONDS
                 .toMillis(System.nanoTime() - startedAt);
         assertThat(elapsedMillis).isGreaterThanOrEqualTo(20L);
-        assertThat(outcome.outcomeCode()).isEqualTo("200");
+        assertThat(outcome.diagnosticCode()).isEqualTo("");
         assertThat(outcome.payload()).isEqualTo("null");
     }
 
@@ -89,7 +89,7 @@ class ScenarioWorkerLabEventsTest {
                 dispatcher,
                 ScenarioWorkerLabEvents.DELAY_EVENT_CODE,
                 "{\"delayMillis\":1}"
-        ).outcomeCode()).isEqualTo("200");
+        ).diagnosticCode()).isEqualTo("");
     }
 
     private static WorkerCommandDispatcher dispatcher() {
@@ -120,7 +120,7 @@ class ScenarioWorkerLabEventsTest {
             WorkerCommandOutcome outcome,
             WorkerErrorCode errorCode
     ) {
-        assertThat(outcome.outcomeCode())
+        assertThat(outcome.diagnosticCode())
                 .isEqualTo(Integer.toString(errorCode.code()));
         assertThat(outcome.payload()).isEqualTo(errorCode.defaultMessage());
     }

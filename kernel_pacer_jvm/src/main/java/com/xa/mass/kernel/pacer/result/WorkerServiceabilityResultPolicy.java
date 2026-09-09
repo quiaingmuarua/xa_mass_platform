@@ -1,5 +1,10 @@
 package com.xa.mass.kernel.pacer.result;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_CONNECTION_CHANGED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_DELIVERY_EXPIRED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SERVER_WORKER_POLL_OBSERVED;
+
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
@@ -17,12 +22,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 final class WorkerServiceabilityResultPolicy {
 
-    private static final String CONNECTION_CHANGED_EVENT =
-            "platform.adapter.worker-connection.changed";
-    private static final String DELIVERY_EXPIRED_EVENT =
-            "platform.adapter.worker-delivery.expired";
-    private static final String PROBE_EVENT =
-            "platform.adapter.worker-connections.snapshot";
     private static final String CONNECTION_EVIDENCE_FORWARD =
             "worker-serviceability-evidence:v1";
     private static final String PROBE_FORWARD_PREFIX =
@@ -121,7 +120,6 @@ final class WorkerServiceabilityResultPolicy {
         if (report == null
                 || (report.src() != DeliveryEndpoint.ADAPTER && report.src() != DeliveryEndpoint.SERVER)
                 || report.dst() != DeliveryEndpoint.KERNEL
-                || !"200".equals(report.outcomeCode())
                 || report.sourceId() == null
                 || report.sourceId().isEmpty()) {
             return null;
@@ -129,15 +127,15 @@ final class WorkerServiceabilityResultPolicy {
         Map<String, WorkerEvidence> decoded;
         if (report.src() == DeliveryEndpoint.SERVER) {
             if (!"system-polling".equals(report.sourceId())
-                    || !"platform.server.worker-poll.observed".equals(report.messageType())) {
+                    || !SERVER_WORKER_POLL_OBSERVED.equals(report.messageType())) {
                 return null;
             }
             decoded = decodeObservation(report, EvidenceKind.AVAILABLE);
-        } else if (CONNECTION_CHANGED_EVENT.equals(report.messageType())) {
+        } else if (ADAPTER_WORKER_CONNECTION_CHANGED.equals(report.messageType())) {
             decoded = decodeConnectionChange(report);
-        } else if (DELIVERY_EXPIRED_EVENT.equals(report.messageType())) {
+        } else if (ADAPTER_WORKER_DELIVERY_EXPIRED.equals(report.messageType())) {
             decoded = decodeObservation(report, EvidenceKind.ROUTE_UNAVAILABLE);
-        } else if (PROBE_EVENT.equals(report.messageType())) {
+        } else if (ADAPTER_COMMAND_SUCCEEDED.equals(report.messageType())) {
             decoded = decodeProbeSnapshot(report);
         } else {
             return null;

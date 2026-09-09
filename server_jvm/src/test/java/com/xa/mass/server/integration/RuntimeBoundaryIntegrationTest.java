@@ -138,6 +138,9 @@ class RuntimeBoundaryIntegrationTest {
     @Autowired
     private WorkerScoreCore workerScores;
 
+    @MockitoSpyBean
+    private com.xa.mass.kernel.delivery.TaskResultRuntime taskResults;
+
     @Autowired
     private KernelPacerAssembly kernelPacerAssembly;
 
@@ -418,7 +421,7 @@ class RuntimeBoundaryIntegrationTest {
                 JSON.writeValueAsString(Map.of(
                         "messageType", "platform.adapter.worker-properties.snapshot",
                         "opaquePayload", workerIdsPayload(workerId), "waitTimeoutMillis", 3_000)));
-        Map<String, Object> payload = Jsons.parseObject(observedDirectPayload(response, adapterId, "200"));
+        Map<String, Object> payload = Jsons.parseObject(observedDirectPayload(response, adapterId, "platform.adapter.command.succeeded"));
         Map<?, ?> observations = (Map<?, ?>) payload.get("propertiesByWorkerId");
         Map<?, ?> observation = (Map<?, ?>) observations.get(workerId);
         assertThat(observation.get("properties")).isEqualTo(expected);
@@ -470,6 +473,67 @@ class RuntimeBoundaryIntegrationTest {
     void onDemandClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
             throws Exception {
         runWorkerGroupTaskCall(TransportProfile.POLLING);
+    }
+
+    @Test
+    void workerCommandFailureDoesNotFinalizeTheItemOnAnyTransport() throws Exception {
+        for (TransportProfile profile : TransportProfile.values()) {
+            String suffix = UUID.randomUUID().toString();
+            String group = "failure-event-" + suffix;
+            String key = "worker-" + suffix;
+            String messageId = "item-" + suffix;
+            var registered = send("POST", "/api/v1/worker-groups/" + group + ":register",
+                    Jsons.toJson(Map.of("eventCodes", List.of(TEST_EVENT_CODE))));
+            assertThat(registered.statusCode()).isEqualTo(200);
+            String taskId = JSON.readTree(registered.body()).get("taskId").asText();
+            var prepared = prepareWorker(group, key, profile, Map.of());
+            AtomicInteger executions = new AtomicInteger();
+            CountDownLatch secondEntered = new CountDownLatch(1);
+            CountDownLatch finish = new CountDownLatch(1);
+            List<WorkerEventDefinition<?>> definitions = List.of(WorkerEventDefinition.extension(
+                    TEST_CAPABILITY, WorkerEventParameterResolvers.jsonMap(), input -> {
+                        if (executions.incrementAndGet() == 1) {
+                            throw new IllegalStateException("scripted first execution failure");
+                        }
+                        secondEntered.countDown();
+                        if (!finish.await(15, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("test completion gate expired");
+                        }
+                        return TEST_RESULT;
+                    }));
+            RunningWorker worker = profile == TransportProfile.POLLING
+                    ? new PollingWorkerHandle(new PollingWorkerTransport(
+                            new OkHttpWorkerPointClient(prepared.endpointUri(), Duration.ofSeconds(2)),
+                            prepared.workerId(), WorkerCommandDispatcher.forWorker(definitions)))
+                    : startTextMessageWorker(group, key, prepared.workerId(), Map.of(), definitions,
+                            profile == TransportProfile.WEBSOCKET
+                                    ? WorkerTransportType.WEBSOCKET : WorkerTransportType.SOCKET);
+            try {
+                var submitted = send("POST", "/api/v1/tasks/" + taskId + "/items:call",
+                        Jsons.toJson(Map.of("items", List.of(Map.of(
+                                "messageId", messageId, "eventCode", TEST_EVENT_CODE,
+                                "payload", Map.of("value", "input"),
+                                "workerSelector", List.of("workerId", "$eq", prepared.workerId()))),
+                                "waitTimeoutMillis", 1)));
+                assertThat(submitted.statusCode()).isEqualTo(200);
+                assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
+                verify(taskResults, org.mockito.Mockito.atLeastOnce()).appendTaskResults(
+                        eq(com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass.FAILURE),
+                        org.mockito.ArgumentMatchers.argThat(reports -> reports.stream().anyMatch(report ->
+                                prepared.workerId().equals(report.sourceId())
+                                        && "platform.worker.command.failed".equals(report.messageType()))));
+                var unobserved = send("POST", "/api/v1/tasks/" + taskId + "/results:load",
+                        Jsons.toJson(List.of(messageId)));
+                assertThat(JSON.readTree(unobserved.body()).get(messageId).get("status").asText())
+                        .isEqualTo("not_observed");
+                finish.countDown();
+                awaitStoredResult(taskId, messageId);
+                assertStoredItemAndFinalSuccess(taskId, messageId);
+            } finally {
+                finish.countDown();
+                worker.close();
+            }
+        }
     }
 
     @Test
@@ -603,8 +667,7 @@ class RuntimeBoundaryIntegrationTest {
             recording.enable("xa.mass.HttpCompletion");
             recording.enable("xa.mass.HttpExecutor").withPeriod(Duration.ofMillis(100));
             recording.start();
-            observedDirectPayload(adapterDirectCall("platform.adapter.events.snapshot", "null"),
-                    WEBSOCKET_ENDPOINT_MANAGER_ID, "200");
+            observedDirectPayload(adapterDirectCall("platform.adapter.events.snapshot", "null"), WEBSOCKET_ENDPOINT_MANAGER_ID, "platform.adapter.command.succeeded");
             // Servlet completion may follow the client's receipt. Await diagnostic completion only, with a fixed budget.
             List<jdk.jfr.consumer.RecordedEvent> events = List.of();
             long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
@@ -672,18 +735,14 @@ class RuntimeBoundaryIntegrationTest {
                     workerId,
                     DIRECT_EVENT_CODE,
                     "{}"
-            ), workerId, "200"))
+            ), workerId, "platform.worker.command.succeeded"))
                     .isEqualTo("{\"direct\":\"observed\"}");
 
             assertThat(Jsons.parseObject(
-                    observedDirectPayload(
-                            adapterDirectCall(
+                    observedDirectPayload(adapterDirectCall(
                                     "platform.adapter.probe",
                                     "null"
-                            ),
-                            WEBSOCKET_ENDPOINT_MANAGER_ID,
-                            "200"
-                    )
+                            ), WEBSOCKET_ENDPOINT_MANAGER_ID, "platform.adapter.command.succeeded")
             )).containsEntry("adapterId", WEBSOCKET_ENDPOINT_MANAGER_ID)
                     .containsEntry("reachable", true);
 
@@ -693,7 +752,7 @@ class RuntimeBoundaryIntegrationTest {
                             workerId,
                             WorkerManagementEventDefinitions.PROBE_EVENT,
                             "null"
-                    ), workerId, "200")
+                    ), workerId, "platform.worker.command.succeeded")
             )).containsEntry("reachable", true);
 
             assertThat(Jsons.parseObject(
@@ -703,23 +762,25 @@ class RuntimeBoundaryIntegrationTest {
                             WorkerManagementEventDefinitions
                                     .PROPERTIES_SNAPSHOT_EVENT,
                             "null"
-                    ), workerId, "200")
+                    ), workerId, "platform.worker.command.succeeded")
             )).containsEntry(
                     "properties",
                     Map.of("runtime", "java-direct")
             );
 
+            observedDirectPayload(workerDirectCall(workerGroupId, workerId,
+                    "extension.worker.not-installed", "{}"), workerId,
+                    "platform.worker.command.failed");
+            observedDirectPayload(adapterDirectCall("platform.adapter.not-installed", "null"),
+                    WEBSOCKET_ENDPOINT_MANAGER_ID, "platform.adapter.command.failed");
+
             assertConnectionState(workerId, "CONNECTED");
             assertWorkerProperties(workerId);
             assertThat(Jsons.parseObject(
-                    observedDirectPayload(
-                            adapterDirectCall(
+                    observedDirectPayload(adapterDirectCall(
                                     "platform.adapter.worker-connections.close-current",
                                     workerIdsPayload(workerId)
-                            ),
-                            WEBSOCKET_ENDPOINT_MANAGER_ID,
-                            "200"
-                    )
+                            ), WEBSOCKET_ENDPOINT_MANAGER_ID, "platform.adapter.command.succeeded")
             )).containsEntry(
                     "outcomeByWorkerId",
                     Map.of(workerId, "close-started")
@@ -731,7 +792,7 @@ class RuntimeBoundaryIntegrationTest {
                             workerId,
                             WorkerManagementEventDefinitions.PROBE_EVENT,
                             "null"
-                    ), workerId, "200")
+                    ), workerId, "platform.worker.command.succeeded")
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
             assertWorkerProperties(workerId);
@@ -907,15 +968,16 @@ class RuntimeBoundaryIntegrationTest {
     private static String observedDirectPayload(
             HttpResponse<String> response,
             String targetId,
-            String outcomeCode
+            String messageType
     ) throws Exception {
         assertThat(response.statusCode()).isEqualTo(200);
         var target = JSON.readTree(response.body())
                 .get("results")
                 .get(targetId);
         assertThat(target.get("status").asText()).isEqualTo("observed");
-        assertThat(target.get("outcomeCode").asText())
-                .isEqualTo(outcomeCode);
+        assertThat(target.get("messageType").asText())
+                .isEqualTo(messageType);
+        assertThat(target.get("diagnosticCode").isTextual()).isTrue();
         return target.get("opaqueResultPayload").asText();
     }
 
@@ -946,14 +1008,10 @@ class RuntimeBoundaryIntegrationTest {
     @SuppressWarnings("unchecked")
     private void assertWorkerProperties(String workerId) throws Exception {
         Map<String, Object> payload = Jsons.parseObject(
-                observedDirectPayload(
-                        adapterDirectCall(
+                observedDirectPayload(adapterDirectCall(
                                 "platform.adapter.worker-properties.snapshot",
                                 workerIdsPayload(workerId)
-                        ),
-                        WEBSOCKET_ENDPOINT_MANAGER_ID,
-                        "200"
-                )
+                        ), WEBSOCKET_ENDPOINT_MANAGER_ID, "platform.adapter.command.succeeded")
         );
         Map<String, Object> propertiesByWorkerId =
                 (Map<String, Object>) payload.get(

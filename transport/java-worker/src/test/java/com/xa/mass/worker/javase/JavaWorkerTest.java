@@ -358,7 +358,7 @@ class JavaWorkerTest {
                         WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                         identityFrame.messageType()
                 );
-                assertEquals("200", identityFrame.outcomeCode());
+                assertEquals("", identityFrame.diagnosticCode());
                 assertEquals("null", identityFrame.payload());
                 assertEquals("", identityFrame.forward());
             }
