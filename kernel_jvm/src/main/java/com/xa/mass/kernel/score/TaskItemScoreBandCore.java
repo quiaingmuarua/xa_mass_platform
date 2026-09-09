@@ -3,30 +3,23 @@ package com.xa.mass.kernel.score;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 public interface TaskItemScoreBandCore {
 
-    int TAG_STRIDE = 4;
     int ACTIVE_TAG = 1;
-    int FINAL_FAILED_TAG = ACTIVE_TAG + TAG_STRIDE;
-    int FINAL_SUCCESS_TAG = FINAL_FAILED_TAG + TAG_STRIDE;
-    Set<Integer> VALID_TAGS = Set.of(
-            ACTIVE_TAG,
-            FINAL_FAILED_TAG,
-            FINAL_SUCCESS_TAG
-    );
+    int MIN_TERMINAL_TAG = 2;
+    int MAX_TERMINAL_TAG = 9;
+    int MAX_ITEM_BATCH_SIZE = 100;
     int MIN_REMAINING_BUDGET = 0;
     int MAX_REMAINING_BUDGET = 99;
-    int FINAL_SUFFIX = 0;
+    int TERMINAL_SUFFIX = 0;
     long SUFFIX_FACTOR = 100;
     long SLOT_MILLIS = 100;
     long MIN_TIME_SLOT = 0;
     long MAX_TIME_SLOT = 99_999_999_999L;
     long TIME_SLOT_FACTOR = MAX_TIME_SLOT + 1;
     long TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR;
-    long MAX_SAME_BAND_SCORE_DELTA = TAG_FACTOR - 1;
     long MIN_TIME_MILLIS = 0;
     long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
 
@@ -52,13 +45,23 @@ public interface TaskItemScoreBandCore {
             int remainingBudgetDelta
     );
 
+    /**
+     * Advances existing members to a terminal tag (2..9) only when the encoded
+     * target is greater. At most 100 per-Item targets, in input order.
+     * Missing or corrupt members are never created or overwritten.
+     */
     Map<String, TaskItemScoreTransitionResult> promoteItemOutcomes(
             String taskId,
-            List<String> messageIds,
-            TaskItemScoreBand targetBand,
-            long targetTimeMillis
+            Map<String, TaskItemOutcomeTarget> targets
     );
 
+    record TaskItemOutcomeTarget(int tag, long timeMillis) {
+    }
+
+    /**
+     * Reads at most 100 IDs in one Owner operation. Missing members map to null;
+     * corrupt scores fail the read. Time is band-local Score time.
+     */
     Map<String, @Nullable TaskItemScoreState> getItemScoreStates(
             String taskId,
             List<String> messageIds
@@ -66,8 +69,7 @@ public interface TaskItemScoreBandCore {
 
     enum TaskItemScoreBand {
         ACTIVE("active"),
-        FINAL_FAILED("final_failed"),
-        FINAL_SUCCESS("final_success");
+        TERMINAL("terminal");
 
         private final String wireValue;
 
@@ -108,6 +110,7 @@ public interface TaskItemScoreBandCore {
     record TaskItemScoreState(
             long score,
             TaskItemScoreBand band,
+            int tag,
             long timeMillis,
             @Nullable Integer remainingBudget
     ) {

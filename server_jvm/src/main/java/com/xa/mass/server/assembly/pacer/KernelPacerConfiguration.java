@@ -3,7 +3,7 @@ package com.xa.mass.server.assembly.pacer;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -13,20 +13,21 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
+import com.xa.mass.server.task.TaskItemOutcomeProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(KernelPacerProperties.class)
+@EnableConfigurationProperties({KernelPacerProperties.class, TaskItemOutcomeProperties.class})
 public class KernelPacerConfiguration {
 
     @Bean
     KernelPacerRuntime kernelPacerRuntime(
             KernelPacerProperties properties,
             XaMassRedisProperties redisProperties,
-            TaskResultRuntime taskResults,
+            TaskEvidenceRuntime taskEvidence,
             TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
@@ -42,7 +43,9 @@ public class KernelPacerConfiguration {
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
-                taskResults,
+                TaskItemOutcomeProperties.FAILED_TAG,
+                TaskItemOutcomeProperties.SUCCEEDED_TAG,
+                taskEvidence,
                 taskRuntime,
                 taskScores,
                 itemScores,

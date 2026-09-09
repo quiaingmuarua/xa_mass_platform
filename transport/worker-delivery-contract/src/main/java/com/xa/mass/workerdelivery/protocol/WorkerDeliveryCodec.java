@@ -4,6 +4,7 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskOutcomeObservation;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -30,6 +31,37 @@ public final class WorkerDeliveryCodec {
             "sourceId",
             "src"
     );
+
+    public String encodeTaskOutcomeObservation(TaskOutcomeObservation observation) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tag", observation.tag());
+        payload.put("observedAtMillis", observation.observedAtMillis());
+        if (observation.opaqueResultPayload() != null) {
+            payload.put("opaqueResultPayload", observation.opaqueResultPayload());
+        }
+        return Jsons.toJson(payload);
+    }
+
+    public TaskOutcomeObservation decodeTaskOutcomeObservation(String encoded) {
+        try {
+            Map<String, Object> payload = Jsons.parseObject(encoded);
+            boolean hasContent = payload.containsKey("opaqueResultPayload");
+            if (!payload.keySet().equals(hasContent
+                    ? Set.of("tag", "observedAtMillis", "opaqueResultPayload")
+                    : Set.of("tag", "observedAtMillis"))) {
+                return null;
+            }
+            Long tag = integralLong(payload.get("tag"));
+            Long time = integralLong(payload.get("observedAtMillis"));
+            String content = string(payload.get("opaqueResultPayload"));
+            if (tag == null || tag < 6 || tag > 9 || time == null || hasContent && content == null) {
+                return null;
+            }
+            return new TaskOutcomeObservation(tag.intValue(), time, content);
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
+    }
 
     public DeliveryCommand decodeDeliveryCommand(String value) {
         try {

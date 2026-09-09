@@ -3,6 +3,10 @@ package com.xa.mass.server.api;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.LinkedHashSet;
+import java.util.List;
+import org.springdoc.core.customizers.OpenApiCustomizer;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
@@ -58,4 +62,14 @@ import org.springframework.context.annotation.Configuration;
         }
 )
 public class OpenApiConfiguration {
+
+    @Bean
+    OpenApiCustomizer taskItemStateSchema() {
+        return document -> {
+            // Map value inference drops the DTO's nullable annotation.
+            var state = document.getComponents().getSchemas().get("TaskItemStateResponse");
+            state.setType(null);
+            state.setTypes(new LinkedHashSet<>(List.of("object", "null")));
+        };
+    }
 }

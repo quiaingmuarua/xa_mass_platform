@@ -2,7 +2,7 @@ package com.xa.mass.server.delivery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -63,7 +63,7 @@ class WorkerDeliveryHttpCompositionTest {
     void assemblesWithoutPlatformPropertiesManagementOrTaskResourceOwners() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
-            assertThat(context).hasSingleBean(TaskResultRuntime.class);
+            assertThat(context).hasSingleBean(TaskEvidenceRuntime.class);
             assertThat(context).hasSingleBean(
                     WorkerServiceabilityRuntime.class
             );

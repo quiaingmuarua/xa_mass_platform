@@ -113,7 +113,10 @@ fact. None adds a queue, Handler or completion registry.
 Server rejects mixed or unsupported destination batches before semantic Owner
 side effects. A homogeneous batch selects one destination branch:
 
-- TASK: producer/exact-result-event validation selects the Kernel success or failure lane.
+- TASK: producer/exact-event validation selects the Kernel execution success,
+  execution failure or outcome observation lane. Later observations retain the
+  original opaque correlation and never release Worker leases; they use the
+  same Adapter TASK handoff and HTTP path.
 - SERVER: the Server Direct Call waiter consumes correlated evidence.
 - SYSTEM: the fixed Adapter Properties observation passes Server source,
   Binding and Group admission into Matching facts; unknown events are rejected.

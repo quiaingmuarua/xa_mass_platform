@@ -491,7 +491,7 @@ class DefaultTaskCommandsTest {
         @Override
         public void storeTaskItemSuccessResults(
                 String taskId,
-                Map<String, String> results
+                Map<String, TaskItemSuccessResult> results
         ) {
             throw unsupported();
         }

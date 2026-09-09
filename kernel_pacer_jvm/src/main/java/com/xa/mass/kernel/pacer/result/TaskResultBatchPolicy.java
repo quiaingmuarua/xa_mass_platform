@@ -1,8 +1,11 @@
 package com.xa.mass.kernel.pacer.result;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.ResultContextCodec.RoutedResultContext;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
+import com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
 import com.xa.mass.kernel.worker.WorkerLeaseReference;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
@@ -102,6 +105,33 @@ final class TaskResultBatchPolicy {
             return;
         }
         publishWorkerEvents(decoded.resultsByWorkerGroup(), false);
+    }
+
+    void handleObservations(List<DeliveryReport> batch) {
+        Map<String, List<TaskItemOutcomeObservation>> byTask = new LinkedHashMap<>();
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        for (DeliveryReport report : batch) {
+            if (report == null || report.src() != DeliveryEndpoint.WORKER
+                    || report.dst() != DeliveryEndpoint.TASK
+                    || !WORKER_TASK_OUTCOME_OBSERVED.equals(report.messageType())) {
+                continue;
+            }
+            var context = contextCodec.decodeForRouting(report.forward());
+            var observation = codec.decodeTaskOutcomeObservation(report.payload());
+            if (context.isEmpty() || observation == null
+                    || !context.get().workerId().equals(report.sourceId())) {
+                continue;
+            }
+            TaskItemOutcomeObservation event;
+            try {
+                event = new TaskItemOutcomeObservation(context.get().messageId(), observation.tag(),
+                        observation.observedAtMillis(), observation.opaqueResultPayload());
+            } catch (IllegalArgumentException invalid) {
+                continue;
+            }
+            byTask.computeIfAbsent(context.get().taskId(), ignored -> new ArrayList<>()).add(event);
+        }
+        byTask.forEach(taskItemEvents::onItemOutcomesObserved);
     }
 
     private DecodedBatch decode(List<DeliveryReport> batch) {

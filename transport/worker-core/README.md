@@ -146,7 +146,59 @@ an unexpected processing failure is logged with a Worker-owned `3xxx` code and
 does not make the Worker reconnect. If a Result send is not accepted, the
 Result is discarded. Long-connection Commands and Results are never queued, cached, or
 replayed. Polling retains only its existing pending-result submission behavior;
-this event migration does not change either delivery guarantee.
+later observations do not enter that pending execution Result.
+
+## Later Task Outcome Observations
+
+The existing single-argument Handler remains an ordinary RPC Handler. A Host
+can use the two-argument `extension(...)` overload to retain a
+`WorkerOutcomeReporter` after its synchronous execution returns. For example,
+with a Host-owned messaging client and callback association:
+
+```java
+WorkerEventDefinition.extension(
+    "message.send",
+    WorkerEventParameterResolvers.jsonMap(),
+    (parameters, reporter) -> {
+        String externalId = messaging.send(parameters);
+        messaging.onDelivered(externalId, time -> reporter.report(7, time, null));
+        messaging.onRead(externalId, time -> reporter.report(8, time, null));
+        messaging.onReply(externalId,
+            (time, text) -> reporter.report(9, time, text));
+        return "sent";
+    }
+);
+```
+
+`messaging` represents the Host's business integration; the Host owns association
+and callback cleanup. Core keeps no Reporter collection. Java and Android use
+the same Core overload and implementation, without a Task mode or creation flag.
+The ordinary return still produces execution success and completes the execution
+lease. Later reports refer to that same Item without managing Worker leases.
+
+`report(tag, observedAtMillis, nullablePayload)` accepts tags 6..9, a positive
+reported epoch-millisecond time, and optional nonblank content. Server also
+checks the Score Owner time range. Transport binds the original opaque `forward`
+and Worker send path; the Handler never parses Task, Item or Lease coordinates.
+The exact event is `platform.worker.task-outcome.observed`, with WORKER source
+and TASK destination. Non-TASK calls receive an unavailable Reporter returning
+false, so DIRECT_CALL remains one response.
+
+Reporting runs on the caller's thread and returns local acceptance, not delivery
+or processing acknowledgement. Invalid input, oversize frames, closed/stopped
+runs and send failures return false. Transparent reconnect keeps the same
+Reporter's send path; stopping or closing its run prevents transfer to a new run.
+WebSocket and Socket send through their existing Client. Polling uses the existing
+point Report HTTP and never occupies or retries through `pendingResult`.
+Core adds no queue, thread, automatic retry or callback-completion fence.
+
+Server's example names are delivered/read/replied for 7/8/9. Kernel advances
+generic terminal state; Result content separately prefers higher tag, then later
+reported milliseconds. Equal times retain the stored content. State-only reports
+do not erase content. Existing `items:states` and repeatable `results:load` queries
+expose state and latest content independently. Evidence loss has no replay or
+repair guarantee; detailed commit boundaries belong to the
+[Result Owner](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
 
 On every physical connection open, Transport first sends
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`

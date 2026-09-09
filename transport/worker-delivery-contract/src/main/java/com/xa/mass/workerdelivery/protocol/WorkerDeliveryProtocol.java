@@ -12,6 +12,8 @@ public final class WorkerDeliveryProtocol {
             "worker.connection.close";
     public static final String WORKER_COMMAND_SUCCEEDED =
             "platform.worker.command.succeeded";
+    public static final String WORKER_TASK_OUTCOME_OBSERVED =
+            "platform.worker.task-outcome.observed";
     public static final String WORKER_COMMAND_FAILED =
             "platform.worker.command.failed";
     public static final String ADAPTER_COMMAND_SUCCEEDED =
@@ -34,6 +36,39 @@ public final class WorkerDeliveryProtocol {
             "platform.server.worker-poll.observed";
 
     private WorkerDeliveryProtocol() {
+    }
+
+    /** Server-defined TASK observation payload; names and business meaning stay in the application. */
+    public static final class TaskOutcomeObservation {
+        private final int tag;
+        private final long observedAtMillis;
+        private final String opaqueResultPayload;
+
+        public TaskOutcomeObservation(
+                int tag,
+                long observedAtMillis,
+                String opaqueResultPayload
+        ) {
+            if (tag < 6 || tag > 9 || observedAtMillis <= 0
+                    || opaqueResultPayload != null && opaqueResultPayload.isBlank()) {
+                throw new IllegalArgumentException("Task outcome observation is invalid");
+            }
+            this.tag = tag;
+            this.observedAtMillis = observedAtMillis;
+            this.opaqueResultPayload = opaqueResultPayload;
+        }
+
+        public int tag() {
+            return tag;
+        }
+
+        public long observedAtMillis() {
+            return observedAtMillis;
+        }
+
+        public String opaqueResultPayload() {
+            return opaqueResultPayload;
+        }
     }
 
     public enum DeliveryEndpoint {

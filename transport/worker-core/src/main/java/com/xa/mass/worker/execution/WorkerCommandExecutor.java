@@ -7,4 +7,9 @@ import java.util.Optional;
 public interface WorkerCommandExecutor {
 
     Optional<WorkerCommandOutcome> execute(DeliveryCommand command);
+    default Optional<WorkerCommandOutcome> execute(
+            DeliveryCommand command, WorkerOutcomeReporter reporter
+    ) {
+        return execute(command);
+    }
 }

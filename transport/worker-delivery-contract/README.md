@@ -87,6 +87,26 @@ envelope. Caller admission, Worker mailbox offer/replace policy, timeout,
 Adapter FIFO priority and aggregate HTTP results remain outside this
 transport-neutral module.
 
+The fixed later Task outcome event is:
+
+```text
+src=WORKER, sourceId=workerId, dst=TASK
+messageType=platform.worker.task-outcome.observed
+forward=original Command forward (opaque)
+payload={"tag":9,"observedAtMillis":1780000000123,"opaqueResultPayload":"reply"}
+```
+
+`TaskOutcomeObservation` and its codec accept exactly `tag` and
+`observedAtMillis`, plus optional `opaqueResultPayload`. Tags are integers 6..9;
+time is a positive integer in milliseconds. Optional content must be a nonblank
+string; omitted content means only a state observation, never content deletion.
+Server checks the supported Score time range. The Report's payload remains an
+encoded JSON string. `diagnosticCode` remains required diagnostics only.
+The event is not a callable Handler capability and cannot complete a SERVER
+Direct Call. Transport preserves opaque correlation and leaves Item progression,
+content ordering and business state names to their downstream owners. See the
+[shared SDK example](../worker-core/README.md#later-task-outcome-observations).
+
 The Worker supplies `src=WORKER`, `sourceId=workerId`, `diagnosticCode`, and its
 opaque payload. An Adapter may instead report a pre-delivery rejection as
 `src=ADAPTER`, `sourceId=adapterId` while preserving the Command routing

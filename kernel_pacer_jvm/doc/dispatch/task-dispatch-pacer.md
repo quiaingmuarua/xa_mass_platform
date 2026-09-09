@@ -25,7 +25,7 @@ For each Task, the policy:
 1. observes a bounded ACTIVE Item score set;
 2. loads the corresponding minimal TaskItems;
 3. stores the fixed failed Result before promoting exhausted or expired Items
-   to `FINAL_FAILED`;
+   to `TERMINAL(tag=5)`;
 4. identifies claimable Items in observation order;
 5. obtains Worker candidates through the Task's fixed allocation mechanism;
 6. delegates exact Worker confirmation, Item claim, and Command publication;

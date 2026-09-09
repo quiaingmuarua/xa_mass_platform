@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.result;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
@@ -36,14 +36,14 @@ public final class ResultConvergenceRuntime {
 
     public static ResultConvergenceRuntime assemble(
             PolicyPreset preset,
-            TaskResultRuntime taskResults,
+            TaskEvidenceRuntime taskEvidence,
             TaskItemResultEvents taskItemEvents,
             WorkerExecutionResultEvents workerExecutionEvents,
             WorkerServiceabilityEvents workerServiceabilityEvents,
             WorkerServiceabilityRuntime serviceability
     ) {
         Objects.requireNonNull(preset, "preset");
-        Objects.requireNonNull(taskResults, "taskResults");
+        Objects.requireNonNull(taskEvidence, "taskEvidence");
         Objects.requireNonNull(taskItemEvents, "taskItemEvents");
         Objects.requireNonNull(
                 workerExecutionEvents,
@@ -67,8 +67,8 @@ public final class ResultConvergenceRuntime {
                 convergence.taskResultIdleIntervalMillis(),
                 ResultConvergenceConfig.TASK_SUCCESS_TARGET_CONCURRENCY,
                 ResultConvergenceConfig.TASK_SUCCESS_MAX_CONCURRENCY,
-                limit -> taskResults.consumeTaskResults(
-                        TaskResultClass.SUCCESS,
+                limit -> taskEvidence.consumeTaskEvidence(
+                        TaskEvidenceType.EXECUTION_SUCCESS,
                         limit
                 ),
                 taskPolicy::handleSuccess
@@ -79,8 +79,8 @@ public final class ResultConvergenceRuntime {
                 convergence.taskResultIdleIntervalMillis(),
                 ResultConvergenceConfig.TASK_FAILURE_TARGET_CONCURRENCY,
                 ResultConvergenceConfig.TASK_FAILURE_MAX_CONCURRENCY,
-                limit -> taskResults.consumeTaskResults(
-                        TaskResultClass.FAILURE,
+                limit -> taskEvidence.consumeTaskEvidence(
+                        TaskEvidenceType.EXECUTION_FAILURE,
                         limit
                 ),
                 taskPolicy::handleFailure
@@ -100,6 +100,15 @@ public final class ResultConvergenceRuntime {
                 ResultConvergenceConfig.NETWORK_EVIDENCE_MAX_CONCURRENCY,
                 serviceability::consumeNetworkEvidenceResults,
                 evidencePolicy::handle
+        ));
+        lanes.add(new ResultLane(
+                ResultLaneId.TASK_OBSERVATION,
+                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
+                convergence.taskResultIdleIntervalMillis(),
+                ResultConvergenceConfig.TASK_OBSERVATION_TARGET_CONCURRENCY,
+                ResultConvergenceConfig.TASK_OBSERVATION_MAX_CONCURRENCY,
+                limit -> taskEvidence.consumeTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, limit),
+                taskPolicy::handleObservations
         ));
         return new ResultConvergenceRuntime(
                 new ResultConvergenceApplication(

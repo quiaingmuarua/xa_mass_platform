@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
-import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
@@ -29,6 +28,7 @@ final class TaskDispatchPolicy {
     private final TaskIdleSettlement idleSettlement;
     private final WorkerCandidateSelectionPolicy candidateSelection;
     private final LongSupplier currentTimeMillis;
+    private final int failedOutcomeTag;
 
     TaskDispatchPolicy(
             TaskScoreBandCore taskScores,
@@ -36,7 +36,8 @@ final class TaskDispatchPolicy {
             TaskRuntime taskRuntime,
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
-            WorkerCandidateSelectionPolicy candidateSelection
+            WorkerCandidateSelectionPolicy candidateSelection,
+            int failedOutcomeTag
     ) {
         this(
                 taskScores,
@@ -45,6 +46,7 @@ final class TaskDispatchPolicy {
                 assignmentDispatcher,
                 idleSettlement,
                 candidateSelection,
+                failedOutcomeTag,
                 System::currentTimeMillis
         );
     }
@@ -56,11 +58,17 @@ final class TaskDispatchPolicy {
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
             WorkerCandidateSelectionPolicy candidateSelection,
+            int failedOutcomeTag,
             LongSupplier currentTimeMillis
     ) {
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
         this.taskRuntime = Objects.requireNonNull(taskRuntime, "taskRuntime");
+        if (failedOutcomeTag < TaskItemScoreBandCore.MIN_TERMINAL_TAG
+                || failedOutcomeTag > TaskItemScoreBandCore.MAX_TERMINAL_TAG) {
+            throw new IllegalArgumentException("failedOutcomeTag must be in 2..9");
+        }
+        this.failedOutcomeTag = failedOutcomeTag;
         this.assignmentDispatcher = Objects.requireNonNull(
                 assignmentDispatcher,
                 "assignmentDispatcher"
@@ -119,12 +127,10 @@ final class TaskDispatchPolicy {
                         failedIds
                 );
                 DispatchStageEvent.items(failureStarted, "FAILED_RESULT_STORED", task.taskId(), failedIds, failedIds.size(), false);
-                itemScores.promoteItemOutcomes(
-                        task.taskId(),
-                        failedIds,
-                        TaskItemScoreBand.FINAL_FAILED,
-                        dispatchTimeMillis
-                );
+                Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> targets = new LinkedHashMap<>();
+                failedIds.forEach(id -> targets.put(id,
+                        new TaskItemScoreBandCore.TaskItemOutcomeTarget(failedOutcomeTag, dispatchTimeMillis)));
+                itemScores.promoteItemOutcomes(task.taskId(), targets);
             }
             Set<String> failed = Set.copyOf(failedIds);
             List<String> claimableIds = observed.entrySet().stream()

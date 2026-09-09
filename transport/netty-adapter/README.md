@@ -219,7 +219,11 @@ Once bound, malformed JSON, repeated identity, unknown Adapter events,
 mismatched `src/sourceId`, unsupported destinations, and invalid result events
 are logged and dropped without closing the Channel. TASK/SERVER Worker Reports
 must use the bound Worker producer and exactly `platform.worker.command.succeeded`
-or `platform.worker.command.failed`. Diagnostic strings never decide admission.
+or `platform.worker.command.failed`. TASK additionally accepts the exact
+`platform.worker.task-outcome.observed` event from the current verified Worker
+Channel. It uses the same TASK queue, append HTTP, capacity and retry rules;
+Adapter adds no lane or destination and does not interpret Item state or leases.
+Diagnostic strings never decide admission.
 SYSTEM event semantics remain downstream-owned. These destinations enter their
 respective Report Queues as decoded `DeliveryReport` objects. A full or closed
 TASK Queue closes the exact Channel; best-effort SERVER/SYSTEM backpressure

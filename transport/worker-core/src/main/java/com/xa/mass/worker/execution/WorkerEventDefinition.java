@@ -40,6 +40,14 @@ public final class WorkerEventDefinition<P> {
         );
     }
 
+    public static <P> WorkerEventDefinition<P> extension(
+            String capabilityName,
+            WorkerEventParameterResolver<P> resolver,
+            WorkerReportingEventHandler<P> handler
+    ) {
+        return create(EXTENSION_WORKER_PREFIX, capabilityName, resolver, handler);
+    }
+
     static <P> WorkerEventDefinition<P> platform(
             String capabilityName,
             WorkerEventParameterResolver<P> resolver,

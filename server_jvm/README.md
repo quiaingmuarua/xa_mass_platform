@@ -66,7 +66,7 @@ WorkerMatchingAssembly
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
      -> Java ResultConvergenceApplication
-        -> TASK_SUCCESS / TASK_FAILURE / NETWORK_EVIDENCE lanes
+        -> TASK_SUCCESS / TASK_FAILURE / NETWORK_EVIDENCE / TASK_OBSERVATION lanes
      -> Java DispatchConvergenceApplication
         -> RUNNING INITIAL initialization lane
         -> RUNNING NORMAL allocation / dispatch / optional serviceability lanes
@@ -97,7 +97,7 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND Item selectors are normalized by Kernel before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and Network Evidence lanes in every preset over Java owners |
+| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
 | Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
 | Worker Identity / Endpoint directory | Server identity HASH; local default/URI configuration |
 | Persistent Worker Binding | Kernel WorkerResourceCatalog, one Worker ID HASH |
@@ -212,12 +212,13 @@ POST /api/v1/tasks/{taskId}/approve
 POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/tasks/{taskId}/items:call
+POST /api/v1/tasks/{taskId}/items:states
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/tasks/{taskId}/results:export
 ```
 
-Finite Tasks support explicit approval, close, ordinary Item append and Result
-load. Managed Tasks support synchronous Item Call and Result load; their
+Finite Tasks support explicit approval, close, ordinary Item append, Item states
+and Result load. Managed Tasks support synchronous Item Call, Item states and Result load; their
 lifecycle and ordinary append remain non-public. Calling an operation with the
 wrong public Task type returns `400/12008`; a missing Task returns
 `400/12002`.
@@ -287,9 +288,64 @@ success may replace an earlier failed snapshot, so each response is a read-time
 view rather than an immutable historical event. Server does not read TaskItem
 score or Task score to derive these states. Consequently `items:call` or
 `results:load` may report `succeeded` while the independent Item Score remains
-`ACTIVE` or `FINAL_FAILED`. Score-based lifecycle, statistics and Runtime
+`ACTIVE` or `TERMINAL(tag=5)`. Score-based lifecycle, statistics and Runtime
 projections continue to follow Kernel Score truth; Server neither coordinates
 nor repairs the two resources.
+
+`POST /api/v1/tasks/{taskId}/items:states` accepts a direct array of 1..100
+nonblank Message IDs and deduplicates them in input order. The same finite or
+managed Task admission applies as for Result load. One Task catalog read plus
+one Score Owner `ZMSCORE` returns each ID as null (missing) or
+`{band, tag, timeMillis, outcomeName?}`. Band is `active` for tag 1 and
+`terminal` for tags 2..9. Time is the band-local Score time, not a business event
+timestamp. No raw Score or Result is read or exposed through this query; Owner
+data failures use the existing 503 contract.
+
+`TaskItemOutcomeProperties` owns the application meaning of terminal tags.
+Dispatch exhaustion/expiry uses 5 (`failed`), and execution success uses 6
+(default `succeeded`), supplied through the sole Pacer assembly entry. Configure
+`xa.mass.task-item-outcomes.names` to name tags 6..9, for example
+`{6: sent, 7: delivered, 8: read, 9: replied}`. Names must be nonblank and unique,
+including the reserved name `failed`; 5 cannot be configured. Tags 2..4 remain
+legal unnamed terminal states. This is startup configuration, with no state
+management API or persistent name directory. Configuring a name installs no
+business observation event or handler.
+
+Only ACTIVE Items are scheduled. All terminal tags can advance to a greater
+legal Score, including a later slot within the same tag, without reopening the
+Task. `TaskEvidenceRuntime` carries `EXECUTION_SUCCESS`, `EXECUTION_FAILURE`,
+and `OUTCOME_OBSERVATION` in three bounded Redis LISTs. Every Pacer preset consumes
+them within the existing shared capacity. Result load still permits 1..1000 IDs;
+Task Call and export keep their existing projection contracts.
+
+A Handler can retain the SDK's `WorkerOutcomeReporter` after returning its
+execution Result. This TRACKED capability adds no Task mode or creation parameter.
+Send success finishes execution and releases its original Worker lease. Later
+observations affect only the same Item, including after Task closure or while the
+Worker executes another Item. The fixed WORKER-to-TASK event
+`platform.worker.task-outcome.observed` carries the original opaque `forward` and
+JSON `{tag, observedAtMillis, opaqueResultPayload?}`. Server admits tags 6..9,
+positive milliseconds within the Score Owner range, and optional nonblank string
+content; it rejects extra fields. Kernel verifies the correlated Worker source.
+
+Observation processing promotes Score first, then conditionally stores supplied
+content. Result ordering uses higher tag first, then strictly later reported
+milliseconds within the same tag. Equal timestamps retain existing content, and
+state-only observations never erase content. `results:load` repeatedly reads the
+latest content without exposing its ordering fields; `items:states` reads Score
+independently. `items:call` retains its existing Result wait and adds no
+delivered/read/replied completion prerequisite. It returns the Result projection
+available when observed, including newer content already present. Separate Owner
+commits remain best-effort: an observation
+may advance state without storing its content; there is no ACK, replay or repair.
+
+TaskItem outcome deployment uses a stopped-scope rebuild. Stop every process
+using the explicitly selected scope, clear only that exact scope with
+`SCAN` plus `UNLINK`, then rebuild its Groups, Workers and Tasks. Without a named
+scope, no non-test data is cleared. Old tag 9 is mechanically terminal but must
+not be interpreted automatically as the newly configured replied state. There are no
+compatibility reads, background migration or repair loops. Proofs use unique
+`test_*` scopes.
 
 Task Call remains at-least-once. Submission spans existing owner operations,
 so an Item write followed by an unconfirmed idle-park release repair can still return `503`.
@@ -702,11 +758,12 @@ WorkerGroup, and never invokes the Worker score owner.
 
 For `dst=TASK`, Worker Delivery validates producer identity and exact event
 contracts before mapping to the Kernel-owned lanes. WORKER plus
-`platform.worker.command.succeeded` maps to `TaskResultClass.SUCCESS`;
+`platform.worker.command.succeeded` maps to `TaskEvidenceType.EXECUTION_SUCCESS`;
 WORKER plus `platform.worker.command.failed` maps to FAILURE. Path-matching
 ADAPTER plus `platform.adapter.command.delivery-failed` also maps to FAILURE
 only with exactly `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`.
-Other event/producer combinations are rejected. Polling point results accept
+WORKER plus `platform.worker.task-outcome.observed` maps to OUTCOME_OBSERVATION
+after strict payload admission. Other event/producer combinations are rejected. Polling point results accept
 only the matching Worker producer. Server never parses the opaque ResultContext.
 Kernel Result Routing receives the selected lane and does not reclassify it.
 `diagnosticCode` is required string diagnostics, allows empty and arbitrary

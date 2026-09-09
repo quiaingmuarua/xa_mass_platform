@@ -11,6 +11,8 @@ record ResultConvergenceConfig(
     static final int TASK_SUCCESS_MAX_CONCURRENCY = 10;
     static final int TASK_FAILURE_TARGET_CONCURRENCY = 3;
     static final int TASK_FAILURE_MAX_CONCURRENCY = 10;
+    static final int TASK_OBSERVATION_TARGET_CONCURRENCY = 1;
+    static final int TASK_OBSERVATION_MAX_CONCURRENCY = 10;
     static final int NETWORK_EVIDENCE_TARGET_CONCURRENCY = 1;
     static final int NETWORK_EVIDENCE_MAX_CONCURRENCY = 1;
     static final long DEFAULT_IDLE_INTERVAL_MILLIS = 100;

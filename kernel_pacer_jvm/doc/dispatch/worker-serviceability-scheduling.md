@@ -268,7 +268,7 @@ A newer non-future Score rejects older Evidence as `STALE`.
 Server routes result ownership only by destination:
 
 ```text
-TASK   -> Task Result Runtime
+TASK   -> Task Evidence Runtime
 SERVER -> Direct Call correlation
 SYSTEM -> admitted Adapter Properties observations to Matching; no Kernel calls
 KERNEL -> Worker Serviceability Runtime

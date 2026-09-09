@@ -7,7 +7,7 @@ import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.InMemoryWorkerMatchQueue;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -39,8 +39,8 @@ class KernelPacerPropertiesTest {
                             () -> mock(WorkerCommandRuntime.class)
                     )
                     .withBean(
-                            TaskResultRuntime.class,
-                            () -> mock(TaskResultRuntime.class)
+                            TaskEvidenceRuntime.class,
+                            () -> mock(TaskEvidenceRuntime.class)
                     )
                     .withBean(
                             TaskRuntime.class,

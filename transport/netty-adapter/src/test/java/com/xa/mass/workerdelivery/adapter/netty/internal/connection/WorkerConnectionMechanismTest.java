@@ -1131,6 +1131,56 @@ class WorkerConnectionMechanismTest {
         }
     }
 
+    @Test
+    void observationsRequireTheVerifiedWorkerAndOnlyUseTheTaskLane() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, channel);
+            String payload = "{\"tag\":9,\"observedAtMillis\":1000,\"opaqueResultPayload\":\"reply\"}";
+            String event = "platform.worker.task-outcome.observed";
+            var accepted = DeliveryReport.create(WORKER, "worker-1", TASK, event, "3303", payload, "context");
+            channel.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER, "other-worker", TASK, event, "", payload, "context")));
+            channel.writeInbound(fixture.codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER, "worker-1", SERVER, event, "", payload, "context")));
+            assertThat(fixture.reportQueues.get(TASK)).isEmpty();
+            assertThat(fixture.reportQueues.get(SERVER)).isEmpty();
+            channel.writeInbound(fixture.codec.encodeDeliveryReport(accepted));
+            assertThat(fixture.reportQueues.get(TASK)).containsExactly(accepted);
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void outcomeObservationsFollowTheCurrentVerifiedChannelAfterReconnect() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel previous = fixture.channel();
+        EmbeddedChannel replacement = fixture.channel();
+        var report = DeliveryReport.create(WORKER, "worker-1", TASK,
+                "platform.worker.task-outcome.observed", "", "{\"tag\":9,\"observedAtMillis\":1000}", "context");
+        String encoded = fixture.codec.encodeDeliveryReport(report);
+        try {
+            previous.writeInbound(fixture.identity("worker-1"));
+            previous.writeInbound(encoded);
+            assertThat(fixture.reportQueues.get(TASK)).isEmpty();
+            fixture.routeVerifier.currentVerification().complete(Decision.VERIFIED);
+            awaitBound(fixture, previous);
+            replacement.writeInbound(fixture.identity("worker-1"));
+            awaitBound(fixture, replacement);
+            previous.writeInbound(encoded);
+            assertThat(fixture.reportQueues.get(TASK)).isEmpty();
+            replacement.writeInbound(encoded);
+            assertThat(fixture.reportQueues.get(TASK)).containsExactly(report);
+        } finally {
+            previous.finishAndReleaseAll();
+            replacement.finishAndReleaseAll();
+        }
+    }
+
     private static void awaitBound(
             Fixture fixture,
             EmbeddedChannel channel

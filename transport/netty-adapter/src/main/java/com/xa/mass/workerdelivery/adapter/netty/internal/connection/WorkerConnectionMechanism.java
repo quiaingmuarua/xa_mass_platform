@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_CONNECTION_CHANGED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_PROPERTIES_OBSERVED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_REPLACED;
@@ -397,8 +398,14 @@ public final class WorkerConnectionMechanism {
 
         if ((report.dst() == TASK || report.dst() == SERVER)
                 && !WORKER_COMMAND_SUCCEEDED.equals(report.messageType())
-                && !WORKER_COMMAND_FAILED.equals(report.messageType())) {
+                && !WORKER_COMMAND_FAILED.equals(report.messageType())
+                && !(report.dst() == TASK && WORKER_TASK_OUTCOME_OBSERVED.equals(report.messageType()))) {
             logDrop("dropWorkerCommandResult", report);
+            return;
+        }
+        if (WORKER_TASK_OUTCOME_OBSERVED.equals(report.messageType())
+                && !routes.isCurrentConnected(workerId, context.channel())) {
+            logDrop("dropOutcomeFromPreviousChannel", report);
             return;
         }
         boolean taskReport = report.dst() == TASK;

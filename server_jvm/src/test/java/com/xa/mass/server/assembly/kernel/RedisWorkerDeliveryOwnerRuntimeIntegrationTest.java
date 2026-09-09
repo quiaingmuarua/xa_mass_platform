@@ -5,8 +5,8 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.delivery.redis.RedisTaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
+import com.xa.mass.kernel.delivery.redis.RedisTaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -40,7 +40,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisWorkerCommandRuntime commandRuntime;
-    private RedisTaskResultRuntime resultRuntime;
+    private RedisTaskEvidenceRuntime resultRuntime;
     private RedisWorkerServiceabilityRuntime serviceabilityRuntime;
     private WorkerDeliveryCodec codec;
 
@@ -57,7 +57,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec,
                 keyspace
         );
-        resultRuntime = new RedisTaskResultRuntime(
+        resultRuntime = new RedisTaskEvidenceRuntime(
                 redisClient,
                 codec,
                 keyspace
@@ -91,6 +91,21 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         if (redisClient != null) {
             redisClient.shutdown();
         }
+    }
+
+    @Test
+    void outcomeEvidenceUsesItsOwnListAndTheExistingAppendConsumeContract() {
+        var report = DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.TASK,
+                "platform.worker.task-outcome.observed", "", "{\"tag\":8,\"observedAtMillis\":1000}", "forward");
+        assertThat(resultRuntime.appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, List.of(report)))
+                .isEqualTo(1);
+        assertThat(redis.llen(resultKey("observation"))).isEqualTo(1);
+        assertThat(redis.llen(resultKey("success"))).isZero();
+        assertThat(redis.llen(resultKey("failure"))).isZero();
+        redis.rpush(resultKey("observation"), "{bad-json");
+        assertThat(resultRuntime.consumeTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, 100))
+                .containsExactly(report);
+        assertThat(resultRuntime.consumeTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, 100)).isEmpty();
     }
 
     @Test
@@ -137,23 +152,23 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                         "rejection"
                 )
         );
-        assertThat(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        assertThat(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(results.get(0))
         )).isEqualTo(1);
-        assertThat(resultRuntime.appendTaskResults(
-                TaskResultClass.FAILURE,
+        assertThat(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 results.subList(1, 3)
         )).isEqualTo(2);
         assertThat(redis.llen(resultKey("success"))).isEqualTo(1);
         assertThat(redis.llen(resultKey("failure"))).isEqualTo(2);
 
-        assertThat(resultRuntime.consumeTaskResults(
-                TaskResultClass.SUCCESS,
+        assertThat(resultRuntime.consumeTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 100
         )).containsExactly(results.get(0));
-        assertThat(resultRuntime.consumeTaskResults(
-                TaskResultClass.FAILURE,
+        assertThat(resultRuntime.consumeTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 100
         )).containsExactly(results.get(1), results.get(2));
         assertThat(redis.llen(resultKey("success"))).isZero();
@@ -170,8 +185,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec.encodeDeliveryReport(second)
         );
 
-        assertThat(resultRuntime.consumeTaskResults(
-                TaskResultClass.SUCCESS,
+        assertThat(resultRuntime.consumeTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 100
         )).containsExactly(first, second);
         assertThat(redis.llen(resultKey("success"))).isZero();

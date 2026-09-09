@@ -15,7 +15,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
 | `assignment` | Candidate Worker Cache owner plus the ordered PRECOMPUTED Match Demand port |
-| `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
+| `delivery` | Worker Command and Task Evidence runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
 
@@ -51,7 +51,7 @@ API and the fixed production Pacers, including:
 - Worker registration and minimal identity/Group/Endpoint descriptors;
 - authoritative and non-overwriting Worker Command writes plus bounded
   consume;
-- explicit SUCCESS/FAILURE Task Result append/consume without error-code policy;
+- explicit EXECUTION_SUCCESS/EXECUTION_FAILURE/OUTCOME_OBSERVATION Task evidence append/consume without diagnostic-code policy;
 - Candidate Cache operations;
 - Serviceability probe request offer/consume and evidence append/consume.
 
@@ -60,6 +60,18 @@ rebuild, with no compatibility reads. Score encoding and other owner keys remain
 unchanged; cold registration uses no Redis TIME or Score readback. Redis-sensitive
 claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
 Operations outside the production caller closure remain explicit gaps.
+
+TaskItem Score has one schedulable ACTIVE tag (1) and generic TERMINAL tags
+(2..9). Existing scores only increase; terminal states can continue advancing
+without rescheduling the Item or reopening its Task. The Server supplies the
+execution failure/success tags to the fixed Pacer assembly. Terminal updates
+use one bounded Lua and state reads one `ZMSCORE`, each for at most 100 IDs.
+Result content remains a separate projection, conditionally replaced by higher
+tag and then later reported milliseconds within one bounded same-key Lua.
+Observations promote Score before optional content and never release Worker
+leases; execution success retains Result-before-Score ordering. The
+[Result Owner](doc/runtime-redis/task-result-runtime-redis-shape.md) defines the
+independent commits and exact-scope rebuild for the new Result shape.
 
 Default-off `xa.mass.TaskSubmission` and `xa.mass.TaskStorage` JFR observations
 time the existing Task Call activation, Item HASH write, Item Score initialization

@@ -7,6 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerOutcomeReporter;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -37,6 +41,37 @@ class PollingWorkerTransportTest {
     );
     private static final String ENCODED_COMMAND =
             CODEC.encodeDeliveryCommand(COMMAND);
+
+    @Test
+    void retainedObservationDoesNotOccupyOrRetryThePendingExecutionResult() throws Exception {
+        FakePointClient client = new FakePointClient();
+        AtomicReference<WorkerOutcomeReporter> retained = new AtomicReference<>();
+        var definition = WorkerEventDefinition.extension("tracked", WorkerEventParameterResolvers.string(),
+                (payload, reporter) -> { retained.set(reporter); return "sent"; });
+        client.commands.add(Optional.of(CODEC.encodeDeliveryCommand(DeliveryCommand.create(TASK,
+                DeliveryEndpoint.WORKER, definition.eventName(), Long.MAX_VALUE, "input", "forward"))));
+        var transport = transport(client, WorkerCommandDispatcher.forWorker(List.of(definition)));
+        try {
+            client.submitFailures = 1;
+            assertThrows(IOException.class, transport::runOnce);
+            assertTrue(transport.hasPendingResult());
+            client.submitFailures = 1;
+            assertFalse(retained.get().report(8, 1000, null));
+            assertTrue(transport.hasPendingResult());
+            assertTrue(retained.get().report(9, 1001, "reply"));
+            assertTrue(transport.runOnce());
+            assertFalse(transport.hasPendingResult());
+            assertEquals(1, client.pollCount);
+            assertEquals(2, client.submittedResults.size());
+            assertEquals("platform.worker.task-outcome.observed",
+                    CODEC.decodeDeliveryReport(client.submittedResults.get(0)).messageType());
+            assertEquals("platform.worker.command.succeeded",
+                    CODEC.decodeDeliveryReport(client.submittedResults.get(1)).messageType());
+        } finally {
+            transport.close();
+        }
+        assertFalse(retained.get().report(9, 1002, "after close"));
+    }
 
     @Test
     void executesEncodedCommandAndSubmitsEncodedResult()

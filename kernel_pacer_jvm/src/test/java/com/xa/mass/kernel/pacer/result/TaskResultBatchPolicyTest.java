@@ -26,6 +26,11 @@ class TaskResultBatchPolicyTest {
                 new ArrayList<>();
         TaskItemResultEvents taskEvents = new TaskItemResultEvents() {
             @Override
+            public void onItemOutcomesObserved(String taskId, List<TaskItemOutcomeObservation> observations) {
+                throw new AssertionError("Unexpected observation");
+            }
+
+            @Override
             public void onItemsSucceeded(
                     String taskId,
                     Map<String, String> payloadsByMessageId,
@@ -127,10 +132,41 @@ class TaskResultBatchPolicyTest {
         assertEquals(List.of(), calls);
     }
 
+    @Test
+    void observationsUseOnlyItemEventsAndCheckProducerAndCorrelation() {
+        var items = org.mockito.Mockito.mock(TaskItemResultEvents.class);
+        var workers = org.mockito.Mockito.mock(WorkerExecutionResultEvents.class);
+        var policy = new TaskResultBatchPolicy(items, workers);
+        String payload = "{\"tag\":9,\"observedAtMillis\":1001,\"opaqueResultPayload\":\"reply\"}";
+        String event = "platform.worker.task-outcome.observed";
+        var accepted = DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.TASK,
+                event, "3303", payload, context(1));
+        policy.handleObservations(List.of(accepted,
+                DeliveryReport.create(DeliveryEndpoint.WORKER, "other-worker", DeliveryEndpoint.TASK,
+                        event, "", payload, context(1)),
+                DeliveryReport.create(DeliveryEndpoint.ADAPTER, "worker-1", DeliveryEndpoint.TASK,
+                        event, "", payload, context(1)),
+                DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.SERVER,
+                        event, "", payload, context(1)),
+                DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.TASK,
+                        event, "", payload, "corrupt"),
+                DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.TASK,
+                        "platform.worker.command.succeeded", "", payload, context(1))));
+        org.mockito.Mockito.verify(items).onItemOutcomesObserved("task-1", List.of(
+                new TaskItemResultEvents.TaskItemOutcomeObservation("message-1", 9, 1001, "reply")));
+        org.mockito.Mockito.verifyNoMoreInteractions(items);
+        org.mockito.Mockito.verifyNoInteractions(workers);
+    }
+
     private static TaskItemResultEvents recordingTaskEvents(
             List<String> calls
     ) {
         return new TaskItemResultEvents() {
+            @Override
+            public void onItemOutcomesObserved(String taskId, List<TaskItemOutcomeObservation> observations) {
+                throw new AssertionError("Unexpected observation");
+            }
+
             @Override
             public void onItemsSucceeded(
                     String taskId,

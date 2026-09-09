@@ -4,6 +4,7 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerOutcomeReporter;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
@@ -139,7 +140,7 @@ class RuntimeBoundaryIntegrationTest {
     private WorkerScoreCore workerScores;
 
     @MockitoSpyBean
-    private com.xa.mass.kernel.delivery.TaskResultRuntime taskResults;
+    private com.xa.mass.kernel.delivery.TaskEvidenceRuntime taskEvidence;
 
     @Autowired
     private KernelPacerAssembly kernelPacerAssembly;
@@ -161,6 +162,9 @@ class RuntimeBoundaryIntegrationTest {
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
+        registry.add("xa.mass.task-item-outcomes.names[8]", () -> "read");
+        registry.add("xa.mass.task-item-outcomes.names[9]", () -> "replied");
         registry.add("xa.mass.diagnostics.enabled", () -> "true");
         registry.add(
                 "xa.mass.redis.scope",
@@ -517,8 +521,8 @@ class RuntimeBoundaryIntegrationTest {
                                 "waitTimeoutMillis", 1)));
                 assertThat(submitted.statusCode()).isEqualTo(200);
                 assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
-                verify(taskResults, org.mockito.Mockito.atLeastOnce()).appendTaskResults(
-                        eq(com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass.FAILURE),
+                verify(taskEvidence, org.mockito.Mockito.atLeastOnce()).appendTaskEvidence(
+                        eq(com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType.EXECUTION_FAILURE),
                         org.mockito.ArgumentMatchers.argThat(reports -> reports.stream().anyMatch(report ->
                                 prepared.workerId().equals(report.sourceId())
                                         && "platform.worker.command.failed".equals(report.messageType()))));
@@ -1153,6 +1157,82 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(readiness.body()).contains("\"status\":\"UP\"");
     }
 
+    @Test
+    void trackedObservationsCloseThroughActualWorkersAndExistingQueryApis() throws Exception {
+        for (TransportProfile profile : TransportProfile.values()) {
+            String group = "tracked-" + UUID.randomUUID();
+            String clientKey = "tracked-worker";
+            var registered = send("POST", "/api/v1/worker-groups/" + group + ":register",
+                    Jsons.toJson(Map.of("eventCodes", List.of(TEST_EVENT_CODE))));
+            assertThat(registered.statusCode()).isEqualTo(200);
+            String taskId = JSON.readTree(registered.body()).get("taskId").asText();
+            var prepared = prepareWorker(group, clientKey, profile, Map.of("runtime", "tracked"));
+            AtomicReference<WorkerOutcomeReporter> retained = new AtomicReference<>();
+            List<WorkerEventDefinition<?>> definitions = List.of(WorkerEventDefinition.extension(
+                    TEST_CAPABILITY, WorkerEventParameterResolvers.jsonMap(),
+                    (payload, reporter) -> { retained.set(reporter); return TEST_RESULT; }));
+            RunningWorker worker = profile == TransportProfile.POLLING
+                    ? new PollingWorkerHandle(new PollingWorkerTransport(
+                            new OkHttpWorkerPointClient(URI.create("http://127.0.0.1:" + port), Duration.ofSeconds(2)),
+                            prepared.workerId(), WorkerCommandDispatcher.forWorker(definitions)))
+                    : startTextMessageWorker(group, clientKey, prepared.workerId(), Map.of("runtime", "tracked"),
+                            definitions, profile == TransportProfile.WEBSOCKET ? WorkerTransportType.WEBSOCKET : WorkerTransportType.SOCKET);
+            try {
+                awaitWorkerRegistered(group, prepared.workerId());
+                assertTaskCallSucceeded(taskId, prepared.workerId(), "sent-item");
+                var reporter = retained.get();
+                assertThat(reporter).isNotNull();
+                long time = System.currentTimeMillis();
+                for (int tag : List.of(7, 8)) {
+                    assertThat(reporter.report(tag, time, null)).isTrue();
+                    awaitTrackedState(taskId, "sent-item", tag);
+                }
+                assertThat(reporter.report(9, time + 1, "first reply")).isTrue();
+                awaitTrackedState(taskId, "sent-item", 9);
+                assertThat(reporter.report(9, time + 2, "latest reply")).isTrue();
+                long deadline = System.nanoTime() + RESULT_CONVERGENCE_TIMEOUT.toNanos();
+                boolean observed = false;
+                while (System.nanoTime() < deadline) {
+                    var loaded = send("POST", "/api/v1/tasks/" + taskId + "/results:load", "[\"sent-item\"]");
+                    if (loaded.statusCode() == 200 && "latest reply".equals(JSON.readTree(loaded.body())
+                            .get("sent-item").path("opaqueResultPayload").asText())) {
+                        observed = true;
+                        break;
+                    }
+                    Thread.sleep(20);
+                }
+                assertThat(observed).isTrue();
+                assertTaskCallSucceeded(taskId, prepared.workerId(), "next-item");
+                var repeated = send("POST", "/api/v1/tasks/" + taskId + "/results:load", "[\"sent-item\"]");
+                assertThat(JSON.readTree(repeated.body()).get("sent-item").get("opaqueResultPayload").asText())
+                        .isEqualTo("latest reply");
+                assertThat(JSON.readTree(repeated.body()).get("sent-item").has("observedAtMillis")).isFalse();
+            } finally {
+                worker.close();
+            }
+            assertThat(retained.get().report(9, System.currentTimeMillis(), "after stop")).isFalse();
+        }
+    }
+
+    private void awaitTrackedState(String taskId, String itemId, int tag) throws Exception {
+        long deadline = System.nanoTime() + RESULT_CONVERGENCE_TIMEOUT.toNanos();
+        while (System.nanoTime() < deadline) {
+            var response = send("POST", "/api/v1/tasks/" + taskId + "/items:states", Jsons.toJson(List.of(itemId)));
+            if (response.statusCode() == 200) {
+                var state = JSON.readTree(response.body()).get(itemId);
+                if (state != null && !state.isNull() && state.get("tag").asInt() == tag) {
+                    assertThat(state.get("band").asText()).isEqualTo("terminal");
+                    assertThat(state.get("outcomeName").asText())
+                            .isEqualTo(Map.of(7, "delivered", 8, "read", 9, "replied").get(tag));
+                    assertThat(state.has("score")).isFalse();
+                    return;
+                }
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("TRACKED Item did not reach tag " + tag);
+    }
+
     private void runWorkerGroupTaskCall(
             TransportProfile transportProfile
     ) throws Exception {
@@ -1320,7 +1400,7 @@ class RuntimeBoundaryIntegrationTest {
     private void assertStoredItemAndFinalSuccess(
             String taskId,
             String messageId
-    ) {
+    ) throws Exception {
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
@@ -1337,10 +1417,19 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(score).isNotNull();
             assertThat(score.longValue()
                     / TaskItemScoreBandCore.TAG_FACTOR)
-                    .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
+                    .isEqualTo(6);
         } finally {
             client.shutdown();
         }
+        var response = send("POST", "/api/v1/tasks/" + taskId + "/items:states",
+                Jsons.toJson(List.of(messageId, "missing-item")));
+        assertThat(response.statusCode()).isEqualTo(200);
+        var states = JSON.readTree(response.body());
+        assertThat(states.get(messageId).get("band").asText()).isEqualTo("terminal");
+        assertThat(states.get(messageId).get("tag").asInt()).isEqualTo(6);
+        assertThat(states.get(messageId).get("outcomeName").asText()).isEqualTo("succeeded");
+        assertThat(states.get(messageId).has("score")).isFalse();
+        assertThat(states.get("missing-item").isNull()).isTrue();
     }
 
     @AfterAll

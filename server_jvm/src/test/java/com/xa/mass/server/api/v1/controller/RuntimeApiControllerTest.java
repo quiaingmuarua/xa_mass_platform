@@ -20,6 +20,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreState;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
+import com.xa.mass.server.task.TaskItemOutcomeProperties;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
@@ -90,6 +94,7 @@ class RuntimeApiControllerTest {
     private WorkerMatchingCatalog matchingCatalog;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
+    private TaskItemScoreBandCore itemScores;
     private TaskLifecycleCommands taskLifecycle;
     private TaskResultsExportService taskResultsExport;
     private TaskRpcWaitRegistry taskRpcRegistry;
@@ -103,6 +108,7 @@ class RuntimeApiControllerTest {
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
+        itemScores = mock(TaskItemScoreBandCore.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
         taskResultsExport = mock(TaskResultsExportService.class);
 
@@ -240,7 +246,9 @@ class RuntimeApiControllerTest {
         TaskDataService taskData = new TaskDataService(
                 taskRuntime,
                 taskCatalog,
-                taskItems
+                taskItems,
+                itemScores,
+                new TaskItemOutcomeProperties(Map.of(7, "delivered", 8, "read", 9, "replied"))
         );
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
@@ -1141,6 +1149,62 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(tooManyIds))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void itemStatesUseScoreSnapshotsAndApplicationNamesWithoutReadingResults() throws Exception {
+        var states = new LinkedHashMap<String, TaskItemScoreState>();
+        states.put("active", new TaskItemScoreState(11L, TaskItemScoreBand.ACTIVE, 1, 1_000, 2));
+        states.put("generic", new TaskItemScoreState(22L, TaskItemScoreBand.TERMINAL, 3, 2_000, null));
+        states.put("failed", new TaskItemScoreState(33L, TaskItemScoreBand.TERMINAL, 5, 3_000, null));
+        states.put("success", new TaskItemScoreState(44L, TaskItemScoreBand.TERMINAL, 6, 4_000, null));
+        states.put("read", new TaskItemScoreState(55L, TaskItemScoreBand.TERMINAL, 8, 5_000, null));
+        states.put("missing", null);
+        when(itemScores.getItemScoreStates(eq("task-1"), anyList())).thenReturn(states);
+        mockMvc.perform(post("/api/v1/tasks/task-1/items:states")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[\"active\",\"generic\",\"failed\",\"success\",\"read\",\"missing\",\"active\"]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active.band").value("active"))
+                .andExpect(jsonPath("$.active.tag").value(1))
+                .andExpect(jsonPath("$.active.timeMillis").value(1_000))
+                .andExpect(jsonPath("$.active.score").doesNotExist())
+                .andExpect(jsonPath("$.active.remainingBudget").doesNotExist())
+                .andExpect(jsonPath("$.active.outcomeName").doesNotExist())
+                .andExpect(jsonPath("$.generic.band").value("terminal"))
+                .andExpect(jsonPath("$.generic.tag").value(3))
+                .andExpect(jsonPath("$.generic.outcomeName").doesNotExist())
+                .andExpect(jsonPath("$.failed.outcomeName").value("failed"))
+                .andExpect(jsonPath("$.success.outcomeName").value("succeeded"))
+                .andExpect(jsonPath("$.read.outcomeName").value("read"))
+                .andExpect(jsonPath("$.missing").value(org.hamcrest.Matchers.nullValue()));
+        verify(itemScores).getItemScoreStates("task-1",
+                List.of("active", "generic", "failed", "success", "read", "missing"));
+        verify(taskCatalog).loadTaskAllocationDescriptors(List.of("task-1"));
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime);
+    }
+
+    @Test
+    void itemStateQueriesRejectInvalidBatchesAndMapOwnerFailures() throws Exception {
+        String oversized = IntStream.range(0, 101).mapToObj(i -> "\"item-" + i + "\"")
+                .collect(Collectors.joining(",", "[", "]"));
+        for (String body : List.of("[]", "[null]", "[\" \"]", oversized)) {
+            mockMvc.perform(post("/api/v1/tasks/task-1/items:states")
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(itemScores, taskCatalog, taskRuntime);
+        when(itemScores.getItemScoreStates(eq("task-1"), anyList()))
+                .thenThrow(new IllegalStateException("corrupt stored score"));
+        mockMvc.perform(post("/api/v1/tasks/task-1/items:states")
+                        .contentType(MediaType.APPLICATION_JSON).content("[\"item\"]"))
+                .andExpect(status().isServiceUnavailable());
+        when(taskCatalog.loadTaskAllocationDescriptors(List.of("missing"))).thenReturn(Map.of());
+        mockMvc.perform(post("/api/v1/tasks/missing/items:states")
+                        .contentType(MediaType.APPLICATION_JSON).content("[\"item\"]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12002));
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime);
     }
 
     @Test

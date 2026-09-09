@@ -3,6 +3,11 @@
 `transport:java-worker` is the Java 21 Worker assembly and Java networking
 implementation for [`transport:worker-core`](../worker-core/README.md).
 
+Host extensions can use the shared Core
+[retained outcome Reporter](../worker-core/README.md#later-task-outcome-observations)
+for later Task observations. It reuses this assembly's existing connection and
+run lifetime; no additional Java Worker runtime or executor is installed.
+
 ```text
 JavaWorker
   -> owns one package-private JavaWorkerPlatform

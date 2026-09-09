@@ -5,6 +5,7 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
@@ -196,6 +197,35 @@ public class TaskDataController {
                 taskId,
                 List.copyOf(messageIds)
         ));
+    }
+
+    @Operation(
+            summary = "Load TaskItem score states",
+            description = "Returns ACTIVE or TERMINAL score state, or null for a missing Item. "
+                    + "timeMillis is band-local score time, not business event time. "
+                    + "This query does not read Result content."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "States keyed by messageId; missing Items are null",
+                    content = @Content(schema = @Schema(type = "object",
+                            additionalPropertiesSchema = TaskItemStateResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Task query was rejected",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/{taskId}/items:states")
+    public ResponseEntity<Map<String, TaskItemStateResponse>> loadTaskItemStates(
+            @PathVariable @NotBlank String taskId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(minItems = 1, maxItems = 100,
+                            schema = @Schema(type = "string", minLength = 1)))
+            )
+            @RequestBody @NotNull @Size(min = 1, max = 100)
+            List<@NotBlank String> messageIds
+    ) {
+        return ResponseEntity.ok(taskData.loadTaskItemStates(taskId, List.copyOf(messageIds)));
     }
 
     @Operation(

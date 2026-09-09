@@ -12,6 +12,7 @@ Java Server
            -> TASK_SUCCESS virtual batches
            -> TASK_FAILURE virtual batches
            -> NETWORK_EVIDENCE virtual batch             every preset
+           -> TASK_OBSERVATION virtual batches           every preset
         -> DispatchConvergenceRuntime
            -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
@@ -58,7 +59,7 @@ TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
 TaskInitializationPolicy
 TaskAssignmentDispatcher / TaskIdleSettlement
 CandidateWorkerCache
-WorkerCommandRuntime / TaskResultRuntime
+WorkerCommandRuntime / TaskEvidenceRuntime
 WorkerServiceabilityRuntime
 ```
 
@@ -146,14 +147,27 @@ Convergence and therefore Kernel readiness.
 
 ## Result Convergence
 
+Server supplies execution failure and success target tags (currently 5 and 6)
+through `KernelPacerRuntime.assemble`. Dispatch receives the failure tag and the
+TaskItem result mechanism receives the success tag. These are application
+contract values, not Score Owner business categories; the Score Owner only
+validates generic terminal tags 2..9 and monotonic progression.
+
 Result Convergence owns one coordinator and ten shared virtual-batch slots.
-Its fixed lanes are Task SUCCESS, Task FAILURE, and Network Evidence in every preset.
+Its fixed lanes consume Task EXECUTION_SUCCESS, Task EXECUTION_FAILURE,
+Network Evidence, and Task OUTCOME_OBSERVATION in every preset.
+`TaskEvidenceRuntime` retains the execution LISTs and adds one observation LIST.
+The observation lane follows the existing priorities, with target concurrency 1,
+maximum 10, batch size 100 and the shared Task evidence idle interval. It uses
+the same coordinator and global ten-slot capacity.
 Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
 and Dispatch Resource Producers do not share queues, lifecycle state, topology,
 or executors.
 
 Its policies terminate `DeliveryReport` and JSON interpretation, perform
-bounded last-wins grouping, and publish finite semantic callbacks. The Runtime
+bounded grouping, and publish finite semantic callbacks. Execution retains
+last-wins grouping; observations retain maximum tag/time state and content
+independently for each Item. The Runtime
 composition point constructs the default TaskItem, Worker execution and Worker
 Serviceability event Mechanisms from the supplied mechanical owners. Policies do
 not directly store Task results, promote Item scores, release Worker scores,
@@ -202,6 +216,7 @@ Task API
 -> Worker Delivery and execution
 -> Java Result Convergence
 -> TaskItem finality + result + exact Worker release
+-> retained Worker reporter -> later Item observations + latest Result queries
 ```
 
 The Serviceability boundary proves that the Main Scheduler derives the ordered

@@ -7,13 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskItemResultEvents;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test;
 class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
+            Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),
             Map.entry("TaskResourceCatalog", TaskResourceCatalog.class),
@@ -56,7 +58,7 @@ class KernelOwnerContractManifestTest {
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
             ),
-            Map.entry("TaskResultRuntime", TaskResultRuntime.class),
+            Map.entry("TaskEvidenceRuntime", TaskEvidenceRuntime.class),
             Map.entry(
                     "WorkerServiceabilityRuntime",
                     WorkerServiceabilityRuntime.class
@@ -64,6 +66,7 @@ class KernelOwnerContractManifestTest {
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
+            Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
             Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
             Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),
             Map.entry(
@@ -83,6 +86,8 @@ class KernelOwnerContractManifestTest {
                     TaskRuntime.TaskDescriptor.class
             ),
             Map.entry("TaskItem", TaskRuntime.TaskItem.class),
+            Map.entry("TaskItemSuccessResult", TaskRuntime.TaskItemSuccessResult.class),
+            Map.entry("TaskItemOutcomeTarget", TaskItemScoreBandCore.TaskItemOutcomeTarget.class),
             Map.entry(
                     "TaskItemAppendResult",
                     TaskRuntime.TaskItemAppendResult.class
@@ -149,8 +154,8 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
                     Map.entry(
-                            "TaskResultClass",
-                            TaskResultRuntime.TaskResultClass.class
+                            "TaskEvidenceType",
+                            TaskEvidenceRuntime.TaskEvidenceType.class
                     ),
                     Map.entry(
                             "TaskCreationStatus",

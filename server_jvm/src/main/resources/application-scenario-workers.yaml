@@ -1,5 +1,10 @@
 xa:
   mass:
+    task-item-outcomes:
+      names:
+        7: delivered
+        8: read
+        9: replied
     kernel-pacer:
       preset: ${XA_MASS_KERNEL_PACER_PRESET:SCENARIO_LAB}
     redis:

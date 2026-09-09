@@ -7,7 +7,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
@@ -42,12 +42,37 @@ class ResultConvergenceRuntimeTest {
         when(handoff.consumeNetworkEvidenceResults(anyInt()))
                 .thenReturn(List.of(report)).thenReturn(List.of());
         var runtime = ResultConvergenceRuntime.assemble(preset,
-                mock(TaskResultRuntime.class), mock(TaskItemResultEvents.class),
+                mock(TaskEvidenceRuntime.class), mock(TaskItemResultEvents.class),
                 mock(WorkerExecutionResultEvents.class), events, handoff);
         try {
             runtime.start();
             verify(events, timeout(2000)).onAvailable(Map.of(
                     "worker-1", new NetworkObservation("system-polling", now)));
+        } finally {
+            runtime.stop(2000);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(PolicyPreset.class)
+    void everyPresetConsumesOutcomeObservationsWithoutWorkerEvents(PolicyPreset preset) {
+        var evidence = mock(TaskEvidenceRuntime.class);
+        var items = mock(TaskItemResultEvents.class);
+        var workers = mock(WorkerExecutionResultEvents.class);
+        var report = DeliveryReport.create(DeliveryEndpoint.WORKER, "worker", DeliveryEndpoint.TASK,
+                "platform.worker.task-outcome.observed", "",
+                "{\"tag\":8,\"observedAtMillis\":1000}",
+                "{\"taskId\":\"task\",\"messageId\":\"item\",\"workerId\":\"worker\","
+                        + "\"workerGroupId\":\"group\",\"workerLeaseScore\":1}");
+        when(evidence.consumeTaskEvidence(TaskEvidenceRuntime.TaskEvidenceType.OUTCOME_OBSERVATION, 100))
+                .thenReturn(List.of(report)).thenReturn(List.of());
+        var runtime = ResultConvergenceRuntime.assemble(preset, evidence, items, workers,
+                mock(WorkerServiceabilityEvents.class), mock(WorkerServiceabilityRuntime.class));
+        try {
+            runtime.start();
+            verify(items, timeout(2000)).onItemOutcomesObserved("task", List.of(
+                    new TaskItemResultEvents.TaskItemOutcomeObservation("item", 8, 1000, null)));
+            org.mockito.Mockito.verifyNoInteractions(workers);
         } finally {
             runtime.stop(2000);
         }

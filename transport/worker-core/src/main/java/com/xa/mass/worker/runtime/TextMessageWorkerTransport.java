@@ -8,10 +8,14 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_PROPERTIES_REPLACED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerOutcomeReporter;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskOutcomeObservation;
 import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -51,6 +55,7 @@ final class TextMessageWorkerTransport
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandDispatcher;
     private final Listener listener;
+    private volatile boolean closed;
 
     TextMessageWorkerTransport(
             TextMessageClient client,
@@ -105,7 +110,7 @@ final class TextMessageWorkerTransport
             }
 
             Optional<WorkerCommandOutcome> result = Objects.requireNonNull(
-                    commandDispatcher.execute(command),
+                    commandDispatcher.execute(command, reporter(command)),
                     "commandDispatcher returned null"
             );
             if (!result.isPresent()) {
@@ -190,12 +195,38 @@ final class TextMessageWorkerTransport
 
     @Override
     public void onEndpointTerminated() {
+        closed = true;
         notifyTerminated();
     }
 
     private void terminateFromAdapter() {
         closeClientQuietly();
         notifyTerminated();
+    }
+
+    private WorkerOutcomeReporter reporter(DeliveryCommand command) {
+        if (command.src() != TASK) {
+            return WorkerOutcomeReporter.UNAVAILABLE;
+        }
+        String forward = command.forward();
+        return (tag, time, payload) -> {
+            if (closed) {
+                return false;
+            }
+            try {
+                String encoded = codec.encodeDeliveryReport(DeliveryReport.create(
+                        WORKER, workerId, TASK, WORKER_TASK_OUTCOME_OBSERVED, "",
+                        codec.encodeTaskOutcomeObservation(new TaskOutcomeObservation(tag, time, payload)),
+                        forward));
+                if (encoded.getBytes(StandardCharsets.UTF_8).length > 1_000_000) {
+                    return false;
+                }
+                return client.send(encoded);
+            } catch (RuntimeException failure) {
+                log(WorkerErrorCode.RESULT_SUBMIT_FAILED, "outcome.send", failure);
+                return false;
+            }
+        };
     }
 
     @Override
@@ -252,6 +283,7 @@ final class TextMessageWorkerTransport
     }
 
     private void closeClientQuietly() {
+        closed = true;
         try {
             client.close();
         } catch (RuntimeException ignored) {

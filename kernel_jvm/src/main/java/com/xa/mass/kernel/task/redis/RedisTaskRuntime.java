@@ -62,6 +62,52 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             )
             return 1
             """;
+    private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
+            local updates = {}
+            for i = 1, #ARGV, 2 do
+              local target = cjson.decode(ARGV[i + 1])
+              local stored = redis.call("HGET", KEYS[1], ARGV[i])
+              local replace = true
+              if stored then
+                local ok, current = pcall(cjson.decode, stored)
+                if not ok or type(current) ~= "table"
+                    or type(current.code) ~= "string" or current.code == ""
+                    or type(current.opaqueResultPayload) ~= "string"
+                    or current.opaqueResultPayload == "" then
+                  return redis.error_reply("TaskItem Result is corrupt")
+                end
+                local fields = 0
+                for field, _ in pairs(current) do
+                  if field ~= "code" and field ~= "opaqueResultPayload"
+                      and field ~= "tag" and field ~= "observedAtMillis" then
+                    return redis.error_reply("TaskItem Result is corrupt")
+                  end
+                  fields = fields + 1
+                end
+                if current.code == "200" then
+                  if fields ~= 4 or type(current.tag) ~= "number"
+                      or current.tag < 2 or current.tag > 9 or current.tag ~= math.floor(current.tag)
+                      or type(current.observedAtMillis) ~= "number"
+                      or current.observedAtMillis < 0 or current.observedAtMillis > 9999999999900
+                      or current.observedAtMillis ~= math.floor(current.observedAtMillis) then
+                    return redis.error_reply("TaskItem Result is corrupt")
+                  end
+                  replace = target.tag > current.tag or
+                      (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
+                elseif fields ~= 2 then
+                  return redis.error_reply("TaskItem Result is corrupt")
+                end
+              end
+              if replace then
+                updates[#updates + 1] = ARGV[i]
+                updates[#updates + 1] = ARGV[i + 1]
+              end
+            end
+            if #updates > 0 then
+              redis.call("HSET", KEYS[1], unpack(updates))
+            end
+            return #updates / 2
+            """;
     private static final String STORE_FAILED_RESULTS_SCRIPT = """
             local results_key = KEYS[1]
             local failed_result = ARGV[1]
@@ -428,25 +474,28 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     @Override
     public void storeTaskItemSuccessResults(
             String taskId,
-            Map<String, String> results
+            Map<String, TaskItemSuccessResult> results
     ) {
         requireNonBlank(taskId, "taskId");
-        if (results == null) {
-            throw new IllegalArgumentException("results must be present");
+        if (results == null || results.size() > TaskItemScoreBandCore.MAX_ITEM_BATCH_SIZE) {
+            throw new IllegalArgumentException("results must contain at most 100 entries");
         }
         if (results.isEmpty()) {
             return;
         }
-        LinkedHashMap<String, String> encoded = new LinkedHashMap<>();
-        results.forEach((messageId, payload) -> {
+        List<String> arguments = new ArrayList<>(results.size() * 2);
+        results.forEach((messageId, result) -> {
             requireNonBlank(messageId, "messageId");
-            requireNonBlank(payload, "payload");
-            encoded.put(
-                    messageId,
-                    encodeTaskItemResult(TaskItemResult.succeeded(payload))
-            );
+            if (result == null) {
+                throw new IllegalArgumentException("result must be present");
+            }
+            arguments.add(messageId);
+            arguments.add(mapper.writeValueAsString(new TreeMap<>(Map.of(
+                    "code", "200", "opaqueResultPayload", result.opaqueResultPayload(),
+                    "tag", result.tag(), "observedAtMillis", result.observedAtMillis()))));
         });
-        commands().hset(resultsKey(taskId), encoded);
+        commands().eval(STORE_SUCCESS_RESULTS_SCRIPT, ScriptOutputType.INTEGER,
+                new String[]{resultsKey(taskId)}, arguments.toArray(String[]::new));
     }
 
     @Override
@@ -569,12 +618,29 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private TaskItemResult decodeTaskItemResult(String encoded) {
         try {
-            return mapper.readValue(encoded, TaskItemResult.class);
+            JsonNode value = mapper.readTree(encoded);
+            if (value == null || !value.isObject()
+                    || !value.hasNonNull("code") || !value.get("code").isTextual()
+                    || !value.hasNonNull("opaqueResultPayload") || !value.get("opaqueResultPayload").isTextual()) {
+                throw new IllegalArgumentException("Result fields are invalid");
+            }
+            TaskItemResult result = new TaskItemResult(value.get("code").textValue(),
+                    value.get("opaqueResultPayload").textValue());
+            if (result.succeeded()) {
+                if (value.size() != 4 || !value.hasNonNull("tag") || !value.get("tag").isIntegralNumber()
+                        || !value.get("tag").canConvertToInt() || !value.hasNonNull("observedAtMillis")
+                        || !value.get("observedAtMillis").isIntegralNumber()
+                        || !value.get("observedAtMillis").canConvertToLong()) {
+                    throw new IllegalArgumentException("Result ordering is invalid");
+                }
+                new TaskItemSuccessResult(value.get("tag").intValue(),
+                        value.get("observedAtMillis").longValue(), result.opaqueResultPayload());
+            } else if (value.size() != 2) {
+                throw new IllegalArgumentException("Failed Result fields are invalid");
+            }
+            return result;
         } catch (JacksonException | IllegalArgumentException error) {
-            throw new IllegalStateException(
-                    "TaskItem Result is corrupt",
-                    error
-            );
+            throw new IllegalStateException("TaskItem Result is corrupt", error);
         }
     }
 

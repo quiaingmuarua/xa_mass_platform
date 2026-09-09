@@ -30,7 +30,13 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
   client-command cost oracles. Candidate invalidation proves one-command dirty
   batches, single-use exact confirmation, preserved execution release fences
-  and dirty-clearing reacquisition after expiry.
+  and dirty-clearing reacquisition after expiry. TaskItem outcome proof covers
+  generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
+  corruption rejection, terminal-preserving NX, and one-command bounded
+  promotion/state reads. Server state-query counting excludes Result reads.
+  Ordered Result writes preserve maximum tag then reported milliseconds,
+  including same-slot replies. Heterogeneous 100-Item observations cost one
+  Score Lua plus zero or one Result Lua; missing/corrupt Items create no content.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
 - **Contract:** [Server verification](../../server_jvm/README.md#verification).
 
@@ -43,8 +49,12 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   without Matching facts; network evidence activates scheduling availability;
   text-protocol observations independently create facts, and Polling executes
   ON_DEMAND without them. Preview can expose an identity before a baseline.
+  Actual Handlers return send success before reporting delivered/read/replied
+  through all three transports; state queries, repeatable latest-reply reads
+  and subsequent Item execution witness the continuous observation boundary.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
-  capacity, guaranteed activation after evidence loss or atomic registration.
+  capacity, guaranteed activation after evidence loss, atomic registration,
+  atomic Score/Result commits or observation replay.
 - **Contract:** [Runtime Boundary owner](../../server_jvm/README.md#verification).
 
 ## worker_correctness

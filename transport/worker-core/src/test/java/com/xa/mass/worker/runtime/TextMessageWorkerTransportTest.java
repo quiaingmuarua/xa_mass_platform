@@ -7,6 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerOutcomeReporter;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -529,6 +534,45 @@ class TextMessageWorkerTransportTest {
 
         assertEquals(1, listener.terminations.get());
         assertEquals(0, executions.get());
+    }
+
+    @Test
+    void retainedReporterUsesOriginalTaskAcrossReconnectAndCannotMoveToANewRun() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        AtomicReference<WorkerOutcomeReporter> retained = new AtomicReference<>();
+        var definition = WorkerEventDefinition.extension("tracked", WorkerEventParameterResolvers.string(),
+                (payload, reporter) -> { retained.set(reporter); return "sent"; });
+        var transport = transport(client, WorkerCommandDispatcher.forWorker(List.of(definition)), new RecordingListener());
+        transport.start();
+        client.open();
+        var command = DeliveryCommand.create(DeliveryEndpoint.TASK, DeliveryEndpoint.WORKER,
+                definition.eventName(), Long.MAX_VALUE, "input", "original-forward");
+        client.message(CODEC.encodeDeliveryCommand(command));
+        assertEquals("platform.worker.command.succeeded", CODEC.decodeDeliveryReport(client.sent.get(1)).messageType());
+        WorkerOutcomeReporter original = retained.get();
+        assertTrue(original.report(7, 1000, null));
+        client.acceptSend = false;
+        assertFalse(original.report(8, 1001, null));
+        client.acceptSend = true;
+        client.open();
+        assertTrue(original.report(9, 1002, "reply"));
+        var observed = CODEC.decodeDeliveryReport(client.sent.get(client.sent.size() - 1));
+        assertEquals("platform.worker.task-outcome.observed", observed.messageType());
+        assertEquals("original-forward", observed.forward());
+        assertEquals(WORKER_ID, observed.sourceId());
+        assertEquals("reply", CODEC.decodeTaskOutcomeObservation(observed.payload()).opaqueResultPayload());
+        assertFalse(original.report(9, 1003, "x".repeat(1_000_000)));
+        client.message(CODEC.encodeDeliveryCommand(DeliveryCommand.create(DeliveryEndpoint.SERVER,
+                DeliveryEndpoint.WORKER, definition.eventName(), Long.MAX_VALUE, "input", "direct-forward")));
+        assertFalse(retained.get().report(9, 1004, "direct"));
+        assertTrue(original.report(9, 1004, "another reply"));
+        transport.close();
+        var nextClient = new FakeTextMessageClient();
+        var next = transport(nextClient, commandValue -> Optional.empty(), new RecordingListener());
+        next.start();
+        nextClient.open();
+        assertFalse(original.report(9, 1005, "after stop"));
+        assertEquals(1, nextClient.sent.size());
     }
 
     private TextMessageWorkerTransport transport(

@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
@@ -61,7 +61,7 @@ class DirectCallControllerTest {
     void setUp() {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         WorkerCommandRuntime commandRuntime = mock(WorkerCommandRuntime.class);
-        TaskResultRuntime resultRuntime = mock(TaskResultRuntime.class);
+        TaskEvidenceRuntime resultRuntime = mock(TaskEvidenceRuntime.class);
         List<String> workerIds = List.of(WORKER_1, WORKER_2);
         when(catalog.getWorkerDescriptors(workerIds)).thenReturn(
                 Map.of(

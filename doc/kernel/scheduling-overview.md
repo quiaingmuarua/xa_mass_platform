@@ -67,7 +67,12 @@ Worker/Adapter Result evidence -> Server validates and selects its owner
 ```
 
 SUCCESS stores the Result projection before separately requesting Item success
-finality and exact Worker release. Retryable FAILURE releases the correlated
+finality and exact Worker release. Later outcome observations instead advance
+the existing Item Score before conditionally storing content, without Worker
+lease changes or Task reopening. Score and Result each retain their own maximum
+target; higher tag wins, with time advancing within the tag. The Result Owner
+retains millisecond precision while Score uses its existing time slots.
+Retryable FAILURE releases the correlated
 Worker lease without writing an Item Result or deciding finality. Task dispatch
 stores a failed marker before promoting an exhausted/expired Item. These are
 independent Owner operations: Result observation does not prove finality and

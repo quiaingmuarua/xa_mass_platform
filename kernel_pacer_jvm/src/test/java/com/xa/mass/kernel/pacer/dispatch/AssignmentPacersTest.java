@@ -411,12 +411,7 @@ class AssignmentPacersTest {
         order.verify(taskRuntime).storeTaskItemFailedResults(
                 "task-1", List.of("message-budget", "message-expired")
         );
-        order.verify(itemScores).promoteItemOutcomes(
-                "task-1",
-                List.of("message-budget", "message-expired"),
-                TaskItemScoreBandCore.TaskItemScoreBand.FINAL_FAILED,
-                1_000L
-        );
+        order.verify(itemScores).promoteItemOutcomes("task-1", outcomeTargets(List.of("message-budget", "message-expired"), 5, 1_000L));
     }
 
     private static TaskWorkerAllocationPolicy allocation(
@@ -487,6 +482,7 @@ class AssignmentPacersTest {
                 dispatcher,
                 mock(TaskIdleSettlement.class),
                 selection,
+                5,
                 () -> 1_000L
         );
     }
@@ -570,4 +566,12 @@ class AssignmentPacersTest {
         }
         return result;
     }
+    private static Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> outcomeTargets(
+            List<String> ids, int tag, long time
+    ) {
+        Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> targets = new java.util.LinkedHashMap<>();
+        ids.forEach(id -> targets.put(id, new TaskItemScoreBandCore.TaskItemOutcomeTarget(tag, time)));
+        return targets;
+    }
+
 }

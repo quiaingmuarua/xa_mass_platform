@@ -109,6 +109,12 @@ only when the task covers that behavior.
 [Current Kernel documents](doc/kernel/README.md) own mechanism narratives.
 
 - Task, TaskItem and Worker score truth remain independent.
+- TaskItem tag 1 is the only ACTIVE scheduling band; tags 2..9 are generic
+  TERMINAL outcomes. Only strictly increasing scores may replace existing
+  members; terminal outcomes never reopen Item or Task scheduling. Server owns
+  business names and supplies execution outcome tags through Pacer assembly.
+  ACTIVE claims retain exact-score CAS. Result content remains independent of
+  these generic outcome transitions.
 - Score is a scheduling coordinate, not a resource write lock.
 - Dispatch Policy may call a mechanical owner directly when the bounded
   decision and operation already belong to that owner. Add a finite internal
@@ -120,11 +126,15 @@ only when the task covers that behavior.
   event publication; Transport only carries evidence. Finite TaskItem, Worker
   execution and Worker Serviceability Mechanism ports decide which legal
   mechanical transitions implement each event. SUCCESS stores the TaskItem
-  Result before separately requesting `FINAL_SUCCESS`; retryable FAILURE does
+  Result before separately requesting `TERMINAL(tag=6)`; retryable FAILURE does
   not write an Item Result or decide Item finality. Result HASH is observed
   projection, while TaskItem Score is finality truth. The ordered Owner calls
   are not atomic, and no current replay or repair contract guarantees
-  `Result.success => eventually FINAL_SUCCESS`.
+  `Result.success => eventually TERMINAL(tag=6)`.
+  OUTCOME_OBSERVATION advances the existing Item Score before optionally storing
+  content and never touches Worker leases or reopens Task scheduling. State and
+  content retain independent maximum targets; Score NOOP can still admit newer
+  millisecond content within one slot. No ACK, replay or repair is implied.
 - DeliveryReport, JSON and lane identity stop at Result Policy boundaries.
   Worker execution events receive correlated opaque `WorkerLeaseReference`
   values rather than raw lease scores and must not infer connection polarity.
@@ -194,6 +204,9 @@ architectures.
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
   A success may replace an earlier failed Result; storing terminal failure
   cannot replace any observed Result. An absent Result remains not observed.
+  Successful content shares its HASH field with tag and reported milliseconds:
+  higher tag wins, then strictly later milliseconds. Equal targets retain content,
+  and state-only observations never erase it. Corrupt records are not overwritten.
   Do not add a companion classification key. Result reads must not infer
   TaskItem finality; Score reads must not infer Result code or payload.
 - Finite Result semantic event ports live with the Task/Worker owners; their
@@ -218,11 +231,11 @@ kernel_jvm`.
 - It owns fixed Assignment, Result Routing and Worker Serviceability policy,
   configuration interpretation, Pacer loops and their finite lifecycle.
 - Task Dispatch must store the failed Result marker before promoting an
-  exhausted or TTL-expired Item to `FINAL_FAILED`; a failed write leaves the
+  exhausted or TTL-expired Item to `TERMINAL(tag=5)`; a failed write leaves the
   score unchanged for a later round. Result FAILURE only releases the
   correlated Worker lease. When late SUCCESS evidence is consumed it may
   replace failed and request promotion of the existing score to
-  `FINAL_SUCCESS`; destructive consumption and the separate Owner calls do not
+  `TERMINAL(tag=6)`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
 - [Allocation Policy](kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
   owns PRECOMPUTED deficits, priority, initial holds and ordered Match Demand.
@@ -484,6 +497,10 @@ the `WorkerDeliveryAdapter` contract.
 `transport/worker-core` is Java 11 platform-neutral mechanism code.
 
 - Core depends only on the delivery contract.
+- A reporting Handler may retain its run-bound WorkerOutcomeReporter after
+  synchronous completion. Host owns association and cleanup; Core keeps no
+  reporter registry, queue, thread or retry. Non-TASK calls cannot report later
+  outcomes, and a closed run's Reporter cannot transfer to a new run.
 - Client owns networking and transparent reconnect.
 - Transport owns identity/Command/Result protocol and synchronous event
   execution.

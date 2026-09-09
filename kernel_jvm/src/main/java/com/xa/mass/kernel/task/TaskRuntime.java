@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.task;
 
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,7 +34,7 @@ public interface TaskRuntime {
 
     void storeTaskItemSuccessResults(
             String taskId,
-            Map<String, String> results
+            Map<String, TaskItemSuccessResult> results
     );
 
     void storeTaskItemFailedResults(
@@ -213,6 +214,23 @@ public interface TaskRuntime {
 
         public TaskItemAppendResult(TaskItemAppendStatus status) {
             this(status, null);
+        }
+    }
+
+    /** Ordering belongs to the Result projection; it is not an encoded Score. */
+    record TaskItemSuccessResult(
+            int tag,
+            long observedAtMillis,
+            String opaqueResultPayload
+    ) {
+        public TaskItemSuccessResult {
+            if (tag < TaskItemScoreBandCore.MIN_TERMINAL_TAG
+                    || tag > TaskItemScoreBandCore.MAX_TERMINAL_TAG
+                    || observedAtMillis < TaskItemScoreBandCore.MIN_TIME_MILLIS
+                    || observedAtMillis > TaskItemScoreBandCore.MAX_TIME_MILLIS) {
+                throw new IllegalArgumentException("Result outcome coordinate is invalid");
+            }
+            requireNonBlank(opaqueResultPayload, "opaqueResultPayload");
         }
     }
 

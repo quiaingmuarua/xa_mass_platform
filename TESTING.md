@@ -48,6 +48,19 @@ own APPLIED-only ordering and best-effort response preservation. Runtime Boundar
 and Worker lanes remain downstream witnesses, not a facts/Score transaction or
 loss-repair guarantee.
 
+TaskItem generic terminal progression is a Redis Owner claim: tags 2..9,
+strict maximum-score writes, same-tag slot advancement, exact ACTIVE claim
+races, corrupt-score rejection, NX reappend, and the one-Lua/one-ZMSCORE batch
+budgets. Server tests own application name validation and the separate
+`items:states` query; its real Redis budget is one Task catalog read plus one
+Score read. Redis Owner also proves conditional Result replacement by tag and
+reported milliseconds, same-slot content updates, corruption rejection, and the
+one-Score-Lua plus zero-or-one-Result-Lua observation budget. Runtime Boundary
+uses actual Worker Handlers over WebSocket, Socket and Polling to witness send
+completion followed by delivered, read and repeated reply observations, latest
+content queries and subsequent execution. These proofs preserve the independent
+Result/Score commit boundary; they do not claim replay or loss repair.
+
 ## Selection Decision
 
 Use the lowest-cost proof that owns the changed claim:

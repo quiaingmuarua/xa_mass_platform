@@ -5,11 +5,7 @@
     },
     "TaskItemScoreBandCore": {
       "ACTIVE_TAG": 1,
-      "FINAL_FAILED_TAG": 5,
-      "FINAL_SUFFIX": 0,
-      "FINAL_SUCCESS_TAG": 9,
       "MAX_REMAINING_BUDGET": 99,
-      "MAX_SAME_BAND_SCORE_DELTA": 9999999999999,
       "MAX_TIME_MILLIS": 9999999999900,
       "MAX_TIME_SLOT": 99999999999,
       "MIN_REMAINING_BUDGET": 0,
@@ -18,8 +14,11 @@
       "SLOT_MILLIS": 100,
       "SUFFIX_FACTOR": 100,
       "TAG_FACTOR": 10000000000000,
-      "TAG_STRIDE": 4,
-      "TIME_SLOT_FACTOR": 100000000000
+      "TIME_SLOT_FACTOR": 100000000000,
+      "MIN_TERMINAL_TAG": 2,
+      "MAX_TERMINAL_TAG": 9,
+      "MAX_ITEM_BATCH_SIZE": 100,
+      "TERMINAL_SUFFIX": 0
     },
     "TaskScoreBandCore": {
       "DEFAULT_TAG_FACTOR": 10000000000000,
@@ -80,6 +79,10 @@
     }
   },
   "contracts": {
+    "TaskItemResultEvents": [
+      "on_item_outcomes_observed",
+      "on_items_succeeded"
+    ],
     "WorkerServiceabilityEvents": [
       "on_available",
       "on_probe_unavailable",
@@ -95,9 +98,9 @@
       "offer",
       "size"
     ],
-    "TaskResultRuntime": [
-      "append_task_results",
-      "consume_task_results"
+    "TaskEvidenceRuntime": [
+      "append_task_evidence",
+      "consume_task_evidence"
     ],
     "WorkerServiceabilityRuntime": [
       "append_network_evidence_results",
@@ -180,6 +183,12 @@
     ]
   },
   "dtos": {
+    "TaskItemOutcomeObservation": [
+      "message_id",
+      "tag",
+      "observed_at_millis",
+      "opaque_result_payload"
+    ],
     "NetworkObservation": [
       "endpoint_manager_id",
       "observed_at_millis"
@@ -232,6 +241,7 @@
     "TaskItemScoreState": [
       "score",
       "band",
+      "tag",
       "time_millis",
       "remaining_budget"
     ],
@@ -298,12 +308,22 @@
       "status",
       "endpoint_manager_id",
       "reason"
+    ],
+    "TaskItemSuccessResult": [
+      "tag",
+      "observed_at_millis",
+      "opaque_result_payload"
+    ],
+    "TaskItemOutcomeTarget": [
+      "tag",
+      "time_millis"
     ]
   },
   "enums": {
-    "TaskResultClass": [
-      "SUCCESS",
-      "FAILURE"
+    "TaskEvidenceType": [
+      "EXECUTION_SUCCESS",
+      "EXECUTION_FAILURE",
+      "OUTCOME_OBSERVATION"
     ],
     "TaskCreationStatus": [
       "created",
@@ -319,8 +339,7 @@
     ],
     "TaskItemScoreBand": [
       "active",
-      "final_failed",
-      "final_success"
+      "terminal"
     ],
     "TaskItemScoreTransitionStatus": [
       "transitioned",

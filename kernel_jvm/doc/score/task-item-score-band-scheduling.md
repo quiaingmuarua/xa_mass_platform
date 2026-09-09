@@ -125,12 +125,12 @@ acquire range.
 may begin. TaskRuntime rejects an Item that is already expired when appended.
 Task dispatch rechecks the persisted value after score observation and, before
 Worker acquisition, stores the failed Item Result and then promotes expired
-ACTIVE Items to `FINAL_FAILED` through the existing outcome primitive. If
+ACTIVE Items to `TERMINAL(tag=5)` through the existing outcome primitive. If
 Result storage fails, score promotion does not run.
 
 Expiry does not retract an attempt claimed before the cutoff. That attempt
 continues under its Item claim and Worker lease, and a later success may still
-promote `FINAL_FAILED` to `FINAL_SUCCESS`. The kernel does not put expiry into
+promote `TERMINAL(tag=5)` to `TERMINAL(tag=6)`. The kernel does not put expiry into
 the score encoding, add a global expiry scanner, or expose it to transport.
 Retry count is not an Item field.
 `TaskDescriptor.config` owns `maxRetryTimes`; item-score initialization converts
@@ -138,179 +138,72 @@ it to an internal claim budget.
 
 ## Score Axis
 
-The item score uses the same segmented-score discipline as Task score-band, but
-with fewer kernel-level assumptions:
-
 ```text
 score = tag * TAG_FACTOR + timeSlot * SUFFIX_FACTOR + suffix
-
-TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR
+TAG_FACTOR = 10_000_000_000_000
 SUFFIX_FACTOR = 100
 SLOT_MILLIS = 100
-TAG_STRIDE = 4
-MAX_SAME_BAND_SCORE_DELTA = TAG_FACTOR - 1
+0 <= timeSlot <= 99_999_999_999
+0 <= timeMillis <= 9_999_999_999_900
 ```
 
-This formula is an internal encoding sketch, not a stable interface. The kernel
-may change score packing, factor widths, slot scale, or Redis encoding as long
-as it preserves the public score-band semantics:
+The existing integer encoding and Redis key are unchanged. Time is rounded
+down to a 100ms slot. The two mechanical bands are:
 
-```text
-bounded acquire by kernel tag and millisecond horizon
-same-tag observed-score fence
-cross-tag monotonic progress
-kernel-owned tag vocabulary
-kernel-owned tag-local suffix rule
-opaque observedScore plus semantic remainingBudget returned by acquire
-```
+| Band | Actual tag | Suffix | Meaning |
+| --- | --- | --- | --- |
+| `ACTIVE` | 1 | 0..99 | Remaining scheduling budget; the only schedulable band |
+| `TERMINAL` | 2..9 | 0 | Execution has left scheduling; business meaning belongs to the caller |
 
-Callers must treat every score as opaque. Owner-facing operations accept
-millisecond timestamps, semantic target bands for final promotion, remaining-
-budget delta `0/-1`, and opaque observed scores only where a stale fence is
-required. They do not accept numeric tag values, timeSlot, raw suffix, score
-bounds, or encoded target scores.
-
-Kernel mechanics:
-
-```text
-tag is kernel-owned score-band identity
-timeSlot decides due / future scheduling coordinate
-suffix follows the kernel rule for its tag
-score absence means the item member does not exist in the score axis
-score must be positive and non-zero
-```
-
-The kernel owns the minimal tag vocabulary. External callers do not define or
-interpret tag values.
-
-```text
-TAG_ACTIVE = 1
-TAG_FINAL_FAILED = 5
-TAG_FINAL_SUCCESS = 9
-```
-
-The names above are kernel categories, not per-event transition branches.
-Encoded tags advance by `TAG_STRIDE`. Future categories preserve that stride so
-the complete numeric distance between two scores can distinguish same-band
-movement from cross-band movement without Redis understanding tag names.
-Ordinary write decisions still use the score-band rules below: same-tag time
-growth with exact CAS, strict cross-tag growth, and tag-local suffix validation.
+`TaskItemScoreState(score, band, tag, timeMillis, remainingBudget)` exposes an
+opaque score plus Owner-decoded state. Remaining budget is present only for
+ACTIVE. Time is the coordinate within its band, not a business event timestamp.
+The Score Owner does not define success, failure, delivered, read or replied.
 
 ## Monotonic Write Rules
 
-The item score axis has one global ordering rule:
-
-```text
-score only moves forward
-tag never decreases
-suffix follows the source/target tag rule
-```
-
-Time is band-local rather than globally monotonic:
-
-```text
-same-band rewrite
-  targetTimeSlot > storedTimeSlot
-
-cross-band promotion
-  targetScore - storedScore > MAX_SAME_BAND_SCORE_DELTA
-  targetTimeSlot is interpreted only inside targetTag
-  no comparison with storedTimeSlot
-```
-
-An `ACTIVE` score may carry a future claim lease while a result arrives now.
-Final promotion therefore replaces that lease with the final band's outcome
-time. Tag spacing still guarantees the complete target score is greater than
-every score in a lower tag.
-
-`targetScore` below is an internal encoded coordinate minted by the kernel from
-`targetTag`, caller-facing millisecond time, and the tag-local suffix rule.
-External callers must not construct or pass raw target scores, score bounds,
-timeSlot values, or decoded score fields.
+Every update to an existing member must increase its complete score. A terminal
+member can keep advancing but can never re-enter ACTIVE. Initialization uses
+`NX`; it cannot reset existing members or create a new execution generation.
 
 ### Same-Tag Observed Rewrite
 
-Same-tag writes are used for claim, retry delay, or hold:
+`rewriteObservedItemScores(taskId, observedScores, targetTimeMillis,
+remainingBudgetDelta)` remains an ACTIVE-only exact CAS. The Owner validates
+the observed encoding, a delta of -1 or 0, nonnegative resulting budget, and
+strictly later time slot. Lua then requires `storedScore == observedScore`
+before writing the encoded target. A competing larger ACTIVE score is not
+permission to claim again: the same observation has at most one winner.
+A terminal promotion invalidates every prior ACTIVE observation.
 
-```text
-storedScore == observedScore
-targetTag == observedTag
-targetTimeSlot > observedTimeSlot
-targetScore > observedScore
-targetRemainingBudget = observedRemainingBudget + remainingBudgetDelta
-remainingBudgetDelta is -1 or 0
-```
+### Terminal Outcome Promotion
 
-The exact observed-score fence is mandatory because multiple schedulers may see
-the same candidate.
+`promoteItemOutcomes(taskId, targets)` accepts an ordered Map from Message ID to
+`TaskItemOutcomeTarget(tag, timeMillis)`, with at most 100 entries. Each Item may
+have a different terminal tag and time. Java validates each target and encodes
+its score with suffix 0; invalid entries return INVALID without blocking valid
+entries. An invalid Task ID or oversized batch rejects the entire batch. One same-key Lua
+handles the entire batch; for each ID it reads and validates the stored score
+before comparing `targetScore > currentScore` and optionally writing.
 
-Core same-tag suffix rules:
+| Condition | Per-Item result |
+| --- | --- |
+| Legal target greater than current score | `TRANSITIONED`, new score |
+| Legal equal or smaller target | `NOOP`, current score |
+| Missing member | `NOT_FOUND`, no score |
+| Invalid ID, tag, time or oversized batch | `INVALID`, no score and no writes |
+| Non-integer, out-of-range or terminal nonzero-suffix stored score | `CORRUPT`, no score and no write |
 
-```text
-TAG_ACTIVE
-  suffix is remaining scheduling budget
-  target remaining budget must be observed budget or observed budget - 1
-  remaining budget must never increase
-  claim consumes one budget slot
-  retry/hold may preserve the already-consumed suffix
+A higher tag advances even with an earlier time. A lower tag cannot advance
+even with a later time. At the same terminal tag only a later slot advances;
+different milliseconds in the same slot are a no-op. Empty owner batches are
+empty no-ops. Missing and corrupt members are never initialized by promotion.
+There is no difference threshold, confirmation read, Redis `TIME`, cross-key
+transaction or Result lookup in this operation.
 
-TAG_FINAL_FAILED / TAG_FINAL_SUCCESS
-  no same-tag mutation in v0 except idempotent no-op
-```
-
-The monotonic guard is still the full score plus non-decreasing timeSlot. The
-ACTIVE suffix can decrease because timeSlot is expected to move forward enough
-for the full score to increase.
-
-### Cross-Tag Promotion
-
-Cross-tag writes are monotonic result-outcome promotions:
-
-```text
-storedScore = current score
-scoreDelta = targetScore - storedScore
-scoreDelta > MAX_SAME_BAND_SCORE_DELTA
-targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
-do not compare targetTimeSlot with storedTimeSlot
-targetScore > storedScore
-targetSuffix satisfies target-tag suffix rule
-```
-
-No caller-supplied observed score is required for cross-tag progress. The core
-mints the target coordinate and atomically compares its numeric distance from
-the stored score. A positive delta no larger than
-`MAX_SAME_BAND_SCORE_DELTA` is same-band movement and therefore a promotion
-no-op. A larger delta is cross-band progress and is written directly. A
-concurrent same-band claim or retry rewrite remains inside that same-band
-distance and cannot block the promotion. A higher final tag can override a
-lower final tag; a lower or equal tag cannot overwrite the current score.
-
-Result policy passes a semantic final `targetBand` and caller-facing millisecond
-time. The kernel maps the band to its numeric tag and fixed final suffix;
-callers do not pass numeric tags or construct suffix from decoded score fields.
-Redis does not whitelist final band names or decode the stored score.
-
-Core consequence:
-
-```text
-TAG_FINAL_SUCCESS is higher than TAG_FINAL_FAILED
-late success may overwrite failed final
-failure cannot overwrite success
-final cannot return to active
-```
-
-This is an outcome lattice, not claim-generation isolation:
-
-```text
-ACTIVE < FINAL_FAILED < FINAL_SUCCESS
-```
-
-An older final-failure result may promote a currently ACTIVE item even if a
-newer claim has already been issued. That promotion stops future acquisition;
-it does not cancel an already issued claim. A later success from any issued
-claim may still promote the item to `FINAL_SUCCESS`. `FINAL_SUCCESS` is the only
-absorbing result tag. Result policy must not use final-failure promotion for an
-ordinary retryable failure.
+Concurrent promotions retain the maximum legal score. A terminal promotion
+racing an exact ACTIVE claim ends terminal regardless of which operation wins
+first. These guarantees concern Score only, not Result payload ordering.
 
 ## Initial Score And Priority
 
@@ -341,7 +234,7 @@ priority no longer reorders the item.
 Append scheduling policy maps TaskItem priority to an initial due millisecond
 coordinate before calling the score core. `TaskItemScoreBandCore` does not
 understand `ItemPriority`; it receives `messageId -> initialDueMillis`, always
-initializes `TAG_ACTIVE`, and owns only the retry-budget-to-suffix mapping.
+initializes `ACTIVE_TAG`, and owns only the retry-budget-to-suffix mapping.
 
 ## Acquire
 
@@ -370,8 +263,8 @@ the minimum ACTIVE coordinate:
 beforeSlot = floor(beforeTimeMillis / SLOT_MILLIS)
 
 ZREVRANGEBYSCORE xa_mass:<scope>:task:<taskId>:item_score
-  score(TAG_ACTIVE, beforeSlot, MAX_SUFFIX)
-  score(TAG_ACTIVE, MIN_TIME_SLOT, MIN_SUFFIX)
+  score(ACTIVE_TAG, beforeSlot, MAX_SUFFIX)
+  score(ACTIVE_TAG, MIN_TIME_SLOT, MIN_SUFFIX)
   WITHSCORES
   LIMIT 0 limit
 ```
@@ -429,7 +322,7 @@ TaskRuntime
 
 TaskItemScoreBandCore
   convert initialDueMillis to timeSlot
-  mint internal TAG_ACTIVE / timeSlot / remaining-budget suffix
+  mint internal ACTIVE_TAG / timeSlot / remaining-budget suffix
   ZADD NX xa_mass:<scope>:task:<taskId>:item_score internalScore messageId
 ```
 
@@ -496,9 +389,7 @@ The exhausted set uses cross-band promotion rather than same-band rewrite:
 ```text
 promote_item_outcomes(
   taskId,
-  exhaustedMessageIds,
-  FINAL_FAILED,
-  exhaustedAtMillis
+  exhaustedMessageId -> (failedOutcomeTag, exhaustedAtMillis)
 )
 ```
 
@@ -526,84 +417,43 @@ not repair.
 
 ## Result And Finality
 
-Result routing does not perform a same-tag retry rewrite. A claim already places
-the ACTIVE Item at a future time coordinate. Worker and Adapter failures leave that score
-unchanged; when the claim coordinate becomes due, ordinary acquisition retries
-the Item and consumes no additional result-owned budget.
+The Server execution contract supplies `5 = failed` and `6 = succeeded` through
+`KernelPacerRuntime.assemble(...)`. Dispatch and the TaskItem result mechanism
+receive these tags; the Score Owner knows only the legal terminal range.
+A late execution success can advance 5 to 6. Terminal tags 2..9 remain legal
+mechanically, including updates after Task closure, without reopening that Task.
 
-Cross-tag outcome promotion:
+`EXECUTION_SUCCESS` stores the existing self-describing Result, separately
+requests tag 6, then handles the original Worker execution lease.
+`EXECUTION_FAILURE` only handles the correlated Worker lease. The ACTIVE Item
+claim naturally becomes due for retry; failure evidence does not rewrite it.
+Dispatch stores a failed Result before requesting tag 5 for exhaustion or TTL.
 
-```text
-storedScore = current score
-targetTag = tag(targetBand)
-targetTag > storedTag
-targetTimeSlot = floor(outcomeAtMillis / SLOT_MILLIS)
-storedTimeSlot is not compared
-targetScore > storedScore
-write finalScore
-```
+Result HASH and Item Score are independent commits. A successful Result can
+coexist with ACTIVE or tag 5 after interruption. Result content has its own
+conditional tag/time ordering inside the Result Owner. There is no activation ACK, replay or
+Result-to-Score repair path. See the [Result storage contract](../runtime-redis/task-result-runtime-redis-shape.md).
 
-The final score timeSlot is target-band outcome time. It may be earlier than a
-future ACTIVE claim lease because lifecycle progress is carried by the larger
-tag. Result projection still owns the original millisecond timestamp; score
-stores the slot-rounded scheduling coordinate.
-
-Examples:
-
-```text
-active claim -> active retry due
-active -> final failed
-active -> final success
-final failed -> final success
-final success -> rejected/no-op for lower final tags
-```
-
-Late result handling uses the same kernel tag ordering:
-
-```text
-worker failure / adapter rejection
-  no Item score write
-  existing ACTIVE claim becomes due naturally
-
-final failure
-  produced by exhausted scheduling budget
-  stores the failed Result before score promotion
-  may be overwritten only by late success
-
-late success
-  may promote ACTIVE or FINAL_FAILED to FINAL_SUCCESS
-  accepted while current tag is below TAG_FINAL_SUCCESS
-```
-
-The score kernel owns same-tag claim CAS and cross-tag outcome precedence.
-Result routing owns successful payload storage followed by a separate
-`FINAL_SUCCESS` promotion request. These calls are ordered but are not one
-cross-owner transaction. Result HASH is the observed query projection, while
-this Score remains scheduling, retry, finality and statistics truth. A
-successful Result may therefore coexist with `ACTIVE` or `FINAL_FAILED` after
-an interruption or an unsuccessful promotion result; reading either resource
-does not derive the other. No current replay or reconciliation owner guarantees
-`Result.success => eventually FINAL_SUCCESS`.
-
-Task closure does not reopen scheduling, but result retention must continue
-accepting a valid `FINAL_SUCCESS` promotion until the owner-defined late-result
-retention barrier expires.
+TRACKED observations arrive through their own Task evidence LIST and fixed
+consumer. They reuse the same per-Item target Map and never release a Worker
+execution lease or reopen Task scheduling. The observation mechanism promotes
+Score first, then conditionally stores any content for TRANSITIONED or NOOP
+Items. No Task mode or business meaning is added to this Score Owner.
 
 ## Exhausted Budget
 
-For `TAG_ACTIVE`, suffix is remaining scheduling budget. A due active item with
+For `ACTIVE_TAG`, suffix is remaining scheduling budget. A due active item with
 `suffix == 0` is not claimable:
 
 ```text
 ACTIVE due + suffix == 0
   -> store failed Item Result unless success already exists
-  -> write TAG_FINAL_FAILED
+  -> request the Server-supplied failed tag 5
 ```
 
 This transition is mandatory once the exhausted Item is selected. Leaving an
 unclaimable ACTIVE member in the bounded acquire range would create permanent
-hot no-op residue. This is a kernel-owned suffix rule for `TAG_ACTIVE`, not an
-external policy interpretation.
+hot no-op residue. Dispatch owns exhaustion policy; the Score Owner validates only legal coordinates.
 
 ## Relationship To Task Score
 
@@ -691,9 +541,7 @@ rewrite_observed_item_scores(
 
 promote_item_outcomes(
   taskId,
-  messageIds,
-  targetBand,
-  targetTimeMillis
+  messageId -> (tag, timeMillis)
 )
 
 get_item_score_states(taskId, messageIds)
@@ -705,39 +553,28 @@ details as public kernel contracts.
 
 ## Java Owner Status
 
-The interface and Redis ZSET owner live in
-[`kernel_jvm/score`](../../src/main/java/com/xa/mass/kernel/score). Its physical
-key is `xa_mass:<scope>:task:<taskId>:item_score`.
+[`RedisTaskItemScoreBandCore`](../../src/main/java/com/xa/mass/kernel/score/redis/RedisTaskItemScoreBandCore.java)
+implements the complete surface. Initialization retains pipelined `ZADD NX`;
+acquisition remains a bounded ACTIVE range read; claims keep their exact CAS.
+Terminal promotion uses one Lua for up to 100 IDs.
 
-Canonical TaskItem record append and bounded load live in
-[`kernel_jvm/task`](../../src/main/java/com/xa/mass/kernel/task) using
-`xa_mass:<scope>:task:<taskId>:items`. Real-Redis integration proof covers the
-complete owner composition:
+`getItemScoreStates(taskId, messageIds)` accepts at most 100 IDs and returns an
+ordered deduplicated map from one `ZMSCORE`. Missing members map to null.
+Invalid input raises an input error; corrupt stored scores raise an Owner data
+error for the query, never a fabricated terminal state. Empty input is an empty
+no-op. No Result HASH or Task score is read.
 
-```text
-append -> acquire -> claim -> load -> retry -> final promotion
-```
+The Server `POST /api/v1/tasks/{taskId}/items:states` query performs one Task
+catalog read followed by this Owner read. It returns band, actual tag, score
+timeMillis and optional application name, without raw score or Result content.
+`results:load`, `items:call` and Result export keep their independent projection
+contracts.
 
-The public append and last-success query are exposed by
-[`server_jvm/task`](../../../server_jvm/src/main/java/com/xa/mass/server/task).
-Real-Redis Owner tests lock record JSON, due-score encoding, retry convergence,
-`ZADD NX` behavior, and opaque result reads.
-
-The Redis implementation uses only:
-
-```text
-pipeline ZADD NX
-bounded ZREVRANGEBYSCORE WITHSCORES
-pipeline ZSCORE
-one exact-score CAS Lua primitive
-one encoded-score-distance promotion Lua primitive
-```
-
-Band decoding, remaining-budget validation, and target score minting stay in
-the Java Score Owner. Same-band Lua compares stored score with one expected score.
-Cross-band Lua compares the precomputed target score distance with
-`MAX_SAME_BAND_SCORE_DELTA`; it does not decode or whitelist tags. Neither
-script contains band names, budget, time, result, or retry policy.
+Real Redis proof in `RedisTaskOwnerRuntimeIntegrationTest` covers every terminal
+tag, slot boundaries, invalid/corrupt values, NX reappend, maximum-score races,
+exact claim races and one-Lua/one-ZMSCORE budgets. It uses an isolated `test_*`
+scope; Server query command counting additionally verifies one `HGETALL` plus
+one `ZMSCORE`.
 
 ## Deferred Policy
 
@@ -767,15 +604,15 @@ script contains band names, budget, time, result, or retry policy.
 - Do not let append refresh Task score.
 - Do not let result refresh Task score.
 - Do not add a repair queue for expired claims.
-- Do not let same-tag writes skip observed-score CAS.
-- Do not compare cross-tag target time with the source band's lease/recheck
-  time; strict tag growth is the lifecycle fence.
-- Do not allow cross-tag writes without strict tag growth.
+- Do not let ACTIVE rewrites skip observed-score CAS.
+- Compare complete legal scores for terminal updates; time need not increase
+  across tags, and later slots within the same terminal tag may advance.
 - Do not let lower final tags overwrite higher final tags.
-- Do not treat `FINAL_FAILED` as an absorbing result tag; a later success may
-  promote it to `FINAL_SUCCESS`.
+- Do not treat `TERMINAL(tag=5)` as an absorbing result tag; a later success may
+  promote it to `TERMINAL(tag=6)`.
 - Do not physically remove Item truth until a separate retention owner defines
   when late-success acceptance may end.
-- Do not let external callers define tag values or tag-local suffix rules.
+- Callers define terminal tag meanings; the Score Owner fixes their legal range
+  and suffix rule. No caller constructs raw target scores.
 - Do not add event-name branches when the score-band tag/timeSlot/suffix rules
   already express the transition.

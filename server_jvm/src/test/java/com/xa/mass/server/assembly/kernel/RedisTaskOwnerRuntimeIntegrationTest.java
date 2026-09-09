@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreTransitionStatus.*;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -18,6 +19,7 @@ import com.xa.mass.kernel.task.DefaultTaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemSuccessResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -36,6 +38,12 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.stream.IntStream;
+import io.lettuce.core.event.command.CommandListener;
+import io.lettuce.core.event.command.CommandStartedEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -152,27 +160,19 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 + 4;
         assertThat((long) score).isEqualTo(expected);
 
-        runtime.storeTaskItemSuccessResults(
-                "task-1",
-                Map.of("message-1", "{\"valid\":true}")
-        );
+        runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("message-1", "{\"valid\":true}"), 1000));
         assertThat(redis.hget(
                 keyspace.base() + ":task:task-1:results",
                 "message-1"
         )).isEqualTo(
-                "{\"code\":\"200\","
+                "{\"code\":\"200\",\"observedAtMillis\":1000,"
                         + "\"opaqueResultPayload\":"
-                        + "\"{\\\"valid\\\":true}\"}"
+                        + "\"{\\\"valid\\\":true}\",\"tag\":6}"
         );
         assertThat(redis.exists(
                 keyspace.base() + ":task:task-1:results:success"
         )).isZero();
-        assertThat(itemScoreCore.promoteItemOutcomes(
-                "task-1",
-                List.of("message-1"),
-                TaskItemScoreBandCore.TaskItemScoreBand.FINAL_SUCCESS,
-                redisTimeMillis()
-        ).get("message-1").status()).isEqualTo(
+        assertThat(itemScoreCore.promoteItemOutcomes("task-1", outcomeTargets(List.of("message-1"), 6, redisTimeMillis())).get("message-1").status()).isEqualTo(
                 TaskItemScoreBandCore.TaskItemScoreTransitionStatus
                         .TRANSITIONED
         );
@@ -181,7 +181,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "message-1"
         ).longValue();
         assertThat(finalScore / TaskItemScoreBandCore.TAG_FACTOR)
-                .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
+                .isEqualTo(6);
         var loaded = runtime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1", "missing")
@@ -278,14 +278,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 .containsEntry("message-late", TaskItemResult.failed())
                 .containsEntry("missing", null);
 
-        runtime.storeTaskItemSuccessResults(
-                "task-1",
-                Map.of("message-late", "late-success")
-        );
-        runtime.storeTaskItemSuccessResults(
-                "task-1",
-                Map.of("message-late", "newer-success")
-        );
+        runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("message-late", "late-success"), 2000));
+        runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("message-late", "newer-success"), 3000));
         runtime.storeTaskItemFailedResults(
                 "task-1",
                 List.of("message-late")
@@ -313,12 +307,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void successValidationFailureDoesNotPartiallyWriteTheBatch() {
         var results = new java.util.LinkedHashMap<String, String>();
         results.put("message-valid", "payload");
-        results.put("message-invalid", " ");
+        results.put("message-invalid", "");
 
-        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults(
-                "task-1",
-                results
-        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults("task-1", successResults(results, 4000))).isInstanceOf(IllegalArgumentException.class);
 
         assertThat(redis.hlen(
                 keyspace.base() + ":task:task-1:results"
@@ -330,16 +321,23 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         String resultsKey = keyspace.base() + ":task:task-1:results";
         redis.set(resultsKey, "corrupt-type");
 
-        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults(
-                "task-1",
-                Map.of("message-success", "payload")
-        )).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("message-success", "payload"), 5000))).isInstanceOf(RuntimeException.class);
         assertThatThrownBy(() -> runtime.storeTaskItemFailedResults(
                 "task-1",
                 List.of("message-failed")
         )).isInstanceOf(RuntimeException.class);
 
         assertThat(redis.get(resultsKey)).isEqualTo("corrupt-type");
+    }
+
+    @Test
+    void executionResultsKeepOpaqueWhitespacePayloadCompatibility() {
+        runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("rpc", " "), 5000));
+        assertThat(runtime.loadTaskItemResults("task-1", List.of("rpc")))
+                .containsEntry("rpc", TaskItemResult.succeeded(" "));
+        runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("rpc", "\t"), 5001));
+        assertThat(runtime.loadTaskItemResults("task-1", List.of("rpc")))
+                .containsEntry("rpc", TaskItemResult.succeeded("\t"));
     }
 
     @Test
@@ -1115,6 +1113,314 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 .wireValue()).isEqualTo("applied");
     }
 
+    @Test
+    void everyTerminalTagLeavesSchedulingAndCanAdvanceWithinItsTag() {
+        for (int tag = 2; tag <= 9; tag++) {
+            String id = "item-" + tag;
+            itemScoreCore.initializeItemScores("outcomes", Map.of(id, 0L), 3);
+            var active = itemScoreCore.getItemScoreStates("outcomes", List.of(id)).get(id);
+            assertThat(active.tag()).isEqualTo(1);
+            assertThat(active.remainingBudget()).isEqualTo(4);
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of(id), tag, 1_099))
+                    .get(id).status()).isEqualTo(TRANSITIONED);
+            for (long time : List.of(1_099L, 1_000L, 0L)) {
+                assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of(id), tag, time))
+                        .get(id).status()).isEqualTo(NOOP);
+            }
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of(id), tag, 1_100))
+                    .get(id).status()).isEqualTo(TRANSITIONED);
+            var state = itemScoreCore.getItemScoreStates("outcomes", List.of(id)).get(id);
+            assertThat(state.band()).isEqualTo(TaskItemScoreBandCore.TaskItemScoreBand.TERMINAL);
+            assertThat(state.tag()).isEqualTo(tag);
+            assertThat(state.timeMillis()).isEqualTo(1_100);
+            assertThat(state.remainingBudget()).isNull();
+            assertThat(itemScoreCore.initializeItemScores("outcomes", Map.of(id, 2_000L), 0)
+                    .get(id).status()).isEqualTo(NOOP);
+            assertThat(itemScoreCore.rewriteObservedItemScores("outcomes", Map.of(id, active.score()), 3_000, -1)
+                    .get(id).status()).isEqualTo(STALE);
+        }
+        assertThat(itemScoreCore.acquireItemScoreCandidates("outcomes", 100)).isEmpty();
+        assertThat(itemScoreCore.hasActiveItems(List.of("outcomes"))).containsEntry("outcomes", false);
+        assertThat(itemScoreCore.hasDueActiveItems(List.of("outcomes"))).containsEntry("outcomes", false);
+    }
+
+    @Test
+    void terminalOrderingUsesTheWholeScoreIncludingEarlierTimesInHigherTags() {
+        itemScoreCore.initializeItemScores("outcomes", Map.of("item", TaskItemScoreBandCore.MAX_TIME_MILLIS), 98);
+        for (int tag = 2; tag <= 9; tag++) {
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), tag, 0))
+                    .get("item").status()).isEqualTo(TRANSITIONED);
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), tag, TaskItemScoreBandCore.MAX_TIME_MILLIS)).get("item").status()).isEqualTo(TRANSITIONED);
+            if (tag > 2) {
+                assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), tag - 1, TaskItemScoreBandCore.MAX_TIME_MILLIS)).get("item").status()).isEqualTo(NOOP);
+            }
+        }
+        assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of("item"))
+                .get("item").timeMillis()).isEqualTo(TaskItemScoreBandCore.MAX_TIME_MILLIS);
+    }
+
+    @Test
+    void invalidAndCorruptOutcomesNeverCreateOrOverwriteMembers() {
+        String key = keyspace.base() + ":task:outcomes:item_score";
+        for (double raw : new double[]{0, -1, 1.5, Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY, 10 * TaskItemScoreBandCore.TAG_FACTOR,
+                2 * TaskItemScoreBandCore.TAG_FACTOR + 1,
+                TaskItemScoreBandCore.TAG_FACTOR + 0.5}) {
+            redis.zadd(key, raw, "corrupt");
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("corrupt"), 9, 1_000))
+                    .get("corrupt").status()).isEqualTo(CORRUPT);
+            assertThat(redis.zscore(key, "corrupt")).isEqualTo(raw);
+            assertThatThrownBy(() -> itemScoreCore.getItemScoreStates("outcomes", List.of("corrupt")))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        for (int tag : new int[]{-1, 0, 1, 10}) {
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("missing"), tag, 0))
+                    .get("missing").status()).isEqualTo(INVALID);
+        }
+        for (long time : new long[]{-1, TaskItemScoreBandCore.MAX_TIME_MILLIS + 1, Long.MAX_VALUE}) {
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("missing"), 2, time))
+                    .get("missing").status()).isEqualTo(INVALID);
+        }
+        assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("missing"), 2, 0))
+                .get("missing").status()).isEqualTo(NOT_FOUND);
+        assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of("missing")))
+                .containsEntry("missing", null);
+        assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of(" "), 2, 0))
+                .get(" ").status()).isEqualTo(INVALID);
+        assertThatThrownBy(() -> itemScoreCore.getItemScoreStates("outcomes", List.of(" ")))
+                .isInstanceOf(IllegalArgumentException.class);
+        var oversized = IntStream.range(0, 101).mapToObj(i -> "id-" + i).toList();
+        assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(oversized, 2, 0)).values())
+                .allMatch(result -> result.status() == INVALID);
+        assertThatThrownBy(() -> itemScoreCore.getItemScoreStates("outcomes", oversized))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(redis.zcard(key)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentPromotionsKeepMaximumAndClaimsRequireTheExactActiveObservation() throws Exception {
+        itemScoreCore.initializeItemScores("outcomes", Map.of("item", 0L), 2);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var start = new CountDownLatch(1);
+            var writes = IntStream.range(0, 100).mapToObj(index -> executor.submit(() -> {
+                start.await();
+                return itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), 2 + index % 8, index * 100L));
+            })).toList();
+            start.countDown();
+            for (var write : writes) write.get();
+            var maximum = itemScoreCore.getItemScoreStates("outcomes", List.of("item")).get("item");
+            assertThat(maximum.tag()).isEqualTo(9);
+            assertThat(maximum.timeMillis()).isEqualTo(9_500);
+
+            for (int round = 0; round < 20; round++) {
+                String id = "race-" + round;
+                long observed = itemScoreCore.initializeItemScores("outcomes", Map.of(id, 0L), 2).get(id).score();
+                var gate = new CountDownLatch(1);
+                var claims = IntStream.range(0, 2).mapToObj(index -> executor.submit(() -> {
+                    gate.await();
+                    return itemScoreCore.rewriteObservedItemScores("outcomes", Map.of(id, observed),
+                            1_000 + index * 100, -1).get(id).status();
+                })).toList();
+                gate.countDown();
+                assertThat(List.of(claims.get(0).get(), claims.get(1).get()))
+                        .containsExactlyInAnyOrder(TRANSITIONED, STALE);
+
+                long held = itemScoreCore.getItemScoreStates("outcomes", List.of(id)).get(id).score();
+                var race = new CountDownLatch(1);
+                var terminal = executor.submit(() -> {
+                    race.await();
+                    return itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of(id), 2, 0));
+                });
+                var claim = executor.submit(() -> {
+                    race.await();
+                    return itemScoreCore.rewriteObservedItemScores("outcomes", Map.of(id, held), 2_000, -1);
+                });
+                race.countDown();
+                terminal.get();
+                claim.get();
+                assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of(id)).get(id).tag()).isEqualTo(2);
+            }
+        }
+    }
+
+    @Test
+    void hundredItemPromotionAndStateQueryHaveConstantClientCommandBudgets() {
+        storeTask("outcomes", "ON_DEMAND_ITEM_RULE");
+        Map<String, Long> due = new LinkedHashMap<>();
+        IntStream.range(0, 100).forEach(i -> due.put("id-" + i, 0L));
+        itemScoreCore.initializeItemScores("outcomes", due, 0);
+        catalog.loadTaskAllocationDescriptors(List.of("outcomes"));
+        var calls = new CopyOnWriteArrayList<String>();
+        var listener = new CommandListener() {
+            @Override public void commandStarted(CommandStartedEvent event) {
+                calls.add(event.getCommand().getType().toString());
+            }
+        };
+        redisClient.addListener(listener);
+        try {
+            itemScoreCore.close();
+            catalog.close();
+            itemScoreCore.getItemScoreStates("outcomes", List.of("id-0"));
+            catalog.loadTaskAllocationDescriptors(List.of("outcomes"));
+            calls.clear();
+            var ids = List.copyOf(due.keySet());
+            var promoted = itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(ids, 6, 1_000));
+            assertThat(promoted.keySet()).containsExactlyElementsOf(ids);
+            assertThat(promoted.values()).allMatch(result -> result.status() == TRANSITIONED);
+            assertThat(calls).containsExactly("EVAL");
+            calls.clear();
+            assertThat(itemScoreCore.getItemScoreStates("outcomes", ids)).hasSize(100);
+            assertThat(calls).containsExactly("ZMSCORE");
+            calls.clear();
+            var service = new com.xa.mass.server.task.TaskDataService(runtime, catalog,
+                    new com.xa.mass.server.task.TaskItemMapper(), itemScoreCore,
+                    new com.xa.mass.server.task.TaskItemOutcomeProperties(Map.of()));
+            assertThat(service.loadTaskItemStates("outcomes", ids).values())
+                    .allMatch(state -> state.tag() == 6 && state.outcomeName().equals("succeeded"));
+            assertThat(calls).containsExactly("HGETALL", "ZMSCORE");
+            calls.clear();
+            assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("id-1", "id-0", "id-1"), 7, 0))
+                    .keySet()).containsExactly("id-1", "id-0");
+            assertThat(calls).containsExactly("EVAL");
+            calls.clear();
+            assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of("id-1", "missing", "id-1"))
+                    .keySet()).containsExactly("id-1", "missing");
+            assertThat(calls).containsExactly("ZMSCORE");
+        } finally {
+            redisClient.removeListener(listener);
+        }
+    }
+
+    @Test
+    void reappendPreservesTerminalAndLateSuccessAdvancesFailedWithoutReopeningTask() {
+        runtime.createTask(descriptor("outcomes", 0));
+        long now = redisTimeMillis();
+        var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, List.of());
+        runtime.appendItems("outcomes", List.of(item));
+        runtime.storeTaskItemFailedResults("outcomes", List.of("item"));
+        itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), 5, 5_000));
+        scoreCore.closeScore("outcomes", -1);
+        runtime.appendItems("outcomes", List.of(item));
+        assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of("item")).get("item").tag()).isEqualTo(5);
+        new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6)
+                .onItemsSucceeded("outcomes", Map.of("item", "late"), 2_000);
+        assertThat(itemScoreCore.getItemScoreStates("outcomes", List.of("item")).get("item").tag()).isEqualTo(6);
+        assertThat(runtime.loadTaskItemResults("outcomes", List.of("item")))
+                .containsEntry("item", TaskItemResult.succeeded("late"));
+        assertThat(itemScoreCore.hasActiveItems(List.of("outcomes"))).containsEntry("outcomes", false);
+        assertThat(scoreCore.getScoreStates(List.of("outcomes")).get("outcomes").score()).isEqualTo(-1);
+    }
+
+    @Test
+    void heterogeneousObservationBatchUsesOneScoreAndAtMostOneResultCommand() {
+        Map<String, Long> due = new LinkedHashMap<>();
+        IntStream.range(0, 100).forEach(i -> due.put("id-" + i, 0L));
+        itemScoreCore.initializeItemScores("tracked", due, 0);
+        var observations = IntStream.range(0, 100).mapToObj(i ->
+                new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation(
+                        "id-" + i, 6 + i % 4, 1_001 + i, "reply-" + i)).toList();
+        var events = new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6);
+        var calls = new CopyOnWriteArrayList<String>();
+        var listener = new CommandListener() {
+            @Override public void commandStarted(CommandStartedEvent event) {
+                calls.add(event.getCommand().getType().toString());
+            }
+        };
+        redisClient.addListener(listener);
+        try {
+            runtime.close();
+            itemScoreCore.close();
+            runtime.loadTaskItemResults("tracked", List.of("id-0"));
+            itemScoreCore.getItemScoreStates("tracked", List.of("id-0"));
+            calls.clear();
+            events.onItemOutcomesObserved("tracked", observations);
+            assertThat(calls).containsExactly("EVAL", "EVAL");
+            var states = itemScoreCore.getItemScoreStates("tracked", List.copyOf(due.keySet()));
+            var results = runtime.loadTaskItemResults("tracked", List.copyOf(due.keySet()));
+            for (int i = 0; i < 100; i++) {
+                assertThat(states.get("id-" + i).tag()).isEqualTo(6 + i % 4);
+                assertThat(results.get("id-" + i)).isEqualTo(TaskItemResult.succeeded("reply-" + i));
+            }
+            calls.clear();
+            events.onItemOutcomesObserved("tracked", observations.stream().map(o ->
+                    new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation(
+                            o.messageId(), o.tag(), 3_000, null)).toList());
+            assertThat(calls).containsExactly("EVAL");
+            assertThat(runtime.loadTaskItemResults("tracked", List.of("id-0")))
+                    .containsEntry("id-0", TaskItemResult.succeeded("reply-0"));
+        } finally {
+            redisClient.removeListener(listener);
+        }
+    }
+
+    @Test
+    void concurrentResultUpdatesKeepHighestTagThenLatestMillis() throws Exception {
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var start = new CountDownLatch(1);
+            var writes = IntStream.range(0, 100).mapToObj(i -> executor.submit(() -> {
+                start.await();
+                runtime.storeTaskItemSuccessResults("tracked", Map.of("item",
+                        new TaskItemSuccessResult(6 + i % 4, 1_000 + i, "reply-" + i)));
+                return null;
+            })).toList();
+            start.countDown();
+            for (var write : writes) write.get();
+        }
+        runtime.storeTaskItemSuccessResults("tracked", Map.of("item", new TaskItemSuccessResult(6, 9_000, "send")));
+        runtime.storeTaskItemSuccessResults("tracked", Map.of("item", new TaskItemSuccessResult(9, 1_099, "same")));
+        runtime.storeTaskItemFailedResults("tracked", List.of("item"));
+        assertThat(runtime.loadTaskItemResults("tracked", List.of("item")))
+                .containsEntry("item", TaskItemResult.succeeded("reply-99"));
+        runtime.storeTaskItemSuccessResults("tracked", Map.of("item", new TaskItemSuccessResult(9, 1_100, "latest")));
+        for (int read = 0; read < 2; read++) {
+            assertThat(runtime.loadTaskItemResults("tracked", List.of("item")))
+                    .containsEntry("item", TaskItemResult.succeeded("latest"));
+        }
+    }
+
+    @Test
+    void sameSlotContentUpdatesAndTerminalObservationsDoNotReopenTheTask() {
+        runtime.createTask(descriptor("tracked", 0));
+        itemScoreCore.initializeItemScores("tracked", Map.of("item", 0L), 0);
+        scoreCore.closeScore("tracked", -1);
+        var events = new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6);
+        events.onItemOutcomesObserved("tracked", List.of(
+                new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation("item", 9, 1_001, "first")));
+        long terminal = itemScoreCore.getItemScoreStates("tracked", List.of("item")).get("item").score();
+        events.onItemOutcomesObserved("tracked", List.of(
+                new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation("item", 9, 1_002, "latest")));
+        events.onItemsSucceeded("tracked", Map.of("item", "send"), 9_000);
+        assertThat(itemScoreCore.getItemScoreStates("tracked", List.of("item")).get("item").score()).isEqualTo(terminal);
+        assertThat(runtime.loadTaskItemResults("tracked", List.of("item")))
+                .containsEntry("item", TaskItemResult.succeeded("latest"));
+        assertThat(scoreCore.getScoreStates(List.of("tracked")).get("tracked").score()).isEqualTo(-1);
+        assertThat(itemScoreCore.hasActiveItems(List.of("tracked"))).containsEntry("tracked", false);
+    }
+
+    @Test
+    void observationDoesNotCreateMissingOrCorruptItemsAndResultCorruptionIsNotOverwritten() {
+        String scoreKey = keyspace.base() + ":task:tracked:item_score";
+        redis.zadd(scoreKey, 1, "corrupt");
+        var events = new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6);
+        events.onItemOutcomesObserved("tracked", List.of(
+                new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation("missing", 9, 1_000, "missing"),
+                new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation("corrupt", 9, 1_000, "corrupt")));
+        assertThat(redis.zscore(scoreKey, "missing")).isNull();
+        assertThat(runtime.loadTaskItemResults("tracked", List.of("missing", "corrupt")).values())
+                .containsOnlyNulls();
+        String resultKey = keyspace.base() + ":task:tracked:results";
+        for (String corrupt : List.of("{", "{\"code\":\"200\",\"opaqueResultPayload\":\"legacy\"}",
+                "{\"code\":\"200\",\"opaqueResultPayload\":\"bad\",\"tag\":9,\"observedAtMillis\":-1}")) {
+            redis.hset(resultKey, "item", corrupt);
+            assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults("tracked",
+                    Map.of("item", new TaskItemSuccessResult(9, 1_000, "replacement"))))
+                    .isInstanceOf(RuntimeException.class).hasMessageContaining("Result is corrupt");
+            assertThat(redis.hget(resultKey, "item")).isEqualTo(corrupt);
+            assertThatThrownBy(() -> runtime.loadTaskItemResults("tracked", List.of("item")))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
     private TaskDescriptor descriptor(String taskId, int priority) {
         return new TaskDescriptor(
                 taskId,
@@ -1167,4 +1473,18 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         return Long.parseLong(parts.get(0)) * 1_000
                 + Long.parseLong(parts.get(1)) / 1_000;
     }
+    private static Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> outcomeTargets(
+            List<String> ids, int tag, long time
+    ) {
+        Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> targets = new java.util.LinkedHashMap<>();
+        ids.forEach(id -> targets.put(id, new TaskItemScoreBandCore.TaskItemOutcomeTarget(tag, time)));
+        return targets;
+    }
+
+    private static Map<String, TaskItemSuccessResult> successResults(Map<String, String> payloads, long time) {
+        Map<String, TaskItemSuccessResult> results = new java.util.LinkedHashMap<>();
+        payloads.forEach((id, payload) -> results.put(id, new TaskItemSuccessResult(6, time, payload)));
+        return results;
+    }
+
 }

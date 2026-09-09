@@ -39,6 +39,7 @@ public final class DispatchConvergenceRuntime {
     public static DispatchConvergenceRuntime assemble(
             PolicyPreset preset,
             long hotEligibilityFloorMillis,
+            int failedOutcomeTag,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
             TaskResourceCatalog taskCatalog,
@@ -104,7 +105,8 @@ public final class DispatchConvergenceRuntime {
                 taskRuntime,
                 assignmentDispatcher,
                 idleSettlement,
-                candidateSelection
+                candidateSelection,
+                failedOutcomeTag
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 serviceabilityConfig == null

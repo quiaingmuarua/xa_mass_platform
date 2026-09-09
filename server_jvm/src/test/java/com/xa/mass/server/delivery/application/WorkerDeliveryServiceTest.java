@@ -13,8 +13,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -99,12 +99,68 @@ class WorkerDeliveryServiceTest {
         verifyNoInteractions(serviceability, commandRuntime);
     }
 
+    @Test
+    void taskObservationsUseTheThirdEvidenceQueueAtAdapterAndPollingIngress() {
+        var report = outcomeReport(DeliveryEndpoint.WORKER, "worker-1", 9, 1001, "reply");
+        when(resultRuntime.appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, List.of(report))).thenReturn(1);
+        assertThat(service.appendAdapterReports("adapter-1", List.of(report)))
+                .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(1, 0));
+        service.appendWorkerResult(POLLING, "worker-1", report);
+        verify(resultRuntime, org.mockito.Mockito.times(2))
+                .appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, List.of(report));
+        verifyNoInteractions(commandRuntime, directCalls, matchingCatalog, scheduling, serviceability);
+    }
+
+    @Test
+    void observationAdmissionRejectsInvalidFieldsSourcesAndBinding() {
+        for (String payload : List.of("{}", "{bad",
+                "{\"tag\":5,\"observedAtMillis\":1000}",
+                "{\"tag\":9,\"observedAtMillis\":9999999999901}",
+                "{\"tag\":9,\"observedAtMillis\":1000,\"opaqueResultPayload\":\"\"}")) {
+            var report = DeliveryReport.create(DeliveryEndpoint.WORKER, "worker-1", DeliveryEndpoint.TASK,
+                    "platform.worker.task-outcome.observed", "200", payload, "forward");
+            assertThat(service.appendAdapterReports("adapter-1", List.of(report)))
+                    .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
+            assertThatThrownBy(() -> service.appendWorkerResult(POLLING, "worker-1", report))
+                    .isInstanceOf(ServerException.class);
+        }
+        for (var producer : List.of(DeliveryEndpoint.ADAPTER, DeliveryEndpoint.SERVER)) {
+            assertThat(service.appendAdapterReports("adapter-1", List.of(
+                    outcomeReport(producer, "adapter-1", 8, 1000, null))))
+                    .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(0, 1));
+        }
+        when(bindings.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of());
+        assertThatThrownBy(() -> service.appendWorkerResult(POLLING, "worker-1",
+                outcomeReport(DeliveryEndpoint.WORKER, "worker-1", 8, 1000, null)))
+                .isInstanceOf(ServerException.class);
+        verifyNoInteractions(resultRuntime, commandRuntime);
+    }
+
+    @Test
+    void observationAppendFailureUsesExistingRetryableError() {
+        var report = outcomeReport(DeliveryEndpoint.WORKER, "worker-1", 8, 1000, null);
+        when(resultRuntime.appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, List.of(report)))
+                .thenThrow(new IllegalStateException("Redis unavailable"));
+        assertThatThrownBy(() -> service.appendAdapterReports("adapter-1", List.of(report)))
+                .isInstanceOf(ServerException.class)
+                .satisfies(error -> assertThat(((ServerException) error).errorCode())
+                        .isEqualTo(ServerErrorCode.WORKER_DELIVERY_UNAVAILABLE));
+    }
+
+    private static DeliveryReport outcomeReport(DeliveryEndpoint producer, String source, int tag, long time, String content) {
+        var codec = new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec();
+        return DeliveryReport.create(producer, source, DeliveryEndpoint.TASK,
+                "platform.worker.task-outcome.observed", "3303",
+                codec.encodeTaskOutcomeObservation(new WorkerDeliveryProtocol.TaskOutcomeObservation(tag, time, content)),
+                "forward");
+    }
+
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private static final String POLLING =
             WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
     private WorkerCommandRuntime commandRuntime;
-    private TaskResultRuntime resultRuntime;
+    private TaskEvidenceRuntime resultRuntime;
     private WorkerResourceCatalog bindings;
     private DirectCallService directCalls;
     private WorkerServiceabilityRuntime serviceability;
@@ -115,7 +171,7 @@ class WorkerDeliveryServiceTest {
     @BeforeEach
     void setUp() {
         commandRuntime = mock(WorkerCommandRuntime.class);
-        resultRuntime = mock(TaskResultRuntime.class);
+        resultRuntime = mock(TaskEvidenceRuntime.class);
         bindings = mock(WorkerResourceCatalog.class);
         when(bindings.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", new WorkerDescriptor("worker-1", "group", POLLING)));
@@ -621,24 +677,24 @@ class WorkerDeliveryServiceTest {
     void pointWorkerResultsAreMappedToSuccessAndFailureLanes() {
         DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         DeliveryReport failure = result("9f0d983c-8010-4d59-a6d2-e8fedb8d0059", DeliveryEndpoint.WORKER, "platform.worker.command.failed", "3500");
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         )).thenReturn(1);
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.FAILURE,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 List.of(failure)
         )).thenReturn(1);
 
         service.appendWorkerResult(POLLING, "worker-1", success);
         service.appendWorkerResult(POLLING, "worker-1", failure);
 
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.SUCCESS,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         );
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.FAILURE,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 List.of(failure)
         );
     }
@@ -659,7 +715,7 @@ class WorkerDeliveryServiceTest {
                 .isEqualTo(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST
                 );
-        verify(resultRuntime, never()).appendTaskResults(
+        verify(resultRuntime, never()).appendTaskEvidence(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList()
         );
@@ -683,7 +739,7 @@ class WorkerDeliveryServiceTest {
                 "worker-1",
                 result
         )).isInstanceOf(ServerException.class);
-        verify(resultRuntime, never()).appendTaskResults(
+        verify(resultRuntime, never()).appendTaskEvidence(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList()
         );
@@ -694,12 +750,12 @@ class WorkerDeliveryServiceTest {
         DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
         DeliveryReport failure = result("9f0d983c-8010-4d59-a6d2-e8fedb8d0059", DeliveryEndpoint.WORKER, "platform.worker.command.failed", "3500");
         DeliveryReport forgedRejection = result("66f60ac8-e68f-4783-90e3-13b20a54ca13", DeliveryEndpoint.ADAPTER, "platform.adapter.command.delivery-failed", "23002");
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         )).thenReturn(1);
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.FAILURE,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 List.of(failure, forgedRejection)
         )).thenReturn(2);
 
@@ -714,12 +770,12 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(3);
         assertThat(counts.rejectedCount()).isZero();
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.SUCCESS,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         );
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.FAILURE,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_FAILURE,
                 List.of(failure, forgedRejection)
         );
     }
@@ -778,8 +834,8 @@ class WorkerDeliveryServiceTest {
                 com.xa.mass.workerdelivery.json.Jsons.toJson(java.util.Map.of("workerId", "worker-1", "reason", "DEADLINE_EXCEEDED")),
                 "context"
         );
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         )).thenReturn(1);
 
@@ -790,8 +846,8 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(1);
         assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.SUCCESS,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         );
     }
@@ -851,8 +907,8 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "unknown"
         );
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(task)
         )).thenReturn(1);
         when(directCalls.completeReports(
@@ -883,8 +939,8 @@ class WorkerDeliveryServiceTest {
                 .WorkerResultAppendCounts(1, 1));
         assertThat(kernelCounts).isEqualTo(new WorkerDeliveryService
                 .WorkerResultAppendCounts(2, 0));
-        verify(resultRuntime).appendTaskResults(
-                TaskResultClass.SUCCESS,
+        verify(resultRuntime).appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(task)
         );
         verify(directCalls).completeReports(
@@ -969,8 +1025,8 @@ class WorkerDeliveryServiceTest {
     @Test
     void incompleteRuntimeAppendIsUnavailableForRetry() {
         DeliveryReport success = result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "");
-        when(resultRuntime.appendTaskResults(
-                TaskResultClass.SUCCESS,
+        when(resultRuntime.appendTaskEvidence(
+                TaskEvidenceType.EXECUTION_SUCCESS,
                 List.of(success)
         )).thenReturn(0);
 
@@ -1004,12 +1060,12 @@ class WorkerDeliveryServiceTest {
                 "platform.worker.command.failed", "200");
         var delivery = result("delivery", DeliveryEndpoint.ADAPTER,
                 "platform.adapter.command.delivery-failed", "");
-        when(resultRuntime.appendTaskResults(TaskResultClass.SUCCESS, List.of(success))).thenReturn(1);
-        when(resultRuntime.appendTaskResults(TaskResultClass.FAILURE, List.of(failure, delivery))).thenReturn(2);
+        when(resultRuntime.appendTaskEvidence(TaskEvidenceType.EXECUTION_SUCCESS, List.of(success))).thenReturn(1);
+        when(resultRuntime.appendTaskEvidence(TaskEvidenceType.EXECUTION_FAILURE, List.of(failure, delivery))).thenReturn(2);
         assertThat(service.appendAdapterReports("endpoint-1", List.of(success, failure, delivery)))
                 .isEqualTo(new WorkerDeliveryService.WorkerResultAppendCounts(3, 0));
-        verify(resultRuntime).appendTaskResults(TaskResultClass.SUCCESS, List.of(success));
-        verify(resultRuntime).appendTaskResults(TaskResultClass.FAILURE, List.of(failure, delivery));
+        verify(resultRuntime).appendTaskEvidence(TaskEvidenceType.EXECUTION_SUCCESS, List.of(success));
+        verify(resultRuntime).appendTaskEvidence(TaskEvidenceType.EXECUTION_FAILURE, List.of(failure, delivery));
     }
 
     @Test

@@ -143,7 +143,7 @@ exact Worker hold confirmation (clean exact score -> execution fence with dirty=
 Observation is not claim. If an exact fence fails, no Command is published.
 Unused or publication-failed leases recover through lease expiry. Task
 Dispatch separately owns Item expiry/exhaustion, failed-result-before-
-`FINAL_FAILED`, ordinary Task pacing, and idle close/park. Result routing and
+`TERMINAL(tag=5)`, ordinary Task pacing, and idle close/park. Result routing and
 finality remain independent owners.
 
 Confirmation must return TRANSITIONED with a new execution fence even when the

@@ -1,5 +1,7 @@
 package com.xa.mass.worker.execution;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -35,6 +37,11 @@ public final class WorkerCommandDispatcher
 
     @Override
     public Optional<WorkerCommandOutcome> execute(DeliveryCommand command) {
+        return execute(command, WorkerOutcomeReporter.UNAVAILABLE);
+    }
+
+    @Override
+    public Optional<WorkerCommandOutcome> execute(DeliveryCommand command, WorkerOutcomeReporter reporter) {
         if (command == null) {
             throw new WorkerException(
                     WorkerErrorCode.COMMAND_MESSAGE_INVALID,
@@ -48,22 +55,25 @@ public final class WorkerCommandDispatcher
             return Optional.empty();
         }
 
-        return Optional.of(executeEvent(command));
+        WorkerOutcomeReporter available = command.src() == TASK
+                ? Objects.requireNonNull(reporter, "reporter") : WorkerOutcomeReporter.UNAVAILABLE;
+        return Optional.of(executeEvent(command, available));
     }
 
-    private WorkerCommandOutcome executeEvent(DeliveryCommand command) {
+    private WorkerCommandOutcome executeEvent(DeliveryCommand command, WorkerOutcomeReporter reporter) {
         WorkerEventDefinition<?> definition = definitions.get(
                 command.messageType()
         );
         if (definition == null) {
             return failure(WorkerErrorCode.EVENT_NOT_FOUND);
         }
-        return invokeDefinition(command, definition);
+        return invokeDefinition(command, definition, reporter);
     }
 
     private static <P> WorkerCommandOutcome invokeDefinition(
             DeliveryCommand command,
-            WorkerEventDefinition<P> definition
+            WorkerEventDefinition<P> definition,
+            WorkerOutcomeReporter reporter
     ) {
         P parameters;
         try {
@@ -78,7 +88,7 @@ public final class WorkerCommandDispatcher
 
         String payload;
         try {
-            payload = definition.handler().execute(parameters);
+            payload = definition.handler().execute(parameters, reporter);
         } catch (WorkerException error) {
             return failure(error.errorCode());
         } catch (Exception error) {

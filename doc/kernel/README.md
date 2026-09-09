@@ -47,7 +47,7 @@ Mechanical Owner documents:
 - [Worker Score](../../kernel_jvm/doc/score/worker-score-band-scheduling.md)
 - [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 - [Redis Keyspace](../../kernel_jvm/doc/runtime-redis/redis-keyspace.md)
-- [Task Result Redis Shape](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
+- [Task Evidence And Result Redis Shape](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
 - [Worker Runtime Redis Shape](../../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md)
 - [Worker Serviceability Redis Shape](../../kernel_jvm/doc/runtime-redis/worker-serviceability-runtime-redis-shape.md)
 - [Worker Matching Owner](../../worker_matching_jvm/README.md)
@@ -70,6 +70,12 @@ Cross-module documents:
 - [Proof Lanes](../../TESTING.md)
 
 ## Cross-Owner Reading
+
+Task execution and later outcome observations share the existing Result
+Convergence lifecycle. Kernel owns monotonic terminal progression and ordered
+Result storage; Server defines business names. Later observations update the
+same Item without reopening scheduling or releasing Worker leases. The Result
+Owner documents independent Score/content commits and their best-effort limits.
 
 [Scheduling Mainline](scheduling-overview.md) explains the independent Score
 owners, Matching handoff, Result evidence and vertical scale boundary.

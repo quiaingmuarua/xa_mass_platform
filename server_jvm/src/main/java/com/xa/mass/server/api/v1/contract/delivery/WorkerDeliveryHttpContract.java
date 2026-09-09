@@ -6,6 +6,7 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.Collections;
@@ -53,8 +54,14 @@ public final class WorkerDeliveryHttpContract {
             @NotBlank String src,
             @NotBlank String sourceId,
             @NotBlank String dst,
+            @Schema(description = "Exact Report event name. WORKER-to-TASK also accepts "
+                    + "platform.worker.task-outcome.observed for later observations of the same Item.")
             @NotBlank String messageType,
             @NotNull String diagnosticCode,
+            @Schema(description = "Event payload encoded as a JSON string. Task outcome observations use "
+                    + "{tag, observedAtMillis, opaqueResultPayload?}: tag 6..9, positive supported milliseconds, "
+                    + "and optional nonblank string content. Higher tag wins, then later milliseconds; "
+                    + "state-only observations preserve content. Forward remains the original opaque Command context.")
             @NotNull String payload,
             @NotNull String forward
     ) {

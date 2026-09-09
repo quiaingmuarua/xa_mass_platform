@@ -3,7 +3,7 @@ package com.xa.mass.kernel.pacer;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.dispatch.DispatchConvergenceRuntime;
 import com.xa.mass.kernel.pacer.result.ResultConvergenceRuntime;
@@ -90,7 +90,9 @@ public final class KernelPacerRuntime {
     public static KernelPacerRuntime assemble(
             PolicyPreset policyPreset,
             Duration shutdownTimeout,
-            TaskResultRuntime taskResults,
+            int failedOutcomeTag,
+            int successOutcomeTag,
+            TaskEvidenceRuntime taskEvidence,
             TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
@@ -108,10 +110,11 @@ public final class KernelPacerRuntime {
         ResultConvergenceRuntime resultConvergence =
                 ResultConvergenceRuntime.assemble(
                         policy.preset(),
-                        taskResults,
+                        taskEvidence,
                         new DefaultTaskItemResultEvents(
                                 taskRuntime,
-                                itemScores
+                                itemScores,
+                                successOutcomeTag
                         ),
                         new DefaultWorkerExecutionResultEvents(
                                 workerScores
@@ -126,6 +129,7 @@ public final class KernelPacerRuntime {
                 DispatchConvergenceRuntime.assemble(
                         policy.preset(),
                         policy.hotEligibilityFloorMillis(),
+                        failedOutcomeTag,
                         taskScores,
                         itemScores,
                         taskCatalog,

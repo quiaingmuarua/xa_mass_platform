@@ -3,16 +3,21 @@ package com.xa.mass.worker.transport.polling;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerOutcomeReporter;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskOutcomeObservation;
 import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -71,7 +76,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
                     null
             );
         }
-        Optional<WorkerCommandOutcome> result = commandExecutor.execute(command);
+        Optional<WorkerCommandOutcome> result = commandExecutor.execute(command, reporter(command));
         if (!result.isPresent()) {
             return false;
         }
@@ -113,6 +118,33 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 }
             }
         }
+    }
+
+    private WorkerOutcomeReporter reporter(DeliveryCommand command) {
+        if (command.src() != TASK) {
+            return WorkerOutcomeReporter.UNAVAILABLE;
+        }
+        String forward = command.forward();
+        return (tag, time, payload) -> {
+            if (closed) {
+                return false;
+            }
+            try {
+                String encoded = codec.encodeDeliveryReport(DeliveryReport.create(
+                        WORKER, workerId, TASK, WORKER_TASK_OUTCOME_OBSERVED, "",
+                        codec.encodeTaskOutcomeObservation(new TaskOutcomeObservation(tag, time, payload)),
+                        forward));
+                if (encoded.getBytes(StandardCharsets.UTF_8).length > 1_000_000) {
+                    return false;
+                }
+                client.submitResult(workerId, encoded);
+                return true;
+            } catch (IOException | RuntimeException failure) {
+                LOGGER.log(Level.WARNING, "errorCode={0} operation=polling.outcome.send failureType={1}",
+                        new Object[]{WorkerErrorCode.RESULT_SUBMIT_FAILED.code(), failure.getClass().getSimpleName()});
+                return false;
+            }
+        };
     }
 
     @Override

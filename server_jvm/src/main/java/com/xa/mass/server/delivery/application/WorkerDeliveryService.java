@@ -2,9 +2,12 @@ package com.xa.mass.server.delivery.application;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_DELIVERY_FAILED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_PROPERTIES_OBSERVED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SERVER_WORKER_POLL_OBSERVED;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 
 import com.xa.mass.server.delivery.DeliveryStageEvent;
 
@@ -14,8 +17,8 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
@@ -55,7 +58,7 @@ public final class WorkerDeliveryService {
     );
 
     private final WorkerCommandRuntime commandRuntime;
-    private final TaskResultRuntime taskResults;
+    private final TaskEvidenceRuntime taskEvidence;
     private final WorkerResourceCatalog workerCatalog;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
@@ -64,7 +67,7 @@ public final class WorkerDeliveryService {
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            TaskResultRuntime taskResults,
+            TaskEvidenceRuntime taskEvidence,
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
@@ -72,7 +75,7 @@ public final class WorkerDeliveryService {
             WorkerSchedulingService scheduling
     ) {
         this.commandRuntime = commandRuntime;
-        this.taskResults = taskResults;
+        this.taskEvidence = taskEvidence;
         this.workerCatalog = workerCatalog;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
@@ -268,14 +271,14 @@ public final class WorkerDeliveryService {
     ) {
         String operation = "workerDelivery.appendWorkerResult";
         requirePointBinding(endpointManagerId, workerId);
-        TaskResultClass resultClass = taskResultClass(endpointManagerId, result);
+        TaskEvidenceType evidenceType = taskEvidenceType(endpointManagerId, result);
         if (result.src() != DeliveryEndpoint.WORKER
                 || !workerId.equals(result.sourceId())
-                || resultClass == null) {
-            throw invalid(operation, "Worker result must be a TASK command succeeded or failed event");
+                || evidenceType == null) {
+            throw invalid(operation, "Worker report must be a supported TASK evidence event");
         }
-        appendTaskResults(
-                resultClass,
+        appendTaskEvidence(
+                evidenceType,
                 List.of(result),
                 operation
         );
@@ -397,36 +400,43 @@ public final class WorkerDeliveryService {
     ) {
         List<DeliveryReport> successfulTaskResults = new ArrayList<>();
         List<DeliveryReport> failedTaskResults = new ArrayList<>();
+        List<DeliveryReport> observations = new ArrayList<>();
         int rejectedCount = 0;
         for (DeliveryReport report : reports) {
-            TaskResultClass resultClass = taskResultClass(
+            TaskEvidenceType evidenceType = taskEvidenceType(
                     endpointManagerId,
                     report
             );
-            if (resultClass == TaskResultClass.SUCCESS) {
+            if (evidenceType == TaskEvidenceType.EXECUTION_SUCCESS) {
                 successfulTaskResults.add(report);
-            } else if (resultClass == TaskResultClass.FAILURE) {
+            } else if (evidenceType == TaskEvidenceType.EXECUTION_FAILURE) {
                 failedTaskResults.add(report);
+            } else if (evidenceType == TaskEvidenceType.OUTCOME_OBSERVATION) {
+                observations.add(report);
             } else {
                 rejectedCount++;
             }
         }
         int acceptedCount = 0;
         if (!successfulTaskResults.isEmpty()) {
-            appendTaskResults(
-                    TaskResultClass.SUCCESS,
+            appendTaskEvidence(
+                    TaskEvidenceType.EXECUTION_SUCCESS,
                     successfulTaskResults,
                     operation
             );
             acceptedCount += successfulTaskResults.size();
         }
         if (!failedTaskResults.isEmpty()) {
-            appendTaskResults(
-                    TaskResultClass.FAILURE,
+            appendTaskEvidence(
+                    TaskEvidenceType.EXECUTION_FAILURE,
                     failedTaskResults,
                     operation
             );
             acceptedCount += failedTaskResults.size();
+        }
+        if (!observations.isEmpty()) {
+            appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, observations, operation);
+            acceptedCount += observations.size();
         }
         return new WorkerResultAppendCounts(acceptedCount, rejectedCount);
     }
@@ -543,7 +553,7 @@ public final class WorkerDeliveryService {
         );
     }
 
-    private static TaskResultClass taskResultClass(
+    private static TaskEvidenceType taskEvidenceType(
             String endpointManagerId,
             DeliveryReport report
     ) {
@@ -552,8 +562,13 @@ public final class WorkerDeliveryService {
         }
         if (report.src() == DeliveryEndpoint.WORKER) {
             return switch (report.messageType()) {
-                case WORKER_COMMAND_SUCCEEDED -> TaskResultClass.SUCCESS;
-                case WORKER_COMMAND_FAILED -> TaskResultClass.FAILURE;
+                case WORKER_COMMAND_SUCCEEDED -> TaskEvidenceType.EXECUTION_SUCCESS;
+                case WORKER_COMMAND_FAILED -> TaskEvidenceType.EXECUTION_FAILURE;
+                case WORKER_TASK_OUTCOME_OBSERVED -> {
+                    var observation = new WorkerDeliveryCodec().decodeTaskOutcomeObservation(report.payload());
+                    yield observation != null && observation.observedAtMillis() <= TaskItemScoreBandCore.MAX_TIME_MILLIS
+                            && !report.forward().isBlank() ? TaskEvidenceType.OUTCOME_OBSERVATION : null;
+                }
                 default -> null;
             };
         }
@@ -568,20 +583,20 @@ public final class WorkerDeliveryService {
                     && payload.get("workerId") instanceof String workerId
                     && !workerId.isBlank()
                     && "DEADLINE_EXCEEDED".equals(payload.get("reason"))
-                    ? TaskResultClass.FAILURE : null;
+                    ? TaskEvidenceType.EXECUTION_FAILURE : null;
         } catch (RuntimeException invalidPayload) {
             return null;
         }
     }
 
-    private void appendTaskResults(
-            TaskResultClass resultClass,
+    private void appendTaskEvidence(
+            TaskEvidenceType evidenceType,
             List<DeliveryReport> results,
             String operation
     ) {
         try {
-            int accepted = taskResults.appendTaskResults(
-                    resultClass,
+            int accepted = taskEvidence.appendTaskEvidence(
+                    evidenceType,
                     results
             );
             if (accepted != results.size()) {

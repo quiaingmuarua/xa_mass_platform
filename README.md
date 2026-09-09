@@ -48,6 +48,13 @@ Result and requesting finality are ordered Owner calls, not a transaction or
 an unconditional repair guarantee. The detailed failure windows are in
 [Result storage](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
 
+RPC Handlers remain compatible. A Handler may retain a Reporter after execution
+and send later observations for the same Item. Kernel advances generic terminal
+state without reopening scheduling or touching the original Worker lease;
+Server defines business names and exposes state and latest content separately.
+The [shared Worker SDK](transport/worker-core/README.md#later-task-outcome-observations)
+provides this TRACKED capability without a Task mode or new creation parameter.
+
 Worker Prepare resolves Server-owned external identity, then establishes Kernel
 Binding and cold Score membership. Valid network observations request activation. Its Properties input supplies registration coordinates
 only; it does not create or refresh Matching facts. Transparent

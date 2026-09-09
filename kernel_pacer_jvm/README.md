@@ -57,23 +57,24 @@ Result Convergence
 -> Dispatch Convergence
 ```
 
-Result Convergence owns exactly three fixed lane definitions:
-`TASK_SUCCESS`, `TASK_FAILURE`, and `NETWORK_EVIDENCE` in every preset. One platform
+Result Convergence owns exactly four fixed lane definitions:
+`TASK_SUCCESS`, `TASK_FAILURE`, `NETWORK_EVIDENCE`, and `TASK_OBSERVATION` in every preset. One platform
 coordinator schedules at most ten bounded Batches by the smallest
 `inflight / targetConcurrency` ratio; priority only breaks equal ratios. Every
 non-empty Batch runs on a named virtual thread. Production target/max values
-are SUCCESS `6/10`, FAILURE `3/10`, and Evidence `1/1`. Both Task lanes may
+are SUCCESS `6/10`, FAILURE `3/10`, Network Evidence `1/1`, and Observation `1/10`. Task lanes may
 borrow idle capacity while Network Evidence remains single-flight.
 These values are internal constants, not configuration or a public lane model.
 Server validates exact Report event contracts and producers and selects the Task lane; Task
 policy does not read `DeliveryReport.diagnosticCode`. Result policies stop after
-strict Report parsing, bounded last-wins grouping and publication to the fixed
+strict Report parsing, bounded grouping and publication to the fixed
 `TaskItemResultEvents`, `WorkerExecutionResultEvents`, and
 `WorkerServiceabilityEvents` ports. They do not import Task/TaskItem/Worker
 score owners or expose raw Worker lease scores. The default event Mechanisms in
 `kernel_jvm` implement the current store, promotion, exact release and
-Serviceability transitions. Network Evidence shares the same lifecycle without
-becoming a general EventBus.
+Serviceability transitions. Observations retain each Item's maximum state target
+and latest content by tag then reported milliseconds; their Mechanism never
+touches Worker leases. All four lanes share this finite lifecycle.
 
 Dispatch Convergence owns one Main Scheduler and four fixed single-flight
 Resource Producers. The Main Scheduler reads one bounded descending

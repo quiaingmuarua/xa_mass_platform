@@ -1,6 +1,7 @@
 package com.xa.mass.server.task;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
@@ -10,6 +11,7 @@ import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.ArrayList;
@@ -27,15 +29,21 @@ public final class TaskDataService {
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
     private final TaskItemMapper taskItems;
+    private final TaskItemScoreBandCore itemScores;
+    private final TaskItemOutcomeProperties outcomes;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
             TaskResourceCatalog taskCatalog,
-            TaskItemMapper taskItems
+            TaskItemMapper taskItems,
+            TaskItemScoreBandCore itemScores,
+            TaskItemOutcomeProperties outcomes
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
+        this.itemScores = itemScores;
+        this.outcomes = outcomes;
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
@@ -122,26 +130,7 @@ public final class TaskDataService {
             List<String> uniqueIds = new ArrayList<>(
                     new LinkedHashSet<>(messageIds)
             );
-            TaskDescriptor descriptor = taskCatalog
-                    .loadTaskAllocationDescriptors(List.of(taskId))
-                    .get(taskId);
-            if (descriptor == null) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_NOT_FOUND,
-                        "taskData.loadResults",
-                        null,
-                        null
-                );
-            }
-            if (!isPublicFiniteTask(descriptor)
-                    && !isManagedCallTask(descriptor)) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                        "taskData.loadResults",
-                        "Task does not support Result load",
-                        null
-                );
-            }
+            requireQueryableTask(taskId, "taskData.loadResults");
             return TaskItemResultResponse.fromObservedResults(
                     uniqueIds,
                     taskRuntime.loadTaskItemResults(taskId, uniqueIds)
@@ -154,6 +143,53 @@ public final class TaskDataService {
                     "taskData.loadResults",
                     null,
                     error
+            );
+        }
+    }
+
+    public Map<String, TaskItemStateResponse> loadTaskItemStates(
+            String taskId,
+            List<String> messageIds
+    ) {
+        try {
+            List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
+            requireQueryableTask(taskId, "taskData.loadStates");
+            var states = itemScores.getItemScoreStates(taskId, uniqueIds);
+            var response = new LinkedHashMap<String, TaskItemStateResponse>();
+            for (String messageId : uniqueIds) {
+                var state = states.get(messageId);
+                response.put(messageId, state == null ? null : new TaskItemStateResponse(
+                        state.band().wireValue(),
+                        state.tag(),
+                        state.timeMillis(),
+                        outcomes.outcomeName(state.tag())
+                ));
+            }
+            return Collections.unmodifiableMap(response);
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskData.loadStates",
+                    null,
+                    error
+            );
+        }
+    }
+
+    private void requireQueryableTask(String taskId, String operation) {
+        TaskDescriptor descriptor = taskCatalog
+                .loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+        if (descriptor == null) {
+            throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
+        }
+        if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                    operation,
+                    "Task does not support Item queries",
+                    null
             );
         }
     }

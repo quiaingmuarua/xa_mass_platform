@@ -11,7 +11,7 @@ import com.xa.mass.server.api.v1.controller.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.controller.AdapterDirectCallController;
 import com.xa.mass.server.api.v1.controller.WorkerPointDeliveryController;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -96,7 +96,7 @@ class ServerApplicationContextTest {
                 .isInstanceOf(RedisWorkerResourceCatalog.class);
         assertThat(applicationContext.getBean(WorkerCommandRuntime.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(TaskResultRuntime.class))
+        assertThat(applicationContext.getBean(TaskEvidenceRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(
                 WorkerServiceabilityRuntime.class
@@ -468,6 +468,12 @@ class ServerApplicationContextTest {
         assertThat(document.path("paths").has(
                 "/api/v1/worker-groups/{workerGroupId}/item-results:load"
         )).isFalse();
+
+        var itemStateType = document.path("components").path("schemas")
+                .path("TaskItemStateResponse").path("type");
+        assertThat(itemStateType.isArray()).isTrue();
+        assertThat(itemStateType.get(0).asText()).isEqualTo("object");
+        assertThat(itemStateType.get(1).asText()).isEqualTo("null");
 
         Path snapshot = Path.of(
                 System.getProperty("xa.mass.repository.root")

@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.score.redis;
 
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import io.lettuce.core.RedisClient;
@@ -38,24 +37,33 @@ public final class RedisTaskItemScoreBandCore
             redis.call("ZADD", key, next_score, message_id)
             return {"transitioned", next_score}
             """;
-    private static final String PROMOTE_CROSS_BAND_SCRIPT = """
+    private static final String PROMOTE_OUTCOMES_SCRIPT = """
             local key = KEYS[1]
-            local message_id = ARGV[1]
-            local target_score = tonumber(ARGV[2])
-            local max_same_band_score_delta = tonumber(ARGV[3])
-
-            local stored = redis.call("ZSCORE", key, message_id)
-            if not stored then
-              return {"not_found"}
+            local tag_factor = tonumber(ARGV[1])
+            local suffix_factor = tonumber(ARGV[2])
+            local results = {}
+            for i = 3, #ARGV, 2 do
+              local target_score = tonumber(ARGV[i + 1])
+              local stored = redis.call("ZSCORE", key, ARGV[i])
+              if not stored then
+                results[#results + 1] = {"not_found"}
+              else
+                local current = tonumber(stored)
+                if not current or current < tag_factor
+                    or current >= 10 * tag_factor
+                    or current ~= math.floor(current)
+                    or (current >= 2 * tag_factor
+                        and current % suffix_factor ~= 0) then
+                  results[#results + 1] = {"corrupt"}
+                elseif target_score > current then
+                  redis.call("ZADD", key, target_score, ARGV[i])
+                  results[#results + 1] = {"transitioned", target_score}
+                else
+                  results[#results + 1] = {"noop", current}
+                end
+              end
             end
-
-            local stored_score = tonumber(stored)
-            if target_score - stored_score <= max_same_band_score_delta then
-              return {"noop", stored_score}
-            end
-
-            redis.call("ZADD", key, target_score, message_id)
-            return {"transitioned", target_score}
+            return results
             """;
 
     private final RedisClient redisClient;
@@ -167,50 +175,48 @@ public final class RedisTaskItemScoreBandCore
     @Override
     public Map<String, TaskItemScoreTransitionResult> promoteItemOutcomes(
             String taskId,
-            List<String> messageIds,
-            TaskItemScoreBand targetBand,
-            long targetTimeMillis
+            Map<String, TaskItemOutcomeTarget> targets
     ) {
-        if (messageIds == null) {
-            throw new IllegalArgumentException("messageIds must be present");
+        if (targets == null) {
+            throw new IllegalArgumentException("targets must be present");
         }
-        List<String> orderedMessageIds = new ArrayList<>(
-                new LinkedHashSet<>(messageIds)
-        );
-        if (orderedMessageIds.isEmpty()) {
+        if (targets.isEmpty()) {
             return Map.of();
         }
-        if (isBlank(taskId)
-                || targetBand == null
-                || !validTimeMillis(targetTimeMillis)
-                || orderedMessageIds.stream().anyMatch(
-                        RedisTaskItemScoreBandCore::isBlank
-                )) {
+        if (isBlank(taskId) || targets.size() > MAX_ITEM_BATCH_SIZE) {
             return uniformResults(
-                    orderedMessageIds,
+                    targets.keySet(),
                     TaskItemScoreTransitionStatus.INVALID
             );
         }
-
-        long targetScore = score(
-                tag(targetBand),
-                targetTimeMillis / SLOT_MILLIS,
-                FINAL_SUFFIX
+        List<String> orderedMessageIds = new ArrayList<>();
+        Map<String, TaskItemScoreTransitionResult> immediate = new LinkedHashMap<>();
+        List<String> arguments = new ArrayList<>(targets.size() * 2 + 2);
+        arguments.add(Long.toString(TAG_FACTOR));
+        arguments.add(Long.toString(SUFFIX_FACTOR));
+        targets.forEach((messageId, target) -> {
+            if (isBlank(messageId) || target == null
+                    || target.tag() < MIN_TERMINAL_TAG || target.tag() > MAX_TERMINAL_TAG
+                    || !validTimeMillis(target.timeMillis())) {
+                immediate.put(messageId, transition(TaskItemScoreTransitionStatus.INVALID));
+            } else {
+                orderedMessageIds.add(messageId);
+                arguments.add(messageId);
+                arguments.add(Long.toString(score(
+                        target.tag(), target.timeMillis() / SLOT_MILLIS, TERMINAL_SUFFIX)));
+            }
+        });
+        if (orderedMessageIds.isEmpty()) {
+            return immediate;
+        }
+        List<?> replies = commands().eval(
+                PROMOTE_OUTCOMES_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey(taskId)},
+                arguments.toArray(String[]::new)
         );
-        RedisAsyncCommands<String, String> async = connection().async();
-        List<RedisFuture<Object>> futures = new ArrayList<>(
-                orderedMessageIds.size()
-        );
-        String key = scoreKey(taskId);
-        for (String messageId : orderedMessageIds) {
-            futures.add(async.eval(
-                    PROMOTE_CROSS_BAND_SCRIPT,
-                    ScriptOutputType.MULTI,
-                    new String[]{key},
-                    messageId,
-                    Long.toString(targetScore),
-                    Long.toString(MAX_SAME_BAND_SCORE_DELTA)
-            ));
+        if (replies == null || replies.size() != orderedMessageIds.size()) {
+            throw new IllegalStateException("TaskItem outcome batch result is invalid");
         }
 
         LinkedHashMap<String, TaskItemScoreTransitionResult> results =
@@ -219,11 +225,11 @@ public final class RedisTaskItemScoreBandCore
             results.put(
                     orderedMessageIds.get(index),
                     scriptResult(
-                            futures.get(index).toCompletableFuture().join()
+                            replies.get(index)
                     )
             );
         }
-        return results;
+        return mergeResults(targets.keySet(), immediate, results);
     }
 
     @Override
@@ -406,15 +412,40 @@ public final class RedisTaskItemScoreBandCore
             String taskId,
             List<String> messageIds
     ) {
-        throw notImplemented("get_item_score_states");
-    }
-
-    private static int tag(TaskItemScoreBand band) {
-        return switch (band) {
-            case ACTIVE -> ACTIVE_TAG;
-            case FINAL_FAILED -> FINAL_FAILED_TAG;
-            case FINAL_SUCCESS -> FINAL_SUCCESS_TAG;
-        };
+        if (isBlank(taskId) || messageIds == null
+                || messageIds.size() > MAX_ITEM_BATCH_SIZE
+                || messageIds.stream().anyMatch(RedisTaskItemScoreBandCore::isBlank)) {
+            throw new IllegalArgumentException("TaskItem score query is invalid");
+        }
+        List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Double> scores = commands().zmscore(
+                scoreKey(taskId), uniqueIds.toArray(String[]::new)
+        );
+        Map<String, TaskItemScoreState> states = new LinkedHashMap<>();
+        for (int index = 0; index < uniqueIds.size(); index++) {
+            Double stored = scores.get(index);
+            TaskItemScoreState state = null;
+            if (stored != null) {
+                long raw = scoreToLong(stored);
+                DecodedScore decoded = decodeScore(raw);
+                if (decoded == null) {
+                    throw new IllegalStateException("TaskItem score is invalid");
+                }
+                boolean active = decoded.tag() == ACTIVE_TAG;
+                state = new TaskItemScoreState(
+                        raw,
+                        active ? TaskItemScoreBand.ACTIVE : TaskItemScoreBand.TERMINAL,
+                        decoded.tag(),
+                        decoded.timeSlot() * SLOT_MILLIS,
+                        active ? decoded.suffix() : null
+                );
+            }
+            states.put(uniqueIds.get(index), state);
+        }
+        return states;
     }
 
     private static long score(int tag, long timeSlot, int suffix) {
@@ -477,6 +508,7 @@ public final class RedisTaskItemScoreBandCore
             case "noop" -> TaskItemScoreTransitionStatus.NOOP;
             case "not_found" -> TaskItemScoreTransitionStatus.NOT_FOUND;
             case "stale" -> TaskItemScoreTransitionStatus.STALE;
+            case "corrupt" -> TaskItemScoreTransitionStatus.CORRUPT;
             default -> throw new IllegalStateException(
                     "TaskItem score script status is invalid"
             );
@@ -549,13 +581,13 @@ public final class RedisTaskItemScoreBandCore
         long remainder = rawScore % TAG_FACTOR;
         long timeSlot = remainder / SUFFIX_FACTOR;
         long suffix = remainder % SUFFIX_FACTOR;
-        if (!VALID_TAGS.contains(Math.toIntExact(tag))
+        if (tag < ACTIVE_TAG || tag > MAX_TERMINAL_TAG
                 || timeSlot < MIN_TIME_SLOT
                 || timeSlot > MAX_TIME_SLOT
                 || tag == ACTIVE_TAG
                 && (suffix < MIN_REMAINING_BUDGET
                 || suffix > MAX_REMAINING_BUDGET)
-                || tag != ACTIVE_TAG && suffix != FINAL_SUFFIX) {
+                || tag != ACTIVE_TAG && suffix != TERMINAL_SUFFIX) {
             return null;
         }
         return new DecodedScore(
@@ -599,15 +631,6 @@ public final class RedisTaskItemScoreBandCore
 
     private String scoreKey(String taskId) {
         return keyspace.base() + ":task:" + taskId + ":item_score";
-    }
-
-    private static KernelOperationNotImplementedException notImplemented(
-            String operation
-    ) {
-        return new KernelOperationNotImplementedException(
-                "TaskItemScoreBandCore",
-                operation
-        );
     }
 
     private static boolean isBlank(String value) {

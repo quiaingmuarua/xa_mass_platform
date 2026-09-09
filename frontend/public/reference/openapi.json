@@ -185,6 +185,29 @@
         },
         "type" : "object"
       },
+      "TaskItemStateResponse" : {
+        "properties" : {
+          "band" : {
+            "enum" : [ "active", "terminal" ],
+            "type" : "string"
+          },
+          "outcomeName" : {
+            "type" : "string"
+          },
+          "tag" : {
+            "format" : "int32",
+            "maximum" : 9,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "timeMillis" : {
+            "description" : "Band-local score time in milliseconds, not business event time",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : [ "object", "null" ]
+      },
       "TaskPreviewEntry" : {
         "properties" : {
           "scoreBand" : {
@@ -499,10 +522,12 @@
             "type" : "string"
           },
           "messageType" : {
+            "description" : "Exact Report event name. WORKER-to-TASK also accepts platform.worker.task-outcome.observed for later observations of the same Item.",
             "minLength" : 1,
             "type" : "string"
           },
           "payload" : {
+            "description" : "Event payload encoded as a JSON string. Task outcome observations use {tag, observedAtMillis, opaqueResultPayload?}: tag 6..9, positive supported milliseconds, and optional nonblank string content. Higher tag wins, then later milliseconds; state-only observations preserve content. Forward remains the original opaque Command context.",
             "type" : "string"
           },
           "sourceId" : {
@@ -1184,6 +1209,74 @@
           }
         },
         "summary" : "Call a managed Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/items:states" : {
+      "post" : {
+        "description" : "Returns ACTIVE or TERMINAL score state, or null for a missing Item. timeMillis is band-local score time, not business event time. This query does not read Result content.",
+        "operationId" : "loadTaskItemStates",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemStateResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "States keyed by messageId; missing Items are null"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task query was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Load TaskItem score states",
         "tags" : [ "Tasks" ]
       }
     },

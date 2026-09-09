@@ -34,6 +34,7 @@ A reason or state value stays in payload, not a new event name.
 | --- | --- | --- | --- |
 | `platform.worker.command.succeeded` | WORKER → TASK/SERVER | Original opaque output and Command `forward` | Handler completed; not TaskItem finality |
 | `platform.worker.command.failed` | WORKER → TASK/SERVER | Original opaque error output and Command `forward` | Input, missing Handler, execution or output failure; not final Task failure |
+| `platform.worker.task-outcome.observed` | WORKER → TASK | `{tag, observedAtMillis, opaqueResultPayload?}`, original Command `forward` | Later observation of the same Item; never a second execution completion or Worker lease release |
 | `platform.adapter.command.succeeded` | ADAPTER → SERVER/KERNEL | Original opaque Handler output and Command `forward` | Adapter Handler completed; not Worker execution |
 | `platform.adapter.command.failed` | ADAPTER → SERVER/KERNEL | Original opaque error output and Command `forward` | Adapter Handler failed; not availability evidence |
 | `platform.adapter.command.delivery-failed` | ADAPTER → TASK | `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`, original Command `forward` | TASK delivery expired and leaves retry; not a Handler failure or proof of disconnected Channel |
@@ -49,6 +50,16 @@ All payloads in this table are encoded into the existing Report **string**
 field. Command results do not wrap or reinterpret Handler output. The ordinary
 extension Command name is not copied into the Report and has no generated
 success/failure event pair.
+
+Task outcome observations accept integer tags 6..9 and positive reported
+milliseconds within the Score Owner range. Optional content must be a nonblank
+string. Higher tag takes precedence, then later milliseconds within one tag;
+equal timestamps retain content. Omitted content never erases an existing
+Result. This event uses the existing Adapter TASK lane and a dedicated Kernel
+evidence LIST within the existing Result Convergence lifecycle. It adds no Task
+mode, callable Handler or Direct Call response. The
+[SDK Reporter](worker-core/README.md#later-task-outcome-observations) preserves
+opaque correlation; Server admission and Kernel mechanisms own processing.
 
 KERNEL connection snapshot results use `platform.adapter.command.succeeded`
 with `worker-serviceability:v1:<checkStartedAtMillis>` and the existing

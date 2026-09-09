@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.delivery.redis;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -12,15 +12,15 @@ import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class RedisTaskResultRuntime
-        implements TaskResultRuntime, AutoCloseable {
+public final class RedisTaskEvidenceRuntime
+        implements TaskEvidenceRuntime, AutoCloseable {
 
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
     private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    public RedisTaskResultRuntime(
+    public RedisTaskEvidenceRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
             RedisKeyspace keyspace
@@ -39,65 +39,65 @@ public final class RedisTaskResultRuntime
     }
 
     @Override
-    public int appendTaskResults(
-            TaskResultClass resultClass,
-            List<DeliveryReport> results
+    public int appendTaskEvidence(
+            TaskEvidenceType evidenceType,
+            List<DeliveryReport> reports
     ) {
-        if (resultClass == null) {
+        if (evidenceType == null) {
             throw new IllegalArgumentException(
-                    "resultClass must be present"
+                    "evidenceType must be present"
             );
         }
-        if (results == null) {
-            throw new IllegalArgumentException("results must be present");
+        if (reports == null) {
+            throw new IllegalArgumentException("reports must be present");
         }
-        if (results.isEmpty()) {
+        if (reports.isEmpty()) {
             return 0;
         }
-        List<String> encodedResults = new ArrayList<>(results.size());
-        for (DeliveryReport result : results) {
+        List<String> encodedReports = new ArrayList<>(reports.size());
+        for (DeliveryReport result : reports) {
             if (result == null) {
                 throw new IllegalArgumentException(
-                        "results must not contain null"
+                        "reports must not contain null"
                 );
             }
-            encodedResults.add(codec.encodeDeliveryReport(result));
+            encodedReports.add(codec.encodeDeliveryReport(result));
         }
         commands().rpush(
-                resultKey(resultClass),
-                encodedResults.toArray(String[]::new)
+                evidenceKey(evidenceType),
+                encodedReports.toArray(String[]::new)
         );
-        return results.size();
+        return reports.size();
     }
 
     @Override
-    public List<DeliveryReport> consumeTaskResults(
-            TaskResultClass resultClass,
+    public List<DeliveryReport> consumeTaskEvidence(
+            TaskEvidenceType evidenceType,
             int limit
     ) {
-        if (resultClass == null) {
+        if (evidenceType == null) {
             throw new IllegalArgumentException(
-                    "resultClass must be present"
+                    "evidenceType must be present"
             );
         }
         if (limit < 1) {
             throw new IllegalArgumentException("limit must be positive");
         }
         List<String> encoded = commands().lpop(
-                resultKey(resultClass),
+                evidenceKey(evidenceType),
                 limit
         );
         if (encoded == null || encoded.isEmpty()) {
             return List.of();
         }
-        List<DeliveryReport> results = new ArrayList<>(encoded.size());
+        List<DeliveryReport> reports = new ArrayList<>(encoded.size());
         for (String value : encoded) {
             DeliveryReport result = codec.decodeDeliveryReport(value);
             if (result != null) {
-                results.add(result);
+                reports.add(result);
             }
         }
-        return List.copyOf(results);
+        return List.copyOf(reports);
     }
 
     private RedisCommands<String, String> commands() {
@@ -126,11 +126,12 @@ public final class RedisTaskResultRuntime
         }
     }
 
-    private String resultKey(TaskResultClass resultClass) {
+    private String evidenceKey(TaskEvidenceType evidenceType) {
         return keyspace.base() + ":result:routing:"
-                + switch (resultClass) {
-                    case SUCCESS -> "success";
-                    case FAILURE -> "failure";
+                + switch (evidenceType) {
+                    case EXECUTION_SUCCESS -> "success";
+                    case EXECUTION_FAILURE -> "failure";
+                    case OUTCOME_OBSERVATION -> "observation";
                 };
     }
 }

@@ -1,6 +1,6 @@
 package com.xa.mass.server.delivery;
 
-import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -25,7 +25,7 @@ public class WorkerDeliveryConfiguration {
     @Bean
     WorkerDeliveryService workerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            TaskResultRuntime taskResults,
+            TaskEvidenceRuntime taskEvidence,
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
@@ -34,7 +34,7 @@ public class WorkerDeliveryConfiguration {
     ) {
         return new WorkerDeliveryService(
                 commandRuntime,
-                taskResults,
+                taskEvidence,
                 workerCatalog,
                 directCalls,
                 serviceability,

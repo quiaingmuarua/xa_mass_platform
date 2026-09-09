@@ -70,7 +70,7 @@ class DispatchBudgetTest {
                 .when(runtime).storeTaskItemFailedResults(eq("task"), anyList());
         var policy = new TaskDispatchPolicy(mock(TaskScoreBandCore.class), scores, runtime,
                 mock(TaskAssignmentDispatcher.class), mock(TaskIdleSettlement.class),
-                mock(WorkerCandidateSelectionPolicy.class), () -> 1_000L);
+                mock(WorkerCandidateSelectionPolicy.class), 5, () -> 1_000L);
         var input = List.of(new ObservedTask(descriptor(), 123L));
         policy.dispatchTasks(input);
         assertEquals(Set.of("item-100"), pending.keySet());

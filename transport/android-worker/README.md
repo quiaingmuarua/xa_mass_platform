@@ -4,6 +4,11 @@
 depends on `transport:worker-core` and OkHttp, but not on
 `transport:java-worker`.
 
+The shared Core [reporting Handler overload](../worker-core/README.md#later-task-outcome-observations)
+also supports Android business callbacks after send execution completes. Its
+Reporter uses the current run's WebSocket and becomes unavailable after stop;
+Android adds no observation queue, thread or retry.
+
 It owns `AndroidWorker`, its package-private Platform resources, persistent
 WorkerGroup/client key coordinates, Android Prepare and WebSocket Clients, and
 Application Context adaptation. Core owns Preparation, lifecycle coordination, text

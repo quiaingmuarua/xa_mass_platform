@@ -1,136 +1,130 @@
-# Task Result Runtime Redis Shape
+# Task Evidence And Result Redis Shape
 
-Status: active Java Kernel Task Result Redis shape and production append/consume
-contract.
+Status: active Java Kernel Task evidence and Result storage contract.
 
-## Keys
+## Evidence Handoff
 
 ```text
 xa_mass:<scope>:result:routing:success
 xa_mass:<scope>:result:routing:failure
+xa_mass:<scope>:result:routing:observation
 ```
 
-Each key is a Redis LIST of deterministic `DeliveryReport` JSON. The Task
-Result Runtime receives an explicit `TaskResultClass` from its bounded caller:
+Each key is a Redis LIST of deterministic `DeliveryReport` JSON.
+`TaskEvidenceRuntime.appendTaskEvidence(type, reports)` performs one bounded
+`RPUSH`; `consumeTaskEvidence(type, limit)` uses Redis 7 `LPOP key count`.
+`EXECUTION_SUCCESS`, `EXECUTION_FAILURE` and `OUTCOME_OBSERVATION` select the
+three keys respectively. Corrupt members are consumed and skipped. Appends to
+different lanes are independent, and concurrent batch completion need not follow
+FIFO consumption order.
 
-```text
-appendTaskResults(resultClass, reports)
-consumeTaskResults(resultClass, limit)
-```
-
-The Runtime validates the class, bounded input and Report encoding only. It
-does not read `diagnosticCode`, decode `forward`, interpret `messageType`, verify
-the producer, or derive the lane. Server Worker Delivery ingress owns producer
-and endpoint-code validation before append.
-
-Append performs one `RPUSH` to the selected lane. Consume uses bounded Redis 7
-`LPOP key count`. FIFO is preserved within a lane; corrupt members are consumed
-and skipped. The two lane operations are independent and no cross-lane atomic
-append is promised.
-
-There is no endpoint-manager, Task, WorkerGroup or producer partition,
-pending/ack state, retry, replay, repair scan or cross-key Lua. `src`,
-`sourceId`, raw `diagnosticCode` and `forward` remain encoded evidence fields.
+The Runtime validates the type, bounded input and Report encoding only. Server
+owns producer and exact event admission; Result Policy owns JSON and `forward`
+interpretation. `diagnosticCode` never selects a lane. There is no pending/ack,
+replay, repair scan, producer partition or cross-key transaction.
 
 ## TaskItem Result Projection
 
-Ingress LISTs are transient evidence. TaskItem result projection is owned by
-`TaskRuntime`:
+`TaskRuntime` owns one projection:
 
 ```text
 xa_mass:<scope>:task:<taskId>:results
-  HASH messageId -> encoded TaskItemResult(code, opaqueResultPayload)
+  HASH messageId -> encoded Result
+
+success:
+  {"code":"200","observedAtMillis":1001,"opaqueResultPayload":"reply","tag":9}
+failure:
+  {"code":"failed","opaqueResultPayload":"TaskItem ended without a successful result"}
 ```
 
-Exact code `200` is success. Success encodes the complete Result before one
-multi-field `HSET`, so it may replace an earlier terminal failed value or an
-earlier success payload. Terminal failed storage encodes
-`{"code":"failed","opaqueResultPayload":"TaskItem ended without a successful result"}`
-and applies `HSETNX` to each bounded Message ID in one owner-local, single-key
-Lua operation. Every observed Result therefore has a non-empty payload. A
-later SUCCESS replaces failed, while a later failed write cannot replace any
-observed Result.
+Success writes accept `messageId -> TaskItemSuccessResult(tag, observedAtMillis,
+opaqueResultPayload)`, at most 100 entries. Content retains the RPC contract of
+a nonempty opaque string; the observation admission additionally rejects blank
+content. Tags 2..9
+and times 0..9_999_999_999_900 are legal mechanical ordering inputs; the caller
+supplies their meaning. Ordinary execution uses the Server-supplied success tag
+6 and the Result Policy's observed time. Business observations retain their
+reported millisecond time and tag.
 
-Point reads use one bounded `HMGET`; scan reads use bounded
-`HSCAN COUNT 1000` pages. Each present field is decoded without another Redis
-lookup and classified by its own code; an absent field is not observed.
-Malformed or legacy raw values fail closed as corrupt Owner data instead of
-being guessed as success or failure.
+One single-key Lua validates existing values and conditionally writes the batch:
 
-The SUCCESS Result policy stores success then promotes the TaskItem to
-`FINAL_SUCCESS`. Ordinary retryable FAILURE evidence does not store an Item
-result or rewrite the Item coordinate. Task Dispatch stores failed only when
-the existing retry budget is exhausted or Item TTL has elapsed, and only then
-promotes the same IDs to `FINAL_FAILED`. A failed-result write exception leaves
-the Item score unchanged for a later idempotent Dispatch round.
+- a success may replace a failed Result;
+- a higher tag replaces a lower tag, even with an earlier time;
+- at the same tag, only a strictly greater millisecond time replaces content;
+- equal or smaller targets do not write;
+- corrupt or legacy success values fail as Owner data errors and are not overwritten.
 
-## Result And Score Consistency
+Terminal failure remains a bounded `HSETNX` operation and cannot replace any
+observed Result. Success is canonically encoded before storage. No companion
+classification key, version counter, reply history or separate content queue
+exists. `TaskItemResult(code, opaqueResultPayload)` remains the read projection;
+ordering fields are validated by the Owner and are not exposed in Server Result
+responses.
 
-The two resources have different authority:
+Point reads use one `HMGET`; scans use bounded `HSCAN COUNT 1000` pages. Missing
+fields remain not observed. Reads neither consume content nor read Item Score.
+
+## Execution And Observation Calls
+
+Ordinary execution success keeps its existing order:
 
 ```text
-TaskItem Score
-  scheduling / retry / finality / statistics truth
-
-Task Result HASH
-  observed Result query projection
-  may exist before the corresponding Score transition
+LPOP EXECUTION_SUCCESS
+  -> TaskRuntime conditional success Result write
+  -> TaskItemScoreBandCore promotion to the supplied success tag 6
+  -> Worker execution event exact-releases the original lease
 ```
 
-Neither resource is derived from the other. A Result read does not establish
-TaskItem finality, and a Score read does not supply a Result code or payload.
-For a successful Result, the following combinations are current observable
-states:
+`EXECUTION_FAILURE` only processes the correlated Worker lease. Dispatch alone
+stores terminal failed Result before requesting tag 5 for exhaustion or TTL.
+A failed Result write leaves that Item Score unchanged for another Dispatch round.
 
-| Result projection | TaskItem Score | Meaning |
-| --- | --- | --- |
-| `code=200` | `ACTIVE` | SUCCESS was stored, but success finality was not confirmed |
-| `code=200` | `FINAL_FAILED` | late SUCCESS replaced the failed projection, but its success promotion was not confirmed |
-| `code=200` | `FINAL_SUCCESS` | Result projection and Item finality are aligned |
-
-For one consumed SUCCESS batch, production performs ordered, independent
-owner operations:
+An observation follows a separate finite TaskItem event method:
 
 ```text
-LPOP Result evidence
-  -> TaskRuntime HSET of the success Result
-  -> TaskItemScoreBandCore FINAL_SUCCESS promotion
-  -> WorkerScoreCore completed-HOT exact release
+LPOP OUTCOME_OBSERVATION
+  -> decode original Task/Item correlation and verify Worker source
+  -> one per-Task batch Score promotion
+  -> conditionally store available content for TRANSITIONED or NOOP Items
+  -> finish without Worker lease or Task score operations
 ```
 
-The Result HASH write is completed before promotion is requested, but there is
-no transaction across the LIST, Result HASH, TaskItem Score and Worker Score.
-`DefaultTaskItemResultEvents` also does not interpret or retry a per-Item
-promotion result that did not transition. Therefore `code=200` does not imply
-that the current implementation will eventually establish `FINAL_SUCCESS`.
+Batch reduction independently retains each Item's maximum state target and
+maximum content-bearing observation. A content-free observation cannot erase
+content. Missing, invalid or corrupt Item Scores do not create Result content.
+`NOOP` still permits a Result comparison: two observations within the same 100ms
+Score slot may have different millisecond content times. No Score confirmation
+read is added. Up to 100 Items of one Task cost one Score Lua plus zero or one
+Result Lua, excluding the evidence append and consume.
 
-The relevant interruption windows are:
+## Independent Commit Semantics
 
-- after `LPOP` and before Result storage, the evidence may be lost; Item claim
-  and Worker lease expiry can recover resource eligibility, not the consumed
-  Result evidence;
-- after Result storage and before successful Score promotion, the Result is
-  retained while Score may remain `ACTIVE` or `FINAL_FAILED`; there is no
-  pending/ack, replay, Result-to-Score repair scan or compensation Owner;
-- after Score promotion and before Worker release, Item finality is retained
-  and the Worker lease relies on its existing expiry and recovery mechanism.
+Item Score owns scheduling finality. Result owns observed content. Neither is
+derived from the other, and both owners commit independently:
 
-Terminal failed closure is also ordered rather than cross-owner atomic: Task
-Dispatch stores failed first and then requests `FINAL_FAILED`. Its normal later
-round may repeat that idempotent sequence while the Item remains eligible, but
-there is no general background reconciliation between Result and Score.
+- loss after `LPOP` may lose the evidence;
+- execution success interrupted after Result storage may leave content with
+  ACTIVE or tag 5; there is no unconditional eventual promotion guarantee;
+- observation interrupted after Score promotion may leave a newer state with
+  older or absent content;
+- execution success interrupted before Worker release relies on existing lease
+  expiry/recovery; later business observations never release that lease again.
+
+A terminal Task or Item can accept later observations without reopening
+scheduling. State-only observations do not invent a successful Result payload.
+No ACK, replay, Result-to-Score repair or cross-owner compensation is provided.
 
 ## Related Owners And Migration
 
 [Result Policy](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
-defines classification, parsing, grouping and semantic event publication;
-[Pacer assembly](../../../kernel_pacer_jvm/doc/application-assembly.md)
-defines lane execution and lifecycle. Those operations do not add a transaction
-or replay owner to this Redis shape. [TaskItem Score](../score/task-item-score-band-scheduling.md)
-remains the finality owner.
+owns admission interpretation, grouping and semantic event publication.
+[Pacer assembly](../../../kernel_pacer_jvm/doc/application-assembly.md) owns
+shared capacity and lifecycle. [TaskItem Score](../score/task-item-score-band-scheduling.md)
+owns encoding and legal Score transitions.
 
-The old `worker-failure` and `adapter-rejection` LISTs are not read or migrated.
-They were transient best-effort evidence and have no compatibility alias. The
-self-describing Result shape is also a clean cut: scopes containing legacy raw
-HASH values or the retired `results:success` SET must be cleared or recreated
-before use. Runtime code does not read, migrate or delete either legacy shape.
+Deploy through the agreed stopped-scope rebuild: stop all users of the explicitly
+selected scope, clear only that scope with `SCAN` plus `UNLINK`, and rebuild.
+Old success JSON without ordering fields, legacy raw Results and retired
+classification sets have no compatibility reads or background migration. No
+non-test data is cleared without an explicitly named scope. Proofs use unique
+`test_*` scopes.
