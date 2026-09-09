@@ -74,6 +74,53 @@ final class CallApi implements AutoCloseable {
         }
     }
 
+    CallLoad.Reply directCall(String worker) throws Exception {
+        var response = send(runtime + "/api/v1/worker-delivery/endpoint-managers/scenario-websocket/direct-calls",
+                Map.of("workerGroupId", GROUP, "workerPayloads", Map.of(worker, Jsons.toJson(Map.of("value", INPUT))),
+                        "messageType", "extension.worker.string.md5", "waitTimeoutMillis", 1_000));
+        int status = response.statusCode();
+        if (status == 429) return new CallLoad.Reply(status, CallLoad.Outcome.REJECTED, null, "http-429");
+        if (Set.of(400, 401, 403, 404, 405, 415, 422).contains(status))
+            return new CallLoad.Reply(status, CallLoad.Outcome.PROTOCOL_ERROR);
+        if (status != 200) return new CallLoad.Reply(status, CallLoad.Outcome.UNKNOWN, null, "http-" + status);
+        try {
+            return checkedDirectResult(Jsons.parseObject(response.body()), worker);
+        } catch (RuntimeException error) {
+            throw new CallLoad.ProtocolFailure("Direct Call response shape, target or result changed");
+        }
+    }
+
+    static CallLoad.Reply checkedDirectResult(Map<String, Object> response, String worker) {
+        if (!response.keySet().equals(Set.of("directCallId", "status", "results")))
+            throw new CallLoad.ProtocolFailure("Unexpected Direct Call envelope");
+        String id = string(response, "directCallId");
+        var results = object(response.get("results"));
+        if (!results.keySet().equals(Set.of(worker))) throw new CallLoad.ProtocolFailure("Direct target changed");
+        var target = object(results.get(worker));
+        String state = string(target, "status");
+        if (!java.util.Objects.equals(response.get("status"), state.equals("observed") ? "observed" : "partial"))
+            throw new CallLoad.ProtocolFailure("Direct aggregate status disagrees with target");
+        if (state.equals("observed")) {
+            if (!target.keySet().equals(Set.of("status", "outcomeCode", "opaqueResultPayload")))
+                throw new CallLoad.ProtocolFailure("Unexpected observed Direct fields");
+            String code = string(target, "outcomeCode");
+            if (!(target.get("opaqueResultPayload") instanceof String)) throw new CallLoad.ProtocolFailure("Missing Direct payload");
+            if (code.equals("200")) checkedResult(Map.of("status", "succeeded",
+                    "opaqueResultPayload", target.get("opaqueResultPayload")), ExpectedResult.MD5);
+            return new CallLoad.Reply(200, code.equals("200") ? CallLoad.Outcome.SUCCEEDED : CallLoad.Outcome.FAILED, id, code);
+        }
+        if (!target.keySet().equals(Set.of("status", "reason"))) throw new CallLoad.ProtocolFailure("Unexpected Direct reason fields");
+        String reason = string(target, "reason");
+        if (state.equals("rejected") && reason.equals("command-slot-occupied"))
+            return new CallLoad.Reply(200, CallLoad.Outcome.REJECTED, id, reason);
+        if (state.equals("unobserved") && reason.equals("timeout"))
+            return new CallLoad.Reply(200, CallLoad.Outcome.TIMED_OUT, id, reason);
+        if (state.equals("unobserved") && reason.equals("submission-unknown"))
+            return new CallLoad.Reply(200, CallLoad.Outcome.UNKNOWN, id, reason);
+        // Missing/bad Binding or shutdown in this fixed live world is a failed prerequisite.
+        throw new CallLoad.ProtocolFailure("Unexpected Direct status or reason");
+    }
+
     Map<String, String> results(String task, List<String> ids) throws Exception {
         return results(task, ids, ExpectedResult.MD5);
     }

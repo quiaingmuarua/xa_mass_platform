@@ -27,6 +27,10 @@ public final class WorkerCallPerformanceMain {
                     || options.putIfAbsent(pair[0], pair[1]) != null) throw new IllegalArgumentException("Invalid option");
         }
         String name = options.get("--case");
+        if (DirectCallPerformance.CASES.containsKey(name) && options.containsKey("--output")) {
+            DirectCallPerformance.run(name, options);
+            return;
+        }
         if (!CASES.containsKey(name) || !options.containsKey("--output")) throw new IllegalArgumentException("case and output required");
         Path output = Path.of(options.get("--output"));
         Files.createDirectories(output);

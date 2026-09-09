@@ -20,7 +20,80 @@ def complete_runs():
             for pair in range(3) for version in ("A", "B") for case in runner.CASES]
 
 
+def diagnosis_runs():
+    return [dict(pair=pair, version=version, case=case, status="passed", generatorLimited=False,
+                 windows={name: dict(generatorLimited=False, successRate=.99,
+                     successfulCallLatencyMillis={"p99": 100, "samples": 1000}, serverCpuSecondsPerHttpResponse=.001)
+                     for name in ("surge", "sustained")})
+            for pair in range(3) for version in ("A", "B") for case in runner.DIAGNOSIS_CASES]
+
+
 class RunnerTest(unittest.TestCase):
+    def test_jfr_pair_is_explicit_and_cannot_enter_the_formal_three_pair_schedule(self):
+        self.assertEqual(("comparison", runner.ORDER), runner.execution_mode("immutable", "off", False))
+        self.assertEqual(("diagnostic_pair", (("A", "B"),)), runner.execution_mode("immutable", "jfr", True))
+        self.assertEqual(("measurement", (("B",),)), runner.execution_mode(None, "off", False))
+        for args in (("immutable", "jfr", False), (None, "jfr", True), ("immutable", "off", True)):
+            with self.assertRaises(ValueError):
+                runner.execution_mode(*args)
+
+    def test_diagnosis_needs_three_valid_pairs_and_two_repeated_benefits(self):
+        runs = diagnosis_runs()
+        self.assertEqual("no_clear_benefit", runner.diagnosis_comparison(runs)["status"])
+        candidates = [r for r in runs if r["version"] == "B" and r["case"] == "direct-step-2000"]
+        candidates[0]["windows"]["sustained"]["successfulCallLatencyMillis"]["p99"] = 85
+        self.assertEqual("no_clear_benefit", runner.diagnosis_comparison(runs)["status"])
+        candidates[1]["windows"]["sustained"]["serverCpuSecondsPerHttpResponse"] = .00085
+        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
+        candidates[2]["windows"]["sustained"]["generatorLimited"] = True
+        self.assertEqual("inconclusive", runner.diagnosis_comparison(runs)["status"])
+
+    def test_a_sustained_benefit_cannot_hide_surge_regression_or_a_limited_guard(self):
+        runs = diagnosis_runs()
+        for row in runs:
+            row["generatorLimited"] = True  # Whole-case flag never overwrites a fixed window's evidence.
+            if row["version"] == "B":
+                row["windows"]["sustained"]["successfulCallLatencyMillis"]["p99"] = 70
+        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
+        for row in runs:
+            if row["version"] == "A":
+                row["windows"]["surge"]["generatorLimited"] = True
+        value = runner.diagnosis_comparison(runs)
+        self.assertEqual("inconclusive", value["status"])
+        self.assertTrue(any(w["status"] == "improved" for w in value["windows"]))
+        for row in runs:
+            row["windows"]["surge"]["generatorLimited"] = False
+            if row["version"] == "B":
+                row["windows"]["surge"]["successRate"] = .93
+        self.assertEqual("regressed", runner.diagnosis_comparison(runs)["status"])
+
+    def test_diagnosis_keeps_success_change_and_latency_denominators_separate(self):
+        runs = diagnosis_runs()
+        for row in runs:
+            for window in row["windows"].values():
+                window["successRate"] = .90 if row["version"] == "A" else .95
+                window["successfulCallLatencyMillis"]["p99"] = 100 if row["version"] == "A" else 120
+        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
+        for row in runs:
+            if row["version"] == "B":
+                for window in row["windows"].values():
+                    window["successfulCallLatencyMillis"]["p99"] = 121
+        self.assertEqual("regressed", runner.diagnosis_comparison(runs)["status"])
+
+    def test_diagnostic_recordings_are_private_bounded_and_off_by_default(self):
+        private = Path("build/fixture/private")
+        self.assertEqual([], runner.jfr_options(private, "server", "off"))
+        chunk_option, option = runner.jfr_options(private, "server", "jfr")
+        self.assertIn("maxchunksize=8m", chunk_option)
+        self.assertIn("maxsize=240m", option)
+        self.assertIn("private", option)
+        self.assertNotIn("evidence", option)
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence"
+            value = runner.export_diagnostics(Path(directory) / "private", evidence, 1000, 120)
+            self.assertFalse(value["complete"])
+            self.assertFalse(json.loads((evidence / "server-diagnostics.json").read_text())["complete"])
+
     def test_compare_requires_two_pairs_and_keeps_inconclusive_distinct(self):
         runs = complete_runs()
         self.assertEqual("no_detected_regression", runner.comparison(runs)["status"])
@@ -94,6 +167,45 @@ class RunnerTest(unittest.TestCase):
             self.assertIn("Resource ceiling", sampler.failure)
             self.assertEqual(1, sampler.counts["server"])
 
+    def test_sampler_does_not_misclassify_a_concurrent_normal_process_reap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            redis = Mock()
+            redis.info.side_effect = [{"total_commands_processed": 10}, {"used_memory": 10, "used_memory_rss": 20},
+                                     {"used_cpu_user": 1, "used_cpu_sys": 1}, {}]
+            sampler = runner.Sampler(Path(directory) / "resources.jsonl", redis)
+            process = Mock(pid=10)
+            process.poll.return_value = None  # Popen's nonblocking poll may race the runner's waitpid lock.
+            sampler.register("harness", process)
+            def exited(_):
+                sampler.stopped.set()
+                raise FileNotFoundError("Process has just exited")
+            with patch.object(runner, "process_sample", side_effect=exited):
+                sampler.run()
+            self.assertIsNone(sampler.failure)
+            self.assertEqual(1, sampler.counts["redis"])
+            process.wait.assert_called_once_with(timeout=.05)
+
+    def test_sampler_only_ignores_revoked_proc_access_after_confirmed_exit(self):
+        for exited in (False, True):
+            with self.subTest(exited=exited), tempfile.TemporaryDirectory() as directory:
+                redis = Mock()
+                redis.info.side_effect = [{"total_commands_processed": 10}, {"used_memory": 10, "used_memory_rss": 20},
+                                         {"used_cpu_user": 1, "used_cpu_sys": 1}, {}]
+                sampler = runner.Sampler(Path(directory) / "resources.jsonl", redis)
+                process = Mock(pid=10)
+                process.poll.return_value = None
+                if not exited:
+                    process.wait.side_effect = subprocess.TimeoutExpired("java", .05)
+                sampler.register("harness", process)
+                def revoked(_):
+                    sampler.stopped.set()
+                    raise PermissionError("/proc fd access revoked")
+                with patch.object(runner, "process_sample", side_effect=revoked):
+                    sampler.run()
+                self.assertEqual(sampler.failure is None, exited)
+                if not exited:
+                    self.assertIn("PermissionError", sampler.failure)
+
     def test_resource_summary_excludes_startup_and_keeps_redis_commands_aggregate(self):
         rows = []
         for timestamp, cpu, memory in ((0, 0, 99999), (1000, 2, 100), (3000, 3, 150), (10000, 10, 99999)):
@@ -118,6 +230,26 @@ class RunnerTest(unittest.TestCase):
                 runs=[dict(pair=0, version="A", case="any-100", status="failed")]))
         self.assertIn("failed", value)
         self.assertNotIn("100.00%", value)
+
+    def test_direct_suite_keeps_task_nightly_cases_and_does_not_invent_drain(self):
+        self.assertEqual(6, len(runner.SUITES["task"]))
+        self.assertEqual(("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000"), runner.SUITES["direct"])
+        row = dict(pair=0, version="B", case="direct-100", offeredRate=100,
+                   sent=3000, planned=3000, successfulCohortPerSecond=90, successRate=.9,
+                   withinOneSecondRateOfSent=.8, successfulCallLatencyMillis={"p99": 1200}, generatorLimited=False)
+        value = runner.markdown_summary(dict(suite="direct", status="passed", referenceHost=True, completeSuite=True, runs=[row]))
+        self.assertIn("90.00%", value)
+        self.assertIn("80.00%", value)
+        self.assertIn("no results:load", value)
+        self.assertNotIn("Result success after drain", value)
+
+    def test_direct_comparison_only_compares_the_named_direct_fixture(self):
+        runs = complete_runs()
+        for row in runs:
+            row["case"] = "direct-100"
+        value = runner.comparison(runs, ("direct-100",))
+        self.assertEqual("no_detected_regression", value["status"])
+        self.assertEqual(["direct-100"], [row["case"] for row in value["cases"]])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 package com.xa.mass.server.delivery.directcall;
 
+import com.xa.mass.server.delivery.DeliveryStageEvent;
+
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -119,6 +121,7 @@ public final class DirectCallService {
         List<String> workerIds = List.copyOf(workerPayloads.keySet());
 
         Map<String, WorkerDescriptor> workers;
+        var bindingEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.DIRECT_BINDING, workerIds.size());
         try {
             workers = Objects.requireNonNull(
                     workerCatalog.getWorkerDescriptors(
@@ -126,11 +129,14 @@ public final class DirectCallService {
                     ),
                     "Worker descriptor batch"
             );
+            if (bindingEvent != null) bindingEvent.failed = false;
         } catch (RuntimeException error) {
             throw unavailable(
                     "Could not load Worker Direct Call admission",
                     error
             );
+        } finally {
+            DeliveryStageEvent.finish(bindingEvent);
         }
 
         List<TargetPlan> plans = new ArrayList<>(workerIds.size());
@@ -278,6 +284,7 @@ public final class DirectCallService {
         }
 
         Map<String, TargetOutcome> immediate = new LinkedHashMap<>();
+        var offerEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.DIRECT_OFFER, commandsByWorkerId.size());
         try {
             Map<String, WorkerCommandOfferStatus> statuses =
                     workerCommands.offerWorkerCommands(
@@ -312,6 +319,11 @@ public final class DirectCallService {
                         );
                     }
                 });
+                if (offerEvent != null) {
+                    offerEvent.offered = (int) statuses.values().stream().filter(s -> s == WorkerCommandOfferStatus.OFFERED).count();
+                    offerEvent.occupied = (int) statuses.values().stream().filter(s -> s == WorkerCommandOfferStatus.OCCUPIED).count();
+                    offerEvent.failed = offerEvent.offered + offerEvent.occupied != statuses.size();
+                }
             }
         } catch (RuntimeException error) {
             LOGGER.log(
@@ -324,6 +336,8 @@ public final class DirectCallService {
                     error.getClass().getName()
             );
             completeSubmissionUnknown(correlationsByWorkerId, immediate);
+        } finally {
+            DeliveryStageEvent.finish(offerEvent);
         }
         if (!immediate.isEmpty()) {
             registry.completeTargets(immediate);

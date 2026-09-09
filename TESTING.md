@@ -76,6 +76,9 @@ Use the lowest-cost proof that owns the changed claim:
    nightly/manual workflow. A production optimization re-establishes its Owner
    claim and the selected existing lanes, then uses this lane for comparison;
    do not duplicate throughput or Worker-size tiers across lanes.
+   `--suite direct-diagnosis` adds fixed surge/sustained observations at 1k/2k
+   through the same performance owner. `--diagnostics jfr` is manual attribution,
+   with private recordings and whitelist export; formal comparisons keep it off.
 
 Inspect selection for a branch without running a proof:
 
@@ -105,7 +108,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | `python integrations/worker-call-performance/run_worker_call_performance.py` | Ubuntu 24.04, Docker Redis 7.4.10, Java 21 |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | `python integrations/worker-call-performance/run_worker_call_performance.py --suite task` or `--suite direct-diagnosis` (both run serially in nightly; `--suite direct` is historical manual replay) | Ubuntu 24.04, Docker Redis 7.4.10, Java 21; diagnosis fixes 4 logical CPUs |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
@@ -172,7 +175,11 @@ Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
 Service container. A proof that needs a Server or Scenario Host owns those
 process lifecycles and stops all writers before a local cleanup attempt.
 
-The Runtime Boundary starts one Java Server context. Worker Correctness and
+The Runtime Boundary starts the Java Server for its full traversal. A separate
+finite HTTP configuration test starts isolated contexts for the default pool,
+prestarted pool and virtual execution; real HTTP and Redis establish Direct
+success, occupied-slot rejection, timeout, late-report rejection and Owner
+shutdown, with exactly one servlet completion per request. Worker Correctness and
 Worker Convergence Health start Server and Scenario Host as independent
 processes. Worker Loaded Capacity + Recovery Stability is a separate
 nightly/manual workflow and is not part of the pull-request Proof Gate.

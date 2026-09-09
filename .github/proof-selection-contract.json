@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/JfrDiagnostics.java",
+      "lanes": ["jvm_contracts"],
+      "reason": "Offline JFR whitelist and bounded aggregation are deterministic contracts; full diagnostic performance stays in its own lane."
+    },
+    {
+      "path": "integrations/worker-call-performance/diagnostics.jfc",
+      "lanes": ["jvm_contracts"],
+      "reason": "The finite JFR settings belong to the existing call-performance proof, not an additional runtime claim."
+    },
+    {
       "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/WorkerCallPerformanceMain.java",
       "lanes": ["jvm_contracts"],
       "reason": "Call performance owns a distinct nightly/manual claim; ordinary CI builds and tests only its Harness."

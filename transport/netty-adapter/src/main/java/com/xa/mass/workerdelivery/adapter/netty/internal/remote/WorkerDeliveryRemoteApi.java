@@ -75,16 +75,22 @@ public final class WorkerDeliveryRemoteApi {
             String adapterId,
             int limit
     ) {
-        HttpResponse<String> response = postJson(
-                commandPath(adapterId),
-                encodeConsumeRequest(limit),
-                COMMAND_OPERATION,
-                "Delivery Command acquisition failed"
-        );
-        if (response.statusCode() != 200) {
-            throw commandStatusFailure(response.statusCode());
-        }
-        return decodeConsumeResponse(responseBody(response), limit);
+        var event = AdapterRemoteEvent.start("COMMAND_CONSUME", 0);
+        try {
+            HttpResponse<String> response = postJson(
+                    commandPath(adapterId),
+                    encodeConsumeRequest(limit),
+                    COMMAND_OPERATION,
+                    "Delivery Command acquisition failed"
+            );
+            if (event != null) event.httpStatus = response.statusCode();
+            if (response.statusCode() != 200) {
+                throw commandStatusFailure(response.statusCode());
+            }
+            var commands = decodeConsumeResponse(responseBody(response), limit);
+            if (event != null) { event.batchSize = commands.size(); event.failed = false; }
+            return commands;
+        } finally { AdapterRemoteEvent.finish(event); }
     }
 
     public void appendReports(
@@ -92,19 +98,24 @@ public final class WorkerDeliveryRemoteApi {
             List<DeliveryReport> reports
     ) {
         List<DeliveryReport> batch = requireHomogeneousReportBatch(reports);
-        HttpResponse<String> response = postJson(
-                reportPath(adapterId),
-                encodeReportBatch(batch),
-                REPORT_OPERATION,
-                "Worker result submission failed"
-        );
-        if (response.statusCode() != 202) {
-            throw reportStatusFailure(response.statusCode());
-        }
-        requireCompleteResultResponse(
-                responseBody(response),
-                batch.size()
-        );
+        var event = AdapterRemoteEvent.start("REPORT_APPEND", batch.size());
+        try {
+            HttpResponse<String> response = postJson(
+                    reportPath(adapterId),
+                    encodeReportBatch(batch),
+                    REPORT_OPERATION,
+                    "Worker result submission failed"
+            );
+            if (event != null) event.httpStatus = response.statusCode();
+            if (response.statusCode() != 202) {
+                throw reportStatusFailure(response.statusCode());
+            }
+            requireCompleteResultResponse(
+                    responseBody(response),
+                    batch.size()
+            );
+            if (event != null) event.failed = false;
+        } finally { AdapterRemoteEvent.finish(event); }
     }
 
     private HttpResponse<String> postJson(

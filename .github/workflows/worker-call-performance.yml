@@ -5,8 +5,26 @@ on:
     - cron: '0 19 * * *' # 03:00 Asia/Shanghai
   workflow_dispatch:
     inputs:
+      suite:
+        description: "One performance suite, or the serial Task + Direct nightly suite"
+        required: true
+        type: choice
+        default: task
+        options:
+          - task
+          - direct
+          - direct-diagnosis
+          - nightly
+      diagnostics:
+        description: "Private JFR diagnosis (separate from formal A/B comparisons)"
+        required: true
+        type: choice
+        default: 'off'
+        options:
+          - 'off'
+          - jfr
       baseline_ref:
-        description: "Optional immutable baseline commit for A/B, B/A, A/B"
+        description: "Immutable baseline: three formal pairs, or one separate A/B pair in JFR mode"
         required: false
         type: string
 
@@ -45,10 +63,30 @@ jobs:
       - name: Run independent call performance proof
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
+          CALL_SUITE: ${{ github.event_name == 'schedule' && 'nightly' || inputs.suite || 'task' }}
+          DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
         run: |
-          args=()
+          if [ "$CALL_SUITE" = nightly ]; then
+            if [ -n "$BASELINE_REF" ] || [ "$DIAGNOSTICS" != off ]; then
+              echo "The serial nightly fixture requires JFR off and no comparison baseline." >&2
+              exit 2
+            fi
+            status=0
+            for suite in task direct-diagnosis; do
+              if ! python integrations/worker-call-performance/run_worker_call_performance.py \
+                --suite "$suite" --diagnostics off \
+                --output-root "build/worker-call-performance-proof/$suite"; then
+                status=1
+              fi
+            done
+            exit "$status"
+          fi
+          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
+            if [ "$DIAGNOSTICS" = jfr ]; then
+              args+=(--diagnostic-pair)
+            fi
           fi
           python integrations/worker-call-performance/run_worker_call_performance.py "${args[@]}"
       - name: Publish independent performance summary
@@ -57,6 +95,11 @@ jobs:
           if [ -f build/worker-call-performance-proof/evidence/summary.md ]; then
             cat build/worker-call-performance-proof/evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+          for suite in task direct-diagnosis; do
+            if [ -f "build/worker-call-performance-proof/$suite/evidence/summary.md" ]; then
+              cat "build/worker-call-performance-proof/$suite/evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Upload safe performance evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
