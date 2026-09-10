@@ -27,6 +27,8 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
     private final WorkerGroupRegistrationService registrations;
     private final TaskCallSubmissionService submissions;
     private final TaskDataService results;
+    private final Map<String, String> groups;
+    private final List<String> events;
     private final boolean scheduleObservation;
     private volatile boolean running;
     private boolean closed;
@@ -52,11 +54,26 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
             TaskCallSubmissionService submissions, TaskDataService results) {
         this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true);
     }
+    public ListenerService(WorkerGroupRegistrationService registrations,
+            TaskCallSubmissionService submissions, TaskDataService results,
+            Map<String, String> groups, List<String> events) {
+        this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true, groups, events);
+    }
     ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
             TaskDataService results, Clock clock, int limit, boolean scheduleObservation) {
+        this(registrations, submissions, results, clock, limit, scheduleObservation,
+                Map.of("CN", "sms-cn", "US", "sms-us", "GB", "sms-gb"),
+                List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel"));
+    }
+    private ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
+            TaskDataService results, Clock clock, int limit, boolean scheduleObservation,
+            Map<String, String> groups, List<String> events) {
         this.registrations = registrations;
         this.submissions = submissions;
         this.results = results;
+        if (!groups.keySet().equals(Set.copyOf(COUNTRIES))) throw new IllegalArgumentException("Expected three country Groups");
+        this.groups = Map.copyOf(groups);
+        this.events = List.copyOf(events);
         this.clock = clock;
         this.limit = limit;
         this.scheduleObservation = scheduleObservation;
@@ -67,8 +84,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
         if (closed) throw new IllegalStateException("Product run is closed");
         try {
             for (String country : COUNTRIES) {
-                tasks.put(country, registrations.register("sms-" + country.toLowerCase(Locale.ROOT), Map.of(),
-                        List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel")).taskId());
+                tasks.put(country, registrations.register(groups.get(country), Map.of(), events).taskId());
             }
             commands = Executors.newFixedThreadPool(8);
             commandPump = Executors.newSingleThreadScheduledExecutor();
@@ -95,7 +111,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
                 Map.of("id", "B", "name", "应用 B · 验证码", "templates", TEMPLATES.get("B")),
                 Map.of("id", "C", "name", "应用 C · 全匹配", "templates", TEMPLATES.get("C"))),
                 "countries", COUNTRIES.stream().map(c -> Map.of("id", c, "workerGroupId",
-                        "sms-" + c.toLowerCase(Locale.ROOT), "taskId", tasks.get(c))).toList(),
+                        groups.get(c), "taskId", tasks.get(c))).toList(),
                 "limits", Map.of("listeners", limit, "listenersPerNumber", 64, "smsRecords", 100_000,
                         "setupMillis", SETUP_MILLIS, "graceMillis", GRACE_MILLIS));
     }

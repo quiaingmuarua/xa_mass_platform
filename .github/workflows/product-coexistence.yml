@@ -1,0 +1,80 @@
+name: Product Coexistence
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Fixed acceptance workload
+        type: choice
+        default: small
+        options: [small, load-1k]
+
+permissions:
+  contents: read
+
+jobs:
+  product-proof:
+    name: Shared products and recipient outcomes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.4.10
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22.19.0'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install fixed proof prerequisites
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          python -m pip install -r distribution/product-preview/requirements.txt
+      - name: Owner tests and real product composition
+        run: |
+          ./gradlew :products:message-campaigns:backend:test :products:sms-reception:backend:test :scenario_workers_jvm:test :distribution:server:test :distribution:server:productCompositionIntegrationTest :distribution:product-preview:stageServer :distribution:product-preview:stageHost :distribution:product-preview:stageFrontend --console=plain
+          python -m unittest discover -s integrations/product-coexistence -p 'test_*.py'
+          corepack pnpm@11.9.0 --dir frontend lint
+          corepack pnpm@11.9.0 --dir frontend typecheck
+          corepack pnpm@11.9.0 --dir frontend test
+      - name: Twelve shared Workers and lifecycle isolation
+        if: inputs.scenario != 'load-1k'
+        run: |
+          python integrations/product-coexistence/run_proof.py --scenario functional --output integrations/product-coexistence/build/ci-functional
+          python integrations/product-coexistence/run_proof.py --scenario lifecycle --port 18540 --output integrations/product-coexistence/build/ci-lifecycle
+      - name: Explicit 1000 Worker combined acceptance
+        if: inputs.scenario == 'load-1k'
+        run: python integrations/product-coexistence/run_proof.py --scenario load-1k --port 18560 --output integrations/product-coexistence/build/ci-1k
+      - name: Fresh unified Preview archive
+        if: inputs.scenario != 'load-1k'
+        run: |
+          ./gradlew :distribution:product-preview:previewZip --console=plain
+          python distribution/product-preview/verify_archive.py --archive distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip --frontend frontend/dist --output integrations/product-coexistence/build/archive.json
+          python -m zipfile -e distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip distribution/product-preview/build/ci-unpacked
+          python integrations/product-coexistence/run_proof.py --scenario functional --port 18580 --root distribution/product-preview/build/ci-unpacked/xa-mass-product-preview-0.1.0-preview --output integrations/product-coexistence/build/ci-zip-functional
+      - name: Upload safe summaries only
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: product-coexistence-proof-${{ github.run_attempt }}
+          path: |
+            integrations/product-coexistence/build/ci-functional/summary.json
+            integrations/product-coexistence/build/ci-lifecycle/summary.json
+            integrations/product-coexistence/build/ci-1k/summary.json
+            integrations/product-coexistence/build/ci-zip-functional/summary.json
+            integrations/product-coexistence/build/archive.json
+          if-no-files-found: warn
+          retention-days: 7

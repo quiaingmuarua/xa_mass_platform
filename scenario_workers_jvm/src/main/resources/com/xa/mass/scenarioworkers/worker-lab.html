@@ -282,8 +282,9 @@
       .section-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
     }
 
-    html[data-scenario="sms"] .workspace { display: none; }
-    html[data-scenario="lab"] .sms-ui { display: none; }
+    html:not([data-scenario="lab"]) .workspace { display: none; }
+    html[data-scenario="lab"] .sms-ui, html[data-scenario="messages"] #sms-panel { display: none; }
+    html[data-scenario="lab"] #messages-panel, html[data-scenario="sms"] #messages-panel { display: none; }
     .sms-ui { max-width: 1400px; margin: auto; padding: 24px; }
     .sms-ui .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
     .sms-ui .stats div, .sms-ui section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
@@ -388,7 +389,7 @@
     </aside>
   </main>
 
-  <main class="sms-ui">
+  <main class="sms-ui" id="sms-panel">
   <div id="sms-error" role="alert" hidden></div>
   <div class="stats"><div><small>模拟号码</small><strong id="sms-numbers">—</strong></div><div><small>活跃监听</small><strong id="sms-active">—</strong></div><div><small>Host 已匹配</small><strong id="sms-matched">—</strong></div><div><small>本地上报失败</small><strong id="sms-failed">—</strong></div></div>
   <div class="controls">
@@ -398,10 +399,87 @@
   <section><h2>模拟 Worker</h2><p class="hint">Properties 只读；启停影响该号码的本地监听。运行状态来自本地 Java Worker，不代表 Adapter 已验证或 Kernel 可调度。活跃监听上限为每号码 64 个。</p><div class="table-wrap"><table><thead><tr><th>国家</th><th>号码</th><th>Worker ID</th><th>期望运行</th><th>本地状态</th><th>活跃监听</th><th>操作</th></tr></thead><tbody id="sms-workers"></tbody></table></div><div class="pager"><button id="sms-prev">上一页</button><span id="sms-page">—</span><button id="sms-next">下一页</button></div></section>
   <footer id="sms-capacity">SMS Reception 0.1.0-preview · 仅模拟数据 · 重启开始新场景</footer>
 </main>
+  <main class="sms-ui" id="messages-panel">
+    <section><h2>模拟收件箱</h2><p class="hint">只有 Worker 实际发送的消息才会出现在这里。选择消息后模拟送达、阅读与回复，结果在 Messages 工作台持续观察。</p>
+      <p id="messages-error" role="status"></p>
+      <div class="table-wrap"><table><thead><tr><th>收件人</th><th>发送号码</th><th>正文</th><th>本地阶段</th><th>最新回复</th><th>操作</th></tr></thead><tbody id="messages-records"></tbody></table></div>
+      <div class="pager"><button id="messages-prev">上一页</button><span id="messages-page"></span><button id="messages-next">下一页</button></div>
+      <form id="messages-reply-form"><label for="messages-selected">选中的消息</label><input id="messages-selected" readonly placeholder="从上方选择消息" />
+        <label for="messages-reply">回复内容</label><textarea id="messages-reply" maxlength="4096" required></textarea>
+        <button type="submit" class="primary">发送回复</button><p id="messages-notice" role="status"></p>
+      </form>
+    </section>
+  </main>
+  <script>
+    if (["messages", "products"].includes(document.documentElement.dataset.scenario)) {
+      document.documentElement.lang = "zh-CN";
+      document.title = "Products · Scenario Worker Host";
+      const element = id => document.getElementById("messages-" + id);
+      let offset = 0, total = 0, stopped = false, timer, reading, mutation, operationId = crypto.randomUUID();
+      const limit = 30;
+      async function api(path, body, signal) {
+        const response = await fetch("/lab/v1/messages/" + path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal });
+        const value = await response.json();
+        if (!response.ok) throw new Error(value.message || "请求失败 " + response.status);
+        return value;
+      }
+      async function act(id, action, body = {}) {
+        if (mutation || stopped) return;
+        const controller = mutation = new AbortController(), timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const value = await api(encodeURIComponent(id) + ":" + action, body, controller.signal);
+          if (!stopped) {
+            element("notice").textContent = value.unchanged ? "此前已执行此动作。" : value.sendAccepted ? "本地动作已完成，回执发送已受理；平台结果请在工作台查看。" : "本地动作已完成，回执发送未受理。";
+            if (action === "reply") operationId = crypto.randomUUID();
+            await refresh();
+          }
+        } catch (error) { if (!stopped) element("notice").textContent = "操作结果未确认：" + error.message; }
+        finally { clearTimeout(timeout); mutation = undefined; }
+      }
+      function row(item) {
+        const tr = document.createElement("tr");
+        for (const value of [item.recipientId, item.phone, item.body, item.status, item.reply || "—"]) {
+          const td = document.createElement("td"); td.textContent = value; tr.append(td);
+        }
+        const td = document.createElement("td");
+        for (const [action, label] of [["deliver", "送达"], ["read", "阅读"], ["reply", "选择回复"]]) {
+          const button = document.createElement("button"); button.textContent = label;
+          button.onclick = () => {
+            if (action === "reply") { element("selected").value = item.messageId; operationId = crypto.randomUUID(); element("reply").focus(); }
+            else void act(item.messageId, action);
+          };
+          td.append(button);
+        }
+        tr.append(td); return tr;
+      }
+      async function refresh() {
+        reading?.abort(); const controller = reading = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const page = await api("records?offset=" + offset + "&limit=" + limit, undefined, controller.signal);
+          if (stopped || controller.signal.aborted) return;
+          total = page.total; element("records").replaceChildren(...page.items.map(row));
+          element("page").textContent = "第 " + (offset / limit + 1) + " 页 · 共 " + total + " 条";
+          element("prev").disabled = offset === 0; element("next").disabled = offset + limit >= total;
+          element("error").textContent = "";
+        } catch (error) { if (!controller.signal.aborted) element("error").textContent = error.message; }
+        finally { clearTimeout(timeout); }
+      }
+      element("reply-form").onsubmit = event => { event.preventDefault(); if (element("selected").value) void act(element("selected").value, "reply", { requestId: operationId, text: element("reply").value }); };
+      element("reply").oninput = () => { operationId = crypto.randomUUID(); };
+      element("prev").onclick = () => { offset = Math.max(0, offset - limit); void refresh(); };
+      element("next").onclick = () => { if (offset + limit < total) offset += limit; void refresh(); };
+      document.getElementById("refresh").addEventListener("click", () => void refresh());
+      async function poll() { if (!document.hidden) await refresh(); if (!stopped) timer = setTimeout(poll, 1000); }
+      window.addEventListener("pagehide", () => { stopped = true; clearTimeout(timer); reading?.abort(); mutation?.abort(); });
+      window.addEventListener("pageshow", () => { if (stopped) { stopped = false; void poll(); } });
+      void poll();
+    }
+  </script>
   <script>
     "use strict";
 
-    if (document.documentElement.dataset.scenario === "sms") {
+    if (["sms", "products"].includes(document.documentElement.dataset.scenario)) {
       document.documentElement.lang = "zh-CN";
       document.title = "SMS · Scenario Worker Host";
       document.querySelector("h1").textContent = "Scenario Worker Host · SMS";
@@ -478,7 +556,7 @@
   window.addEventListener("pageshow", () => { if (stopped) { stopped = false; void poll(); } });
   void poll();
 
-    } else {
+    } else if (document.documentElement.dataset.scenario === "lab") {
     const API = "/lab/v1/workers";
     const state = {
       workers: [],

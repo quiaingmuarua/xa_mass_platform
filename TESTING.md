@@ -27,6 +27,24 @@ The SMS Preview workflow also compares its archive against the current unified
 frontend build and runs the packaged functional runner from a fresh extraction
 without Node or Gradle.
 
+[Product Coexistence](integrations/product-coexistence/README.md) adds a selected
+Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the
+same Worker, receipts after Task completion/closure, duplicates, ordering and
+Worker run isolation. Distribution's `productCompositionIntegrationTest` owns
+four profile combinations plus real partial submission and delayed execution
+evidence. The fixed 1k dual workload is explicit/manual, never part of ordinary CI:
+
+```powershell
+python integrations/product-coexistence/run_proof.py --build --scenario functional
+python integrations/product-coexistence/run_proof.py --scenario lifecycle
+python integrations/product-coexistence/run_proof.py --scenario load-1k
+```
+
+Install `distribution/product-preview/requirements.txt`; use `--root` with a fresh
+extracted Preview to exercise its packaged launcher. The dedicated
+`.github/workflows/product-coexistence.yml` also accepts `scenario=load-1k` through
+workflow_dispatch. CI uploads only safe summary/manifest evidence.
+
 ## Proof Model
 
 Every mechanism claim has one **Primary Proof**. A repeated check elsewhere is
@@ -142,6 +160,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
+| Product Coexistence | `python integrations/product-coexistence/run_proof.py --build --scenario functional`, then `--scenario lifecycle` and fresh ZIP functional | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
 The exact JVM module build list and Android assembly commands are maintained in

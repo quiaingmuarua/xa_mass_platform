@@ -17,7 +17,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Default-off Dispatch observation stays in its Owner and preserves all existing path-selected scheduling and delivery claims."
     },
@@ -81,7 +82,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Kernel Worker registration and Binding now own the persistent identity/address boundary consumed by Java and Android Worker proofs."
     },
@@ -95,7 +97,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "The Endpoint directory replaces Server Binding address configuration for Java and Android Prepare."
     },
@@ -109,7 +112,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Prepare orchestrates identity, Kernel registration and actual Endpoint resolution for Java and Android Workers."
     },
@@ -122,7 +126,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
     },
@@ -145,7 +150,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
@@ -168,7 +174,8 @@
         "android_host",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Worker Core production behavior reaches deterministic Java and Android proofs plus both Worker system claims."
     },
@@ -177,7 +184,8 @@
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "android_host"
+        "android_host",
+        "product_coexistence"
       ],
       "reason": "Core test changes stay on deterministic contract consumers and do not rerun production Worker worlds."
     },
@@ -190,7 +198,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Adapter route production changes reach boundary, Worker correctness, convergence and deployed runtime proofs."
     },
@@ -259,7 +268,8 @@
         "runtime_boundary",
         "worker_convergence_health",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Generic Server error handling reaches Server-wide proofs but does not re-prove the Worker correctness primary claim."
     },
@@ -272,7 +282,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Pacer assembly reaches convergence and runtime boundaries, not the fixed Worker correctness claim."
     },
@@ -286,7 +297,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
     },
@@ -300,7 +312,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "The Task Result response contract is strictly consumed by Worker correctness, convergence and the Android emulator proof."
     },
@@ -316,7 +329,8 @@
       "path": "frontend/src/views/WorkerRuntimeView.vue",
       "lanes": [
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Frontend production changes remain isolated from runtime mechanism proofs."
     },
@@ -341,7 +355,8 @@
         "android_emulator",
         "frontend",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Workflow changes re-prove the complete required gate."
     },
@@ -357,7 +372,8 @@
         "android_emulator",
         "frontend",
         "runtime_distribution",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Selection-contract changes re-prove the complete required gate."
     },
@@ -371,7 +387,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "The distribution now builds the only Server executable, so its assembly dependencies inherit the host proof lanes."
     },
@@ -381,7 +398,8 @@
         "jvm_contracts",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
     },
@@ -391,7 +409,8 @@
         "jvm_contracts",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Host persistence and SDK publication belong to the live Properties integration closure."
     },
@@ -404,7 +423,8 @@
         "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Current verified Channel admission and Properties cache publication require the live Properties proof."
     },
@@ -417,7 +437,8 @@
         "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "product_coexistence"
       ],
       "reason": "Server admission of dynamic Properties must select Worker Correctness through worker/resource."
     },
@@ -435,7 +456,8 @@
         "jvm_contracts",
         "worker_correctness",
         "worker_dynamic_matching",
-        "worker_convergence_health"
+        "worker_convergence_health",
+        "product_coexistence"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -446,7 +468,8 @@
         "runtime_boundary",
         "worker_correctness",
         "worker_dynamic_matching",
-        "worker_convergence_health"
+        "worker_convergence_health",
+        "product_coexistence"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -458,7 +481,8 @@
         "runtime_boundary",
         "worker_dynamic_matching",
         "worker_convergence_health",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -472,7 +496,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
     },
@@ -480,7 +505,8 @@
       "path": "frontend/src/sms/SmsPage.vue",
       "lanes": [
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "SMS routes share Console lifecycle and the single Runtime distribution frontend."
     },
@@ -488,7 +514,8 @@
       "path": "frontend/src/sms/availability.ts",
       "lanes": [
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Catalog admission and Demo isolation belong to the unified frontend proof."
     },
@@ -496,7 +523,8 @@
       "path": "frontend/src/layouts/ConsoleLayout.vue",
       "lanes": [
         "frontend",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Shared navigation and theme must retain Runtime and SMS lifecycle isolation."
     },
@@ -510,9 +538,68 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "product_coexistence"
       ],
       "reason": "Distribution owns finite Console page forwards in enabled and ordinary instances."
+    },
+    {
+      "path": "products/message-campaigns/backend/src/main/java/com/xa/mass/messages/backend/CampaignService.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Finite campaign submission and continuous product observation require application contracts, archive composition and real shared Worker proof."
+    },
+    {
+      "path": "distribution/server/src/main/java/com/xa/mass/distribution/ProductWorkerConfiguration.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Country Group and event declarations belong to distribution; product profiles share one platform."
+    },
+    {
+      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/messaging/MessageScenario.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Real send deduplication and recipient actions require Host tests and product process witnesses."
+    },
+    {
+      "path": "frontend/src/message-campaigns/MessageWorkspace.vue",
+      "lanes": [
+        "frontend",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Business navigation and lifecycle are unified Console contracts and delivered in the shared Preview."
+    },
+    {
+      "path": "distribution/product-preview/run_preview.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Two-process source and ZIP assembly belong to the coexistence proof."
+    },
+    {
+      "path": "integrations/product-coexistence/run_proof.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Small CI and explicit 1k acceptance use product, Runtime and Lab inputs only."
     }
   ]
 }

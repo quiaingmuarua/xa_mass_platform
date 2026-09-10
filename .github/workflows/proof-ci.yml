@@ -35,6 +35,7 @@ jobs:
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
       frontend: ${{ steps.filter.outputs.frontend }}
       runtime_distribution: ${{ steps.filter.outputs.runtime_distribution }}
+      product_coexistence: ${{ steps.filter.outputs.product_coexistence }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -99,6 +100,8 @@ jobs:
           :transport:netty-adapter:build
           :scenario_workers_jvm:build
           :server_jvm:build
+          :products:sms-reception:backend:build
+          :products:message-campaigns:backend:build
           :integrations:worker-correctness:build
           :integrations:worker-dynamic-matching:build
           :integrations:worker-convergence-health:build
@@ -686,6 +689,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  product-coexistence:
+    name: Product Coexistence
+    needs: changes
+    if: >-
+      needs.changes.outputs.product_coexistence == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/product-coexistence.yml
+
   proof-gate:
     name: Proof Gate
     if: always()
@@ -702,6 +713,7 @@ jobs:
       - android-emulator-worker
       - frontend
       - runtime-distribution
+      - product-coexistence
       - docs-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -730,6 +742,8 @@ jobs:
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       RUNTIME_DISTRIBUTION_SELECTED: ${{ needs.changes.outputs.runtime_distribution }}
       RUNTIME_DISTRIBUTION_RESULT: ${{ needs.runtime-distribution.result }}
+      PRODUCT_COEXISTENCE_SELECTED: ${{ needs.changes.outputs.product_coexistence }}
+      PRODUCT_COEXISTENCE_RESULT: ${{ needs.product-coexistence.result }}
       DOCS_RESULT: ${{ needs.docs-contract.result }}
     steps:
       - name: Require every selected proof lane
@@ -783,6 +797,8 @@ jobs:
             "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
           check_lane \
             "Runtime Distribution" "$RUNTIME_DISTRIBUTION_SELECTED" "$RUNTIME_DISTRIBUTION_RESULT"
+          check_lane \
+            "Product Coexistence" "$PRODUCT_COEXISTENCE_SELECTED" "$PRODUCT_COEXISTENCE_RESULT"
           check_lane \
             "Docs Contract" "true" "$DOCS_RESULT"
 

@@ -25,6 +25,7 @@ EXPECTED_LANES = {
     "android_emulator",
     "frontend",
     "runtime_distribution",
+    "product_coexistence",
 }
 LANE = re.compile(r"^([a-z][a-z0-9_]*):$")
 RULE = re.compile(r"^  - '([^']+)'$")

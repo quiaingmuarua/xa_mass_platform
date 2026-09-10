@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { Collection, Document, Link, Message, Tickets } from "@element-plus/icons-vue";
+import {
+  Collection,
+  Document,
+  Link,
+  Message,
+  ChatDotRound,
+  Tickets
+} from "@element-plus/icons-vue";
 import { useSmsAvailability } from "@/sms/availability";
+import { useMessageAvailability } from "@/message-campaigns/availability";
 const emit = defineEmits<{ navigate: [] }>();
 const route = useRoute();
 const sms = useSmsAvailability();
 const smsEnabled = computed(() => sms.state.value.status === "enabled");
+const messages = useMessageAvailability();
+const messagesEnabled = computed(() => messages.state.value.status === "enabled");
 </script>
 
 <template>
@@ -24,17 +34,27 @@ const smsEnabled = computed(() => sms.state.value.status === "enabled");
       <el-icon><Tickets /></el-icon>
       <span>Tasks</span>
     </router-link>
-    <template v-if="smsEnabled">
+    <template v-if="smsEnabled || messagesEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >BUSINESS</span
       >
       <router-link
+        v-if="smsEnabled"
         class="runtime-navigation__link"
-        :class="{ 'router-link-active': route.meta.section === 'Business' }"
-        :aria-current="route.meta.section === 'Business' ? 'page' : undefined"
+        :class="{ 'router-link-active': route.path.startsWith('/sms') }"
+        :aria-current="route.path.startsWith('/sms') ? 'page' : undefined"
         to="/sms"
       >
         <el-icon><Message /></el-icon><span>SMS</span>
+      </router-link>
+      <router-link
+        v-if="messagesEnabled"
+        class="runtime-navigation__link"
+        to="/messages"
+        :class="{ 'router-link-active': route.path.startsWith('/messages') }"
+        :aria-current="route.path.startsWith('/messages') ? 'page' : undefined"
+      >
+        <el-icon><ChatDotRound /></el-icon><span>Messages</span>
       </router-link>
     </template>
     <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
@@ -60,5 +80,15 @@ const smsEnabled = computed(() => sms.state.value.status === "enabled");
   >
     <p>SMS 可用性未确认</p>
     <el-button size="small" @click="sms.load(true)">重试 SMS 可用性</el-button>
+  </div>
+  <div
+    v-if="messages.state.value.status === 'unavailable'"
+    class="runtime-sidebar__note"
+    role="status"
+  >
+    <p>Messages 可用性未确认</p>
+    <el-button size="small" @click="messages.load(true)"
+      >重试 Messages 可用性</el-button
+    >
   </div>
 </template>

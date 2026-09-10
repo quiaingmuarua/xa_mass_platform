@@ -55,10 +55,10 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             byte[] consoleHtml
     ) {
         this.workers = Objects.requireNonNull(workers, "workers");
-        this.scheduledStops = workers.isSms() ? null : Objects.requireNonNull(scheduledStops, "scheduledStops");
+        this.scheduledStops = workers.isGenerated() ? null : Objects.requireNonNull(scheduledStops, "scheduledStops");
         this.server = Objects.requireNonNull(server, "server");
         this.consoleHtml = new String(Objects.requireNonNull(consoleHtml, "consoleHtml"), StandardCharsets.UTF_8)
-                .replace("__SCENARIO__", workers.isSms() ? "sms" : "lab").getBytes(StandardCharsets.UTF_8);
+                .replace("__SCENARIO__", workers.scenario()).getBytes(StandardCharsets.UTF_8);
         AtomicInteger threadSequence = new AtomicInteger();
         executor = new ThreadPoolExecutor(CONTROL_THREADS, CONTROL_THREADS, 0, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(128), task -> {
@@ -75,7 +75,9 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             server.createContext(LAB_PATH, this::handleConsole);
             if (workers.isSms()) {
                 server.createContext(SMS_PATH, this::handleSms);
-            } else {
+            }
+            if (workers.hasMessages()) server.createContext("/lab/v1/messages/", this::handleMessages);
+            if (!workers.isGenerated()) {
                 server.createContext(WORKERS_PATH, this::handle);
                 server.createContext("/lab/v1/execution-witnesses", this::handleWitnesses);
             }
@@ -198,6 +200,74 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         } catch (RuntimeException error) {
             respondError(exchange, 500, "sms_unavailable", "SMS operation failed");
         } finally { exchange.close(); }
+    }
+
+    private void handleMessages(HttpExchange exchange) throws IOException {
+        try {
+            var messages = workers.messageScenario();
+            String path = exchange.getRequestURI().getRawPath().substring("/lab/v1/messages/".length());
+            String method = exchange.getRequestMethod();
+            Map<String, String> query = new LinkedHashMap<>();
+            String raw = exchange.getRequestURI().getRawQuery();
+            if (raw != null) for (String pair : raw.split("&")) {
+                String[] parts = pair.split("=", -1);
+                if (parts.length != 2 || !Set.of("offset", "limit").contains(parts[0]) || query.putIfAbsent(parts[0], parts[1]) != null)
+                    throw new IllegalArgumentException("Invalid message page query");
+            }
+            if (raw != null && (!method.equals("GET") || !Set.of("inventory", "records").contains(path)))
+                throw new IllegalArgumentException("Query not supported on this route");
+            Map<String, ?> response;
+            if (path.startsWith("workers/") && method.equals("POST")) {
+                String[] coordinate = path.substring(8).split("/", -1);
+                if (coordinate.length != 2) throw new IllegalArgumentException("Expected Group and replica");
+                int colon = coordinate[1].lastIndexOf(':');
+                if (colon < 1) throw new IllegalArgumentException("Expected Worker action");
+                String group = decodeSegment(coordinate[0]), key = decodeSegment(coordinate[1].substring(0, colon));
+                switch (coordinate[1].substring(colon + 1)) {
+                    case "start" -> workers.startWorker(group, key);
+                    case "stop" -> workers.stopWorker(group, key);
+                    default -> throw new IllegalArgumentException("Unknown Worker action");
+                }
+                response = Map.of("acceptedCount", 1);
+            } else if (method.equals("POST") && path.matches("[^/:]+:(deliver|read|reply)")) {
+                int colon = path.lastIndexOf(':');
+                response = messages.act(decodeSegment(path.substring(0, colon)), path.substring(colon + 1), readMessageBody(exchange));
+            } else response = switch (method + " " + path) {
+                case "GET health" -> workers.smsHealth();
+                case "GET inventory" -> messages.inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET records" -> messages.page(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET metrics" -> messages.metrics();
+                case "POST receipts:hold" -> {
+                    var body = readMessageBody(exchange);
+                    if (!body.keySet().equals(Set.of("enabled")) || !(body.get("enabled") instanceof Boolean))
+                        throw new IllegalArgumentException("Expected enabled boolean");
+                    yield messages.hold((Boolean) body.get("enabled"));
+                }
+                case "POST receipts:release" -> {
+                    var body = readMessageBody(exchange);
+                    if (!body.keySet().equals(Set.of("receiptIds")) || !(body.get("receiptIds") instanceof List<?> ids)
+                            || ids.stream().anyMatch(id -> !(id instanceof String))) throw new IllegalArgumentException("Expected receiptIds");
+                    yield messages.release(ids.stream().map(String.class::cast).toList());
+                }
+                default -> null;
+            };
+            if (response == null) respondError(exchange, 404, "route_not_found", "Unknown message route");
+            else respondJson(exchange, 200, response);
+        } catch (com.xa.mass.scenarioworkers.messaging.MessageScenario.MissingMessage | ScenarioWorkers.UnknownWorkerException missing) {
+            respondError(exchange, 404, "message_not_found", "Message or Worker not found");
+        } catch (IllegalArgumentException invalid) {
+            respondError(exchange, 400, "invalid_request", invalid.getMessage());
+        } catch (IllegalStateException conflict) {
+            respondError(exchange, 409, "message_conflict", conflict.getMessage());
+        } catch (RuntimeException unavailable) {
+            respondError(exchange, 500, "message_unavailable", "Message operation failed");
+        } finally { exchange.close(); }
+    }
+
+    private static Map<String, Object> readMessageBody(HttpExchange exchange) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(1_000_001);
+        if (bytes.length > 1_000_000) throw new IllegalArgumentException("Request too large");
+        return Jsons.parseObject(new String(bytes, StandardCharsets.UTF_8));
     }
 
     private static Map<String, Object> readSmsBody(HttpExchange exchange) throws IOException {

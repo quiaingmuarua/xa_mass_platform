@@ -706,6 +706,16 @@ product resources. The product creates no Redis clients or platform loops.
 Product callers stop before platform resources. Failed initialization fails
 startup and destroys already-created resources, including the Adapter host.
 
+[Message Campaigns](../products/message-campaigns/README.md) also consumes the
+existing finite `TaskCreationService` and `TaskLifecycleService`. Creation validates
+Group, Rules and numeric fields before writes. `appendFiniteTaskItems` validates
+every input and the 1..100 batch bound before owner operations; `loadTaskItemResults`
+allows 1..1000 nonblank IDs and `loadTaskItemStates` allows 1..100. Application calls
+preserve HTTP input constraints. Products may use the existing TaskCreateRequest
+alongside TaskItemRequest and Result types; no mirrored contracts or controller
+calls are introduced. Distribution owns optional profile combinations and shared
+Group declarations. Server has no Messages dependency or business state names.
+
 ## Assembly Boundaries
 
 Production packages use stable functional roots. The versioned HTTP surface

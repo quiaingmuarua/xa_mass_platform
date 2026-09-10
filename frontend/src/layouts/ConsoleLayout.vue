@@ -5,14 +5,26 @@ import { Connection, Menu, Moon, Sunny, View } from "@element-plus/icons-vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
 
 import { createSmsAvailability, smsAvailabilityKey } from "@/sms/availability";
+import {
+  createMessageAvailability,
+  messageAvailabilityKey
+} from "@/message-campaigns/availability";
 import { useThemeStore } from "@/stores/theme";
 
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
 const sms = createSmsAvailability(demo);
 provide(smsAvailabilityKey, sms);
+const messages = createMessageAvailability(demo);
+provide(messageAvailabilityKey, messages);
 const mobileNavigation = ref(false);
-onMounted(() => void sms.load());
-onBeforeUnmount(() => sms.dispose());
+onMounted(() => {
+  void sms.load();
+  void messages.load();
+});
+onBeforeUnmount(() => {
+  sms.dispose();
+  messages.dispose();
+});
 const theme = useThemeStore();
 const route = useRoute();
 watch(
@@ -25,7 +37,8 @@ const referencePage = computed(() => route.meta.section === "Reference");
 const runtimePage = computed(() => route.meta.section === "Runtime");
 const sourceLabel = computed(() => {
   if (referencePage.value) return "Build reference";
-  if (route.meta.section === "Business") return demo ? "Mock source" : "SMS API";
+  if (route.meta.section === "Business")
+    return demo ? "Mock source" : `${String(route.meta.title)} API`;
   return demo ? "Mock source" : "API source";
 });
 const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));

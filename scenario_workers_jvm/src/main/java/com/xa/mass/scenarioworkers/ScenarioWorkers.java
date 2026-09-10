@@ -7,6 +7,7 @@ import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.scenarioworkers.sms.SmsScenario;
+import com.xa.mass.scenarioworkers.messaging.MessageScenario;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +33,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerLab lab;
     private final SmsScenario sms;
+    private final MessageScenario messages;
+    private final String scenario;
     private final int[] smsCounts;
     private final ScenarioWorkerCommandCheckpoints commandCheckpoints;
     private final ScenarioWorkerExecutionWitnesses executionWitnesses;
@@ -68,6 +71,8 @@ public final class ScenarioWorkers implements AutoCloseable {
         );
         lab = new ScenarioWorkerLab(sandboxRoot);
         sms = null;
+        messages = null;
+        scenario = "lab";
         smsCounts = null;
         this.groupManagerFactory = Objects.requireNonNull(
                 groupManagerFactory,
@@ -96,7 +101,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     sandboxRoot,
                     configs,
                     availableDefinitionExtensions(checkpoints),
-                    (uri, group) -> createManager(uri, group, witnesses, null),
+                    (uri, group) -> createManager(uri, group, witnesses, null, null),
                     checkpoints,
                     witnesses
             );
@@ -115,28 +120,46 @@ public final class ScenarioWorkers implements AutoCloseable {
         return new ScenarioWorkers(runtimeApiBaseUrl, counts, null);
     }
 
+    static ScenarioWorkers products(URI runtimeApiBaseUrl, int[] counts, String scenario) {
+        return new ScenarioWorkers(runtimeApiBaseUrl, counts, null, scenario);
+    }
+
     ScenarioWorkers(URI runtimeApiBaseUrl, int[] counts, GroupManagerFactory managerFactory) {
+        this(runtimeApiBaseUrl, counts, managerFactory, "sms");
+    }
+
+    private ScenarioWorkers(URI runtimeApiBaseUrl, int[] counts, GroupManagerFactory managerFactory, String scenario) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(runtimeApiBaseUrl, "runtimeApiBaseUrl");
         if (counts == null || counts.length != 3 || java.util.Arrays.stream(counts).anyMatch(n -> n < 1)
                 || java.util.Arrays.stream(counts).asLongStream().sum() > 10_000)
             throw new IllegalArgumentException("SMS counts require three positive counts, total <= 10000");
         smsCounts = counts.clone();
         lab = null;
-        sms = new SmsScenario();
+        this.scenario = scenario;
+        sms = !scenario.equals("messages") ? new SmsScenario() : null;
+        messages = !scenario.equals("sms") ? new MessageScenario() : null;
         commandCheckpoints = new ScenarioWorkerCommandCheckpoints();
         executionWitnesses = new ScenarioWorkerExecutionWitnesses();
         var definitions = StringUtilityWorkerEvents.definitions();
         List<String> eventCodes = new ArrayList<>(definitions.stream().map(WorkerEventDefinition::eventName).toList());
-        eventCodes.add("extension.worker.sms.listen.start");
-        eventCodes.add("extension.worker.sms.listen.cancel");
+        if (sms != null) {
+            eventCodes.add("extension.worker.sms.listen.start");
+            eventCodes.add("extension.worker.sms.listen.cancel");
+        }
+        if (messages != null) eventCodes.add("extension.worker.message.send");
+        String prefix = scenario.equals("products") ? "demo-" : scenario.equals("messages") ? "messages-" : "sms-";
         groups = List.of("CN", "US", "GB").stream().map(country -> new GroupAssembly(
-                new ScenarioWorkerGroupConfig("sms-" + country.toLowerCase(Locale.ROOT), eventCodes,
+                new ScenarioWorkerGroupConfig(prefix + country.toLowerCase(Locale.ROOT), eventCodes,
                         Duration.ofSeconds(10), TextMessageReconnectPolicy.defaults()), definitions)).toList();
         groupManagerFactory = managerFactory != null ? managerFactory
-                : (uri, group) -> createManager(uri, group, executionWitnesses, sms);
+                : (uri, group) -> createManager(uri, group, executionWitnesses, sms, messages);
     }
 
     boolean isSms() { return sms != null; }
+    boolean isGenerated() { return lab == null; }
+    boolean hasMessages() { return messages != null; }
+    String scenario() { return scenario; }
+    MessageScenario messageScenario() { return Objects.requireNonNull(messages, "Messages not enabled"); }
 
     SmsScenario smsScenario() {
         if (sms == null) throw new IllegalStateException("SMS scenario is not enabled");
@@ -167,7 +190,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<PreparedGroup> preparedGroups = prepareGroups();
             if (!preparedGroups.isEmpty()) {
                 createManagers(preparedGroups);
-                if (sms != null) {
+                if (isGenerated()) {
                     for (ManagedGroup group : managedGroups) group.manager().start();
                     initialWorkerCount = preparedGroups.stream().mapToInt(group -> group.replicas().size()).sum();
                 } else {
@@ -186,6 +209,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             closed = true;
             commandCheckpoints.close();
             if (sms != null) sms.close();
+            if (messages != null) messages.close();
             RuntimeException closeFailure = closeManagers(null);
             if (sms != null) sms.awaitClosed();
             if (closeFailure != null) {
@@ -211,6 +235,7 @@ public final class ScenarioWorkers implements AutoCloseable {
         closed = true;
         commandCheckpoints.close();
         if (sms != null) sms.close();
+        if (messages != null) messages.close();
         RuntimeException failure = closeManagers(null);
         if (sms != null) sms.awaitClosed();
         if (failure != null) {
@@ -258,21 +283,23 @@ public final class ScenarioWorkers implements AutoCloseable {
                     labWorkerKey
             );
         }
-        if (sms == null) {
+        if (!isGenerated()) {
             group.manager().prepareAndStart(List.of(replicaKey));
         } else {
             String phone = requireReplica(group, replicaKey).properties().get("phone");
-            sms.registry.beginStart(phone);
+            if (sms != null) sms.registry.beginStart(phone);
+            if (messages != null) messages.start(phone);
             try {
                 group.manager().start(replicaKey);
             } catch (RuntimeException | Error failure) {
-                sms.registry.stop(phone);
+                if (sms != null) sms.registry.stop(phone);
+                if (messages != null) messages.stop(phone);
                 throw failure;
             } finally {
                 try {
                     // Stop does not wait for a slow start. Revoke an overtaken start when it returns.
-                    if (!sms.registry.startStillRequested(phone)) group.manager().stop(replicaKey);
-                } finally { sms.registry.endStart(phone); }
+                    if (sms != null && !sms.registry.startStillRequested(phone)) group.manager().stop(replicaKey);
+                } finally { if (sms != null) sms.registry.endStart(phone); }
             }
         }
     }
@@ -292,6 +319,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             );
         }
         if (sms != null) sms.registry.stop(requireReplica(group, replicaKey).properties().get("phone"));
+        if (messages != null) messages.stop(requireReplica(group, replicaKey).properties().get("phone"));
         group.manager().stop(replicaKey);
     }
 
@@ -429,7 +457,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     private List<PreparedGroup> prepareGroups() {
-        if (sms != null) return prepareSmsGroups();
+        if (isGenerated()) return prepareSmsGroups();
         if (groups.isEmpty()) {
             return List.of();
         }
@@ -483,8 +511,10 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<PreparedReplica> replicas = new ArrayList<>();
             for (int index = 0; index < smsCounts[countryIndex]; index++) {
                 String phone = prefixes[countryIndex] + String.format(Locale.ROOT, "%06d", index);
-                replicas.add(new PreparedReplica(country + "-" + index, null,
-                        Map.of("phone", phone, "country", country, "operator", "Preview SIM", "simulated", "true")));
+                Map<String, String> properties = new LinkedHashMap<>(Map.of("phone", phone, "country", country,
+                        "operator", "Preview SIM", "simulated", "true"));
+                if (messages != null) properties.put("messaging.enabled", "true");
+                replicas.add(new PreparedReplica(country + "-" + index, null, Map.copyOf(properties)));
             }
             prepared.add(new PreparedGroup(groups.get(countryIndex), List.copyOf(replicas)));
         }
@@ -665,7 +695,8 @@ public final class ScenarioWorkers implements AutoCloseable {
             URI runtimeApiBaseUrl,
             PreparedGroup preparedGroup,
             ScenarioWorkerExecutionWitnesses witnesses,
-            SmsScenario sms
+            SmsScenario sms,
+            MessageScenario messages
     ) {
         GroupAssembly group = preparedGroup.group();
         ScenarioWorkerGroupConfig config = group.config();
@@ -679,18 +710,27 @@ public final class ScenarioWorkers implements AutoCloseable {
                         config.requestTimeout(),
                         config.reconnectPolicy()
                 ));
-        if (sms == null) builder.batchWorkerKind("SCENARIO_LAB");
+        if (sms == null && messages == null) builder.batchWorkerKind("SCENARIO_LAB");
         AtomicReference<JavaWorkerManager> managerReference = new AtomicReference<>();
         for (PreparedReplica replica : preparedGroup.replicas()) {
             List<WorkerEventDefinition<?>> extensions;
-            if (sms != null) {
+            if (sms != null || messages != null) {
                 Map<String, String> properties = replica.properties();
+                extensions = new ArrayList<>();
+                if (sms != null) {
                 var sim = sms.registry.addSim(config.workerGroupId(), replica.replicaKey(),
                         properties.get("phone"), properties.get("country"),
                         () -> managerReference.get().snapshot(replica.replicaKey()).workerId(),
                         () -> managerReference.get().snapshot(replica.replicaKey()).state().name(),
                         () -> managerReference.get().desiredRunning(replica.replicaKey()));
-                extensions = sms.definitions(sim);
+                extensions.addAll(sms.definitions(sim));
+                }
+                if (messages != null) {
+                    var sender = messages.addSender(config.workerGroupId(), replica.replicaKey(), properties.get("country"), properties.get("phone"),
+                            () -> managerReference.get().snapshot(replica.replicaKey()).workerId(),
+                            () -> managerReference.get().snapshot(replica.replicaKey()).state().name());
+                    extensions.addAll(messages.definitions(sender));
+                }
             } else {
                 extensions = config.eventCodes().contains(ScenarioWorkerExecutionWitnesses.EVENT)
                         ? List.of(witnesses.definition(config.workerGroupId(), replica.replicaKey())) : List.of();

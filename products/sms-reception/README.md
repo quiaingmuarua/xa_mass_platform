@@ -79,6 +79,12 @@ Server 显式启用 `sms-reception` profile，读取 `config/application-sms-rec
 清理该精确前缀，保留其他 scope。硬杀启动器可能留下进程和数据；正常退出是清理前提。
 日志及本轮 PID/scope 元数据保存在 `build/runs/`，不记录短信正文或 Result 内容。
 
+与 [Messages](../message-campaigns/README.md) 同时演示使用
+[共享 Preview](../../distribution/product-preview/README.md)。同一 Worker 同时安装两产品与共享字符串能力；
+SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages Backend 依赖。共享发行配置统一管理端口、
+Redis、Adapter 和 Endpoint；旧 SMS 单产品启动和 ZIP 入口保持不变。产品 profile 只控制业务启用，
+其预览部署文件由启动器显式加载，不再自动嵌入 Server JAR。
+
 ## 模块和执行路径
 
 | 模块 | 职责 |
@@ -95,7 +101,8 @@ SMS 不创建 Redis 客户端、Owner、Pacer、Matching consumer 或 Adapter，
 Worker 与 Adapter 均指向 Server 18390。产品服务调用不经过平台业务 HTTP。
 每个 scope 仅允许一个启用 Pacer 的 Server；本版不支持多实例订单幂等或重启恢复。
 
-产品生命周期在平台装配之后注册 `sms-cn`、`sms-us`、`sms-gb` 并取得托管 Task ID。
+产品生命周期在平台装配之后消费发行层提供的国家 Group 与完整事件声明，并取得托管 Task ID。
+单独启用仍为 `sms-cn/us/gb`；与 Messages 同时启用使用 `demo-cn/us/gb`，两产品幂等消费同一声明。
 构造器没有注册或线程启动副作用；注册失败使启动失败，不补注册。关闭时先拒绝产品新命令，
 停止提交与观察任务，再由宿主关闭平台资源；产品线程共用最多 5 秒的关闭预算，不刷新或重放队列。
 

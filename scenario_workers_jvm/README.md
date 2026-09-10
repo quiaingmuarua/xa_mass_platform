@@ -92,6 +92,53 @@ startup scheduled stop may reference only an initial Worker. The plan owns only
 this process's initial desired state and startup stop schedule. It does not own
 Properties, Worker identity, Tasks, Adapter state, or Kernel expectations.
 
+## Messages and shared products
+
+`--scenario=messages --device-counts=20,20,20` creates generated message senders;
+`--scenario=products` installs SMS and Messages on the same replicas. Country
+Groups are respectively `messages-cn/us/gb` and `demo-cn/us/gb`, declared by
+distribution before Host startup. The shared Manager collection and HTTP server
+remain the only Host assembly. Properties additionally contain
+`messaging.enabled="true"` and enter Matching through the existing SDK/Adapter path.
+Use the [shared launcher](../distribution/product-preview/README.md); Lab and SMS
+entrypoints retain their behavior. Messages adds no timer, watcher or replay loop.
+
+`extension.worker.message.send` is the only way to create recipient records.
+It checks the five-field campaign/message/country/recipient/body contract and
+deduplicates stable message IDs across Workers. A duplicate returns the retained
+snapshot and preserves the first Reporter. Conflicting content is rejected.
+The channel caps storage at 50 campaigns and 50,000 messages; it stores latest
+reply only, with at most 100,000 reply operation fingerprints per run.
+
+| Messages Host API | Local contract |
+| --- | --- |
+| `GET /lab/v1/messages/health` | Prepared identities and Host lifecycle |
+| `GET /lab/v1/messages/inventory` | Group/replica/country/phone/actual Worker, paged 1..1000 |
+| `GET /lab/v1/messages/records` | Only actually sent messages, paged 1..1000 |
+| `GET /lab/v1/messages/metrics` | Capacity, held receipts, publication and dedup counts |
+| `POST /lab/v1/messages/{id}:deliver` | Empty object; commit delivery before publication |
+| `POST /lab/v1/messages/{id}:read` | Empty object; delivery required |
+| `POST /lab/v1/messages/{id}:reply` | `{requestId,text}`, 128/4096 character bounds; delivery required; multiple replies |
+| `POST /lab/v1/messages/receipts:hold` | `{enabled}`; default false, no automatic flush |
+| `POST /lab/v1/messages/receipts:release` | 1..10,000 existing receiptIds in caller order; duplicates preserve original time/content |
+| `POST /lab/v1/messages/workers/{group}/{replica}:start` | Start one local replica |
+| `POST /lab/v1/messages/workers/{group}/{replica}:stop` | Revoke both products' Reporter associations before SDK stop |
+
+Bodies are bounded to 1,000,000 bytes. Actions commit complete immutable snapshots
+under the channel gate, then call the original Reporter outside it with strictly
+increasing milliseconds. Later tags 7/8/9 represent delivery/read/reply. Repeating
+an action does not republish it; same reply operation with changed content is
+rejected. Responses describe persistence and local send admission, never remote ACK.
+Held receipts are capped at 10,000 and can only be released once (including repeated
+IDs within that release). They cannot inject tag, forward or arbitrary payload.
+Send failure leaves the local business fact intact without retry or compensation.
+
+Stopping a Worker clears its associated Reporters. Records remain readable and
+can accept local actions after restart, but the new run cannot publish those old
+messages. The product retains its last actual observation. `/lab` shows a paged
+recipient inbox and, in products mode, the existing SMS input panel alongside it.
+No simulated input calls the Messages Backend or invents product Results.
+
 ## SMS Scenario
 
 `--scenario=lab` is the default and preserves the Lab CLI and inventory contract.
@@ -373,7 +420,7 @@ These endpoints expose Lab desired/runtime state only. They do not claim
 Adapter connectivity, Kernel score, or schedulability. The stable ready line is:
 
 ```text
-SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port>/lab initialWorkerCount=<n> scheduledStopCount=<n> scenario=<lab|sms>
+SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port>/lab initialWorkerCount=<n> scheduledStopCount=<n> scenario=<lab|sms|messages|products>
 ```
 
 The same loopback control server exposes a dependency-free local console at:

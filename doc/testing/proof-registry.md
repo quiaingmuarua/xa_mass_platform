@@ -173,6 +173,24 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Deliberate nonclaims:** implementation behavior.
 - **Contract:** [Checker](../../.github/scripts/check_docs.py) and [unit tests](../../.github/scripts/test_check_docs.py).
 
+## product_coexistence
+
+- **Primary owner:** [Product Coexistence](../../integrations/product-coexistence/README.md).
+- **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
+  set and neutral Group declarations; finite message execution and later recipient
+  observations remain correlated after Task completion or explicit closure.
+  Duplicate/reordered receipts and Worker restart preserve latest content and run
+  isolation. Four-profile distribution composition and fresh unified Preview
+  delivery remain consistent with public Console availability.
+- **Failure witnesses:** partial real append retains uncertain submission without
+  approval/recreation; a real delayed synchronous execution Result cannot erase
+  a newer recipient reply. The process runner uses only business/Runtime/Lab APIs.
+- **Deliberate nonclaims:** reliable receipts across failure, restart recovery,
+  third-party sending, chat history, capacity maximum or per-Task fairness.
+- **Selection:** small 12-Worker lane participates in Proof Gate. Fixed 1,000-Worker
+  simultaneous SMS/message load is explicit local or workflow_dispatch acceptance.
+  Generic Score and Result transition truth remains with Redis Owner/Runtime Boundary.
+
 ## sms_reception_preview
 
 - **Primary owner:** [SMS Reception](../../products/sms-reception/README.md#检查与验收).

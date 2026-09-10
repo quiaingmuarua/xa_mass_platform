@@ -52,10 +52,11 @@ class SmsCompositionIntegrationTest {
         String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         int serverPort = port(), adapterPort = port();
         URI base = URI.create("http://127.0.0.1:" + serverPort);
-        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ConsoleFrontendConfiguration.class, BlockTaskHttp.class);
+        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ProductWorkerConfiguration.class, ConsoleFrontendConfiguration.class, BlockTaskHttp.class);
         app.setRegisterShutdownHook(false);
         try (var context = app.run(
                 "--spring.profiles.active=sms-reception", "--server.port=" + serverPort,
+                "--spring.config.additional-location=" + java.nio.file.Path.of("../../products/sms-reception/config/application-sms-reception.yaml").toAbsolutePath().normalize().toUri(),
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                 "--xa.mass.worker-delivery.adapter.instances.sms-websocket.listen-port=" + adapterPort,
@@ -130,7 +131,7 @@ class SmsCompositionIntegrationTest {
         String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         int serverPort = port();
         URI base = URI.create("http://127.0.0.1:" + serverPort);
-        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ConsoleFrontendConfiguration.class);
+        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ProductWorkerConfiguration.class, ConsoleFrontendConfiguration.class);
         app.setRegisterShutdownHook(false);
         try (var context = app.run("--spring.profiles.active=default", "--server.port=" + serverPort,
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,

@@ -47,6 +47,7 @@ function installApi() {
   let status = "LISTENING";
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.startsWith("/api/v1/messages/")) return new Response("{}", { status: 404 });
     let body: unknown;
     if (url.endsWith("/catalog")) body = { ...catalog, runId };
     else if (url.endsWith("/metrics")) body = { ...initialMetrics, runId };
@@ -113,7 +114,7 @@ describe("unified SMS console", () => {
       ).toBe(true);
       expect(host.querySelector('.sms-tabs [aria-current="page"]')).not.toBeNull();
       expect(
-        fetcher.mock.calls.filter(([url]) => String(url).endsWith("/catalog"))
+        fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/sms/catalog")
       ).toHaveLength(1);
     }
   );
@@ -166,7 +167,11 @@ describe("unified SMS console", () => {
     await settle();
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(
-      fetcher.mock.calls.every(([url]) => String(url).startsWith("/api/v1/sms/"))
+      fetcher.mock.calls.every(
+        ([url]) =>
+          String(url).startsWith("/api/v1/sms/") ||
+          String(url) === "/api/v1/messages/catalog"
+      )
     ).toBe(true);
     await router.push("/runtime/tasks");
     await settle();
@@ -190,7 +195,7 @@ describe("unified SMS console", () => {
     await settle();
     expect(host.querySelector(".phone")).toBeNull();
     expect(
-      fetcher.mock.calls.filter(([url]) => String(url).endsWith("/catalog"))
+      fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/sms/catalog")
     ).toHaveLength(2);
   });
 
@@ -232,7 +237,7 @@ describe("unified SMS console", () => {
       fetcher.mock.calls.filter(([, init]) => init?.method === "POST")
     ).toHaveLength(1);
     expect(
-      fetcher.mock.calls.filter(([url]) => String(url).endsWith("/catalog"))
+      fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/sms/catalog")
     ).toHaveLength(1);
   });
 
@@ -273,14 +278,18 @@ describe("unified SMS console", () => {
   it.each([404, 503])(
     "hides the entry on %s and explains the state on a direct visit",
     async (status) => {
-      const fetcher = vi.fn(async () => new Response("{}", { status }));
+      const fetcher = vi.fn(
+        async (_input: RequestInfo | URL) => new Response("{}", { status })
+      );
       vi.stubGlobal("fetch", fetcher);
       const { host } = await mountConsole();
       expect(host.textContent).not.toContain("BUSINESS");
       expect(host.querySelector('aside a[href="/sms"]')).toBeNull();
       expect(host.textContent).toContain(status === 404 ? "未启用" : "无法确认");
       await vi.advanceTimersByTimeAsync(6000);
-      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(
+        fetcher.mock.calls.filter(([url]) => String(url).startsWith("/api/v1/sms/"))
+      ).toHaveLength(1);
       if (status === 503) {
         fetcher.mockImplementationOnce(
           async () => new Response(JSON.stringify(catalog))
@@ -296,11 +305,12 @@ describe("unified SMS console", () => {
     let complete!: (response: Response) => void;
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            complete = resolve;
-          })
+      vi.fn((input: RequestInfo | URL) =>
+        String(input).startsWith("/api/v1/messages/")
+          ? Promise.resolve(new Response("{}", { status: 404 }))
+          : new Promise<Response>((resolve) => {
+              complete = resolve;
+            })
       )
     );
     const { host } = await mountConsole();

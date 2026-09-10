@@ -89,7 +89,7 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(
             manifest.get("springProfiles")
-            == ["scenario-workers", "agentforge", "sms-reception"],
+            == ["scenario-workers", "agentforge", "sms-reception", "message-campaigns"],
             "Spring Profiles mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")

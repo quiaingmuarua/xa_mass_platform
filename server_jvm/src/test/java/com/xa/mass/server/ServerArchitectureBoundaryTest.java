@@ -219,6 +219,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSourcesExcluding(API_V1, CONTROLLERS))
                 .doesNotContain("@RestController");
         assertThat(readProductionJavaSourcesOutsideServer()
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskCreateRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus", "approved"))

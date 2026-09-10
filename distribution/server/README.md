@@ -2,13 +2,14 @@
 
 This module owns the sole production main, Boot JAR and publishable Server
 runtime archive. `com.xa.mass.server.XaMassServerApplication` imports
-`XaMassServerConfiguration` and the profile-scoped SMS configuration into one
-context. `server_jvm` and SMS Backend are libraries; neither produces a Boot JAR.
+`XaMassServerConfiguration` and profile-scoped SMS/Messages configurations into one
+context. Server and both Backends are libraries; only distribution produces a Boot JAR.
 Distribution contains no application services or resource operations.
 
-The JAR packages Server, its production dependencies, the SMS business module
-and its profile configuration. The archive packages the compiled unified console
-for Runtime, Reference and SMS pages; the JAR embeds no separate SMS frontend. It does not
+The JAR packages Server, its production dependencies and both business libraries.
+Preview deployment coordinates live in explicit distribution/launcher configuration;
+product profiles enable business without injecting a second Adapter. The archive packages the compiled unified console
+for Runtime, Reference, SMS and Messages pages; the JAR embeds no separate SMS frontend. It does not
 package the repository-local Scenario Worker Host. It also generates and
 packages the current-build Platform diagnostic code projection. Redis remains
 external.
@@ -62,15 +63,24 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `agentforge` preset uses Server/Adapter ports 18182/18183, Redis scope
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
-`sms-reception` enables the product at `/sms` and `/api/v1/sms/*`, with one
-Server on 18390 and Adapter on 18393. It requires an explicit Redis scope.
-The [product launcher](../../products/sms-reception/README.md#启动与交付) supplies
-a finite test scope and starts the separate SIM Host on 18394. Without that
-profile there are no SMS APIs, Groups or background jobs. The console assets are
-shared; the distribution explicitly forwards the three SMS pages and trailing
-slashes to its index in either profile. Catalog observation controls menu visibility
-and the unavailable page. Unknown APIs and assets are not forwarded.
-The root Runtime and Reference pages remain usable independently of SMS enablement.
+`sms-reception` and `message-campaigns` independently enable their business APIs,
+Groups and jobs. `ProductWorkerConfiguration` supplies three country Groups and
+complete extension-event declarations: SMS alone uses `sms-*`, Messages alone
+uses `messages-*`, both use `demo-*`. Each product consumes exactly that input via
+the existing idempotent Group registration service; distribution owns no registration
+workflow. One context retains one Pacer, Matching consumer and set of Redis Owners.
+
+The [shared Preview](../product-preview/README.md) owns the common port/Redis/Adapter
+configuration and separate Host process. The [SMS launcher](../../products/sms-reception/README.md#启动与交付)
+retains its existing single-product deployment. Product profile files containing
+preview coordinates are explicit external inputs, not embedded Boot defaults.
+
+Distribution explicitly forwards the three SMS pages and Messages workspace,
+metrics and single-segment campaign detail routes, including trailing slashes, to
+one index in all four product combinations. Unknown APIs and assets are not
+forwarded. Independent catalog observations control navigation and unavailable
+states; the shared assets do not enable a product. Runtime and Reference remain
+independent. `productCompositionIntegrationTest` proves all four combinations.
 
 Endpoint overrides use `xa.mass.worker-endpoints`. Each configured transport
 type must name an explicit default in `defaults`; `endpoints` supplies the URI

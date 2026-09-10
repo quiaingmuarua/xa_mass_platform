@@ -3,6 +3,7 @@ import ConsoleLayout from "@/layouts/ConsoleLayout.vue";
 import RuntimeProvider from "@/layouts/RuntimeProvider.vue";
 
 const smsPage = () => import("@/sms/SmsPage.vue");
+const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
 export const consoleRoutes: RouteRecordRaw[] = [
   {
     path: "/",
@@ -38,6 +39,11 @@ export const consoleRoutes: RouteRecordRaw[] = [
         path,
         component: smsPage,
         meta: { section: "Business", title: "SMS" }
+      })),
+      ...["messages", "messages/campaigns/:id", "messages/metrics"].map((path) => ({
+        path,
+        component: messagesPage,
+        meta: { section: "Business", title: "Messages" }
       }))
     ]
   },

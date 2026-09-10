@@ -109,6 +109,25 @@ frontend Vite server. The same `/api` proxy carries platform and SMS requests.
 Runtime and SMS Preview ZIPs both package this `dist`; the Server JAR contains no
 separate SMS frontend.
 
+## Messages business pages
+
+`src/message-campaigns/` owns campaign creation, detail/message pagination and
+metrics under `/messages`, `/messages/campaigns/{id}`, `/messages/metrics` (also
+trailing slashes). The [Messages Owner](../products/message-campaigns/README.md)
+defines business states. `SENT` never implies delivery, read or reply; a missing
+receipt remains unobserved. The newest full reply is displayed without chat history.
+
+ConsoleLayout provides independent SMS and Messages catalog observations, each
+with one five-second request, no background discovery and manual retry after an
+unconfirmed failure. One unavailable product cannot block the other. Only enabled
+entries appear in BUSINESS; Mock Demo hides both and performs no product calls.
+Runtime initialization stays in RuntimeProvider. Messages routes load lazily,
+retain forms across product tabs, abort pending work on exit and never replay an
+uncertain creation. A changed runId reloads catalog and discards old local selection.
+The same theme, mobile navigation, Vite proxy and unified production build apply.
+Use [Product Preview](../distribution/product-preview/README.md) for simultaneous
+business development (`VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500`).
+
 ## API Reference
 
 The API Reference uses the official Scalar Vue component in a top-level lazy

@@ -15,20 +15,34 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation project(':server_jvm')
     implementation project(':products:sms-reception:backend')
+    implementation project(':products:message-campaigns:backend')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation project(':kernel_jvm')
     testImplementation project(':kernel_pacer_jvm')
     testImplementation project(':worker_matching_jvm')
     testImplementation project(':transport:java-worker')
+    testImplementation project(':scenario_workers_jvm')
     testImplementation project(':transport:netty-adapter')
     testImplementation 'io.lettuce:lettuce-core'
 }
 tasks.named('jar') { enabled = false }
-tasks.named('processResources') {
-    from(rootProject.file('products/sms-reception/config')) { include 'application-sms-reception.yaml' }
+tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition', 'product-composition' } }
+tasks.register('productCompositionIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Proves four product combinations share one platform and explicit page delivery.'
+    dependsOn 'buildFrontend'
+    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'product-composition' }
+    outputs.upToDateWhen { false }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
+            throw new GradleException('Product composition must execute without skipped tests')
+        }
+    }
 }
-tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition' } }
 tasks.register('smsCompositionIntegrationTest', Test) {
     group = 'verification'
     description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
@@ -150,7 +164,8 @@ tasks.register('generateRuntimeManifest') {
                         springProfiles  : [
                                 'scenario-workers',
                                 'agentforge',
-                                'sms-reception'
+                                'sms-reception',
+                                'message-campaigns'
                         ],
                         frontendIncluded: true
                 ])) + System.lineSeparator(),

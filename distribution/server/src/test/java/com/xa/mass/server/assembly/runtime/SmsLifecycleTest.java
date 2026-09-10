@@ -41,7 +41,7 @@ class SmsLifecycleTest {
             context.registerBean(TaskDataService.class, () -> results);
             context.registerBean(ServerConfiguredRuntimeLifecycleHost.class, () -> platform,
                     definition -> definition.setDestroyMethodName("stop"));
-            context.register(SmsProductConfiguration.class);
+            context.register(SmsProductConfiguration.class, com.xa.mass.distribution.ProductWorkerConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
             when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(java.util.Map.of());
             when(registrations.register(anyString(), anyMap(), anyList())).thenAnswer(call -> {

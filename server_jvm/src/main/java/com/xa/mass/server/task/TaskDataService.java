@@ -50,6 +50,14 @@ public final class TaskDataService {
             String taskId,
             List<TaskItemRequest> requestedItems
     ) {
+        if (taskId == null || taskId.isBlank() || requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100)
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Expected taskId and 1..100 Items", null);
+        for (TaskItemRequest item : requestedItems) {
+            if (item == null || item.messageId() == null || item.messageId().isBlank() || item.eventCode() == null
+                    || item.eventCode().isBlank() || item.payload() == null || item.priority() < 0 || item.priority() > 10
+                    || item.ttlMillis() != null && item.ttlMillis() <= 0)
+                throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Invalid TaskItem fields", null);
+        }
         return appendResponse(appendItems(
                 taskId,
                 requestedItems
@@ -157,6 +165,9 @@ public final class TaskDataService {
             String taskId,
             List<String> messageIds
     ) {
+        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
+                || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadStates", "Expected taskId and 1..100 IDs", null);
         try {
             List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
             requireQueryableTask(taskId, "taskData.loadStates");

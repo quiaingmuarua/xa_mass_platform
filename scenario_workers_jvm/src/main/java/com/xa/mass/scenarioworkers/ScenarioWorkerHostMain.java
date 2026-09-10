@@ -35,8 +35,8 @@ public final class ScenarioWorkerHostMain {
                 == null
                 ? ScenarioWorkerStartupPlan.defaults()
                 : ScenarioWorkerStartupPlan.load(options.startupPlanPath());
-        ScenarioWorkers workers = options.scenario().equals("sms")
-                ? ScenarioWorkers.sms(options.runtimeApiBaseUrl(), options.smsCounts()) : ScenarioWorkers.fromJson(
+        ScenarioWorkers workers = !options.scenario().equals("lab")
+                ? ScenarioWorkers.products(options.runtimeApiBaseUrl(), options.smsCounts(), options.scenario()) : ScenarioWorkers.fromJson(
                 loadCapabilityAssembly(options.capabilityAssemblyPath()),
                 options.sandboxRoot(),
                 options.runtimeApiBaseUrl()
@@ -222,6 +222,7 @@ public final class ScenarioWorkerHostMain {
                 "--capability-assembly";
         private static final String SCENARIO_ARGUMENT = "--scenario";
         private static final String SMS_COUNTS_ARGUMENT = "--sms-counts";
+        private static final String DEVICE_COUNTS_ARGUMENT = "--device-counts";
 
         HostOptions {
             requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
@@ -246,8 +247,8 @@ public final class ScenarioWorkerHostMain {
                         "capability-assembly must be non-blank"
                 );
             }
-            if (!"lab".equals(scenario) && !"sms".equals(scenario))
-                throw new IllegalArgumentException("scenario must be lab or sms");
+            if (!java.util.Set.of("lab", "sms", "messages", "products").contains(scenario))
+                throw new IllegalArgumentException("scenario must be lab, sms, messages or products");
             smsCounts = smsCounts.clone();
         }
 
@@ -276,7 +277,7 @@ public final class ScenarioWorkerHostMain {
                         && !STARTUP_PLAN_ARGUMENT.equals(name)
                         && !CAPABILITY_ASSEMBLY_ARGUMENT.equals(name)
                         && !SCENARIO_ARGUMENT.equals(name)
-                        && !SMS_COUNTS_ARGUMENT.equals(name)) {
+                        && !SMS_COUNTS_ARGUMENT.equals(name) && !DEVICE_COUNTS_ARGUMENT.equals(name)) {
                     throw new IllegalArgumentException(
                             "Unknown Scenario Worker Host argument: " + name
                     );
@@ -288,14 +289,16 @@ public final class ScenarioWorkerHostMain {
                 }
             }
             String scenario = values.getOrDefault(SCENARIO_ARGUMENT, "lab");
-            if ("sms".equals(scenario) && (values.containsKey(SANDBOX_ROOT_ARGUMENT)
+            if (!"lab".equals(scenario) && (values.containsKey(SANDBOX_ROOT_ARGUMENT)
                     || values.containsKey(STARTUP_PLAN_ARGUMENT) || values.containsKey(CAPABILITY_ASSEMBLY_ARGUMENT)))
                 throw new IllegalArgumentException("SMS does not accept Lab inventory, capability assembly or startup plan");
             if (!"sms".equals(scenario) && values.containsKey(SMS_COUNTS_ARGUMENT))
                 throw new IllegalArgumentException("sms-counts requires scenario=sms");
+            if (values.containsKey(DEVICE_COUNTS_ARGUMENT) && !java.util.Set.of("messages", "products").contains(scenario))
+                throw new IllegalArgumentException("device-counts requires scenario=messages or products");
             int[] counts;
             try {
-                counts = java.util.Arrays.stream(values.getOrDefault(SMS_COUNTS_ARGUMENT, "20,20,20").split(",", -1))
+                counts = java.util.Arrays.stream(values.getOrDefault(scenario.equals("sms") ? SMS_COUNTS_ARGUMENT : DEVICE_COUNTS_ARGUMENT, "20,20,20").split(",", -1))
                         .mapToInt(Integer::parseInt).toArray();
             } catch (NumberFormatException error) { throw new IllegalArgumentException("Invalid sms-counts", error); }
             if (counts.length != 3 || java.util.Arrays.stream(counts).anyMatch(n -> n < 1)

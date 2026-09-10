@@ -97,6 +97,13 @@ the `sms-reception` profile enables product routes and jobs. SMS calls the
 existing Server services and shares their Owner instances.
 It owns listening orders and SMS routing; Kernel retains assignment and scheduling.
 
+[Message Campaigns](products/message-campaigns/README.md) adds finite PRECOMPUTED
+batches and later delivery, read and repeated reply observations. The
+[shared Preview](distribution/product-preview/README.md) runs both products on the
+same Server, Adapter and Worker pool. Products remain independent libraries using
+Server application services; the [coexistence proof](integrations/product-coexistence/README.md)
+exercises their shared runtime and preserves each product's business semantics.
+
 | Surface | Entry and owner |
 | --- | --- |
 | Kernel mechanisms | [kernel_jvm](kernel_jvm/README.md): stable contracts, Redis providers, Scores, resources and Candidate Cache |
@@ -104,10 +111,10 @@ It owns listening orders and SMS routing; Kernel retains assignment and scheduli
 | Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/Rules and bounded PRECOMPUTED Demand consumer |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
-| JVM simulation | [scenario_workers_jvm](scenario_workers_jvm/README.md): one independent Host for Lab fixtures and SMS numbers |
+| JVM simulation | [scenario_workers_jvm](scenario_workers_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
 | Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) observes live facts during execution |
-| Frontend | [frontend](frontend/README.md): shared console for Runtime observation, SMS, finite Task files, Direct Debug and references |
+| Frontend | [frontend](frontend/README.md): shared console for Runtime observation, SMS, Messages, finite Task files, Direct Debug and references |
 | Releases | [Server Runtime](distribution/server/README.md) and [Worker SDK](distribution/worker-sdk/README.md): packaging of existing owners |
 
 ## Runtime And Deployment

@@ -574,7 +574,7 @@ registration, identity inference, thread or Core API.
 
 [Scenario Host](scenario_workers_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
 
-`scenario_workers_jvm` is a finite standalone Java 21 Lab/SMS Worker Host, not a
+`scenario_workers_jvm` is a finite standalone Java 21 Lab/SMS/Messages Worker Host, not a
 Kernel owner, Server profile, Adapter, production Worker platform or plugin
 system.
 
@@ -619,7 +619,7 @@ system.
   must not wait for publication. Local acceptance is not remote ACK; never
   compensate, retry or add pending publication state.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
-- SMS uses generated CLIENT_KEY replicas in the same Manager collection. Keep
+- SMS and Messages use generated CLIENT_KEY replicas in the same Manager collection. Keep
   Lab inventory keys local to Lab, and SMS Properties read-only. SMS adds only
   its fixed per-number events beside shared string events; no second Host,
   HTTP server, Manager collection or plugin lifecycle belongs in the SMS package.
@@ -751,12 +751,13 @@ business flows; the directory name does not establish a commercial product bound
   business invariants and report failures and unconfirmed outcomes honestly;
   never hide a platform defect behind product-side scheduling or delivery repair.
   Carry discovered platform regressions back to their owning proof.
-- SMS is a business library depending on `server_jvm`; distribution imports both
-  configurations into one context. Server has no product dependency. Product
+- SMS and Messages are independent business libraries depending on `server_jvm`;
+  distribution imports their profile configurations into one context. Server has no product dependency. Product
   code creates no Redis clients, Owners, Pacer, Matching consumer or Adapter.
   Keep a single set of those resources and never start the simulator in Server.
-- SMS consumes only the approved Server registration, bounded Task submission and
-  Result query services and their existing values. Keep validation in those
+- Products consume only approved Server registration, bounded Task submission,
+  finite Task creation/append/approval and Result query services and their existing
+  TaskCreateRequest/TaskItemRequest/Result values. Keep validation in those
   application services; never call Controllers, providers or scheduling policy.
 - Product enablement and its background work are profile-scoped. Stop product
   callers before closing platform resources, using one bounded shutdown budget.
@@ -767,12 +768,31 @@ business flows; the directory name does not establish a commercial product bound
   Runtime and SMS retain independent data state and polling lifetimes. Distribution
   owns the finite SMS page forwards; the product profile gates APIs, Groups and
   jobs rather than shared static assets. Menu visibility uses bounded catalog
-  observation, never business activation. Public Mock Demo makes no SMS requests.
+  observation, never business activation. Public Mock Demo makes no product requests.
   Do not invoke Controllers or use platform HTTP waiters or the Direct Call
   registry from product code.
 - The simulator is the SMS scene of the independent `scenario_workers_jvm` SDK
   Host, sharing its main and local control service with the Lab. Its HTML and raw SMS
   controls must not become a product Result source or a platform control proxy.
+
+- [Message Campaigns](products/message-campaigns/README.md) owns finite campaign records,
+  request idempotency and receipt interpretation. Preserve complete business validation
+  before Task creation, append confirmation before approval and explicit uncertain
+  submission without automatic retry or recreation. Task scheduling finality does
+  not stop retained Item observation; instance Outcome names remain unchanged.
+- Distribution owns shared country Group/event declarations and Preview coordinates.
+  Products have no dependency on one another and must not independently construct
+  shared Group names. Both product profiles must retain one platform resource set.
+- The Host message channel creates records only through actual message.send execution.
+  Keep first-Reporter association, business identity dedup and local-fact-before-publish
+  ordering. Recipient hold/release accepts only already committed receipt IDs, never
+  arbitrary Reports. Stop clears Reporters before SDK stop; a new run cannot adopt old
+  messages. Preserve the finite capacities in the [Host Owner](scenario_workers_jvm/README.md#messages-and-shared-products).
+- [Product Preview](distribution/product-preview/README.md) is a finite delivery owner
+  for one Server and one Host. It may package Host; the production Runtime ZIP may not.
+  Products share the existing unified frontend, independent catalog availability and
+  page lifecycles. Product Coexistence is a separate business witness, not a replacement
+  for platform Owner proofs; keep its fixed 1k workload explicit/manual.
 
 ## Verification
 

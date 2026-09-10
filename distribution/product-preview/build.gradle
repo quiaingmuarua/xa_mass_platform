@@ -1,0 +1,65 @@
+plugins { id 'base' }
+version = '0.1.0-preview'
+
+tasks.register('stageServer', Sync) {
+    dependsOn ':distribution:server:bootJar'
+    into layout.buildDirectory.dir('server')
+    from(project(':distribution:server').tasks.named('bootJar'))
+}
+
+tasks.register('stageFrontend', Sync) {
+    dependsOn ':distribution:server:buildFrontend', ':distribution:server:generatePlatformDiagnosticCodes'
+    into layout.buildDirectory.dir('frontend/dist')
+    from(rootProject.file('frontend/dist')) { exclude 'reference/platform-diagnostic-codes.json' }
+    from(project(':distribution:server').platformDiagnosticCodesFile) { into 'reference' }
+}
+
+tasks.register('stageHost', Sync) {
+    dependsOn ':scenario_workers_jvm:jar'
+    into layout.buildDirectory.dir('host/lib')
+    from(project(':scenario_workers_jvm').tasks.named('jar'))
+    from(project(':scenario_workers_jvm').configurations.runtimeClasspath)
+}
+
+tasks.register('previewManifest') {
+    dependsOn 'stageServer', 'stageHost', 'stageFrontend'
+    def output = layout.buildDirectory.file('preview-manifest.json')
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+    doLast {
+        def hash = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+        def jar = project(':distribution:server').tasks.named('bootJar').get().archiveFile.get().asFile
+        def files = [("lib/${jar.name}".toString()): hash(jar)]
+        fileTree(layout.buildDirectory.dir('host/lib')).files.each { files["scenario-workers/lib/${it.name}".toString()] = hash(it) }
+        def frontend = layout.buildDirectory.dir('frontend/dist').get().asFile
+        fileTree(frontend).files.each { files['frontend/dist/' + frontend.toPath().relativize(it.toPath()).toString().replace('\\', '/')] = hash(it) }
+        files['run_preview.py'] = hash(file('run_preview.py'))
+        files['requirements.txt'] = hash(file('requirements.txt'))
+        fileTree('config').files.each { files['config/' + it.name] = hash(it) }
+        def manifest = [version: project.version.toString(), platformVersion: project(':server_jvm').version.toString(),
+                gitCommit: providers.exec { commandLine 'git', 'rev-parse', 'HEAD' }.standardOutput.asText.get().trim(),
+                includesWorktree: true, defaultProducts: ['sms', 'messages'], supportedProducts: ['sms', 'messages', 'sms,messages'],
+                processModel: ['server', 'host'], sha256: files.sort()]
+        output.get().asFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(manifest)) + '\n'
+    }
+}
+
+tasks.register('previewZip', Zip) {
+    dependsOn 'previewManifest'
+    archiveFileName = "xa-mass-product-preview-${project.version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    into("xa-mass-product-preview-${project.version}") {
+        from('run_preview.py')
+        from('requirements.txt')
+        from('README.md')
+        from('config') { into 'config' }
+        from(layout.buildDirectory.file('preview-manifest.json'))
+        from(project(':distribution:server').tasks.named('bootJar')) { into 'lib' }
+        from(layout.buildDirectory.dir('frontend/dist')) { into 'frontend/dist' }
+        from(layout.buildDirectory.dir('host')) { into 'scenario-workers' }
+        from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
+        from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) { rename { 'THIRD_PARTY_NOTICES.frontend.md' } }
+    }
+}

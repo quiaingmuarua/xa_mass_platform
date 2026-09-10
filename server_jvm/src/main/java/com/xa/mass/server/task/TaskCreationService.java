@@ -46,6 +46,11 @@ public final class TaskCreationService {
     }
 
     public TaskCreateResponse create(TaskCreateRequest request) {
+        if (request == null || request.workerGroupId() == null || request.workerGroupId().isBlank()
+                || request.allocationRule() == null || request.priority() < 0 || request.priority() > 99
+                || request.maximumCandidateWorkers() < 1 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
+        }
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
         createCandidateRule(taskId, request);
