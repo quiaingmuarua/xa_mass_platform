@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElForm, ElFormItem, ElPagination } from "element-plus";
+import "element-plus/theme-chalk/el-form.css";
+import "element-plus/theme-chalk/el-form-item.css";
+import "element-plus/theme-chalk/el-pagination.css";
 import {
   api,
   confirmedCampaign,

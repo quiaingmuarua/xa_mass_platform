@@ -240,6 +240,11 @@ the mutating flow and sends no Task request.
 
 ## Verification
 
+Lazy business pages import product-specific Element Plus components themselves.
+Messages console tests register only the production shell's component set and
+submit through the visible button, so global test registration cannot hide a
+missing production form or pagination component.
+
 ```text
 pnpm lint
 pnpm typecheck

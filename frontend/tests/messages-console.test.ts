@@ -2,7 +2,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
 import { createPinia } from "pinia";
 import { createRouter, createMemoryHistory } from "vue-router";
-import ElementPlus from "element-plus";
+import {
+  ElAlert,
+  ElBreadcrumb,
+  ElBreadcrumbItem,
+  ElButton,
+  ElConfigProvider,
+  ElDrawer,
+  ElIcon,
+  ElInput,
+  ElOption,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+  ElTabPane,
+  ElTabs,
+  ElTag
+} from "element-plus";
 import App from "../src/App.vue";
 import { consoleRoutes } from "../src/router";
 import { createMessageAvailability } from "../src/message-campaigns/availability";
@@ -85,7 +101,25 @@ async function mount(path = "/messages", mode = "api") {
   await router.isReady();
   const host = document.createElement("div");
   document.body.append(host);
-  mounted = createApp(App).use(createPinia()).use(router).use(ElementPlus);
+  mounted = createApp(App).use(createPinia()).use(router);
+  // Match the production shell: product-only components must be imported by the lazy page.
+  [
+    ElAlert,
+    ElBreadcrumb,
+    ElBreadcrumbItem,
+    ElButton,
+    ElConfigProvider,
+    ElDrawer,
+    ElIcon,
+    ElInput,
+    ElOption,
+    ElSelect,
+    ElTable,
+    ElTableColumn,
+    ElTabPane,
+    ElTabs,
+    ElTag
+  ].forEach((component) => mounted!.use(component));
   mounted.mount(host);
   await settle();
   return { host, router };
@@ -135,9 +169,7 @@ describe("Messages console", () => {
     expect(
       host.querySelector<HTMLInputElement>('input[aria-label="批次名称"]')?.value
     ).toBe("Proof");
-    host
-      .querySelector("form")!
-      .dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    host.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
     await settle();
     expect(router.currentRoute.value.path).toBe("/messages/campaigns/batch");
     expect(host.textContent).toContain("已发送");

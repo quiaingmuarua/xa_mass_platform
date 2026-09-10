@@ -481,8 +481,9 @@
 
     if (["sms", "products"].includes(document.documentElement.dataset.scenario)) {
       document.documentElement.lang = "zh-CN";
-      document.title = "SMS · Scenario Worker Host";
-      document.querySelector("h1").textContent = "Scenario Worker Host · SMS";
+      const shared = document.documentElement.dataset.scenario === "products";
+      document.title = (shared ? "Products" : "SMS") + " · Scenario Worker Host";
+      document.querySelector("h1").textContent = "Scenario Worker Host · " + (shared ? "SMS + Messages" : "SMS");
       document.querySelector(".subtitle").textContent = "模拟号码、控制 Worker 和短信输入；订单结果在接码工作台查看。";
       document.getElementById("last-refresh").hidden = true;
 
