@@ -65,15 +65,15 @@ jobs:
           corepack pnpm@11.9.0 --dir frontend test
           python -m unittest discover -s products/sms-reception -p 'test_*.py'
       - name: Real product path
-        run: python products/sms-reception/run_acceptance.py --build --scenario functional --output products/sms-reception/build/ci-proof
+        run: python products/sms-reception/run_acceptance.py --build --scenario functional --port 18400 --output products/sms-reception/build/ci-proof
       - name: Worker stop and new-run isolation
-        run: python products/sms-reception/run_acceptance.py --scenario lifecycle --output products/sms-reception/build/ci-lifecycle
+        run: python products/sms-reception/run_acceptance.py --scenario lifecycle --port 18420 --output products/sms-reception/build/ci-lifecycle
       - name: Verify and run the extracted unified Preview
         run: |
           ./gradlew :products:sms-reception:previewZip --console=plain
           python products/sms-reception/verify_preview_archive.py --archive products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip --frontend frontend/dist
           python -m zipfile -e products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip products/sms-reception/build/ci-unpacked
-          python products/sms-reception/build/ci-unpacked/sms-reception-0.1.0-preview/run_acceptance.py --scenario functional --output products/sms-reception/build/ci-zip-proof
+          python products/sms-reception/build/ci-unpacked/sms-reception-0.1.0-preview/run_acceptance.py --scenario functional --port 18440 --output products/sms-reception/build/ci-zip-proof
       - name: Documentation and proof selection
         run: |
           python .github/scripts/check_docs.py

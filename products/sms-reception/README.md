@@ -254,6 +254,8 @@ P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值�
 private 日志不进入 CI 工件。`--root <解压后的产品目录>` 使用 ZIP 内真实产物执行相同功能验收。
 ZIP 也携带验收脚本，可直接在解压目录运行 `python run_acceptance.py --scenario functional`。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；
+functional、lifecycle 和 ZIP functional 分别使用 18400、18420、18440 作为 Server 基址，
+Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端口影响启动准入。
 保留现有 [Proof Selection](../../TESTING.md) 的平台规则。
 
 本场景证明有限产品闭环，不声明平台容量上限，不证明真实设备收信、属性索引、国家 Properties
