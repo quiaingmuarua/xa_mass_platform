@@ -38,11 +38,11 @@ Task 和后续 Outcome 观察完成接码。只使用模拟短信，不连接真
 在仓库根目录运行：
 
 ```powershell
-python -m pip install -r products/sms-reception/requirements.txt
-python products/sms-reception/run_preview.py --build
+python -m pip install -r distribution/product-preview/requirements.txt
+python distribution/product-preview/run_preview.py --products sms --build
 ```
 
-打开 `http://127.0.0.1:18390/sms`，模拟器页面为 `http://127.0.0.1:18394/lab`。默认每国家 20 个模拟号码；首次体验可以使用
+打开 `http://127.0.0.1:18500/sms`，模拟器页面为 `http://127.0.0.1:18504/lab`。默认每国家 20 个模拟号码；首次体验可以使用
 `--counts 1,1,1`，方便观察多个订单共享同号。`Ctrl+C` 结束本轮场景。
 `--port 18410` 同时将 Server、Adapter 和 Host 切换到
 18410、18413、18414。端口被占用时明确失败，不停止占用服务。
@@ -50,40 +50,41 @@ python products/sms-reception/run_preview.py --build
 构建预览 ZIP：
 
 ```powershell
-.\gradlew.bat :products:sms-reception:previewZip
+.\gradlew.bat :distribution:product-preview:previewZip
 ```
 
-输出 `build/distributions/sms-reception-0.1.0-preview.zip`（相对此产品目录）。
+输出 `distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip`。
 解压后在包目录运行以下命令，无需 Node 或 Gradle：
 
 ```powershell
 python -m pip install -r requirements.txt
-python run_preview.py
+python run_preview.py --products sms
 ```
 
-ZIP 包含发行模块生成的单一 Server JAR、模拟 Host 和 SDK、平台前端、产品 profile 配置及启动脚本。
+SMS 和 Messages 共用这一 ZIP。它包含发行模块生成的单一 Server JAR、模拟 Host 和 SDK、平台前端、发行配置及启动脚本。
 SMS 页面与 Runtime、Reference 共用一次前端构建，统一资源位于 `frontend/dist`；Server JAR 不嵌入独立 SMS 前端。
-产品版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD 和 Server、Host 两个 JVM 的产物指纹。
-已有本次验收报告时，ZIP 同时携带有限汇总；此前结果保留为历史，不充当本版验收。
+产品版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD、默认启用组合及
+Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验收脚本、报告或私有运行数据。
 启动顺序是 Server 健康且 SMS 注册完成、Host 身份建立、实际 WebSocket 路由验证。
-默认端口为 Server 18390、Adapter 18393、Host 18394。
-Server 显式启用 `sms-reception` profile，读取 `config/application-sms-reception.yaml`。
-该配置集中定义本轮 Server、Redis、Adapter 和 Endpoint；平台默认配置保持独立。
+默认端口为 Server 18500、Adapter 18503、Host 18504。
+`--products sms` 显式启用 `product-preview,sms-reception` profiles，读取发行层的
+`config/application-product-preview.yaml`。该配置集中定义本轮 Server、Redis、
+`products-websocket` Adapter 和 Endpoint；SMS 单产品仍使用 `sms-*` 国家 Group。
 根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
 不启用该 profile 时，不注册 SMS API、国家 Group 或后台任务；控制台隐藏 SMS 入口，直达页面显示未启用。
 启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
 公开 Mock Demo 隐藏 SMS 且不请求产品 API；未知 API 和静态资源保持错误。
 任一进程退出即结束场景，不自动恢复旧状态。
 
-每次启动使用新的 `test_sms_<UUID>` Redis scope。所有自有进程停止后，退出仅以 `SCAN` + `UNLINK`
+每次启动使用新的 `test_products_<UUID>` Redis scope。所有自有进程停止后，退出仅以 `SCAN` + `UNLINK`
 清理该精确前缀，保留其他 scope。硬杀启动器可能留下进程和数据；正常退出是清理前提。
-日志及本轮 PID/scope 元数据保存在 `build/runs/`，不记录短信正文或 Result 内容。
+日志及本轮 PID/scope 元数据保存在 Preview 根目录的 `build/runs/`，不记录短信正文或 Result 内容。
 
-与 [Messages](../message-campaigns/README.md) 同时演示使用
-[共享 Preview](../../distribution/product-preview/README.md)。同一 Worker 同时安装两产品与共享字符串能力；
-SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages Backend 依赖。共享发行配置统一管理端口、
-Redis、Adapter 和 Endpoint；旧 SMS 单产品启动和 ZIP 入口保持不变。产品 profile 只控制业务启用，
-其预览部署文件由启动器显式加载，不再自动嵌入 Server JAR。
+与 [Messages](../message-campaigns/README.md) 同时演示时省略 `--products`，或指定 `--products sms,messages`。
+同一 Worker 同时安装两产品与共享字符串能力；SMS 的监听、匹配、取消和结果语义保持独立，
+没有 Messages Backend 依赖。[共享 Preview](../../distribution/product-preview/README.md)
+是唯一启动、配置与打包 Owner；本产品保留 Backend、业务契约及专属验收。产品 profile 只控制业务启用，
+部署文件由统一启动器显式加载，不嵌入 Server JAR。
 
 ## 模块和执行路径
 
@@ -225,6 +226,7 @@ corepack pnpm@11.9.0 --dir frontend typecheck
 corepack pnpm@11.9.0 --dir frontend test
 .\gradlew.bat :distribution:server:test :distribution:server:smsCompositionIntegrationTest
 python -m unittest discover -s products/sms-reception -p 'test_*.py'
+python -m unittest discover -s distribution/product-preview -p 'test_*.py'
 python products/sms-reception/run_acceptance.py --build --scenario functional
 python products/sms-reception/run_acceptance.py --scenario lifecycle
 python products/sms-reception/run_acceptance.py --scenario concurrency
@@ -256,10 +258,10 @@ Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身
 不一致和未确认结果；报告 HTTP 错误、发生器限制、实际速率、建立吞吐、短信观察率、
 P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值。到期不算接码成功。
 
-当前验收写入 `build/acceptance/`；ZIP 仅可附带该目录下 functional、lifecycle 的安全摘要，
-不打包此前装配或 Host 迁移的历史验收。仅 `summary.json`、`summary.md` 用于汇总；
-private 日志不进入 CI 工件。`--root <解压后的产品目录>` 使用 ZIP 内真实产物执行相同功能验收。
-ZIP 也携带验收脚本，可直接在解压目录运行 `python run_acceptance.py --scenario functional`。
+当前验收写入产品目录的 `build/acceptance/`，仅 `summary.json`、`summary.md` 和安全归档检查用于 CI 汇总；
+private 日志不进入 CI 工件。业务验收脚本留在源码中，默认调用统一 Preview 的 `products="sms"` 装配。
+`--root <解压后的统一 Preview 目录>` 加载 ZIP 内启动脚本、HTTP 客户端和真实产物，
+不回退到源码启动器，不在 ZIP 内构建。摘要记录实际加载的启动脚本指纹。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；
 functional、lifecycle 和 ZIP functional 分别使用 18400、18420、18440 作为 Server 基址，
 Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端口影响启动准入。
@@ -272,10 +274,11 @@ Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端�
 并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：
 
 ```powershell
-.\gradlew.bat :products:sms-reception:previewZip
-python products/sms-reception/verify_preview_archive.py --archive products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip --frontend frontend/dist
+.\gradlew.bat :distribution:product-preview:previewZip
+python distribution/product-preview/verify_archive.py --archive distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip --frontend frontend/dist
+python products/sms-reception/run_acceptance.py --scenario functional --root <解压后的统一Preview目录>
 ```
 
-CI 从新 ZIP 中运行 `run_acceptance.py`，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
+CI 通过源码验收脚本加载新 ZIP 的启动器，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
 仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
 并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。

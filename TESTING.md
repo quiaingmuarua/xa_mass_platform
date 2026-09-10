@@ -23,9 +23,18 @@ and the three-Worker real path through the composed Server and separate Host.
 The fixed 1,000-Worker product workload is an explicit local acceptance command;
 it does not replace or expand the platform proof lanes below.
 
-The SMS Preview workflow also compares its archive against the current unified
-frontend build and runs the packaged functional runner from a fresh extraction
-without Node or Gradle.
+The SMS Preview workflow uses the shared Distribution launcher with `products=sms`.
+It compares the unified Product Preview archive against the current frontend build,
+then runs the source SMS acceptance oracle against a fresh extraction's launcher
+and artifacts without a Node or Gradle build step. Launcher lifecycle and archive
+tests live in `distribution/product-preview`; SMS assertions remain in the product.
+
+```powershell
+python -m pip install -r distribution/product-preview/requirements.txt
+python products/sms-reception/run_acceptance.py --build --scenario functional
+python products/sms-reception/run_acceptance.py --scenario lifecycle
+python products/sms-reception/run_acceptance.py --scenario concurrency
+```
 
 [Product Coexistence](integrations/product-coexistence/README.md) adds a selected
 Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the

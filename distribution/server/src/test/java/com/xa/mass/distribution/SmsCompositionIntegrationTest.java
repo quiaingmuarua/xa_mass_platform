@@ -55,12 +55,12 @@ class SmsCompositionIntegrationTest {
         var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ProductWorkerConfiguration.class, ConsoleFrontendConfiguration.class, BlockTaskHttp.class);
         app.setRegisterShutdownHook(false);
         try (var context = app.run(
-                "--spring.profiles.active=sms-reception", "--server.port=" + serverPort,
-                "--spring.config.additional-location=" + java.nio.file.Path.of("../../products/sms-reception/config/application-sms-reception.yaml").toAbsolutePath().normalize().toUri(),
+                "--spring.profiles.active=product-preview,sms-reception", "--server.port=" + serverPort,
+                "--spring.config.additional-location=" + java.nio.file.Path.of("../product-preview/config/application-product-preview.yaml").toAbsolutePath().normalize().toUri(),
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
-                "--xa.mass.worker-delivery.adapter.instances.sms-websocket.listen-port=" + adapterPort,
-                "--xa.mass.worker-endpoints.endpoints.sms-websocket.public-uri=ws://127.0.0.1:"
+                "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapterPort,
+                "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:"
                         + adapterPort + "/api/v1/worker-delivery/websocket",
                 "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=WARN");

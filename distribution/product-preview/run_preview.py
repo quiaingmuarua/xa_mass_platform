@@ -32,10 +32,16 @@ def http(base, path, body=None, timeout=6):
     if not hasattr(_connections, "items"):
         _connections.items = {}
     address = urllib.parse.urlsplit(base)
-    connection = _connections.items.get(base)
+    cached = _connections.items.get(base)
+    # A lifecycle proof may leave the Lab idle beyond its server keep-alive window.
+    # Retire idle connections before the next request, without replaying any request.
+    if cached is not None and time.monotonic() - cached[1] >= 5:
+        cached[0].close()
+        _connections.items.pop(base)
+        cached = None
+    connection = cached[0] if cached is not None else None
     if connection is None:
         connection = http_client.HTTPConnection(address.hostname, address.port, timeout=timeout)
-        _connections.items[base] = connection
     connection.timeout = timeout
     if connection.sock:
         connection.sock.settimeout(timeout)
@@ -47,6 +53,7 @@ def http(base, path, body=None, timeout=6):
         raw = response.read()
         if response.status >= 400:
             raise urllib.error.HTTPError(base + path, response.status, response.reason, response.headers, io.BytesIO(raw))
+        _connections.items[base] = (connection, time.monotonic())
         return json.loads(raw)
     except Exception:
         connection.close()
@@ -166,7 +173,7 @@ class Preview:
         inventory = all_pages(self.host, self.lab + "/inventory")
         for offset in range(0, len(inventory), 100):
             ids = [sim["workerId"] for sim in inventory[offset:offset + 100]]
-            response = http(self.url, "/api/v1/runtime-view/endpoint-managers/products-websocket/workers:network-observe", ids)
+            response = http(self.url, f"/api/v1/runtime-view/endpoint-managers/{self.adapter}/workers:network-observe", ids)
             states = response.get("statesByWorkerId", {})
             if any(states.get(worker) != "connected" for worker in ids):
                 return False

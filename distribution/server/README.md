@@ -71,9 +71,10 @@ the existing idempotent Group registration service; distribution owns no registr
 workflow. One context retains one Pacer, Matching consumer and set of Redis Owners.
 
 The [shared Preview](../product-preview/README.md) owns the common port/Redis/Adapter
-configuration and separate Host process. The [SMS launcher](../../products/sms-reception/README.md#启动与交付)
-retains its existing single-product deployment. Product profile files containing
-preview coordinates are explicit external inputs, not embedded Boot defaults.
+configuration, separate Host process and sole product Preview ZIP. Its `--products`
+selection covers SMS, Messages or both through the same deployment files. Products
+retain their business profiles and acceptance oracles; Preview coordinates are
+explicit external inputs, not embedded Boot defaults.
 
 Distribution explicitly forwards the three SMS pages and Messages workspace,
 metrics and single-segment campaign detail routes, including trailing slashes, to

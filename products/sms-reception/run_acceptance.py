@@ -5,6 +5,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import threading
@@ -12,7 +13,19 @@ import time
 import urllib.error
 import uuid
 
-from run_preview import PRODUCT, Preview, all_pages, build, http
+PRODUCT = Path(__file__).resolve().parent
+PREVIEW = PRODUCT.parents[1] / "distribution" / "product-preview"
+
+
+def load_preview(root):
+    spec = importlib.util.spec_from_file_location("sms_acceptance_preview", Path(root) / "run_preview.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+preview = load_preview(PREVIEW)
+http, all_pages = preview.http, preview.all_pages
 
 
 def require(condition, message):
@@ -64,7 +77,7 @@ def compare(run):
 
 def mixed_capabilities(run, inventory):
     cn = next(sim for sim in inventory if sim["country"] == "CN")
-    capabilities = http(run.url, "/api/v1/worker-delivery/endpoint-managers/sms-websocket/direct-calls", {
+    capabilities = http(run.url, f"/api/v1/worker-delivery/endpoint-managers/{run.adapter}/direct-calls", {
         "workerGroupId": "sms-cn", "workerPayloads": {cn["workerId"]: "null"},
         "messageType": "platform.worker.events.snapshot", "waitTimeoutMillis": 5000})
     target = capabilities["results"][cn["workerId"]]
@@ -298,19 +311,24 @@ def concurrency(run):
 
 
 def main():
+    global http, all_pages
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", choices=["functional", "lifecycle", "concurrency"], default="functional")
     parser.add_argument("--build", action="store_true")
-    parser.add_argument("--root", type=Path, default=PRODUCT, help="Product directory, including an extracted ZIP")
+    parser.add_argument("--root", type=Path, default=PREVIEW, help="Unified Product Preview directory or extracted ZIP root")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--port", type=int, default=18400)
     args = parser.parse_args()
+    preview = load_preview(args.root)
+    http, all_pages = preview.http, preview.all_pages
     if args.build:
-        build()
+        if args.root.resolve() != PREVIEW:
+            parser.error("--build requires the checkout Product Preview; omit it for an extracted ZIP")
+        preview.build()
     output = (args.output or PRODUCT / "build" / "acceptance" / (args.scenario + "-" + time.strftime("%Y%m%d-%H%M%S"))).resolve()
     counts = (700, 200, 100) if args.scenario == "concurrency" else (1, 1, 1)
     result = {"passed": False, "scenario": args.scenario}
-    run = Preview(counts, args.port, root=args.root, output=output / "private")
+    run = preview.Preview(counts, args.port, root=args.root, output=output / "private", products="sms")
     try:
         with run:
             print("Real processes and verified Worker routes ready", flush=True)
@@ -319,6 +337,7 @@ def main():
     except Exception as error:
         result["failure"] = str(error)
     result["artifacts"] = run.artifacts
+    result["launcherSha256"] = hashlib.sha256((args.root / "run_preview.py").read_bytes()).hexdigest()
     result["processModel"] = ["server", "host"]
     result["profile"] = "sms-reception"
     output.mkdir(parents=True, exist_ok=True)

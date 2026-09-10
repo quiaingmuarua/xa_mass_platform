@@ -595,6 +595,20 @@
       "reason": "Two-process source and ZIP assembly belong to the coexistence proof."
     },
     {
+      "path": "distribution/product-preview/config/application-product-preview.yaml",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "All product selections consume one distribution-owned deployment configuration."
+    },
+    {
+      "path": "distribution/product-preview/verify_archive.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Shared archive fingerprints and source-to-ZIP delivery are checked by the product proof."
+    },
+    {
       "path": "integrations/product-coexistence/run_proof.py",
       "lanes": [
         "product_coexistence"

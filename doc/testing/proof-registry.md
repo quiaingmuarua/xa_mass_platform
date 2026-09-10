@@ -199,8 +199,10 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   serves one frontend in either profile while SMS APIs, Groups and jobs remain
   profile-owned. Real Server/Host functional and lifecycle scenarios retain the
   listening and later-outcome business witnesses. Archive checks compare the
-  current unified assets, reject embedded SMS assets, and run the packaged
-  functional runner from a fresh extraction without a build step.
+  current unified assets and reject embedded SMS assets. The source SMS oracle
+  loads the shared Preview's packaged launcher from a fresh extraction and selects
+  SMS alone, without a build step or a fallback to the checkout launcher. Launch
+  lifecycle and archive checks belong to Distribution; business witnesses stay here.
 - **Deliberate nonclaims:** Mock SMS execution, product authentication, business
   persistence across restart or new platform scheduling/capacity guarantees.
 - **Contract:** [Console](../../frontend/README.md#sms-business-pages) and the

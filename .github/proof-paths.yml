@@ -287,8 +287,6 @@ runtime_distribution:
   - 'products/message-campaigns/backend/build.gradle'
   - 'products/sms-reception/backend/src/main/**'
   - 'products/sms-reception/backend/build.gradle'
-  - 'products/sms-reception/config/**'
-  - 'products/sms-reception/build.gradle'
   - 'distribution/server/**'
   - 'distribution/worker-sdk/**'
   - 'kernel_jvm/src/main/**'

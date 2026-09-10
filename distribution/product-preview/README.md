@@ -30,7 +30,12 @@ exact generated `test_products_<UUID>` scope through SCAN/UNLINK.
 The independent product profiles enable business; they do not contribute another
 Adapter or Redis owner. Distribution supplies neutral `demo-*` Groups for both,
 `sms-*` for SMS alone and `messages-*` for Messages alone. Host scene selection
-matches that composition. Both product catalogs must initialize before Host starts.
+matches that composition. Each enabled product's catalog must initialize before Host starts.
+This is the sole Preview launcher, deployment configuration and ZIP for all three
+selections. Business modules retain their own APIs and acceptance oracles.
+The shared HTTP client reuses a connection per thread and endpoint while requests
+remain less than five seconds apart. It closes an idle connection before the next
+request; a failed or uncertain mutation is surfaced without automatic replay.
 
 ```powershell
 .\gradlew.bat :distribution:product-preview:previewZip
@@ -38,8 +43,9 @@ python distribution/product-preview/verify_archive.py --archive distribution/pro
 ```
 
 The ZIP contains the current Server JAR, Host classpath, unified frontend, config,
-Python entry and requirements. After extraction run `python run_preview.py`, with
-no Node or Gradle. The manifest identifies versions, HEAD, enabled defaults and
+Python entry and requirements. After extraction install `requirements.txt` with pip
+and run `python run_preview.py`; select SMS alone with `--products sms`. No Node or
+Gradle is needed. The manifest identifies versions, HEAD, enabled defaults and
 SHA-256 fingerprints of binaries, frontend, launcher and deployment config.
 Source staging uses this module's `build/server`, `build/host` and `build/frontend`;
 the frontend includes the current build's generated diagnostic dictionary. It does not reuse
@@ -51,4 +57,17 @@ with `--root <extracted-directory>`; it loads the packaged launcher and starts t
 packaged artifacts. Archive verification compares frontend bytes and all manifest
 fingerprints. Runs store private process metadata/logs beneath `build/runs`; CI
 publishes only safe summaries, never message bodies, replies or full Properties.
-The [SMS standalone entry](../../products/sms-reception/README.md#启动与交付) remains available.
+The [SMS acceptance runner](../../products/sms-reception/README.md#检查与验收)
+retains its functional, lifecycle and fixed 1,000-Worker workload. It selects SMS
+through this same launcher and also accepts `--root` to load an extracted launcher:
+
+```powershell
+python products/sms-reception/run_acceptance.py --build --scenario functional
+python products/sms-reception/run_acceptance.py --scenario functional --root <extracted-directory>
+```
+
+Acceptance scripts and run evidence stay outside the ZIP. Launch lifecycle and
+archive checks belong here; run them with
+`python -m unittest discover -s distribution/product-preview -p 'test_*.py'`.
+Both the SMS Preview workflow and Product Coexistence lane run these checks before
+their separate business proofs.

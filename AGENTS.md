@@ -789,7 +789,11 @@ business flows; the directory name does not establish a commercial product bound
   arbitrary Reports. Stop clears Reporters before SDK stop; a new run cannot adopt old
   messages. Preserve the finite capacities in the [Host Owner](scenario_workers_jvm/README.md#messages-and-shared-products).
 - [Product Preview](distribution/product-preview/README.md) is a finite delivery owner
-  for one Server and one Host. It may package Host; the production Runtime ZIP may not.
+  for one Server and one Host, with the sole product Preview launcher, deployment
+  configuration and ZIP. Product selection uses that same entry; do not retain
+  product-local launchers, packaging tasks or aliases. Product acceptance oracles
+  stay external and load the packaged launcher for ZIP proof, without a checkout
+  fallback. It may package Host; the production Runtime ZIP may not.
   Products share the existing unified frontend, independent catalog availability and
   page lifecycles. Product Coexistence is a separate business witness, not a replacement
   for platform Owner proofs; keep its fixed 1k workload explicit/manual.
