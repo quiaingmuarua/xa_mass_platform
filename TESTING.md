@@ -80,7 +80,7 @@ Use the lowest-cost proof that owns the changed claim:
    the focused Owner test.
 2. A DTO, codec, HTTP, Redis or adjacent-owner contract changes: run the
    corresponding Boundary Proof in addition to focused Owner tests.
-3. Worker identity, Prepare, long-lived delivery, extensions, Scenario Host or
+3. Worker identity, Prepare, long-lived delivery, extensions, shared Lab/SMS Scenario Host or
    Worker-facing Server behavior changes: run Worker Correctness.
 4. Kernel/Pacer scheduling, serviceability, Runtime projections or Worker fault
    convergence changes: run Worker Convergence Health. TaskItem finality remains

@@ -46,7 +46,7 @@ def build():
     repo = PRODUCT.parents[1]
     gradle = repo / ("gradlew.bat" if os.name == "nt" else "gradlew")
     subprocess.run([str(gradle), ":distribution:server:bootJar", ":distribution:server:buildFrontend",
-                    ":products:sms-reception:worker-simulator:installDist",
+                    ":scenario_workers_jvm:installDist",
                     "--console=plain"], cwd=repo, check=True)
 
 
@@ -87,11 +87,11 @@ class Preview:
         packaged = (self.root / "lib").is_dir()
         if packaged:
             server_lib = self.root / "lib"
-            host_lib = self.root / "worker-simulator" / "lib"
+            host_lib = self.root / "scenario-workers" / "lib"
             platform_frontend = self.root / "frontend" / "dist"
         else:
             server_lib = self.root.parents[1] / "distribution" / "server" / "build" / "libs"
-            host_lib = self.root / "worker-simulator" / "build" / "install" / "worker-simulator" / "lib"
+            host_lib = self.root.parents[1] / "scenario_workers_jvm" / "build" / "install" / "xa-mass-scenario-workers" / "lib"
             platform_frontend = self.root.parents[1] / "frontend" / "dist"
         server_jars = sorted(p for p in server_lib.glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar"))
         if len(server_jars) != 1 or not host_lib.is_dir() or not platform_frontend.is_dir():
@@ -99,15 +99,13 @@ class Preview:
         server_jar = server_jars[0]
         self.artifacts = {
             "server": {"file": server_jar.name, "sha256": hashlib.sha256(server_jar.read_bytes()).hexdigest()},
-            "simulatorClasspath": [{"file": jar.name, "sha256": hashlib.sha256(jar.read_bytes()).hexdigest()}
+            "hostClasspath": [{"file": jar.name, "sha256": hashlib.sha256(jar.read_bytes()).hexdigest()}
                                    for jar in sorted(host_lib.glob("*.jar"))],
         }
         env = os.environ.copy()
         env.update(XA_MASS_REDIS_SCOPE=self.scope, XA_MASS_REDIS_URL=self.redis_url,
                    SMS_SERVER_PORT=str(self.port),
-                   SMS_ADAPTER_PORT=str(self.port + 3), SMS_HOST_PORT=str(self.port + 4),
-                   SMS_PLATFORM_URL=self.url,
-                   SMS_COUNTS=",".join(map(str, self.counts)))
+                   SMS_ADAPTER_PORT=str(self.port + 3))
         options = [java, "-XX:ActiveProcessorCount=8", "-XX:+ExitOnOutOfMemoryError"]
         self.launch("server", options + ["-Xmx2g", "-jar", str(server_jar),
                     "--spring.profiles.active=sms-reception",
@@ -116,8 +114,10 @@ class Preview:
         self.wait_for(lambda: http(self.url, "/actuator/health"), 60, "Server")
         self.wait_for(lambda: http(self.url, "/api/v1/sms/catalog"), 60, "SMS initialization")
         self.launch("host", options + ["-Xmx1g", "-cp", str(host_lib / "*"),
-                    "com.xa.mass.sms.simulator.SimulatorMain"], env)
-        self.wait_for(lambda: http(self.host, "/health").get("prepared") == sum(self.counts), 90, "Host identities")
+                    "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--scenario=sms",
+                    "--runtime-api-base-url=" + self.url, "--control-port=" + str(self.port + 4),
+                    "--sms-counts=" + ",".join(map(str, self.counts))], env)
+        self.wait_for(lambda: http(self.host, "/lab/v1/sms/health").get("prepared") == sum(self.counts), 90, "Host identities")
         self.wait_for(self.connected, 60, "verified WebSocket routes")
         (self.output / "run.json").write_text(json.dumps({"scope": self.scope, "url": self.url, "host": self.host,
                 "counts": self.counts, "profile": "sms-reception", "artifacts": self.artifacts,
@@ -125,7 +125,7 @@ class Preview:
         return self
 
     def connected(self):
-        inventory = all_pages(self.host, "/inventory")
+        inventory = all_pages(self.host, "/lab/v1/sms/inventory")
         for offset in range(0, len(inventory), 100):
             ids = [sim["workerId"] for sim in inventory[offset:offset + 100]]
             response = http(self.url, "/api/v1/runtime-view/endpoint-managers/sms-websocket/workers:network-observe", ids)
@@ -228,7 +228,7 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         with Preview(counts, args.port) as run:
-            print(f"SMS Reception 0.1.0-preview: {run.url}/sms\nSimulator: {run.host}\nPress Ctrl+C to end this run.", flush=True)
+            print(f"SMS Reception 0.1.0-preview: {run.url}/sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
             while True:
                 run.check()
                 time.sleep(1)

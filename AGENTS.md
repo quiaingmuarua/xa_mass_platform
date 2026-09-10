@@ -574,7 +574,7 @@ registration, identity inference, thread or Core API.
 
 [Scenario Host](scenario_workers_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
 
-`scenario_workers_jvm` is a finite standalone Java 21 Lab Worker Host, not a
+`scenario_workers_jvm` is a finite standalone Java 21 Lab/SMS Worker Host, not a
 Kernel owner, Server profile, Adapter, production Worker platform or plugin
 system.
 
@@ -609,7 +609,7 @@ system.
 - Atomic Worker file replacement fails closed when the filesystem cannot honor
   `ATOMIC_MOVE`. A start issued while the Manager's previous stop is still
   converging is a conflict; callers observe `STOPPED` before retrying.
-- Every explicit Worker start reopens its complete Properties file. There is no
+- Every explicit Lab Worker start reopens its complete Properties file. There is no
   watcher, automatic reconcile, dynamic inventory, or generic fault DSL.
 - Lab `:properties` PATCH/PUT may persist and explicitly publish through the
   existing Manager during a running Worker run. Preserve immutable inventory
@@ -619,6 +619,14 @@ system.
   must not wait for publication. Local acceptance is not remote ACK; never
   compensate, retry or add pending publication state.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
+- SMS uses generated CLIENT_KEY replicas in the same Manager collection. Keep
+  Lab inventory keys local to Lab, and SMS Properties read-only. SMS adds only
+  its fixed per-number events beside shared string events; no second Host,
+  HTTP server, Manager collection or plugin lifecycle belongs in the SMS package.
+- SMS stop closes number admission and clears active Reporters before SDK stop,
+  without waiting for network publication or emitting synthetic ending Reports.
+  Restart retains identity and process-wide dedup, never restores subscriptions
+  or transfers an old run's Reporter. Default Lab starts no SMS clock or routes.
 - Server never depends on, constructs, starts or stops the Host. The root local
   launcher and proof lanes own the two independent process lifecycles.
 - Existing Group directories are not seeded or repaired; missing configured
@@ -758,7 +766,8 @@ business flows; the directory name does not establish a commercial product bound
   an independent frontend build, served at `/sms` only under its profile; `/`
   remains the platform entry. Do not share frontend stores, invoke Controllers,
   or use platform HTTP waiters or the Direct Call registry from product code.
-- The simulator remains an independent SDK Host. Its local HTML and raw SMS
+- The simulator is the SMS scene of the independent `scenario_workers_jvm` SDK
+  Host, sharing its main and local control service with the Lab. Its HTML and raw SMS
   controls must not become a product Result source or a platform control proxy.
 
 ## Verification

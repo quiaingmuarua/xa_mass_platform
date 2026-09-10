@@ -1,4 +1,4 @@
-package com.xa.mass.sms.simulator;
+package com.xa.mass.scenarioworkers.sms;
 
 import com.xa.mass.worker.execution.WorkerOutcomeReporter;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -10,6 +10,70 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class ListeningRegistryTest {
+    @Test void stopClearsOnlyItsNumberAndRestartPreservesDedupWithoutRebindingReporter() {
+        registry.listen(first, input("old", 100, "CODE"), reporter);
+        registry.listen(second, input("other", 100, "CODE"), reporter);
+        registry.stop("100");
+        assertThat(registry.metrics()).containsEntry("activeListeners", 1);
+        assertThat(registry.listen(first, input("stopped", 100, "CODE"), reporter)).containsEntry("status", "REJECTED");
+        assertThat(registry.receive("100", "while-stopped", "[A] 123456")).containsEntry("status", "IGNORED");
+        registry.beginStart("100"); registry.endStart("100");
+        AtomicInteger wrongReporter = new AtomicInteger();
+        assertThat(registry.listen(first, input("old", 100, "CODE"), (t, at, p) -> {
+            wrongReporter.incrementAndGet(); return true;
+        })).containsEntry("status", "INTERRUPTED");
+        registry.listen(first, input("new", 100, "CODE"), reporter);
+        assertThat(registry.receive("100", "while-stopped", "[A] 123456")).containsEntry("status", "DUPLICATE");
+        registry.receive("100", "after-restart", "[A] 123456");
+        assertThat(reports).singleElement().satisfies(r -> assertThat(r).containsEntry("listenerId", "new"));
+        assertThat(wrongReporter).hasValue(0);
+        assertThat(registry.metrics()).containsEntry("activeListeners", 1);
+    }
+
+    @Test void stopRacesWithReceiveAndEstablishmentWithoutRestoringActiveListeners() throws Exception {
+        try (var executor = Executors.newFixedThreadPool(3)) {
+            for (int i = 0; i < 100; i++) {
+                registry.beginStart("100"); registry.endStart("100");
+                String id = "race-" + i;
+                var gate = new CyclicBarrier(3);
+                var listen = executor.submit(() -> { await(gate); return registry.listen(first, input(id, 100, "CODE"), reporter); });
+                var receive = executor.submit(() -> { await(gate); return registry.receive("100", id, "[A] 123456"); });
+                var stop = executor.submit(() -> { await(gate); registry.stop("100"); });
+                listen.get(2, TimeUnit.SECONDS); receive.get(2, TimeUnit.SECONDS); stop.get(2, TimeUnit.SECONDS);
+                assertThat(registry.metrics()).containsEntry("activeListeners", 0);
+            }
+        }
+        assertThat(reports.stream().map(report -> report.get("listenerId")).distinct().count()).isEqualTo(reports.size());
+    }
+
+    @Test void stoppedRuntimeIsCleanedWithoutTreatingTransparentReconnectAsAStop() {
+        var runtime = new java.util.concurrent.atomic.AtomicReference<>("RUNNING");
+        var sim = registry.addSim("sms-us", "US-0", "102", "CN", () -> "worker-3", runtime::get, () -> true);
+        registry.listen(sim, input("running", 100, "CODE"), reporter);
+        registry.expire();
+        assertThat(registry.metrics()).containsEntry("activeListeners", 1);
+        runtime.set("STOPPED"); registry.expire();
+        assertThat(registry.metrics()).containsEntry("activeListeners", 0);
+        assertThat(reports).isEmpty();
+        assertThat(registry.listen(sim, input("running", 100, "CODE"), reporter)).containsEntry("status", "INTERRUPTED");
+    }
+
+    @Test void stopDoesNotWaitForNetworkPublicationAndCannotReclassifyAMatch() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        registry.listen(first, input("matched", 100, "CODE"), (tag, at, payload) -> {
+            entered.countDown();
+            try { release.await(2, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            return false;
+        });
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var delivery = executor.submit(() -> registry.receive("100", "slow", "[A] 123456"));
+            assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
+            executor.submit(() -> registry.stop("100")).get(1, TimeUnit.SECONDS);
+            assertThat(registry.listen(first, input("matched", 100, "CODE"), reporter)).containsEntry("status", "RECEIVED");
+            release.countDown(); delivery.get(1, TimeUnit.SECONDS);
+        } finally { release.countDown(); }
+    }
     static final class Time extends Clock {
         volatile long now = 1_000_000;
         public ZoneId getZone() { return ZoneOffset.UTC; }
@@ -19,8 +83,8 @@ class ListeningRegistryTest {
     }
     final Time time = new Time();
     final ListeningRegistry registry = new ListeningRegistry(time, 50_000, 100_000);
-    final ListeningRegistry.Sim first = registry.addSim("100", "CN", () -> "worker-1", () -> "RUNNING");
-    final ListeningRegistry.Sim second = registry.addSim("101", "CN", () -> "worker-2", () -> "RUNNING");
+    final ListeningRegistry.Sim first = registry.addSim("sms-cn", "CN-0", "100", "CN", () -> "worker-1", () -> "RUNNING", () -> true);
+    final ListeningRegistry.Sim second = registry.addSim("sms-cn", "CN-1", "101", "CN", () -> "worker-2", () -> "RUNNING", () -> true);
     final List<Map<String, Object>> reports = new CopyOnWriteArrayList<>();
     final WorkerOutcomeReporter reporter = (tag, at, payload) -> {
         assertThat(tag).isEqualTo(9); reports.add(Jsons.parseObject(payload)); return true;
@@ -104,7 +168,7 @@ class ListeningRegistryTest {
     }
     @Test void boundedRecordsNeverEvictDedupAndExistingListenersContinue() {
         var bounded = new ListeningRegistry(time, 2, 2);
-        var sim = bounded.addSim("100", "CN", () -> "w", () -> "RUNNING");
+        var sim = bounded.addSim("sms-cn", "CN-0", "100", "CN", () -> "w", () -> "RUNNING", () -> true);
         bounded.listen(sim, input("a", 0, "ANY"), reporter);
         bounded.listen(sim, input("b", 0, "ANY"), reporter);
         assertThat(bounded.listen(sim, input("c", 0, "ANY"), reporter)).containsEntry("status", "REJECTED");
@@ -151,6 +215,7 @@ class ListeningRegistryTest {
                 .containsEntry("phone", "100").containsEntry("runtimeState", "RUNNING")
                 .containsEntry("activeListeners", 1));
         assertThat((List<?>) registry.inventory(2, 1).get("items")).isEmpty();
+        assertThat((List<?>) registry.records(Integer.MAX_VALUE, 1000).get("items")).isEmpty();
         assertThatThrownBy(() -> registry.inventory(-1, 1)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> registry.inventory(0, 1001)).isInstanceOf(IllegalArgumentException.class);
     }

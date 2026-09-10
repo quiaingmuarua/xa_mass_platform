@@ -14,6 +14,24 @@ import org.junit.jupiter.api.io.TempDir;
 class ScenarioWorkerHostMainTest {
 
     @Test
+    void smsUsesExplicitFiniteModeWithoutLabInputs() {
+        var defaults = ScenarioWorkerHostMain.HostOptions.parse(new String[0]);
+        assertThat(defaults.scenario()).isEqualTo("lab");
+        var sms = ScenarioWorkerHostMain.HostOptions.parse(new String[]{"--scenario=sms", "--sms-counts=700,200,100"});
+        assertThat(sms.smsCounts()).containsExactly(700, 200, 100);
+        for (String option : new String[]{"--sandbox-root=unused", "--capability-assembly=unused", "--startup-plan=unused"})
+            assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(new String[]{"--scenario=sms", option}))
+                    .isInstanceOf(IllegalArgumentException.class);
+        for (String counts : new String[]{"1,1", "1,1,", "0,1,1", "-1,1,1", "10000,1,1", "2147483647,1,1", "x,1,1"})
+            assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(new String[]{"--scenario=sms", "--sms-counts=" + counts}))
+                    .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(new String[]{"--sms-counts=1,1,1"}))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(new String[]{"--scenario=unknown"}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void defaultsUseTheCheckedLocalLabCoordinates() {
         ScenarioWorkerHostMain.HostOptions options =
                 ScenarioWorkerHostMain.HostOptions.parse(new String[0]);

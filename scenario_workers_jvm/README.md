@@ -1,7 +1,9 @@
 # XA Mass Scenario Workers JVM
 
-`scenario_workers_jvm` is the finite standalone Java 21 Worker Host used with
-the checked-in `scenario-workers` Server profile. It is a local Worker Lab, not
+`scenario_workers_jvm` is the finite standalone Java 21 Worker Host for the
+default Lab and the [SMS business workload](../products/sms-reception/README.md).
+It has one process entry, one loopback control server and one HTML console.
+The Lab uses the checked-in `scenario-workers` Server profile. It is not
 a Kernel owner, privileged Server extension, Adapter, production Worker
 platform, or plugin SPI. Server has no compile-time or lifecycle dependency on
 this module.
@@ -10,6 +12,8 @@ The module owns the checked-in phone-number and string-utility
 `WorkerEventDefinition` extensions. A configured WorkerGroup selects one
 immutable extension list through its local `eventCodes`; every discovered
 Worker in that group shares the same stateless or thread-safe Handler instances.
+SMS reporting Handlers instead capture their actual number; the common Manager
+assembly installs these per-replica Definitions alongside shared string events.
 The WorkerGroup catalog projection remains a separate Server-owned value and
 may lag this local list.
 
@@ -87,6 +91,74 @@ Coordinates must name the discovered inventory, duplicates are rejected, and a
 startup scheduled stop may reference only an initial Worker. The plan owns only
 this process's initial desired state and startup stop schedule. It does not own
 Properties, Worker identity, Tasks, Adapter state, or Kernel expectations.
+
+## SMS Scenario
+
+`--scenario=lab` is the default and preserves the Lab CLI and inventory contract.
+`--scenario=sms` selects generated CN, US and GB pools without opening Lab files:
+
+```powershell
+.\gradlew.bat :scenario_workers_jvm:runScenarioWorkers `
+  --args="--scenario=sms --sms-counts=20,20,20 --runtime-api-base-url=http://127.0.0.1:18390 --control-port=18394"
+```
+
+Start the Server with its `sms-reception` profile first. The product startup
+registers `sms-cn`, `sms-us` and `sms-gb`; the Host never registers Groups.
+Counts must be three positive integers totaling at most 10,000. SMS rejects
+`--sandbox-root`, `--capability-assembly` and `--startup-plan`; the Lab rejects
+`--sms-counts`. Both modes use the same main, Manager collection and cleanup.
+Each nonempty Group has one JavaWorkerManager. SMS keeps ordinary CLIENT_KEY
+Prepare, keys `CN-0`, `US-0`, `GB-0` and the existing deterministic phone numbers.
+Lab file coordinates and its SCENARIO_LAB batch preparation remain separate.
+
+SMS Properties contain phone, country, operator and simulated strings and are
+read-only in the console. SDK preparation still supplies its registration key.
+Each number installs SMS start/cancel plus the existing MD5, SHA1 and Base64
+events. Neither file-based Lab faults nor checkpoints are installed in SMS.
+Actual `platform.worker.events.snapshot` evidence identifies loaded handlers;
+Group catalog metadata is not the execution oracle.
+
+The single `/lab` page selects the scene at startup. In SMS mode it shows local
+Worker state, number inventory, explicit Worker start/stop, raw SMS injection
+and finite traffic controls. It does not manage product orders or infer routing
+or schedulability. Existing Lab control routes are registered only in Lab mode.
+The HTTP executor has 8 threads and 128 queued requests with caller backpressure;
+SMS bodies are at most 8 KiB, while existing Lab body limits remain unchanged.
+
+| SMS Host route | Contract |
+| --- | --- |
+| `GET /lab/v1/sms/health` | Host startup, prepared identity count and number count; no Adapter readiness claim |
+| `GET /lab/v1/sms/inventory?offset=0&limit=100` | Paged Group, replica key, country, phone, actual Worker ID, desired/local state and active subscriptions; limit 1..1000 |
+| `GET /lab/v1/sms/metrics` | Local matching, dedup, capacity and traffic observations |
+| `GET /lab/v1/sms/records?offset=0&limit=100` | Bounded acceptance evidence, never a product Result source |
+| `POST /lab/v1/sms/sms` | Raw `{phone, smsId, text}` input; text at most 1024 characters |
+| `POST /lab/v1/sms/traffic/start` | Existing finite `{ratePerSecond, durationSeconds}` input |
+| `POST /lab/v1/sms/traffic/stop` | Stop the finite stimulus stream |
+| `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:start` | Request a local Worker run; no properties mutation |
+| `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:stop` | Close number admission and request SDK stop; HTTP 202 acknowledges local control only |
+
+SMS owns one process-wide ListeningRegistry and one expiry/traffic clock.
+The [business contract](../products/sms-reception/README.md#监听和分发契约)
+owns templates, dedup and resource limits. Constructors start no timer. Lab mode
+creates no SMS clock or routes; SMS creates no Lab scheduled-stop executor.
+
+Stopping a number closes new admission, ends active subscriptions locally as
+INTERRUPTED and drops their Reporters under the number gate. SDK stop and network
+publication happen outside that gate; stop does not wait for a slow start or
+Report send. A stopped SDK snapshot is also cleaned by the existing SMS clock.
+Transparent reconnect of a RUNNING run retains its subscriptions. This local
+fault action sends neither a product cancellation command nor a synthetic ending
+Report. Without actual ending evidence, the product reaches UNCONFIRMED at its
+existing deadline. A previously won match is never reclassified by stop.
+
+Explicit restart retains the number/identity and the process-wide dedup history,
+but does not restore old subscriptions. Duplicate commands return the retained
+snapshot without transferring the original Reporter. Already-admitted SDK
+callbacks may finish late; their Reporters remain bound to the original Task/run.
+There is no new replay, automatic restart, or callback cancellation guarantee.
+Shutdown stops HTTP admission and timers, cleans SMS state, revokes Workers and
+then waits boundedly for resources. Partial assembly failures close created
+Managers; Server never owns this Host lifecycle.
 
 ## Actual Execution Witness
 
@@ -301,7 +373,7 @@ These endpoints expose Lab desired/runtime state only. They do not claim
 Adapter connectivity, Kernel score, or schedulability. The stable ready line is:
 
 ```text
-SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port> initialWorkerCount=<n> scheduledStopCount=<n>
+SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port>/lab initialWorkerCount=<n> scheduledStopCount=<n> scenario=<lab|sms>
 ```
 
 The same loopback control server exposes a dependency-free local console at:
@@ -315,7 +387,7 @@ stop, scheduled stop, and complete schema-v2 Properties replacement to the
 APIs above. Its desired/runtime fields are only local Host state; the page does
 not claim Adapter connectivity, Kernel score, or schedulability. Automatic
 list refresh never reloads a Properties document while it is being edited.
-The loopback server uses a bounded four-thread control executor. A slow
+The loopback server uses the shared eight-thread executor with 128 waiting tasks. A slow
 single-Worker Prepare does not hold the Scenario inventory monitor, allowing a
 stop or local snapshot request to reach its independent replica. This is
 control-plane responsiveness, not a claim that Lab actions are transactional

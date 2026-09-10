@@ -42,7 +42,7 @@ python -m pip install -r products/sms-reception/requirements.txt
 python products/sms-reception/run_preview.py --build
 ```
 
-打开 `http://127.0.0.1:18390/sms`，模拟器页面为 `http://127.0.0.1:18394/`。默认每国家 20 个模拟号码；首次体验可以使用
+打开 `http://127.0.0.1:18390/sms`，模拟器页面为 `http://127.0.0.1:18394/lab`。默认每国家 20 个模拟号码；首次体验可以使用
 `--counts 1,1,1`，方便观察多个订单共享同号。`Ctrl+C` 结束本轮场景。
 `--port 18410` 同时将 Server、Adapter 和 Host 切换到
 18410、18413、18414。端口被占用时明确失败，不停止占用服务。
@@ -83,7 +83,7 @@ Server 显式启用 `sms-reception` profile，读取 `config/application-sms-rec
 | --- | --- |
 | `backend` | 普通 Java 业务模块：产品 API、有限监听状态、应用内幂等、有界 Task 提交和统一 Result 观察 |
 | `frontend` | 独立 Vue 工程：工作台、分页记录、业务指标；只调用同源 SMS API |
-| `worker-simulator` | 独立 Java Host：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
+| [Scenario Host](../../scenario_workers_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
 
 [发行入口](../../distribution/server/README.md) 显式导入
 [Server 配置](../../server_jvm/README.md) 和 SMS 产品配置，创建一个 Spring 上下文。
@@ -175,22 +175,17 @@ Backend 只重读 Result，不修补平台事实，不保证最终到达。
 | `POST /api/v1/sms/listeners/{id}/cancel` | 记录取消意图并返回当前状态 |
 | `GET /api/v1/sms/metrics` | 申请、各状态、错误、队列、建立和短信观察延迟 P95/P99 |
 
-旧产品路径不保留别名。平台静态和实时 OpenAPI 保持平台契约；SMS 自身的实时 OpenAPI 只包含产品路由。
+旧产品路径不保留别名。平台静态 OpenAPI 保持平台契约；启用 SMS 的实例实时 OpenAPI 同时包含平台与产品路由。
 产品异常处理局限于自己的 Controller。本预览尚无登录体系，同源部署本身不是订单授权或租户隔离。
 
-模拟控制仅由 Host 的独立端口提供；产品 Server 不代理这些请求：
+模拟控制仅由统一 Scenario Host 的独立端口提供；产品 Server 不代理这些请求。
+[Host Owner](../../scenario_workers_jvm/README.md#sms-scenario) 维护 `/lab` 页面、
+`/lab/v1/sms/*` 接口、有限启动参数和号码启停规则。Host 直接使用 Worker SDK，
+与默认 Lab 共用主类、Manager 集合及 HTTP 控制服务，无独立产品模拟器模块。
 
-| Host 接口 | 行为 |
-| --- | --- |
-| `GET /` | 单 HTML 模拟控制台 |
-| `GET /inventory?offset=0&limit=100` | 号码、国家、Worker ID、本地运行状态和活跃监听数；limit 为 1–1,000 |
-| `GET /metrics` | Host 匹配、去重、容量和有限流统计 |
-| `GET /records?offset=0&limit=100` | 仅供验收的只读分页记录，不暴露 Reporter，不作为产品结果来源 |
-| `POST /sms` | `{phone, smsId, text}`，原始短信输入，正文最多 1,024 字符 |
-| `POST /traffic/start` | `{ratePerSecond, durationSeconds}`，启动有限自动流 |
-| `POST /traffic/stop` | 停止自动流 |
-
-Host 页面对当前号码页轮询，支持短信注入及自动流启停，不提供 Worker 启停或 Properties 编辑。
+Host 页面对当前号码页轮询，支持短信注入、自动流和单 Worker 启停；SMS Properties 只读。
+停止号码关闭本地监听准入并清理 Reporter，不发送产品取消命令或合成结束 Report。
+重启保持身份和本轮去重记录，不恢复旧监听；原订单缺少结束证据时仍显示“结果未确认”。
 本地运行状态、实际 Adapter 网络证据和 Kernel 可调度性分别归各自 Owner；页面不能混同它们。
 Host 与产品各自使用同源 API，启动器提供两个页面地址，不需要浏览器跨源控制代理。
 
@@ -215,13 +210,14 @@ Backend 活跃数量只包含已观察到建立且尚无终态的监听；建立
 在仓库根目录运行：
 
 ```powershell
-.\gradlew.bat :products:sms-reception:worker-simulator:test :products:sms-reception:backend:test
+.\gradlew.bat :scenario_workers_jvm:test :products:sms-reception:backend:test
 corepack pnpm@11.9.0 --dir products/sms-reception/frontend lint
 corepack pnpm@11.9.0 --dir products/sms-reception/frontend typecheck
 corepack pnpm@11.9.0 --dir products/sms-reception/frontend test
 .\gradlew.bat :distribution:server:test :distribution:server:smsCompositionIntegrationTest
 python -m unittest discover -s products/sms-reception -p 'test_*.py'
 python products/sms-reception/run_acceptance.py --build --scenario functional
+python products/sms-reception/run_acceptance.py --scenario lifecycle
 python products/sms-reception/run_acceptance.py --scenario concurrency
 python .github/scripts/check_docs.py
 python .github/scripts/check_proof_selection.py
@@ -236,8 +232,13 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 功能 world 为每国家 1 个真实连接的 Java Worker。依次验证无监听、A/B/C 共号、优先级、
 相同优先级顺序、幂等冲突、短信去重、普通 Task 重复执行、无匹配、取消、窗口外和有限自动流。
 额外的 JVM 用例证明两个副本竞争同监听、匹配与取消/到期竞争、上报失败不转发、清理 Reporter、
-有界容量和晚到快照。Host 只读分页证据 `/records` 提供监听状态、短信 ID 和本地发送接受位，
+有界容量和晚到快照。Host 只读分页证据 `/lab/v1/sms/records` 提供监听状态、短信 ID 和本地发送接受位，
 不暴露 Reporter、不作为 Backend 的结果来源。
+
+功能场景还从实际 Worker 读取事件快照，再在 CN 同一号码保持监听期间，通过同 Group 的
+有限 PRECOMPUTED Task 执行字符串事件，随后验证短信结果。这只证明同一 Worker 承接两类
+Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身份稳定的重启、去重保留以及
+新监听成功；旧监听的本地 INTERRUPTED 与产品 UNCONFIRMED 分别记录，不计入正常流的状态不一致。
 
 固定并发 world 为 1,000 个 Java Worker（CN/US/GB = 700/200/100）。完成身份和真实路由
 验证后，以 200 次监听申请/秒持续 60 秒，叠加最多 135 秒、300 条短信/秒的有限随机流。
@@ -246,7 +247,8 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 不一致和未确认结果；报告 HTTP 错误、发生器限制、实际速率、建立吞吐、短信观察率、
 P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值。到期不算接码成功。
 
-本轮迁移验收证据写入 `build/server-consolidation/`；后续默认验收写入 `build/acceptance/`，仅 `summary.json`、`summary.md` 用于汇总；
+本轮 Host 合并验收写入 `build/host-merger/`；`build/server-consolidation/` 仅保留此前装配迁移的历史证据。
+后续默认验收写入 `build/acceptance/`，仅 `summary.json`、`summary.md` 用于汇总；
 private 日志不进入 CI 工件。`--root <解压后的产品目录>` 使用 ZIP 内真实产物执行相同功能验收。
 ZIP 也携带验收脚本，可直接在解压目录运行 `python run_acceptance.py --scenario functional`。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、独立前端检查、同进程组合边界和小规模真实链路；

@@ -90,8 +90,9 @@ require separate deployment, infrastructure or a public product SDK.
 Let demonstrated business and operational needs drive later extraction.
 
 The first such workload, [SMS Reception](products/sms-reception/README.md),
-uses a separate business module and Vue frontend, plus an independent Java SIM
-Host. The distribution imports platform and SMS configuration into one Server;
+uses a separate business module and Vue frontend, plus the SMS scene of the
+independently launched [Scenario Host](scenario_workers_jvm/README.md#sms-scenario).
+Lab and SMS share its Java Worker management and local console. The distribution imports platform and SMS configuration into one Server;
 the `sms-reception` profile enables product routes and jobs. SMS calls the
 existing Server services and shares their Owner instances.
 It owns listening orders and SMS routing; Kernel retains assignment and scheduling.
@@ -103,7 +104,7 @@ It owns listening orders and SMS routing; Kernel retains assignment and scheduli
 | Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/Rules and bounded PRECOMPUTED Demand consumer |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
-| JVM Lab | [scenario_workers_jvm](scenario_workers_jvm/README.md): independently launched finite Worker Host and local mutation fixtures |
+| JVM simulation | [scenario_workers_jvm](scenario_workers_jvm/README.md): one independent Host for Lab fixtures and SMS numbers |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
 | Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) observes live facts during execution |
 | Frontend | [frontend](frontend/README.md): Runtime observation, finite Task files, Direct Debug and API/architecture references |

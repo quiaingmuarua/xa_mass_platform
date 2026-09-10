@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
-/** Standalone process entry for the finite local Scenario Worker Lab. */
+/** Standalone process entry for the finite Lab and SMS Worker scenarios. */
 public final class ScenarioWorkerHostMain {
 
     static final URI DEFAULT_RUNTIME_API_BASE_URL =
@@ -35,7 +35,8 @@ public final class ScenarioWorkerHostMain {
                 == null
                 ? ScenarioWorkerStartupPlan.defaults()
                 : ScenarioWorkerStartupPlan.load(options.startupPlanPath());
-        ScenarioWorkers workers = ScenarioWorkers.fromJson(
+        ScenarioWorkers workers = options.scenario().equals("sms")
+                ? ScenarioWorkers.sms(options.runtimeApiBaseUrl(), options.smsCounts()) : ScenarioWorkers.fromJson(
                 loadCapabilityAssembly(options.capabilityAssemblyPath()),
                 options.sandboxRoot(),
                 options.runtimeApiBaseUrl()
@@ -44,7 +45,7 @@ public final class ScenarioWorkerHostMain {
         ScenarioWorkerControlServer controlServer = null;
         Thread shutdownHook = null;
         try {
-            scheduledStops = new ScenarioWorkerScheduledStops(workers);
+            if (!workers.isSms()) scheduledStops = new ScenarioWorkerScheduledStops(workers);
             controlServer = ScenarioWorkerControlServer.open(
                     options.controlPort(),
                     workers,
@@ -67,11 +68,12 @@ public final class ScenarioWorkerHostMain {
             controlServer.start();
             LOGGER.log(
                     System.Logger.Level.INFO,
-                    "SCENARIO_WORKER_LAB_READY control={0} "
-                            + "initialWorkerCount={1} scheduledStopCount={2}",
+                    "SCENARIO_WORKER_LAB_READY control={0}/lab "
+                            + "initialWorkerCount={1} scheduledStopCount={2} scenario={3}",
                     controlServer.baseUri(),
                     workers.initialWorkerCount(),
-                    startupPlan.scheduledStops().size()
+                    startupPlan.scheduledStops().size(),
+                    options.scenario()
             );
             new CountDownLatch(1).await();
         } catch (InterruptedException interrupted) {
@@ -184,6 +186,7 @@ public final class ScenarioWorkerHostMain {
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         }
+        if (controlServer != null) controlServer.awaitClosed();
         if (failure != null) {
             throw failure;
         }
@@ -205,7 +208,9 @@ public final class ScenarioWorkerHostMain {
             String sandboxRoot,
             int controlPort,
             String startupPlanPath,
-            String capabilityAssemblyPath
+            String capabilityAssemblyPath,
+            String scenario,
+            int[] smsCounts
     ) {
 
         private static final String RUNTIME_API_ARGUMENT =
@@ -215,6 +220,8 @@ public final class ScenarioWorkerHostMain {
         private static final String STARTUP_PLAN_ARGUMENT = "--startup-plan";
         private static final String CAPABILITY_ASSEMBLY_ARGUMENT =
                 "--capability-assembly";
+        private static final String SCENARIO_ARGUMENT = "--scenario";
+        private static final String SMS_COUNTS_ARGUMENT = "--sms-counts";
 
         HostOptions {
             requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
@@ -239,6 +246,9 @@ public final class ScenarioWorkerHostMain {
                         "capability-assembly must be non-blank"
                 );
             }
+            if (!"lab".equals(scenario) && !"sms".equals(scenario))
+                throw new IllegalArgumentException("scenario must be lab or sms");
+            smsCounts = smsCounts.clone();
         }
 
         static HostOptions parse(String[] arguments) {
@@ -264,7 +274,9 @@ public final class ScenarioWorkerHostMain {
                         && !SANDBOX_ROOT_ARGUMENT.equals(name)
                         && !CONTROL_PORT_ARGUMENT.equals(name)
                         && !STARTUP_PLAN_ARGUMENT.equals(name)
-                        && !CAPABILITY_ASSEMBLY_ARGUMENT.equals(name)) {
+                        && !CAPABILITY_ASSEMBLY_ARGUMENT.equals(name)
+                        && !SCENARIO_ARGUMENT.equals(name)
+                        && !SMS_COUNTS_ARGUMENT.equals(name)) {
                     throw new IllegalArgumentException(
                             "Unknown Scenario Worker Host argument: " + name
                     );
@@ -275,6 +287,20 @@ public final class ScenarioWorkerHostMain {
                     );
                 }
             }
+            String scenario = values.getOrDefault(SCENARIO_ARGUMENT, "lab");
+            if ("sms".equals(scenario) && (values.containsKey(SANDBOX_ROOT_ARGUMENT)
+                    || values.containsKey(STARTUP_PLAN_ARGUMENT) || values.containsKey(CAPABILITY_ASSEMBLY_ARGUMENT)))
+                throw new IllegalArgumentException("SMS does not accept Lab inventory, capability assembly or startup plan");
+            if (!"sms".equals(scenario) && values.containsKey(SMS_COUNTS_ARGUMENT))
+                throw new IllegalArgumentException("sms-counts requires scenario=sms");
+            int[] counts;
+            try {
+                counts = java.util.Arrays.stream(values.getOrDefault(SMS_COUNTS_ARGUMENT, "20,20,20").split(",", -1))
+                        .mapToInt(Integer::parseInt).toArray();
+            } catch (NumberFormatException error) { throw new IllegalArgumentException("Invalid sms-counts", error); }
+            if (counts.length != 3 || java.util.Arrays.stream(counts).anyMatch(n -> n < 1)
+                    || java.util.Arrays.stream(counts).asLongStream().sum() > 10_000)
+                throw new IllegalArgumentException("sms-counts requires three positive counts, total <= 10000");
             return new HostOptions(
                     URI.create(values.getOrDefault(
                             RUNTIME_API_ARGUMENT,
@@ -289,7 +315,9 @@ public final class ScenarioWorkerHostMain {
                             Integer.toString(DEFAULT_CONTROL_PORT)
                     )),
                     values.get(STARTUP_PLAN_ARGUMENT),
-                    values.get(CAPABILITY_ASSEMBLY_ARGUMENT)
+                    values.get(CAPABILITY_ASSEMBLY_ARGUMENT),
+                    scenario,
+                    counts
             );
         }
 

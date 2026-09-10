@@ -103,7 +103,7 @@ class ScenarioWorkersTest {
                 .extracting(WorkerEventDefinition::eventName)
                 .containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
         assertThat(prepared.replicas())
-                .extracting(ScenarioWorkers.PreparedReplica::labWorkerKey)
+                .extracting(ScenarioWorkers.PreparedReplica::replicaKey)
                 .containsExactly("client-1.jsonl:1", "client-2.jsonl:1");
         assertThat(prepared.replicas().get(0).stateFile().workerProperties())
                 .containsEntry("region", "first");

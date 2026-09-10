@@ -23,7 +23,7 @@ tasks.register('buildFrontend', Exec) {
 
 tasks.register('previewZip', Zip) {
     dependsOn ':distribution:server:bootJar',
-            ':products:sms-reception:worker-simulator:installDist',
+            ':scenario_workers_jvm:installDist',
             ':distribution:server:buildFrontend',
             ':distribution:server:generatePlatformDiagnosticCodes', 'previewManifest'
     archiveFileName = "sms-reception-${project.version}.zip"
@@ -35,13 +35,16 @@ tasks.register('previewZip', Zip) {
         from('requirements.txt')
         from('config') { into 'config' }
         from(layout.buildDirectory.file('preview-manifest.json'))
-        from(layout.buildDirectory.file('server-consolidation/acceptance-report.md'))
-        from(layout.buildDirectory.file('server-consolidation/functional/summary.json')) { into 'evidence/functional' }
-        from(layout.buildDirectory.file('server-consolidation/concurrency/summary.json')) { into 'evidence/concurrency' }
-        from(layout.buildDirectory.file('server-consolidation/zip-smoke/summary.json')) { into 'evidence/zip-smoke' }
-        from(layout.buildDirectory.file('server-consolidation/browser-summary.json')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('server-consolidation/browser-dark.png')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('server-consolidation/browser-mobile.png')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('host-merger/acceptance-report.md'))
+        from(layout.buildDirectory.file('host-merger/verification-summary.json')) { into 'evidence' }
+        from(layout.buildDirectory.file('host-merger/functional/summary.json')) { into 'evidence/functional' }
+        from(layout.buildDirectory.file('host-merger/zip-lifecycle/summary.json')) { into 'evidence/lifecycle' }
+        from(layout.buildDirectory.file('host-merger/concurrency/summary.json')) { into 'evidence/concurrency' }
+        from(layout.buildDirectory.file('host-merger/zip-smoke/summary.json')) { into 'evidence/zip-smoke' }
+        from(layout.buildDirectory.file('host-merger/browser-summary.json')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('host-merger/browser-dark.png')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('host-merger/browser-mobile.png')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('host-merger/browser-lab.png')) { into 'evidence/ui' }
         from(layout.buildDirectory.file('acceptance/final-concurrency/summary.json')) { into 'evidence/baseline-three-process' }
         from(project(':distribution:server').tasks.named('bootJar')) { into 'lib' }
         from(rootProject.file('frontend/dist')) {
@@ -51,21 +54,21 @@ tasks.register('previewZip', Zip) {
         from(project(':distribution:server').platformDiagnosticCodesFile) { into 'frontend/dist/reference' }
         from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
         from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) { rename { 'THIRD_PARTY_NOTICES.frontend.md' } }
-        from(project(':products:sms-reception:worker-simulator').layout.buildDirectory.dir('install/worker-simulator')) {
-            into 'worker-simulator'
+        from(project(':scenario_workers_jvm').layout.buildDirectory.dir('install/xa-mass-scenario-workers')) {
+            into 'scenario-workers'
         }
     }
 }
 
 tasks.register('previewManifest') {
-    dependsOn ':distribution:server:bootJar', ':products:sms-reception:worker-simulator:jar'
+    dependsOn ':distribution:server:bootJar', ':scenario_workers_jvm:jar'
     def output = layout.buildDirectory.file('preview-manifest.json')
     outputs.file(output)
     outputs.upToDateWhen { false }
     doLast {
         def artifacts = [
                 server: project(':distribution:server').tasks.named('bootJar').get().archiveFile.get().asFile,
-                host: project(':products:sms-reception:worker-simulator').tasks.named('jar').get().archiveFile.get().asFile
+                host: project(':scenario_workers_jvm').tasks.named('jar').get().archiveFile.get().asFile
         ]
         def manifest = [productVersion: project.version.toString(), platformVersion: project(':server_jvm').version.toString(),
                 baseCommit: providers.exec { commandLine 'git', 'rev-parse', 'HEAD' }.standardOutput.asText.get().trim(),

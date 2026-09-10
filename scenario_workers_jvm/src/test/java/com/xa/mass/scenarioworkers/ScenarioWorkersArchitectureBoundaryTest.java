@@ -76,16 +76,17 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)
-                .containsOnlyOnce("Executors.newFixedThreadPool")
-                .containsOnlyOnce(
-                        "Executors.newSingleThreadScheduledExecutor"
-                )
+                .containsOnlyOnce("new ThreadPoolExecutor(")
+                .containsOnlyOnce("new ArrayBlockingQueue<>(128)")
+                .containsOnlyOnce("HttpServer.create(")
+                .containsOnlyOnce("public static void main(")
                 .doesNotContain("Executors.newSingleThreadExecutor")
                 .doesNotContain("Executors.newCachedThreadPool");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")
                 .doesNotContain("com.xa.mass.server")
+                .doesNotContain("com.xa.mass.sms.backend")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("ScoreBand")
                 .doesNotContain("Pacer")

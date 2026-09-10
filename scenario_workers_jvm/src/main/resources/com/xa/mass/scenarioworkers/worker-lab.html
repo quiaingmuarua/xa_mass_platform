@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-scenario="__SCENARIO__">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -281,6 +281,32 @@
       .inventory, .detail { padding-right: 12px; padding-left: 12px; }
       .section-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
     }
+
+    html[data-scenario="sms"] .workspace { display: none; }
+    html[data-scenario="lab"] .sms-ui { display: none; }
+    .sms-ui { max-width: 1400px; margin: auto; padding: 24px; }
+    .sms-ui .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+    .sms-ui .stats div, .sms-ui section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+    .sms-ui .stats strong { display: block; font-size: 28px; margin-top: 8px; }
+    .sms-ui .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+    .sms-ui label { display: block; margin: 12px 0 6px; }
+    .sms-ui input, .sms-ui textarea { width: 100%; padding: 10px; border: 1px solid var(--border-strong); border-radius: 5px; }
+    .sms-ui textarea { min-height: 90px; resize: vertical; }
+    .sms-ui .hint, .sms-ui footer { color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+    .sms-ui .actions, .sms-ui .pager { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+    .sms-ui .pager { justify-content: flex-end; }
+    .sms-ui .table-wrap { overflow-x: auto; }
+    .sms-ui table { min-width: 1000px; }
+    .sms-ui td button { margin-right: 5px; }
+    .sms-ui .worker { font-family: monospace; font-size: 12px; }
+    #sms-error { color: var(--danger); padding: 12px; }
+    #sms-notice { margin-top: 10px; color: var(--accent); }
+    @media (max-width: 720px) {
+      .sms-ui { padding: 12px; }
+      .sms-ui .controls { grid-template-columns: 1fr; }
+      .sms-ui .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .sms-ui section { padding: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -362,9 +388,97 @@
     </aside>
   </main>
 
+  <main class="sms-ui">
+  <div id="sms-error" role="alert" hidden></div>
+  <div class="stats"><div><small>模拟号码</small><strong id="sms-numbers">—</strong></div><div><small>活跃监听</small><strong id="sms-active">—</strong></div><div><small>Host 已匹配</small><strong id="sms-matched">—</strong></div><div><small>本地上报失败</small><strong id="sms-failed">—</strong></div></div>
+  <div class="controls">
+    <section><h2>手动模拟短信</h2><form id="sms-sms-form"><label for="sms-phone">目标号码</label><input id="sms-phone" required autocomplete="off" placeholder="从下方号码表选择，或输入完整号码" /><label for="sms-text">短信正文</label><textarea id="sms-text" rows="3" maxlength="1024" required>[A] 123456</textarea><div class="actions"><button class="primary" type="submit">发送模拟短信</button></div></form><p class="hint">A：[A] 123456；B：[B] 123456；C：任意非空内容。无有效监听或无模板匹配时，不产生接码结果。</p><div id="sms-notice" role="status"></div></section>
+    <section><h2>有限自动短信流</h2><form id="sms-traffic-form"><label for="sms-rate">每秒短信数</label><input id="sms-rate" type="number" value="20" min="1" max="1000" required /><label for="sms-duration">运行时长（秒）</label><input id="sms-duration" type="number" value="60" min="1" max="300" required /><div class="actions"><button id="sms-start" class="primary" type="submit">启动短信流</button><button id="sms-stop" type="button" disabled>停止</button><span id="sms-traffic-state">已停止</span></div></form><p class="hint">固定种子独立生成 A / B 和无关短信。单次最多 100,000 条；不为指定订单生成内容。</p><p id="sms-traffic-count" class="hint"></p></section>
+  </div>
+  <section><h2>模拟 Worker</h2><p class="hint">Properties 只读；启停影响该号码的本地监听。运行状态来自本地 Java Worker，不代表 Adapter 已验证或 Kernel 可调度。活跃监听上限为每号码 64 个。</p><div class="table-wrap"><table><thead><tr><th>国家</th><th>号码</th><th>Worker ID</th><th>期望运行</th><th>本地状态</th><th>活跃监听</th><th>操作</th></tr></thead><tbody id="sms-workers"></tbody></table></div><div class="pager"><button id="sms-prev">上一页</button><span id="sms-page">—</span><button id="sms-next">下一页</button></div></section>
+  <footer id="sms-capacity">SMS Reception 0.1.0-preview · 仅模拟数据 · 重启开始新场景</footer>
+</main>
   <script>
     "use strict";
 
+    if (document.documentElement.dataset.scenario === "sms") {
+      document.documentElement.lang = "zh-CN";
+      document.title = "SMS · Scenario Worker Host";
+      document.querySelector("h1").textContent = "Scenario Worker Host · SMS";
+      document.querySelector(".subtitle").textContent = "模拟号码、控制 Worker 和短信输入；订单结果在接码工作台查看。";
+      document.getElementById("last-refresh").hidden = true;
+
+  const el = (id) => document.getElementById("sms-" + id);
+  let offset = 0, total = 0, timer, stopped = false, refreshing, mutation;
+  let actionFailure = "";
+  const limit = 100;
+  let smsId = crypto.randomUUID();
+  async function api(path, body, signal) {
+    const response = await fetch("/lab/v1/sms" + path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "请求失败 " + response.status);
+    return data;
+  }
+  function error(message) { el("error").textContent = message; el("error").hidden = !message; }
+  function row(item) {
+    const tr = document.createElement("tr");
+    [item.country, item.phone, item.workerId || "—", item.desiredRunning ? "运行" : "停止", item.runtimeState, item.activeListeners].forEach((value, index) => {
+      const td = document.createElement("td"); td.textContent = String(value); if (index === 2) td.className = "worker"; tr.append(td);
+    });
+    const td = document.createElement("td"), button = document.createElement("button"); button.textContent = "选择号码";
+    button.onclick = () => { el("phone").value = item.phone; smsId = crypto.randomUUID(); el("text").focus(); };
+    td.append(button);
+    for (const [actionName, label] of [["start", "启动"], ["stop", "停止"]]) {
+      const control = document.createElement("button"); control.textContent = label;
+      control.disabled = actionName === "start" ? item.desiredRunning : !item.desiredRunning;
+      control.onclick = () => void action((signal) => api("/workers/" + encodeURIComponent(item.workerGroupId)
+        + "/" + encodeURIComponent(item.replicaKey) + ":" + actionName, {}, signal));
+      td.append(control);
+    }
+    tr.append(td); return tr;
+  }
+  async function refresh() {
+    refreshing?.abort(); const controller = refreshing = new AbortController();
+    try {
+      const [page, metrics] = await Promise.all([api("/inventory?offset=" + offset + "&limit=" + limit, undefined, controller.signal), api("/metrics", undefined, controller.signal)]);
+      if (controller.signal.aborted) return;
+      total = page.total; el("workers").replaceChildren(...page.items.map(row));
+      el("page").textContent = "第 " + (Math.floor(offset / limit) + 1) + " 页 / 共 " + total + " 个号码";
+      el("prev").disabled = offset === 0; el("next").disabled = offset + limit >= total;
+      el("numbers").textContent = metrics.host.numbers; el("active").textContent = metrics.host.activeListeners;
+      el("matched").textContent = metrics.host.matched; el("failed").textContent = metrics.host.reportFailed;
+      el("start").disabled = metrics.traffic.running; el("stop").disabled = !metrics.traffic.running;
+      el("traffic-state").textContent = metrics.traffic.running ? "运行中" : "已停止";
+      el("traffic-count").textContent = "已生成 " + metrics.traffic.generated + " 条";
+      el("capacity").textContent = "监听记录 " + metrics.host.listeners + " / 50,000 · 短信去重记录 " + metrics.host.smsEvents + " / 100,000 · 重启开始新场景";
+      error(actionFailure || metrics.traffic.error || "");
+    } catch (failure) { if (!controller.signal.aborted) error(failure.message); }
+  }
+  async function action(work) {
+    if (mutation || stopped) return;
+    actionFailure = ""; error("");
+    mutation = new AbortController();
+    try { await work(mutation.signal); if (!stopped) await refresh(); }
+    catch (failure) { if (!mutation.signal.aborted) { actionFailure = failure.message; error(actionFailure); } }
+    finally { mutation = undefined; }
+  }
+  el("sms-form").onsubmit = (event) => { event.preventDefault(); void action(async (signal) => {
+    const result = await api("/sms", { phone: el("phone").value.trim(), text: el("text").value, smsId }, signal);
+    smsId = crypto.randomUUID(); el("notice").textContent = result.status === "MATCHED" ? "Host 已匹配；接码结果请在工作台查看。" : result.status === "DUPLICATE" ? "重复短信已忽略。" : "没有有效匹配，不产生接码结果。";
+  }); };
+  ["phone", "text"].forEach((id) => el(id).addEventListener("input", () => { smsId = crypto.randomUUID(); }));
+  el("traffic-form").onsubmit = (event) => { event.preventDefault(); void action((signal) => api("/traffic/start", { ratePerSecond: Number(el("rate").value), durationSeconds: Number(el("duration").value) }, signal)); };
+  el("stop").onclick = () => void action((signal) => api("/traffic/stop", {}, signal));
+  el("prev").onclick = () => { offset = Math.max(0, offset - limit); void refresh(); };
+  el("next").onclick = () => { if (offset + limit < total) offset += limit; void refresh(); };
+  async function poll() { if (!document.hidden) await refresh(); if (!stopped) timer = setTimeout(poll, 1000); }
+  window.addEventListener("pagehide", () => { stopped = true; clearTimeout(timer); refreshing?.abort(); mutation?.abort(); });
+  document.getElementById("refresh").onclick = () => void refresh();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !stopped) void refresh(); });
+  window.addEventListener("pageshow", () => { if (stopped) { stopped = false; void poll(); } });
+  void poll();
+
+    } else {
     const API = "/lab/v1/workers";
     const state = {
       workers: [],
@@ -689,6 +803,7 @@
     window.setInterval(() => {
       if (!document.hidden) refreshWorkers(false);
     }, 2000);
+    }
   </script>
 </body>
 </html>

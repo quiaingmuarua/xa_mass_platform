@@ -19,10 +19,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Loopback-only HTTP adapter for the Scenario Worker Lab. */
+/** Loopback-only HTTP control for the finite Lab and SMS scenarios. */
 final class ScenarioWorkerControlServer implements AutoCloseable {
 
     static final int DEFAULT_PORT = 18086;
@@ -34,7 +36,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             "/com/xa/mass/scenarioworkers/worker-lab.html";
     private static final int MAX_REQUEST_BYTES = 64 * 1024;
     private static final int MAX_STOP_BATCH_SIZE = 100;
-    private static final int CONTROL_THREADS = 4;
+    private static final int CONTROL_THREADS = 8;
+    private static final String SMS_PATH = "/lab/v1/sms/";
 
     private final ScenarioWorkers workers;
     private final ScenarioWorkerScheduledStops scheduledStops;
@@ -52,17 +55,13 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             byte[] consoleHtml
     ) {
         this.workers = Objects.requireNonNull(workers, "workers");
-        this.scheduledStops = Objects.requireNonNull(
-                scheduledStops,
-                "scheduledStops"
-        );
+        this.scheduledStops = workers.isSms() ? null : Objects.requireNonNull(scheduledStops, "scheduledStops");
         this.server = Objects.requireNonNull(server, "server");
-        this.consoleHtml = Objects.requireNonNull(
-                consoleHtml,
-                "consoleHtml"
-        ).clone();
+        this.consoleHtml = new String(Objects.requireNonNull(consoleHtml, "consoleHtml"), StandardCharsets.UTF_8)
+                .replace("__SCENARIO__", workers.isSms() ? "sms" : "lab").getBytes(StandardCharsets.UTF_8);
         AtomicInteger threadSequence = new AtomicInteger();
-        executor = Executors.newFixedThreadPool(CONTROL_THREADS, task -> {
+        executor = new ThreadPoolExecutor(CONTROL_THREADS, CONTROL_THREADS, 0, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(128), task -> {
             Thread thread = new Thread(
                     task,
                     "scenario-worker-lab-http-"
@@ -70,11 +69,20 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             );
             thread.setDaemon(true);
             return thread;
-        });
-        server.setExecutor(executor);
-        server.createContext(LAB_PATH, this::handleConsole);
-        server.createContext(WORKERS_PATH, this::handle);
-        server.createContext("/lab/v1/execution-witnesses", this::handleWitnesses);
+        }, new ThreadPoolExecutor.CallerRunsPolicy());
+        try {
+            server.setExecutor(executor);
+            server.createContext(LAB_PATH, this::handleConsole);
+            if (workers.isSms()) {
+                server.createContext(SMS_PATH, this::handleSms);
+            } else {
+                server.createContext(WORKERS_PATH, this::handle);
+                server.createContext("/lab/v1/execution-witnesses", this::handleWitnesses);
+            }
+        } catch (RuntimeException | Error failure) {
+            executor.shutdownNow();
+            throw failure;
+        }
     }
 
     static ScenarioWorkerControlServer open(
@@ -95,12 +103,15 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 ),
                 0
         );
-        return new ScenarioWorkerControlServer(
-                workers,
-                scheduledStops,
-                server,
-                consoleHtml
-        );
+        try {
+            return new ScenarioWorkerControlServer(workers, scheduledStops, server, consoleHtml);
+        } catch (RuntimeException | Error failure) {
+            // A bound, never-started JDK HttpServer can retain its selector's socket
+            // after stop(). Run the dispatcher so shutdown also releases that binding.
+            server.start();
+            server.stop(0);
+            throw failure;
+        }
     }
 
     synchronized void start() {
@@ -123,6 +134,78 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         );
     }
 
+    private void handleSms(HttpExchange exchange) throws IOException {
+        try {
+            String path = exchange.getRequestURI().getRawPath().substring(SMS_PATH.length());
+            String method = exchange.getRequestMethod();
+            var sms = workers.smsScenario();
+            Map<String, String> query = new LinkedHashMap<>();
+            String rawQuery = exchange.getRequestURI().getRawQuery();
+            if (rawQuery != null) {
+                for (String pair : rawQuery.split("&")) {
+                    String[] parts = pair.split("=", -1);
+                    if (parts.length != 2 || !Set.of("offset", "limit").contains(parts[0])
+                            || query.putIfAbsent(parts[0], parts[1]) != null)
+                        throw new IllegalArgumentException("Invalid SMS page query");
+                }
+                if (!method.equals("GET") || !(path.equals("inventory") || path.equals("records")))
+                    throw new IllegalArgumentException("Query parameters are not supported here");
+            }
+            Map<String, ?> response;
+            if (path.startsWith("workers/")) {
+                requireMethod(exchange, "POST");
+                String[] coordinate = path.substring("workers/".length()).split("/", -1);
+                if (coordinate.length != 2) throw new IllegalArgumentException("Expected Group and replica key");
+                int action = coordinate[1].lastIndexOf(':');
+                if (action < 1) throw new IllegalArgumentException("Expected start or stop action");
+                String group = decodeSegment(coordinate[0]);
+                String key = decodeSegment(coordinate[1].substring(0, action));
+                switch (coordinate[1].substring(action + 1)) {
+                    case "start" -> workers.startWorker(group, key);
+                    case "stop" -> workers.stopWorker(group, key);
+                    default -> throw new IllegalArgumentException("Expected start or stop action");
+                }
+                respondJson(exchange, 202, Map.of("acceptedCount", 1));
+                return;
+            }
+            response = switch (method + " " + path) {
+                case "GET health" -> workers.smsHealth();
+                case "GET inventory" -> sms.registry.inventory(Integer.parseInt(query.getOrDefault("offset", "0")),
+                        Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET records" -> sms.registry.records(Integer.parseInt(query.getOrDefault("offset", "0")),
+                        Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET metrics" -> sms.metrics();
+                case "POST sms" -> {
+                    var body = readSmsBody(exchange);
+                    if (!(body.get("text") instanceof String message)) throw new IllegalArgumentException("Invalid SMS text");
+                    yield sms.registry.receive(com.xa.mass.scenarioworkers.sms.ListeningRegistry.string(body, "phone"),
+                            com.xa.mass.scenarioworkers.sms.ListeningRegistry.string(body, "smsId"), message);
+                }
+                case "POST traffic/start" -> sms.startTraffic(readSmsBody(exchange));
+                case "POST traffic/stop" -> sms.stopTraffic();
+                default -> null;
+            };
+            if (response == null) respondError(exchange, 404, "route_not_found", "Unknown SMS route");
+            else respondJson(exchange, 200, response);
+        } catch (ScenarioWorkers.UnknownWorkerException error) {
+            respondError(exchange, 404, "worker_not_found", error.getMessage());
+        } catch (IllegalArgumentException error) {
+            respondError(exchange, 400, "invalid_request", error.getMessage());
+        } catch (ResponseSentException ignored) {
+            // Response already sent.
+        } catch (IllegalStateException error) {
+            respondError(exchange, 409, "sms_conflict", error.getMessage());
+        } catch (RuntimeException error) {
+            respondError(exchange, 500, "sms_unavailable", "SMS operation failed");
+        } finally { exchange.close(); }
+    }
+
+    private static Map<String, Object> readSmsBody(HttpExchange exchange) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(8193);
+        if (bytes.length > 8192) throw new IllegalArgumentException("Request too large");
+        return Jsons.parseObject(new String(bytes, StandardCharsets.UTF_8));
+    }
+
     @Override
     public void close() {
         synchronized (this) {
@@ -130,11 +213,21 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 return;
             }
             closed = true;
+            if (!started) server.start();
             server.stop(0);
         }
         // Do not join a publishing HTTP Handler before the Host can revoke its
         // Worker runs. Control threads are daemon threads; in-flight calls may fail.
         executor.shutdownNow();
+    }
+
+    /** Join only after the Host has revoked Workers, so callbacks cannot delay revocation. */
+    void awaitClosed() {
+        try {
+            executor.awaitTermination(2, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void handle(HttpExchange exchange) throws IOException {

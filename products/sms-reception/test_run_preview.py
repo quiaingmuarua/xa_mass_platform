@@ -13,7 +13,7 @@ class PreviewLifecycleTest(unittest.TestCase):
             build()
         command = run.call_args.args[0]
         self.assertIn(":distribution:server:bootJar", command)
-        self.assertIn(":products:sms-reception:worker-simulator:installDist", command)
+        self.assertIn(":scenario_workers_jvm:installDist", command)
         self.assertNotIn(":server_jvm:bootJar", command)
         self.assertNotIn(":products:sms-reception:backend:bootJar", command)
 
@@ -22,8 +22,8 @@ class PreviewLifecycleTest(unittest.TestCase):
             root = Path(directory)
             (root / "lib").mkdir()
             (root / "lib/xa-mass-server-jvm-test.jar").write_bytes(b"fixture")
-            (root / "worker-simulator/lib").mkdir(parents=True)
-            (root / "worker-simulator/lib/host.jar").write_bytes(b"fixture")
+            (root / "scenario-workers/lib").mkdir(parents=True)
+            (root / "scenario-workers/lib/host.jar").write_bytes(b"fixture")
             (root / "frontend/dist").mkdir(parents=True)
             run = Preview(root=root, port=18410)
             client = Mock()
@@ -38,23 +38,25 @@ class PreviewLifecycleTest(unittest.TestCase):
                 self.assertEqual(["server", "host"], [call.args[0] for call in launch.call_args_list])
                 server, host = launch.call_args_list
                 self.assertIn("--spring.profiles.active=sms-reception", server.args[1])
-                self.assertEqual("http://127.0.0.1:18410", host.args[2]["SMS_PLATFORM_URL"])
+                self.assertIn("--runtime-api-base-url=http://127.0.0.1:18410", host.args[1])
+                self.assertIn("--scenario=sms", host.args[1])
                 self.assertEqual("18413", host.args[2]["SMS_ADAPTER_PORT"])
-                self.assertEqual("18414", host.args[2]["SMS_HOST_PORT"])
+                self.assertIn("--control-port=18414", host.args[1])
+                self.assertIn("--sms-counts=20,20,20", host.args[1])
                 self.assertNotIn("SMS_PLATFORM_PORT", host.args[2])
-                self.assertEqual({"server", "simulatorClasspath"}, run.artifacts.keys())
+                self.assertEqual({"server", "hostClasspath"}, run.artifacts.keys())
                 run.close()
 
     def test_inventory_reads_bounded_pages_and_checks_progress(self):
         with patch("run_preview.http", side_effect=[
             {"total": 3, "items": ["a", "b"]}, {"total": 3, "items": ["c"]}
         ]) as request:
-            self.assertEqual(["a", "b", "c"], all_pages("host", "/inventory"))
-            self.assertEqual([call("host", "/inventory?offset=0&limit=1000"),
-                              call("host", "/inventory?offset=2&limit=1000")], request.call_args_list)
+            self.assertEqual(["a", "b", "c"], all_pages("host", "/lab/v1/sms/inventory"))
+            self.assertEqual([call("host", "/lab/v1/sms/inventory?offset=0&limit=1000"),
+                              call("host", "/lab/v1/sms/inventory?offset=2&limit=1000")], request.call_args_list)
         with patch("run_preview.http", return_value={"total": 1, "items": []}):
             with self.assertRaisesRegex(RuntimeError, "Pagination"):
-                all_pages("host", "/inventory")
+                all_pages("host", "/lab/v1/sms/inventory")
 
     def test_port_conflict_starts_no_jvm_and_does_not_close_occupied_socket(self):
         with socket.socket() as occupied, tempfile.TemporaryDirectory() as output:

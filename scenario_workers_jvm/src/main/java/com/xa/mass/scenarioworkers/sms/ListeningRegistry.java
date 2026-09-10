@@ -1,4 +1,4 @@
-package com.xa.mass.sms.simulator;
+package com.xa.mass.scenarioworkers.sms;
 
 import com.xa.mass.worker.execution.WorkerOutcomeReporter;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -9,6 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 
 /** Business state of one finite simulator run. No Kernel state or delivery retries. */
 public final class ListeningRegistry {
@@ -39,9 +40,10 @@ public final class ListeningRegistry {
         this.smsLimit = smsLimit;
     }
 
-    public Sim addSim(String phone, String country, Supplier<String> workerId, Supplier<String> runtimeState) {
+    public Sim addSim(String groupId, String replicaKey, String phone, String country,
+                      Supplier<String> workerId, Supplier<String> runtimeState, BooleanSupplier desiredRunning) {
         if (sims.containsKey(phone)) throw new IllegalArgumentException("Duplicate number");
-        Sim sim = new Sim(phone, country, workerId, runtimeState);
+        Sim sim = new Sim(groupId, replicaKey, phone, country, workerId, runtimeState, desiredRunning);
         sims.put(phone, sim);
         return sim;
     }
@@ -69,6 +71,8 @@ public final class ListeningRegistry {
             String workerId = sim.workerId.get();
             if (workerId == null || workerId.isBlank()) return rejection(id, "Worker identity unavailable");
             synchronized (sim) {
+                if (!sim.accepting || !"RUNNING".equals(sim.runtimeState.get()))
+                    return rejection(id, "Worker is stopped");
                 if (sim.active.size() >= PER_NUMBER) {
                     Entry refused = new Entry(id, application, specification, ordered.size(), sim,
                             templates, now, now, workerId, null);
@@ -121,7 +125,8 @@ public final class ListeningRegistry {
         Entry winner = null;
         Template winningTemplate = null;
         synchronized (sim) {
-            expire(sim, now, publications);
+            if (!"RUNNING".equals(sim.runtimeState.get())) interrupt(sim, now);
+            else expire(sim, now, publications);
             for (Entry entry : sim.active.values()) {
                 if (now < entry.startedAt) continue;
                 for (Template template : entry.templates) {
@@ -157,7 +162,10 @@ public final class ListeningRegistry {
         long now = clock.millis();
         for (Sim sim : sims.values()) {
             List<Publication> publications = new ArrayList<>();
-            synchronized (sim) { expire(sim, now, publications); }
+            synchronized (sim) {
+                if (!"RUNNING".equals(sim.runtimeState.get())) interrupt(sim, now);
+                else expire(sim, now, publications);
+            }
             publications.forEach(this::publish);
         }
     }
@@ -198,8 +206,48 @@ public final class ListeningRegistry {
     public void close() {
         synchronized (admission) { closed = true; }
         for (Sim sim : sims.values()) synchronized (sim) {
-            for (Entry entry : List.copyOf(sim.active.values())) finish(entry, "INTERRUPTED", clock.millis(), Map.of());
+            sim.accepting = false;
+            interrupt(sim, clock.millis());
         }
+    }
+
+    /** Admission closes before the Host revokes the SDK run; no synthetic ending Report. */
+    public void stop(String phone) {
+        Sim sim = requireSim(phone);
+        synchronized (sim) {
+            sim.accepting = false;
+            interrupt(sim, clock.millis());
+        }
+    }
+
+    public void beginStart(String phone) {
+        Sim sim = requireSim(phone);
+        synchronized (sim) {
+            if (closed) throw new IllegalStateException("Simulator closed");
+            if (sim.starting) throw new IllegalStateException("Worker start already in progress");
+            sim.starting = true;
+            sim.accepting = true;
+        }
+    }
+
+    public boolean startStillRequested(String phone) {
+        Sim sim = requireSim(phone);
+        synchronized (sim) { return sim.accepting && !closed; }
+    }
+
+    public void endStart(String phone) {
+        Sim sim = requireSim(phone);
+        synchronized (sim) { sim.starting = false; }
+    }
+
+    private Sim requireSim(String phone) {
+        Sim sim = sims.get(phone);
+        if (sim == null) throw new IllegalArgumentException("Unknown number");
+        return sim;
+    }
+
+    private void interrupt(Sim sim, long now) {
+        for (Entry entry : List.copyOf(sim.active.values())) finish(entry, "INTERRUPTED", now, Map.of());
     }
 
     public List<String> phones() { return List.copyOf(sims.keySet()); }
@@ -211,7 +259,8 @@ public final class ListeningRegistry {
             String state = sim.runtimeState.get();
             int active;
             synchronized (sim) { active = sim.active.size(); }
-            return Map.<String, Object>of("phone", sim.phone, "country", sim.country,
+            return Map.<String, Object>of("workerGroupId", sim.groupId, "replicaKey", sim.replicaKey,
+                    "desiredRunning", sim.desiredRunning.getAsBoolean(), "phone", sim.phone, "country", sim.country,
                     "workerId", workerId, "runtimeState", state, "activeListeners", active);
         }).toList();
         return Map.of("total", sims.size(), "offset", offset, "limit", limit, "items", page);
@@ -223,7 +272,8 @@ public final class ListeningRegistry {
         int total;
         synchronized (admission) {
             total = ordered.size();
-            page = List.copyOf(ordered.subList(Math.min(offset, total), Math.min(total, offset + limit)));
+            int from = Math.min(offset, total);
+            page = List.copyOf(ordered.subList(from, from + Math.min(limit, total - from)));
         }
         return Map.of("total", total, "items", page.stream().map(entry -> {
             Map<String, Object> captured = entry.snapshot;
@@ -282,12 +332,19 @@ public final class ListeningRegistry {
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     public static final class Sim {
+        final String groupId;
+        final String replicaKey;
         final String phone;
         final String country;
         final Supplier<String> workerId;
         final Supplier<String> runtimeState;
+        final BooleanSupplier desiredRunning;
         final Map<String, Entry> active = new LinkedHashMap<>();
-        Sim(String phone, String country, Supplier<String> workerId, Supplier<String> runtimeState) {
+        boolean accepting = true;
+        boolean starting;
+        Sim(String groupId, String replicaKey, String phone, String country, Supplier<String> workerId,
+            Supplier<String> runtimeState, BooleanSupplier desiredRunning) {
+            this.groupId = groupId; this.replicaKey = replicaKey; this.desiredRunning = desiredRunning;
             this.phone = phone; this.country = country; this.workerId = workerId; this.runtimeState = runtimeState;
         }
     }
