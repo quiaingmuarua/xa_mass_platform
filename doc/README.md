@@ -33,6 +33,7 @@ Status: current repository document index.
 - [Worker Loaded Recovery](../integrations/worker-loaded-recovery/README.md)
 - [Android Worker Proof](../integrations/android-worker-proof/README.md)
 - [Frontend](../frontend/README.md)
+- [SMS Reception business workload](../products/sms-reception/README.md)
 
 Module READMEs explain only their assembly, public entrypoints, local owner
 mechanism and verification.

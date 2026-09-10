@@ -168,9 +168,9 @@ def main() -> int:
     processes = []
     evidence = {"schemaVersion": 1, "phase": "build", "status": "failed"}
     try:
-        subprocess.run([gradle, "--no-daemon", ":server_jvm:bootJar", ":scenario_workers_jvm:installDist",
+        subprocess.run([gradle, "--no-daemon", ":distribution:server:bootJar", ":scenario_workers_jvm:installDist",
                         f"{MODULE}:installDist"], cwd=ROOT, env=environment, check=True)
-        jars = [p for p in (ROOT / "server_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
+        jars = [p for p in (ROOT / "distribution/server/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
         server = start(["java", "-jar", str(jar), "--spring.profiles.active=scenario-workers",
                         f"--spring.config.additional-location={config.as_uri()}",

@@ -1,0 +1,85 @@
+name: SMS Reception Preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'products/sms-reception/**'
+      - 'frontend/**'
+      - 'distribution/server/build.gradle'
+      - 'distribution/server/src/**'
+      - 'transport/**'
+      - 'server_jvm/**'
+      - 'kernel_jvm/**'
+      - 'kernel_pacer_jvm/**'
+      - 'worker_matching_jvm/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle/**'
+      - '.github/workflows/sms-reception-preview.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sms-reception-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22.19.0'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install product dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          corepack pnpm@11.9.0 --dir frontend install --frozen-lockfile
+          corepack pnpm@11.9.0 --dir products/sms-reception/frontend install --frozen-lockfile
+          python -m pip install -r products/sms-reception/requirements.txt
+      - name: Product contracts and frontend
+        run: |
+          ./gradlew :products:sms-reception:worker-simulator:test :products:sms-reception:backend:test :distribution:server:test :distribution:server:smsCompositionIntegrationTest --console=plain
+          corepack pnpm@11.9.0 --dir frontend lint
+          corepack pnpm@11.9.0 --dir frontend typecheck
+          corepack pnpm@11.9.0 --dir frontend test
+          corepack pnpm@11.9.0 --dir products/sms-reception/frontend lint
+          corepack pnpm@11.9.0 --dir products/sms-reception/frontend typecheck
+          corepack pnpm@11.9.0 --dir products/sms-reception/frontend test
+          python -m unittest discover -s products/sms-reception -p 'test_*.py'
+      - name: Real product path
+        run: python products/sms-reception/run_acceptance.py --build --scenario functional --output products/sms-reception/build/ci-proof
+      - name: Documentation and proof selection
+        run: |
+          python .github/scripts/check_docs.py
+          python .github/scripts/check_proof_selection.py
+          git diff --check
+      - name: Upload finite acceptance summary
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sms-reception-preview-proof
+          path: |
+            products/sms-reception/build/ci-proof/summary.json
+            products/sms-reception/build/ci-proof/summary.md
+          if-no-files-found: warn

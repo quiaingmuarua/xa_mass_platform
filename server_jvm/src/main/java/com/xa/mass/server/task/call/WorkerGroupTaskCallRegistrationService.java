@@ -1,5 +1,6 @@
 package com.xa.mass.server.task.call;
 
+import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
@@ -16,7 +17,6 @@ import com.xa.mass.server.error.ServerException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.springframework.stereotype.Service;
 
 @Service
 public final class WorkerGroupTaskCallRegistrationService {

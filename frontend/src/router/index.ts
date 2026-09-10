@@ -1,13 +1,13 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-import RuntimeLayout from "@/layouts/RuntimeLayout.vue";
+import RuntimeProvider from "@/layouts/RuntimeProvider.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
       path: "/",
-      component: RuntimeLayout,
+      component: RuntimeProvider,
       children: [
         {
           path: "",

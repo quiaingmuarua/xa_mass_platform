@@ -1,8 +1,8 @@
 # XA Mass Runtime Viewer
 
-Vue 3 frontend for Worker and Task runtime observation plus a thin finite Task
-file client. It is derived from Pure Admin Thin 6.2.0 and contains no login,
-token, dynamic-permission, fake-user, or example-business path.
+Vue 3 frontend for Worker and Task runtime observation, a thin finite Task
+file client and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
+token, dynamic-permission, fake-user, or fabricated-user path.
 
 ## Requirements and local run
 
@@ -66,6 +66,18 @@ dictionary JSON is available at
 `/reference/platform-diagnostic-codes.json`. The overview source is
 `frontend/public/overview.htm`; generated `dist` and dictionary content are not
 committed.
+
+## Build ownership
+
+`pnpm build` writes `dist`; `pnpm build:demo` writes `dist-demo`. Both contain
+only the platform viewer and reference pages. The public hosting configuration
+consumes `dist-demo`. Runtime configuration and Store lifetime belong to
+`RuntimeProvider` and stop with their route container.
+
+The [SMS frontend](../products/sms-reception/frontend/README.md) has its own
+source, dependencies and build. Distribution embeds its output separately and
+the product profile serves it at `/sms`; it is not included in either platform
+frontend build and does not share Runtime stores.
 
 ## API Reference
 

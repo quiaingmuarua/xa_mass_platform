@@ -1,9 +1,9 @@
 package com.xa.mass.server.task;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** Application meanings for generic Kernel terminal tags. */
 @ConfigurationProperties("xa.mass.task-item-outcomes")

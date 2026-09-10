@@ -1,0 +1,78 @@
+plugins { id 'base' }
+version = '0.1.0-preview'
+def windows = System.getProperty('os.name').toLowerCase().contains('windows')
+def pnpm = { List<String> args ->
+    (windows ? ['cmd.exe', '/d', '/c', 'corepack', 'pnpm@11.9.0'] : ['corepack', 'pnpm@11.9.0']) + args
+}
+tasks.register('installFrontend', Exec) {
+    workingDir file('frontend')
+    commandLine pnpm(['install', '--frozen-lockfile'])
+    inputs.files('frontend/package.json', 'frontend/pnpm-lock.yaml', 'frontend/pnpm-workspace.yaml', 'frontend/.npmrc')
+    outputs.dir('frontend/node_modules')
+}
+tasks.register('buildFrontend', Exec) {
+    dependsOn 'installFrontend'
+    workingDir file('frontend')
+    commandLine pnpm(['build'])
+    inputs.files(fileTree(file('frontend')) {
+        include 'src/**', 'public/**', 'index.html', '*.json', '*.ts', '*.js'
+        exclude 'node_modules/**', 'dist/**', 'dist-demo/**', 'coverage/**'
+    })
+    outputs.dir('frontend/dist')
+}
+
+tasks.register('previewZip', Zip) {
+    dependsOn ':distribution:server:bootJar',
+            ':products:sms-reception:worker-simulator:installDist',
+            ':distribution:server:buildFrontend',
+            ':distribution:server:generatePlatformDiagnosticCodes', 'previewManifest'
+    archiveFileName = "sms-reception-${project.version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    into("sms-reception-${project.version}") {
+        from('run_preview.py')
+        from('run_acceptance.py')
+        from('README.md')
+        from('requirements.txt')
+        from('config') { into 'config' }
+        from(layout.buildDirectory.file('preview-manifest.json'))
+        from(layout.buildDirectory.file('server-consolidation/acceptance-report.md'))
+        from(layout.buildDirectory.file('server-consolidation/functional/summary.json')) { into 'evidence/functional' }
+        from(layout.buildDirectory.file('server-consolidation/concurrency/summary.json')) { into 'evidence/concurrency' }
+        from(layout.buildDirectory.file('server-consolidation/zip-smoke/summary.json')) { into 'evidence/zip-smoke' }
+        from(layout.buildDirectory.file('server-consolidation/browser-summary.json')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('server-consolidation/browser-dark.png')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('server-consolidation/browser-mobile.png')) { into 'evidence/ui' }
+        from(layout.buildDirectory.file('acceptance/final-concurrency/summary.json')) { into 'evidence/baseline-three-process' }
+        from(project(':distribution:server').tasks.named('bootJar')) { into 'lib' }
+        from(rootProject.file('frontend/dist')) {
+            into 'frontend/dist'
+            exclude 'reference/platform-diagnostic-codes.json'
+        }
+        from(project(':distribution:server').platformDiagnosticCodesFile) { into 'frontend/dist/reference' }
+        from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
+        from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) { rename { 'THIRD_PARTY_NOTICES.frontend.md' } }
+        from(project(':products:sms-reception:worker-simulator').layout.buildDirectory.dir('install/worker-simulator')) {
+            into 'worker-simulator'
+        }
+    }
+}
+
+tasks.register('previewManifest') {
+    dependsOn ':distribution:server:bootJar', ':products:sms-reception:worker-simulator:jar'
+    def output = layout.buildDirectory.file('preview-manifest.json')
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+    doLast {
+        def artifacts = [
+                server: project(':distribution:server').tasks.named('bootJar').get().archiveFile.get().asFile,
+                host: project(':products:sms-reception:worker-simulator').tasks.named('jar').get().archiveFile.get().asFile
+        ]
+        def manifest = [productVersion: project.version.toString(), platformVersion: project(':server_jvm').version.toString(),
+                baseCommit: providers.exec { commandLine 'git', 'rev-parse', 'HEAD' }.standardOutput.asText.get().trim(),
+                includesWorktree: true, profile: 'sms-reception', processModel: ['server', 'host'],
+                artifacts: artifacts.collectEntries { name, file ->
+                    [(name): [file: file.name, sha256: java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()]]
+                }]
+        output.get().asFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(manifest)) + '\n'
+    }
+}

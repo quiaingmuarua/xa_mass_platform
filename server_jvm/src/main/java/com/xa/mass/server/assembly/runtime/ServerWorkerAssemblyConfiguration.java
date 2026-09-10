@@ -33,7 +33,7 @@ public class ServerWorkerAssemblyConfiguration {
         );
     }
 
-    @Bean
+    @Bean(destroyMethod = "stop")
     ServerConfiguredRuntimeLifecycleHost
     serverConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,

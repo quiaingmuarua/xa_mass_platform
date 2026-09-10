@@ -110,8 +110,12 @@ derived from the other, and both owners commit independently:
 - execution success interrupted before Worker release relies on existing lease
   expiry/recovery; later business observations never release that lease again.
 
-A terminal Task or Item can accept later observations without reopening
-scheduling. State-only observations do not invent a successful Result payload.
+Task scheduling lifecycle and Item outcome observation lifecycle are independent.
+As long as an Item is retained, valid monotonic observations can continue after
+its execution ends or its Task closes; neither event freezes business state or
+starts an observation deadline. No Task reopen or new execution lease is needed.
+Data retention remains separate, and observations cannot recreate a missing
+Item. State-only observations do not invent a successful Result payload.
 No ACK, replay, Result-to-Score repair or cross-owner compensation is provided.
 
 ## Related Owners And Migration

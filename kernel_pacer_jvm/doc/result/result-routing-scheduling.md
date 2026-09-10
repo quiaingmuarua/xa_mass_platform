@@ -216,8 +216,11 @@ one conditional Result operation; missing, invalid and corrupt Items do not
 produce content. Millisecond content updates may succeed within a NOOP 100ms
 Score slot. There are no existence/confirmation reads or cross-owner transactions.
 
-The same Item remains observable after execution and Task closure. Loss before
-consumption or failure between Score and Result may leave missing or older
+TERMINAL ends Item scheduling, not business-state progression. The observation
+lane consumes evidence independently of Task scheduling visibility: Task
+completion or closure does not close the retained Item's observation window.
+Admission and monotonic comparison still apply, and missing Items are not created.
+Loss before consumption or failure between Score and Result may leave missing or older
 content. No replay, ACK, expiry extension, lease release or Task reopening is
 implied. Observations share the existing coordinator and global capacity; they
 add one Redis LIST and no resident thread or extra executor.

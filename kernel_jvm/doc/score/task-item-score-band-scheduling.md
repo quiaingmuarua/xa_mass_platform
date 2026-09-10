@@ -153,12 +153,24 @@ down to a 100ms slot. The two mechanical bands are:
 | Band | Actual tag | Suffix | Meaning |
 | --- | --- | --- | --- |
 | `ACTIVE` | 1 | 0..99 | Remaining scheduling budget; the only schedulable band |
-| `TERMINAL` | 2..9 | 0 | Execution has left scheduling; business meaning belongs to the caller |
+| `TERMINAL` | 2..9 | 0 | Item has left scheduling; business state may continue advancing |
 
 `TaskItemScoreState(score, band, tag, timeMillis, remainingBudget)` exposes an
 opaque score plus Owner-decoded state. Remaining budget is present only for
 ACTIVE. Time is the coordinate within its band, not a business event timestamp.
 The Score Owner does not define success, failure, delivered, read or replied.
+
+TaskItem TERMINAL means terminal for scheduling, not immutable business state.
+While the Item is retained, it may continue accepting valid monotonic outcome
+observations without a cutoff caused by Task completion or closure. Task
+scheduling lifecycle and Item outcome observation lifecycle are independent.
+The upper layer defines business finality; Kernel adds no observation seal when
+an Item enters TERMINAL or its Task closes. Observations never make the Item
+schedulable again, reopen its Task or handle its original Worker execution lease.
+
+Continued acceptance remains subject to the legal tag/time ranges and monotonic
+comparison below. It is not a permanent data-retention guarantee: promotion
+does not recreate a missing Item, and retention is a separate concern.
 
 ## Monotonic Write Rules
 
@@ -415,7 +427,7 @@ If the item has no final score, the next scheduling round may claim it again
 according to the same score rules. This is natural score-band retry visibility,
 not repair.
 
-## Result And Finality
+## Result And Scheduling Finality
 
 The Server execution contract supplies `5 = failed` and `6 = succeeded` through
 `KernelPacerRuntime.assemble(...)`. Dispatch and the TaskItem result mechanism

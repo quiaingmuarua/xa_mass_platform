@@ -188,6 +188,10 @@ Reporting runs on the caller's thread and returns local acceptance, not delivery
 or processing acknowledgement. Invalid input, oversize frames, closed/stopped
 runs and send failures return false. Transparent reconnect keeps the same
 Reporter's send path; stopping or closing its run prevents transfer to a new run.
+Task completion or closure does not end a retained Item's outcome observation
+window. That Item-level contract does not extend the Reporter's original run:
+the Host still owns callback cleanup, and a stopped run's Reporter remains
+unavailable even if the Item is retained.
 WebSocket and Socket send through their existing Client. Polling uses the existing
 point Report HTTP and never occupies or retries through `pendingResult`.
 Core adds no queue, thread, automatic retry or callback-completion fence.

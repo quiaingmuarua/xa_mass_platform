@@ -60,7 +60,7 @@ class KernelPacerModuleBoundaryTest {
         Path root = repositoryRoot();
         Path pacerRoot = root.resolve("kernel_pacer_jvm");
         List<String> violations = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(root)) {
+        try (Stream<Path> files = repositoryFiles(root)) {
             files.filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !path.startsWith(pacerRoot))
                     .filter(path -> !path.toString().contains(
@@ -141,16 +141,16 @@ class KernelPacerModuleBoundaryTest {
         }
 
         List<String> directConsumers = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(root)) {
+        try (Stream<Path> files = repositoryFiles(root)) {
             files.filter(path -> path.getFileName().toString()
                             .equals("build.gradle"))
                     .filter(path -> !path.toString().contains(
                             java.io.File.separator + "build"
                                     + java.io.File.separator
                     ))
-                    .filter(path -> read(path).contains(
-                            "project(':kernel_pacer_jvm')"
-                    ))
+                    .filter(path -> read(path).lines().map(String::trim)
+                            .anyMatch(line -> (line.startsWith("implementation ") || line.startsWith("api "))
+                                    && line.contains("project(':kernel_pacer_jvm')")))
                     .map(root::relativize)
                     .map(Path::toString)
                     .map(path -> path.replace('\\', '/'))
@@ -306,5 +306,23 @@ class KernelPacerModuleBoundaryTest {
         } catch (IOException error) {
             throw new IllegalStateException("Could not read " + path, error);
         }
+    }
+
+    private static Stream<Path> repositoryFiles(Path root) throws IOException {
+        List<Path> files = new ArrayList<>();
+        Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override public java.nio.file.FileVisitResult preVisitDirectory(Path directory,
+                    java.nio.file.attribute.BasicFileAttributes attributes) {
+                return Set.of("build", "node_modules", ".git", ".gradle", "archive", "dist", "dist-demo")
+                        .contains(directory.getFileName().toString())
+                        ? java.nio.file.FileVisitResult.SKIP_SUBTREE : java.nio.file.FileVisitResult.CONTINUE;
+            }
+            @Override public java.nio.file.FileVisitResult visitFile(Path file,
+                    java.nio.file.attribute.BasicFileAttributes attributes) {
+                files.add(file);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
+        return files.stream();
     }
 }

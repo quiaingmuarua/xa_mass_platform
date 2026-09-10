@@ -17,6 +17,14 @@ configured Server runtime host.
   Task Call and DIRECT_CALL correlation;
 - configured WorkerGroup seed and Adapter startup order.
 
+This is an ordinary Java library with importable `XaMassServerConfiguration`.
+It owns Group registration, Task submission and complete Task data services,
+as well as HTTP waiting, Prepare, Direct Call and every Worker Delivery route.
+Spring assembly creates and closes one set of clients, Owners and platform
+lifecycles. The [distribution](../distribution/server/README.md) owns the only
+production `XaMassServerApplication` main and Boot JAR. Server has no product
+dependency; products may consume only their approved service and DTO surface.
+
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
 retry, recovery, Task finality, allocation-rule interpretation, Adapter
 connection routing or Worker event execution. See the root
@@ -258,11 +266,24 @@ line contains only `messageId` and the unchanged `opaqueResultPayload`;
 ordering is not a contract. The temporary file is deleted after the response
 stream closes, including failure paths.
 
+Terminal-only export is a scheduling admission rule, not a claim that business
+outcomes are immutable. Later observations may still change a retained Item's
+Result. Export reads pages over time rather than an atomic snapshot; another
+export may therefore contain newer content.
+
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
 derives the absolute expiry. Finite Task append omits `workerSelector`;
 managed Task Call requires a finite Selector array, where `[]` means no Worker
 restriction inside the Group and `$eq`/`$in` can name explicit Worker IDs.
+
+The HTTP Call service and the SMS business module share Server's
+`TaskCallSubmissionService`: complete input validation, bounded managed-Task
+admission and ordered message IDs. HTTP retains immediate Result probing and its
+existing wait registry; product submission creates no servlet waiter. Direct Java
+Result queries also require a Task ID and `1..1000` non-blank message IDs.
+The approved product reuses existing input/Result values rather than mirroring
+the HTTP contract or bypassing application admission.
 
 `items:call` accepts `1..100` Items, submits the bounded batch once and
 synchronously waits within the caller's `waitTimeoutMillis`. The response is a
@@ -297,7 +318,8 @@ nonblank Message IDs and deduplicates them in input order. The same finite or
 managed Task admission applies as for Result load. One Task catalog read plus
 one Score Owner `ZMSCORE` returns each ID as null (missing) or
 `{band, tag, timeMillis, outcomeName?}`. Band is `active` for tag 1 and
-`terminal` for tags 2..9. Time is the band-local Score time, not a business event
+`terminal` for tags 2..9. Here `terminal` means no further scheduling, not frozen
+business state. Time is the band-local Score time, not a business event
 timestamp. No raw Score or Result is read or exposed through this query; Owner
 data failures use the existing 503 contract.
 
@@ -313,7 +335,12 @@ business observation event or handler.
 
 Only ACTIVE Items are scheduled. All terminal tags can advance to a greater
 legal Score, including a later slot within the same tag, without reopening the
-Task. `TaskEvidenceRuntime` carries `EXECUTION_SUCCESS`, `EXECUTION_FAILURE`,
+Task. Task scheduling lifecycle and Item outcome observation lifecycle are
+independent: while an Item is retained, valid observations remain admissible
+without a cutoff triggered by Task completion or closure. Server's application
+contract defines business finality; Kernel does not turn it into an observation
+seal. This does not promise permanent data retention or recreate deleted Items.
+`TaskEvidenceRuntime` carries `EXECUTION_SUCCESS`, `EXECUTION_FAILURE`,
 and `OUTCOME_OBSERVATION` in three bounded Redis LISTs. Every Pacer preset consumes
 them within the existing shared capacity. Result load still permits 1..1000 IDs;
 Task Call and export keep their existing projection contracts.
@@ -666,8 +693,17 @@ rule. Command Poll returns `200` with a Command or `204` when empty; Worker and
 Adapter Report append returns `202`, and Adapter Command consume returns `200`.
 Route verification uses the asynchronous application port, not an HTTP endpoint.
 Delivery rejection still uses the same
-`400/503 + ApiErrorResponse` contract. No public operation declares a business
+`400/503 + ApiErrorResponse` contract. No platform operation declares a business
 `404`, `409` or `422` response.
+
+The [SMS business module](../products/sms-reception/README.md) depends on the
+approved Group registration, Task submission and Task data services here.
+Distribution imports its configuration beside Server configuration in the same
+context. Only `sms-reception` enables its API, jobs, Group registration and
+`/sms` assets. Its independent frontend build shares the Server origin; `/`
+keeps the platform entry. The product creates no Redis clients or platform loops.
+Product callers stop before platform resources. Failed initialization fails
+startup and destroys already-created resources, including the Adapter host.
 
 ## Assembly Boundaries
 
@@ -686,8 +722,9 @@ not add alternate Runtime owners.
 
 Controllers and use-case services depend on `kernel_jvm` and
 `worker_matching_jvm` owner contracts.
-Provider selection stays in Server assembly. The shared `assembly.redis`
-package owns connection and health only; Redis key operations live in
+Provider selection, construction and destruction stay in Server Spring
+assembly. The `assembly.redis` package owns connection and health only;
+Redis key operations live in
 owner-local provider packages.
 
 Worker Prepare composes Server identity resolution and Kernel

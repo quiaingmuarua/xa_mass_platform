@@ -486,7 +486,7 @@ def _build_artifacts() -> None:
         [
             str(_gradle_wrapper()),
             "--no-daemon",
-            ":server_jvm:bootJar",
+            ":distribution:server:bootJar",
             ":scenario_workers_jvm:installDist",
             ":integrations:worker-loaded-recovery:installDist",
         ],
@@ -543,7 +543,7 @@ def _start_server(
 ) -> subprocess.Popen[str]:
     jars = sorted(
         path
-        for path in (REPOSITORY_ROOT / "server_jvm/build/libs").glob(
+        for path in (REPOSITORY_ROOT / "distribution/server/build/libs").glob(
             "xa-mass-server-jvm-*.jar"
         )
         if not path.name.endswith("-plain.jar")

@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.server.task.call.TaskRpcStageEvent;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 import com.xa.mass.kernel.task.TaskRuntime;

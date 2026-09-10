@@ -38,6 +38,8 @@ agents change the repository; it is not the canonical mechanism narrative.
   Candidate Rules, constraint interpretation and ordered candidate
   publication.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
+- `distribution/server/` owns the sole production main and Boot JAR. It imports
+  Server and optional product configuration; it owns no business or resource logic.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
 - Scenario, Android, integration and frontend modules are finite assembly,
@@ -110,7 +112,11 @@ only when the task covers that behavior.
 
 - Task, TaskItem and Worker score truth remain independent.
 - TaskItem tag 1 is the only ACTIVE scheduling band; tags 2..9 are generic
-  TERMINAL outcomes. Only strictly increasing scores may replace existing
+  TERMINAL outcomes: terminal for scheduling, not immutable business state.
+  Task scheduling lifecycle and Item outcome observation lifecycle are independent.
+  Do not gate valid observations on Task completion or closure while the Item is
+  retained; retention and business finality remain separate concerns.
+  Only strictly increasing scores may replace existing
   members; terminal outcomes never reopen Item or Task scheduling. Server owns
   business names and supplies execution outcome tags through Pacer assembly.
   ACTIVE claims retain exact-score CAS. Result content remains independent of
@@ -128,7 +134,7 @@ only when the task covers that behavior.
   mechanical transitions implement each event. SUCCESS stores the TaskItem
   Result before separately requesting `TERMINAL(tag=6)`; retryable FAILURE does
   not write an Item Result or decide Item finality. Result HASH is observed
-  projection, while TaskItem Score is finality truth. The ordered Owner calls
+  projection, while TaskItem Score is scheduling finality truth. The ordered Owner calls
   are not atomic, and no current replay or repair contract guarantees
   `Result.success => eventually TERMINAL(tag=6)`.
   OUTCOME_OBSERVATION advances the existing Item Score before optionally storing
@@ -267,6 +273,12 @@ kernel_jvm`.
 ## Server JVM
 
 [Server Owner](server_jvm/README.md) owns API, assembly and use-case details.
+
+`server_jvm` is a Java library with importable `XaMassServerConfiguration`.
+Its Spring configuration owns client, Owner and platform lifecycle construction
+and destruction. Distribution alone owns `XaMassServerApplication` and Boot
+packaging. Server tests and OpenAPI export use platform configuration; product
+composition tests belong to distribution, with no reverse dependency.
 
 `server_jvm/` controllers and services depend on `kernel_jvm` and
 `worker_matching_jvm` owner contracts; Spring assembly additionally depends
@@ -715,6 +727,39 @@ Adapter connectivity, Kernel state or schedulability.
   Server, production Pacer, frontend and configuration. It must not package the
   repository-local Scenario Worker Host, add a fallback runtime owner, add a
   second production mechanism or introduce scheduling behavior.
+
+## Product Composition
+
+[SMS Reception](products/sms-reception/README.md) owns its finite business workload
+and simulator contract. Products currently validate XA Mass through realistic
+business flows; the directory name does not establish a commercial product boundary.
+
+- Keep business integration inexpensive. Prove the real execution path, increase
+  workload and investigate observed failures before stabilizing shared call
+  surfaces. Extract modules, deployment or product infrastructure when concrete
+  business or operational needs require them, not because the code is called a
+  Product. The existing same-process assembly is sufficient for this stage.
+- Simulated devices and inputs must traverse the real platform path. Preserve
+  business invariants and report failures and unconfirmed outcomes honestly;
+  never hide a platform defect behind product-side scheduling or delivery repair.
+  Carry discovered platform regressions back to their owning proof.
+- SMS is a business library depending on `server_jvm`; distribution imports both
+  configurations into one context. Server has no product dependency. Product
+  code creates no Redis clients, Owners, Pacer, Matching consumer or Adapter.
+  Keep a single set of those resources and never start the simulator in Server.
+- SMS consumes only the approved Server registration, bounded Task submission and
+  Result query services and their existing values. Keep validation in those
+  application services; never call Controllers, providers or scheduling policy.
+- Product enablement and its background work are profile-scoped. Stop product
+  callers before closing platform resources, using one bounded shutdown budget.
+  Failed product startup must also clean up the already-created platform.
+  Product shutdown never cleans the scope.
+- Product routes and error handling stay in the product namespace. SMS retains
+  an independent frontend build, served at `/sms` only under its profile; `/`
+  remains the platform entry. Do not share frontend stores, invoke Controllers,
+  or use platform HTTP waiters or the Direct Call registry from product code.
+- The simulator remains an independent SDK Host. Its local HTML and raw SMS
+  controls must not become a product Result source or a platform control proxy.
 
 ## Verification
 

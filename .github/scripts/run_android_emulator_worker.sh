@@ -163,7 +163,7 @@ start_server() {
     local server_jar
     server_jar=
     for candidate in \
-            "$workspace"/server_jvm/build/libs/xa-mass-server-jvm-*.jar; do
+            "$workspace"/distribution/server/build/libs/xa-mass-server-jvm-*.jar; do
         if [ ! -f "$candidate" ] || [[ $candidate == *-plain.jar ]]; then
             continue
         fi

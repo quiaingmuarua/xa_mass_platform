@@ -185,8 +185,20 @@ def wait_http(url, process, sampler, deadline):
     raise RuntimeError("Readiness deadline exceeded")
 
 
+def server_distribution(root):
+    main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
+    if (root / "distribution/server" / main).is_file():
+        return "distribution/server"
+    # Explicit immutable A/B checkouts retain their own historical build layout.
+    # This never redirects the current checkout to another JAR producer.
+    if root.resolve() != ROOT.resolve() and (root / "server_jvm" / main).is_file():
+        return "server_jvm"
+    raise RuntimeError("Server distribution entrypoint is missing from the checkout")
+
+
 def build(root, harness=False):
-    tasks = [":server_jvm:bootJar", ":scenario_workers_jvm:installDist"]
+    module = server_distribution(root).replace("/", ":")
+    tasks = [f":{module}:bootJar", ":scenario_workers_jvm:installDist"]
     if harness:
         tasks.append(":integrations:worker-call-performance:installDist")
     # Keep builds outside all measurement windows.
@@ -388,7 +400,7 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
             "diagnosticsSettingsSha256": hashlib.sha256((MODULE / "diagnostics.jfc").read_bytes()).hexdigest(),
             "jfrOptionsByRole": {role: jfr_options(private, role, diagnostics) for role in ("server", "host", "harness")},
             "callPath": "DIRECT_CALL" if direct else "TASK", "drainSeconds": None if direct else 180})
-        jars = [p for p in (root / "server_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
+        jars = [p for p in (root / server_distribution(root) / "build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
         processes["server"] = start_process(["java", *JVM, *jfr_options(private, "server", diagnostics), "-jar", jar,
             *(f"--{key}={value}" for key, value in flags.items())], private / "server.log", env)

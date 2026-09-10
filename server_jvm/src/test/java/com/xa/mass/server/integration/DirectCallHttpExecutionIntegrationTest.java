@@ -4,7 +4,7 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.server.XaMassServerApplication;
+import com.xa.mass.server.XaMassServerConfiguration;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -47,7 +47,7 @@ class DirectCallHttpExecutionIntegrationTest {
     void executionConfigurationsPreserveDirectOutcomesAndSingleHttpCompletion(boolean virtual, int minimum)
             throws Exception {
         var scope = RedisTestScope.create("direct_http_execution");
-        try (var context = new SpringApplicationBuilder(XaMassServerApplication.class).profiles("test").run(
+        try (var context = new SpringApplicationBuilder(XaMassServerConfiguration.class).profiles("test").run(
                 "--server.port=0", "--xa.mass.redis.url=" + REDIS_URL, "--xa.mass.redis.scope=" + scope.scope(),
                 "--xa.mass.kernel-pacer.enabled=false", "--xa.mass.diagnostics.enabled=true",
                 "--spring.threads.virtual.enabled=" + virtual, "--server.tomcat.threads.max=200",

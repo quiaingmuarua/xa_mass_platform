@@ -1,5 +1,9 @@
 package com.xa.mass.server.assembly.kernel;
 
+import com.xa.mass.server.task.TaskDataService;
+import com.xa.mass.server.task.TaskItemMapper;
+import com.xa.mass.server.task.TaskItemOutcomeProperties;
+
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

@@ -1,7 +1,14 @@
 # XA Mass Server Runtime distribution
 
-This module owns the publishable Server runtime archive. It packages the Java
-Server and its production Pacers plus the compiled frontend. It does not
+This module owns the sole production main, Boot JAR and publishable Server
+runtime archive. `com.xa.mass.server.XaMassServerApplication` imports
+`XaMassServerConfiguration` and the profile-scoped SMS configuration into one
+context. `server_jvm` and SMS Backend are libraries; neither produces a Boot JAR.
+Distribution contains no application services or resource operations.
+
+The JAR packages Server, its production dependencies, the SMS business module
+and the independent SMS frontend at a separate classpath location. The archive
+also packages the compiled platform frontend. It does not
 package the repository-local Scenario Worker Host. It also generates and
 packages the current-build Platform diagnostic code projection. Redis remains
 external.
@@ -55,6 +62,12 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `agentforge` preset uses Server/Adapter ports 18182/18183, Redis scope
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
+`sms-reception` enables the product at `/sms` and `/api/v1/sms/*`, with one
+Server on 18390 and Adapter on 18393. It requires an explicit Redis scope.
+The [product launcher](../../products/sms-reception/README.md#启动与交付) supplies
+a finite test scope and starts the separate SIM Host on 18394. Without that
+profile there are no SMS routes, static assets, Groups or background jobs.
+The root platform frontend remains independent of product enablement.
 
 Endpoint overrides use `xa.mass.worker-endpoints`. Each configured transport
 type must name an explicit default in `defaults`; `endpoints` supplies the URI

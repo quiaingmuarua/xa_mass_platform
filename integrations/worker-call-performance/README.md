@@ -239,6 +239,10 @@ successful samples. Missing success latency is not converted to a zero ratio.
 No detected regression is not a claim of speedup. Regression exits nonzero;
 the engineer withdraws the candidate rather than adding compensating tuning.
 
+The current Server JAR comes only from `distribution/server`. An explicitly
+selected immutable comparison checkout is built from the Server entrypoint in
+that checkout; older baselines retain their original build layout and sources.
+
 The dedicated workflow owns full performance execution, independently of the
 ordinary Proof Gate. JVM Contracts compiles this module and runs deterministic
 Harness/runner tests. Full performance stays nightly/manual; other lanes retain

@@ -1,24 +1,14 @@
 package com.xa.mass.server.task.call;
 
-import com.xa.mass.kernel.task.TaskCallItemSubmission;
-import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
-import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.server.task.call.TaskCallSubmissionService;
+import com.xa.mass.server.task.call.TaskRpcStageEvent;
+
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
-import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.task.TaskItemMapper;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,89 +17,24 @@ import org.springframework.web.context.request.async.DeferredResult;
 
 @Service
 public final class TaskRpcCallService {
-
-    private final TaskCallItemSubmission taskCallSubmission;
+    private final TaskCallSubmissionService submissions;
     private final TaskRuntime taskRuntime;
-    private final TaskResourceCatalog taskCatalog;
     private final TaskRpcWaitRegistry registry;
-    private final TaskItemMapper taskItems;
     private final long defaultWaitTimeoutMillis;
     private final long maxWaitTimeoutMillis;
 
-    public TaskRpcCallService(
-            TaskCallItemSubmission taskCallSubmission,
-            TaskRuntime taskRuntime,
-            TaskResourceCatalog taskCatalog,
-            TaskRpcWaitRegistry registry,
-            TaskItemMapper taskItems,
-            TaskRpcProperties properties
-    ) {
-        this.taskCallSubmission = taskCallSubmission;
+    public TaskRpcCallService(TaskCallSubmissionService submissions, TaskRuntime taskRuntime,
+            TaskRpcWaitRegistry registry, TaskRpcProperties properties) {
+        this.submissions = submissions;
         this.taskRuntime = taskRuntime;
-        this.taskCatalog = taskCatalog;
         this.registry = registry;
-        this.taskItems = taskItems;
-        this.defaultWaitTimeoutMillis =
-                properties.defaultWaitTimeoutMillis();
+        this.defaultWaitTimeoutMillis = properties.defaultWaitTimeoutMillis();
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<Map<String, TaskItemResultResponse>> call(
-            String taskId,
-            TaskRpcCallRequest request
-    ) {
-        TaskDescriptor descriptor = requireCallableTask(taskId);
+    public DeferredResult<Map<String, TaskItemResultResponse>> call(String taskId, TaskRpcCallRequest request) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
-        LinkedHashMap<String, TaskItemRequest> requestedItems = latestItems(
-                request.items()
-        );
-        List<String> messageIds = List.copyOf(requestedItems.keySet());
-        long createdAtMillis = taskItems.nowMillis();
-        var submittedItems = new ArrayList<TaskItem>(requestedItems.size());
-        try {
-            requestedItems.values().forEach(item -> submittedItems.add(
-                    taskItems.onDemandItem(
-                            item,
-                            createdAtMillis,
-                            TaskItemWorkerSelector.targetWorkerIds(
-                                    item.workerSelector()
-                            )
-                    )
-            ));
-        } catch (IllegalArgumentException error) {
-            throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.mapItems",
-                    error.getMessage(),
-                    error
-            );
-        }
-        TaskCallSubmissionResult submission;
-        long submissionStarted = TaskRpcStageEvent.start();
-        boolean submitted = false;
-        try {
-            submission = taskCallSubmission.submit(taskId, submittedItems);
-            submitted = submission != null && submission.status() == TaskCallSubmissionStatus.SUBMITTED;
-        } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    error
-            );
-        } finally {
-            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
-        }
-        if (submission == null) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-        }
-        requireAcceptedSubmission(submission, messageIds);
-
+        List<String> messageIds = submissions.submit(taskId, request.items());
         long immediateStarted = TaskRpcStageEvent.start();
         Map<String, TaskItemResult> observed = loadImmediateResults(
                 taskId,
@@ -139,42 +64,6 @@ public final class TaskRpcCallService {
             ));
         }
         return deferred;
-    }
-
-    private TaskDescriptor requireCallableTask(String taskId) {
-        TaskDescriptor descriptor;
-        try {
-            descriptor = taskCatalog.loadTaskAllocationDescriptors(
-                    List.of(taskId)
-            ).get(taskId);
-        } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.loadDescriptor",
-                    null,
-                    error
-            );
-        }
-        if (descriptor == null) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_NOT_FOUND,
-                    "taskRpc.loadDescriptor",
-                    null,
-                    null
-            );
-        }
-        if (descriptor.workerAllocationMechanism()
-                != WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
-                || descriptor.idleDisposition()
-                != TaskIdleDisposition.PARK_WHEN_IDLE) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                    "taskRpc.validateTask",
-                    "Task does not support synchronous Item Call",
-                    null
-            );
-        }
-        return descriptor;
     }
 
     private long resolveTimeout(Long requested) {
@@ -215,32 +104,6 @@ public final class TaskRpcCallService {
         }
     }
 
-    private static LinkedHashMap<String, TaskItemRequest> latestItems(
-            List<TaskItemRequest> items
-    ) {
-        if (items == null || items.isEmpty() || items.size() > 100) {
-            throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.mapItems",
-                    "items must contain 1..100 entries",
-                    null
-            );
-        }
-        var latest = new LinkedHashMap<String, TaskItemRequest>();
-        for (TaskItemRequest item : items) {
-            if (item == null) {
-                throw new ServerException(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                        "taskRpc.mapItems",
-                        "TaskItem must be present",
-                        null
-                );
-            }
-            latest.put(item.messageId(), item);
-        }
-        return latest;
-    }
-
     private static boolean allObserved(
             List<String> messageIds,
             Map<String, TaskItemResult> observed
@@ -249,74 +112,4 @@ public final class TaskRpcCallService {
                 observed.get(messageId) != null);
     }
 
-    private static void requireAcceptedSubmission(
-            TaskCallSubmissionResult submission,
-            List<String> messageIds
-    ) {
-        switch (submission.status()) {
-            case SUBMITTED -> {
-                // Item-level results remain the canonical append outcomes.
-            }
-            case NOT_FOUND -> throw new ServerException(
-                    ServerErrorCode.TASK_NOT_FOUND,
-                    "taskRpc.submitItems",
-                    submission.reason(),
-                    null
-            );
-            case CLOSED, STALE -> throw new ServerException(
-                    ServerErrorCode.TASK_STATE_CONFLICT,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-            case INVALID -> throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-            case RETRYABLE -> throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-        }
-        for (String messageId : messageIds) {
-            TaskItemAppendResult appended = submission.itemResults().get(
-                    messageId
-            );
-            if (appended == null) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskRpc.submitItems",
-                        "Kernel omitted a TaskItem submission result",
-                        null
-                );
-            }
-            switch (appended.status()) {
-                case APPENDED -> {
-                    // Continue validating the bounded submission.
-                }
-                case NOT_FOUND -> throw new ServerException(
-                        ServerErrorCode.TASK_NOT_FOUND,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
-                case INVALID -> throw new ServerException(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
-                case RETRYABLE -> throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
-            }
-        }
-    }
 }

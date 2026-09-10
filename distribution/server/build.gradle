@@ -1,7 +1,48 @@
 import groovy.json.JsonOutput
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
 plugins {
-    id 'base'
+    id 'java'
+    id 'org.springframework.boot'
+}
+
+base { archivesName.set('xa-mass-server-jvm') }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+springBoot { mainClass = 'com.xa.mass.server.XaMassServerApplication' }
+dependencies {
+    implementation platform(SpringBootPlugin.BOM_COORDINATES)
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation project(':server_jvm')
+    implementation project(':products:sms-reception:backend')
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    testImplementation project(':kernel_jvm')
+    testImplementation project(':kernel_pacer_jvm')
+    testImplementation project(':worker_matching_jvm')
+    testImplementation project(':transport:java-worker')
+    testImplementation project(':transport:netty-adapter')
+    testImplementation 'io.lettuce:lettuce-core'
+}
+tasks.named('jar') { enabled = false }
+tasks.named('processResources') {
+    dependsOn ':products:sms-reception:buildFrontend'
+    from(rootProject.file('products/sms-reception/frontend/dist')) { into 'sms-frontend' }
+    from(rootProject.file('products/sms-reception/config')) { include 'application-sms-reception.yaml' }
+}
+tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition' } }
+tasks.register('smsCompositionIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'sms-composition' }
+    outputs.upToDateWhen { false }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
+            throw new GradleException('SMS composition proof must execute without skipped tests')
+        }
+    }
 }
 
 apply from: rootProject.file('gradle/platform-diagnostic-codes.gradle')
@@ -19,7 +60,7 @@ def stagedDirectory = layout.buildDirectory.dir("runtime/${runtimeVersion}")
 def generatedDirectory = layout.buildDirectory.dir('generated/runtime')
 def runtimeBaseName = 'xa-mass-server-runtime'
 def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
-def serverBootJar = project(':server_jvm').tasks.named('bootJar')
+def serverBootJar = tasks.named('bootJar')
 def gitCommit = providers.exec {
     workingDir repositoryRoot
     commandLine 'git', 'rev-parse', 'HEAD'
@@ -108,7 +149,8 @@ tasks.register('generateRuntimeManifest') {
                         defaultSpringProfile: 'scenario-workers',
                         springProfiles  : [
                                 'scenario-workers',
-                                'agentforge'
+                                'agentforge',
+                                'sms-reception'
                         ],
                         frontendIncluded: true
                 ])) + System.lineSeparator(),

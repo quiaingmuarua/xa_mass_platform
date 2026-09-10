@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.server.task.call.TaskCallSubmissionService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -494,12 +496,8 @@ class TaskRpcCallServiceTest {
                 invocation.getArgument(2)
         ));
         return new TaskRpcCallService(
-                submission,
-                taskRuntime,
-                taskCatalog,
-                registry,
-                taskItems,
-                properties
+                new TaskCallSubmissionService(submission, taskCatalog, taskItems),
+                taskRuntime, registry, properties
         );
     }
 

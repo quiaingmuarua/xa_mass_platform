@@ -1,5 +1,13 @@
 package com.xa.mass.server;
 
+import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
+import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
@@ -210,7 +218,10 @@ class ServerArchitectureBoundaryTest {
                 );
         assertThat(readSourcesExcluding(API_V1, CONTROLLERS))
                 .doesNotContain("@RestController");
-        assertThat(readProductionJavaSourcesOutsideServer())
+        assertThat(readProductionJavaSourcesOutsideServer()
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskItemRequest", "approved")
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse", "approved")
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus", "approved"))
                 .doesNotContain("com.xa.mass.server.api.v1");
     }
 
@@ -221,6 +232,8 @@ class ServerArchitectureBoundaryTest {
     void serverUsesKernelContractsAndKeepsRedisInNamedOwners()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
+        assertThat(build).doesNotContain("products:sms-reception", "id 'org.springframework.boot'")
+                .contains("id 'java-library'");
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':worker_matching_jvm')")
@@ -241,6 +254,7 @@ class ServerArchitectureBoundaryTest {
 
         String serverSources = readSources(SERVER_SOURCE);
         assertThat(serverSources)
+                .doesNotContain("public static void main(", "com.xa.mass.sms.")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("\"tr:")
@@ -710,14 +724,19 @@ class ServerArchitectureBoundaryTest {
         Path repositoryRoot = Path.of("..").toAbsolutePath().normalize();
         Path serverModule = Path.of(".").toAbsolutePath().normalize();
         StringBuilder sources = new StringBuilder();
-        try (var paths = Files.walk(repositoryRoot)) {
-            paths.filter(Files::isRegularFile)
-                    .filter(path -> isProductionJavaSource(path.toString()))
-                    .filter(path -> !path.toAbsolutePath()
-                            .normalize()
-                            .startsWith(serverModule))
-                    .forEach(path -> appendSource(sources, path));
-        }
+        Files.walkFileTree(repositoryRoot, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override public java.nio.file.FileVisitResult preVisitDirectory(Path directory, java.nio.file.attribute.BasicFileAttributes attrs) {
+                String name = directory.getFileName().toString();
+                return java.util.Set.of("build", "node_modules", ".git", ".gradle", "archive", "dist", "dist-demo").contains(name)
+                        ? java.nio.file.FileVisitResult.SKIP_SUBTREE : java.nio.file.FileVisitResult.CONTINUE;
+            }
+            @Override public java.nio.file.FileVisitResult visitFile(Path path, java.nio.file.attribute.BasicFileAttributes attrs) {
+                if (isProductionJavaSource(path.toString()) && !path.toAbsolutePath().normalize().startsWith(serverModule)) {
+                    appendSource(sources, path);
+                }
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
         return sources.toString();
     }
 

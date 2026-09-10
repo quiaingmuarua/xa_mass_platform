@@ -1,5 +1,7 @@
 package com.xa.mass.server.api.v1.contract.task;
 
+import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;

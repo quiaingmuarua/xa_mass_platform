@@ -35,10 +35,15 @@ tmp/
 # Standalone frontend generated files
 frontend/node_modules/
 frontend/dist/
+frontend/dist-demo/
 frontend/coverage/
 frontend/.vite/
 frontend/.eslintcache
 frontend/*.tsbuildinfo
+products/**/node_modules/
+products/**/dist/
+products/**/coverage/
+products/**/*.tsbuildinfo
 !frontend/.env.mock
 frontend/.env.local
 frontend/.env.*.local

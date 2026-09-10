@@ -61,7 +61,7 @@ def build_frontend() -> None:
 
 
 def gradle_tasks(profile: str) -> list[str]:
-    tasks = [":server_jvm:bootJar"]
+    tasks = [":distribution:server:bootJar"]
     if profile == DEFAULT_PROFILE:
         tasks.append(":scenario_workers_jvm:installDist")
     tasks.append(":distribution:server:installLocalPlatformDiagnosticCodes")
@@ -83,7 +83,8 @@ def build_runtime_processes(profile: str) -> tuple[Path, list[Path]]:
         raise RuntimeError("Could not resolve the default Gradle project version")
     server_jar = (
         ROOT
-        / "server_jvm"
+        / "distribution"
+        / "server"
         / "build"
         / "libs"
         / f"xa-mass-server-jvm-{version_match.group(1)}.jar"

@@ -1,6 +1,6 @@
 package com.xa.mass.server.openapi;
 
-import com.xa.mass.server.XaMassServerApplication;
+import com.xa.mass.server.XaMassServerConfiguration;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -27,7 +27,7 @@ public final class OpenApiSnapshotExporter {
         Path output = Path.of(arguments[0]).toAbsolutePath().normalize();
         String snapshot;
         try (ConfigurableApplicationContext context =
-                     new SpringApplicationBuilder(XaMassServerApplication.class)
+                     new SpringApplicationBuilder(XaMassServerConfiguration.class)
                              .profiles("test")
                              .properties(Map.of(
                                      "server.address", "127.0.0.1",

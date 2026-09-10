@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import {
   Collection,
@@ -12,11 +12,10 @@ import {
   View
 } from "@element-plus/icons-vue";
 
-import { useRuntimeViewerConfig, useRuntimeViewerStore } from "@/runtime-context";
+import { useRuntimeViewerConfig } from "@/runtime-context";
 import { useThemeStore } from "@/stores/theme";
 
 const config = useRuntimeViewerConfig();
-const store = useRuntimeViewerStore();
 const theme = useThemeStore();
 const route = useRoute();
 const referencePage = computed(() => route.meta.section === "Reference");
@@ -28,7 +27,6 @@ const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
 const pageSection = computed(() => String(route.meta.section ?? "Runtime"));
 
 onMounted(() => theme.apply());
-onBeforeUnmount(() => store.dispose());
 </script>
 
 <template>

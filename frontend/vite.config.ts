@@ -96,6 +96,8 @@ export default defineConfig(({ mode }) => {
       proxy: proxyFor(proxyTarget)
     },
     build: {
+      outDir: mode === "mock" ? "dist-demo" : "dist",
+      emptyOutDir: true,
       target: "es2022",
       sourcemap: false,
       rollupOptions: {
@@ -107,6 +109,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     test: {
+      server: { deps: { inline: ["element-plus"] } },
       environment: "jsdom",
       include: ["tests/**/*.test.ts"],
       setupFiles: ["./tests/setup.ts"],

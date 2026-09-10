@@ -1,11 +1,11 @@
 package com.xa.mass.server.task;
 
+import org.springframework.stereotype.Component;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
-import org.springframework.stereotype.Component;
 
 @Component
 public final class TaskItemMapper {

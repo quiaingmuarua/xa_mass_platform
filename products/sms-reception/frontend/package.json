@@ -1,0 +1,50 @@
+{
+    "name": "xa-mass-sms-reception",
+    "version": "0.1.0-preview",
+    "private": true,
+    "type": "module",
+    "packageManager": "pnpm@11.9.0",
+    "engines": {
+        "node": ">=22.19.0 <25",
+        "pnpm": ">=11.9.0 <12"
+    },
+    "scripts": {
+        "dev": "vite",
+        "build": "vue-tsc --noEmit && vite build",
+        "preview": "vite preview",
+        "lint": "eslint . --max-warnings 0 && prettier --check .",
+        "typecheck": "vue-tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "dependencies": {
+        "element-plus": "2.11.5",
+        "pinia": "3.0.3",
+        "vue": "3.5.40",
+        "vue-router": "4.6.3"
+    },
+    "devDependencies": {
+        "@eslint/js": "9.38.0",
+        "@types/node": "22.20.1",
+        "@vitejs/plugin-vue": "6.0.1",
+        "@vitest/coverage-v8": "4.1.10",
+        "eslint": "9.38.0",
+        "eslint-config-prettier": "10.1.8",
+        "eslint-plugin-vue": "10.5.1",
+        "jsdom": "30.0.1",
+        "prettier": "3.6.2",
+        "typescript": "5.9.3",
+        "typescript-eslint": "8.46.2",
+        "vite": "7.1.12",
+        "vitest": "4.1.10",
+        "vue-eslint-parser": "10.2.0",
+        "vue-tsc": "3.1.2"
+    },
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/quiaingmuarua/xa_mass_platform.git",
+        "directory": "products/sms-reception/frontend"
+    }
+}

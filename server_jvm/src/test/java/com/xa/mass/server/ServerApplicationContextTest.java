@@ -1,5 +1,7 @@
 package com.xa.mass.server;
 
+import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.server.api.ApiTags;

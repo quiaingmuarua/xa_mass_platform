@@ -50,7 +50,9 @@ an unconditional repair guarantee. The detailed failure windows are in
 
 RPC Handlers remain compatible. A Handler may retain a Reporter after execution
 and send later observations for the same Item. Kernel advances generic terminal
-state without reopening scheduling or touching the original Worker lease;
+state: TERMINAL ends scheduling, not business-state changes. A retained Item may
+continue accepting valid monotonic observations after Task completion or closure,
+without reopening scheduling or touching the original Worker lease;
 Server defines business names and exposes state and latest content separately.
 The [shared Worker SDK](transport/worker-core/README.md#later-task-outcome-observations)
 provides this TRACKED capability without a Task mode or new creation parameter.
@@ -81,6 +83,19 @@ process-local event snapshots report the actual immutable assembly.
 
 ## Active Surfaces
 
+`products/` currently hosts business-shaped workloads that validate XA Mass.
+The aim is inexpensive integration, realistic execution and failures exposed
+under load. The directory name does not imply a mature commercial product or
+require separate deployment, infrastructure or a public product SDK.
+Let demonstrated business and operational needs drive later extraction.
+
+The first such workload, [SMS Reception](products/sms-reception/README.md),
+uses a separate business module and Vue frontend, plus an independent Java SIM
+Host. The distribution imports platform and SMS configuration into one Server;
+the `sms-reception` profile enables product routes and jobs. SMS calls the
+existing Server services and shares their Owner instances.
+It owns listening orders and SMS routing; Kernel retains assignment and scheduling.
+
 | Surface | Entry and owner |
 | --- | --- |
 | Kernel mechanisms | [kernel_jvm](kernel_jvm/README.md): stable contracts, Redis providers, Scores, resources and Candidate Cache |
@@ -96,7 +111,8 @@ process-local event snapshots report the actual immutable assembly.
 
 ## Runtime And Deployment
 
-Server assembles one KernelPacerRuntime and the Matching runtime. Only one
+The [distribution entry](distribution/server/README.md) starts Server configuration,
+which assembles one KernelPacerRuntime and the Matching runtime. Only one
 Server per Kernel Redis scope may enable the Pacer lifecycle; there is no
 distributed Pacer leader election. Profile selects assembly and policy preset;
 Redis scope selects the data boundary. Provider and lifecycle details belong

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SIM 模拟器 · SMS Reception</title>
+  <style>
+    :root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #203c37; background: #f3f6f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1280px; margin: auto; padding: 32px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    h1 { margin: 8px 0; font-size: 28px; }
+    h2 { font-size: 18px; margin: 0 0 20px; }
+    small, .hint { color: #647a73; }
+    .eyebrow { letter-spacing: 2px; font-size: 12px; color: #397463; }
+    .badge { padding: 8px 12px; background: #dfeee5; border-radius: 20px; white-space: nowrap; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 26px 0; }
+    .stats div, section { background: white; border: 1px solid #dfe7e1; border-radius: 12px; padding: 22px; }
+    .stats strong { display: block; font-size: 28px; margin-top: 8px; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+    label { display: block; font-size: 14px; margin: 14px 0 7px; }
+    input, textarea { width: 100%; padding: 11px; border: 1px solid #c8d7d0; border-radius: 7px; font: inherit; }
+    textarea { resize: vertical; }
+    button { padding: 10px 15px; border: 1px solid #c8d7d0; border-radius: 7px; background: white; color: #244f42; font: inherit; cursor: pointer; }
+    button.primary { background: #286d58; color: white; border-color: #286d58; }
+    button:disabled { opacity: .5; cursor: default; }
+    button:focus-visible, input:focus, textarea:focus { outline: 2px solid #5b9b82; outline-offset: 2px; }
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    .hint { font-size: 13px; line-height: 1.7; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 14px; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e8eeea; }
+    th { color: #647a73; font-weight: 500; }
+    td.worker { font-family: monospace; font-size: 12px; }
+    .pager { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 18px; }
+    #error { color: #a12b29; background: #fbeeed; padding: 14px; border-radius: 8px; margin-top: 15px; }
+    #notice { color: #285f4b; min-height: 24px; }
+    footer { padding: 22px 0; color: #6d8078; font-size: 13px; }
+    @media(max-width: 720px) { main { padding: 20px 12px; } header { align-items: flex-start; } h1 { font-size: 23px; } .controls { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; gap: 10px; } section, .stats div { padding: 16px; } }
+  </style>
+</head>
+<body><main>
+  <header><div><div class="eyebrow">SMS RECEPTION / SIMULATOR</div><h1>SIM 模拟器</h1><p class="hint">查看模拟号码，向本地 SIM 输入短信。</p></div><span class="badge">CN · US · GB</span></header>
+  <div id="error" role="alert" hidden></div>
+  <div class="stats"><div><small>模拟号码</small><strong id="numbers">—</strong></div><div><small>活跃监听</small><strong id="active">—</strong></div><div><small>Host 已匹配</small><strong id="matched">—</strong></div><div><small>本地上报失败</small><strong id="failed">—</strong></div></div>
+  <div class="controls">
+    <section><h2>手动模拟短信</h2><form id="sms-form"><label for="phone">目标号码</label><input id="phone" required autocomplete="off" placeholder="从下方号码表选择，或输入完整号码" /><label for="text">短信正文</label><textarea id="text" rows="3" maxlength="1024" required>[A] 123456</textarea><div class="actions"><button class="primary" type="submit">发送模拟短信</button></div></form><p class="hint">A：[A] 123456；B：[B] 123456；C：任意非空内容。无有效监听或无模板匹配时，不产生接码结果。</p><div id="notice" role="status"></div></section>
+    <section><h2>有限自动短信流</h2><form id="traffic-form"><label for="rate">每秒短信数</label><input id="rate" type="number" value="20" min="1" max="1000" required /><label for="duration">运行时长（秒）</label><input id="duration" type="number" value="60" min="1" max="300" required /><div class="actions"><button id="start" class="primary" type="submit">启动短信流</button><button id="stop" type="button" disabled>停止</button><span id="traffic-state">已停止</span></div></form><p class="hint">固定种子独立生成 A / B 和无关短信。单次最多 100,000 条；不为指定订单生成内容。</p><p id="traffic-count" class="hint"></p></section>
+  </div>
+  <section><h2>模拟 Worker</h2><p class="hint">运行状态来自本地 Java Worker，不代表 Adapter 已验证或 Kernel 可调度。活跃监听上限为每号码 64 个。</p><div class="table-wrap"><table><thead><tr><th>国家</th><th>号码</th><th>Worker ID</th><th>本地状态</th><th>活跃监听</th><th>操作</th></tr></thead><tbody id="workers"></tbody></table></div><div class="pager"><button id="prev">上一页</button><span id="page">—</span><button id="next">下一页</button></div></section>
+  <footer id="capacity">SMS Reception 0.1.0-preview · 仅模拟数据 · 重启开始新场景</footer>
+</main>
+<script>
+  const el = (id) => document.getElementById(id);
+  let offset = 0, total = 0, timer, stopped = false, refreshing, mutation;
+  const limit = 100;
+  let smsId = crypto.randomUUID();
+  async function api(path, body, signal) {
+    const response = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "请求失败 " + response.status);
+    return data;
+  }
+  function error(message) { el("error").textContent = message; el("error").hidden = !message; }
+  function row(item) {
+    const tr = document.createElement("tr");
+    [item.country, item.phone, item.workerId || "尚未准备", item.runtimeState, item.activeListeners].forEach((value, index) => {
+      const td = document.createElement("td"); td.textContent = String(value); if (index === 2) td.className = "worker"; tr.append(td);
+    });
+    const td = document.createElement("td"), button = document.createElement("button"); button.textContent = "选择号码";
+    button.onclick = () => { el("phone").value = item.phone; smsId = crypto.randomUUID(); el("text").focus(); };
+    td.append(button); tr.append(td); return tr;
+  }
+  async function refresh() {
+    refreshing?.abort(); const controller = refreshing = new AbortController();
+    try {
+      const [page, metrics] = await Promise.all([api("/inventory?offset=" + offset + "&limit=" + limit, undefined, controller.signal), api("/metrics", undefined, controller.signal)]);
+      if (controller.signal.aborted) return;
+      total = page.total; el("workers").replaceChildren(...page.items.map(row));
+      el("page").textContent = "第 " + (Math.floor(offset / limit) + 1) + " 页 / 共 " + total + " 个号码";
+      el("prev").disabled = offset === 0; el("next").disabled = offset + limit >= total;
+      el("numbers").textContent = metrics.host.numbers; el("active").textContent = metrics.host.activeListeners;
+      el("matched").textContent = metrics.host.matched; el("failed").textContent = metrics.host.reportFailed;
+      el("start").disabled = metrics.traffic.running; el("stop").disabled = !metrics.traffic.running;
+      el("traffic-state").textContent = metrics.traffic.running ? "运行中" : "已停止";
+      el("traffic-count").textContent = "已生成 " + metrics.traffic.generated + " 条";
+      el("capacity").textContent = "监听记录 " + metrics.host.listeners + " / 50,000 · 短信去重记录 " + metrics.host.smsEvents + " / 100,000 · 重启开始新场景";
+      error(metrics.traffic.error || "");
+    } catch (failure) { if (!controller.signal.aborted) error(failure.message); }
+  }
+  async function action(work) {
+    if (mutation || stopped) return;
+    mutation = new AbortController();
+    try { await work(mutation.signal); if (!stopped) await refresh(); }
+    catch (failure) { if (!mutation.signal.aborted) error(failure.message); }
+    finally { mutation = undefined; }
+  }
+  el("sms-form").onsubmit = (event) => { event.preventDefault(); void action(async (signal) => {
+    const result = await api("/sms", { phone: el("phone").value.trim(), text: el("text").value, smsId }, signal);
+    smsId = crypto.randomUUID(); el("notice").textContent = result.status === "MATCHED" ? "Host 已匹配；接码结果请在工作台查看。" : result.status === "DUPLICATE" ? "重复短信已忽略。" : "没有有效匹配，不产生接码结果。";
+  }); };
+  ["phone", "text"].forEach((id) => el(id).addEventListener("input", () => { smsId = crypto.randomUUID(); }));
+  el("traffic-form").onsubmit = (event) => { event.preventDefault(); void action((signal) => api("/traffic/start", { ratePerSecond: Number(el("rate").value), durationSeconds: Number(el("duration").value) }, signal)); };
+  el("stop").onclick = () => void action((signal) => api("/traffic/stop", {}, signal));
+  el("prev").onclick = () => { offset = Math.max(0, offset - limit); void refresh(); };
+  el("next").onclick = () => { if (offset + limit < total) offset += limit; void refresh(); };
+  async function poll() { await refresh(); if (!stopped) timer = setTimeout(poll, 1000); }
+  window.addEventListener("pagehide", () => { stopped = true; clearTimeout(timer); refreshing?.abort(); mutation?.abort(); });
+  void poll();
+</script></body></html>

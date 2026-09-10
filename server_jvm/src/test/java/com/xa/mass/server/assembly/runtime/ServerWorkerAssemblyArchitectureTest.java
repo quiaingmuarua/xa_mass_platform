@@ -1,5 +1,7 @@
 package com.xa.mass.server.assembly.runtime;
 
+import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;

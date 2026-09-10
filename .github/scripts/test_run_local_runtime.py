@@ -31,7 +31,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(
             launcher.gradle_tasks("scenario-workers"),
             [
-                ":server_jvm:bootJar",
+                ":distribution:server:bootJar",
                 ":scenario_workers_jvm:installDist",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
@@ -39,7 +39,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(
             launcher.gradle_tasks("agentforge"),
             [
-                ":server_jvm:bootJar",
+                ":distribution:server:bootJar",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
         )

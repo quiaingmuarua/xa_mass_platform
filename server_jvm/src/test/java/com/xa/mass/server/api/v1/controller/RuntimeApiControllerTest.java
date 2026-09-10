@@ -1,5 +1,8 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.error.ServerErrorCode;
+
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
@@ -54,6 +57,7 @@ import com.xa.mass.server.task.TaskIdGenerator;
 import com.xa.mass.server.task.TaskItemMapper;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
+import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.call.TaskRpcProperties;
 import com.xa.mass.server.task.call.TaskRpcWaitRegistry;
 import com.xa.mass.server.task.result.TaskResultsExportService;
@@ -253,12 +257,8 @@ class RuntimeApiControllerTest {
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
-                taskCallSubmission,
-                taskRuntime,
-                taskCatalog,
-                taskRpcRegistry,
-                taskItems,
-                rpcProperties
+                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems),
+                taskRuntime, taskRpcRegistry, rpcProperties
         );
         WorkerGroupTaskCallRegistrationService registrations =
                 new WorkerGroupTaskCallRegistrationService(

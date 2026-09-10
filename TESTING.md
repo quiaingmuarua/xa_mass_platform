@@ -12,6 +12,17 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
+The [SMS Reception business workload](products/sms-reception/README.md#检查与验收)
+owns its listening-order invariants and finite scenario acceptance. Business
+workloads expose interactions and failure patterns beyond the focused fixtures;
+discovered platform defects should gain regressions in the owning proof, while
+the workload retains the business-level witness. Its dedicated
+workflow runs product JVM and independent frontend checks, distribution-owned
+`smsCompositionIntegrationTest` with platform Task/Result HTTP routes blocked,
+and the three-Worker real path through the composed Server and separate Host.
+The fixed 1,000-Worker product workload is an explicit local acceptance command;
+it does not replace or expand the platform proof lanes below.
+
 ## Proof Model
 
 Every mechanism claim has one **Primary Proof**. A repeated check elsewhere is
@@ -139,6 +150,10 @@ python .github/scripts/check_docs.py
 python .github/scripts/test_check_proof_selection.py
 python .github/scripts/check_proof_selection.py
 ```
+
+Worker runners that build the Server JAR also require Node 22 and Corepack:
+the distribution includes the independently built SMS frontend, even when its
+profile is disabled. CI installs this toolchain before building the Server.
 
 Worker one-shot runners support Python 3.11 or newer. Install their small
 shared dependency set once before running them locally:

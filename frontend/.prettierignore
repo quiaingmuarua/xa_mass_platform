@@ -1,4 +1,5 @@
 dist
+dist-demo
 coverage
 node_modules
 playwright-report

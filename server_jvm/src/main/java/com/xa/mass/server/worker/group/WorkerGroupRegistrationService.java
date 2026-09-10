@@ -1,5 +1,6 @@
 package com.xa.mass.server.worker.group;
 
+import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
@@ -10,7 +11,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.springframework.stereotype.Service;
 
 @Service
 public final class WorkerGroupRegistrationService {

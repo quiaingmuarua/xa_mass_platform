@@ -29,6 +29,29 @@ def diagnosis_runs():
 
 
 class RunnerTest(unittest.TestCase):
+    def test_current_build_and_immutable_baseline_use_their_own_server_entrypoints(self):
+        self.assertEqual("distribution/server", runner.server_distribution(runner.ROOT))
+        main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = Path(directory)
+            source = baseline / "server_jvm" / main
+            source.parent.mkdir(parents=True)
+            source.touch()
+            self.assertEqual("server_jvm", runner.server_distribution(baseline))
+            with patch.object(runner.subprocess, "run") as launch:
+                runner.build(baseline)
+                self.assertIn(":server_jvm:bootJar", launch.call_args.args[0])
+            with patch.object(runner, "ROOT", baseline):
+                with self.assertRaisesRegex(RuntimeError, "entrypoint is missing"):
+                    runner.server_distribution(baseline)
+            current_source = baseline / "distribution/server" / main
+            current_source.parent.mkdir(parents=True)
+            current_source.touch()
+            with patch.object(runner.subprocess, "run") as launch:
+                runner.build(baseline, harness=True)
+                self.assertIn(":distribution:server:bootJar", launch.call_args.args[0])
+                self.assertIn(":integrations:worker-call-performance:installDist", launch.call_args.args[0])
+
     def test_rpc_rotates_only_paths_and_retains_the_exact_seven_case_manifest(self):
         expected = ("direct-step", "rpc-targeted", "rpc-any")
         for repetition in range(3):

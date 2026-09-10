@@ -1,5 +1,6 @@
 package com.xa.mass.server.task;
 
+import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -21,7 +22,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.stereotype.Service;
 
 @Service
 public final class TaskDataService {
@@ -126,6 +126,12 @@ public final class TaskDataService {
             String taskId,
             List<String> messageIds
     ) {
+        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty()
+                || messageIds.size() > 1000
+                || messageIds.stream().anyMatch(id -> id == null || id.isBlank())) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    "taskData.loadResults", "Expected taskId and 1..1000 non-blank messageIds", null);
+        }
         try {
             List<String> uniqueIds = new ArrayList<>(
                     new LinkedHashSet<>(messageIds)

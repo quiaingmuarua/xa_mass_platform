@@ -188,6 +188,7 @@
       "TaskItemStateResponse" : {
         "properties" : {
           "band" : {
+            "description" : "Terminal for scheduling, not immutable business state. While the Item is retained, valid monotonic outcome observations may continue after Task completion or closure.",
             "enum" : [ "active", "terminal" ],
             "type" : "string"
           },

@@ -888,16 +888,17 @@
               <h2>服务端集中装配，执行端独立运行</h2>
             </div>
             <p>
-              Server 将调度、匹配和配置的 Adapter 装配在同一个 Java 进程中，Redis
-              由运行环境提供。 Worker Host 作为独立应用连接进来，可以运行在 JVM 或
-              Android 上。
+              Server 将平台 API、调度、匹配消费和 Adapter 装配在同一个 Java 进程中。 SMS
+              作为业务模块按 profile 启用，使用现有服务提交任务、读取结果。
+              产品前端独立构建并由同一 Server 提供；Worker Host 独立运行。
             </p>
           </div>
           <div class="split">
             <pre class="code-panel" aria-label="运行进程关系">
 运行环境
-├─ Java Server 进程
-│  ├─ Runtime API + 前端静态资源
+├─ Server 进程（distribution/server 启动）
+│  ├─ server_jvm：平台 API + 应用服务
+│  ├─ SMS 模块 + /sms 页面（按 profile 启用）
 │  ├─ Kernel：机械契约 + Pacer
 │  ├─ Worker Matching
 │  └─ 配置的 Adapter
@@ -914,7 +915,8 @@
                 维护调度策略、结果处理和持续推进它们的生命周期。
               </p>
               <p>
-                Server 装配这两个模块以及独立的 Matching，通过公开 API 对外提供能力。
+                Server 装配这些模块和 Matching。每个 scope 只有一个启用 Pacer
+                的宿主；SMS 复用同一套应用服务和资源。
               </p>
             </article>
           </div>
