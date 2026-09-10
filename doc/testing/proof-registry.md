@@ -172,3 +172,18 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   navigation and retired vocabulary remain converged.
 - **Deliberate nonclaims:** implementation behavior.
 - **Contract:** [Checker](../../.github/scripts/check_docs.py) and [unit tests](../../.github/scripts/test_check_docs.py).
+
+## sms_reception_preview
+
+- **Primary owner:** [SMS Reception](../../products/sms-reception/README.md#检查与验收).
+- **Claim:** shared console navigation observes SMS enablement; page tabs and
+  polling preserve business state without depending on Runtime stores. Distribution
+  serves one frontend in either profile while SMS APIs, Groups and jobs remain
+  profile-owned. Real Server/Host functional and lifecycle scenarios retain the
+  listening and later-outcome business witnesses. Archive checks compare the
+  current unified assets, reject embedded SMS assets, and run the packaged
+  functional runner from a fresh extraction without a build step.
+- **Deliberate nonclaims:** Mock SMS execution, product authentication, business
+  persistence across restart or new platform scheduling/capacity guarantees.
+- **Contract:** [Console](../../frontend/README.md#sms-business-pages) and the
+  existing SMS Preview workflow; the fixed 1k workload remains separate acceptance.

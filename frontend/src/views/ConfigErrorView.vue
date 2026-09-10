@@ -11,7 +11,7 @@ defineProps<{
 <template>
   <main class="standalone-state" data-testid="config-error">
     <section class="standalone-state__card">
-      <img src="/logo.svg" alt="" width="42" height="42" />
+      <img :src="'/logo.svg'" alt="" width="42" height="42" />
       <el-icon class="standalone-state__icon"><WarningFilled /></el-icon>
       <p class="standalone-state__eyebrow">RUNTIME VIEWER</p>
       <h1>{{ error.title }}</h1>

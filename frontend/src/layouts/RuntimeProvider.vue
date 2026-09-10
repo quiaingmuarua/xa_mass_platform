@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { provide, onBeforeUnmount } from "vue";
 import ConfigErrorView from "@/views/ConfigErrorView.vue";
-import RuntimeLayout from "./RuntimeLayout.vue";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
@@ -55,5 +54,5 @@ if (configResult.ok) {
 </script>
 <template>
   <ConfigErrorView v-if="!configResult.ok" :error="configResult.error" />
-  <RuntimeLayout v-else />
+  <router-view v-else />
 </template>

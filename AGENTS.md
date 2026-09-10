@@ -762,10 +762,14 @@ business flows; the directory name does not establish a commercial product bound
   callers before closing platform resources, using one bounded shutdown budget.
   Failed product startup must also clean up the already-created platform.
   Product shutdown never cleans the scope.
-- Product routes and error handling stay in the product namespace. SMS retains
-  an independent frontend build, served at `/sms` only under its profile; `/`
-  remains the platform entry. Do not share frontend stores, invoke Controllers,
-  or use platform HTTP waiters or the Direct Call registry from product code.
+- Product APIs and error handling stay in the product namespace. SMS pages live
+  in the unified frontend under `/sms`, sharing layout, navigation and theme;
+  Runtime and SMS retain independent data state and polling lifetimes. Distribution
+  owns the finite SMS page forwards; the product profile gates APIs, Groups and
+  jobs rather than shared static assets. Menu visibility uses bounded catalog
+  observation, never business activation. Public Mock Demo makes no SMS requests.
+  Do not invoke Controllers or use platform HTTP waiters or the Direct Call
+  registry from product code.
 - The simulator is the SMS scene of the independent `scenario_workers_jvm` SDK
   Host, sharing its main and local control service with the Lab. Its HTML and raw SMS
   controls must not become a product Result source or a platform control proxy.

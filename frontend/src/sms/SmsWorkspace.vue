@@ -8,15 +8,16 @@ import {
   ElRadioButton,
   ElPagination
 } from "element-plus";
-import "element-plus/es/components/form/style/css";
-import "element-plus/es/components/form-item/style/css";
-import "element-plus/es/components/radio-group/style/css";
-import "element-plus/es/components/radio-button/style/css";
-import "element-plus/es/components/pagination/style/css";
+import "element-plus/theme-chalk/el-form.css";
+import "element-plus/theme-chalk/el-form-item.css";
+import "element-plus/theme-chalk/el-radio-group.css";
+import "element-plus/theme-chalk/el-radio-button.css";
+import "element-plus/theme-chalk/el-pagination.css";
 import { useRoute, useRouter } from "vue-router";
-import { useThemeStore } from "@/stores/theme";
+import { useSmsAvailability } from "./availability";
 import {
   api,
+  loadCatalog,
   canCancel,
   statusLabels,
   waitingMessage,
@@ -30,7 +31,7 @@ const tabs = ["接码工作台", "监听记录", "业务指标"];
 const paths = ["/sms", "/sms/listeners", "/sms/metrics"];
 const route = useRoute();
 const router = useRouter();
-const theme = useThemeStore();
+const availability = useSmsAvailability();
 const tab = computed(() => Math.max(0, paths.indexOf(route.path.replace(/\/$/, ""))));
 const form = reactive({ applicationId: "A", country: "CN", listenSeconds: 60 });
 const requestId = ref(crypto.randomUUID());
@@ -40,7 +41,11 @@ const metrics = ref<Metrics>();
 const current = ref<Listener>();
 const busy = ref(false);
 const error = ref("");
-const catalog = ref<Catalog>();
+const catalog = ref<Catalog | undefined>(
+  availability.state.value.status === "enabled"
+    ? availability.state.value.catalog
+    : undefined
+);
 let timer: ReturnType<typeof setTimeout> | undefined;
 let active: AbortController | undefined;
 let mutation: AbortController | undefined;
@@ -50,6 +55,7 @@ const time = (value?: number) =>
   value ? new Date(value).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
 
 async function refresh() {
+  if (stopped) return;
   active?.abort();
   const controller = new AbortController();
   active = controller;
@@ -62,6 +68,7 @@ async function refresh() {
       ),
       api<Metrics>("/api/v1/sms/metrics", undefined, controller.signal)
     ]);
+    if (stopped || controller.signal.aborted) return;
     records.value = next;
     metrics.value = counts;
     if (catalog.value?.runId !== counts.runId) {
@@ -70,11 +77,10 @@ async function refresh() {
         requestId.value = crypto.randomUUID();
         page.value = 1;
       }
-      catalog.value = await api<Catalog>(
-        "/api/v1/sms/catalog",
-        undefined,
-        controller.signal
-      );
+      const nextCatalog = await loadCatalog(controller.signal);
+      if (stopped || controller.signal.aborted) return;
+      catalog.value = nextCatalog;
+      availability.acceptCatalog(nextCatalog);
     }
     if (current.value) {
       const selectedId = current.value.id;
@@ -83,6 +89,7 @@ async function refresh() {
         undefined,
         controller.signal
       );
+      if (stopped || controller.signal.aborted) return;
       if (current.value?.id === selectedId) current.value = latest;
     }
     error.value = "";
@@ -111,7 +118,7 @@ async function action(work: (signal: AbortSignal) => Promise<void>) {
 }
 async function create() {
   await action(async (signal) => {
-    current.value = await api<Listener>(
+    const created = await api<Listener>(
       "/api/v1/sms/listeners",
       {
         ...form,
@@ -119,6 +126,8 @@ async function create() {
       },
       signal
     );
+    if (stopped || signal.aborted) return;
+    current.value = created;
     requestId.value = crypto.randomUUID();
     ElMessage.success("监听申请已受理");
   });
@@ -126,6 +135,7 @@ async function create() {
 async function cancel(item: Listener) {
   await action(async (signal) => {
     await api(`/api/v1/sms/listeners/${item.id}/cancel`, {}, signal);
+    if (stopped || signal.aborted) return;
     ElMessage.info("已记录取消请求，等待号码确认");
   });
 }
@@ -143,31 +153,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark">S</span>
-        <div>SMS Reception<small>短信接收工作空间</small></div>
-      </div>
-      <div class="workspace-label">本地预览工作空间</div>
-      <nav aria-label="主导航">
-        <button
-          v-for="(name, index) in tabs"
-          :key="name"
-          :class="{ selected: tab === index }"
-          @click="router.push(paths[index])"
-        >
-          <span>0{{ index + 1 }}</span
-          >{{ name }}
-        </button>
-      </nav>
-      <div class="sidebar-note">
-        <span class="status-dot"></span> 自有 SIM · Java 模拟池
-        <p>CN / US / GB</p>
-        <small>0.1.0-preview<br />本次运行独立，重启清空监听。</small>
-      </div>
-    </aside>
-    <main>
+  <div class="sms-workspace">
+    <nav class="sms-tabs" aria-label="SMS 页面">
+      <router-link
+        v-for="(name, index) in tabs"
+        :key="name"
+        :to="paths[index]!"
+        :class="{ selected: tab === index }"
+        :aria-current="tab === index ? 'page' : undefined"
+        >{{ name }}</router-link
+      >
+    </nav>
+    <div class="sms-content-area">
       <header>
         <div>
           <div class="eyebrow">SMS RECEPTION / PREVIEW</div>
@@ -181,13 +178,6 @@ onUnmounted(() => {
                   : "查看已观察的接码结果、延迟和未确认数量。"
             }}
           </p>
-        </div>
-        <div class="actions">
-          <router-link to="/runtime/workers">平台观察</router-link
-          ><el-button @click="theme.toggle">{{
-            theme.dark ? "浅色" : "深色"
-          }}</el-button
-          ><span class="environment">● 本地场景</span>
         </div>
       </header>
       <el-alert
@@ -422,121 +412,40 @@ onUnmounted(() => {
         SMS Reception {{ catalog?.version ?? "0.1.0-preview"
         }}<span>仅模拟数据 · 本地运行</span>
       </footer>
-    </main>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.app-shell {
+.sms-workspace {
+  min-width: 0;
   color: var(--rv-text);
-  background: var(--rv-bg);
 }
-* {
-  box-sizing: border-box;
+.sms-content-area {
+  min-width: 0;
 }
-button {
-  font: inherit;
+.sms-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.sms-tabs a {
+  color: var(--rv-text-secondary);
+  padding: 10px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+.sms-tabs a.selected {
+  color: var(--rv-primary);
+  background: var(--rv-primary-soft);
+  font-weight: 600;
 }
 h1,
 h2,
 h3,
 p {
   margin-top: 0;
-}
-.app-shell {
-  display: flex;
-  min-height: 100vh;
-}
-.sidebar {
-  width: 248px;
-  background: #153d35;
-  color: #eff7f1;
-  padding: 34px 22px;
-  position: fixed;
-  inset: 0 auto 0 0;
-  display: flex;
-  flex-direction: column;
-}
-.brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  font-weight: 650;
-  font-size: 17px;
-}
-.brand-mark {
-  display: grid;
-  place-items: center;
-  background: #d5edbc;
-  color: #173d35;
-  width: 39px;
-  height: 42px;
-  border-radius: 11px;
-  font-size: 25px;
-}
-.brand small {
-  display: block;
-  font-size: 11px;
-  font-weight: 400;
-  color: #a8c4b6;
-  margin-top: 6px;
-}
-.workspace-label {
-  color: #91b2a2;
-  font-size: 11px;
-  margin: 46px 12px 15px;
-  letter-spacing: 1px;
-}
-nav {
-  display: grid;
-  gap: 8px;
-}
-nav button {
-  border: 0;
-  background: transparent;
-  color: #bed1c7;
-  border-radius: 8px;
-  text-align: left;
-  padding: 15px 12px;
-  cursor: pointer;
-  font-size: 13px;
-}
-nav button span {
-  margin-right: 15px;
-  font-size: 11px;
-  opacity: 0.6;
-}
-nav button.selected {
-  background: #2a5146;
-  color: #eff7f1;
-}
-.sidebar-note {
-  margin-top: auto;
-  padding: 22px 12px 0;
-  color: #c8dbce;
-  font-size: 12px;
-}
-.sidebar-note p {
-  margin: 12px 0 20px;
-}
-.sidebar-note small {
-  font-size: 11px;
-  line-height: 1.9;
-  color: #9ab7a9;
-}
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #c1e39c;
-  margin-right: 5px;
-}
-main {
-  margin-left: 248px;
-  padding: 38px 44px;
-  max-width: 1680px;
-  width: calc(100% - 248px);
 }
 header {
   display: flex;
@@ -561,15 +470,7 @@ header p {
   margin-bottom: 0;
   line-height: 1.7;
 }
-.environment {
-  font-size: 11px;
-  color: var(--rv-text-secondary);
-  background: var(--rv-success-soft);
-  border: 1px solid var(--rv-border);
-  padding: 8px 11px;
-  border-radius: 16px;
-  white-space: nowrap;
-}
+
 .stat-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -603,11 +504,12 @@ header p {
 }
 .workbench-grid {
   display: grid;
-  grid-template-columns: 1fr 1.15fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   gap: 24px;
   margin-bottom: 24px;
 }
 .panel {
+  min-width: 0;
   padding: 24px;
   background: var(--rv-surface);
   border: 1px solid var(--rv-border);
@@ -801,15 +703,6 @@ footer {
   margin-bottom: 20px;
 }
 @media (max-width: 1100px) {
-  .sidebar {
-    width: 204px;
-    padding: 28px 15px;
-  }
-  main {
-    margin-left: 204px;
-    width: calc(100% - 204px);
-    padding: 28px 24px;
-  }
   .workbench-grid {
     grid-template-columns: 1fr;
   }
@@ -824,50 +717,11 @@ footer {
   }
 }
 @media (max-width: 700px) {
-  .app-shell {
-    display: block;
-  }
-  .sidebar {
-    position: static;
-    width: 100%;
-    padding: 18px;
-  }
-  .brand {
-    font-size: 15px;
-  }
-  .brand-mark {
-    width: 33px;
-    height: 35px;
-  }
-  .workspace-label,
-  .sidebar-note {
-    display: none;
-  }
-  nav {
-    display: flex;
-    gap: 4px;
-    margin-top: 20px;
-  }
-  nav button {
-    font-size: 12px;
-    padding: 11px 9px;
-  }
-  nav button span {
-    display: none;
-  }
-  main {
-    margin: 0;
-    width: 100%;
-    padding: 24px 16px;
-  }
   header {
     margin-bottom: 22px;
   }
   h1 {
     font-size: 24px;
-  }
-  .environment {
-    display: none;
   }
   .stat-row {
     grid-template-columns: repeat(2, 1fr);

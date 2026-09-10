@@ -1,26 +1,5 @@
 plugins { id 'base' }
 version = '0.1.0-preview'
-def windows = System.getProperty('os.name').toLowerCase().contains('windows')
-def pnpm = { List<String> args ->
-    (windows ? ['cmd.exe', '/d', '/c', 'corepack', 'pnpm@11.9.0'] : ['corepack', 'pnpm@11.9.0']) + args
-}
-tasks.register('installFrontend', Exec) {
-    workingDir file('frontend')
-    commandLine pnpm(['install', '--frozen-lockfile'])
-    inputs.files('frontend/package.json', 'frontend/pnpm-lock.yaml', 'frontend/pnpm-workspace.yaml', 'frontend/.npmrc')
-    outputs.dir('frontend/node_modules')
-}
-tasks.register('buildFrontend', Exec) {
-    dependsOn 'installFrontend'
-    workingDir file('frontend')
-    commandLine pnpm(['build'])
-    inputs.files(fileTree(file('frontend')) {
-        include 'src/**', 'public/**', 'index.html', '*.json', '*.ts', '*.js'
-        exclude 'node_modules/**', 'dist/**', 'dist-demo/**', 'coverage/**'
-    })
-    outputs.dir('frontend/dist')
-}
-
 tasks.register('previewZip', Zip) {
     dependsOn ':distribution:server:bootJar',
             ':scenario_workers_jvm:installDist',
@@ -35,17 +14,11 @@ tasks.register('previewZip', Zip) {
         from('requirements.txt')
         from('config') { into 'config' }
         from(layout.buildDirectory.file('preview-manifest.json'))
-        from(layout.buildDirectory.file('host-merger/acceptance-report.md'))
-        from(layout.buildDirectory.file('host-merger/verification-summary.json')) { into 'evidence' }
-        from(layout.buildDirectory.file('host-merger/functional/summary.json')) { into 'evidence/functional' }
-        from(layout.buildDirectory.file('host-merger/zip-lifecycle/summary.json')) { into 'evidence/lifecycle' }
-        from(layout.buildDirectory.file('host-merger/concurrency/summary.json')) { into 'evidence/concurrency' }
-        from(layout.buildDirectory.file('host-merger/zip-smoke/summary.json')) { into 'evidence/zip-smoke' }
-        from(layout.buildDirectory.file('host-merger/browser-summary.json')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('host-merger/browser-dark.png')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('host-merger/browser-mobile.png')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('host-merger/browser-lab.png')) { into 'evidence/ui' }
-        from(layout.buildDirectory.file('acceptance/final-concurrency/summary.json')) { into 'evidence/baseline-three-process' }
+        from(layout.buildDirectory.dir('acceptance')) {
+            into 'evidence'
+            include 'functional/summary.json', 'functional/summary.md'
+            include 'lifecycle/summary.json', 'lifecycle/summary.md'
+        }
         from(project(':distribution:server').tasks.named('bootJar')) { into 'lib' }
         from(rootProject.file('frontend/dist')) {
             into 'frontend/dist'

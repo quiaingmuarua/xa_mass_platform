@@ -25,7 +25,7 @@ Task 和后续 Outcome 观察完成接码。只使用模拟短信，不连接真
 提炼为可重复的回归证明，再回到业务场景验证。已有验收阈值和失败语义仍按下文执行，
 不能用业务侧补偿隐藏平台问题，也不能把未确认结果当成成功。
 
-当前业务模块、同进程 profile 和独立前端足以支持这些实验。调用面通过实际使用逐步稳定，
+当前业务模块、同进程 profile 和统一控制台足以支持这些实验。调用面通过实际使用逐步稳定，
 无需先抽取通用 SDK、独立后端或产品基础设施。独立发布、运维隔离、鉴权或持久化等
 成为具体需求时，再评估相应组织与部署边界；`products/` 的名称本身不触发拆分。
 
@@ -62,15 +62,17 @@ python run_preview.py
 ```
 
 ZIP 包含发行模块生成的单一 Server JAR、模拟 Host 和 SDK、平台前端、产品 profile 配置及启动脚本。
-SMS 前端单独构建并嵌入该 Server JAR，在 `/sms/` 下提供资源。
+SMS 页面与 Runtime、Reference 共用一次前端构建，统一资源位于 `frontend/dist`；Server JAR 不嵌入独立 SMS 前端。
 产品版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD 和 Server、Host 两个 JVM 的产物指纹。
 已有本次验收报告时，ZIP 同时携带有限汇总；此前结果保留为历史，不充当本版验收。
 启动顺序是 Server 健康且 SMS 注册完成、Host 身份建立、实际 WebSocket 路由验证。
 默认端口为 Server 18390、Adapter 18393、Host 18394。
 Server 显式启用 `sms-reception` profile，读取 `config/application-sms-reception.yaml`。
 该配置集中定义本轮 Server、Redis、Adapter 和 Endpoint；平台默认配置保持独立。
-根页面 `/` 仍是平台入口，产品仅提供 `/sms` 和 `/api/v1/sms/*`。
-不启用该 profile 时，不注册 SMS API、页面、静态资源、国家 Group 或后台任务。
+根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
+不启用该 profile 时，不注册 SMS API、国家 Group 或后台任务；控制台隐藏 SMS 入口，直达页面显示未启用。
+启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
+公开 Mock Demo 隐藏 SMS 且不请求产品 API；未知 API 和静态资源保持错误。
 任一进程退出即结束场景，不自动恢复旧状态。
 
 每次启动使用新的 `test_sms_<UUID>` Redis scope。所有自有进程停止后，退出仅以 `SCAN` + `UNLINK`
@@ -82,7 +84,7 @@ Server 显式启用 `sms-reception` profile，读取 `config/application-sms-rec
 | 模块 | 职责 |
 | --- | --- |
 | `backend` | 普通 Java 业务模块：产品 API、有限监听状态、应用内幂等、有界 Task 提交和统一 Result 观察 |
-| `frontend` | 独立 Vue 工程：工作台、分页记录、业务指标；只调用同源 SMS API |
+| [统一前端](../../frontend/README.md#sms-business-pages) | `src/sms/`：工作台、分页记录、业务指标；共享布局与主题，只调用同源 SMS API |
 | [Scenario Host](../../scenario_workers_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
 
 [发行入口](../../distribution/server/README.md) 显式导入
@@ -211,9 +213,9 @@ Backend 活跃数量只包含已观察到建立且尚无终态的监听；建立
 
 ```powershell
 .\gradlew.bat :scenario_workers_jvm:test :products:sms-reception:backend:test
-corepack pnpm@11.9.0 --dir products/sms-reception/frontend lint
-corepack pnpm@11.9.0 --dir products/sms-reception/frontend typecheck
-corepack pnpm@11.9.0 --dir products/sms-reception/frontend test
+corepack pnpm@11.9.0 --dir frontend lint
+corepack pnpm@11.9.0 --dir frontend typecheck
+corepack pnpm@11.9.0 --dir frontend test
 .\gradlew.bat :distribution:server:test :distribution:server:smsCompositionIntegrationTest
 python -m unittest discover -s products/sms-reception -p 'test_*.py'
 python products/sms-reception/run_acceptance.py --build --scenario functional
@@ -226,7 +228,7 @@ git diff --check
 
 发行模块的组合证明创建真实 Server 上下文，主动阻断平台 Task 提交／Result 查询 HTTP 路由，
 SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后续观察。该证明检查共享资源仅一份，
-三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 profile 时，产品 API、页面和国家 Group 均不存在。
+三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 profile 时，产品 API 和国家 Group 均不存在，统一页面呈现未启用状态。
 单元测试另外覆盖构造无副作用、失败启动清理、产品先于平台停止、退出拒绝和依赖边界。
 
 功能 world 为每国家 1 个真实连接的 Java Worker。依次验证无监听、A/B/C 共号、优先级、
@@ -247,12 +249,24 @@ Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身
 不一致和未确认结果；报告 HTTP 错误、发生器限制、实际速率、建立吞吐、短信观察率、
 P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值。到期不算接码成功。
 
-本轮 Host 合并验收写入 `build/host-merger/`；`build/server-consolidation/` 仅保留此前装配迁移的历史证据。
-后续默认验收写入 `build/acceptance/`，仅 `summary.json`、`summary.md` 用于汇总；
+当前验收写入 `build/acceptance/`；ZIP 仅可附带该目录下 functional、lifecycle 的安全摘要，
+不打包此前装配或 Host 迁移的历史验收。仅 `summary.json`、`summary.md` 用于汇总；
 private 日志不进入 CI 工件。`--root <解压后的产品目录>` 使用 ZIP 内真实产物执行相同功能验收。
 ZIP 也携带验收脚本，可直接在解压目录运行 `python run_acceptance.py --scenario functional`。
-`.github/workflows/sms-reception-preview.yml` 运行产品单元测试、独立前端检查、同进程组合边界和小规模真实链路；
+`.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；
 保留现有 [Proof Selection](../../TESTING.md) 的平台规则。
 
 本场景证明有限产品闭环，不声明平台容量上限，不证明真实设备收信、属性索引、国家 Properties
 过滤、黑名单、可靠投递、租户隔离或重启恢复，也不扩大既有平台容量场景。
+
+归档检查比较 ZIP 中的全部前端文件与当前 `frontend/dist`（生成的诊断字典单独交付），
+并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：
+
+```powershell
+.\gradlew.bat :products:sms-reception:previewZip
+python products/sms-reception/verify_preview_archive.py --archive products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip --frontend frontend/dist
+```
+
+CI 从新 ZIP 中运行 `run_acceptance.py`，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
+仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
+并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。

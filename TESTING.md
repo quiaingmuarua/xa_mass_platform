@@ -17,11 +17,15 @@ owns its listening-order invariants and finite scenario acceptance. Business
 workloads expose interactions and failure patterns beyond the focused fixtures;
 discovered platform defects should gain regressions in the owning proof, while
 the workload retains the business-level witness. Its dedicated
-workflow runs product JVM and independent frontend checks, distribution-owned
+workflow runs product JVM and unified frontend checks, distribution-owned
 `smsCompositionIntegrationTest` with platform Task/Result HTTP routes blocked,
 and the three-Worker real path through the composed Server and separate Host.
 The fixed 1,000-Worker product workload is an explicit local acceptance command;
 it does not replace or expand the platform proof lanes below.
+
+The SMS Preview workflow also compares its archive against the current unified
+frontend build and runs the packaged functional runner from a fresh extraction
+without Node or Gradle.
 
 ## Proof Model
 
@@ -151,9 +155,9 @@ python .github/scripts/test_check_proof_selection.py
 python .github/scripts/check_proof_selection.py
 ```
 
-Worker runners that build the Server JAR also require Node 22 and Corepack:
-the distribution includes the independently built SMS frontend, even when its
-profile is disabled. CI installs this toolchain before building the Server.
+Building the unified console or either UI archive requires Node 22 and Corepack.
+The Server JAR no longer builds or embeds SMS frontend assets. Composition proof
+builds the console explicitly and tests both profile states against that output.
 
 Worker one-shot runners support Python 3.11 or newer. Install their small
 shared dependency set once before running them locally:

@@ -90,7 +90,7 @@ require separate deployment, infrastructure or a public product SDK.
 Let demonstrated business and operational needs drive later extraction.
 
 The first such workload, [SMS Reception](products/sms-reception/README.md),
-uses a separate business module and Vue frontend, plus the SMS scene of the
+uses a separate business module and a page in the unified console, plus the SMS scene of the
 independently launched [Scenario Host](scenario_workers_jvm/README.md#sms-scenario).
 Lab and SMS share its Java Worker management and local console. The distribution imports platform and SMS configuration into one Server;
 the `sms-reception` profile enables product routes and jobs. SMS calls the
@@ -107,7 +107,7 @@ It owns listening orders and SMS routing; Kernel retains assignment and scheduli
 | JVM simulation | [scenario_workers_jvm](scenario_workers_jvm/README.md): one independent Host for Lab fixtures and SMS numbers |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
 | Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) observes live facts during execution |
-| Frontend | [frontend](frontend/README.md): Runtime observation, finite Task files, Direct Debug and API/architecture references |
+| Frontend | [frontend](frontend/README.md): shared console for Runtime observation, SMS, finite Task files, Direct Debug and references |
 | Releases | [Server Runtime](distribution/server/README.md) and [Worker SDK](distribution/worker-sdk/README.md): packaging of existing owners |
 
 ## Runtime And Deployment

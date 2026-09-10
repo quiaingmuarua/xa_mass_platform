@@ -5,7 +5,7 @@ import { ArrowLeft } from "@element-plus/icons-vue";
 <template>
   <main class="standalone-state">
     <section class="standalone-state__card">
-      <img src="/logo.svg" alt="" width="42" height="42" />
+      <img :src="'/logo.svg'" alt="" width="42" height="42" />
       <p class="standalone-state__eyebrow">404</p>
       <h1>页面不存在</h1>
       <p>第一版 Runtime Viewer 只提供 Worker 页面。</p>

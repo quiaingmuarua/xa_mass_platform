@@ -1,27 +1,32 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, onBeforeUnmount, provide, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import {
-  Collection,
-  Connection,
-  Document,
-  Link,
-  Moon,
-  Sunny,
-  Tickets,
-  View
-} from "@element-plus/icons-vue";
+import { Connection, Menu, Moon, Sunny, View } from "@element-plus/icons-vue";
+import ConsoleNavigation from "./ConsoleNavigation.vue";
 
-import { useRuntimeViewerConfig } from "@/runtime-context";
+import { createSmsAvailability, smsAvailabilityKey } from "@/sms/availability";
 import { useThemeStore } from "@/stores/theme";
 
-const config = useRuntimeViewerConfig();
+const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
+const sms = createSmsAvailability(demo);
+provide(smsAvailabilityKey, sms);
+const mobileNavigation = ref(false);
+onMounted(() => void sms.load());
+onBeforeUnmount(() => sms.dispose());
 const theme = useThemeStore();
 const route = useRoute();
+watch(
+  () => route.fullPath,
+  () => {
+    mobileNavigation.value = false;
+  }
+);
 const referencePage = computed(() => route.meta.section === "Reference");
+const runtimePage = computed(() => route.meta.section === "Runtime");
 const sourceLabel = computed(() => {
   if (referencePage.value) return "Build reference";
-  return config.mode === "api" ? "API source" : "Mock source";
+  if (route.meta.section === "Business") return demo ? "Mock source" : "SMS API";
+  return demo ? "Mock source" : "API source";
 });
 const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
 const pageSection = computed(() => String(route.meta.section ?? "Runtime"));
@@ -35,45 +40,20 @@ onMounted(() => theme.apply());
       <div class="runtime-brand">
         <img
           class="runtime-brand__logo"
-          src="/logo.svg"
+          :src="'/logo.svg'"
           alt=""
           width="34"
           height="34"
         />
         <div>
           <strong>XA MASS</strong>
-          <span>RUNTIME VIEWER</span>
+          <span>CONSOLE</span>
         </div>
       </div>
 
-      <nav class="runtime-navigation" aria-label="Runtime">
-        <span class="runtime-navigation__eyebrow">RUNTIME</span>
-        <router-link class="runtime-navigation__link" to="/runtime/workers">
-          <el-icon><Collection /></el-icon>
-          <span>Workers</span>
-        </router-link>
-        <router-link class="runtime-navigation__link" to="/runtime/tasks">
-          <el-icon><Tickets /></el-icon>
-          <span>Tasks</span>
-        </router-link>
-        <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
-          REFERENCE
-        </span>
-        <a class="runtime-navigation__link" href="/scalar">
-          <el-icon><Link /></el-icon>
-          <span>API Docs</span>
-        </a>
-        <a class="runtime-navigation__link" href="/overview.htm">
-          <el-icon><Document /></el-icon>
-          <span>Architecture</span>
-        </a>
-        <router-link class="runtime-navigation__link" to="/reference/error-codes">
-          <el-icon><Collection /></el-icon>
-          <span>Code Dictionary</span>
-        </router-link>
-      </nav>
+      <ConsoleNavigation />
 
-      <div class="runtime-sidebar__note">
+      <div v-if="runtimePage" class="runtime-sidebar__note">
         <span class="runtime-sidebar__note-title">
           <el-icon aria-hidden="true"><View /></el-icon>
           Runtime API
@@ -85,10 +65,29 @@ onMounted(() => theme.apply());
       </div>
     </aside>
 
+    <el-drawer
+      v-model="mobileNavigation"
+      title="Navigation"
+      direction="ltr"
+      size="236px"
+      class="console-navigation-drawer"
+    >
+      <ConsoleNavigation @navigate="mobileNavigation = false" />
+    </el-drawer>
+
     <div class="runtime-stage">
       <header class="runtime-topbar">
+        <el-button
+          circle
+          class="console-menu-toggle"
+          aria-label="Open navigation"
+          :aria-expanded="mobileNavigation"
+          @click="mobileNavigation = true"
+        >
+          <el-icon><Menu /></el-icon>
+        </el-button>
         <div class="runtime-mobile-brand">
-          <img src="/logo.svg" alt="" width="28" height="28" />
+          <img :src="'/logo.svg'" alt="" width="28" height="28" />
           <strong>XA MASS</strong>
         </div>
         <el-breadcrumb separator="/">
@@ -99,7 +98,7 @@ onMounted(() => theme.apply());
           <span
             class="source-badge"
             :class="{
-              'source-badge--mock': !referencePage && config.mode === 'mock'
+              'source-badge--mock': runtimePage && demo
             }"
             data-testid="source-badge"
           >
@@ -127,3 +126,26 @@ onMounted(() => theme.apply());
     </div>
   </div>
 </template>
+
+<style>
+.el-button.console-menu-toggle {
+  display: none;
+}
+.console-navigation-drawer {
+  --el-drawer-bg-color: var(--rv-sidebar);
+  color: #fff;
+}
+.console-navigation-drawer .el-drawer__body {
+  padding: 0;
+}
+.console-navigation-drawer .el-drawer__header {
+  color: #fff;
+  margin-bottom: 0;
+}
+@media (max-width: 760px) {
+  .el-button.console-menu-toggle {
+    display: inline-flex;
+    margin-right: 10px;
+  }
+}
+</style>

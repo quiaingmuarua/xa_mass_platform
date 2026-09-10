@@ -7,8 +7,8 @@ context. `server_jvm` and SMS Backend are libraries; neither produces a Boot JAR
 Distribution contains no application services or resource operations.
 
 The JAR packages Server, its production dependencies, the SMS business module
-and the independent SMS frontend at a separate classpath location. The archive
-also packages the compiled platform frontend. It does not
+and its profile configuration. The archive packages the compiled unified console
+for Runtime, Reference and SMS pages; the JAR embeds no separate SMS frontend. It does not
 package the repository-local Scenario Worker Host. It also generates and
 packages the current-build Platform diagnostic code projection. Redis remains
 external.
@@ -66,8 +66,11 @@ WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
 Server on 18390 and Adapter on 18393. It requires an explicit Redis scope.
 The [product launcher](../../products/sms-reception/README.md#启动与交付) supplies
 a finite test scope and starts the separate SIM Host on 18394. Without that
-profile there are no SMS routes, static assets, Groups or background jobs.
-The root platform frontend remains independent of product enablement.
+profile there are no SMS APIs, Groups or background jobs. The console assets are
+shared; the distribution explicitly forwards the three SMS pages and trailing
+slashes to its index in either profile. Catalog observation controls menu visibility
+and the unavailable page. Unknown APIs and assets are not forwarded.
+The root Runtime and Reference pages remain usable independently of SMS enablement.
 
 Endpoint overrides use `xa.mass.worker-endpoints`. Each configured transport
 type must name an explicit default in `defaults`; `endpoints` supplies the URI

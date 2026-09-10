@@ -1,7 +1,7 @@
-# XA Mass Runtime Viewer
+# XA Mass Console
 
-Vue 3 frontend for Worker and Task runtime observation, a thin finite Task
-file client and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
+Vue 3 console for Worker and Task runtime observation, a thin finite Task
+file client, SMS business pages and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
 token, dynamic-permission, fake-user, or fabricated-user path.
 
 ## Requirements and local run
@@ -56,8 +56,12 @@ Routes:
 /runtime/tasks
 /api-reference
 /reference/error-codes
+/sms
+/sms/listeners
+/sms/metrics
 ```
 
+The same navigation is available in a drawer on narrow screens.
 The sidebar also links to the current origin's `/scalar` and `/overview.htm`.
 On Vercel, the SPA maps `/scalar` to the same static API Reference; on the Java
 Server, its MVC Scalar route takes precedence and stays live. The OpenAPI
@@ -69,15 +73,41 @@ committed.
 
 ## Build ownership
 
-`pnpm build` writes `dist`; `pnpm build:demo` writes `dist-demo`. Both contain
-only the platform viewer and reference pages. The public hosting configuration
-consumes `dist-demo`. Runtime configuration and Store lifetime belong to
-`RuntimeProvider` and stop with their route container.
+`pnpm build` writes the unified console to `dist`; `pnpm build:demo` writes
+`dist-demo` for public hosting. There is one dependency graph and theme. The
+console owns navigation and page layout; Runtime configuration and Store lifetime
+belong only to the Runtime route container. SMS and Reference pages do not depend
+on Runtime configuration or stores.
 
-The [SMS frontend](../products/sms-reception/frontend/README.md) has its own
-source, dependencies and build. Distribution embeds its output separately and
-the product profile serves it at `/sms`; it is not included in either platform
-frontend build and does not share Runtime stores.
+## SMS business pages
+
+`src/sms/` owns the SMS pages, API client and page-local business state. The
+[SMS Owner](../products/sms-reception/README.md) retains business semantics.
+The sidebar shows BUSINESS / SMS only after one successful, validated
+`GET /api/v1/sms/catalog` observation. The shared catalog request has a five-second
+timeout and no periodic retry: 404 means disabled; other errors or invalid content
+mean availability is unconfirmed, with an explicit retry. Navigation and the page
+share the initial catalog. Backend run changes refresh the catalog and discard
+an old selected listener. This observation does not register or enable SMS.
+
+The three SMS routes are lazy loaded under the common layout. Page tabs retain
+form and selection; leaving SMS aborts requests and stops polling, without
+resubmitting business commands. SMS uses only same-origin `/api/v1/sms/*` calls.
+The existing platform theme preference is used; no SMS theme store remains.
+Runtime configuration errors do not prevent SMS or Reference pages from loading.
+
+Public Mock Demo hides BUSINESS / SMS, makes no SMS requests, and explains that
+SMS is unsupported on direct visits. An ordinary Server without SMS serves the
+same console pages but their catalog check reports the feature as disabled.
+Distribution owns the finite page forwards, including trailing slashes; unknown
+API and asset paths remain errors. Product APIs, Groups and jobs remain gated by
+`sms-reception`. The shared assets do not enable those resources.
+
+For SMS development, run the product launcher and set `VITE_RUNTIME_PROXY_TARGET`
+to its Server origin (default `http://127.0.0.1:18390`) before starting the same
+frontend Vite server. The same `/api` proxy carries platform and SMS requests.
+Runtime and SMS Preview ZIPs both package this `dist`; the Server JAR contains no
+separate SMS frontend.
 
 ## API Reference
 

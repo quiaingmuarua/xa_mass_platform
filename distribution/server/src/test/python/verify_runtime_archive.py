@@ -193,6 +193,11 @@ def verify(archive: Path, version: str) -> None:
             with zipfile.ZipFile(server_jar_path) as server_jar:
                 server_entries = server_jar.namelist()
                 _require(
+                    not any(name.startswith("BOOT-INF/classes/sms-frontend/")
+                            for name in server_entries),
+                    "Server Boot JAR contains retired independent SMS frontend assets",
+                )
+                _require(
                     not any(
                         name.startswith(
                             "BOOT-INF/lib/xa-mass-scenario-workers"

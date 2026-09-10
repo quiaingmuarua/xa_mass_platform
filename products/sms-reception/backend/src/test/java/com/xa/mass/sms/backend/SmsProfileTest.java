@@ -29,7 +29,6 @@ class SmsProfileTest {
             context.refresh();
             assertThat(context.getBeansOfType(ListenerService.class)).isEmpty();
             assertThat(context.getBeansOfType(ProductController.class)).isEmpty();
-            assertThat(context.getBeansOfType(SmsFrontendController.class)).isEmpty();
             verifyNoInteractions(registrations, submissions, results);
         }
     }

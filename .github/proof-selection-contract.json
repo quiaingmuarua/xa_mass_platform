@@ -475,6 +475,44 @@
         "runtime_distribution"
       ],
       "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
+    },
+    {
+      "path": "frontend/src/sms/SmsPage.vue",
+      "lanes": [
+        "frontend",
+        "runtime_distribution"
+      ],
+      "reason": "SMS routes share Console lifecycle and the single Runtime distribution frontend."
+    },
+    {
+      "path": "frontend/src/sms/availability.ts",
+      "lanes": [
+        "frontend",
+        "runtime_distribution"
+      ],
+      "reason": "Catalog admission and Demo isolation belong to the unified frontend proof."
+    },
+    {
+      "path": "frontend/src/layouts/ConsoleLayout.vue",
+      "lanes": [
+        "frontend",
+        "runtime_distribution"
+      ],
+      "reason": "Shared navigation and theme must retain Runtime and SMS lifecycle isolation."
+    },
+    {
+      "path": "distribution/server/src/main/java/com/xa/mass/distribution/ConsoleFrontendConfiguration.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "Distribution owns finite Console page forwards in enabled and ordinary instances."
     }
   ]
 }

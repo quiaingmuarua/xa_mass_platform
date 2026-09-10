@@ -32,6 +32,7 @@
 
 html.dark {
   color-scheme: dark;
+  --el-color-primary: var(--rv-primary);
   --rv-primary: #8797ff;
   --rv-primary-soft: #252b4a;
   --rv-bg: #0c1020;

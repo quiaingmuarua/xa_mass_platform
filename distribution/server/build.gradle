@@ -12,11 +12,11 @@ springBoot { mainClass = 'com.xa.mass.server.XaMassServerApplication' }
 dependencies {
     implementation platform(SpringBootPlugin.BOM_COORDINATES)
     implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation project(':server_jvm')
     implementation project(':products:sms-reception:backend')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc'
     testImplementation project(':kernel_jvm')
     testImplementation project(':kernel_pacer_jvm')
     testImplementation project(':worker_matching_jvm')
@@ -26,14 +26,14 @@ dependencies {
 }
 tasks.named('jar') { enabled = false }
 tasks.named('processResources') {
-    dependsOn ':products:sms-reception:buildFrontend'
-    from(rootProject.file('products/sms-reception/frontend/dist')) { into 'sms-frontend' }
     from(rootProject.file('products/sms-reception/config')) { include 'application-sms-reception.yaml' }
 }
 tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition' } }
 tasks.register('smsCompositionIntegrationTest', Test) {
     group = 'verification'
     description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
+    dependsOn 'buildFrontend'
+    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'sms-composition' }
@@ -111,7 +111,7 @@ tasks.register('installFrontend', Exec) {
 
 tasks.register('buildFrontend', Exec) {
     group = 'distribution'
-    description = 'Builds the pinned Runtime Viewer frontend.'
+    description = 'Builds the unified Console frontend.'
     dependsOn tasks.named('installFrontend')
     workingDir frontendDirectory
     inputs.files(fileTree(frontendDirectory) {

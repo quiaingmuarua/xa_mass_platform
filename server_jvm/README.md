@@ -699,9 +699,10 @@ Delivery rejection still uses the same
 The [SMS business module](../products/sms-reception/README.md) depends on the
 approved Group registration, Task submission and Task data services here.
 Distribution imports its configuration beside Server configuration in the same
-context. Only `sms-reception` enables its API, jobs, Group registration and
-`/sms` assets. Its independent frontend build shares the Server origin; `/`
-keeps the platform entry. The product creates no Redis clients or platform loops.
+context. Only `sms-reception` enables its API, jobs and Group registration.
+The unified console shares the Server origin; distribution owns its SMS page
+forwards while `/` keeps the Runtime entry. Frontend availability does not enable
+product resources. The product creates no Redis clients or platform loops.
 Product callers stop before platform resources. Failed initialization fails
 startup and destroys already-created resources, including the Adapter host.
 

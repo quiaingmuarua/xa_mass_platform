@@ -52,7 +52,7 @@ class SmsCompositionIntegrationTest {
         String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         int serverPort = port(), adapterPort = port();
         URI base = URI.create("http://127.0.0.1:" + serverPort);
-        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, BlockTaskHttp.class);
+        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ConsoleFrontendConfiguration.class, BlockTaskHttp.class);
         app.setRegisterShutdownHook(false);
         try (var context = app.run(
                 "--spring.profiles.active=sms-reception", "--server.port=" + serverPort,
@@ -61,6 +61,7 @@ class SmsCompositionIntegrationTest {
                 "--xa.mass.worker-delivery.adapter.instances.sms-websocket.listen-port=" + adapterPort,
                 "--xa.mass.worker-endpoints.endpoints.sms-websocket.public-uri=ws://127.0.0.1:"
                         + adapterPort + "/api/v1/worker-delivery/websocket",
+                "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=WARN");
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(KernelPacerRuntime.class)).hasSize(1);
@@ -76,10 +77,11 @@ class SmsCompositionIntegrationTest {
             assertThat(send(http, base, "/api/v1/catalog", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/simulation/metrics", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/v1/sms/missing", null).statusCode()).isEqualTo(404);
-            for (String path : List.of("/sms", "/sms/listeners", "/sms/metrics")) {
+            for (String path : List.of("/sms", "/sms/", "/sms/listeners", "/sms/listeners/", "/sms/metrics", "/sms/metrics/")) {
                 var page = send(http, base, path, null);
                 assertThat(page.statusCode()).isEqualTo(200);
-                assertThat(page.body()).contains("/sms/assets/");
+                assertThat(page.body()).contains("/static/js/").doesNotContain("/sms/assets/");
+                assertThat(page.body()).isEqualTo(send(http, base, "/", null).body());
             }
             assertThat(Jsons.parseObject(send(http, base, "/v3/api-docs", null).body()).get("paths").toString())
                     .contains("/api/v1/sms/listeners", "/api/v1/tasks/{taskId}/results:load");
@@ -123,24 +125,30 @@ class SmsCompositionIntegrationTest {
     }
 
     @Test @Timeout(60)
-    void ordinaryProfileHasNoSmsRoutesAssetsGroupsOrJobs() throws Exception {
+    void ordinaryProfileServesConsoleWithoutSmsApiGroupsOrJobs() throws Exception {
         String scope = "test_sms_" + UUID.randomUUID().toString().replace("-", "");
         String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         int serverPort = port();
         URI base = URI.create("http://127.0.0.1:" + serverPort);
-        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class);
+        var app = new SpringApplication(XaMassServerConfiguration.class, SmsProductConfiguration.class, ConsoleFrontendConfiguration.class);
         app.setRegisterShutdownHook(false);
         try (var context = app.run("--spring.profiles.active=default", "--server.port=" + serverPort,
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
-                "--xa.mass.worker-assembly.group-config-json={}", "--logging.level.root=WARN");
+                "--xa.mass.worker-assembly.group-config-json={}", "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
+                "--logging.level.root=WARN");
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(ListenerService.class)).isEmpty();
             assertThat(context.getBean(WorkerResourceCatalog.class)
                     .getWorkerGroupDescriptors(List.of("sms-cn", "sms-us", "sms-gb")).values())
                     .allMatch(value -> value == null);
-            for (String path : List.of("/api/v1/sms/catalog", "/api/v1/sms/listeners", "/sms",
-                    "/sms/listeners", "/sms/metrics", "/sms/index.html")) {
+            for (String path : List.of("/api/v1/sms/catalog", "/api/v1/sms/listeners", "/sms/index.html", "/sms/assets/missing.js", "/sms/missing", "/api/v1/sms/missing")) {
                 assertThat(send(http, base, path, null).statusCode()).as(path).isEqualTo(404);
+            }
+            for (String path : List.of("/sms", "/sms/", "/sms/listeners", "/sms/listeners/", "/sms/metrics", "/sms/metrics/")) {
+                var page = send(http, base, path, null);
+                assertThat(page.statusCode()).as(path).isEqualTo(200);
+                assertThat(page.body()).contains("/static/js/").doesNotContain("/sms/assets/");
+                assertThat(page.body()).isEqualTo(send(http, base, "/", null).body());
             }
             assertThat(send(http, base, "/v3/api-docs", null).body()).doesNotContain("/api/v1/sms/");
         } finally {

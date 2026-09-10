@@ -56,7 +56,6 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.9.0 --activate
           corepack pnpm@11.9.0 --dir frontend install --frozen-lockfile
-          corepack pnpm@11.9.0 --dir products/sms-reception/frontend install --frozen-lockfile
           python -m pip install -r products/sms-reception/requirements.txt
       - name: Product contracts and frontend
         run: |
@@ -64,14 +63,17 @@ jobs:
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test
-          corepack pnpm@11.9.0 --dir products/sms-reception/frontend lint
-          corepack pnpm@11.9.0 --dir products/sms-reception/frontend typecheck
-          corepack pnpm@11.9.0 --dir products/sms-reception/frontend test
           python -m unittest discover -s products/sms-reception -p 'test_*.py'
       - name: Real product path
         run: python products/sms-reception/run_acceptance.py --build --scenario functional --output products/sms-reception/build/ci-proof
       - name: Worker stop and new-run isolation
         run: python products/sms-reception/run_acceptance.py --scenario lifecycle --output products/sms-reception/build/ci-lifecycle
+      - name: Verify and run the extracted unified Preview
+        run: |
+          ./gradlew :products:sms-reception:previewZip --console=plain
+          python products/sms-reception/verify_preview_archive.py --archive products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip --frontend frontend/dist
+          python -m zipfile -e products/sms-reception/build/distributions/sms-reception-0.1.0-preview.zip products/sms-reception/build/ci-unpacked
+          python products/sms-reception/build/ci-unpacked/sms-reception-0.1.0-preview/run_acceptance.py --scenario functional --output products/sms-reception/build/ci-zip-proof
       - name: Documentation and proof selection
         run: |
           python .github/scripts/check_docs.py
@@ -87,4 +89,6 @@ jobs:
             products/sms-reception/build/ci-proof/summary.md
             products/sms-reception/build/ci-lifecycle/summary.json
             products/sms-reception/build/ci-lifecycle/summary.md
+            products/sms-reception/build/ci-zip-proof/summary.json
+            products/sms-reception/build/ci-zip-proof/summary.md
           if-no-files-found: warn

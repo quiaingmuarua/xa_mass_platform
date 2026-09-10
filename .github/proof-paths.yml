@@ -283,7 +283,6 @@ frontend:
 runtime_distribution:
   - 'products/sms-reception/backend/src/main/**'
   - 'products/sms-reception/backend/build.gradle'
-  - 'products/sms-reception/frontend/**'
   - 'products/sms-reception/config/**'
   - 'products/sms-reception/build.gradle'
   - 'distribution/server/**'
