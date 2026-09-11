@@ -133,8 +133,9 @@ final class LivePropertiesProof {
     private long mutate(String method, Map<String, String> properties) throws Exception {
         long sent = System.nanoTime();
         evidence.mutationRequests++;
-        Map<String, Object> response = request(options.labBaseUrl(), method,
-                workers.getFirst().path() + ":properties", properties, phaseDeadline, false);
+        Map<String, Object> response = request(options.labBaseUrl(), "POST",
+                workers.getFirst().path() + ":inputs", Map.of("eventName",
+                        method.equals("PUT") ? "properties.replace" : "properties.update", "payload", properties), phaseDeadline, false);
         require(response.keySet().equals(java.util.Set.of("persisted", "sendAccepted")), "mutation-response-shape");
         if (Boolean.TRUE.equals(response.get("persisted"))) {
             evidence.persistedCount++;

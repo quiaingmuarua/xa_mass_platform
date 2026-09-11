@@ -10,6 +10,14 @@ from run_acceptance import compare
 
 
 class AcceptanceOracleTest(unittest.TestCase):
+    def test_explicit_old_phone_reaches_target_worker_owner_without_client_side_rejection(self):
+        target = {"workerGroupId": "demo-sim", "replicaKey": "workers-000.jsonl:1"}
+        with patch("run_acceptance.http", return_value={"status": "IGNORED"}) as call, \
+                patch("run_acceptance.all_pages", side_effect=AssertionError("Do not reroute by phone")):
+            run_acceptance.inject(SimpleNamespace(host="host"), "old-phone", "text", "id", worker=target)
+        call.assert_called_once_with("host", "/lab/v1/workers/demo-sim/workers-000.jsonl%3A1:inputs",
+                                     {"eventName": "sms.receive", "payload": {"phone": "old-phone", "text": "text", "smsId": "id"}})
+
     def test_extracted_preview_owns_sms_launch_and_http(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -54,7 +62,7 @@ class Preview:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime-http.log"
             path.write_text("POST /api/v1/worker-groups/demo-sim/workers:prepare-batch 200\n"
-                            "PATCH /lab/v1/workers/demo-sim/record:properties 200\n"
+                            "POST /lab/v1/workers/demo-sim/record:inputs 200\n"
                             "POST /api/v1/worker-groups/demo-sim/workers:prepare 503\n", encoding="utf-8")
             self.assertEqual({"prepare": 1, "prepare-batch": 1}, run_acceptance.prepare_counts(path))
             path.write_text("POST /api/v1/worker-groups/demo-sim/workers:prepare", encoding="utf-8")

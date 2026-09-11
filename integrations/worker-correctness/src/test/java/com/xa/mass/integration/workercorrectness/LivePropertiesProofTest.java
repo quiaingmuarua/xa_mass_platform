@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.ArrayList;
@@ -95,7 +96,11 @@ class LivePropertiesProofTest {
             paths.add(path);
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             Map<String, ?> response;
-            if (path.endsWith(":properties")) {
+            if (path.endsWith(":inputs")) {
+                assertEquals("POST", exchange.getRequestMethod());
+                Map<String, Object> input = Jsons.parseObject(body);
+                assertEquals(Set.of("eventName", "payload"), input.keySet());
+                assertTrue(Set.of("properties.update", "properties.replace").contains(input.get("eventName")));
                 mutations.incrementAndGet();
                 response = Map.of("persisted", true, "sendAccepted", false);
             } else if (path.startsWith("/lab/")) {

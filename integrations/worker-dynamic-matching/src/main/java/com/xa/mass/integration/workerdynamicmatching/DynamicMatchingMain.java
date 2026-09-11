@@ -294,7 +294,8 @@ public final class DynamicMatchingMain {
         w.history.add(w.expected); // In-flight reads are judged against this request, whose failure fails the proof.
         long sent = w.lastMutation = System.nanoTime();
         mutations.incrementAndGet();
-        var response = lab.call(method, w.path() + ":properties", supplied, false);
+        var response = lab.call("POST", w.path() + ":inputs", Map.of("eventName",
+                method.equals("PUT") ? "properties.replace" : "properties.update", "payload", supplied), false);
         require(response.keySet().equals(Set.of("persisted", "sendAccepted"))
                 && Boolean.TRUE.equals(response.get("persisted")) && Boolean.TRUE.equals(response.get("sendAccepted")), "properties-not-accepted");
         accepted.incrementAndGet();

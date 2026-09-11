@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import uuid
 
 REPO = Path(__file__).resolve().parents[2]
@@ -103,8 +104,12 @@ def observe_receipt(run, value, message, expected, started, reply=None):
 
 def action(run, message, name, text=None, request=None):
     started = time.monotonic()
-    response = http(run.host, f'/lab/v1/messages/{message["id"]}:{name}',
-                    {} if text is None else {"requestId": request or str(uuid.uuid4()), "text": text}, timeout=2)
+    target = run.input_workers_by_id[message["workerId"]]
+    path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="")
+    payload = {"messageId": message["id"]}
+    if text is not None:
+        payload.update(requestId=request or str(uuid.uuid4()), text=text)
+    response = http(run.host, path + ":inputs", {"eventName": "message." + name, "payload": payload}, timeout=2)
     require(response["persisted"], "Recipient action did not persist")
     return started, response
 
@@ -139,6 +144,21 @@ def functional(run):
     require(all(m["workerId"] == listener["workerId"] for m in rows), "Targeted campaign did not execute on SMS Worker")
     require(http(run.url, "/api/v1/sms/listeners/" + listener["id"])["status"] == "LISTENING", "Campaign stopped SMS listening")
     wait(run, lambda: task_state(run, value["taskId"]) == "terminal", 30, "finite Task automatic completion")
+    target = run.input_workers_by_id[rows[0]["workerId"]]
+    worker_path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="")
+    require({m["messageId"] for m in all_pages(run.host, worker_path + ":messages")}
+            == {m["id"] for m in rows}, "Worker inbox does not match its real executed messages")
+    other = next(w for w in inventory if w["workerId"] != rows[0]["workerId"])
+    other_path = "/lab/v1/workers/" + urllib.parse.quote(other["workerGroupId"], safe="") + "/" + urllib.parse.quote(other["replicaKey"], safe="")
+    try:
+        http(run.host, other_path + ":inputs", {"eventName": "message.deliver", "payload": {"messageId": rows[0]["id"]}})
+        raise AssertionError("Cross-Worker receipt was accepted")
+    except urllib.error.HTTPError as error:
+        require(error.code == 404, "Expected message ownership rejection")
+    require(all(m["status"] == "SENT" for m in all_pages(run.host, worker_path + ":messages")),
+            "Rejected cross-Worker input changed local records")
+    require(all(m["status"] == "SENT" for m in campaign_messages(run, value)),
+            "Rejected cross-Worker input changed product observations")
     checkpoints = []
     for name, status, text in [("deliver", "DELIVERED", None), ("read", "READ", None), ("reply", "REPLIED", "first"), ("reply", "REPLIED", "second")]:
         began, receipt = action(run, rows[0], name, text)
@@ -173,7 +193,10 @@ def functional(run):
     began, receipt = action(run, rows[0], "reply", "after-duplicate")
     require(receipt["sendAccepted"], "Original Reporter lost")
     checkpoints.append(observe_receipt(run, value, rows[0], "REPLIED", began, "after-duplicate"))
-    injected = http(run.host, "/lab/v1/sms/sms", {"phone": listener["phone"], "text": "[A] 123456", "smsId": "shared-input"})
+    target = run.input_workers_by_id[listener["workerId"]]
+    input_path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="") + ":inputs"
+    injected = http(run.host, input_path, {"eventName": "sms.receive", "payload": {
+        "phone": listener["phone"], "text": "[A] 123456", "smsId": "shared-input"}})
     require(injected["status"] == "MATCHED", "Same Worker SMS did not match")
     received = sms_wait(run, listener, "RECEIVED")
     require(received["workerId"] == rows[0]["workerId"], "Cross-product identity mismatch")
@@ -401,6 +424,8 @@ def main():
     try:
         with run:
             print("Shared Server and Host ready; beginning " + args.scenario, flush=True)
+            run.input_workers_by_id = {worker["workerId"]: worker
+                                       for worker in all_pages(run.host, "/lab/v1/messages/inventory")}
             result = {"functional": functional, "lifecycle": lifecycle, "load-1k": load_1k}[args.scenario](run)
     except Exception as error:
         result["failureType"] = type(error).__name__

@@ -155,7 +155,7 @@ class WorkerSimulatorControlServerTest {
                         "Worker Simulator",
                         "/lab/v1/workers",
                         "Save properties",
-                        "Save and publish full properties",
+                        "设备输入",
                         "Schedule stop"
                 )
                 .doesNotContain(
@@ -476,7 +476,7 @@ class WorkerSimulatorControlServerTest {
                     .containsAllEntriesOf(delta).containsEntry("labSlot", "1");
             return true;
         });
-        assertThat(Jsons.parseObject(request("PATCH", workerPath() + ":properties",
+        assertThat(Jsons.parseObject(propertyInput("properties.update", workerPath(),
                 Jsons.toJson(delta)).body()))
                 .isEqualTo(Map.of("persisted", true, "sendAccepted", true));
         Map<String, String> replacement = Map.of(
@@ -486,7 +486,7 @@ class WorkerSimulatorControlServerTest {
                     .isEqualTo(replacement);
             return true;
         });
-        assertThat(request("PUT", workerPath() + ":properties",
+        assertThat(propertyInput("properties.replace", workerPath(),
                 Jsons.toJson(replacement)).statusCode()).isEqualTo(200);
         assertThat(Files.readAllLines(inventoryPath()).subList(1, 100))
                 .isEqualTo(before.subList(1, 100));
@@ -501,14 +501,14 @@ class WorkerSimulatorControlServerTest {
         running();
         Map<String, String> delta = Map.of("changed", "persisted");
         when(manager.reportProperties(CLIENT, delta)).thenReturn(false);
-        HttpResponse<String> response = request("PATCH", workerPath() + ":properties", Jsons.toJson(delta));
+        HttpResponse<String> response = propertyInput("properties.update", workerPath(), Jsons.toJson(delta));
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(Jsons.parseObject(response.body()))
                 .isEqualTo(Map.of("persisted", true, "sendAccepted", false));
         assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
                 .containsAllEntriesOf(delta);
         verify(manager, times(1)).reportProperties(CLIENT, delta);
-        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(200);
+        assertThat(propertyInput("properties.update", workerPath(), "{}").statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -524,15 +524,14 @@ class WorkerSimulatorControlServerTest {
             return false;
         });
         try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<HttpResponse<String>> publishing = callers.submit(() -> request(
-                    "PATCH", workerPath() + ":properties", "{\"changed\":\"yes\"}"));
+            Future<HttpResponse<String>> publishing = callers.submit(() -> propertyInput("properties.update", workerPath(), "{\"changed\":\"yes\"}"));
             try {
                 assertThat(sending.await(1, TimeUnit.SECONDS)).isTrue();
-                assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
-                assertThat(request("PUT", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+                assertThat(propertyInput("properties.update", workerPath(), "{}").statusCode()).isEqualTo(409);
+                assertThat(propertyInput("properties.replace", workerPath(), "{}").statusCode()).isEqualTo(409);
                 assertThat(request("PUT", workerPath(), "{}").statusCode()).isEqualTo(409);
                 String secondPath = "/lab/v1/workers/" + GROUP + "/" + INVENTORY + ":2";
-                assertThat(request("PATCH", secondPath + ":properties", "{\"other\":\"yes\"}")
+                assertThat(propertyInput("properties.update", secondPath, "{\"other\":\"yes\"}")
                         .statusCode()).isEqualTo(200);
                 assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
                         .containsEntry("changed", "yes").doesNotContainKey("other");
@@ -567,7 +566,7 @@ class WorkerSimulatorControlServerTest {
             return false;
         });
         try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-            callers.submit(() -> request("PATCH", workerPath() + ":properties", "{}"));
+            callers.submit(() -> propertyInput("properties.update", workerPath(), "{}"));
             try {
                 assertThat(sending.await(1, TimeUnit.SECONDS)).isTrue();
                 callers.submit(() -> {
@@ -583,18 +582,18 @@ class WorkerSimulatorControlServerTest {
 
     @Test
     void rejectsInvalidPropertiesCoordinatesUnknownAndStoppedWorkersBeforeSending() throws Exception {
-        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+        assertThat(propertyInput("properties.update", workerPath(), "{}").statusCode()).isEqualTo(409);
         running();
         List<String> before = Files.readAllLines(inventoryPath());
         for (String body : List.of("{\"x\":1}", "{\"x\":null}", "[]",
                 "{\"labInventoryLine\":\"2\"}", "{\"clientWorkerKey\":\"invalid\"}")) {
-            assertThat(request("PATCH", workerPath() + ":properties", body).statusCode()).isEqualTo(400);
+            assertThat(propertyInput("properties.update", workerPath(), body).statusCode()).isEqualTo(400);
         }
-        assertThat(request("PUT", workerPath() + ":properties", "{}").statusCode()).isEqualTo(400);
-        assertThat(request("PATCH", "/lab/v1/workers/missing/missing:properties", "{}").statusCode())
+        assertThat(propertyInput("properties.replace", workerPath(), "{\"labInventoryKey\":\"wrong\"}").statusCode()).isEqualTo(400);
+        assertThat(propertyInput("properties.update", "/lab/v1/workers/missing/missing", "{}").statusCode())
                 .isEqualTo(404);
         when(manager.desiredRunning(CLIENT)).thenReturn(false);
-        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(409);
+        assertThat(propertyInput("properties.update", workerPath(), "{}").statusCode()).isEqualTo(409);
         assertThat(Files.readAllLines(inventoryPath())).isEqualTo(before);
         verify(manager, never()).reportProperties(anyString());
         verify(manager, never()).reportProperties(anyString(), org.mockito.ArgumentMatchers.anyMap());
@@ -605,11 +604,62 @@ class WorkerSimulatorControlServerTest {
         running();
         when(manager.reportProperties(CLIENT, Map.of("changed", "yes")))
                 .thenThrow(new RuntimeException("SDK failure"));
-        assertThat(request("PATCH", workerPath() + ":properties", "{\"changed\":\"yes\"}")
+        assertThat(propertyInput("properties.update", workerPath(), "{\"changed\":\"yes\"}")
                 .statusCode()).isEqualTo(500);
         assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
                 .containsEntry("changed", "yes");
-        assertThat(request("PATCH", workerPath() + ":properties", "{}").statusCode()).isEqualTo(200);
+        assertThat(propertyInput("properties.update", workerPath(), "{}").statusCode()).isEqualTo(200);
+    }
+
+    private HttpResponse<String> propertyInput(String eventName, String path, String payload) throws Exception {
+        return request("POST", path + ":inputs", "{\"eventName\":\"" + eventName + "\",\"payload\":" + payload + "}");
+    }
+
+    @Test
+    void inputsDescribeInstalledCapabilitiesAndRejectMalformedAndRetiredRoutes() throws Exception {
+        var descriptions = Jsons.parseArray(request("GET", workerPath() + ":inputs", null).body());
+        assertThat(descriptions).hasSize(2);
+        assertThat(descriptions.stream().map(item -> (String) ((Map<?, ?>) item).get("eventName")))
+                .containsExactly("properties.update", "properties.replace");
+        assertThat(((Map<?, ?>) descriptions.get(1)).get("payloadExample").toString())
+                .doesNotContain("labInventoryKey", "labInventoryLine");
+        for (String body : List.of("{}", "[]", "{\"eventName\":null,\"payload\":{}}",
+                "{\"eventName\":\"properties.update\",\"payload\":null}",
+                "{\"eventName\":\"properties.update\",\"payload\":{},\"forward\":\"x\"}",
+                "{\"eventName\":\"sms.receive\",\"payload\":{\"text\":\"x\"}}",
+                "{\"eventName\":\"message.read\",\"payload\":{\"messageId\":\"x\"}}",
+                "{\"eventName\":\"platform.worker.properties.updated\",\"payload\":{}}")) {
+            assertThat(request("POST", workerPath() + ":inputs", body).statusCode()).isEqualTo(400);
+        }
+        assertThat(request("POST", workerPath() + ":inputs?x=1", "{}").statusCode()).isEqualTo(400);
+        assertThat(request("GET", workerPath() + ":messages?limit=1", null).statusCode()).isEqualTo(400);
+        for (String method : List.of("PATCH", "PUT", "GET")) {
+            assertThat(request(method, workerPath() + ":properties", "{}").statusCode()).isEqualTo(404);
+        }
+        verify(manager, never()).reportProperties(anyString());
+        verify(manager, never()).reportProperties(anyString(), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void emptyReplacementPreservesOnlyPhysicalCoordinatesAndDoesNotPrepare() throws Exception {
+        running();
+        assertThat(propertyInput("properties.replace", workerPath(), "{}").statusCode()).isEqualTo(200);
+        assertThat(workers.workerSnapshot(GROUP, CLIENT, true).workerProperties())
+                .isEqualTo(Map.of("labInventoryKey", INVENTORY, "labInventoryLine", "1"));
+        verify(manager).reportProperties(CLIENT);
+        verify(manager, never()).prepareAndStart(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void oversizedDeviceInputDoesNotPersistOrPublish() throws Exception {
+        running();
+        var before = Files.readAllLines(inventoryPath());
+        assertThat(propertyInput("properties.update", workerPath(), Jsons.toJson(Map.of("large", "x".repeat(65_536))))
+                .statusCode()).isEqualTo(400);
+        assertThat(request("POST", workerPath() + ":inputs", " ".repeat(1_000_001)).statusCode()).isEqualTo(400);
+        assertThat(Files.readAllLines(inventoryPath())).isEqualTo(before);
+        verify(manager, never()).reportProperties(anyString());
+        verify(manager, never()).reportProperties(anyString(), org.mockito.ArgumentMatchers.anyMap());
     }
 
     private void running() {

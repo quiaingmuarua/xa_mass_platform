@@ -51,9 +51,12 @@ def wait_state(run, listener, expected, timeout=20):
     return result
 
 
-def inject(run, phone, text, sms_id=None):
-    return http(run.host, "/lab/v1/sms/sms", {"phone": phone, "text": text,
-                "smsId": sms_id or str(uuid.uuid4())})
+def inject(run, phone, text, sms_id=None, worker=None):
+    target = worker if worker is not None else next(item for item in all_pages(run.host, "/lab/v1/sms/inventory")
+                                                   if item["phone"] == phone)
+    path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="")
+    return http(run.host, path + ":inputs", {"eventName": "sms.receive", "payload": {
+                "phone": phone, "text": text, "smsId": sms_id or str(uuid.uuid4())}})
 
 
 def all_records(base, path):
@@ -160,7 +163,7 @@ def dynamic_properties(run, inventory):
 
     def patch(worker, values):
         path = "/lab/v1/workers/" + worker["workerGroupId"] + "/" + urllib.parse.quote(worker["replicaKey"], safe="")
-        response = http(run.host, path + ":properties", values, method="PATCH")
+        response = http(run.host, path + ":inputs", {"eventName": "properties.update", "payload": values})
         require(response["persisted"] and response["sendAccepted"], "Hot properties not accepted locally")
         return http(run.host, path)["workerProperties"]
 
@@ -169,7 +172,7 @@ def dynamic_properties(run, inventory):
     local = next(record for record in all_pages(run.host, "/lab/v1/sms/records") if record["listenerId"] == old["id"])
     require(local["status"] == "INTERRUPTED" and not local["reportAccepted"], "Hot change emitted a synthetic ending report")
     try:
-        inject(run, cn["phone"], "[A] 222222", "old-phone-after-change")
+        inject(run, cn["phone"], "[A] 222222", "old-phone-after-change", worker=cn)
         raise AssertionError("Old phone is still routed")
     except urllib.error.HTTPError as error:
         require(error.code == 400, "Old phone rejection has wrong status")

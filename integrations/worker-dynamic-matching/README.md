@@ -55,19 +55,23 @@ have an execution entry observed within ten seconds. A missing Task preview is
 not nonterminal evidence. Preconditions fail rather than causing more load or
 automatic retries of mutations.
 
+Worker mutations use `POST ...:inputs` on stable Simulator file coordinates;
+`properties.update` and `properties.replace` share the Host's actual persistence
+and SDK publication path. Platform Properties still use their independent Server API.
+
 ## Scenario And Oracles
 
 | Phase | Mutation and independent oracle |
 | --- | --- |
 | A baseline | Submit target-only B witness; three seconds with no execution or Result while background work runs. |
-| A to B | Four Lab writers issue eight PATCH rounds over 100 targets, sequential per Worker and at least 500 ms between rounds, without remote observation waits. B witness subsequently succeeds on actual targets. |
+| A to B | Four Lab writers issue eight `properties.update` rounds over 100 targets, sequential per Worker and at least 500 ms between rounds, without remote observation waits. B witness subsequently succeeds on actual targets. |
 | B stable | Submit target-only A witness; require no execution/Result for three seconds and retain it for final recovery. |
-| Pool removed | Full PUT omits `proofPool` and prior delta fields. A target-only `$exists:false` witness succeeds. |
+| Pool removed | `properties.replace` omits `proofPool` and prior delta fields. A target-only `$exists:false` witness succeeds. |
 | Platform disabled | Restore B, change only target Platform Properties to `proofEnabled=no`, submit another B witness and establish a three-second negative window. |
 | Platform enabled | Patch only Platform Properties to `yes`; the waiting B witness succeeds. Worker Properties remain unchanged. |
 | Return A | Replace target Properties with their A baselines. The waiting A witness succeeds; drain all seven Tasks. |
 
-Each PATCH changes correlated sequence/mirror values and adds a unique delta
+Each Worker update changes correlated sequence/mirror values and adds a unique delta
 key. Adapter and Runtime readers run independently during mutations. Every read
 must equal a complete submitted snapshot whose local mutation succeeds; failed
 or ambiguous mutation responses fail the entire proof. A burst must overlap

@@ -121,28 +121,24 @@ public final class ListeningRegistry {
         return entry.snapshot;
     }
 
-    public Map<String, Object> receive(String phone, String smsId, String text) {
-        Sim sim = sims.get(phone);
-        if (sim == null || smsId == null || smsId.isBlank() || smsId.length() > 128
+    public Map<String, Object> receive(Sim sim, String smsId, String text) {
+        return receive(sim, null, smsId, text);
+    }
+
+    public Map<String, Object> receive(Sim sim, String expectedPhone, String smsId, String text) {
+        if (smsId == null || smsId.isBlank() || smsId.length() > 128
                 || text == null || text.isBlank() || text.length() > 1024)
             throw new IllegalArgumentException("Invalid simulated SMS");
-        return receive(sim, phone, smsId, text);
-    }
-
-    public Map<String, Object> receive(Sim sim, String smsId, String text) {
-        return receive(sim, sim.properties.get().get("phone"), smsId, text);
-    }
-
-    private Map<String, Object> receive(Sim sim, String phone, String smsId, String text) {
         long now = clock.millis();
-        String digest = fingerprint(phone + "\n" + text);
         List<Publication> publications = new ArrayList<>();
         Entry winner = null;
         Template winningTemplate = null;
         synchronized (sim) {
-            // A lookup admitted against the old address cannot reach its next occupant.
-            if (sims.get(phone) != sim || !sim.properties.get().get("phone").equals(phone))
-                return Map.of("status", "IGNORED", "smsId", smsId);
+            String phone = sim.properties.get().get("phone");
+            // An explicit old address cannot consume a dedup identity or reach its next occupant.
+            if (sims.get(phone) != sim || expectedPhone != null && !expectedPhone.equals(phone))
+                throw new IllegalArgumentException("SMS phone does not match the target device");
+            String digest = fingerprint(phone + "\n" + text);
             synchronized (smsAdmission) {
                 if (closed) throw new IllegalStateException("Simulator closed");
                 String previous = smsIdentities.get(smsId);

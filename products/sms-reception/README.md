@@ -190,10 +190,12 @@ Backend 只重读 Result，不修补平台事实，不保证最终到达。
 
 模拟控制仅由统一 Worker Simulator 的独立端口提供；产品 Server 不代理这些请求。
 [Host Owner](../../worker_simulator_jvm/README.md#sms-scenario) 维护 `/lab` 页面、
-`/lab/v1/sms/*` 接口、有限启动参数和号码启停规则。Host 直接使用 Worker SDK，
+`/lab/v1/sms/*` 查询／流量接口、统一设备输入和号码启停规则。Host 直接使用 Worker SDK，
 与默认 Lab 共用主类、Manager 集合及 HTTP 控制服务，无独立产品模拟器模块。
 
-Host 页面始终开放通用库存、Properties 和启停控制，额外展示短信注入和自动流。
+Host 页面始终开放通用库存、设备输入和启停控制，额外展示短信记录和自动流。
+单条短信通过稳定文件坐标的 `:inputs`、`sms.receive` 输入到指定 Sim；可选 phone
+由 SMS Owner 在准入栅栏内核对，换号后的旧地址不在 Harness 中预先过滤。
 phone/country 热修改先持久化再更新本地快照，最后通过 SDK 上报；换号本地结束旧监听，不合成远端结束报告。
 功能验收独立读取 Adapter、Matching，验证新国家索引的实际执行者和 Host 重启后恢复。
 停止号码关闭本地监听准入并清理 Reporter，不发送产品取消命令或合成结束 Report。

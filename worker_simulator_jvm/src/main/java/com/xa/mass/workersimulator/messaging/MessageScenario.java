@@ -70,12 +70,12 @@ public final class MessageScenario implements AutoCloseable {
         }
     }
 
-    public Map<String, Object> act(String id, String action, Map<String, Object> input) {
+    public Map<String, Object> act(Sender sender, String id, String action, Map<String, Object> input) {
         Receipt receipt;
         synchronized (gate) {
             if (closed) throw new IllegalStateException("Message channel closed");
             Entry entry = messages.get(id);
-            if (entry == null) throw new MissingMessage();
+            if (entry == null || entry.sender != sender) throw new MissingMessage();
             int tag = switch (action) { case "deliver" -> 7; case "read" -> 8; case "reply" -> 9;
                 default -> throw new IllegalArgumentException("Unknown recipient action"); };
             String operation = null, fingerprint = null, reply = null;
@@ -157,6 +157,13 @@ public final class MessageScenario implements AutoCloseable {
                 item.put("phone", properties.get("phone")); item.put("workerId", sender.workerId.get()); item.put("runtimeState", sender.runtimeState.get());
                 return item;
             }).toList());
+        }
+    }
+    public Map<String, Object> page(Sender sender, int offset, int limit) {
+        pageBounds(offset, limit);
+        synchronized (gate) {
+            return Map.of("total", sender.messages.size(), "items", sender.messages.stream().skip(offset).limit(limit)
+                    .map(entry -> entry.snapshot).toList());
         }
     }
     public Map<String, Object> metrics() {

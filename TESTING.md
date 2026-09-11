@@ -262,7 +262,7 @@ representative Host, Adapter Properties entry and Server admission paths checked
 by the selection contract.
 
 Worker Dynamic Matching uses 2x500 Workers in an independent selected Proof Gate
-lane. Its three background Tasks overlap Worker PATCH/PUT and Platform Properties changes.
+lane. Its three background Tasks overlap Worker `properties.update/replace` inputs and Platform Properties changes.
 Four witness Tasks prove ineligible waiting and eligible execution on the 100
 actual target replicas. Seven Tasks and 150,400 Results must close together with
 the independent Host journal, unchanged processes/controls and zero Prepare

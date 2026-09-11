@@ -307,6 +307,13 @@
       .sms-ui .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
       .sms-ui section { padding: 14px; }
     }
+    #device-inputs { margin: 20px 0; padding: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    #device-inputs select { width: 100%; min-height: 38px; margin-bottom: 12px; padding: 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+    #input-payload { width: 100%; min-height: 140px; resize: vertical; }
+    .input-hint { color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+    #input-history { max-height: 360px; overflow: auto; }
+    #input-history details { border: 1px solid var(--border); border-radius: 5px; padding: 8px; margin-bottom: 8px; }
+    #input-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -369,11 +376,38 @@
           <dt>Diagnostic</dt><dd id="detail-diagnostic">-</dd>
         </dl>
 
+        <section id="device-inputs" aria-labelledby="inputs-heading">
+          <h2 id="inputs-heading">设备输入</h2>
+          <p class="input-hint">模拟设备变化或外部回调。Host 处理后经真实 Worker SDK 上报，不是平台 Direct Call。</p>
+          <p id="input-coordinates" class="input-hint"></p>
+          <label for="input-event">输入事件</label>
+          <select id="input-event" disabled><option value="">正在加载</option></select>
+          <div id="input-messages" hidden>
+            <label for="input-message">该 Worker 已发送的消息</label>
+            <select id="input-message"><option value="">请选择消息，不默认选择最新一条</option></select>
+            <div class="editor-actions">
+              <button id="input-messages-prev" type="button">上一页</button>
+              <button id="input-messages-next" type="button">下一页</button>
+              <button id="input-messages-refresh" type="button">刷新消息</button>
+              <span id="input-messages-page" class="input-hint"></span>
+            </div>
+          </div>
+          <label for="input-payload">Payload · JSON</label>
+          <textarea id="input-payload" spellcheck="false" rows="7"></textarea>
+          <div class="editor-actions">
+            <button id="input-submit" class="primary" type="button" disabled>注入设备输入</button>
+            <button id="input-reset" type="button">恢复示例</button>
+          </div>
+          <p id="input-notice" role="status" class="input-hint"></p>
+          <p class="input-hint">返回值只表示本地处理和发送受理，不是上游 ACK。失败不自动重试。全量只编辑可变属性，文件坐标由 Host 保留。</p>
+          <div class="editor-actions"><h3>本页操作记录 · 最多 20 条</h3><button id="input-history-clear" type="button">清空</button></div>
+          <div id="input-history"></div>
+        </section>
+
         <label for="state-document">Complete schema-v2 state document</label>
         <textarea id="state-document" spellcheck="false"></textarea>
         <div class="editor-actions">
           <button id="save-state" class="primary" type="button">Save properties</button>
-          <button id="publish-state" type="button">Save and publish full properties</button>
           <span id="dirty-state" class="dirty-state"></span>
         </div>
 
@@ -393,7 +427,6 @@
   <div id="sms-error" role="alert" hidden></div>
   <div class="stats"><div><small>模拟号码</small><strong id="sms-numbers">—</strong></div><div><small>活跃监听</small><strong id="sms-active">—</strong></div><div><small>Host 已匹配</small><strong id="sms-matched">—</strong></div><div><small>本地上报失败</small><strong id="sms-failed">—</strong></div></div>
   <div class="controls">
-    <section><h2>手动模拟短信</h2><form id="sms-sms-form"><label for="sms-phone">目标号码</label><input id="sms-phone" required autocomplete="off" placeholder="从下方号码表选择，或输入完整号码" /><label for="sms-text">短信正文</label><textarea id="sms-text" rows="3" maxlength="1024" required>[A] 123456</textarea><div class="actions"><button class="primary" type="submit">发送模拟短信</button></div></form><p class="hint">A：[A] 123456；B：[B] 123456；C：任意非空内容。无有效监听或无模板匹配时，不产生接码结果。</p><div id="sms-notice" role="status"></div></section>
     <section><h2>有限自动短信流</h2><form id="sms-traffic-form"><label for="sms-rate">每秒短信数</label><input id="sms-rate" type="number" value="20" min="1" max="1000" required /><label for="sms-duration">运行时长（秒）</label><input id="sms-duration" type="number" value="60" min="1" max="300" required /><div class="actions"><button id="sms-start" class="primary" type="submit">启动短信流</button><button id="sms-stop" type="button" disabled>停止</button><span id="sms-traffic-state">已停止</span></div></form><p class="hint">固定种子独立生成 A / B 和无关短信。单次最多 100,000 条；不为指定订单生成内容。</p><p id="sms-traffic-count" class="hint"></p></section>
   </div>
   <section><h2>模拟 Worker</h2><p class="hint">在上方 Worker 管理中编辑 Properties；换号或停止会本地结束旧监听，不合成远端结束报告。运行状态来自本地 Java Worker，不代表 Adapter 已验证或 Kernel 可调度。活跃监听上限为每号码 64 个。</p><div class="table-wrap"><table><thead><tr><th>国家</th><th>号码</th><th>Worker ID</th><th>期望运行</th><th>本地状态</th><th>活跃监听</th><th>操作</th></tr></thead><tbody id="sms-workers"></tbody></table></div><div class="pager"><button id="sms-prev">上一页</button><span id="sms-page">—</span><button id="sms-next">下一页</button></div></section>
@@ -404,10 +437,6 @@
       <p id="messages-error" role="status"></p>
       <div class="table-wrap"><table><thead><tr><th>收件人</th><th>发送号码</th><th>正文</th><th>本地阶段</th><th>最新回复</th><th>操作</th></tr></thead><tbody id="messages-records"></tbody></table></div>
       <div class="pager"><button id="messages-prev">上一页</button><span id="messages-page"></span><button id="messages-next">下一页</button></div>
-      <form id="messages-reply-form"><label for="messages-selected">选中的消息</label><input id="messages-selected" readonly placeholder="从上方选择消息" />
-        <label for="messages-reply">回复内容</label><textarea id="messages-reply" maxlength="4096" required></textarea>
-        <button type="submit" class="primary">发送回复</button><p id="messages-notice" role="status"></p>
-      </form>
     </section>
   </main>
   <script>
@@ -415,26 +444,13 @@
       document.documentElement.lang = "zh-CN";
       document.title = "Products · Worker Simulator";
       const element = id => document.getElementById("messages-" + id);
-      let offset = 0, total = 0, stopped = false, timer, reading, mutation, operationId = crypto.randomUUID();
+      let offset = 0, total = 0, stopped = false, timer, reading;
       const limit = 30;
       async function api(path, body, signal) {
         const response = await fetch("/lab/v1/messages/" + path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal });
         const value = await response.json();
         if (!response.ok) throw new Error(value.message || "请求失败 " + response.status);
         return value;
-      }
-      async function act(id, action, body = {}) {
-        if (mutation || stopped) return;
-        const controller = mutation = new AbortController(), timeout = setTimeout(() => controller.abort(), 5000);
-        try {
-          const value = await api(encodeURIComponent(id) + ":" + action, body, controller.signal);
-          if (!stopped) {
-            element("notice").textContent = value.unchanged ? "此前已执行此动作。" : value.sendAccepted ? "本地动作已完成，回执发送已受理；平台结果请在工作台查看。" : "本地动作已完成，回执发送未受理。";
-            if (action === "reply") operationId = crypto.randomUUID();
-            await refresh();
-          }
-        } catch (error) { if (!stopped) element("notice").textContent = "操作结果未确认：" + error.message; }
-        finally { clearTimeout(timeout); mutation = undefined; }
       }
       function row(item) {
         const tr = document.createElement("tr");
@@ -445,8 +461,7 @@
         for (const [action, label] of [["deliver", "送达"], ["read", "阅读"], ["reply", "选择回复"]]) {
           const button = document.createElement("button"); button.textContent = label;
           button.onclick = () => {
-            if (action === "reply") { element("selected").value = item.messageId; operationId = crypto.randomUUID(); element("reply").focus(); }
-            else void act(item.messageId, action);
+            window.openMessageInput(item, "message." + action);
           };
           td.append(button);
         }
@@ -465,13 +480,11 @@
         } catch (error) { if (!controller.signal.aborted) element("error").textContent = error.message; }
         finally { clearTimeout(timeout); }
       }
-      element("reply-form").onsubmit = event => { event.preventDefault(); if (element("selected").value) void act(element("selected").value, "reply", { requestId: operationId, text: element("reply").value }); };
-      element("reply").oninput = () => { operationId = crypto.randomUUID(); };
       element("prev").onclick = () => { offset = Math.max(0, offset - limit); void refresh(); };
       element("next").onclick = () => { if (offset + limit < total) offset += limit; void refresh(); };
       document.getElementById("refresh").addEventListener("click", () => void refresh());
       async function poll() { if (!document.hidden) await refresh(); if (!stopped) timer = setTimeout(poll, 1000); }
-      window.addEventListener("pagehide", () => { stopped = true; clearTimeout(timer); reading?.abort(); mutation?.abort(); });
+      window.addEventListener("pagehide", () => { stopped = true; clearTimeout(timer); reading?.abort(); });
       window.addEventListener("pageshow", () => { if (stopped) { stopped = false; void poll(); } });
       void poll();
     }
@@ -491,7 +504,6 @@
   let offset = 0, total = 0, timer, stopped = false, refreshing, mutation;
   let actionFailure = "";
   const limit = 100;
-  let smsId = crypto.randomUUID();
   async function api(path, body, signal) {
     const response = await fetch("/lab/v1/sms" + path, { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal });
     const data = await response.json();
@@ -504,8 +516,8 @@
     [item.country, item.phone, item.workerId || "—", item.desiredRunning ? "运行" : "停止", item.runtimeState, item.activeListeners].forEach((value, index) => {
       const td = document.createElement("td"); td.textContent = String(value); if (index === 2) td.className = "worker"; tr.append(td);
     });
-    const td = document.createElement("td"), button = document.createElement("button"); button.textContent = "选择号码";
-    button.onclick = () => { el("phone").value = item.phone; smsId = crypto.randomUUID(); el("text").focus(); };
+    const td = document.createElement("td"), button = document.createElement("button"); button.textContent = "设备输入";
+    button.onclick = () => window.openSimulatorInput(item.workerGroupId, item.replicaKey, "sms.receive");
     td.append(button);
     for (const [actionName, label] of [["start", "启动"], ["stop", "停止"]]) {
       const control = document.createElement("button"); control.textContent = label;
@@ -541,11 +553,6 @@
     catch (failure) { if (!mutation.signal.aborted) { actionFailure = failure.message; error(actionFailure); } }
     finally { mutation = undefined; }
   }
-  el("sms-form").onsubmit = (event) => { event.preventDefault(); void action(async (signal) => {
-    const result = await api("/sms", { phone: el("phone").value.trim(), text: el("text").value, smsId }, signal);
-    smsId = crypto.randomUUID(); el("notice").textContent = result.status === "MATCHED" ? "Host 已匹配；接码结果请在工作台查看。" : result.status === "DUPLICATE" ? "重复短信已忽略。" : "没有有效匹配，不产生接码结果。";
-  }); };
-  ["phone", "text"].forEach((id) => el(id).addEventListener("input", () => { smsId = crypto.randomUUID(); }));
   el("traffic-form").onsubmit = (event) => { event.preventDefault(); void action((signal) => api("/traffic/start", { ratePerSecond: Number(el("rate").value), durationSeconds: Number(el("duration").value) }, signal)); };
   el("stop").onclick = () => void action((signal) => api("/traffic/stop", {}, signal));
   el("prev").onclick = () => { offset = Math.max(0, offset - limit); void refresh(); };
@@ -591,6 +598,99 @@
       closeDetail: document.getElementById("close-detail")
     };
 
+
+    const inputEl = id => document.getElementById("input-" + id);
+    let inputDefinitions = [], inputSelection = 0, inputMessageOffset = 0, inputPageRequest = 0;
+    const inputHistory = [];
+    function resetInput() {
+      const definition = inputDefinitions.find(item => item.eventName === inputEl("event").value);
+      inputEl("payload").value = JSON.stringify(definition?.payloadExample || {}, null, 2);
+      const message = !!definition?.eventName.startsWith("message.");
+      inputEl("messages").hidden = !message;
+      inputEl("notice").textContent = "";
+      if (message) void loadInputMessages();
+      renderDetailStatus();
+    }
+    async function loadInputMessages() {
+      const worker = selectedWorker(), selection = inputSelection, pageRequest = ++inputPageRequest;
+      if (!worker) return;
+      inputEl("message").replaceChildren(new Option("请选择消息，不默认选择最新一条", ""));
+      try {
+        const page = await request(workerPath(worker) + ":messages?offset=" + inputMessageOffset + "&limit=100");
+        if (selection !== inputSelection || pageRequest !== inputPageRequest) return;
+        inputEl("message").append(...page.items.map(item => new Option(item.messageId + " · " + item.status + " · " + item.recipientId, item.messageId)));
+        inputEl("messages-page").textContent = "第 " + (inputMessageOffset / 100 + 1) + " 页 · 共 " + page.total + " 条";
+        inputEl("messages-prev").disabled = inputMessageOffset === 0;
+        inputEl("messages-next").disabled = inputMessageOffset + 100 >= page.total;
+      } catch (error) {
+        if (selection === inputSelection && pageRequest === inputPageRequest) inputEl("notice").textContent = error.message;
+      }
+    }
+    function renderInputHistory() {
+      inputEl("history").replaceChildren(...inputHistory.map(item => {
+        const detail = document.createElement("details"), title = document.createElement("summary"), body = document.createElement("pre");
+        title.textContent = item.time + " · " + item.worker + " · " + item.request.eventName + (item.error ? " · 错误" : " · 本地返回");
+        body.textContent = JSON.stringify(item, null, 2);
+        detail.append(title, body);
+        return detail;
+      }));
+    }
+    async function submitInput() {
+      const worker = selectedWorker();
+      if (!worker || state.busyWorkers.has(coordinate(worker)) || !inputEl("event").value) return;
+      const selection = inputSelection, name = inputEl("event").value;
+      let payload;
+      try {
+        payload = JSON.parse(inputEl("payload").value);
+        if (!payload || Array.isArray(payload) || typeof payload !== "object") throw new Error("Payload 必须是 JSON 对象");
+      } catch (error) { inputEl("notice").textContent = error.message; return; }
+      const item = { time: new Date().toLocaleTimeString(), worker: worker.workerGroupId + "/" + worker.labWorkerKey, request: { eventName: name, payload } };
+      setBusy(worker, true);
+      try {
+        item.result = await request(workerPath(worker) + ":inputs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item.request) });
+        if (selection === inputSelection) inputEl("notice").textContent = JSON.stringify(item.result) + "；仅为本地结果，不是上游 ACK。";
+        if (selection === inputSelection && name.startsWith("message.")) await loadInputMessages();
+      } catch (error) {
+        item.error = error.message;
+        if (selection === inputSelection) inputEl("notice").textContent = error.message;
+      } finally {
+        inputHistory.unshift(item); inputHistory.splice(20); renderInputHistory();
+        setBusy(worker, false);
+        await refreshWorkers(false);
+      }
+    }
+    window.openSimulatorInput = async (group, key, name, messageId) => {
+      let worker = state.workers.find(item => item.workerGroupId === group && item.labWorkerKey === key);
+      if (!worker) { await refreshWorkers(false); worker = state.workers.find(item => item.workerGroupId === group && item.labWorkerKey === key); }
+      if (!worker) { showNotice("Worker not found", "error"); return; }
+      await openDetails(worker);
+      if (state.selected !== coordinate(worker)) return;
+      if (inputDefinitions.some(item => item.eventName === name)) {
+        inputEl("event").value = name; resetInput();
+        if (messageId) { const value = JSON.parse(inputEl("payload").value); value.messageId = messageId; inputEl("payload").value = JSON.stringify(value, null, 2); }
+      }
+      document.getElementById("device-inputs").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    window.openMessageInput = (message, eventName) => {
+      const worker = state.workers.find(item => item.workerId === message.workerId);
+      if (!worker) { showNotice("请选择仍在本地库存中的消息所属 Worker", "error"); return; }
+      void window.openSimulatorInput(worker.workerGroupId, worker.labWorkerKey, eventName, message.messageId);
+    };
+    inputEl("event").addEventListener("change", resetInput);
+    inputEl("reset").addEventListener("click", resetInput);
+    inputEl("submit").addEventListener("click", () => void submitInput());
+    inputEl("message").addEventListener("change", () => {
+      try {
+        const payload = JSON.parse(inputEl("payload").value);
+        payload.messageId = inputEl("message").value;
+        inputEl("payload").value = JSON.stringify(payload, null, 2);
+      } catch (error) { inputEl("notice").textContent = "先修正 Payload JSON：" + error.message; }
+    });
+    inputEl("messages-prev").onclick = () => { inputMessageOffset = Math.max(0, inputMessageOffset - 100); void loadInputMessages(); };
+    inputEl("messages-next").onclick = () => { inputMessageOffset += 100; void loadInputMessages(); };
+    inputEl("messages-refresh").onclick = () => void loadInputMessages();
+    inputEl("history-clear").onclick = () => { inputHistory.length = 0; renderInputHistory(); };
+
     function coordinate(worker) {
       return worker.workerGroupId + "\u0000" + worker.labWorkerKey;
     }
@@ -627,7 +727,7 @@
         const detail = body && body.message
           ? (body.error ? body.error + ": " : "") + body.message
           : "HTTP " + response.status + " " + response.statusText;
-        throw new Error(detail);
+        throw new Error("HTTP " + response.status + " · " + detail);
       }
       return body;
     }
@@ -718,6 +818,7 @@
       elements.detailDiagnostic.textContent = worker.diagnosticMessage || "-";
       const busy = state.busyWorkers.has(coordinate(worker));
       elements.saveState.disabled = busy;
+      inputEl("submit").disabled = busy || !inputEl("event").value;
       elements.scheduleStop.disabled = busy;
       elements.cancelStop.disabled = busy;
     }
@@ -741,7 +842,16 @@
     }
 
     async function openDetails(worker) {
+      const selection = ++inputSelection;
       state.selected = coordinate(worker);
+      inputDefinitions = [];
+      inputMessageOffset = 0;
+      inputEl("event").replaceChildren(new Option("正在加载", ""));
+      inputEl("event").disabled = true;
+      inputEl("payload").value = "";
+      inputEl("messages").hidden = true;
+      inputEl("notice").textContent = "";
+      inputEl("coordinates").textContent = "固定文件坐标：" + worker.labWorkerKey;
       state.dirty = false;
       elements.dirtyState.textContent = "";
       elements.detailEmpty.hidden = true;
@@ -750,14 +860,20 @@
       renderWorkers();
       try {
         const detail = await request(workerPath(worker));
-        if (state.selected !== coordinate(worker)) return;
+        if (selection !== inputSelection) return;
         elements.stateDocument.value = JSON.stringify({
           schemaVersion: 2,
           workerProperties: detail.workerProperties
         }, null, 2);
+        const definitions = await request(workerPath(worker) + ":inputs");
+        if (selection !== inputSelection) return;
+        inputDefinitions = definitions;
+        inputEl("event").replaceChildren(...definitions.map(item => new Option(item.title + " · " + item.eventName, item.eventName)));
+        inputEl("event").disabled = false;
+        resetInput();
         renderDetailStatus();
       } catch (error) {
-        showNotice(error.message, "error");
+        if (selection === inputSelection) inputEl("notice").textContent = error.message;
       }
     }
 
@@ -782,7 +898,7 @@
       }
     }
 
-    async function saveState(publish = false) {
+    async function saveState() {
       const worker = selectedWorker();
       if (!worker) return;
       let documentValue;
@@ -794,21 +910,18 @@
       }
       setBusy(worker, true);
       try {
-        const result = await request(workerPath(worker) + (publish ? ":properties" : ""), {
+        const detail = await request(workerPath(worker), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(publish ? documentValue.workerProperties : documentValue)
+          body: JSON.stringify(documentValue)
         });
-        const detail = publish ? await request(workerPath(worker)) : result;
         elements.stateDocument.value = JSON.stringify({
           schemaVersion: 2,
           workerProperties: detail.workerProperties
         }, null, 2);
         state.dirty = false;
         elements.dirtyState.textContent = "";
-        showNotice(publish
-          ? "Saved locally. sendAccepted=" + result.sendAccepted + "; this is not an upstream acknowledgement."
-          : "Inventory and local properties saved. No report was sent; publish explicitly or start the Worker to calibrate upstream.", "success");
+        showNotice("Inventory and local properties saved. No report was sent; use device input to publish.", "success");
         await refreshWorkers(false);
       } catch (error) {
         showNotice(error.message, "error");
@@ -864,10 +977,10 @@
 
     elements.refresh.addEventListener("click", () => refreshWorkers(true));
     elements.saveState.addEventListener("click", () => void saveState());
-    document.getElementById("publish-state").addEventListener("click", () => void saveState(true));
     elements.scheduleStop.addEventListener("click", () => updateScheduledStop(false));
     elements.cancelStop.addEventListener("click", () => updateScheduledStop(true));
     elements.closeDetail.addEventListener("click", () => {
+      ++inputSelection;
       state.selected = null;
       state.dirty = false;
       elements.detailContent.hidden = true;

@@ -190,9 +190,6 @@ reply only, with at most 100,000 reply operation fingerprints per run.
 | `GET /lab/v1/messages/inventory` | Group/replica/country/phone/actual Worker, paged 1..1000 |
 | `GET /lab/v1/messages/records` | Only actually sent messages, paged 1..1000 |
 | `GET /lab/v1/messages/metrics` | Capacity, held receipts, publication and dedup counts |
-| `POST /lab/v1/messages/{id}:deliver` | Empty object; commit delivery before publication |
-| `POST /lab/v1/messages/{id}:read` | Empty object; delivery required |
-| `POST /lab/v1/messages/{id}:reply` | `{requestId,text}`, 128/4096 character bounds; delivery required; multiple replies |
 | `POST /lab/v1/messages/receipts:hold` | `{enabled}`; default false, no automatic flush |
 | `POST /lab/v1/messages/receipts:release` | 1..10,000 existing receiptIds in caller order; duplicates preserve original time/content |
 | `POST /lab/v1/messages/workers/{group}/{replica}:start` | Start one local replica |
@@ -210,7 +207,7 @@ Send failure leaves the local business fact intact without retry or compensation
 Stopping a Worker clears its associated Reporters. Records remain readable and
 can accept local actions after restart, but the new run cannot publish those old
 messages. The product retains its last actual observation. `/lab` shows a paged
-recipient inbox and, when SMS Handlers are also installed, the SMS input panel alongside it.
+recipient inbox; its receipt buttons open the common device input panel for that Worker.
 No simulated input calls the Messages Backend or invents product Results.
 
 ## SMS Scenario
@@ -232,7 +229,7 @@ Actual `platform.worker.events.snapshot` evidence identifies loaded handlers;
 Group catalog metadata is not the execution oracle.
 
 The single `/lab` page always shows common Worker management, and additionally shows local
-Worker state, number inventory, explicit Worker start/stop, raw SMS injection
+Worker state, number inventory, explicit Worker start/stop, device input
 and finite traffic controls. It does not manage product orders or infer routing
 or schedulability. All configurations expose the same common control routes.
 The HTTP executor has 8 threads and 128 queued requests with caller backpressure;
@@ -244,7 +241,6 @@ SMS bodies are at most 8 KiB, while existing Lab body limits remain unchanged.
 | `GET /lab/v1/sms/inventory?offset=0&limit=100` | Paged Group, replica key, country, phone, actual Worker ID, desired/local state and active subscriptions; limit 1..1000 |
 | `GET /lab/v1/sms/metrics` | Local matching, dedup, capacity and traffic observations |
 | `GET /lab/v1/sms/records?offset=0&limit=100` | Bounded acceptance evidence, never a product Result source |
-| `POST /lab/v1/sms/sms` | Raw `{phone, smsId, text}` input; text at most 1024 characters |
 | `POST /lab/v1/sms/traffic/start` | Existing finite `{ratePerSecond, durationSeconds}` input |
 | `POST /lab/v1/sms/traffic/stop` | Stop the finite stimulus stream |
 | `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:start` | Request a local Worker run; no properties mutation |
@@ -417,8 +413,9 @@ GET    /lab/v1/workers
 POST   /lab/v1/workers:stop
 GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
 PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
-PATCH  /lab/v1/workers/{workerGroupId}/{labWorkerKey}:properties
-PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:properties
+GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:inputs
+POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:inputs
+GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:messages?offset=0&limit=100
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:stop
 POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:schedule-stop
@@ -440,14 +437,57 @@ for at most 120 seconds; release, timeout, or Host close opens the gate. It is
 not a Core hook, generic fault DSL, Worker identity context, or production
 control event.
 
-The `:properties` operations accept a direct string KV Map for one known,
-running Worker. PATCH merges the supplied keys into the complete persisted
-record, then calls the existing Manager incremental publication method for
-`properties.updated`. PUT atomically replaces that record, then calls the
-existing full publication method for `properties.replaced`; its Provider
-reads the same current snapshot as the business Handlers. Full replacement must retain both immutable inventory
-coordinates exactly and deletes all omitted mutable keys. Empty strings remain
-values. Neither operation starts, stops or prepares a Worker.
+### Device inputs
+
+Each stable file coordinate has one `:inputs` entry for HTTP, the console and CI.
+GET returns descriptors with `eventName`, `title` and `payloadExample`, derived
+from the replica's actual installed capabilities, never Server Group metadata.
+Properties inputs are always discoverable. POST accepts exactly
+`{"eventName":"message.read","payload":{"messageId":"message-1"}}`;
+payload must be an object. These are local simulated device events, not Command
+or DeliveryReport names and not callable Worker Handlers.
+
+| Input | Payload and local effect |
+| --- | --- |
+| `properties.update` | String KV Map; persist merged Properties and publish the supplied keys |
+| `properties.replace` | String KV Map; persist replacement of mutable Properties and publish the full snapshot |
+| `sms.receive` | `{text,smsId?,phone?}`; receive on the selected SIM; text at most 1024 characters |
+| `message.deliver` | `{messageId}`; commit delivery before publication |
+| `message.read` | `{messageId}`; delivery required |
+| `message.reply` | `{messageId,text,requestId?}`; delivery required; text at most 4096 characters |
+
+Omitted SMS/reply IDs are generated once and returned; explicit IDs support
+repeat-input proofs. IDs are bounded to 128 characters. Requests retain their
+existing bounds: Properties 64 KiB, SMS 8 KiB, Messages 1,000,000 bytes. Unknown
+inputs, unavailable capabilities and malformed payloads are rejected, without
+raw protocol fallback. Unknown Workers/messages return 404, invalid input 400,
+and business-state conflicts 409. There is no shared RUNNING prerequisite:
+Properties publication requires a running Worker; SMS and historical Messages
+retain their own admission rules.
+
+The Host dispatches once to the existing Properties, SMS or Messages Owner.
+Scenario code chooses timing; the device Owner admits and commits input; the
+real SDK/retained Reporter produces upstream evidence outside state gates.
+No input queue, asynchronous task, automatic retry or server-side operation log
+is introduced. A successful HTTP response is a local result, not a platform ACK.
+SMS returns its existing MATCHED/IGNORED/DUPLICATE status; Messages retains
+persisted/unchanged/held/sendAccepted. SERVER Direct Call records have no later
+TASK Reporter: local receipt simulation cannot manufacture TRACKED publication.
+
+SMS uses the selected Sim rather than looking up another Worker by phone. An
+explicit phone is checked against that Sim's current address inside its gate,
+before dedup or matching; an old address is rejected without side effects.
+Messages likewise checks message ownership against the selected Sender inside
+its existing gate. `:messages` pages that Sender's retained records (offset >= 0,
+limit 1..1000); it adds no index or record copy.
+
+Properties input automatically retains `labInventoryKey/labInventoryLine` from
+the physical coordinate. Explicit values must match; `clientWorkerKey` is
+forbidden. Update merges the supplied keys; replacement deletes omitted mutable
+keys, including an empty replacement when capability requirements allow it.
+Empty strings remain values. The existing Manager publishes `properties.updated`
+or `properties.replaced` using the same Provider as business Handlers. Neither
+input starts, stops or prepares a Worker; file-only PUT still saves without publishing.
 
 Each Worker has a non-queuing Properties operation gate, acquired before the
 inventory monitor and retained through the SDK send. The ordinary file PUT
@@ -461,8 +501,8 @@ Properties return 400, and a stopped/stopping Worker or occupied gate returns
 409. Successful local completion returns
 `200 {"persisted":true,"sendAccepted":true|false}`. False leaves the file in
 place, with no retry or compensation. This result is local send acceptance,
-not an Adapter/Server ACK. There is no file watcher, automatic scan, generic
-event injection or new Worker SDK API.
+not an Adapter/Server ACK. There is no file watcher, automatic scan, arbitrary
+protocol injection or new Worker SDK API.
 
 Number-capable replicas require nonblank `phone` and strict `[A-Z]{2}` `country`;
 phone is unique across all number-capable replicas in this Host, not inferred from
@@ -519,6 +559,13 @@ stop, scheduled stop, and complete schema-v2 Properties replacement to the
 APIs above. Its desired/runtime fields are only local Host state; the page does
 not claim Adapter connectivity, Kernel score, or schedulability. Automatic
 list refresh never reloads a Properties document while it is being edited.
+The device input panel loads descriptions and examples from the Host, keeps
+inventory coordinates read-only, and selects receipts from the chosen Worker's
+paged messages rather than guessing its latest message. Local input/results and
+HTTP errors are held only in the current browser page, capped at 20 operations.
+SMS and Messages shortcuts use the same panel logic; records, metrics, finite
+traffic and receipt hold/release retain their separate purposes. The superseded
+Worker Properties mutation and product single-input routes are removed, not aliases.
 The loopback server uses the shared eight-thread executor with 128 waiting tasks. A slow
 single-Worker Prepare does not hold the Scenario inventory monitor, allowing a
 stop or local snapshot request to reach its independent replica. This is

@@ -8,6 +8,9 @@ Redis scope, Adapter and Workers. Python owns two independent JVMs and a unique
 `test_products_*` scope. It calls product APIs, public Runtime APIs and Host business
 inputs. Only real `message.send` execution creates a simulated recipient record.
 It never constructs Reports, calls Worker methods or reads Redis owner storage.
+Single SMS and message receipts use the stable Worker coordinate `:inputs` API.
+The runner retains fixture identity-to-coordinate addresses, not a second business
+router; the Host validates the selected Sender/Sim before any input side effect.
 
 ## Small functional and lifecycle world
 

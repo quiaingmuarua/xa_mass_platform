@@ -176,12 +176,6 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                 case "GET records" -> sms.registry.records(Integer.parseInt(query.getOrDefault("offset", "0")),
                         Integer.parseInt(query.getOrDefault("limit", "100")));
                 case "GET metrics" -> sms.metrics();
-                case "POST sms" -> {
-                    var body = readSmsBody(exchange);
-                    if (!(body.get("text") instanceof String message)) throw new IllegalArgumentException("Invalid SMS text");
-                    yield sms.registry.receive(com.xa.mass.workersimulator.sms.ListeningRegistry.string(body, "phone"),
-                            com.xa.mass.workersimulator.sms.ListeningRegistry.string(body, "smsId"), message);
-                }
                 case "POST traffic/start" -> sms.startTraffic(readSmsBody(exchange));
                 case "POST traffic/stop" -> sms.stopTraffic();
                 default -> null;
@@ -228,9 +222,6 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                     default -> throw new IllegalArgumentException("Unknown Worker action");
                 }
                 response = Map.of("acceptedCount", 1);
-            } else if (method.equals("POST") && path.matches("[^/:]+:(deliver|read|reply)")) {
-                int colon = path.lastIndexOf(':');
-                response = messages.act(decodeSegment(path.substring(0, colon)), path.substring(colon + 1), readMessageBody(exchange));
             } else response = switch (method + " " + path) {
                 case "GET health" -> workers.smsHealth();
                 case "GET inventory" -> messages.inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
@@ -301,7 +292,9 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
 
     private void handle(HttpExchange exchange) throws IOException {
         try {
-            if (exchange.getRequestURI().getRawQuery() != null) {
+            if (exchange.getRequestURI().getRawQuery() != null
+                    && !(exchange.getRequestMethod().equals("GET")
+                    && exchange.getRequestURI().getRawPath().endsWith(":messages"))) {
                 respondError(exchange, 400, "invalid_request",
                         "Query parameters are not supported");
                 return;
@@ -309,6 +302,8 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
             route(exchange);
         } catch (WorkerSimulator.UnknownWorkerException error) {
             respondError(exchange, 404, "worker_not_found", error.getMessage());
+        } catch (com.xa.mass.workersimulator.messaging.MessageScenario.MissingMessage error) {
+            respondError(exchange, 404, "message_not_found", "Message not found for target Worker");
         } catch (WorkerSimulatorCommandCheckpoints.UnknownCheckpointException
                  error) {
             respondError(
@@ -467,6 +462,7 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
             Action action
     ) throws IOException {
         switch (action.kind()) {
+            case UNKNOWN -> respondError(exchange, 404, "route_not_found", "Unknown Worker route");
             case SNAPSHOT -> {
                 String method = exchange.getRequestMethod();
                 if ("GET".equals(method)) {
@@ -525,23 +521,44 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                     workerGroupId,
                     labWorkerKey
             );
-            case PROPERTIES -> {
+            case INPUTS -> {
                 String method = exchange.getRequestMethod();
-                if (!"PATCH".equals(method) && !"PUT".equals(method)) {
-                    methodNotAllowed(exchange, "PATCH, PUT");
+                if ("GET".equals(method)) {
+                    respondJson(exchange, 200, workers.inputs(workerGroupId, labWorkerKey));
                     return;
                 }
-                Map<String, String> properties = new LinkedHashMap<>();
-                Jsons.parseObject(readBody(exchange)).forEach((key, value) -> {
-                    if (!(value instanceof String text)) {
-                        throw new IllegalArgumentException("Properties values must be strings");
-                    }
-                    properties.put(key, text);
-                });
-                boolean accepted = workers.publishProperties(
-                        workerGroupId, labWorkerKey, properties, "PUT".equals(method)
-                );
-                respondJson(exchange, 200, Map.of("persisted", true, "sendAccepted", accepted));
+                requireMethod(exchange, "POST");
+                byte[] bytes = exchange.getRequestBody().readNBytes(1_000_001);
+                if (bytes.length > 1_000_000) throw new IllegalArgumentException("Request too large");
+                Map<String, Object> input = Jsons.parseObject(new String(bytes, StandardCharsets.UTF_8));
+                if (!input.keySet().equals(Set.of("eventName", "payload"))
+                        || !(input.get("eventName") instanceof String name)
+                        || !(input.get("payload") instanceof Map<?, ?> payload)) {
+                    throw new IllegalArgumentException("Expected eventName and object payload");
+                }
+                int limit = switch (name) {
+                    case "properties.update", "properties.replace" -> MAX_REQUEST_BYTES;
+                    case "sms.receive" -> 8192;
+                    default -> 1_000_000;
+                };
+                if (bytes.length > limit) throw new IllegalArgumentException("Device input request too large");
+                Map<String, Object> fields = new LinkedHashMap<>();
+                payload.forEach((key, value) -> fields.put((String) key, value));
+                respondJson(exchange, 200, workers.simulateInput(workerGroupId, labWorkerKey, name, fields));
+            }
+            case MESSAGES -> {
+                requireMethod(exchange, "GET");
+                Map<String, String> query = new LinkedHashMap<>();
+                String raw = exchange.getRequestURI().getRawQuery();
+                if (raw != null) for (String part : raw.split("&", -1)) {
+                    String[] pair = part.split("=", -1);
+                    if (pair.length != 2 || !Set.of("offset", "limit").contains(pair[0])
+                            || query.putIfAbsent(pair[0], pair[1]) != null)
+                        throw new IllegalArgumentException("Invalid message page query");
+                }
+                respondJson(exchange, 200, workers.workerMessages(workerGroupId, labWorkerKey,
+                        Integer.parseInt(query.getOrDefault("offset", "0")),
+                        Integer.parseInt(query.getOrDefault("limit", "100"))));
             }
         }
     }
@@ -795,7 +812,7 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
     private static void respondJson(
             HttpExchange exchange,
             int status,
-            Map<String, ?> value
+            Object value
     ) throws IOException {
         byte[] encoded = Jsons.toJson(value).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set(
@@ -844,13 +861,15 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
     }
 
     private enum ActionKind {
+        UNKNOWN,
         SNAPSHOT,
         START,
         STOP,
         SCHEDULE_STOP,
         CANCEL_SCHEDULED_STOP,
         COMMAND_CHECKPOINT,
-        PROPERTIES
+        INPUTS,
+        MESSAGES
     }
 
     private record Action(
@@ -865,7 +884,8 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                     ":schedule-stop", ActionKind.SCHEDULE_STOP,
                     ":scheduled-stop", ActionKind.CANCEL_SCHEDULED_STOP,
                     ":command-checkpoint", ActionKind.COMMAND_CHECKPOINT,
-                    ":properties", ActionKind.PROPERTIES
+                    ":inputs", ActionKind.INPUTS,
+                    ":messages", ActionKind.MESSAGES
             ).entrySet()) {
                 if (value.endsWith(suffix.getKey())) {
                     return new Action(
@@ -877,7 +897,8 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                     );
                 }
             }
-            return new Action(value, ActionKind.SNAPSHOT);
+            return new Action(value, decodeSegment(value).matches(".+:[1-9][0-9]*")
+                    ? ActionKind.SNAPSHOT : ActionKind.UNKNOWN);
         }
     }
 

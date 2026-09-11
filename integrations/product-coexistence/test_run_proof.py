@@ -7,6 +7,15 @@ import run_proof as proof
 
 
 class ProofAssertionsTest(unittest.TestCase):
+    def test_recipient_input_uses_the_original_worker_coordinate(self):
+        run = SimpleNamespace(host="host", input_workers_by_id={"worker": {
+            "workerGroupId": "demo-sim", "replicaKey": "workers-000.jsonl:2"}})
+        with patch.object(proof, "http", return_value={"persisted": True}) as send:
+            proof.action(run, {"workerId": "worker", "id": "message"}, "reply", "reply", "request")
+            send.assert_called_once_with("host", "/lab/v1/workers/demo-sim/workers-000.jsonl%3A2:inputs",
+                {"eventName": "message.reply", "payload": {
+                    "messageId": "message", "text": "reply", "requestId": "request"}}, timeout=2)
+
     def test_task_completion_uses_score_band(self):
         with patch.object(proof, "http", return_value={"entries": [{"taskId": "task", "scoreBand": "terminal", "state": "unrelated"}]}):
             self.assertEqual("terminal", proof.task_state(SimpleNamespace(url="server"), "task"))

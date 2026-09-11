@@ -49,7 +49,8 @@ The runner owns independent Server, Worker Simulator and Harness processes and o
 Redis scope. It materializes the exact proof inventory and writes one complete
 Simulator configuration based on the Lab example, with absolute paths and reuse.
 Initial startup and restart use the same `--config` entry. The Java Harness
-mutates only through loopback Lab HTTP:
+mutates only through loopback Lab `POST ...:inputs`, using
+`properties.replace` and `properties.update` with direct string KV payloads:
 
 ```text
 Integration -> Lab HTTP -> Worker Simulator -> existing Worker SDK/connection
@@ -58,13 +59,13 @@ Integration -> Lab HTTP -> Worker Simulator -> existing Worker SDK/connection
 
 String Group record 1 is the target; record 2 in the same file and Phone Group
 record 1 are controls. Initial evidence fixes their Server identities. Each of
-eight rounds sends a full replacement baseline, then 32 consecutive PATCH
-requests without observing Adapter or Server between those requests. Each
-PATCH changes correlated fields and adds its own unique key. Adapter Properties
+eight rounds sends a full replacement baseline, then 32 consecutive incremental
+inputs without observing Adapter or Server between those requests. Each
+incremental input changes correlated fields and adds its own unique key. Adapter Properties
 snapshot and Worker Runtime Preview must both reach the exact complete Map,
 including every delta. Every observed target Map must equal a complete
 submitted snapshot; intermediate states may be skipped, but hybrid fields and
-lost keys fail. Replacements delete omitted fields; PATCH preserves untouched
+lost keys fail. Replacements delete omitted fields; updates preserve untouched
 fields, including empty strings. A final replacement retains only the immutable
 Lab coordinates. There are 265 mutations: 9 replacements and 256 updates.
 

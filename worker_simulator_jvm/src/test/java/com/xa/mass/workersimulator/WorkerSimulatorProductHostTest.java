@@ -174,18 +174,18 @@ class WorkerSimulatorProductHostTest {
             messageOwner.send(worker.sender, send, (tag, time, payload) -> { messageReports.add(Jsons.parseObject(payload)); return true; });
             String oldPhone = worker.properties().get("phone");
             clearInvocations(fixture.managers.get("demo-sim"));
-            assertThat(fixture.workers.publishProperties("demo-sim", FIRST, Map.of("phone", "+new", "country", "GB"), false)).isFalse();
+            assertThat(fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(Map.of("phone", "+new", "country", "GB")))).containsEntry("sendAccepted", false);
             assertThat(worker.properties()).containsEntry("phone", "+new").containsEntry("country", "GB");
             assertThat(worker.stateFile().readProperties()).isEqualTo(worker.properties());
             assertThat(registry.listen(worker.sim, oldListen, (tag, time, payload) -> { throw new AssertionError("rebound"); }))
                     .containsEntry("status", "INTERRUPTED").containsEntry("phone", oldPhone).containsEntry("country", "CN");
             assertThat(smsReports).hasValue(0);
-            assertThatThrownBy(() -> registry.receive(oldPhone, "stale", "text")).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> registry.receive(fixture.sims.get(FIRST), oldPhone, "stale", "text")).isInstanceOf(IllegalArgumentException.class);
             assertThat(messageOwner.send(worker.sender, send, (tag, time, payload) -> false)).containsEntry("country", "CN").containsEntry("phone", oldPhone);
-            assertThat(messageOwner.act("old", "deliver", Map.of())).containsEntry("sendAccepted", true);
+            assertThat(messageOwner.act(fixture.replicas.get(FIRST).sender, "old", "deliver", Map.of())).containsEntry("sendAccepted", true);
             assertThat(messageReports).singleElement().satisfies(report -> assertThat(report).containsEntry("phone", oldPhone));
             registry.listen(worker.sim, listen("new", "GB"), (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
-            assertThat(registry.receive("+new", "new", "text")).containsEntry("status", "MATCHED");
+            assertThat(registry.receive(fixture.sims.get(FIRST), "+new", "new", "text")).containsEntry("status", "MATCHED");
             assertThat(smsReports).hasValue(1);
             verify(fixture.managers.get("demo-sim"), never()).prepareAndStart(anyCollection());
             verify(fixture.managers.get("demo-sim"), never()).stop(anyString());
@@ -200,7 +200,7 @@ class WorkerSimulatorProductHostTest {
             registry.listen(worker.sim, listen("old", "CN"), (tag, time, payload) -> true);
             for (Map<String, String> invalid : List.of(Map.of("phone", ""), Map.of("country", "cn"),
                     Map.of("phone", fixture.replicas.get(SECOND).properties().get("phone")))) {
-                assertThatThrownBy(() -> fixture.workers.publishProperties("demo-sim", FIRST, invalid, false))
+                assertThatThrownBy(() -> fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(invalid)))
                         .isInstanceOf(IllegalArgumentException.class);
             }
             var file = fixture.root.resolve("demo-sim/workers-000.jsonl");
@@ -208,13 +208,13 @@ class WorkerSimulatorProductHostTest {
             Files.move(file, backup);
             Files.createDirectory(file);
             try {
-                assertThatThrownBy(() -> fixture.workers.publishProperties("demo-sim", FIRST, Map.of("phone", "changed"), false))
+                assertThatThrownBy(() -> fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(Map.of("phone", "changed"))))
                         .isInstanceOf(RuntimeException.class);
                 assertThat(worker.properties()).isEqualTo(original);
                 assertThat(registry.metrics()).containsEntry("activeListeners", 1);
             } finally { Files.delete(file); Files.move(backup, file); }
             assertThat(worker.stateFile().readProperties()).isEqualTo(original);
-            assertThat(registry.receive(original.get("phone"), "still-old", "text")).containsEntry("status", "MATCHED");
+            assertThat(registry.receive(fixture.sims.get(FIRST), original.get("phone"), "still-old", "text")).containsEntry("status", "MATCHED");
         }
     }
 
@@ -224,7 +224,7 @@ class WorkerSimulatorProductHostTest {
             List<Future<Boolean>> results = new ArrayList<>();
             for (String key : List.of(FIRST, SECOND)) results.add(executor.submit(() -> {
                 begin.await();
-                try { fixture.workers.publishProperties("demo-sim", key, Map.of("phone", "same"), false); return true; }
+                try { fixture.workers.simulateInput("demo-sim", key, "properties.update", new LinkedHashMap<>(Map.of("phone", "same"))); return true; }
                 catch (IllegalArgumentException rejected) { return false; }
             }));
             begin.countDown();
@@ -291,6 +291,96 @@ class WorkerSimulatorProductHostTest {
         return Map.of("listenerId", id, "applicationId", "app", "country", country, "listenSeconds", 300L,
                 "setupDeadline", System.currentTimeMillis() + 300_000,
                 "templates", List.of(Map.of("id", "any", "priority", 1L, "kind", "ANY")));
+    }
+
+    @Test void unifiedInputsBindMessagesAndSmsToTheSelectedReplicaWithoutRebindingReporters() throws Exception {
+        try (var fixture = new Fixture(1); var stops = new WorkerSimulatorScheduledStops(fixture.workers);
+             var server = WorkerSimulatorControlServer.open(0, fixture.workers, stops); var http = HttpClient.newHttpClient()) {
+            server.start();
+            var base = server.baseUri();
+            var descriptions = Jsons.parseArray(get(http, base, workerPath(FIRST) + ":inputs").body());
+            assertThat(descriptions.stream().map(item -> (String) ((Map<?, ?>) item).get("eventName")))
+                    .containsExactly("properties.update", "properties.replace", "sms.receive", "message.deliver", "message.read", "message.reply");
+            var owner = fixture.workers.messageScenario();
+            var sender = fixture.replicas.get(FIRST).sender;
+            var reported = new ArrayList<Integer>();
+            owner.send(sender, message("actual"), (tag, time, payload) -> { reported.add(tag); return true; });
+            assertThat(input(http, base, SECOND, "message.deliver", Map.of("messageId", "actual")).statusCode()).isEqualTo(404);
+            assertThat(input(http, base, FIRST, "message.read", Map.of("messageId", "actual")).statusCode()).isEqualTo(409);
+            assertThat(reported).isEmpty();
+            assertThat(Jsons.parseObject(get(http, base, workerPath(SECOND) + ":messages?offset=0&limit=1").body()))
+                    .containsEntry("total", 0L).containsEntry("items", List.of());
+            assertThat(Jsons.parseObject(get(http, base, workerPath(FIRST) + ":messages?offset=0&limit=1").body()))
+                    .containsEntry("total", 1L);
+            for (String query : List.of("?offset=-1", "?limit=1001", "?limit=1&limit=2", "?workerId=other"))
+                assertThat(get(http, base, workerPath(FIRST) + ":messages" + query).statusCode()).isEqualTo(400);
+            assertThat(input(http, base, FIRST, "message.deliver", Map.of("messageId", "actual", "tag", 9)).statusCode()).isEqualTo(400);
+            assertThat(input(http, base, FIRST, "message.deliver", Map.of("messageId", "actual")).statusCode()).isEqualTo(200);
+            assertThat(input(http, base, FIRST, "message.read", Map.of("messageId", "actual")).statusCode()).isEqualTo(200);
+            var reply = Jsons.parseObject(input(http, base, FIRST, "message.reply", Map.of("messageId", "actual", "text", "reply")).body());
+            assertThat(reply).containsEntry("sendAccepted", true);
+            assertThat(reply.get("requestId")).isInstanceOf(String.class);
+            var duplicate = Jsons.parseObject(input(http, base, FIRST, "message.reply",
+                    Map.of("messageId", "actual", "text", "reply", "requestId", reply.get("requestId"))).body());
+            assertThat(duplicate).containsEntry("unchanged", true);
+            assertThat(reported).containsExactly(7, 8, 9);
+            var registry = fixture.workers.smsScenario().registry;
+            registry.listen(fixture.sims.get(FIRST), listen("sms", "CN"), (tag, time, payload) -> true);
+            assertThat(input(http, base, FIRST, "sms.receive", Map.of("text", "hello", "smsId", "once", "phone", "wrong")).statusCode()).isEqualTo(400);
+            assertThat(registry.metrics()).containsEntry("smsEvents", 0);
+            var sms = Jsons.parseObject(input(http, base, FIRST, "sms.receive", Map.of("text", "hello")).body());
+            assertThat(sms).containsEntry("status", "MATCHED").containsKey("smsId");
+            assertThat(Jsons.parseObject(input(http, base, FIRST, "sms.receive",
+                    Map.of("text", "hello", "smsId", sms.get("smsId"))).body())).containsEntry("status", "DUPLICATE");
+            assertThat(input(http, base, FIRST, "properties.replace", Map.of()).statusCode()).isEqualTo(400);
+            fixture.workers.stopWorker("demo-sim", FIRST); fixture.workers.startWorker("demo-sim", FIRST);
+            assertThat(Jsons.parseObject(input(http, base, FIRST, "message.reply", Map.of("messageId", "actual", "text", "late")).body()))
+                    .containsEntry("persisted", true).containsEntry("sendAccepted", false);
+            assertThat(reported).containsExactly(7, 8, 9);
+            owner.send(sender, message("direct"), com.xa.mass.worker.execution.WorkerOutcomeReporter.UNAVAILABLE);
+            assertThat(Jsons.parseObject(input(http, base, FIRST, "message.deliver", Map.of("messageId", "direct")).body()))
+                    .containsEntry("persisted", true).containsEntry("sendAccepted", false);
+            for (String path : List.of("/lab/v1/sms/sms", "/lab/v1/messages/actual:deliver", "/lab/v1/messages/actual:read", "/lab/v1/messages/actual:reply"))
+                assertThat(post(http, base, path).statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test void invalidDevicePayloadsCannotConsumeBusinessIdentities() throws Exception {
+        try (var fixture = new Fixture(1); var stops = new WorkerSimulatorScheduledStops(fixture.workers);
+             var server = WorkerSimulatorControlServer.open(0, fixture.workers, stops); var http = HttpClient.newHttpClient()) {
+            server.start();
+            for (Map<String, Object> payload : List.<Map<String, Object>>of(Map.of(), Map.of("text", 1),
+                    Map.of("text", "x".repeat(1025)), Map.of("text", "x", "smsId", ""),
+                    Map.of("text", "x", "smsId", "x".repeat(129)), Map.of("text", "x", "forward", "forged"))) {
+                assertThat(input(http, server.baseUri(), FIRST, "sms.receive", payload).statusCode()).isEqualTo(400);
+            }
+            for (Map<String, Object> payload : List.<Map<String, Object>>of(Map.of("messageId", List.of("x")),
+                    Map.of("messageId", "x", "text", "x", "requestId", ""),
+                    Map.of("messageId", "x", "text", "x".repeat(4097)), Map.of("messageId", "x", "text", "x", "tag", 9))) {
+                assertThat(input(http, server.baseUri(), FIRST, "message.reply", payload).statusCode()).isEqualTo(400);
+            }
+            assertThat(fixture.workers.smsScenario().registry.metrics()).containsEntry("smsEvents", 0);
+            assertThat(fixture.workers.messageScenario().metrics()).containsEntry("messages", 0).containsEntry("published", 0L);
+            // Retain the SMS Owner's existing phone bound, not the shorter operation-ID bound.
+            String phone = "1".repeat(200);
+            fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", Map.of("phone", phone));
+            assertThat(input(http, server.baseUri(), FIRST, "sms.receive", Map.of("phone", phone, "text", "x"))
+                    .statusCode()).isEqualTo(200);
+            assertThat(input(http, server.baseUri(), FIRST, "sms.receive", Map.of("phone", "1".repeat(257), "text", "x"))
+                    .statusCode()).isEqualTo(400);
+        }
+    }
+
+    private static Map<String, Object> message(String id) {
+        return Map.of("campaignId", "campaign", "messageId", id, "country", "CN", "recipientId", "recipient", "body", "body");
+    }
+
+    private static String workerPath(String key) { return "/lab/v1/workers/demo-sim/" + key; }
+
+    private static HttpResponse<String> input(HttpClient http, URI base, String key, String event, Map<String, Object> payload) throws Exception {
+        return http.send(HttpRequest.newBuilder(base.resolve(workerPath(key) + ":inputs")).timeout(Duration.ofSeconds(3))
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(
+                        Map.of("eventName", event, "payload", payload)))).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private static HttpResponse<String> get(HttpClient http, URI base, String path) throws Exception {

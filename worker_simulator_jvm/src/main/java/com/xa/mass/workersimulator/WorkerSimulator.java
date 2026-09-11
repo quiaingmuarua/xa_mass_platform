@@ -10,6 +10,7 @@ import com.xa.mass.workersimulator.sms.ListeningRegistry;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
 import java.util.concurrent.atomic.AtomicReference;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class WorkerSimulator implements AutoCloseable {
@@ -299,7 +301,89 @@ public final class WorkerSimulator implements AutoCloseable {
         }
     }
 
-    boolean publishProperties(
+    synchronized List<Map<String, Object>> inputs(String workerGroupId, String labWorkerKey) {
+        ensureControllable();
+        PreparedReplica replica = requireReplica(requireManagedGroup(workerGroupId), labWorkerKey);
+        List<Map<String, Object>> inputs = new ArrayList<>();
+        inputs.add(inputDescription("properties.update", "更新属性", Map.of("network.type", "cellular")));
+        Map<String, String> replace = new LinkedHashMap<>(replica.properties());
+        replace.remove("labInventoryKey");
+        replace.remove("labInventoryLine");
+        inputs.add(inputDescription("properties.replace", "替换属性", Map.copyOf(replace)));
+        if (replica.sim != null) {
+            inputs.add(inputDescription("sms.receive", "收到短信", Map.of("text", "[A] 123456")));
+        }
+        if (replica.sender != null) {
+            inputs.add(inputDescription("message.deliver", "消息送达", Map.of("messageId", "")));
+            inputs.add(inputDescription("message.read", "消息已读", Map.of("messageId", "")));
+            inputs.add(inputDescription("message.reply", "消息回复", Map.of("messageId", "", "text", "")));
+        }
+        return List.copyOf(inputs);
+    }
+
+    private static Map<String, Object> inputDescription(String name, String title, Map<String, String> example) {
+        return Map.of("eventName", name, "title", title, "payloadExample", example);
+    }
+
+    Map<String, Object> simulateInput(String workerGroupId, String labWorkerKey,
+            String eventName, Map<String, Object> payload) {
+        PreparedReplica replica;
+        synchronized (this) {
+            ensureControllable();
+            replica = requireReplica(requireManagedGroup(workerGroupId), labWorkerKey);
+        }
+        // The stable replica is an address. Each existing Owner admits its own mutation.
+        return switch (eventName) {
+            case "properties.update", "properties.replace" -> Map.of("persisted", true, "sendAccepted",
+                    publishProperties(workerGroupId, labWorkerKey, WorkerDeliveryCodec.copyWorkerProperties(payload),
+                            eventName.equals("properties.replace")));
+            case "sms.receive" -> {
+                if (replica.sim == null) throw new IllegalArgumentException("Worker has no SMS capability");
+                requireInputFields(payload, Set.of("text"), Set.of("smsId", "phone"));
+                String id = optionalInputId(payload, "smsId");
+                String phone = payload.containsKey("phone") ? ListeningRegistry.string(payload, "phone") : null;
+                yield sms.registry.receive(replica.sim, phone, id, MessageScenario.text(payload, "text", 1024));
+            }
+            case "message.deliver", "message.read", "message.reply" -> {
+                if (replica.sender == null) throw new IllegalArgumentException("Worker has no Messages capability");
+                boolean reply = eventName.equals("message.reply");
+                requireInputFields(payload, reply ? Set.of("messageId", "text") : Set.of("messageId"),
+                        reply ? Set.of("requestId") : Set.of());
+                String id = MessageScenario.text(payload, "messageId", 128);
+                String requestId = reply ? optionalInputId(payload, "requestId") : null;
+                Map<String, Object> result = messages.act(replica.sender, id, eventName.substring("message.".length()),
+                        reply ? Map.of("requestId", requestId, "text", MessageScenario.text(payload, "text", 4096)) : Map.of());
+                if (!reply) yield result;
+                Map<String, Object> withId = new LinkedHashMap<>(result);
+                withId.put("requestId", requestId);
+                yield Map.copyOf(withId);
+            }
+            default -> throw new IllegalArgumentException("Unknown device input");
+        };
+    }
+
+    Map<String, Object> workerMessages(String workerGroupId, String labWorkerKey, int offset, int limit) {
+        MessageScenario.Sender sender;
+        synchronized (this) {
+            ensureControllable();
+            sender = requireReplica(requireManagedGroup(workerGroupId), labWorkerKey).sender;
+        }
+        if (sender == null) throw new IllegalArgumentException("Worker has no Messages capability");
+        return messages.page(sender, offset, limit);
+    }
+
+    private static void requireInputFields(Map<String, Object> input, Set<String> required, Set<String> optional) {
+        if (!input.keySet().containsAll(required)
+                || input.keySet().stream().anyMatch(key -> !required.contains(key) && !optional.contains(key))) {
+            throw new IllegalArgumentException("Invalid device input fields");
+        }
+    }
+
+    private static String optionalInputId(Map<String, Object> input, String name) {
+        return input.containsKey(name) ? MessageScenario.text(input, name, 128) : UUID.randomUUID().toString();
+    }
+
+    private boolean publishProperties(
             String workerGroupId,
             String labWorkerKey,
             Map<String, String> properties,
@@ -323,6 +407,16 @@ public final class WorkerSimulator implements AutoCloseable {
                     complete.putAll(replica.stateFile().workerProperties());
                 }
                 complete.putAll(supplied);
+                // File coordinates are Host-owned, not editable device Properties.
+                Map<String, String> coordinates = Map.of("labInventoryKey", replica.stateFile().inventoryFileName(),
+                        "labInventoryLine", Integer.toString(replica.stateFile().lineNumber()));
+                for (var coordinate : coordinates.entrySet()) {
+                    if (supplied.containsKey(coordinate.getKey())
+                            && !coordinate.getValue().equals(supplied.get(coordinate.getKey()))) {
+                        throw new IllegalArgumentException("Cannot change inventory coordinates");
+                    }
+                    complete.put(coordinate.getKey(), coordinate.getValue());
+                }
                 Map<String, String> validated = replica.stateFile().parseReplacement(Jsons.toJson(Map.of(
                         "schemaVersion", 2,
                         "workerProperties", complete

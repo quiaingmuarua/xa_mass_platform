@@ -15,8 +15,11 @@ class ListeningRegistryTest {
         var nextProperties = new java.util.concurrent.atomic.AtomicReference<>(Map.of("phone", "next", "country", "CN"));
         var source = registry.addSim("demo-sim", "source", oldProperties::get, () -> "source", () -> "RUNNING", () -> true);
         var target = registry.addSim("demo-sim", "target", nextProperties::get, () -> "target", () -> "RUNNING", () -> true);
-        var outcome = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
-        var incoming = new Thread(() -> outcome.set(registry.receive("old", "in-flight", "[A] 123456")));
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var incoming = new Thread(() -> {
+            try { registry.receive(source, "old", "in-flight", "[A] 123456"); }
+            catch (Throwable error) { failure.set(error); }
+        });
         synchronized (source) {
             incoming.start();
             long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
@@ -30,9 +33,9 @@ class ListeningRegistryTest {
         }
         incoming.join(2_000);
         assertThat(incoming.isAlive()).isFalse();
-        assertThat(outcome.get()).containsEntry("status", "IGNORED");
+        assertThat(failure.get()).isInstanceOf(IllegalArgumentException.class);
         assertThat(registry.metrics()).containsEntry("activeListeners", 1).containsEntry("smsEvents", 0);
-        assertThat(registry.receive("old", "fresh", "[A] 123456")).containsEntry("status", "MATCHED");
+        assertThat(registry.receive(target, "old", "in-flight", "[A] 123456")).containsEntry("status", "MATCHED");
     }
 
     @Test void stopClearsOnlyItsNumberAndRestartPreservesDedupWithoutRebindingReporter() {
@@ -41,15 +44,15 @@ class ListeningRegistryTest {
         registry.stop(first);
         assertThat(registry.metrics()).containsEntry("activeListeners", 1);
         assertThat(registry.listen(first, input("stopped", 100, "CODE"), reporter)).containsEntry("status", "REJECTED");
-        assertThat(registry.receive("100", "while-stopped", "[A] 123456")).containsEntry("status", "IGNORED");
+        assertThat(registry.receive(first, "while-stopped", "[A] 123456")).containsEntry("status", "IGNORED");
         registry.beginStart(first); registry.endStart(first);
         AtomicInteger wrongReporter = new AtomicInteger();
         assertThat(registry.listen(first, input("old", 100, "CODE"), (t, at, p) -> {
             wrongReporter.incrementAndGet(); return true;
         })).containsEntry("status", "INTERRUPTED");
         registry.listen(first, input("new", 100, "CODE"), reporter);
-        assertThat(registry.receive("100", "while-stopped", "[A] 123456")).containsEntry("status", "DUPLICATE");
-        registry.receive("100", "after-restart", "[A] 123456");
+        assertThat(registry.receive(first, "while-stopped", "[A] 123456")).containsEntry("status", "DUPLICATE");
+        registry.receive(first, "after-restart", "[A] 123456");
         assertThat(reports).singleElement().satisfies(r -> assertThat(r).containsEntry("listenerId", "new"));
         assertThat(wrongReporter).hasValue(0);
         assertThat(registry.metrics()).containsEntry("activeListeners", 1);
@@ -62,7 +65,7 @@ class ListeningRegistryTest {
                 String id = "race-" + i;
                 var gate = new CyclicBarrier(3);
                 var listen = executor.submit(() -> { await(gate); return registry.listen(first, input(id, 100, "CODE"), reporter); });
-                var receive = executor.submit(() -> { await(gate); return registry.receive("100", id, "[A] 123456"); });
+                var receive = executor.submit(() -> { await(gate); return registry.receive(first, id, "[A] 123456"); });
                 var stop = executor.submit(() -> { await(gate); registry.stop(first); });
                 listen.get(2, TimeUnit.SECONDS); receive.get(2, TimeUnit.SECONDS); stop.get(2, TimeUnit.SECONDS);
                 assertThat(registry.metrics()).containsEntry("activeListeners", 0);
@@ -92,7 +95,7 @@ class ListeningRegistryTest {
             return false;
         });
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var delivery = executor.submit(() -> registry.receive("100", "slow", "[A] 123456"));
+            var delivery = executor.submit(() -> registry.receive(first, "slow", "[A] 123456"));
             assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
             executor.submit(() -> registry.stop(first)).get(1, TimeUnit.SECONDS);
             assertThat(registry.listen(first, input("matched", 100, "CODE"), reporter)).containsEntry("status", "RECEIVED");
@@ -123,10 +126,10 @@ class ListeningRegistryTest {
         registry.listen(first, input("wildcard", 0, "ANY"), reporter);
         registry.listen(first, input("older", 200, "CODE"), reporter);
         registry.listen(first, input("younger", 200, "CODE"), reporter);
-        assertThat(registry.receive("100", "sms1", "[A] 123456")).containsEntry("listenerId", "older");
-        assertThat(registry.receive("100", "sms1", "[A] 123456")).containsEntry("status", "DUPLICATE");
-        assertThat(registry.receive("100", "sms2", "[A] 123456")).containsEntry("listenerId", "younger");
-        assertThat(registry.receive("100", "sms3", "announcement")).containsEntry("listenerId", "wildcard");
+        assertThat(registry.receive(first, "sms1", "[A] 123456")).containsEntry("listenerId", "older");
+        assertThat(registry.receive(first, "sms1", "[A] 123456")).containsEntry("status", "DUPLICATE");
+        assertThat(registry.receive(first, "sms2", "[A] 123456")).containsEntry("listenerId", "younger");
+        assertThat(registry.receive(first, "sms3", "announcement")).containsEntry("listenerId", "wildcard");
         assertThat(reports).hasSize(3);
         assertThat(registry.metrics()).containsEntry("activeListeners", 0);
         assertThat(reports.getFirst()).containsEntry("phone", "100").containsEntry("workerId", "worker-1");
@@ -137,7 +140,7 @@ class ListeningRegistryTest {
         assertThat(registry.listen(second, input("one", 100, "CODE"), (tag, at, body) -> {
             otherReports.incrementAndGet(); return true;
         })).containsEntry("phone", "100");
-        registry.receive("100", "s1", "[A] 111111");
+        registry.receive(first, "s1", "[A] 111111");
         assertThat(registry.listen(second, input("one", 100, "CODE"), WorkerOutcomeReporter.UNAVAILABLE))
                 .containsEntry("status", "RECEIVED").containsKey("sms").containsEntry("phone", "100");
         assertThat(otherReports).hasValue(0);
@@ -146,12 +149,12 @@ class ListeningRegistryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
     @Test void noListenerNoMatchAndWindowBoundaryNeverReportSms() {
-        registry.receive("100", "none", "[A] 123456");
+        registry.receive(first, "none", "[A] 123456");
         registry.listen(first, input("one", 100, "CODE"), reporter);
-        registry.receive("100", "noise", "unmatched");
+        registry.receive(first, "noise", "unmatched");
         assertThat(reports).isEmpty();
         time.now += 60_000;
-        registry.receive("100", "late", "[A] 123456");
+        registry.receive(first, "late", "[A] 123456");
         assertThat(reports).singleElement().satisfies(r -> assertThat(r).containsEntry("status", "EXPIRED").doesNotContainKey("sms"));
         assertThat(registry.metrics()).containsEntry("matched", 0L);
     }
@@ -162,7 +165,7 @@ class ListeningRegistryTest {
                 registry.listen(first, input(id, 100, "CODE"), reporter);
                 CyclicBarrier start = new CyclicBarrier(2);
                 Future<?> cancel = pool.submit(() -> { await(start); registry.cancel(first, Map.of("listenerId", id)); });
-                Future<?> sms = pool.submit(() -> { await(start); registry.receive("100", id, "[A] 123456"); });
+                Future<?> sms = pool.submit(() -> { await(start); registry.receive(first, id, "[A] 123456"); });
                 cancel.get(2, TimeUnit.SECONDS); sms.get(2, TimeUnit.SECONDS);
             }
         }
@@ -174,7 +177,7 @@ class ListeningRegistryTest {
         time.now += 60_000;
         try (var executor = Executors.newFixedThreadPool(2)) {
             Future<?> expire = executor.submit(registry::expire);
-            Future<?> sms = executor.submit(() -> registry.receive("100", "edge-sms", "[A] 000000"));
+            Future<?> sms = executor.submit(() -> registry.receive(first, "edge-sms", "[A] 000000"));
             expire.get(2, TimeUnit.SECONDS); sms.get(2, TimeUnit.SECONDS);
         }
         assertThat(reports).singleElement().satisfies(r -> assertThat(r).containsEntry("status", "EXPIRED"));
@@ -182,7 +185,7 @@ class ListeningRegistryTest {
     @Test void failedPublicationDoesNotFallThroughAndClosedRunCannotKeepReporter() {
         registry.listen(first, input("first", 100, "CODE"), WorkerOutcomeReporter.UNAVAILABLE);
         registry.listen(first, input("fallback", 0, "ANY"), reporter);
-        registry.receive("100", "sms", "[A] 123456");
+        registry.receive(first, "sms", "[A] 123456");
         assertThat(reports).isEmpty();
         assertThat(registry.metrics()).containsEntry("activeListeners", 1).containsEntry("reportFailed", 1L);
         registry.close();
@@ -197,10 +200,10 @@ class ListeningRegistryTest {
         bounded.listen(sim, input("a", 0, "ANY"), reporter);
         bounded.listen(sim, input("b", 0, "ANY"), reporter);
         assertThat(bounded.listen(sim, input("c", 0, "ANY"), reporter)).containsEntry("status", "REJECTED");
-        bounded.receive("100", "one", "x"); bounded.receive("100", "two", "x");
-        assertThatThrownBy(() -> bounded.receive("100", "three", "x")).isInstanceOf(IllegalStateException.class);
-        assertThat(bounded.receive("100", "one", "x")).containsEntry("status", "DUPLICATE");
-        assertThatThrownBy(() -> bounded.receive("100", "one", "different")).isInstanceOf(IllegalArgumentException.class);
+        bounded.receive(sim, "one", "x"); bounded.receive(sim, "two", "x");
+        assertThatThrownBy(() -> bounded.receive(sim, "three", "x")).isInstanceOf(IllegalStateException.class);
+        assertThat(bounded.receive(sim, "one", "x")).containsEntry("status", "DUPLICATE");
+        assertThatThrownBy(() -> bounded.receive(sim, "one", "different")).isInstanceOf(IllegalArgumentException.class);
         assertThat(reports).hasSize(2);
         for (int i = 0; i < 64; i++) registry.listen(first, input("cap-" + i, 0, "ANY"), reporter);
         assertThat(registry.listen(first, input("overflow", 0, "ANY"), reporter)).containsEntry("status", "REJECTED");
@@ -210,7 +213,7 @@ class ListeningRegistryTest {
     @Test void smsArrivalBeforeEstablishmentIsNotEligibleEvenIfProcessedWithLaterState() {
         registry.listen(first, input("later", 100, "CODE"), reporter);
         time.now -= 1;
-        assertThat(registry.receive("100", "earlier", "[A] 123456")).containsEntry("status", "IGNORED");
+        assertThat(registry.receive(first, "earlier", "[A] 123456")).containsEntry("status", "IGNORED");
         assertThat(reports).isEmpty();
     }
     @Test void slowNetworkSendDoesNotHoldNumberStateLock() throws Exception {
@@ -221,7 +224,7 @@ class ListeningRegistryTest {
         });
         registry.listen(first, input("other", 0, "ANY"), reporter);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var sms = executor.submit(() -> registry.receive("100", "slow-sms", "[A] 123456"));
+            var sms = executor.submit(() -> registry.receive(first, "slow-sms", "[A] 123456"));
             assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
             var cancel = executor.submit(() -> registry.cancel(first, Map.of("listenerId", "other")));
             assertThat(cancel.get(1, TimeUnit.SECONDS)).containsEntry("status", "CANCELLED");

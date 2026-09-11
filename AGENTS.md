@@ -628,13 +628,18 @@ system.
   converging is a conflict; callers observe `STOPPED` before retrying.
 - Every explicit Lab Worker start reopens its complete Properties file. There is no
   watcher, automatic reconcile, dynamic inventory, or generic fault DSL.
-- Lab `:properties` PATCH/PUT may persist and explicitly publish through the
+- Lab `:inputs` properties.update/replace may persist and explicitly publish through the
   existing Manager during a running Worker run. Preserve immutable inventory
   coordinates and file-only PUT semantics. Use one non-queuing per-Worker gate
   across persistence/publication, including the file-only PUT; retain serialized
   file writes and keep SDK sends outside the inventory monitor. Stop/shutdown
   must not wait for publication. Local acceptance is not remote ACK; never
   compensate, retry or add pending publication state.
+- Simulator device inputs use stable file coordinates and the existing device
+  Owners, never raw Command/Report injection. SMS checks an optional phone under
+  the selected Sim's gate before dedup; Messages checks the selected Sender and
+  preserves the original Reporter. Capability discovery is replica-local. HTTP,
+  console and CI share this path, without input queues or upstream ACK tracking.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
 - Lab, SMS and Messages share the file inventory, SCENARIO_LAB batch Prepare,
   one immutable current Properties snapshot per record and common controls.
