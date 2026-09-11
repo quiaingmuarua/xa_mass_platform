@@ -26,7 +26,7 @@ class CampaignServiceTest {
         });
         when(data.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of());
         var service = new CampaignService(mock(WorkerGroupRegistrationService.class), creation, data, lifecycle,
-                Map.of("CN", "demo-cn", "US", "demo-us", "GB", "demo-gb"), List.of("extension.worker.message.send"), 100);
+                "demo-sim", List.of("extension.worker.message.send"), 100);
         service.start(); return service;
     }
     Map<String, Object> input(int count) {
@@ -40,7 +40,8 @@ class CampaignServiceTest {
             var created = service.create(input(201));
             verify(lifecycle, timeout(3000)).approve("finite-task");
             var order = inOrder(creation, data, lifecycle);
-            order.verify(creation).create(argThat(r -> r.workerGroupId().equals("demo-cn")
+            order.verify(creation).create(argThat(r -> r.workerGroupId().equals("demo-sim")
+                    && r.allocationRule().get("worker.country").equals(Map.of("$eq", "CN"))
                     && r.allocationRule().containsKey("worker.messaging.enabled") && r.allocationRule().containsKey("worker.phone")));
             order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100));
             order.verify(data).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 1));
@@ -70,7 +71,7 @@ class CampaignServiceTest {
     }
     @Test void latestReplyIsCompleteAndLateExecutionCannotRegressBusinessProjection() {
         try (var service = service()) {
-            var campaign = new CampaignService.Campaign(CampaignService.Specification.parse(input(1)), "demo-cn");
+            var campaign = new CampaignService.Campaign(CampaignService.Specification.parse(input(1)), "demo-sim");
             var message = campaign.messages.getFirst();
             var snapshot = new LinkedHashMap<String, Object>(Map.of("campaignId", campaign.id, "messageId", message.id,
                     "country", "CN", "recipientId", message.recipient, "body", "message", "phone", "+86123",

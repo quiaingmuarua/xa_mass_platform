@@ -61,7 +61,7 @@ final class ConvergenceWorkload {
 
     List<Batch> submitWave(
             String wave,
-            Map<String, List<Object>> selectorsByGroup,
+            Map<String, Map<String, List<String>>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
         return submitWave(wave, selectorsByGroup, checkpoint, false);
@@ -69,7 +69,7 @@ final class ConvergenceWorkload {
 
     List<Batch> submitCheckpointWave(
             String wave,
-            Map<String, List<Object>> selectorsByGroup,
+            Map<String, Map<String, List<String>>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
         java.util.Objects.requireNonNull(checkpoint, "checkpoint");
@@ -78,7 +78,7 @@ final class ConvergenceWorkload {
 
     private List<Batch> submitWave(
             String wave,
-            Map<String, List<Object>> selectorsByGroup,
+            Map<String, Map<String, List<String>>> selectorsByGroup,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -94,7 +94,7 @@ final class ConvergenceWorkload {
                     group,
                     selectorsByGroup.getOrDefault(
                             group.groupId(),
-                            List.of()
+                            Map.of()
                     ),
                     checkpoint,
                     applyRuleToWholeBatch
@@ -210,7 +210,7 @@ final class ConvergenceWorkload {
     private List<TaskItem> items(
             String wave,
             GroupWorkload group,
-            List<Object> workerSelector,
+            Map<String, List<String>> workerSelector,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -250,7 +250,7 @@ final class ConvergenceWorkload {
                     eventCode,
                     payload,
                     applyRuleToWholeBatch || index == 1
-                            ? workerSelector : List.of()
+                            ? workerSelector : Map.of()
             ));
         }
         return List.copyOf(items);

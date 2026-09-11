@@ -22,7 +22,7 @@ controls acquisition, lease and serviceability eligibility.
 ```text
 Server creation
   -> Matching Candidate Rule first for PRECOMPUTED
-     or Kernel normalization of an ON_DEMAND Worker Selector
+     or Kernel capture and Matching property admission of an ON_DEMAND Worker Selector
   -> Kernel Task descriptor and TaskItem records
 
 Kernel Main Scheduler
@@ -37,7 +37,7 @@ PRECOMPUTED allocation
 
 Task dispatch
   -> observe due Items and classify TTL/exhaustion
-  -> consume cached PRECOMPUTED candidates or acquire ON_DEMAND IDs/ANY
+  -> consume PRECOMPUTED Cache or acquire ON_DEMAND explicit/indexed IDs/ANY
   -> exact Worker confirmation -> exact Item claim -> targeted Command publication
   -> complete ACTIVE recheck before exact Task close or idle park
 ```
@@ -51,9 +51,10 @@ lifecycle are defined in
 Matching owns facts and Rule interpretation, not priority, Score or assignment.
 A Candidate carries bounded matching evidence and an opaque held score; final
 confirmation rejects it after successful Properties dirty invalidation. Unmatched, unselected or rejected holds expire naturally
-without a compensation-release registry. ON_DEMAND selectors contain only
-normalized Worker IDs/ANY and neither interpret Properties nor fall back to
-Candidate Cache. The detailed flow is
+without a compensation-release registry. ON_DEMAND persists one immutable
+workerSelector binding-to-parameters Map. Matching interprets property conditions and takes indexed identities; Kernel
+holds and rechecks membership before exact confirmation, without reading
+Properties or falling back to Candidate Cache. The detailed flow is
 [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
 
 ## Results And Recovery

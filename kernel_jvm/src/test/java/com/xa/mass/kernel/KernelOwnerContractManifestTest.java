@@ -1,5 +1,9 @@
 package com.xa.mass.kernel;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,6 +39,7 @@ import org.junit.jupiter.api.Test;
 class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
+            Map.entry("WorkerCandidateIndex", WorkerCandidateIndex.class),
             Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),
@@ -86,6 +91,7 @@ class KernelOwnerContractManifestTest {
                     TaskRuntime.TaskDescriptor.class
             ),
             Map.entry("TaskItem", TaskRuntime.TaskItem.class),
+            Map.entry("TaskItemWorkerSelector", TaskItemWorkerSelector.class),
             Map.entry("TaskItemSuccessResult", TaskRuntime.TaskItemSuccessResult.class),
             Map.entry("TaskItemOutcomeTarget", TaskItemScoreBandCore.TaskItemOutcomeTarget.class),
             Map.entry(

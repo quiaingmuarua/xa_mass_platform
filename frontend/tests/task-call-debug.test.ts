@@ -21,6 +21,24 @@ import type {
 } from "@/task-call-debug/types";
 
 describe("Task Call Debug request model", () => {
+  it("captures binding parameters without interpreting Matching semantics", () => {
+    for (const selector of [
+      {},
+      { "worker.country": ["CN"] },
+      { "worker.country": ["cn", "US"] },
+      { "worker.test.region": ["east", "west"] },
+      { "worker.future": ["", "$eq", "", "value"] },
+      { workerId: ["worker-b", "worker-a"] }
+    ]) {
+      expect(
+        validateTaskCallDebugDraft(
+          draft({
+            workerSelectorText: JSON.stringify(selector)
+          })
+        ).workerSelector
+      ).toEqual(selector);
+    }
+  });
   it("accepts custom Events and finite Worker Selectors", () => {
     const validated = validateTaskCallDebugDraft(
       draft({
@@ -28,7 +46,7 @@ describe("Task Call Debug request model", () => {
         workerGroupId: " group-a ",
         eventName: " extension.worker.custom ",
         payloadText: '  {"value":"hello"}  ',
-        workerSelectorText: '["workerId","$eq","worker-a"]'
+        workerSelectorText: '{"workerId":["worker-a"]}'
       })
     );
 
@@ -37,7 +55,7 @@ describe("Task Call Debug request model", () => {
       workerGroupId: "group-a",
       eventName: "extension.worker.custom",
       payload: { value: "hello" },
-      workerSelector: ["workerId", "$eq", "worker-a"]
+      workerSelector: { workerId: ["worker-a"] }
     });
     expect(validated.payloadText).toBe('  {"value":"hello"}  ');
   });
@@ -50,12 +68,23 @@ describe("Task Call Debug request model", () => {
     }
     for (const workerSelectorText of [
       "null",
-      "{}",
+      "[]",
       "true",
       "{",
       '["region","$eq","local"]',
-      '["workerId","$in",[]]',
-      '["workerId","$in",["worker-a","worker-a"]]'
+      '["workerId","$eq","worker-a"]',
+      '{"workerId":[]}',
+      '{"workerId":["worker-a","worker-a"]}',
+      '{"workerId":[" "]}',
+      '{"a":["x"],"b":["y"]}',
+      '{" ":["x"]}',
+      '{"a":"x"}',
+      '{"a":[1]}',
+      '{"a":[true]}',
+      '{"a":[null]}',
+      '{"a":[{}]}',
+      '{"a":[["x"]]}',
+      JSON.stringify({ a: Array(101).fill("x") })
     ]) {
       expect(() => validateTaskCallDebugDraft(draft({ workerSelectorText }))).toThrow(
         "Worker Selector"
@@ -135,7 +164,7 @@ describe("HttpTaskCallDebugClient", () => {
             eventCode: "extension.worker.custom",
             payload: { value: "hello" },
             priority: 5,
-            workerSelector: ["workerId", "$eq", "worker-a"]
+            workerSelector: { workerId: ["worker-a"] }
           }
         ],
         waitTimeoutMillis: 3_000
@@ -274,7 +303,7 @@ describe("Task Call Debug browser-memory store", () => {
       messageId: "task-debug-1787644800123-1",
       state: "sending",
       payloadText: '{"value":"hello"}',
-      workerSelectorText: "[]"
+      workerSelectorText: "{}"
     });
 
     pending.resolve({
@@ -473,7 +502,7 @@ function draft(overrides: Partial<TaskCallDebugDraft> = {}): TaskCallDebugDraft 
     workerGroupId: "group-a",
     eventName: "extension.worker.custom",
     payloadText: '{"value":"hello"}',
-    workerSelectorText: "[]",
+    workerSelectorText: "{}",
     waitTimeoutMillis: 3_000,
     ...overrides
   };
@@ -487,7 +516,7 @@ function clientRequest(
     messageId: "message-1",
     eventName: "extension.worker.custom",
     payload: { value: "hello" },
-    workerSelector: ["workerId", "$eq", "worker-a"],
+    workerSelector: { workerId: ["worker-a"] },
     waitTimeoutMillis: 3_000,
     ...overrides
   };

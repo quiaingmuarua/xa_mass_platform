@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +34,7 @@ final class AndroidWorkerTriadTopologyTest {
     @Test
     void targetsOneApplicationThroughItsServerWorkerIdentity() {
         assertEquals(
-                List.of("workerId", "$eq", "worker-lab1"),
+                Map.of("workerId", List.of("worker-lab1")),
                 AndroidWorkerTriadTopology.workerSelector(
                         "worker-lab1"
                 )

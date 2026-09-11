@@ -69,9 +69,9 @@ Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验
 默认端口为 Server 18500、Adapter 18503、Host 18504。
 `--products sms` 显式启用 `product-preview,sms-reception` profiles，读取发行层的
 `config/application-product-preview.yaml`。该配置集中定义本轮 Server、Redis、
-`products-websocket` Adapter 和 Endpoint；SMS 单产品仍使用 `sms-*` 国家 Group。
+`products-websocket` Adapter 和 Endpoint，并为混合国家 Group `demo-sim` 启用 country 索引。
 根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
-不启用该 profile 时，不注册 SMS API、国家 Group 或后台任务；控制台隐藏 SMS 入口，直达页面显示未启用。
+不启用该 profile 时，不注册 SMS API 或后台任务；混合 Group 可由 Messages 单独使用。控制台隐藏 SMS 入口，直达页面显示未启用。
 启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
 公开 Mock Demo 隐藏 SMS 且不请求产品 API；未知 API 和静态资源保持错误。
 任一进程退出即结束场景，不自动恢复旧状态。
@@ -102,8 +102,8 @@ SMS 不创建 Redis 客户端、Owner、Pacer、Matching consumer 或 Adapter，
 Worker 与 Adapter 均指向 Server 18390。产品服务调用不经过平台业务 HTTP。
 每个 scope 仅允许一个启用 Pacer 的 Server；本版不支持多实例订单幂等或重启恢复。
 
-产品生命周期在平台装配之后消费发行层提供的国家 Group 与完整事件声明，并取得托管 Task ID。
-单独启用仍为 `sms-cn/us/gb`；与 Messages 同时启用使用 `demo-cn/us/gb`，两产品幂等消费同一声明。
+产品生命周期在平台装配之后消费发行层提供的唯一 `demo-sim` Group 与完整事件声明，并取得一个托管 Task ID。
+单独或与 Messages 同时启用都使用 `demo-sim`，两产品幂等消费同一声明。
 构造器没有注册或线程启动副作用；注册失败使启动失败，不补注册。关闭时先拒绝产品新命令，
 停止提交与观察任务，再由宿主关闭平台资源；产品线程共用最多 5 秒的关闭预算，不刷新或重放队列。
 
@@ -112,12 +112,12 @@ Worker 与 Adapter 均指向 Server 18390。产品服务调用不经过平台业
 和字段约束。复用现有 Task 请求与 Result 类型，不调用 Controller，不读取 Redis 或调度实现。
 平台 HTTP Call 复用同一提交服务，独立保留原有即时查询和异步等待。
 
-Host 每个号码对应一个 Worker，每个国家 Group 使用一个 JavaWorkerManager。
+Host 每个号码对应一个 Worker；全部国家共用 `demo-sim` 的一个 JavaWorkerManager。
 SDK 以 CLIENT_KEY 准备身份；Properties 经真实 Adapter 观察进入 Matching，Prepare 不保存完整属性。
 Worker SDK 和 Adapter 的原有 HTTP/WebSocket 边界继续保留。
 
 ```text
-应用申请 -> 产品按国家选托管 Task -> Server 有限提交服务 (ANY)
+应用申请 -> 同一个托管 Task -> Server 有限提交服务 ({"worker.country":["CN"]})
   -> Kernel 调度 -> Adapter -> 号码 Worker 建立监听
   -> 初始完整快照返回，命令完成并释放执行 lease
 Host 页面／验收脚本输入短信 -> Host 选择唯一获胜监听 -> 原 run 的 Reporter (tag 9)
@@ -237,7 +237,7 @@ git diff --check
 
 发行模块的组合证明创建真实 Server 上下文，主动阻断平台 Task 提交／Result 查询 HTTP 路由，
 SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后续观察。该证明检查共享资源仅一份，
-三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 profile 时，产品 API 和国家 Group 均不存在，统一页面呈现未启用状态。
+三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 SMS profile 时，SMS API 不存在，统一页面呈现未启用状态；两个产品均未启用时才不注册混合 Group。
 单元测试另外覆盖构造无副作用、失败启动清理、产品先于平台停止、退出拒绝和依赖边界。
 
 功能 world 为每国家 1 个真实连接的 Java Worker。依次验证无监听、A/B/C 共号、优先级、
@@ -267,8 +267,8 @@ functional、lifecycle 和 ZIP functional 分别使用 18400、18420、18440 作
 Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端口影响启动准入。
 保留现有 [Proof Selection](../../TESTING.md) 的平台规则。
 
-本场景证明有限产品闭环，不声明平台容量上限，不证明真实设备收信、属性索引、国家 Properties
-过滤、黑名单、可靠投递、租户隔离或重启恢复，也不扩大既有平台容量场景。
+本场景证明有限产品与 country 索引闭环，不声明平台容量上限；不证明真实设备收信、
+app 索引、黑名单、可靠投递、租户隔离或重启恢复，也不扩大既有平台容量场景。
 
 归档检查比较 ZIP 中的全部前端文件与当前 `frontend/dist`（生成的诊断字典单独交付），
 并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：

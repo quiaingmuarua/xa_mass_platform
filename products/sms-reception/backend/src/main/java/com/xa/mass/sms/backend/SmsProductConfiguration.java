@@ -6,7 +6,6 @@ import com.xa.mass.server.task.TaskDataService;
 import org.springframework.context.annotation.*;
 import org.springframework.beans.factory.annotation.Qualifier;
 import java.util.List;
-import java.util.Map;
 
 @Configuration(proxyBeanMethods = false)
 @Profile("sms-reception")
@@ -15,8 +14,8 @@ public class SmsProductConfiguration {
     @Bean(destroyMethod = "close")
     ListenerService listenerService(WorkerGroupRegistrationService registrations,
             TaskCallSubmissionService submissions, TaskDataService results,
-            @Qualifier("productCountryGroups") Map<String, String> groups,
+            @Qualifier("productWorkerGroup") String workerGroupId,
             @Qualifier("productWorkerEvents") List<String> events) {
-        return new ListenerService(registrations, submissions, results, groups, events);
+        return new ListenerService(registrations, submissions, results, workerGroupId, events);
     }
 }

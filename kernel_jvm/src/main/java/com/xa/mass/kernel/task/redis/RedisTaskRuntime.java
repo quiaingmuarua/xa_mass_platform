@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.task.redis;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -693,9 +694,9 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             WorkerAllocationMechanism mechanism
     ) {
         if (mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                && !item.targetWorkerIds().isEmpty()) {
+                && !item.workerSelector().isAny()) {
             throw new IllegalArgumentException(
-                    "PRECOMPUTED TaskItem must not contain target workers"
+                    "PRECOMPUTED TaskItem must have an empty workerSelector"
             );
         }
         rejectNonFiniteNumbers(item.payload());
@@ -727,7 +728,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         payload.put("priority", record.priority());
         payload.put("createdAtMillis", record.createdAtMillis());
         payload.put("expireAtMillis", item.expireAtMillis());
-        payload.put("targetWorkerIds", record.targetWorkerIds());
+        payload.put("workerSelector", record.workerSelector().expression());
         return mapper.writeValueAsString(payload);
     }
 
@@ -741,7 +742,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                             "priority",
                             "createdAtMillis",
                             "expireAtMillis",
-                            "targetWorkerIds"
+                            "workerSelector"
                     ))) {
                 return null;
             }
@@ -750,14 +751,13 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             JsonNode priority = item.get("priority");
             JsonNode createdAt = item.get("createdAtMillis");
             JsonNode expireAt = item.get("expireAtMillis");
-            JsonNode targetWorkerIds = item.get("targetWorkerIds");
+            JsonNode selector = item.get("workerSelector");
             if (eventCode == null || !eventCode.isTextual()
                     || payload == null || !payload.isObject()
                     || priority == null || !priority.isIntegralNumber()
                     || createdAt == null || !createdAt.isIntegralNumber()
                     || expireAt == null || !expireAt.isIntegralNumber()
-                    || targetWorkerIds == null
-                    || !targetWorkerIds.isArray()) {
+                    || selector == null || !selector.isObject()) {
                 return null;
             }
             Map<String, Object> payloadMap = mapper.convertValue(
@@ -765,15 +765,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     new TypeReference<>() {
                     }
             );
-            List<String> targetIds = new ArrayList<>();
-            for (JsonNode target : targetWorkerIds) {
-                if (!target.isTextual()) {
-                    throw new IllegalArgumentException(
-                            "target workerId must be text"
-                    );
-                }
-                targetIds.add(target.textValue());
-            }
+            Map<String, Object> expression = mapper.convertValue(selector, new TypeReference<>() { });
             return new TaskItem(
                     messageId,
                     eventCode.textValue(),
@@ -781,7 +773,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     payloadMap,
                     priority.intValue(),
                     expireAt.longValue(),
-                    targetIds
+                    TaskItemWorkerSelector.parse(expression)
             );
         } catch (JacksonException | IllegalArgumentException error) {
             return null;

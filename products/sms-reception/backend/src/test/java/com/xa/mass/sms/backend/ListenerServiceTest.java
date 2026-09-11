@@ -13,6 +13,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ListenerServiceTest {
+    @Test void mixedCountriesShareOneGroupAndTaskWithIndexedStartSelectors() {
+        Fixture fixture = client();
+        try (var service = fixture.service(new Time(), 10)) {
+            for (String country : ListenerService.COUNTRIES) {
+                var request = new HashMap<>(input(country));
+                request.put("country", country);
+                service.create(request);
+            }
+            verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
+            for (String country : ListenerService.COUNTRIES) {
+                verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream()
+                        .anyMatch(item -> item.workerSelector().equals(Map.of("worker.country", List.of(country))))));
+            }
+        }
+    }
     static class Time extends Clock {
         long now = 1_000_000;
         public ZoneId getZone() { return ZoneOffset.UTC; }
@@ -30,7 +45,7 @@ class ListenerServiceTest {
             when(registrations.register(anyString(), anyMap(), anyList())).thenAnswer(i -> {
                 String group = i.getArgument(0);
                 return new WorkerGroupRegistrationService.Registration(group,
-                        "task-" + group.substring(4).toUpperCase(Locale.ROOT), "registered");
+                        "task-sim", "registered");
             });
             when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of());
         }
@@ -82,8 +97,8 @@ class ListenerServiceTest {
                     .anyMatch(item -> record.cancelId.equals(item.messageId()))));
             service.accept(record, result(record, "LISTENING", false));
             assertThat(service.metrics()).containsEntry("activeListenersObserved", 1);
-            verify(client.submissions, timeout(2000)).submit(eq("task-CN"), argThat(items -> items.stream().anyMatch(item ->
-                    record.cancelId.equals(item.messageId()) && List.of("workerId", "$eq", "real-worker")
+            verify(client.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream().anyMatch(item ->
+                    record.cancelId.equals(item.messageId()) && Map.of("workerId", List.of("real-worker"))
                             .equals(item.workerSelector()) && "extension.worker.sms.listen.cancel".equals(item.eventCode()))));
             assertThat(record.view()).containsEntry("status", "CANCELLING");
             service.accept(record, result(record, "CANCELLED", false));
@@ -108,7 +123,7 @@ class ListenerServiceTest {
             for (int i = 0; i < 3; i++) service.create(input("id" + i));
             assertThatThrownBy(() -> service.create(input("overflow"))).isInstanceOf(ListenerService.ProductError.class);
             service.observe();
-            verify(client.results).loadTaskItemResults(eq("task-CN"), argThat(ids -> ids.size() == 3));
+            verify(client.results).loadTaskItemResults(eq("task-sim"), argThat(ids -> ids.size() == 3));
             assertThat(service.page(1, 1)).containsEntry("total", 3);
             assertThatThrownBy(() -> service.page(-1, 1)).isInstanceOf(ListenerService.ProductError.class);
         }
@@ -119,11 +134,11 @@ class ListenerServiceTest {
         verifyNoInteractions(fixture.registrations, fixture.submissions, fixture.results);
         assertThat(service.isRunning()).isFalse();
         assertThatThrownBy(() -> service.create(input("before-start"))).isInstanceOf(ListenerService.ProductError.class);
-        when(fixture.registrations.register(eq("sms-us"), anyMap(), anyList()))
+        when(fixture.registrations.register(eq("demo-sim"), anyMap(), anyList()))
                 .thenThrow(new IllegalStateException("registration unavailable"));
         assertThatThrownBy(service::start).hasMessage("registration unavailable");
         assertThat(service.isRunning()).isFalse();
-        verify(fixture.registrations, never()).register(eq("sms-gb"), anyMap(), anyList());
+        verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
         assertThatThrownBy(service::start).hasMessageContaining("closed");
         service.close();
     }
@@ -132,10 +147,10 @@ class ListenerServiceTest {
         when(fixture.submissions.submit(anyString(), anyList())).thenThrow(new IllegalStateException("uncertain"));
         try (var service = fixture.service(new Time(), 10)) {
             String id = (String) service.create(input("uncertain")).get("id");
-            verify(fixture.submissions, timeout(2000)).submit(eq("task-CN"), anyList());
+            verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), anyList());
             service.observe();
             service.observe();
-            verify(fixture.submissions, times(1)).submit(eq("task-CN"), anyList());
+            verify(fixture.submissions, times(1)).submit(eq("task-sim"), anyList());
             assertThat(service.get(id)).containsEntry("status", "ESTABLISHING");
             service.stop();
             assertThatThrownBy(() -> service.create(input("after-stop"))).isInstanceOf(ListenerService.ProductError.class);

@@ -101,7 +101,7 @@ class SmsCompositionIntegrationTest {
                         reporter.set(outcome);
                         return Jsons.toJson(snapshot);
                     });
-            try (var manager = JavaWorkerManager.builder(base, "sms-cn", WorkerTransportType.WEBSOCKET)
+            try (var manager = JavaWorkerManager.builder(base, "demo-sim", WorkerTransportType.WEBSOCKET)
                     .replica("one", () -> Map.of("phone", "+861700000001", "country", "CN"), List.of(handler))
                     .build()) {
                 managerRef.set(manager);
@@ -140,7 +140,7 @@ class SmsCompositionIntegrationTest {
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(ListenerService.class)).isEmpty();
             assertThat(context.getBean(WorkerResourceCatalog.class)
-                    .getWorkerGroupDescriptors(List.of("sms-cn", "sms-us", "sms-gb")).values())
+                    .getWorkerGroupDescriptors(List.of("demo-sim")).values())
                     .allMatch(value -> value == null);
             for (String path : List.of("/api/v1/sms/catalog", "/api/v1/sms/listeners", "/sms/index.html", "/sms/assets/missing.js", "/sms/missing", "/api/v1/sms/missing")) {
                 assertThat(send(http, base, path, null).statusCode()).as(path).isEqualTo(404);

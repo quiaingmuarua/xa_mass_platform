@@ -175,8 +175,10 @@ HOT candidate acquisition is a bounded read-only range query. It returns
 `(workerId, observedScore)` pairs to Kernel policy. PRECOMPUTED allocation
 exact-holds a bounded identity set, then publishes the held IDs and opaque
 scores for external Rule/Properties interpretation and Candidate Cache append.
-ON_DEMAND point-observes Kernel-normalized explicit Worker IDs or a bounded ANY
-pool and exact-holds directly. Concurrent rounds may observe the same due
+ON_DEMAND point-observes explicit IDs extracted from the stored selector or
+Matching-supplied indexed identities, or observes a bounded ANY pool, then
+exact-holds directly. Indexed identities are rechecked by Matching after hold.
+Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
 Worker score is not a Worker resource mutation lease. Worker registration
@@ -353,7 +355,8 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form preserves the bounded caller-supplied Worker universe and is used
-after Kernel normalizes an ON_DEMAND Worker Selector into TaskItem Worker IDs.
+after Kernel extracts explicit IDs from the stored selector or Matching returns
+bounded indexed identities. The Score Owner never interprets that selector.
 Assignment-dispatch may pass a Worker into PRECOMPUTED matching
 only after an exact observed-score lease succeeds.
 

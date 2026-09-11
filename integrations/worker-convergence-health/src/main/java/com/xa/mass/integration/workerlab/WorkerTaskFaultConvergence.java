@@ -92,11 +92,10 @@ final class WorkerTaskFaultConvergence {
                     Math.min(120_000L, options.maximumWaitMillis())
             );
             checkpointArmed = true;
-            Map<String, List<Object>> targetSelector = Map.of(
+            Map<String, Map<String, List<String>>> targetSelector = Map.of(
                     STRING_GROUP,
-                    List.of(
+                    Map.of(
                             "workerId",
-                            "$in",
                             List.of(
                                     requireWorkerId(identities, TARGET),
                                     requireWorkerId(identities, BACKUP)

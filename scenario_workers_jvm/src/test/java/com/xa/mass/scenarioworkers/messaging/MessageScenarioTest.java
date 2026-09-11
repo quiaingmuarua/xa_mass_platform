@@ -12,7 +12,7 @@ class MessageScenarioTest {
         return Map.of("campaignId", "campaign", "messageId", id, "country", "CN", "recipientId", "recipient", "body", "body");
     }
     MessageScenario.Sender sender(MessageScenario host, String id) {
-        return host.addSender("demo-cn", id, "CN", "phone-" + id, () -> id, () -> "RUNNING");
+        return host.addSender("demo-sim", id, "CN", "phone-" + id, () -> id, () -> "RUNNING");
     }
     @Test void handlerDeduplicatesAcrossWorkersAndRetainsFirstReporter() {
         try (var host = new MessageScenario()) {

@@ -271,7 +271,7 @@ class DefaultTaskCommandsTest {
                 Map.of("value", "abc"),
                 5,
                 10_000L,
-                List.of()
+                TaskItemWorkerSelector.parse(Map.of())
         );
     }
 

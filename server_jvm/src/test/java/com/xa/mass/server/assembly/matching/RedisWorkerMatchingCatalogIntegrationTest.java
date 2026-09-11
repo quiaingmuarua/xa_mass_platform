@@ -1,5 +1,7 @@
 package com.xa.mass.server.assembly.matching;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,6 +28,131 @@ import org.junit.jupiter.api.Test;
 
 @Tag("redis-owner")
 class RedisWorkerMatchingCatalogIntegrationTest {
+    private static final long SCALE = 1L << 43;
+    private static final TaskItemWorkerSelector CN = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
+    private static final TaskItemWorkerSelector US = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("US")));
+
+    private void enableIndex() {
+        catalog.close();
+        catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace, java.util.Set.of("g"));
+        catalog.rebuildCountryIndexes();
+    }
+
+    private String indexKey() { return keyspace.base() + ":matching:worker:index:country:g"; }
+
+    @Test void countryIndexTakesInOrderPreservesTimeAndMovesOrRemovesMembership() throws Exception {
+        enableIndex();
+        catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("country", "CN"), "b", Map.of("country", "CN"),
+                "c", Map.of("country", "US")));
+        assertThat(redis.zscore(indexKey(), "a").longValue()).isEqualTo(65 * SCALE);
+        assertThat(catalog.takeWorkerIds("g", CN, 1)).containsExactly("a");
+        long touched = redis.zscore(indexKey(), "a").longValue();
+        assertThat(touched % SCALE).isPositive();
+        assertThat(catalog.takeWorkerIds("g", CN, 1)).containsExactly("b");
+        var facts = Map.of("country", "CN", "network", "wifi");
+        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("a", facts)).get("a").status()).isEqualTo(MutationStatus.APPLIED);
+        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("a", facts)).get("a").status()).isEqualTo(MutationStatus.UNCHANGED);
+        assertThat(redis.zscore(indexKey(), "a").longValue()).isEqualTo(touched);
+        catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("country", "US")));
+        assertThat(redis.zscore(indexKey(), "a").longValue()).isEqualTo(538 * SCALE + touched % SCALE);
+        assertThat(catalog.retainWorkerIds("g", CN, List.of("a", "b", "c", "missing"))).containsExactly("b");
+        assertThat(catalog.retainWorkerIds("g", US, List.of("a", "b", "c"))).containsExactlyInAnyOrder("a", "c");
+        catalog.patchWorkerPlatformProperties("g", "b", Map.of("country", "US"));
+        assertThat(catalog.retainWorkerIds("g", CN, List.of("b"))).containsExactly("b");
+        for (Map<String, String> replacement : List.of(Map.<String, String>of(), Map.of("country", ""), Map.of("country", "cn"))) {
+            catalog.upsertWorkerFactsBatch("g", Map.of("b", replacement));
+            assertThat(redis.zscore(indexKey(), "b")).isNull();
+            assertThat(catalog.loadWorkerFacts("g", List.of("b")).get("b").workerProperties()).isEqualTo(replacement);
+        }
+        assertThatThrownBy(() -> catalog.takeWorkerIds("disabled", CN, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.takeWorkerIds("g", CN, 101)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.takeWorkerIds("g", TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("cn"))), 1))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void startupRebuildStreamsExistingFactsAndDoesNotChangeThem() {
+        for (int page = 0; page < 4; page++) {
+            Map<String, Map<String, String>> batch = new LinkedHashMap<>();
+            for (int i = 0; i < 100; i++) batch.put("w" + (page * 100 + i), Map.of("country", i % 2 == 0 ? "CN" : "US"));
+            catalog.upsertWorkerFactsBatch("g", batch);
+        }
+        var before = redis.hgetall(keyspace.base() + ":matching:worker:facts:g");
+        redis.zadd(indexKey(), 1, "orphan");
+        enableIndex();
+        assertThat(redis.zcard(indexKey())).isEqualTo(400);
+        assertThat(redis.zscore(indexKey(), "orphan")).isNull();
+        assertThat(redis.hgetall(keyspace.base() + ":matching:worker:facts:g")).isEqualTo(before);
+        assertThat(catalog.takeWorkerIds("g", CN, 100)).hasSize(100);
+        assertThat(catalog.takeWorkerIds("g", US, 100)).hasSize(100);
+        catalog.rebuildCountryIndexes();
+        assertThat(redis.zscore(indexKey(), "w0").longValue() % SCALE).isZero();
+    }
+
+    @Test void busyPrefixCanRotatePastHundredWithoutRemovingMembers() throws Exception {
+        enableIndex();
+        for (int start = 0; start < 200; start += 100) {
+            Map<String, Map<String, String>> batch = new LinkedHashMap<>();
+            for (int i = start; i < start + 100; i++) batch.put(String.format("w%03d", i), Map.of("country", "CN"));
+            catalog.upsertWorkerFactsBatch("g", batch);
+        }
+        var first = catalog.takeWorkerIds("g", CN, 100);
+        assertThat(first.getFirst()).isEqualTo("w000");
+        var second = catalog.takeWorkerIds("g", CN, 100);
+        assertThat(second).doesNotContainAnyElementsOf(first).contains("w199");
+        long secondTime = redis.zscore(indexKey(), "w199").longValue();
+        Thread.sleep(3);
+        catalog.takeWorkerIds("g", CN, 100);
+        assertThat(redis.zscore(indexKey(), "w000").longValue()).isGreaterThan(secondTime);
+        assertThat(redis.zcard(indexKey())).isEqualTo(200);
+    }
+
+    @Test void highestCountryRangePreservesLowIntegerDigitsAndSharesOneBatchTime() {
+        enableIndex();
+        var zz = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("ZZ")));
+        catalog.upsertWorkerFactsBatch("g", Map.of("z1", Map.of("country", "ZZ"), "z2", Map.of("country", "ZZ"),
+                "aa", Map.of("country", "AA")));
+        long exact = 675 * SCALE + 1234567890123L;
+        redis.zadd(indexKey(), (double) exact, "z1");
+        catalog.upsertWorkerFactsBatch("g", Map.of("z1", Map.of("country", "CN")));
+        assertThat(redis.zscore(indexKey(), "z1").longValue()).isEqualTo(65 * SCALE + 1234567890123L);
+        catalog.upsertWorkerFactsBatch("g", Map.of("z1", Map.of("country", "ZZ")));
+        assertThat(redis.zscore(indexKey(), "z1").longValue()).isEqualTo(exact);
+        assertThat(catalog.takeWorkerIds("g", zz, 100)).containsExactly("z2", "z1");
+        assertThat(redis.zscore(indexKey(), "z1")).isEqualTo(redis.zscore(indexKey(), "z2"));
+        assertThat(redis.zscore(indexKey(), "z1").longValue() / SCALE).isEqualTo(675);
+        assertThat(catalog.retainWorkerIds("g", zz, List.of("aa", "z1", "z2"))).containsExactlyInAnyOrder("z1", "z2");
+    }
+
+    @Test void corruptFactsFailStartupRebuild() {
+        redis.hset(keyspace.base() + ":matching:worker:facts:g", "w", "not-json");
+        assertThatThrownBy(this::enableIndex).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void concurrentFactsAndTakeNeverSplitCountryMembershipOrEraseTakenTime() throws Exception {
+        enableIndex();
+        catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("country", "CN")));
+        catalog.takeWorkerIds("g", CN, 1);
+        long initialTime = redis.zscore(indexKey(), "w").longValue() % SCALE;
+        try (var other = new RedisWorkerMatchingCatalog(redisClient, keyspace, java.util.Set.of("g"));
+             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var writer = executor.submit(() -> {
+                for (int i = 0; i < 300; i++) other.upsertWorkerFactsBatch("g", Map.of("w", Map.of("country", i % 2 == 0 ? "CN" : "US")));
+            });
+            for (int i = 0; i < 300; i++) {
+                catalog.takeWorkerIds("g", i % 2 == 0 ? CN : US, 1);
+                Long code = redis.eval("""
+                        local facts = cjson.decode(redis.call('HGET', KEYS[1], 'w'))
+                        local code = math.floor(tonumber(redis.call('ZSCORE', KEYS[2], 'w')) / 8796093022208)
+                        if (facts.country == 'CN' and code == 65) or (facts.country == 'US' and code == 538) then return 1 end
+                        return 0
+                        """, io.lettuce.core.ScriptOutputType.INTEGER,
+                        new String[]{keyspace.base() + ":matching:worker:facts:g", indexKey()});
+                assertThat(code).isEqualTo(1L);
+                assertThat(redis.zscore(indexKey(), "w").longValue() % SCALE).isGreaterThanOrEqualTo(initialTime);
+            }
+            writer.get(10, TimeUnit.SECONDS);
+        }
+    }
 
     private RedisTestScope testScope;
     private RedisKeyspace keyspace;
@@ -41,7 +168,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace);
+        catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace, java.util.Set.of());
     }
 
     @AfterEach
@@ -142,7 +269,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         Map<String, String> other = Map.of("a", "other", "b", "other");
         catalog.upsertWorkerFactsBatch("g", Map.of("w", live));
         CountDownLatch start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerMatchingCatalog(redisClient, keyspace);
+        try (var competing = new RedisWorkerMatchingCatalog(redisClient, keyspace, java.util.Set.of());
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
                 start.await();
@@ -262,7 +389,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.createCandidateRule("task-1", "group-1", rule);
 
         catalog.close();
-        catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace);
+        catalog = new RedisWorkerMatchingCatalog(redisClient, keyspace, java.util.Set.of());
 
         var facts = catalog.loadWorkerFacts(
                 "group-1",

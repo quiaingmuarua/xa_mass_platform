@@ -68,9 +68,12 @@ conflicts. Orphan facts or Rules are inert. The resident Matching Runtime reads
 Candidate Rules only for a bounded PRECOMPUTED Demand containing Kernel-held
 Worker IDs.
 
-ON_DEMAND uses no Matching key. Kernel validates the finite `workerSelector`,
-stores only normalized explicit Worker IDs or an empty ANY target with the
-TaskItem, and does not ask Matching to scan Group facts during dispatch.
+ON_DEMAND stores one immutable workerSelector binding-to-parameters Map: ANY, explicit IDs or a
+property condition interpreted only by Matching.
+Indexed acquisition uses Matching's derived country ZSET and bounded post-hold
+membership recheck; it does not scan Group facts or use PRECOMPUTED Demand/Cache.
+The index shape, startup rebuild and timestamp bounds belong to
+[Matching](../../../worker_matching_jvm/README.md#country-index).
 
 ## Worker Score
 
@@ -135,8 +138,8 @@ truth records nor atomic snapshots across these keys.
 
 - Do not restore `worker:properties` or Properties inside Kernel metadata.
 - Do not place PRECOMPUTED Candidate Rules in Kernel Task JSON.
-- Do not add ON_DEMAND Item Rule storage; only normalized Worker IDs belong to
-  the Kernel TaskItem.
+- Do not add ON_DEMAND Item Rule storage; Kernel TaskItems carry one selector,
+  not Properties, derived query/ID mirrors or index scores.
 - Do not use identity ownership for Worker discovery.
 - Do not let Matching interpret Score or let Kernel interpret Properties.
 - Do not add dual reads or migration aliases for the retired layout.

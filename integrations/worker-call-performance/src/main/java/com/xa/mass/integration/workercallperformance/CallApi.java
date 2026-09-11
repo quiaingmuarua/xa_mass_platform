@@ -55,7 +55,7 @@ final class CallApi implements AutoCloseable {
         item.put("eventCode", "extension.worker.string.md5");
         item.put("payload", Map.of("value", INPUT));
         item.put("ttlMillis", 120_000);
-        item.put("workerSelector", worker == null ? List.of() : List.of("workerId", "$eq", worker));
+        item.put("workerSelector", worker == null ? Map.of() : Map.of("workerId", List.of(worker)));
         var response = send(runtime + "/api/v1/tasks/" + task + "/items:call",
                 Map.of("items", List.of(item), "waitTimeoutMillis", 1_000));
         if (Set.of(400, 404, 405, 415, 422).contains(response.statusCode()))

@@ -412,6 +412,15 @@ class WorkerMatchingRuntimeTest {
     }
 
     private static final class FakeCatalog implements WorkerMatchingCatalog {
+        @Override public void validateWorkerSelector(String group, com.xa.mass.kernel.task.TaskItemWorkerSelector query) {
+            throw new UnsupportedOperationException("PRECOMPUTED fixture has no index");
+        }
+        @Override public List<String> takeWorkerIds(String group, com.xa.mass.kernel.task.TaskItemWorkerSelector query, int limit) {
+            throw new UnsupportedOperationException("PRECOMPUTED fixture has no index");
+        }
+        @Override public java.util.Set<String> retainWorkerIds(String group, com.xa.mass.kernel.task.TaskItemWorkerSelector query, List<String> ids) {
+            throw new UnsupportedOperationException("PRECOMPUTED fixture has no index");
+        }
         private final Map<String, CandidateRule> rules =
                 new LinkedHashMap<>();
         private final Map<String, WorkerFacts> facts = new LinkedHashMap<>();

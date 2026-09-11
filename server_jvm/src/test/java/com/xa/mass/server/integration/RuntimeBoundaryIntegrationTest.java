@@ -162,6 +162,8 @@ class RuntimeBoundaryIntegrationTest {
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        registry.add("xa.mass.worker-matching.country-index.worker-groups[0]", () -> "country-index-websocket");
+        registry.add("xa.mass.worker-matching.country-index.worker-groups[1]", () -> "country-index-socket");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
         registry.add("xa.mass.task-item-outcomes.names[8]", () -> "read");
         registry.add("xa.mass.task-item-outcomes.names[9]", () -> "replied");
@@ -349,6 +351,64 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
+    void countryIndexSelectsActualExecutorAfterLiveCountrySwapWithoutReprepare() throws Exception {
+        for (WorkerTransportType type : List.of(WorkerTransportType.WEBSOCKET, WorkerTransportType.SOCKET)) {
+            String group = type == WorkerTransportType.WEBSOCKET ? "country-index-websocket" : "country-index-socket";
+            String adapter = type == WorkerTransportType.WEBSOCKET ? WEBSOCKET_ENDPOINT_MANAGER_ID : SOCKET_ENDPOINT_MANAGER_ID;
+            var registration = send("POST", "/api/v1/worker-groups/" + group + ":register",
+                    "{\"eventCodes\":[\"extension.worker.country.executor\"]}");
+            assertThat(registration.statusCode()).isEqualTo(200);
+            String taskId = JSON.readTree(registration.body()).get("taskId").asText();
+            var firstProperties = new AtomicReference<>(Map.of("country", "CN", "host", "first"));
+            var secondProperties = new AtomicReference<>(Map.of("country", "US", "host", "second"));
+            var firstRef = new AtomicReference<JavaWorker>();
+            var secondRef = new AtomicReference<JavaWorker>();
+            var firstEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
+                    ignored -> Jsons.toJson(Map.of("executor", firstRef.get().snapshot().workerId(), "host", "first")));
+            var secondEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
+                    ignored -> Jsons.toJson(Map.of("executor", secondRef.get().snapshot().workerId(), "host", "second")));
+            try (var first = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "first", type,
+                         firstProperties::get, List.of(firstEvent), WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()));
+                 var second = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "second", type,
+                         secondProperties::get, List.of(secondEvent), WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()))) {
+                firstRef.set(first); secondRef.set(second);
+                first.start(); second.start();
+                awaitCondition(() -> first.snapshot().workerId() != null && second.snapshot().workerId() != null);
+                String firstId = first.snapshot().workerId(), secondId = second.snapshot().workerId();
+                awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
+                awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
+                assertCountryExecutor(taskId, "CN", firstId, "first");
+                assertCountryExecutor(taskId, "US", secondId, "second");
+                firstProperties.set(Map.of("country", "US", "host", "first"));
+                secondProperties.set(Map.of("country", "CN", "host", "second"));
+                assertThat(first.reportProperties(Map.of("country", "US"))).isTrue();
+                assertThat(second.reportProperties()).isTrue();
+                awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
+                awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
+                assertCountryExecutor(taskId, "CN", secondId, "second");
+                assertCountryExecutor(taskId, "US", firstId, "first");
+                assertThat(first.snapshot().workerId()).isEqualTo(firstId);
+                assertThat(second.snapshot().workerId()).isEqualTo(secondId);
+                verify(preparationService, times(2)).prepareAll(eq(group), any(), any(), anyList());
+                verify(matchingCatalog, org.mockito.Mockito.atLeastOnce()).retainWorkerIds(eq(group), any(), anyList());
+            }
+        }
+    }
+
+    private void assertCountryExecutor(String taskId, String country, String workerId, String host) throws Exception {
+        String messageId = UUID.randomUUID().toString();
+        var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
+                "items", List.of(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
+                        "payload", Map.of(), "workerSelector", Map.of("worker.country", List.of(country)))),
+                "waitTimeoutMillis", 10000)));
+        assertThat(response.statusCode()).isEqualTo(200);
+        var result = JSON.readTree(response.body()).get(messageId);
+        assertThat(result.get("status").asText()).isEqualTo("succeeded");
+        assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText()))
+                .containsEntry("executor", workerId).containsEntry("host", host);
+    }
+
+    @Test
     void lostFullPropertiesPublicationIsReplacedByNextIncrementalObservationOnBothTextProtocols() throws Exception {
         for (WorkerTransportType type : List.of(WorkerTransportType.WEBSOCKET, WorkerTransportType.SOCKET)) {
             String groupId = "lost-properties-" + UUID.randomUUID();
@@ -447,12 +507,12 @@ class RuntimeBoundaryIntegrationTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         do {
             HttpResponse<String> response = send("POST", "/api/v1/runtime-view/worker-groups/"
-                    + groupId + "/workers:preview", "1");
+                    + groupId + "/workers:preview", "100");
             assertThat(response.statusCode()).isEqualTo(200);
             List<?> workers = (List<?>) Jsons.parseObject(response.body()).get("workers");
-            if (workers.size() == 1) {
-                Map<?, ?> view = (Map<?, ?>) workers.get(0);
-                assertThat(view.get("workerId")).isEqualTo(workerId);
+            for (Object entry : workers) {
+                Map<?, ?> view = (Map<?, ?>) entry;
+                if (!workerId.equals(view.get("workerId"))) continue;
                 assertThat(view.get("endpointManagerId")).isEqualTo(adapterId);
                 if (expected.equals(view.get("workerProperties"))) {
                     return;
@@ -517,7 +577,7 @@ class RuntimeBoundaryIntegrationTest {
                         Jsons.toJson(Map.of("items", List.of(Map.of(
                                 "messageId", messageId, "eventCode", TEST_EVENT_CODE,
                                 "payload", Map.of("value", "input"),
-                                "workerSelector", List.of("workerId", "$eq", prepared.workerId()))),
+                                "workerSelector", Map.of("workerId", List.of(prepared.workerId())))),
                                 "waitTimeoutMillis", 1)));
                 assertThat(submitted.statusCode()).isEqualTo(200);
                 assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
@@ -1375,9 +1435,7 @@ class RuntimeBoundaryIntegrationTest {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "payload": {"value": "input"},
-                            "workerSelector": [
-                              "workerId", "$eq", "%s"
-                            ]
+                            "workerSelector": {"workerId": ["%s"]}
                           }],
                           "waitTimeoutMillis": 10000
                         }

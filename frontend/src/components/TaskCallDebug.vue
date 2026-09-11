@@ -24,7 +24,7 @@ const config = useRuntimeViewerConfig();
 const taskCallDebug = useTaskCallDebugStore();
 const eventName = ref("");
 const payloadText = ref("{}");
-const workerSelectorText = ref("[]");
+const workerSelectorText = ref("{}");
 const waitTimeoutMillis = ref(DEFAULT_TASK_CALL_TIMEOUT_MILLIS);
 const validationError = ref<TaskCallDebugErrorPresentation>();
 const historyViewport = ref<HTMLElement>();
@@ -92,7 +92,7 @@ function clearHistory(): void {
 function resetDraft(): void {
   eventName.value = props.entry.workerGroup?.eventCodes[0] ?? "";
   payloadText.value = "{}";
-  workerSelectorText.value = "[]";
+  workerSelectorText.value = "{}";
   waitTimeoutMillis.value = DEFAULT_TASK_CALL_TIMEOUT_MILLIS;
   validationError.value = undefined;
 }
@@ -326,7 +326,7 @@ async function scrollToLatest(): Promise<void> {
       </label>
 
       <label>
-        <span>Worker Selector · JSON Array</span>
+        <span>Worker Selector · JSON Object</span>
         <textarea
           v-model="workerSelectorText"
           rows="5"
@@ -334,7 +334,8 @@ async function scrollToLatest(): Promise<void> {
           :disabled="!availability.enabled || busy"
         />
         <small>
-          [] 表示任意可服务 Worker；也可使用 workerId 的 $eq 或 $in 指令。
+          {} 表示任意可服务 Worker；指定目标使用 {"workerId":["id"]}，属性参数由
+          Matching 校验。
         </small>
       </label>
 

@@ -16,10 +16,10 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /** Shared bounded admission for HTTP Call and in-process product callers. */
 @Service
@@ -27,42 +27,41 @@ public final class TaskCallSubmissionService {
     private final TaskCallItemSubmission taskCallSubmission;
     private final TaskResourceCatalog taskCatalog;
     private final TaskItemMapper taskItems;
+    private final WorkerMatchingCatalog matching;
 
     public TaskCallSubmissionService(TaskCallItemSubmission taskCallSubmission,
-            TaskResourceCatalog taskCatalog, TaskItemMapper taskItems) {
+            TaskResourceCatalog taskCatalog, TaskItemMapper taskItems,
+            WorkerMatchingCatalog matching) {
         this.taskCallSubmission = taskCallSubmission;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
+        this.matching = matching;
     }
 
     public List<String> submit(String taskId, List<TaskItemRequest> items) {
         if (taskId == null || taskId.isBlank()) {
             throw invalid("taskId must be non-blank");
         }
-        // Validate the complete input before any Owner call, including overwritten duplicates.
-        LinkedHashMap<String, TaskItemRequest> requestedItems = latestItems(items);
-        requireCallableTask(taskId);
-        List<String> messageIds = List.copyOf(requestedItems.keySet());
+        // Capture every input, including duplicates, before any Owner call.
+        List<TaskItemWorkerSelector> selectors = captureSelectors(items);
+        TaskDescriptor descriptor = requireCallableTask(taskId);
         long createdAtMillis = taskItems.nowMillis();
-        var submittedItems = new ArrayList<TaskItem>(requestedItems.size());
+        var latest = new LinkedHashMap<String, TaskItem>();
         try {
-            requestedItems.values().forEach(item -> submittedItems.add(
-                    taskItems.onDemandItem(
-                            item,
-                            createdAtMillis,
-                            TaskItemWorkerSelector.targetWorkerIds(
-                                    item.workerSelector()
-                            )
-                    )
-            ));
+            for (int i = 0; i < items.size(); i++) {
+                TaskItemWorkerSelector selector = selectors.get(i);
+                if (!selector.isAny() && !selector.hasExplicitWorkerIds()) {
+                    matching.validateWorkerSelector(descriptor.workerGroupId(), selector);
+                }
+                TaskItemRequest item = items.get(i);
+                latest.put(item.messageId(), taskItems.onDemandItem(item, createdAtMillis, selector));
+            }
         } catch (IllegalArgumentException error) {
-            throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.mapItems",
-                    error.getMessage(),
-                    error
-            );
+            throw invalid(error.getMessage());
         }
+        // No mutation until every original input has passed Matching admission.
+        List<String> messageIds = List.copyOf(latest.keySet());
+        List<TaskItem> submittedItems = List.copyOf(latest.values());
         TaskCallSubmissionResult submission;
         long submissionStarted = TaskRpcStageEvent.start();
         boolean submitted = false;
@@ -128,7 +127,7 @@ public final class TaskCallSubmissionService {
         return descriptor;
     }
 
-    private static LinkedHashMap<String, TaskItemRequest> latestItems(
+    private static List<TaskItemWorkerSelector> captureSelectors(
             List<TaskItemRequest> items
     ) {
         if (items == null || items.isEmpty() || items.size() > 100) {
@@ -139,7 +138,7 @@ public final class TaskCallSubmissionService {
                     null
             );
         }
-        var latest = new LinkedHashMap<String, TaskItemRequest>();
+        var selectors = new ArrayList<TaskItemWorkerSelector>(items.size());
         for (TaskItemRequest item : items) {
             if (item == null) {
                 throw new ServerException(
@@ -156,14 +155,12 @@ public final class TaskCallSubmissionService {
                 throw invalid("Invalid TaskItem fields");
             }
             try {
-                if (item.workerSelector() == null) throw new IllegalArgumentException("workerSelector is required");
-                TaskItemWorkerSelector.targetWorkerIds(item.workerSelector());
+                selectors.add(TaskItemWorkerSelector.parse(item.workerSelector()));
             } catch (IllegalArgumentException error) {
                 throw invalid(error.getMessage());
             }
-            latest.put(item.messageId(), item);
         }
-        return latest;
+        return List.copyOf(selectors);
     }
 
     private static ServerException invalid(String message) {

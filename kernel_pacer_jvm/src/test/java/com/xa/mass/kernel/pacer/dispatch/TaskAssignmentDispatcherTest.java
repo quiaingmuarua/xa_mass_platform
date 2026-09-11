@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -257,7 +259,7 @@ class TaskAssignmentDispatcherTest {
                 Map.of("z", 2, "a", 1),
                 0,
                 null,
-                List.of()
+                TaskItemWorkerSelector.parse(Map.of())
         );
     }
 

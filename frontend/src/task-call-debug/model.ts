@@ -106,40 +106,34 @@ function parseJsonObject(text: string, label: string): Record<string, JsonValue>
 }
 
 function parseWorkerSelector(text: string): TaskItemWorkerSelector {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw taskCallDebugConfigurationError("Worker Selector 必须是合法 JSON Array。");
-  }
-  if (!Array.isArray(parsed)) {
+  const entries = Object.entries(parseJsonObject(text, "Worker Selector"));
+  if (entries.length === 0) return {};
+  if (entries.length !== 1) throw invalidWorkerSelector();
+  const [binding, parameters] = entries[0];
+  if (
+    !isNonBlankString(binding) ||
+    !Array.isArray(parameters) ||
+    parameters.length < 1 ||
+    parameters.length > 100 ||
+    !parameters.every((parameter): parameter is string => typeof parameter === "string")
+  ) {
     throw invalidWorkerSelector();
   }
-  if (parsed.length === 0) return [];
-  if (parsed.length !== 3 || parsed[0] !== "workerId") {
+  if (
+    binding === "workerId" &&
+    (!parameters.every(isNonBlankString) ||
+      new Set(parameters).size !== parameters.length)
+  ) {
     throw invalidWorkerSelector();
   }
-  if (parsed[1] === "$eq" && isNonBlankString(parsed[2])) {
-    return ["workerId", "$eq", parsed[2]];
-  }
-  if (parsed[1] === "$in" && Array.isArray(parsed[2])) {
-    const workerIds = parsed[2];
-    if (
-      workerIds.length >= 1 &&
-      workerIds.length <= 100 &&
-      workerIds.every(isNonBlankString) &&
-      new Set(workerIds).size === workerIds.length
-    ) {
-      return ["workerId", "$in", [...workerIds]];
-    }
-  }
-  throw invalidWorkerSelector();
+  return { [binding]: [...parameters] };
 }
 
 function invalidWorkerSelector(): Error {
   return taskCallDebugConfigurationError(
-    'Worker Selector 必须是 []、["workerId","$eq","id"] 或 ' +
-      '["workerId","$in",["id"]]。'
+    "Worker Selector 必须是 {} 或单个绑定名称到 1..100 个字符串参数的对象，" +
+      '例如 {"workerId":["id"]}、{"worker.country":["CN"]}。' +
+      "Worker ID 必须非空白且唯一；属性参数由 Matching 校验。"
   );
 }
 

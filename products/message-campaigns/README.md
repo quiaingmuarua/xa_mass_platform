@@ -11,8 +11,8 @@ Adapter 和真实 Worker 池；产品之间没有代码依赖。
 `backend -> server_jvm` 只消费 `WorkerGroupRegistrationService`、`TaskCreationService`、
 `TaskDataService`、`TaskLifecycleService` 及现有 Task 契约。产品不调用 Controller，不经过平台 HTTP
 等待器，不创建 Redis、Kernel Owner、Pacer 或 Adapter。只有 `message-campaigns` profile 启用业务。
-[Distribution](../../distribution/server/README.md) 提供国家到 Group 的映射与完整业务/共享事件声明。
-单产品为 `messages-cn/us/gb`，双产品为 `demo-cn/us/gb`；两产品幂等消费同一 Group 声明。
+[Distribution](../../distribution/server/README.md) 提供唯一混合 Group `demo-sim` 与完整业务/共享事件声明。
+单产品和双产品都使用 `demo-sim`；两产品幂等消费同一 Group 声明。
 
 ```text
 POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
@@ -25,14 +25,15 @@ POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
 
 一个收件人对应一个稳定 messageId 和 TaskItem；收件人地址与 Worker 身份无关。
 匹配规则始终包含 `worker.messaging.enabled = "true"`，可选的发送号码增加 `worker.phone` 等值条件。
-国家只决定配置中的 Group，不在产品中选 Worker。默认候选数 100，可通过
+所有国家使用同一 Group。PRECOMPUTED 规则包含 `worker.country $eq`、
+`worker.messaging.enabled $eq "true"` 和可选 `worker.phone`，产品不选 Worker。默认候选数 100，可通过
 `xa.mass.messages.maximum-candidate-workers` 在 1..1000 内设置。
 
 ## API 与业务记录
 
 | API | 契约 |
 | --- | --- |
-| `GET /api/v1/messages/catalog` | runId、版本、CN/US/GB Group 和容量；仅作为可用性观察 |
+| `GET /api/v1/messages/catalog` | runId、版本、支持的 CN/US/GB（均指向 `demo-sim`）和容量；仅作为可用性观察 |
 | `POST /api/v1/messages/campaigns` | `requestId,name,country,body,recipientIds`，可选 `senderPhone`；HTTP 202 返回本地批次 |
 | `GET /api/v1/messages/campaigns` | 批次分页，offset 默认 0，limit 默认 30、范围 1..1000 |
 | `GET /api/v1/messages/campaigns/{id}` | 提交状态、Task 身份、消息数、分阶段统计 |

@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -379,7 +381,7 @@ class TaskRpcCallServiceTest {
     }
 
     @Test
-    void normalizedWorkerTargetsArePersistedWithTheSubmittedItem() {
+    void explicitWorkerSelectorIsPersistedWithTheSubmittedItem() {
         TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(10);
@@ -408,9 +410,8 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                List.of(
+                                Map.of(
                                         "workerId",
-                                        "$in",
                                         List.of("worker-b", "worker-a")
                                 )
                         )),
@@ -424,7 +425,7 @@ class TaskRpcCallServiceTest {
         );
         verify(submission).submit(eq("task-1"), items.capture());
         assertThat(items.getValue()).singleElement().satisfies(item ->
-                assertThat(item.targetWorkerIds()).containsExactly(
+                assertThat(item.workerSelector().targetWorkerIds()).containsExactly(
                         "worker-b",
                         "worker-a"
                 )
@@ -433,7 +434,7 @@ class TaskRpcCallServiceTest {
     }
 
     @Test
-    void invalidWorkerSelectorIsRejectedBeforeTaskItemSubmission() {
+    void malformedWorkerSelectorIsRejectedBeforeTaskItemSubmission() {
         TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(10);
@@ -453,7 +454,7 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                List.of("worker.region", "$eq", "local")
+                                Map.of("workerId", "worker")
                         )),
                         1_000L
                 )
@@ -489,14 +490,11 @@ class TaskRpcCallServiceTest {
         TaskItemMapper taskItems = mock(TaskItemMapper.class);
         when(taskItems.nowMillis()).thenReturn(1_000L);
         when(taskItems.onDemandItem(
-                any(TaskItemRequest.class), eq(1_000L), anyList()
-        )).thenAnswer(invocation -> new TaskItemMapper().onDemandItem(
+                any(TaskItemRequest.class), eq(1_000L), any(TaskItemWorkerSelector.class))).thenAnswer(invocation -> new TaskItemMapper().onDemandItem(
                 invocation.getArgument(0),
-                invocation.getArgument(1),
-                invocation.getArgument(2)
-        ));
+                invocation.getArgument(1), invocation.getArgument(2)));
         return new TaskRpcCallService(
-                new TaskCallSubmissionService(submission, taskCatalog, taskItems),
+                new TaskCallSubmissionService(submission, taskCatalog, taskItems, org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class)),
                 taskRuntime, registry, properties
         );
     }
@@ -525,7 +523,7 @@ class TaskRpcCallServiceTest {
                 payload,
                 5,
                 1_000L,
-                List.of()
+                Map.of()
         );
     }
 

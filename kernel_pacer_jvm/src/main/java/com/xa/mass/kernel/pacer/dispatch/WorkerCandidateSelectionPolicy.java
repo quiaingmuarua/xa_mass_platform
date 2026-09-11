@@ -1,6 +1,8 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
@@ -25,12 +27,14 @@ final class WorkerCandidateSelectionPolicy {
     private final CandidateWorkerCache candidateCache;
     private final WorkerResourceCatalog workerCatalog;
     private final Long hotEligibilityFloorMillis;
+    private final WorkerCandidateIndex candidateIndex;
 
     WorkerCandidateSelectionPolicy(
             WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
             WorkerResourceCatalog workerCatalog,
-            Long hotEligibilityFloorMillis
+            Long hotEligibilityFloorMillis,
+            WorkerCandidateIndex candidateIndex
     ) {
         this.workerScores = Objects.requireNonNull(
                 workerScores,
@@ -45,6 +49,7 @@ final class WorkerCandidateSelectionPolicy {
                 "workerCatalog"
         );
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
+        this.candidateIndex = Objects.requireNonNull(candidateIndex, "candidateIndex");
     }
 
     private Map<String, Long> observeDueCandidates(
@@ -128,14 +133,12 @@ final class WorkerCandidateSelectionPolicy {
 
     Map<String, HeldWorkerCandidate> acquireOnDemandCandidates(
             String workerGroupId,
-            Map<String, List<String>> targetWorkerIdsByMessageId,
+            Map<String, TaskItemWorkerSelector> selectorsByMessageId,
             Set<String> excludedWorkerIds,
             long leaseUntilMillis
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
-        Map<String, List<String>> targets = validateTargets(
-                targetWorkerIdsByMessageId
-        );
+        Map<String, TaskItemWorkerSelector> selectors = validateSelectors(selectorsByMessageId);
         Objects.requireNonNull(excludedWorkerIds, "excludedWorkerIds");
 
         LinkedHashMap<String, String> selectedByMessageId =
@@ -145,11 +148,11 @@ final class WorkerCandidateSelectionPolicy {
                 excludedWorkerIds
         );
 
-        for (Map.Entry<String, List<String>> item : targets.entrySet()) {
-            if (item.getValue().isEmpty()) {
+        for (Map.Entry<String, TaskItemWorkerSelector> item : selectors.entrySet()) {
+            if (!item.getValue().hasExplicitWorkerIds()) {
                 continue;
             }
-            List<String> availableTargets = item.getValue().stream()
+            List<String> availableTargets = item.getValue().targetWorkerIds().stream()
                     .filter(workerId ->
                             !unavailableWorkerIds.contains(workerId))
                     .toList();
@@ -182,8 +185,47 @@ final class WorkerCandidateSelectionPolicy {
                 !held.containsKey(entry.getValue()));
         unavailableWorkerIds.addAll(held.keySet());
 
-        List<String> anyMessageIds = targets.entrySet().stream()
-                .filter(entry -> entry.getValue().isEmpty())
+        // One bounded query per distinct selector, in first Item appearance order.
+        Map<TaskItemWorkerSelector, List<String>> indexedItems = new LinkedHashMap<>();
+        selectors.forEach((messageId, selector) -> {
+            if (!selector.isAny() && !selector.hasExplicitWorkerIds()) {
+                indexedItems.computeIfAbsent(selector, ignored -> new ArrayList<>()).add(messageId);
+            }
+        });
+        int queryOrdinal = 0;
+        for (var entry : indexedItems.entrySet()) {
+            int budget = MAX_UNIQUE_WORKERS_PER_ROUND / indexedItems.size()
+                    + (queryOrdinal++ < MAX_UNIQUE_WORKERS_PER_ROUND % indexedItems.size() ? 1 : 0);
+            // Taking advances rotation time. Do not touch surplus identities that cannot
+            // serve an Item this round.
+            int takeLimit = Math.min(budget, entry.getValue().size());
+            List<String> ids = candidateIndex.takeWorkerIds(workerGroupId, entry.getKey(), takeLimit).stream()
+                    .filter(id -> !unavailableWorkerIds.contains(id)).toList();
+            if (ids.isEmpty()) continue;
+            Map<String, Long> observed = workerScores.observeDueHotScores(workerGroupId, ids, hotEligibilityFloorMillis);
+            Map<String, Long> selected = new LinkedHashMap<>();
+            for (String id : ids) {
+                if (observed.get(id) != null) {
+                    selected.put(id, observed.get(id));
+                    if (selected.size() == entry.getValue().size()) break;
+                }
+            }
+            Map<String, Long> indexHeld = holdObservedCandidates(workerGroupId, selected, leaseUntilMillis);
+            unavailableWorkerIds.addAll(indexHeld.keySet());
+            if (indexHeld.isEmpty()) continue;
+            // Initial hold clears dirty. Recheck *after* it, without loading Properties.
+            Set<String> retained = candidateIndex.retainWorkerIds(workerGroupId, entry.getKey(), List.copyOf(indexHeld.keySet()));
+            int item = 0;
+            for (var worker : indexHeld.entrySet()) {
+                if (retained.contains(worker.getKey())) {
+                    selectedByMessageId.put(entry.getValue().get(item++), worker.getKey());
+                    held.put(worker.getKey(), worker.getValue());
+                }
+            }
+        }
+
+        List<String> anyMessageIds = selectors.entrySet().stream()
+                .filter(entry -> entry.getValue().isAny())
                 .map(Map.Entry::getKey)
                 .toList();
         if (!anyMessageIds.isEmpty()) {
@@ -289,37 +331,18 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private static Map<String, List<String>> validateTargets(
-            Map<String, List<String>> source
+    private static Map<String, TaskItemWorkerSelector> validateSelectors(
+            Map<String, TaskItemWorkerSelector> source
     ) {
-        Objects.requireNonNull(source, "targetWorkerIdsByMessageId");
-        if (source.isEmpty()
-                || source.size() > MAX_UNIQUE_WORKERS_PER_ROUND) {
-            throw new IllegalArgumentException(
-                    "Item targets must contain 1.."
-                            + MAX_UNIQUE_WORKERS_PER_ROUND + " entries"
-            );
+        Objects.requireNonNull(source, "selectorsByMessageId");
+        if (source.isEmpty() || source.size() > MAX_UNIQUE_WORKERS_PER_ROUND) {
+            throw new IllegalArgumentException("Item selectors must contain 1.."
+                    + MAX_UNIQUE_WORKERS_PER_ROUND + " entries");
         }
-        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
-        source.forEach((messageId, workerIds) -> {
+        var result = new LinkedHashMap<String, TaskItemWorkerSelector>();
+        source.forEach((messageId, selector) -> {
             requireNonBlank(messageId, "messageId");
-            Objects.requireNonNull(workerIds, "targetWorkerIds");
-            if (workerIds.size() > MAX_UNIQUE_WORKERS_PER_ROUND) {
-                throw new IllegalArgumentException(
-                        "targetWorkerIds must contain at most "
-                                + MAX_UNIQUE_WORKERS_PER_ROUND + " workers"
-                );
-            }
-            LinkedHashSet<String> unique = new LinkedHashSet<>();
-            for (String workerId : workerIds) {
-                requireNonBlank(workerId, "target workerId");
-                if (!unique.add(workerId)) {
-                    throw new IllegalArgumentException(
-                            "targetWorkerIds must not contain duplicates"
-                    );
-                }
-            }
-            result.put(messageId, List.copyOf(unique));
+            result.put(messageId, Objects.requireNonNull(selector, "workerSelector"));
         });
         return Collections.unmodifiableMap(result);
     }

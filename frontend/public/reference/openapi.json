@@ -165,9 +165,15 @@
             "type" : "integer"
           },
           "workerSelector" : {
-            "description" : "ON_DEMAND only: [], [workerId, $eq, id], or [workerId, $in, ids]; omit for finite TaskItems",
-            "items" : { },
-            "type" : "array"
+            "additionalProperties" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            },
+            "description" : "ON_DEMAND only: {} for ANY, {workerId: [id, ...]}, or {worker.country: [CN]} for a country-index-enabled Group (one strict [A-Z]{2} value). At most one binding with 1..100 string parameters; omit for finite TaskItems",
+            "maxProperties" : 1,
+            "type" : "object"
           }
         },
         "required" : [ "eventCode", "messageId", "payload" ],

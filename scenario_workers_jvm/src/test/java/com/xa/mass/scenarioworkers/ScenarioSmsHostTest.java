@@ -83,7 +83,7 @@ class ScenarioSmsHostTest {
              var server = ScenarioWorkerControlServer.open(0, fixture.workers, null);
              var http = HttpClient.newHttpClient()) {
             server.start();
-            assertThat(fixture.managers).hasSize(3);
+            assertThat(fixture.managers).hasSize(1);
             assertThat(fixture.workers.smsHealth()).containsEntry("numbers", 103).containsEntry("prepared", 103L);
             var page = get(http, server.baseUri(), "/lab/v1/sms/inventory?offset=100&limit=1");
             assertThat(page.statusCode()).isEqualTo(200);
@@ -92,13 +92,13 @@ class ScenarioSmsHostTest {
             for (String path : List.of("/health", "/inventory", "/metrics", "/records", "/", "/lab/v1/workers", "/lab/v1/execution-witnesses"))
                 assertThat(get(http, server.baseUri(), path).statusCode()).isEqualTo(404);
             assertThat(get(http, server.baseUri(), "/lab").body()).contains("data-scenario=\"sms\"");
-            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/sms-cn/CN-0:stop").statusCode()).isEqualTo(202);
+            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/demo-sim/CN-0:stop").statusCode()).isEqualTo(202);
             assertThat(fixture.running.get("CN-0")).isFalse();
             assertThat(fixture.running.get("CN-1")).isTrue();
-            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/sms-cn/CN-0:start").statusCode()).isEqualTo(202);
+            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/demo-sim/CN-0:start").statusCode()).isEqualTo(202);
             assertThat(fixture.running.get("CN-0")).isTrue();
-            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/sms-cn/CN-0:properties").statusCode()).isEqualTo(400);
-            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/sms-cn/missing:stop").statusCode()).isEqualTo(404);
+            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/demo-sim/CN-0:properties").statusCode()).isEqualTo(400);
+            assertThat(post(http, server.baseUri(), "/lab/v1/sms/workers/demo-sim/missing:stop").statusCode()).isEqualTo(404);
             for (var manager : fixture.managers.values()) verify(manager, never()).prepareAndStart(anyCollection());
         }
     }
@@ -106,17 +106,17 @@ class ScenarioSmsHostTest {
     @Test void stopOvertakesSlowStartAndNoRestartLoopIsCreated() throws Exception {
         try (var fixture = new Fixture(1); var executor = Executors.newFixedThreadPool(2)) {
             var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
-            var manager = fixture.managers.get("sms-cn");
-            fixture.workers.stopWorker("sms-cn", "CN-0");
+            var manager = fixture.managers.get("demo-sim");
+            fixture.workers.stopWorker("demo-sim", "CN-0");
             doAnswer(call -> {
                 entered.countDown(); release.await(2, TimeUnit.SECONDS);
                 fixture.running.get("CN-0").set(true); return null;
             }).when(manager).start("CN-0");
-            var start = executor.submit(() -> fixture.workers.startWorker("sms-cn", "CN-0"));
+            var start = executor.submit(() -> fixture.workers.startWorker("demo-sim", "CN-0"));
             try {
                 assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-                executor.submit(() -> fixture.workers.stopWorker("sms-cn", "CN-0")).get(1, TimeUnit.SECONDS);
-                assertThatThrownBy(() -> fixture.workers.startWorker("sms-cn", "CN-0")).isInstanceOf(IllegalStateException.class);
+                executor.submit(() -> fixture.workers.stopWorker("demo-sim", "CN-0")).get(1, TimeUnit.SECONDS);
+                assertThatThrownBy(() -> fixture.workers.startWorker("demo-sim", "CN-0")).isInstanceOf(IllegalStateException.class);
                 release.countDown(); start.get(1, TimeUnit.SECONDS);
                 assertThat(fixture.running.get("CN-0")).isFalse();
                 verify(manager, times(1)).start("CN-0");
@@ -126,20 +126,17 @@ class ScenarioSmsHostTest {
 
     @Test void failedStartClosesAdmissionAndExistingManagersCloseOnceAfterPartialAssemblyFailure() {
         try (var fixture = new Fixture(1)) {
-            doThrow(new IllegalStateException("start failed")).when(fixture.managers.get("sms-cn")).start("CN-0");
-            assertThatThrownBy(() -> fixture.workers.startWorker("sms-cn", "CN-0")).hasMessage("start failed");
+            doThrow(new IllegalStateException("start failed")).when(fixture.managers.get("demo-sim")).start("CN-0");
+            assertThatThrownBy(() -> fixture.workers.startWorker("demo-sim", "CN-0")).hasMessage("start failed");
             assertThat(fixture.workers.smsScenario().registry.startStillRequested("+861700000000")).isFalse();
         }
         var first = mock(JavaWorkerManager.class);
-        var creations = new AtomicInteger();
-        var workers = new ScenarioWorkers(URI.create("http://127.0.0.1:1"), new int[]{1, 1, 1}, (uri, group) -> {
-            if (creations.getAndIncrement() == 0) return first;
-            throw new IllegalStateException("construction failed");
-        });
+        doThrow(new IllegalStateException("start failed")).when(first).start();
+        var workers = new ScenarioWorkers(URI.create("http://127.0.0.1:1"), new int[]{1, 1, 1}, (uri, group) -> first);
         assertThatThrownBy(workers::start).isInstanceOf(ScenarioWorkerAssemblyException.class);
         workers.close(); workers.close();
         verify(first, times(1)).close();
-        verify(first, never()).start();
+        verify(first, times(1)).start();
     }
 
     private static HttpResponse<String> get(HttpClient http, URI base, String path) throws Exception {

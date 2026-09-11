@@ -8,11 +8,13 @@ import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingRuntime;
 import io.lettuce.core.RedisClient;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(CountryIndexProperties.class)
 public class WorkerMatchingConfiguration {
 
     private static final int MATCH_DEMAND_CAPACITY = 10_000;
@@ -20,12 +22,21 @@ public class WorkerMatchingConfiguration {
     @Bean(destroyMethod = "close")
     RedisWorkerMatchingCatalog workerMatchingCatalog(
             RedisClient redisClient,
-            XaMassRedisProperties redisProperties
+            XaMassRedisProperties redisProperties,
+            CountryIndexProperties indexProperties
     ) {
-        return new RedisWorkerMatchingCatalog(
+        var catalog = new RedisWorkerMatchingCatalog(
                 redisClient,
-                redisProperties.keyspace()
+                redisProperties.keyspace(),
+                indexProperties.workerGroups()
         );
+        try {
+            catalog.rebuildCountryIndexes();
+            return catalog;
+        } catch (RuntimeException failure) {
+            catalog.close();
+            throw failure;
+        }
     }
 
     @Bean

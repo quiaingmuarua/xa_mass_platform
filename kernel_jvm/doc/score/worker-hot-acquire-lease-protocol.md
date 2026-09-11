@@ -20,7 +20,7 @@ slot reuse or assign independent Items behind the same Worker lease.
 ```text
 due HOT observation -> exact initial hold and dirty clear
   PRECOMPUTED -> ordered Match Demand -> accepted Candidate Cache entry
-  ON_DEMAND  -> normalized explicit Worker ID or ANY selection
+  ON_DEMAND  -> explicit IDs, indexed identities plus post-hold recheck, or ANY
   -> final exact Worker confirmation -> exact Item claim -> Command publication
   -> opaque ResultContext/WorkerLeaseReference -> exact result disposition
 ```
@@ -38,8 +38,9 @@ entries through the Candidate Cache Owner. It removes only Cache-accepted IDs
 from that Demand's available pool. It cannot decode, compare, renew or release
 the held scores, and receives no endpoint or Item state.
 
-ON_DEMAND selection directly acquires normalized Worker IDs/ANY without a
-Matching round trip or Candidate Cache. The
+ON_DEMAND keeps one selector: explicit IDs and ANY use Kernel mechanics directly;
+property conditions pass unchanged to Matching for bounded identities and
+post-hold membership recheck. It uses no PRECOMPUTED Demand or Candidate Cache. The
 [Assignment Policy](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 owns deficits, priority, pairing and round uniqueness. Neither a cached miss nor
 a stale candidate switches allocation mechanism.
@@ -89,7 +90,8 @@ scores and Cache entries remain bounded by their existing deadlines.
 
 Due scans include dirty=1. Only a new exact initial HOT hold clears dirty;
 PRECOMPUTED then matches again. ON_DEMAND uses the same confirmation fence but
-never enters Matching. Do not clear an active hold or fetch a newer score to
+asks Matching to recheck indexed identities after hold using the same property selector.
+ANY and explicit IDs require no Matching call. Do not clear an active hold or fetch a newer score to
 rescue a stale Candidate. Cache counts may temporarily include invalid entries.
 
 ## Result Disposition

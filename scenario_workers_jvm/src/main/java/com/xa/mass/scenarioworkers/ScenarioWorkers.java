@@ -147,10 +147,8 @@ public final class ScenarioWorkers implements AutoCloseable {
             eventCodes.add("extension.worker.sms.listen.cancel");
         }
         if (messages != null) eventCodes.add("extension.worker.message.send");
-        String prefix = scenario.equals("products") ? "demo-" : scenario.equals("messages") ? "messages-" : "sms-";
-        groups = List.of("CN", "US", "GB").stream().map(country -> new GroupAssembly(
-                new ScenarioWorkerGroupConfig(prefix + country.toLowerCase(Locale.ROOT), eventCodes,
-                        Duration.ofSeconds(10), TextMessageReconnectPolicy.defaults()), definitions)).toList();
+        groups = List.of(new GroupAssembly(new ScenarioWorkerGroupConfig("demo-sim", eventCodes,
+                Duration.ofSeconds(10), TextMessageReconnectPolicy.defaults()), definitions));
         groupManagerFactory = managerFactory != null ? managerFactory
                 : (uri, group) -> createManager(uri, group, executionWitnesses, sms, messages);
     }
@@ -503,12 +501,11 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     private List<PreparedGroup> prepareSmsGroups() {
-        List<PreparedGroup> prepared = new ArrayList<>();
+        List<PreparedReplica> replicas = new ArrayList<>();
         String[] countries = {"CN", "US", "GB"};
         String[] prefixes = {"+861700", "+120255", "+447700"};
         for (int countryIndex = 0; countryIndex < countries.length; countryIndex++) {
             String country = countries[countryIndex];
-            List<PreparedReplica> replicas = new ArrayList<>();
             for (int index = 0; index < smsCounts[countryIndex]; index++) {
                 String phone = prefixes[countryIndex] + String.format(Locale.ROOT, "%06d", index);
                 Map<String, String> properties = new LinkedHashMap<>(Map.of("phone", phone, "country", country,
@@ -516,9 +513,8 @@ public final class ScenarioWorkers implements AutoCloseable {
                 if (messages != null) properties.put("messaging.enabled", "true");
                 replicas.add(new PreparedReplica(country + "-" + index, null, Map.copyOf(properties)));
             }
-            prepared.add(new PreparedGroup(groups.get(countryIndex), List.copyOf(replicas)));
         }
-        return List.copyOf(prepared);
+        return List.of(new PreparedGroup(groups.getFirst(), List.copyOf(replicas)));
     }
 
     private void createManagers(List<PreparedGroup> preparedGroups) {

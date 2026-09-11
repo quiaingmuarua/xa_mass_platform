@@ -64,9 +64,9 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
 `sms-reception` and `message-campaigns` independently enable their business APIs,
-Groups and jobs. `ProductWorkerConfiguration` supplies three country Groups and
-complete extension-event declarations: SMS alone uses `sms-*`, Messages alone
-uses `messages-*`, both use `demo-*`. Each product consumes exactly that input via
+Groups and jobs. `ProductWorkerConfiguration` supplies one mixed-country `demo-sim`
+Group for every product combination and the enabled products' complete extension
+event declarations. Each product consumes exactly that input via
 the existing idempotent Group registration service; distribution owns no registration
 workflow. One context retains one Pacer, Matching consumer and set of Redis Owners.
 

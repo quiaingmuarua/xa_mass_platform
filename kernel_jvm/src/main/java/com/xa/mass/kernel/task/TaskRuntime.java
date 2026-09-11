@@ -3,7 +3,6 @@ package com.xa.mass.kernel.task;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -104,7 +103,7 @@ public interface TaskRuntime {
             Map<String, Object> payload,
             int priority,
             @Nullable Long expireAtMillis,
-            List<String> targetWorkerIds
+            TaskItemWorkerSelector workerSelector
     ) {
         public TaskItem {
             requireNonBlank(messageId, "messageId");
@@ -127,22 +126,7 @@ public interface TaskRuntime {
                 );
             }
             payload = immutableObjectMap(payload);
-            Objects.requireNonNull(targetWorkerIds, "targetWorkerIds");
-            if (targetWorkerIds.size() > 100) {
-                throw new IllegalArgumentException(
-                        "targetWorkerIds must contain at most 100 workers"
-                );
-            }
-            LinkedHashSet<String> uniqueTargets = new LinkedHashSet<>();
-            for (String workerId : targetWorkerIds) {
-                requireNonBlank(workerId, "target workerId");
-                if (!uniqueTargets.add(workerId)) {
-                    throw new IllegalArgumentException(
-                            "targetWorkerIds must not contain duplicates"
-                    );
-                }
-            }
-            targetWorkerIds = List.copyOf(uniqueTargets);
+            Objects.requireNonNull(workerSelector, "workerSelector");
         }
     }
 

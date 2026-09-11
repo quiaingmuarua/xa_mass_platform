@@ -96,8 +96,8 @@ Properties, Worker identity, Tasks, Adapter state, or Kernel expectations.
 
 `--scenario=messages --device-counts=20,20,20` creates generated message senders;
 `--scenario=products` installs SMS and Messages on the same replicas. Country
-Groups are respectively `messages-cn/us/gb` and `demo-cn/us/gb`, declared by
-distribution before Host startup. The shared Manager collection and HTTP server
+Both scenes use mixed-country `demo-sim`, declared by
+distribution before Host startup. One generated Manager and the HTTP server
 remain the only Host assembly. Properties additionally contain
 `messaging.enabled="true"` and enter Matching through the existing SDK/Adapter path.
 Use the [shared launcher](../distribution/product-preview/README.md); Lab and SMS
@@ -150,11 +150,11 @@ No simulated input calls the Messages Backend or invents product Results.
 ```
 
 Start the Server with its `sms-reception` profile first. The product startup
-registers `sms-cn`, `sms-us` and `sms-gb`; the Host never registers Groups.
+registers one mixed-country `demo-sim` Group; the Host never registers Groups.
 Counts must be three positive integers totaling at most 10,000. SMS rejects
 `--sandbox-root`, `--capability-assembly` and `--startup-plan`; the Lab rejects
 `--sms-counts`. Both modes use the same main, Manager collection and cleanup.
-Each nonempty Group has one JavaWorkerManager. SMS keeps ordinary CLIENT_KEY
+All generated countries share one JavaWorkerManager. SMS keeps ordinary CLIENT_KEY
 Prepare, keys `CN-0`, `US-0`, `GB-0` and the existing deterministic phone numbers.
 Lab file coordinates and its SCENARIO_LAB batch preparation remain separate.
 

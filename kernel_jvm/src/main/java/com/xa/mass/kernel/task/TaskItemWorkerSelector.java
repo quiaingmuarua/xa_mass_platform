@@ -1,68 +1,62 @@
 package com.xa.mass.kernel.task;
 
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
-/** Finite Worker identity selector for ON_DEMAND TaskItems. */
-public final class TaskItemWorkerSelector {
+/** One immutable binding-to-parameters Map. Property semantics belong to Matching. */
+public record TaskItemWorkerSelector(Map<String, List<String>> expression) {
 
     private static final int MAX_TARGET_WORKERS = 100;
     private static final String WORKER_ID = "workerId";
-    private static final String EQUALS = "$eq";
-    private static final String IN = "$in";
 
-    private TaskItemWorkerSelector() {
-    }
-
-    public static List<String> targetWorkerIds(List<?> workerSelector) {
-        if (workerSelector == null) {
-            throw invalid();
+    public TaskItemWorkerSelector {
+        if (expression == null || expression.size() > 1) {
+            throw new IllegalArgumentException("workerSelector must be an empty object or one binding/parameters entry");
         }
-        if (workerSelector.isEmpty()) {
-            return List.of();
-        }
-        if (workerSelector.size() != 3
-                || !WORKER_ID.equals(workerSelector.get(0))) {
-            throw invalid();
-        }
-        Object operator = workerSelector.get(1);
-        Object operand = workerSelector.get(2);
-        if (EQUALS.equals(operator)) {
-            return List.of(requireWorkerId(operand));
-        }
-        if (IN.equals(operator) && operand instanceof List<?> values) {
-            return targetWorkerIdsFromList(values);
-        }
-        throw invalid();
-    }
-
-    private static List<String> targetWorkerIdsFromList(List<?> values) {
-        if (values.isEmpty() || values.size() > MAX_TARGET_WORKERS) {
-            throw invalid();
-        }
-        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
-        for (Object value : values) {
-            String workerId = requireWorkerId(value);
-            if (!workerIds.add(workerId)) {
-                throw new IllegalArgumentException(
-                        "workerSelector workerIds must be unique"
-                );
+        if (expression.isEmpty()) {
+            expression = Map.of();
+        } else {
+            Map.Entry<?, ?> entry = expression.entrySet().iterator().next();
+            if (!(entry.getKey() instanceof String binding) || binding.isBlank()
+                    || !(entry.getValue() instanceof List<?> values)
+                    || values.isEmpty() || values.size() > MAX_TARGET_WORKERS) {
+                throw new IllegalArgumentException("selector requires a non-blank binding and 1..100 string parameters");
             }
+            var parameters = new ArrayList<String>(values.size());
+            for (Object value : values) {
+                if (!(value instanceof String parameter)) {
+                    throw new IllegalArgumentException("selector parameters must be non-null strings");
+                }
+                parameters.add(parameter);
+            }
+            if (WORKER_ID.equals(binding) && (parameters.stream().anyMatch(String::isBlank)
+                    || new HashSet<>(parameters).size() != parameters.size())) {
+                throw new IllegalArgumentException("workerId selector requires unique non-blank identities");
+            }
+            expression = Map.of(binding, List.copyOf(parameters));
         }
-        return List.copyOf(workerIds);
     }
 
-    private static String requireWorkerId(Object value) {
-        if (!(value instanceof String workerId) || workerId.isBlank()) {
-            throw invalid();
-        }
-        return workerId;
+    @SuppressWarnings("unchecked")
+    public static TaskItemWorkerSelector parse(Map<?, ?> expression) {
+        // The constructor validates every raw HTTP/storage entry before immutable capture.
+        return new TaskItemWorkerSelector((Map<String, List<String>>) expression);
     }
 
-    private static IllegalArgumentException invalid() {
-        return new IllegalArgumentException(
-                "workerSelector must be [], [workerId, $eq, id], or "
-                        + "[workerId, $in, ids]"
-        );
+    public boolean isAny() {
+        return expression.isEmpty();
+    }
+
+    public boolean hasExplicitWorkerIds() {
+        return expression.containsKey(WORKER_ID);
+    }
+
+    public List<String> targetWorkerIds() {
+        if (!hasExplicitWorkerIds()) {
+            throw new IllegalStateException("selector does not contain explicit Worker identities");
+        }
+        return expression.get(WORKER_ID);
     }
 }

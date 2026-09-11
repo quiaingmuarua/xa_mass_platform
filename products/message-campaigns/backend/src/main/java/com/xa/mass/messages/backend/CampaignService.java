@@ -23,7 +23,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     private final TaskCreationService creation;
     private final TaskDataService data;
     private final TaskLifecycleService lifecycle;
-    private final Map<String, String> groups;
+    private final String workerGroupId;
     private final List<String> events;
     private final int candidates;
     private final Object gate = new Object();
@@ -38,19 +38,19 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     private int messageCount, nextCampaign;
 
     public CampaignService(WorkerGroupRegistrationService registrations, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle, Map<String, String> groups,
+            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId,
             List<String> events, int candidates) {
-        if (!groups.keySet().equals(Set.copyOf(COUNTRIES)) || candidates < 1 || candidates > 1000)
-            throw new IllegalArgumentException("Expected country Groups and 1..1000 candidates");
+        if (workerGroupId == null || workerGroupId.isBlank() || candidates < 1 || candidates > 1000)
+            throw new IllegalArgumentException("Expected WorkerGroup and 1..1000 candidates");
         this.registrations = registrations; this.creation = creation; this.data = data; this.lifecycle = lifecycle;
-        this.groups = Map.copyOf(groups); this.events = List.copyOf(events); this.candidates = candidates;
+        this.workerGroupId = workerGroupId; this.events = List.copyOf(events); this.candidates = candidates;
     }
 
     @Override public synchronized void start() {
         if (running) return;
         if (closed) throw new IllegalStateException("Messages run closed");
         try {
-            for (String country : COUNTRIES) registrations.register(groups.get(country), Map.of(), events);
+            registrations.register(workerGroupId, Map.of(), events);
             submitter = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(8));
             observer = Executors.newSingleThreadScheduledExecutor();
             running = true;
@@ -65,7 +65,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     public Map<String, Object> catalog() {
         requireRunning();
         return Map.of("runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
-                .map(c -> Map.of("id", c, "workerGroupId", groups.get(c))).toList(),
+                .map(c -> Map.of("id", c, "workerGroupId", workerGroupId)).toList(),
                 "limits", Map.of("campaigns", MAX_CAMPAIGNS, "messages", MAX_MESSAGES, "recipientsPerCampaign", 1000));
     }
 
@@ -80,7 +80,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             }
             if (campaigns.size() == MAX_CAMPAIGNS || messageCount + specification.recipientIds().size() > MAX_MESSAGES)
                 throw new ProductError(429, "Messages run capacity exhausted");
-            Campaign campaign = new Campaign(specification, groups.get(specification.country()));
+            Campaign campaign = new Campaign(specification, workerGroupId);
             campaigns.put(campaign.id, campaign); requests.put(specification.requestId(), campaign);
             messageCount += campaign.messages.size();
             try { submitter.execute(() -> submit(campaign)); }
@@ -98,6 +98,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             requireRunning();
             Map<String, Object> rule = new LinkedHashMap<>();
             rule.put("worker.messaging.enabled", Map.of("$eq", "true"));
+            rule.put("worker.country", Map.of("$eq", campaign.specification.country()));
             if (campaign.specification.senderPhone() != null)
                 rule.put("worker.phone", Map.of("$eq", campaign.specification.senderPhone()));
             campaign.taskId = creation.create(new TaskCreateRequest(campaign.group, rule, 50, candidates, 3)).taskId();

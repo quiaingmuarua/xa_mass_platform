@@ -37,15 +37,15 @@ class MessageFailureIntegrationTest {
         try (var fixture = new Fixture(false); var channel = new MessageScenario()) {
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
-            var sender = channel.addSender("messages-cn", "one", "CN", "+861700000000", () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
+            var sender = channel.addSender("demo-sim", "one", "CN", "+861700000000", () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
             var handler = WorkerEventDefinition.extension("message.send", WorkerEventParameterResolvers.jsonMap(), (request, reporter) -> {
                 // Hold the real synchronous handler completion; recipient actions still use its original Reporter.
                 var sent = channel.send(sender, request, reporter); executed.countDown();
                 if (!finishSend.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("Send confirmation deadline");
                 return Jsons.toJson(sent);
             });
-            try (var worker = JavaWorkerManager.builder(fixture.base, "messages-cn", WorkerTransportType.WEBSOCKET)
-                    .replica("one", () -> Map.of("phone", "+861700000000", "messaging.enabled", "true"), List.of(handler)).build()) {
+            try (var worker = JavaWorkerManager.builder(fixture.base, "demo-sim", WorkerTransportType.WEBSOCKET)
+                    .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"), List.of(handler)).build()) {
                 manager.set(worker); worker.start();
                 Map<String, Object> campaign = fixture.create(1);
                 assertThat(executed.await(20, TimeUnit.SECONDS)).isTrue();
@@ -60,7 +60,7 @@ class MessageFailureIntegrationTest {
                 finishSend.countDown();
                 // A synchronous query on this same Worker can finish only after the send handler's Result was emitted.
                 var direct = fixture.post("/api/v1/worker-delivery/endpoint-managers/products-websocket/direct-calls", Map.of(
-                        "workerGroupId", "messages-cn", "workerPayloads", Map.of(worker.snapshot("one").workerId(), "null"),
+                        "workerGroupId", "demo-sim", "workerPayloads", Map.of(worker.snapshot("one").workerId(), "null"),
                         "messageType", "platform.worker.events.snapshot", "waitTimeoutMillis", 5000));
                 assertThat(direct.statusCode()).isEqualTo(200);
                 assertThat(Jsons.parseObject(direct.body())).containsEntry("status", "observed");

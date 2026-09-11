@@ -1,11 +1,11 @@
 # XA Mass Worker Matching JVM
 
-Status: current Worker facts and PRECOMPUTED Candidate Rule owner.
+Status: current Worker facts, country index and PRECOMPUTED Candidate Rule owner.
 
 `worker_matching_jvm` is a Java 21 internal runtime module. It owns Worker and
-Platform facts, persistent Candidate Rules, and interpretation of those rules.
-It does not observe or change Worker score, choose scheduling priority, parse
-ON_DEMAND Worker Selectors, claim a TaskItem, or publish a Delivery Command.
+Platform facts, persistent Candidate Rules, interpretation of those rules, and the bounded country index.
+It does not observe or change Worker score, choose scheduling priority, own
+ANY/explicit-ID scheduling decisions, claim a TaskItem, or publish a Delivery Command.
 
 ## Owner Boundary
 
@@ -20,15 +20,17 @@ Kernel Pacer sorts Task needs and exact-holds a bounded due Worker pool
 
 ON_DEMAND
 Server passes the finite workerSelector to the Kernel parser
-  -> Kernel normalizes workerId targets, or an empty ANY target
-  -> Kernel stores only those identities with the TaskItem
-  -> Kernel Dispatch observes and exact-holds eligible target Workers directly
+  -> Kernel captures one immutable selector and handles ANY/explicit ID mechanics
+  -> Server asks the Catalog to validate binding/parameters and enabled Group before Item writes
+  -> Kernel Dispatch takes indexed identities through WorkerCandidateIndex when requested
+  -> observes due HOT scores, exact-holds, and rechecks indexed membership after hold
+  -> exact confirmation, Item claim and delivery remain Kernel operations
 ```
 
 | Owner | Owns |
 | --- | --- |
-| Worker Matching | Worker and Platform Properties, Candidate Rules, constraint interpretation, ordered filtering of a supplied held pool |
-| Kernel | Task/Item/Worker score, finite Item Worker Selector normalization, Task ordering and deficit, Worker observation and exact hold, Candidate Cache truth, round uniqueness, Item claim, retry and finality |
+| Worker Matching | Worker and Platform Properties, Candidate Rules, property selector/index binding, constraint interpretation, ordered filtering of a supplied held pool |
+| Kernel | Task/Item/Worker score, finite Item selector capture and ANY/ID mechanics, Task ordering and deficit, Worker observation and exact hold, Candidate Cache truth, round uniqueness, Item claim, retry and finality |
 | Server | public validation, ordered cross-owner writes, Runtime View composition and lifecycle assembly |
 | Transport | Identity preparation, best-effort Properties observations, and execution of an already-targeted Command |
 
@@ -58,6 +60,7 @@ interprets a Task identity and no second persistent ID is introduced.
 :matching:worker:facts:<workerGroupId>
 :matching:worker:platform-properties:<workerGroupId>
 :matching:candidate:rules
+:matching:worker:index:country:<workerGroupId> (enabled Groups only)
 ```
 
 Server-admitted Adapter observations create or replace the complete Worker
@@ -71,8 +74,9 @@ resources leave inert orphan facts or rules.
 Live ingestion uses `upsertWorkerFactsBatch(groupId, propertiesByWorkerId)` for
 1..100 unique Worker IDs in one Group. Each value is a complete flat string KV
 Map (non-blank keys, non-null strings, empty strings allowed). The Catalog
-canonically encodes complete values, compares them with one `HMGET`, and issues
-one multi-field `HSET` for changed values only. Unchanged content returns
+canonically encodes complete values. Unindexed Groups compare with one `HMGET`
+and issue one multi-field `HSET` for changed values; indexed Groups atomically
+replace facts and maintain membership in one bounded Lua call. Unchanged content returns
 UNCHANGED; invalid Properties return INVALID for that Worker. Empty Maps clear
 all Worker Properties; omitted keys, including any previously stored registration
 properties, are not retained. Independent Identity, Binding, Kernel resource
@@ -80,11 +84,10 @@ and Platform Properties records are unaffected.
 
 The bounded batch is the sole Worker facts write operation, including for one
 Worker and the first observation. Existing stored values remain readable without
-migration. There is no new key, cache, timestamp, version, CAS, cross-request
-transaction or late-snapshot rejection. Concurrent batches follow their
+migration. No observation version or late-snapshot rejection is introduced. Concurrent batches follow their
 effective Redis writes, not observation time or HTTP arrival order. Each stored
-JSON Map is replaced whole; the compare followed by write does not promise
-cross-request serialization.
+JSON Map is replaced whole. Only indexed Groups serialize facts and index membership;
+the unindexed compare followed by write does not promise cross-request serialization.
 
 The upstream SYSTEM path is one-shot best-effort: a queue or HTTP failure can
 leave no facts or old facts until new Host input or a later connection baseline arrives.
@@ -99,8 +102,8 @@ Matching facts cache or Candidate Cache cleanup. String comparison remains lexic
 numeric-string coercion and new constraint semantics are not part of this path.
 
 A Worker without usable facts is skipped even for an unrestricted Rule or a
-Worker-ID-only Rule. This does not block ON_DEMAND, whose Kernel path never
-reads this Catalog. The current Catalog returns null for both absent and
+Worker-ID-only Rule. ON_DEMAND ANY and explicit IDs do not require facts;
+indexed selection requires current index membership. The current Catalog returns null for both absent and
 undecodable facts; Runtime Preview may display the identity with empty Maps,
 but that display must not be reused as matching evidence.
 
@@ -110,17 +113,67 @@ PRECOMPUTED Candidate Rules use the finite constraint language. Roots are
 are ANDed and `{}` is unrestricted.
 
 ON_DEMAND does not store or interpret a Rule in this module. Its public
-`workerSelector` is a closed Kernel instruction:
+`workerSelector` is one immutable expression, captured by Kernel and passed unchanged:
 
 ```json
-[]
-["workerId", "$eq", "worker-id"]
-["workerId", "$in", ["worker-a", "worker-b"]]
+{}
+{"workerId": ["worker-id"]}
+{"workerId": ["worker-a", "worker-b"]}
+{"worker.country": ["CN"]}
 ```
 
-`[]` normalizes to ANY. `$in` contains 1..100 unique opaque non-blank Worker
-IDs. Kernel persists only the normalized IDs with the TaskItem; the original
-selector is not stored and the resident Matching runtime is not involved.
+`{}` means ANY. Nonempty Maps have exactly one non-blank binding name and an
+ordered List of 1..100 string parameters. Explicit Worker IDs must be unique and
+non-blank. Country accepts exactly one value; an array is only a parameter
+container, not a promise of multi-value matching or an operator slot.
+Kernel persists the original expression with the TaskItem, not a
+second ID list or query DTO, and never expands it at submission.
+
+`validateWorkerSelector(groupId, selector)` owns binding/parameter and
+index-enabled admission. The Catalog binds the full name `worker.country`
+directly to its country implementation; there is no separate index identity or
+property-to-index-name conversion. Unsupported bindings or parameter shapes are rejected,
+not scanned or treated as ANY. The same selector reaches `takeWorkerIds` and
+`retainWorkerIds`; the resident PRECOMPUTED runtime is not involved.
+
+Adding another indexed property under the existing single-condition, bounded
+identity/recheck contract changes Matching and its configuration/call guidance
+only, not Kernel/Pacer production code. This does not introduce a dynamic
+registry, composite DSL or new allocation mechanism.
+
+## Country Index
+
+Enable Groups with `xa.mass.worker-matching.country-index.worker-groups`; the
+ordinary default is empty. Country is the literal Worker `country` property,
+strict `[A-Z]{2}` without trimming, case conversion or ISO registry validation.
+`code=(first-'A')*26+(second-'A')`: AA=0, CN=65, GB=157, US=538, ZZ=675.
+All 676 inputs map uniquely; no configured numbering or app index exists.
+
+The Group ZSET member is workerId. Its exact integer score is
+`code * 2^43 + (lastTakenMillis - 946684800000)`. The epoch is 2000-01-01 UTC;
+the 43-bit time range ends at 2278-09-26T15:10:22.207Z. All coordinates fit the
+exact integer range of Redis doubles. Lua formats decimal integers explicitly;
+time outside the range fails rather than wrapping into another country.
+
+One facts-write Lua call handles at most 100 Workers. Country unchanged or
+changed preserves the existing low time bits; first insertion uses zero.
+Missing, empty or invalid country removes membership without rejecting other
+valid string Properties. Platform Properties never affect this index.
+
+`takeWorkerIds(group, selector, 1..100)` atomically range-reads the earliest members,
+reads Redis TIME once, updates all selected scores through one multi-member
+ZADD and returns the original order. `retainWorkerIds` reads at most 100 index
+scores to recheck membership after Kernel initial hold, without loading facts.
+Take never removes members and failed later leases do not undo the touch. This
+is approximate rotation, not eligibility, a cooldown, a lock or strict fairness;
+same-millisecond repeats are allowed.
+
+Before exposing the Catalog bean, Server assembly rebuilds configured derived
+indexes by streaming existing facts with HSCAN and Lua batches of at most 100.
+It may reset take times, modifies no facts/Binding/Score/Cache, and fails startup
+on rebuild failure. There is no background rebuild, persistent cursor or new thread.
+Facts/index replacement and subsequent Server dirty invalidation remain separate
+commits: an already confirmed execution is not revoked.
 
 ## PRECOMPUTED Runtime
 

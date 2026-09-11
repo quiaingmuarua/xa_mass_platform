@@ -15,8 +15,8 @@ observe due Item scores
   -> pace, close, or park the Task
 ```
 
-Kernel owns scheduling and finality. Worker Matching does not participate in
-the ON_DEMAND dispatch loop.
+Kernel owns scheduling and finality. ON_DEMAND uses Matching only through the
+bounded index identity/recheck port, never its PRECOMPUTED runtime.
 
 ## Common Item Flow
 
@@ -50,18 +50,21 @@ Dispatch never falls back to ON_DEMAND acquisition.
 
 ## ON_DEMAND
 
-Each ON_DEMAND TaskItem stores only a normalized target list:
+Each ON_DEMAND TaskItem stores one immutable selector expression:
 
 ```text
-[]                         -> ANY due HOT Worker in the Task WorkerGroup
-[worker-a]                 -> explicit $eq target
-[worker-a, worker-b, ...]  -> ordered explicit $in targets, at most 100
+{}                                   -> ANY due HOT Worker in the Group
+{"workerId": ["worker-a"]}             -> explicit target
+{"workerId": ["a", "b"]}               -> ordered explicit targets, at most 100
+{"worker.country": ["CN"]}             -> opaque binding parameters sent to Matching
 ```
 
 For claimable Items in order, Kernel:
 
 ```text
 explicit targets -> observe due HOT scores only for those Worker IDs
+index targets    -> take/touch at most 100 IDs per Task, shared across distinct queries
+                  -> observe due HOT -> initial hold -> batch membership recheck
 ANY targets      -> observe a bounded due HOT WorkerGroup pool
                   -> exclude Workers already used in this dispatch round
                   -> exact-hold selected Workers
@@ -69,10 +72,13 @@ ANY targets      -> observe a bounded due HOT WorkerGroup pool
                   -> final exact confirmation, Item claim, and Command publication
 ```
 
-Kernel validates the public finite Worker Selector and persists only its
-normalized Worker IDs. The raw Selector is not persisted or projected. There
-is no Item Rule, Item Match Demand, Evidence queue, matching cursor, or
-Candidate Cache path for ON_DEMAND.
+Kernel captures the selector structure and validates ANY/explicit IDs only.
+Server calls Matching admission for every property condition before Item writes,
+including inputs overwritten by a duplicate messageId. Pacer consumes one
+`messageId -> selector` map, groups equal property expressions in first Item order,
+and passes them unchanged to acquisition and post-hold recheck. It does not
+interpret property names, values or index rules. There is no Item Rule, Item
+Match Demand, Evidence queue, matching cursor or Candidate Cache for ON_DEMAND.
 
 ## Round Uniqueness
 
@@ -111,8 +117,8 @@ Properties.
 
 ## Guardrails
 
-- Do not add allocation Rule maps or raw Selector arrays to `TaskItem`; only
-  normalized Worker IDs are permitted for ON_DEMAND.
+- Keep one selector expression in `TaskItem`; do not add derived ID/query state,
+  property-specific branches or PRECOMPUTED Rule maps.
 - Do not let Matching lease, rank, claim, or publish Commands.
 - Do not infer Item failure from absent candidates.
 - Do not add an ON_DEMAND Candidate Cache or Matching runtime round trip.

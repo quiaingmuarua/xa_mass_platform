@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
@@ -50,7 +51,8 @@ public final class DispatchConvergenceRuntime {
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
             WorkerMatchQueue workerMatchQueue,
-            ResultContextCodec resultContextCodec
+            ResultContextCodec resultContextCodec,
+            WorkerCandidateIndex candidateIndex
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(
@@ -81,7 +83,8 @@ public final class DispatchConvergenceRuntime {
                         workerScores,
                         candidateCache,
                         workerCatalog,
-                        assignmentHotFloor
+                        assignmentHotFloor,
+                        candidateIndex
                 );
         TaskInitializationPolicy initialization =
                 new TaskInitializationPolicy(

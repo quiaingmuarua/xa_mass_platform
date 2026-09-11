@@ -4,8 +4,9 @@ import org.springframework.stereotype.Component;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import java.time.Clock;
-import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 
 @Component
 public final class TaskItemMapper {
@@ -33,26 +34,26 @@ public final class TaskItemMapper {
                     "finite TaskItem forbids workerSelector"
             );
         }
-        return item(request, createdAtMillis, List.of());
+        return item(request, createdAtMillis, TaskItemWorkerSelector.parse(Map.of()));
     }
 
     public TaskItem onDemandItem(
             TaskItemRequest request,
             long createdAtMillis,
-            List<String> targetWorkerIds
+            TaskItemWorkerSelector selector
     ) {
         if (request.workerSelector() == null) {
             throw new IllegalArgumentException(
                     "WorkerGroup Task Call requires workerSelector"
             );
         }
-        return item(request, createdAtMillis, targetWorkerIds);
+        return item(request, createdAtMillis, selector);
     }
 
     private static TaskItem item(
             TaskItemRequest request,
             long createdAtMillis,
-            List<String> targetWorkerIds
+            TaskItemWorkerSelector selector
     ) {
         Objects.requireNonNull(request, "request");
         Long expireAtMillis = null;
@@ -76,7 +77,7 @@ public final class TaskItemMapper {
                 request.payload(),
                 request.priority(),
                 expireAtMillis,
-                targetWorkerIds
+                selector
         );
     }
 }

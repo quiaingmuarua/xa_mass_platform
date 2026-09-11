@@ -112,7 +112,7 @@ final class AndroidRuntimeApiClient {
             long waitTimeoutMillis
     ) {
         return callItems(
-                List.of(new TaskItemCall(eventName, payload, List.of())),
+                List.of(new TaskItemCall(eventName, payload, Map.of())),
                 waitTimeoutMillis
         ).get(0);
     }
@@ -120,7 +120,7 @@ final class AndroidRuntimeApiClient {
     TaskCall callItem(
             String eventName,
             Map<String, Object> payload,
-            List<Object> workerSelector,
+            Map<String, List<String>> workerSelector,
             long waitTimeoutMillis
     ) {
         return callItems(
@@ -450,17 +450,17 @@ final class AndroidRuntimeApiClient {
     record TaskItemCall(
             String eventName,
             Map<String, Object> payload,
-            List<Object> workerSelector
+            Map<String, List<String>> workerSelector
     ) {
         TaskItemCall {
             if (eventName == null || eventName.isBlank()) {
                 throw new IllegalArgumentException("eventName must be non-blank");
             }
             payload = Map.copyOf(Objects.requireNonNull(payload, "payload"));
-            workerSelector = List.copyOf(Objects.requireNonNull(
-                    workerSelector,
-                    "workerSelector"
-            ));
+            var captured = new java.util.LinkedHashMap<String, List<String>>();
+            Objects.requireNonNull(workerSelector, "workerSelector")
+                    .forEach((binding, parameters) -> captured.put(binding, List.copyOf(parameters)));
+            workerSelector = Map.copyOf(captured);
         }
     }
 

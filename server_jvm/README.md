@@ -102,7 +102,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND Item selectors are normalized by Kernel before Item persistence; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND selectors are captured by Kernel and property conditions admitted by Matching before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
@@ -112,7 +112,7 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | `kernel_pacer_jvm` orders and holds PRECOMPUTED demand or directly acquires normalized ON_DEMAND targets, then owns Score renewal, uniqueness, lease and claim |
+| Assignment Dispatch | `kernel_pacer_jvm` orders and holds PRECOMPUTED demand or directly acquires ON_DEMAND candidates from stored selectors, then owns Score renewal, uniqueness, lease and claim |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -274,8 +274,16 @@ export may therefore contain newer content.
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
 derives the absolute expiry. Finite Task append omits `workerSelector`;
-managed Task Call requires a finite Selector array, where `[]` means no Worker
-restriction inside the Group and `$eq`/`$in` can name explicit Worker IDs.
+managed Task Call requires a Selector object, where `{}` means no Worker
+restriction inside the Group and `{"workerId":["a","b"]}` names ordered explicit IDs.
+Nonempty objects have exactly one non-blank binding name and 1..100 string
+parameters, without scalar coercion. `{"worker.country":["CN"]}` requests a
+country index. Country accepts exactly one parameter and must be
+exactly two uppercase ASCII letters; all 676 syntactic values are accepted,
+not just ISO country names. Enable Groups through
+`xa.mass.worker-matching.country-index.worker-groups` (default empty).
+Disabled Groups, unsupported bindings/parameters and malformed country are rejected
+before Item writes, including invalid entries overwritten by duplicate message IDs.
 
 The HTTP Call service and the SMS business module share Server's
 `TaskCallSubmissionService`: complete input validation, bounded managed-Task
@@ -297,9 +305,14 @@ Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
-`workerSelector` to the Kernel parser, then appends a TaskItem containing only
-explicit target Worker IDs or an empty ANY target. Worker Matching is not
-called by this ON_DEMAND path.
+`workerSelector` to Kernel structural capture, then appends a TaskItem containing
+that same immutable expression. Server validates every original property condition
+with `WorkerMatchingCatalog.validateWorkerSelector`, including overwritten duplicates;
+ANY/explicit IDs do not call Matching. It uses the same Catalog injected into Pacer;
+it does not take candidates at submission. Catalog startup rebuilds configured
+derived indexes before the bean is exposed. Matching owns the country range and
+take time; Kernel retains eligibility, hold, post-hold membership recheck, confirm
+and claim. No PRECOMPUTED Demand or Candidate Cache is used for this index path.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
@@ -388,7 +401,7 @@ assuming every non-2xx response means no execution occurred.
       "eventCode": "extension.worker.string.md5",
       "payload": {"value": "hello"},
       "ttlMillis": 30000,
-      "workerSelector": []
+      "workerSelector": {}
     }
   ],
   "waitTimeoutMillis": 30000
@@ -499,8 +512,9 @@ Properties. All Workers, including Polling, initially remain cold. Valid network
 evidence may later request activation; evidence loss has no replay guarantee. New Workers
 have no Matching facts until an admitted Adapter observation creates them;
 even an unrestricted PRECOMPUTED Rule skips a Worker with no facts. ON_DEMAND
-does not require these facts. Polling has no current Adapter Properties path,
-so new Polling Workers use ON_DEMAND. Existing stored facts remain readable
+ANY/explicit IDs do not require these facts; indexed ON_DEMAND requires index
+membership. Polling has no current Adapter Properties path, so new Polling
+Workers use ANY/explicit ON_DEMAND. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never
 overwrites them, Platform Properties, an active Worker lease or PAUSE.
 

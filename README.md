@@ -11,7 +11,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Owner | Responsibility |
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
-| Worker Matching | Worker/Platform Properties, PRECOMPUTED Candidate Rules and ordered filtering of a bounded held pool |
+| Worker Matching | Worker/Platform Properties, property-bound indexes and take time (currently country), PRECOMPUTED Candidate Rules and ordered filtering of a bounded held pool |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
@@ -27,7 +27,7 @@ scheduling eligibility.
 TASK
 API -> Server coordinates Matching Rules and Kernel Task/Item writes
     -> PRECOMPUTED: Kernel holds a bounded pool; Matching filters into Candidate Cache
-       ON_DEMAND: Kernel acquires normalized explicit Worker IDs or ANY
+       ON_DEMAND: one workerSelector binding-to-parameters Map; explicit IDs, Matching indexed identities, or ANY
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
@@ -70,7 +70,8 @@ producer, Binding and Group in one delivery reception use case before creating
 or replacing Matching-owned Worker facts. Every upstream observation replaces
 the complete Worker Map; independent Platform Properties management never
 patches that Map. Before the first valid observation, identity may exist without facts:
-PRECOMPUTED skips that Worker while ON_DEMAND can use its identity. Polling
+PRECOMPUTED skips that Worker while ON_DEMAND ANY/explicit IDs can use its identity;
+country selection requires indexed facts. Polling
 currently has no Properties reporting path and uses ON_DEMAND for new Workers.
 New Matching Demands read observed facts without re-Prepare. Reporting is lossy.
 After actual Worker or Platform facts changes, Server requests best-effort

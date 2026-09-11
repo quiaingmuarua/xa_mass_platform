@@ -19,7 +19,7 @@ class CallApiTest {
         server.createContext("/", exchange -> {
             var body = Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             var item = CallApi.object(((List<?>) body.get("items")).getFirst());
-            assertThat(item.get("workerSelector")).isEqualTo(List.of("workerId", "$eq", "worker-1"));
+            assertThat(item.get("workerSelector")).isEqualTo(Map.of("workerId", List.of("worker-1")));
             count.incrementAndGet();
             exchange.sendResponseHeaders(503, -1); exchange.close();
         });

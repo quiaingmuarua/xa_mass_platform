@@ -2,7 +2,6 @@ package com.xa.mass.distribution;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -13,12 +12,9 @@ import org.springframework.core.env.Profiles;
 @Configuration(proxyBeanMethods = false)
 @Profile("sms-reception | message-campaigns")
 public class ProductWorkerConfiguration {
-    @Bean("productCountryGroups")
-    Map<String, String> countryGroups(Environment environment) {
-        boolean sms = environment.acceptsProfiles(Profiles.of("sms-reception"));
-        boolean messages = environment.acceptsProfiles(Profiles.of("message-campaigns"));
-        String prefix = sms && messages ? "demo-" : sms ? "sms-" : "messages-";
-        return Map.of("CN", prefix + "cn", "US", prefix + "us", "GB", prefix + "gb");
+    @Bean("productWorkerGroup")
+    String workerGroup() {
+        return "demo-sim";
     }
 
     @Bean("productWorkerEvents")

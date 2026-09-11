@@ -1,5 +1,6 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,9 +9,12 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /** Persistent Worker facts and allocation-rule owner. */
-public interface WorkerMatchingCatalog {
+public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerCandidateIndex {
 
     int MAX_BATCH_SIZE = 100;
+
+    /** Rejects unsupported queries or Groups without an enabled index; performs no selection. */
+    void validateWorkerSelector(String workerGroupId, TaskItemWorkerSelector selector);
 
     /** Creates or replaces complete string Properties for 1..100 Workers in one Group. */
     Map<String, MutationResult> upsertWorkerFactsBatch(

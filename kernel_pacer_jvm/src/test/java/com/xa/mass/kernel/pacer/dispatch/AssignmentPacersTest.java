@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -331,11 +333,11 @@ class AssignmentPacersTest {
                 explicit.messageId(), explicit,
                 anyWorker.messageId(), anyWorker
         ));
-        LinkedHashMap<String, List<String>> targets = new LinkedHashMap<>();
-        targets.put(explicit.messageId(), List.of("worker-target"));
-        targets.put(anyWorker.messageId(), List.of());
+        var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
+        selectors.put(explicit.messageId(), explicit.workerSelector());
+        selectors.put(anyWorker.messageId(), anyWorker.workerSelector());
         when(selection.acquireOnDemandCandidates(
-                "group-1", targets, Set.of(), 6_000L
+                "group-1", selectors, Set.of(), 6_000L
         )).thenReturn(Map.of(
                 explicit.messageId(), worker("worker-target", 201L),
                 anyWorker.messageId(), worker("worker-any", 202L)
@@ -361,7 +363,7 @@ class AssignmentPacersTest {
         ));
 
         verify(selection).acquireOnDemandCandidates(
-                "group-1", targets, Set.of(), 6_000L
+                "group-1", selectors, Set.of(), 6_000L
         );
     }
 
@@ -387,7 +389,7 @@ class AssignmentPacersTest {
                         Map.of(),
                         0,
                         999L,
-                        List.of()
+                        TaskItemWorkerSelector.parse(Map.of())
                 )
         ));
 
@@ -537,7 +539,8 @@ class AssignmentPacersTest {
                 Map.of(),
                 0,
                 null,
-                targetWorkerIds
+                TaskItemWorkerSelector.parse(targetWorkerIds.isEmpty()
+                        ? Map.of() : Map.of("workerId", targetWorkerIds))
         );
     }
 

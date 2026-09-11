@@ -124,7 +124,7 @@ def functional(run):
     sms_catalog = http(run.url, "/api/v1/sms/catalog")
     messages_catalog = http(run.url, "/api/v1/messages/catalog")
     require({c["workerGroupId"] for c in sms_catalog["countries"]}
-            == {c["workerGroupId"] for c in messages_catalog["countries"]} == {"demo-cn", "demo-us", "demo-gb"}, "Products did not share Groups")
+            == {c["workerGroupId"] for c in messages_catalog["countries"]} == {"demo-sim"}, "Products did not share Groups")
     inventory = all_pages(run.host, "/lab/v1/messages/inventory")
     require(len(inventory) == 12, "Expected 12 shared Workers")
     listener = sms_wait(run, sms_create(run), "LISTENING")
@@ -166,7 +166,7 @@ def functional(run):
     duplicate_id = str(uuid.uuid4())
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_id,
         "eventCode": "extension.worker.message.send", "payload": payload, "ttlMillis": 10000,
-        "workerSelector": ["workerId", "$eq", rows[0]["workerId"]]}], "waitTimeoutMillis": 1})
+        "workerSelector": {"workerId": [rows[0]["workerId"]]}}], "waitTimeoutMillis": 1})
     wait(run, lambda: http(run.url, f"/api/v1/tasks/{task}/results:load", [duplicate_id])[duplicate_id]["status"] == "succeeded", 20, "duplicate real execution")
     require(http(run.host, "/lab/v1/messages/metrics")["messages"] == 2, "Duplicate execution delivered another message")
     # Same Reporter must still target the original Item, not the duplicate execution Item.

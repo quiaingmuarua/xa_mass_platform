@@ -202,10 +202,16 @@ architectures.
 - Candidate Cache remains a stable mechanical owner here;
   Pacer policy and loop code do not.
 - Task Owner stores only scheduling descriptors and TaskItem execution data.
-  It must not store or interpret PRECOMPUTED allocation Rules, Match Property
-  names or constraint operators; persistent Candidate Rules and their
-  semantics belong to Worker Matching. It does own the closed ON_DEMAND
-  `workerSelector` instruction and persists only normalized Worker IDs.
+  It must not store PRECOMPUTED allocation Rules or interpret Match Property
+  names and constraint operators; persistent Candidate Rules and their
+  semantics belong to Worker Matching. For ON_DEMAND it stores one immutable
+  `workerSelector` binding-to-parameters Map and owns generic structure, ANY and explicit ID
+  semantics only. Matching validates other selectors and binds indexes directly
+  to full property names; adding an index within this selector contract must not
+  change Kernel/Pacer production code. Matching owns acquisition and take time through
+  `WorkerCandidateIndex`; Kernel retains due HOT observation, initial hold,
+  post-hold membership recheck, exact confirm and claim. Index failure must not
+  fall back to ANY; ON_DEMAND uses no Match Demand or Candidate Cache.
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
   A success may replace an earlier failed Result; storing terminal failure

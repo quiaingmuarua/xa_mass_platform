@@ -1,9 +1,6 @@
 import type { JsonValue } from "@/runtime-viewer/types";
 
-export type TaskItemWorkerSelector =
-  | []
-  | ["workerId", "$eq", string]
-  | ["workerId", "$in", string[]];
+export type TaskItemWorkerSelector = Record<string, string[]>;
 
 export interface TaskCallDebugDraft {
   taskId: string;

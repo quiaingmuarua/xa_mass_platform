@@ -1,6 +1,10 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.ScanCursor;
+import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -42,19 +46,178 @@ public final class RedisWorkerMatchingCatalog
             return 1
             """;
 
+    // All numeric Redis arguments are formatted explicitly: Lua tostring loses significant
+    // digits for these 53-bit integer coordinates.
+    private static final String STORE_INDEXED_FACTS_SCRIPT = """
+            local scale = 8796093022208
+            local results = {}
+            for i = 1, #ARGV, 3 do
+              local id, replacement, code = ARGV[i], ARGV[i+1], tonumber(ARGV[i+2])
+              local old = redis.call('HGET', KEYS[1], id)
+              if old == replacement then
+                results[#results+1] = 0
+              else
+                redis.call('HSET', KEYS[1], id, replacement)
+                results[#results+1] = 1
+              end
+              if code < 0 then
+                redis.call('ZREM', KEYS[2], id)
+              else
+                local prior = redis.call('ZSCORE', KEYS[2], id)
+                if not prior or math.floor(tonumber(prior) / scale) ~= code then
+                  local low = prior and (tonumber(prior) % scale) or 0
+                  redis.call('ZADD', KEYS[2], string.format('%.0f', code * scale + low), id)
+                end
+              end
+            end
+            return results
+            """;
+
+    private static final String TAKE_INDEX_SCRIPT = """
+            local scale = 8796093022208
+            local lower = tonumber(ARGV[1]) * scale
+            local clock = redis.call('TIME')
+            local relative = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000) - 946684800000
+            if relative < 0 or relative >= scale then
+              return redis.error_reply('country index time is outside its 43-bit range')
+            end
+            local ids = redis.call('ZRANGEBYSCORE', KEYS[1], string.format('%.0f', lower),
+              '(' .. string.format('%.0f', lower + scale), 'LIMIT', 0, ARGV[2])
+            if #ids > 0 then
+              local args = {}
+              local score = string.format('%.0f', lower + relative)
+              for _, id in ipairs(ids) do
+                args[#args+1] = score
+                args[#args+1] = id
+              end
+              redis.call('ZADD', KEYS[1], unpack(args))
+            end
+            return ids
+            """;
+
+    private static final String RETAIN_INDEX_SCRIPT = """
+            local lower = tonumber(ARGV[1]) * 8796093022208
+            local upper = lower + 8796093022208
+            local scores = redis.call('ZMSCORE', KEYS[1], unpack(ARGV, 2))
+            local ids = {}
+            for i, score in ipairs(scores) do
+              if score and tonumber(score) >= lower and tonumber(score) < upper then
+                ids[#ids+1] = ARGV[i+1]
+              end
+            end
+            return ids
+            """;
+
+    private static final String REBUILD_INDEX_SCRIPT = """
+            local args = {}
+            for i = 1, #ARGV, 2 do
+              local raw = redis.call('HGET', KEYS[1], ARGV[i])
+              if raw == ARGV[i+1] then
+                local facts = cjson.decode(raw)
+                local country = facts['country']
+                if type(country) == 'string' and string.match(country, '^[A-Z][A-Z]$') then
+                  local code = (string.byte(country, 1) - 65) * 26 + string.byte(country, 2) - 65
+                  args[#args+1] = string.format('%.0f', code * 8796093022208)
+                  args[#args+1] = ARGV[i]
+                end
+              end
+            end
+            if #args > 0 then redis.call('ZADD', KEYS[2], unpack(args)) end
+            return 1
+            """;
+
     private final RedisClient redisClient;
     private final ObjectMapper mapper = JsonMapper.builder()
             .enable(DeserializationFeature.USE_LONG_FOR_INTS)
             .build();
     private final RedisKeyspace keyspace;
+    private final Set<String> countryIndexGroups;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerMatchingCatalog(
             RedisClient redisClient,
-            RedisKeyspace keyspace
+            RedisKeyspace keyspace,
+            Set<String> countryIndexGroups
     ) {
         this.redisClient = Objects.requireNonNull(redisClient, "redisClient");
         this.keyspace = Objects.requireNonNull(keyspace, "keyspace");
+        this.countryIndexGroups = Set.copyOf(countryIndexGroups);
+        this.countryIndexGroups.forEach(group -> requireNonBlank(group, "country index Group"));
+    }
+
+    /** Startup only, before exposing this Catalog to producers or the Pacer. */
+    public void rebuildCountryIndexes() {
+        for (String group : countryIndexGroups) {
+            RedisCommands<String, String> redis = commands();
+            redis.del(countryIndexKey(group));
+            ScanCursor cursor = ScanCursor.INITIAL;
+            do {
+                MapScanCursor<String, String> page = redis.hscan(workerFactsKey(group), cursor, new ScanArgs().limit(100));
+                List<String> batch = new ArrayList<>();
+                for (Map.Entry<String, String> entry : page.getMap().entrySet()) {
+                    // Fail startup on corrupt facts, never install a partial silent interpretation.
+                    decodeObject(entry.getValue());
+                    batch.add(entry.getKey());
+                    batch.add(entry.getValue());
+                    if (batch.size() == 200) {
+                        rebuildBatch(group, batch);
+                        batch.clear();
+                    }
+                }
+                if (!batch.isEmpty()) rebuildBatch(group, batch);
+                cursor = page;
+            } while (!cursor.isFinished());
+        }
+    }
+
+    private void rebuildBatch(String group, List<String> batch) {
+        commands().eval(REBUILD_INDEX_SCRIPT, ScriptOutputType.INTEGER,
+                new String[]{workerFactsKey(group), countryIndexKey(group)}, batch.toArray(String[]::new));
+    }
+
+    @Override
+    public void validateWorkerSelector(String workerGroupId, TaskItemWorkerSelector selector) {
+        countryCode(workerGroupId, selector);
+    }
+
+    private int countryCode(String workerGroupId, TaskItemWorkerSelector selector) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Objects.requireNonNull(selector, "workerSelector");
+        List<String> parameters = selector.expression().get("worker.country");
+        if (parameters == null || parameters.size() != 1) {
+            throw new IllegalArgumentException("unsupported indexed Worker selector");
+        }
+        if (!countryIndexGroups.contains(workerGroupId)) {
+            throw new IllegalArgumentException("country index is not enabled for WorkerGroup");
+        }
+        return CountryIndex.code(parameters.get(0));
+    }
+
+    @Override
+    public List<String> takeWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, int limit) {
+        int code = countryCode(workerGroupId, selector);
+        if (limit < 1 || limit > MAX_BATCH_SIZE) throw new IllegalArgumentException("limit must be in 1..100");
+        List<String> ids = commands().eval(TAKE_INDEX_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{countryIndexKey(workerGroupId)}, Integer.toString(code),
+                Integer.toString(limit));
+        return List.copyOf(ids);
+    }
+
+    @Override
+    public Set<String> retainWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, List<String> workerIds) {
+        int code = countryCode(workerGroupId, selector);
+        List<String> ids = boundedUnique(workerIds, "workerIds");
+        if (ids.isEmpty()) return Set.of();
+        List<String> args = new ArrayList<>();
+        args.add(Integer.toString(code));
+        args.addAll(ids);
+        List<String> retained = commands().eval(RETAIN_INDEX_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{countryIndexKey(workerGroupId)}, args.toArray(String[]::new));
+        return Set.copyOf(retained);
+    }
+
+    private String countryIndexKey(String group) {
+        return keyspace.base() + ":matching:worker:index:country:" + group;
     }
 
     @Override
@@ -89,6 +252,22 @@ public final class RedisWorkerMatchingCatalog
     ) {
         if (encoded.isEmpty()) {
             return Map.of();
+        }
+        if (countryIndexGroups.contains(workerGroupId)) {
+            List<String> args = new ArrayList<>();
+            encoded.forEach((id, json) -> {
+                args.add(id);
+                args.add(json);
+                args.add(Integer.toString(CountryIndex.optionalCode(decodeObject(json).get("country"))));
+            });
+            List<Long> effects = commands().eval(STORE_INDEXED_FACTS_SCRIPT, ScriptOutputType.MULTI,
+                    new String[]{workerFactsKey(workerGroupId), countryIndexKey(workerGroupId)}, args.toArray(String[]::new));
+            Map<String, MutationResult> results = new LinkedHashMap<>();
+            int i = 0;
+            for (String id : encoded.keySet()) {
+                results.put(id, new MutationResult(effects.get(i++) == 0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED));
+            }
+            return Collections.unmodifiableMap(results);
         }
         String key = workerFactsKey(workerGroupId);
         RedisCommands<String, String> commands = commands();

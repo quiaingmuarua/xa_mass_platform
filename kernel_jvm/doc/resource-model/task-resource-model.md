@@ -6,7 +6,8 @@ Status: active Java Kernel Task scheduling metadata contract.
 
 Kernel stores Task and TaskItem state required for scheduling, claim, retry and
 finality. It does not store or interpret PRECOMPUTED allocation rules. It does
-own the closed ON_DEMAND Worker Selector syntax and normalized Worker IDs.
+own ON_DEMAND selector structure, ANY and explicit Worker ID mechanics. Other
+selector meaning belongs to Matching; the expression is captured and passed unchanged.
 
 ```text
 TaskDescriptor
@@ -23,7 +24,7 @@ TaskItem
   payload
   priority
   expireAtMillis
-  targetWorkerIds
+  workerSelector (one immutable binding-to-parameters Map)
 ```
 
 `workerAllocationMechanism` selects two deliberately separate inputs:
@@ -31,7 +32,7 @@ TaskItem
 | Mechanism | Input owner | Kernel workflow |
 | --- | --- | --- |
 | `PRECOMPUTED_TASK_RULE` | Matching Candidate Rule at `candidateId` | hold due Workers, publish ordered Candidate Demand, consume Candidate Cache |
-| `ON_DEMAND_ITEM_RULE` | Kernel finite `workerSelector` parser | persist normalized explicit Worker IDs or ANY, then acquire directly before claim |
+| `ON_DEMAND_ITEM_RULE` | Kernel structural capture; Matching property interpretation | persist selector unchanged; bounded acquisition and hold before claim |
 
 The mechanism is a fixed scheduling workflow label. It is not a rule parser or
 a generic strategy extension point.
@@ -46,8 +47,8 @@ PRECOMPUTED Task creation
   -> create Kernel Task descriptor without Rule
 
 ON_DEMAND Item append or items:call
-  -> Kernel validates workerSelector and returns normalized target Worker IDs
-  -> append Kernel TaskItems without Rule syntax
+  -> Kernel captures workerSelector; Matching validates property conditions through Server admission
+  -> append Kernel TaskItems with the same selector, without PRECOMPUTED Rule syntax
 ```
 
 Equivalent Candidate Rule writes are idempotent; conflicting content is
@@ -83,17 +84,37 @@ bucket and owns
 final exact renewal, round uniqueness, TaskItem claim, Command construction,
 retry, and finality.
 
-For ON_DEMAND Items, Kernel accepts only `[]`, `workerId/$eq`, and
-`workerId/$in` Selector arrays. `TaskItem` stores the normalized identity list,
-not the raw Selector; an empty list means ANY. Kernel directly observes and
-exact-holds eligible Workers when dispatching the Item. No Item Demand, Match
-Evidence, or Matching persistence exists.
+For ON_DEMAND Items, `TaskItemWorkerSelector` holds one immutable expression:
+`{}`, `{"workerId":["id"]}`, `{"workerId":["a","b"]}`, or an
+opaque binding such as `{"worker.country":["CN"]}`.
+Kernel validates an empty Map or exactly one non-blank binding name mapped to
+1..100 string parameters. Parameter order is preserved without coercion,
+sorting or deduplication; an empty parameter list is not ANY. Explicit IDs
+additionally require unique non-blank identities. IDs are extracted when used,
+not stored beside the expression. Both Map and parameter List are copied.
+
+Matching alone validates binding names, parameter counts/meaning and enabled indexes.
+Country accepts exactly one parameter; the parameter container does not imply
+multi-country support or an operator slot. PRECOMPUTED Rule operators are unchanged.
+The selector is never expanded into IDs at submission. PRECOMPUTED Items use an
+empty selector internally and reject nonempty conditions; the public finite
+append API still requires the field to be omitted.
+`WorkerCandidateIndex` receives the same selector for bounded acquisition and
+post-hold membership recheck. Kernel alone observes due HOT eligibility, holds,
+confirms and claims. No ON_DEMAND Match Demand or Candidate Cache exists.
 
 ## Redis Shape
 
 Kernel Task descriptors and TaskItems use exact JSON field sets matching the
-records above. Rule maps remain rejected at the Kernel Redis boundary. Rules
-use the independent Matching keyspace documented by
+records above. The stored `workerSelector` is the Map itself, not a value-object
+envelope. Empty, explicit-ID and property selectors all use this one field.
+
+This cutover uses a new scope: old `targetWorkerIds`/`indexQuery` records,
+array selectors (including empty arrays), missing/null selectors and wrapper
+objects are rejected, never interpreted as ANY.
+There is no dual-read, migration or cleanup of old scopes.
+PRECOMPUTED Rule maps remain rejected at the Kernel Redis boundary; Rules use
+the independent Matching keyspace documented by
 [`worker_matching_jvm`](../../../worker_matching_jvm/README.md).
 
 ## Non-Owners

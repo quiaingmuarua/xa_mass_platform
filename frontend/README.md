@@ -197,9 +197,12 @@ repaired or inferred by the browser.
 In API mode, each readable `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` Task with a
 WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
 debug composer
-accepts an advisory Event Name, a JSON Object Payload, and an Item-level JSON
-Object `allocationRule`, then calls the existing managed Task endpoint. Calls
-go through Kernel scheduling; the browser does not interpret the rule or infer
+accepts an advisory Event Name, a JSON Object Payload, and an Item-level
+`workerSelector` object: `{}` for ANY, `{"workerId":["worker-a"]}` for explicit
+IDs, or `{"worker.country":["CN"]}` for binding parameters. The browser validates
+one binding and its 1..100 string parameters plus explicit-ID uniqueness; Matching
+owns supported bindings, parameter semantics and Group enablement. Calls go
+through Kernel scheduling; the browser does not query the index or infer
 which Worker matched. Each Task retains at most 20 diagnostic exchanges in the
 current Pinia/browser memory. A `not_observed` response means submission was
 accepted without a Result in the bounded wait window, so the user may manually

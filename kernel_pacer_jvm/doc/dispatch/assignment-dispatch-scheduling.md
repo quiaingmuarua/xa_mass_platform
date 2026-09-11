@@ -34,12 +34,12 @@ claim Items, or dispatch Commands.
 | Mechanism | Persistent Rule owner | Worker acquisition | Candidate Cache |
 | --- | --- | --- | --- |
 | `PRECOMPUTED_TASK_RULE` | Matching Candidate Rule keyed by candidateId | ordered Group Demand filters a Pacer-held pool | used |
-| `ON_DEMAND_ITEM_RULE` | Kernel finite Worker Selector | Kernel directly observes normalized explicit IDs or ANY | forbidden |
+| `ON_DEMAND_ITEM_RULE` | Kernel stores selector; Matching interprets property conditions | explicit IDs, indexed identities, then ANY | forbidden |
 
 Task creation still accepts a PRECOMPUTED allocation Rule, which Server stores
 in Worker Matching before writing the minimal Kernel Task resource. ON_DEMAND
-Item calls instead require a finite `workerSelector` array. Kernel normalizes
-it and stores only the Worker-ID list, where an empty list means ANY.
+Item calls instead require a finite `workerSelector` Map. Kernel captures and
+stores that expression unchanged; only the empty expression means ANY.
 
 ## PRECOMPUTED Flow
 
@@ -89,30 +89,45 @@ bounded writer through the Cache owner API, not the Cache truth owner.
 
 ## ON_DEMAND Flow
 
-Kernel validates only these Item Worker Selectors:
+The current public selectors include:
 
 ```json
-[]
-["workerId", "$eq", "worker-id"]
-["workerId", "$in", ["worker-a", "worker-b"]]
+{}
+{"workerId": ["worker-id"]}
+{"workerId": ["worker-a", "worker-b"]}
+{"worker.country": ["CN"]}
 ```
 
-Kernel persists normalized target IDs with the TaskItem and dispatches
-directly:
+Kernel validates generic structure and explicit-ID mechanics; Matching admits
+property conditions. Kernel persists the same selector and dispatches directly:
 
 ```text
 Task Dispatch observes claimable Items in order
   -> explicit IDs: observe due HOT scores for those IDs in the Task Group
-  -> empty target: observe a bounded due HOT Group pool
+  -> property selector: take identities and touch time through WorkerCandidateIndex
+     -> due HOT observation -> initial hold -> current index membership recheck
+  -> empty selector: observe a bounded due HOT Group pool
   -> enforce one Worker use per dispatch round
   -> exact-hold selected scores
   -> load current minimal Worker descriptor
   -> final exact confirmation, Item claim, and Delivery Command publication
 ```
 
-There is no ON_DEMAND Match Demand, Evidence, resident Matching work, cursor,
-or Candidate Cache fallback. Unsupported Selector names, operators or operands
-are rejected by Kernel before TaskItem creation.
+The per-Task per-round index budget is 100, split evenly among distinct selector values;
+remainder goes in first Item occurrence order. Equal expressions share one call.
+Actual take size is the smaller of that query's budget and its waiting Item count.
+The budget is a ceiling: touching surplus identities can give an entire small
+country bucket the same time, repeatedly favoring its lexical prefix for sparse work.
+Explicit IDs precede indexed selection, which precedes ANY; round Worker dedup
+is retained. There is no same-round refill, local cursor, Match Demand or Candidate
+Cache for ON_DEMAND. Index failure never falls back to ANY. Unsupported selectors
+and disabled index Groups fail Server admission before Item writes.
+
+Initial hold can clear dirty after a concurrent country change. Therefore held
+indexed Workers are batch-rechecked by Matching before exact confirmation. Failed
+rechecks and unused holds expire naturally, without release compensation. Pacer passes the same selector to both index calls and
+does not interpret binding names/parameters, read Properties or encode index scores; facts-write and dirty invalidation
+remain separate commits and do not revoke already confirmed execution.
 
 ## Candidate Selection
 
@@ -120,12 +135,12 @@ are rejected by Kernel before TaskItem creation.
 
 - bounded due HOT observation;
 - exact initial hold and final cached confirmation;
-- explicit-target and ANY selection for ON_DEMAND;
+- explicit-target, indexed and ANY selection for ON_DEMAND;
 - one Worker use per dispatch round;
 - current `workerId + workerGroupId + endpointManagerId` loading after
   acquisition.
 
-It does not parse property names or operators. Raw scores remain opaque by
+It does not interpret binding names or parameters. Raw scores remain opaque by
 usage: Pacer may retain and submit them to exact Owner operations but cannot
 decode, construct, or calculate score coordinates.
 

@@ -98,6 +98,10 @@
       "offer",
       "size"
     ],
+    "WorkerCandidateIndex": [
+      "retain_worker_ids",
+      "take_worker_ids"
+    ],
     "TaskEvidenceRuntime": [
       "append_task_evidence",
       "consume_task_evidence"
@@ -224,8 +228,9 @@
       "payload",
       "priority",
       "expire_at_millis",
-      "target_worker_ids"
+      "worker_selector"
     ],
+    "TaskItemWorkerSelector": ["expression"],
     "TaskItemAppendResult": [
       "status",
       "reason"

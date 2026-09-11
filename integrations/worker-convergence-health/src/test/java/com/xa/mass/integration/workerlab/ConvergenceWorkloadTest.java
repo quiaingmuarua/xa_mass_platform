@@ -55,7 +55,7 @@ class ConvergenceWorkloadTest {
                     "wave-1",
                     Map.of(
                             WorkerLabConvergenceSupport.STRING_GROUP,
-                            List.of("workerId", "$eq", "worker-b")
+                            Map.of("workerId", List.of("worker-b"))
                     ),
                     null
             );
@@ -73,9 +73,8 @@ class ConvergenceWorkloadTest {
             assertBatch(requests.get(0), false);
             assertBatch(requests.get(1), true);
 
-            List<Object> checkpointSelector = List.of(
+            Map<String, List<String>> checkpointSelector = Map.of(
                     "workerId",
-                    "$in",
                     List.of("target", "backup")
             );
             workload.submitCheckpointWave(
@@ -97,17 +96,17 @@ class ConvergenceWorkloadTest {
 
     private static void assertCheckpointBatch(
             Request request,
-            List<Object> expectedSelector
+            Map<String, List<String>> expectedSelector
     ) {
         List<Object> items = JsonValues.array(
                 request.body().get("items"),
                 "items"
         );
         assertThat(items).hasSize(50);
-        items.forEach(raw -> assertThat(JsonValues.array(
+        items.forEach(raw -> assertThat(JsonValues.object(
                 JsonValues.object(raw, "item").get("workerSelector"),
                 "workerSelector"
-        )).containsExactlyElementsOf(expectedSelector));
+        )).isEqualTo(expectedSelector));
         Map<String, Object> first = JsonValues.object(items.get(0), "item");
         assertThat(first).containsEntry(
                 "eventCode",
@@ -161,20 +160,16 @@ class ConvergenceWorkloadTest {
             }
         }
         Map<String, Object> first = JsonValues.object(items.get(0), "item");
-        List<Object> selector = JsonValues.array(
+        Map<String, Object> selector = JsonValues.object(
                 first.get("workerSelector"),
                 "workerSelector"
         );
         if (stringGroup) {
-            assertThat(selector).containsExactly(
-                    "workerId",
-                    "$eq",
-                    "worker-b"
-            );
+            assertThat(selector).isEqualTo(Map.of("workerId", List.of("worker-b")));
         } else {
             assertThat(selector).isEmpty();
         }
-        items.stream().skip(1).forEach(raw -> assertThat(JsonValues.array(
+        items.stream().skip(1).forEach(raw -> assertThat(JsonValues.object(
                 JsonValues.object(raw, "item").get("workerSelector"),
                 "workerSelector"
         )).isEmpty());

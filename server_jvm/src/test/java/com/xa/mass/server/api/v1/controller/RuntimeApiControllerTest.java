@@ -98,6 +98,7 @@ class RuntimeApiControllerTest {
     private WorkerMatchingCatalog matchingCatalog;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
+    private TaskCallItemSubmission taskCallSubmission;
     private TaskItemScoreBandCore itemScores;
     private TaskLifecycleCommands taskLifecycle;
     private TaskResultsExportService taskResultsExport;
@@ -222,8 +223,7 @@ class RuntimeApiControllerTest {
             ));
             return results;
         });
-        TaskCallItemSubmission taskCallSubmission =
-                mock(TaskCallItemSubmission.class);
+        taskCallSubmission = mock(TaskCallItemSubmission.class);
         when(taskCallSubmission.submit(any(), anyList()))
                 .thenAnswer(invocation -> {
                     List<TaskItem> items = invocation.getArgument(1);
@@ -257,7 +257,7 @@ class RuntimeApiControllerTest {
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
-                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems),
+                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class)),
                 taskRuntime, taskRpcRegistry, rpcProperties
         );
         WorkerGroupTaskCallRegistrationService registrations =
@@ -847,7 +847,7 @@ class RuntimeApiControllerTest {
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
                                             "payload": {"phoneNumber": "+14155552671"},
-                                            "workerSelector": []
+                                            "workerSelector": {}
                                           }],
                                           "waitTimeoutMillis": 1000
                                         }
@@ -901,7 +901,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": []
+                                    "workerSelector": {}
                                   }]
                                 }
                                 """))
@@ -916,12 +916,31 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-finite",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": []
+                                    "workerSelector": {}
                                   }]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12008));
+    }
+
+    @Test
+    void selectorHttpBindingRejectsLegacyShapesAndNeverCoercesParameterTypes() throws Exception {
+        for (String selector : List.of(
+                "[]", "[\"workerId\",\"$eq\",\"worker\"]", "null", "\"worker\"",
+                "{\"workerId\":\"worker\"}", "{\"workerId\":[]}",
+                "{\"workerId\":[1]}", "{\"workerId\":[true]}", "{\"workerId\":[null]}",
+                "{\"workerId\":[{}]}", "{\"workerId\":[[\"worker\"]]}",
+                "{\"a\":[\"x\"],\"b\":[\"y\"]}", "{\" \":[\"x\"]}")) {
+            mockMvc.perform(post("/api/v1/tasks/scenario-rpc-phone-tools/items:call")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"items":[{"messageId":"id","eventCode":"event","payload":{},
+                                    "workerSelector":%s}],"waitTimeoutMillis":1}
+                                    """.formatted(selector)))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(taskCallSubmission, taskCatalog);
     }
 
     @Test
@@ -938,7 +957,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": []
+                                    "workerSelector": {}
                                   }]
                                 }
                                 """))
@@ -968,7 +987,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-unregistered",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": []
+                                    "workerSelector": {}
                                   }]
                                 }
                                 """))

@@ -54,15 +54,16 @@ class ProductCompositionIntegrationTest {
             assertThat(context.getBeansOfType(CampaignService.class)).hasSize(messages ? 1 : 0);
             if (sms) assertThat(context.getBean(ListenerService.class).isRunning()).isTrue();
             if (messages) assertThat(context.getBean(CampaignService.class).isRunning()).isTrue();
+            var group = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
+            if (sms || messages) {
+                assertThat(group).isNotNull();
+                if (sms) assertThat(context.getBean(ListenerService.class).catalog().get("countries").toString())
+                        .contains("workerGroupId=demo-sim");
+                if (messages) assertThat(context.getBean(CampaignService.class).catalog().get("countries").toString())
+                        .contains("workerGroupId=demo-sim");
+            } else assertThat(group).isNull();
             assertThat(get(client, base, "/api/v1/sms/catalog").statusCode()).isEqualTo(sms ? 200 : 404);
             assertThat(get(client, base, "/api/v1/messages/catalog").statusCode()).isEqualTo(messages ? 200 : 404);
-            var groups = context.getBean(WorkerResourceCatalog.class);
-            String prefix = sms && messages ? "demo-" : sms ? "sms-" : "messages-";
-            for (String candidate : List.of("sms-", "messages-", "demo-")) {
-                var found = groups.getWorkerGroupDescriptors(List.of(candidate + "cn", candidate + "us", candidate + "gb"));
-                if ((sms || messages) && candidate.equals(prefix)) assertThat(found.values()).doesNotContainNull();
-                else assertThat(found.values()).allMatch(Objects::isNull);
-            }
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
             for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/sms/listeners/", "/messages", "/messages/",

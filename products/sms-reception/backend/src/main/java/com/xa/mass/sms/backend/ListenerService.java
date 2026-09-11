@@ -27,14 +27,14 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
     private final WorkerGroupRegistrationService registrations;
     private final TaskCallSubmissionService submissions;
     private final TaskDataService results;
-    private final Map<String, String> groups;
+    private final String workerGroupId;
     private final List<String> events;
     private final boolean scheduleObservation;
     private volatile boolean running;
     private boolean closed;
     private final Clock clock;
     private final int limit;
-    private final Map<String, String> tasks = new LinkedHashMap<>();
+    private String taskId;
     private final Map<String, Record> byId = new LinkedHashMap<>();
     private final Map<String, Record> byRequest = new HashMap<>();
     private final Map<String, Integer> cursors = new HashMap<>();
@@ -56,23 +56,23 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
     }
     public ListenerService(WorkerGroupRegistrationService registrations,
             TaskCallSubmissionService submissions, TaskDataService results,
-            Map<String, String> groups, List<String> events) {
-        this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true, groups, events);
+            String workerGroupId, List<String> events) {
+        this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true, workerGroupId, events);
     }
     ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
             TaskDataService results, Clock clock, int limit, boolean scheduleObservation) {
         this(registrations, submissions, results, clock, limit, scheduleObservation,
-                Map.of("CN", "sms-cn", "US", "sms-us", "GB", "sms-gb"),
+                "demo-sim",
                 List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel"));
     }
     private ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
             TaskDataService results, Clock clock, int limit, boolean scheduleObservation,
-            Map<String, String> groups, List<String> events) {
+            String workerGroupId, List<String> events) {
         this.registrations = registrations;
         this.submissions = submissions;
         this.results = results;
-        if (!groups.keySet().equals(Set.copyOf(COUNTRIES))) throw new IllegalArgumentException("Expected three country Groups");
-        this.groups = Map.copyOf(groups);
+        if (workerGroupId == null || workerGroupId.isBlank()) throw new IllegalArgumentException("WorkerGroup is required");
+        this.workerGroupId = workerGroupId;
         this.events = List.copyOf(events);
         this.clock = clock;
         this.limit = limit;
@@ -83,9 +83,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
         if (running) return;
         if (closed) throw new IllegalStateException("Product run is closed");
         try {
-            for (String country : COUNTRIES) {
-                tasks.put(country, registrations.register(groups.get(country), Map.of(), events).taskId());
-            }
+            taskId = registrations.register(workerGroupId, Map.of(), events).taskId();
             commands = Executors.newFixedThreadPool(8);
             commandPump = Executors.newSingleThreadScheduledExecutor();
             observer = Executors.newSingleThreadScheduledExecutor();
@@ -111,7 +109,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
                 Map.of("id", "B", "name", "应用 B · 验证码", "templates", TEMPLATES.get("B")),
                 Map.of("id", "C", "name", "应用 C · 全匹配", "templates", TEMPLATES.get("C"))),
                 "countries", COUNTRIES.stream().map(c -> Map.of("id", c, "workerGroupId",
-                        groups.get(c), "taskId", tasks.get(c))).toList(),
+                        workerGroupId, "taskId", taskId)).toList(),
                 "limits", Map.of("listeners", limit, "listenersPerNumber", 64, "smsRecords", 100_000,
                         "setupMillis", SETUP_MILLIS, "graceMillis", GRACE_MILLIS));
     }
@@ -157,7 +155,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
                 commands.execute(() -> {
                     try {
                         List<TaskItemRequest> items = batch.stream().map(this::item).toList();
-                        submissions.submit(tasks.get(country), items);
+                        submissions.submit(taskId, items);
                     } catch (RuntimeException error) { submissionsUnknown.add(batch.size()); }
                     finally { commandSlots.release(); }
                 });
@@ -172,7 +170,8 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
         return new TaskItemRequest(command.messageId(), "extension.worker.sms.listen."
                 + (command.cancel ? "cancel" : "start"), payload, 5,
                 command.cancel ? SETUP_MILLIS : Math.max(1, record.setupDeadline - clock.millis()),
-                command.cancel ? List.of("workerId", "$eq", command.workerId) : List.of());
+                command.cancel ? Map.of("workerId", List.of(command.workerId))
+                        : Map.of("worker.country", List.of(record.country)));
     }
     public Map<String, Object> get(String id) { return require(id).view(); }
     public Map<String, Object> page(int offset, int pageSize) {
@@ -220,7 +219,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
             }
             cursors.put(country, (cursor + count) % pending.size());
             try {
-                Map<String, TaskItemResultResponse> observed = results.loadTaskItemResults(tasks.get(country), messages);
+                Map<String, TaskItemResultResponse> observed = results.loadTaskItemResults(taskId, messages);
                 for (Record record : selected) {
                     accept(record, observed.get(record.id));
                     accept(record, observed.get(record.cancelId));

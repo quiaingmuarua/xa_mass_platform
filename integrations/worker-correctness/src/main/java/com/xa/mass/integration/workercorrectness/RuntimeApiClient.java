@@ -178,7 +178,7 @@ final class RuntimeApiClient {
                     "messageId", item.messageId(),
                     "eventCode", item.eventCode(),
                     "payload", item.payload(),
-                    "workerSelector", List.of()
+                    "workerSelector", Map.of()
             ));
         }
         Map<String, Object> response = post(

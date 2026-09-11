@@ -3,6 +3,7 @@ package com.xa.mass.integration.androidworkerproof;
 import java.net.URI;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 final class AndroidWorkerTriadTopology {
@@ -51,15 +52,11 @@ final class AndroidWorkerTriadTopology {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    static List<Object> workerSelector(String workerId) {
+    static Map<String, List<String>> workerSelector(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must be non-blank");
         }
-        return List.of(
-                "workerId",
-                "$eq",
-                workerId
-        );
+        return Map.of("workerId", List.of(workerId));
     }
 
     record WorkerAddress(

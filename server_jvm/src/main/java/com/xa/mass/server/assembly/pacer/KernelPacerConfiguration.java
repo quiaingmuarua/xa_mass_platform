@@ -1,5 +1,6 @@
 package com.xa.mass.server.assembly.pacer;
 
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
@@ -37,7 +38,8 @@ public class KernelPacerConfiguration {
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
             CandidateWorkerCache candidateCache,
-            WorkerMatchQueue workerMatchQueue
+            WorkerMatchQueue workerMatchQueue,
+            WorkerCandidateIndex candidateIndex
     ) {
         validatePresetScope(properties.preset(), redisProperties.scope());
         return KernelPacerRuntime.assemble(
@@ -55,7 +57,8 @@ public class KernelPacerConfiguration {
                 workerCommands,
                 serviceability,
                 candidateCache,
-                workerMatchQueue
+                workerMatchQueue,
+                candidateIndex
         );
     }
 

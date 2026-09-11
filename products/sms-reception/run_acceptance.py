@@ -78,7 +78,7 @@ def compare(run):
 def mixed_capabilities(run, inventory):
     cn = next(sim for sim in inventory if sim["country"] == "CN")
     capabilities = http(run.url, f"/api/v1/worker-delivery/endpoint-managers/{run.adapter}/direct-calls", {
-        "workerGroupId": "sms-cn", "workerPayloads": {cn["workerId"]: "null"},
+        "workerGroupId": "demo-sim", "workerPayloads": {cn["workerId"]: "null"},
         "messageType": "platform.worker.events.snapshot", "waitTimeoutMillis": 5000})
     target = capabilities["results"][cn["workerId"]]
     require(target["status"] == "observed", "Actual Worker event snapshot was not observed")
@@ -88,7 +88,7 @@ def mixed_capabilities(run, inventory):
                  "extension.worker.string.base64.encode"]).issubset(events), "Mixed events are not installed")
     listener = wait_state(run, create(run, request="mixed-worker"), {"LISTENING"})
     require(listener["workerId"] == cn["workerId"], "SMS listener identity changed")
-    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "sms-cn", "allocationRule": {},
+    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "allocationRule": {"workerId": {"$eq": cn["workerId"]}},
                 "maximumCandidateWorkers": 1})["taskId"]
     messages = [str(uuid.uuid4()) for _ in range(3)]
     http(run.url, f"/api/v1/tasks/{task}/items", [
@@ -150,12 +150,9 @@ def functional(run):
     require(len(inventory) == 3, "Functional fixture must contain one number per country")
     cn = next(sim["phone"] for sim in inventory if sim["country"] == "CN")
     def properties_observed():
-        for country in ("CN", "US", "GB"):
-            workers = http(run.url, f"/api/v1/runtime-view/worker-groups/sms-{country.lower()}/workers:preview", 1)["workers"]
-            if len(workers) != 1 or workers[0]["workerProperties"].get("country") != country \
-                    or workers[0]["workerProperties"].get("simulated") != "true":
-                return False
-        return True
+        workers = http(run.url, "/api/v1/runtime-view/worker-groups/demo-sim/workers:preview", 100)["workers"]
+        return len(workers) == 3 and {w["workerProperties"].get("country") for w in workers} == {"CN", "US", "GB"} \
+            and all(w["workerProperties"].get("simulated") == "true" for w in workers)
     run.wait_for(properties_observed, 10, "Adapter baseline Properties observations")
     require(inject(run, cn, "[A] 123456")["status"] == "IGNORED", "SMS without listener was reported")
     listeners = [wait_state(run, create(run, app, request="shared-" + app), {"LISTENING"}) for app in ("A", "B", "C")]
@@ -197,7 +194,7 @@ def functional(run):
     before = http(run.host, "/lab/v1/sms/metrics")["host"]["listeners"]
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_message,
          "eventCode": "extension.worker.sms.listen.start", "payload": payload, "ttlMillis": 10000,
-         "workerSelector": []}], "waitTimeoutMillis": 1})
+         "workerSelector": {"workerId": [older["workerId"]]}}], "waitTimeoutMillis": 1})
     duplicate_result = {}
     def duplicate_observed():
         nonlocal duplicate_result
@@ -306,6 +303,10 @@ def concurrency(run):
             "accepted": len(accepted), "httpErrors": dict(Counter(failed)), "generatorRejected": generator_rejected,
             "requestLatencyMillis": {"p95": percentile(request_latencies, .95), "p99": percentile(request_latencies, .99)},
             "established": len(established), "establishmentRate": len(established) / establishment_seconds,
+            "workersUsedByCountry": {country: len({r["workerId"] for r in established if r["country"] == country})
+                                     for country in ("CN", "US", "GB")},
+            "maxEstablishedPerWorker": max(Counter(r["workerId"] for r in established).values(), default=0),
+            "rejectionReasons": dict(Counter(r.get("reason", "unknown") for r in records if r["status"] == "REJECTED")),
             "peakActiveListeners": peak_active, "comparison": evidence, "metrics": metrics,
             "hostMetrics": http(run.host, "/lab/v1/sms/metrics"), "scope": "fixed product fixture, not a platform capacity limit"}
 

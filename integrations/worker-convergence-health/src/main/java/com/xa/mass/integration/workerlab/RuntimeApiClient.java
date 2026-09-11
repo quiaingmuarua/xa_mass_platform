@@ -444,11 +444,13 @@ final class RuntimeApiClient {
             String messageId,
             String eventCode,
             Map<String, Object> payload,
-            List<Object> workerSelector
+            Map<String, List<String>> workerSelector
     ) {
         TaskItem {
             payload = Map.copyOf(payload);
-            workerSelector = List.copyOf(workerSelector);
+            var captured = new LinkedHashMap<String, List<String>>();
+            workerSelector.forEach((binding, parameters) -> captured.put(binding, List.copyOf(parameters)));
+            workerSelector = Map.copyOf(captured);
         }
     }
 

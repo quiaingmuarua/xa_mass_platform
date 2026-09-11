@@ -48,7 +48,7 @@ class ListeningRegistryTest {
 
     @Test void stoppedRuntimeIsCleanedWithoutTreatingTransparentReconnectAsAStop() {
         var runtime = new java.util.concurrent.atomic.AtomicReference<>("RUNNING");
-        var sim = registry.addSim("sms-us", "US-0", "102", "CN", () -> "worker-3", runtime::get, () -> true);
+        var sim = registry.addSim("demo-sim", "US-0", "102", "CN", () -> "worker-3", runtime::get, () -> true);
         registry.listen(sim, input("running", 100, "CODE"), reporter);
         registry.expire();
         assertThat(registry.metrics()).containsEntry("activeListeners", 1);
@@ -83,8 +83,8 @@ class ListeningRegistryTest {
     }
     final Time time = new Time();
     final ListeningRegistry registry = new ListeningRegistry(time, 50_000, 100_000);
-    final ListeningRegistry.Sim first = registry.addSim("sms-cn", "CN-0", "100", "CN", () -> "worker-1", () -> "RUNNING", () -> true);
-    final ListeningRegistry.Sim second = registry.addSim("sms-cn", "CN-1", "101", "CN", () -> "worker-2", () -> "RUNNING", () -> true);
+    final ListeningRegistry.Sim first = registry.addSim("demo-sim", "CN-0", "100", "CN", () -> "worker-1", () -> "RUNNING", () -> true);
+    final ListeningRegistry.Sim second = registry.addSim("demo-sim", "CN-1", "101", "CN", () -> "worker-2", () -> "RUNNING", () -> true);
     final List<Map<String, Object>> reports = new CopyOnWriteArrayList<>();
     final WorkerOutcomeReporter reporter = (tag, at, payload) -> {
         assertThat(tag).isEqualTo(9); reports.add(Jsons.parseObject(payload)); return true;
@@ -168,7 +168,7 @@ class ListeningRegistryTest {
     }
     @Test void boundedRecordsNeverEvictDedupAndExistingListenersContinue() {
         var bounded = new ListeningRegistry(time, 2, 2);
-        var sim = bounded.addSim("sms-cn", "CN-0", "100", "CN", () -> "w", () -> "RUNNING", () -> true);
+        var sim = bounded.addSim("demo-sim", "CN-0", "100", "CN", () -> "w", () -> "RUNNING", () -> true);
         bounded.listen(sim, input("a", 0, "ANY"), reporter);
         bounded.listen(sim, input("b", 0, "ANY"), reporter);
         assertThat(bounded.listen(sim, input("c", 0, "ANY"), reporter)).containsEntry("status", "REJECTED");

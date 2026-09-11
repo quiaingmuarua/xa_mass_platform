@@ -28,9 +28,10 @@ exact generated `test_products_<UUID>` scope through SCAN/UNLINK.
 
 `config/application-product-preview.yaml` owns Server/Adapter/Endpoint coordinates.
 The independent product profiles enable business; they do not contribute another
-Adapter or Redis owner. Distribution supplies neutral `demo-*` Groups for both,
-`sms-*` for SMS alone and `messages-*` for Messages alone. Host scene selection
-matches that composition. Each enabled product's catalog must initialize before Host starts.
+Adapter or Redis owner. Every selection uses one mixed-country `demo-sim` Group
+and Host Manager. This configuration enables its Matching country index: SMS
+uses indexed ON_DEMAND, Messages uses a country constraint in PRECOMPUTED rules.
+Only enabled products contribute handlers. Each catalog must initialize before Host starts.
 This is the sole Preview launcher, deployment configuration and ZIP for all three
 selections. Business modules retain their own APIs and acceptance oracles.
 The shared HTTP client reuses a connection per thread and endpoint while requests

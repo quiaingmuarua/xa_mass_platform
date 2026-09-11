@@ -3,6 +3,9 @@ server:
   port: ${PREVIEW_SERVER_PORT:18500}
 xa:
   mass:
+    worker-matching:
+      country-index:
+        worker-groups: [demo-sim]
     kernel-pacer:
       enabled: true
       preset: DEFAULT

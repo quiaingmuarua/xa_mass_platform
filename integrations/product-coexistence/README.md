@@ -11,7 +11,9 @@ It never constructs Reports, calls Worker methods or reads Redis owner storage.
 
 ## Small functional and lifecycle world
 
-Each country has four Workers (12 total). A real SMS listener supplies the number
+The mixed `demo-sim` Group has four Workers per country (12 total). SMS uses
+the ON_DEMAND country index; Messages uses PRECOMPUTED country constraints.
+A real SMS listener supplies the number
 for a targeted PRECOMPUTED campaign; both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
 terminal before deliver/read/reply; another Task is explicitly closed first.

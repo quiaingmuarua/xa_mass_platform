@@ -49,6 +49,7 @@ class SmsLifecycleTest {
                 events.add("register");
                 if (failRegistration) throw new IllegalStateException("registration unavailable");
                 String id = call.getArgument(0);
+                assertThat(id).isEqualTo("demo-sim");
                 return new WorkerGroupRegistrationService.Registration(id, "task-" + id, "registered");
             });
             doAnswer(call -> {
@@ -71,7 +72,7 @@ class SmsLifecycleTest {
                 }).when(adapters).close();
                 assertThat(product.getPhase()).isGreaterThan(platform.getPhase());
                 context.close();
-                assertThat(events).containsExactly("platform-start", "register", "register", "register", "platform-close");
+                assertThat(events).containsExactly("platform-start", "register", "platform-close");
             }
         }
         assertThat(events.getLast()).isEqualTo("platform-close");
