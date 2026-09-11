@@ -11,11 +11,14 @@ from pathlib import Path
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import uuid
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "integrations"))
+from worker_proof_support.scenario_inventory import materialize_inventory, product_worker_world
 PREVIEW = REPO / "distribution" / "product-preview"
 spec = importlib.util.spec_from_file_location("product_preview", PREVIEW / "run_preview.py")
 preview = importlib.util.module_from_spec(spec)
@@ -262,9 +265,20 @@ def load_1k(run):
     start = time.monotonic()
     run.phase_deadline = start + 180
 
-    def failure(error):
+    def failure(error, source):
+        # Keep safe stage/type diagnostics when the workload aborts before its final summary.
+        kind = source + ":" + type(error).__name__
+        if isinstance(error, urllib.error.HTTPError):
+            kind += ":" + str(error.code)
+        elif isinstance(error, AssertionError):
+            kind += ":" + str(error)  # Only proof-authored assertions, never remote bodies.
         with lock:
-            errors.append(type(error).__name__ + (":" + str(error.code) if isinstance(error, urllib.error.HTTPError) else ""))
+            first = kind not in errors
+            errors.append(kind)
+        if first:
+            frames = "/".join(frame.name for frame in traceback.extract_tb(error.__traceback__)[-5:])
+            print("1k input failure: " + kind + " at " + frames
+                  + ", elapsedSeconds=" + str(round(time.monotonic() - start, 3)), flush=True)
 
     def submit_sms(index):
         began = time.monotonic()
@@ -275,7 +289,7 @@ def load_1k(run):
                 accepted.append(result["id"]); latencies.append((time.monotonic() - began) * 1000)
                 lag.append(max(0, began - start - index / rate))
         except Exception as error:
-            failure(error)
+            failure(error, "sms.submit")
         finally:
             permits.release()
 
@@ -288,20 +302,20 @@ def load_1k(run):
                 with lock:
                     campaigns.append(value)
             except Exception as error:
-                failure(error); return
+                failure(error, "campaign.submit"); return
 
     def recipient_actions(message):
         try:
             for name, text in [("deliver", None), ("read", None), ("reply", "first reply"), ("reply", "latest reply")]:
                 if stop.is_set():
                     return
-                began, result = action(run, {"id": message["messageId"]}, name, text,
+                began, result = action(run, {"id": message["messageId"], "workerId": message["workerId"]}, name, text,
                                         request=message["messageId"] + "-" + str(text))
                 require(result["sendAccepted"] and not result["unchanged"], "Load receipt not accepted")
                 with lock:
                     action_latencies.append((time.monotonic() - began) * 1000)
         except Exception as error:
-            failure(error)
+            failure(error, "message." + name)
 
     def recipients():
         # Pages only discover channel records that real Worker execution has created.
@@ -325,7 +339,7 @@ def load_1k(run):
                     if offset == total and not pending:
                         return
                 except Exception as error:
-                    failure(error); return
+                    failure(error, "message.discovery"); return
                 stop.wait(.1)
 
     campaign_thread = threading.Thread(target=send_campaigns, name="campaign-input")
@@ -346,7 +360,9 @@ def load_1k(run):
         offered_seconds = time.monotonic() - start
         campaign_thread.join(timeout=5)
         require(not campaign_thread.is_alive() and len(campaigns) == 12, "Campaign schedule incomplete")
-        require(len(accepted) == total and not errors, "Load submissions or receipts failed")
+        require(len(accepted) == total and not errors,
+                "Load submissions or receipts failed: accepted=" + str(len(accepted))
+                + ", errors=" + json.dumps(dict(Counter(errors)), sort_keys=True))
         require(offered_seconds <= seconds + 3 and max(lag, default=0) < 1, "SMS offered rate fell below fixture")
         run.phase_deadline = time.monotonic() + 120
 
@@ -417,8 +433,9 @@ def main():
     output = (args.output or Path(__file__).parent / "build" / args.scenario).resolve()
     output.mkdir(parents=True, exist_ok=True)
     counts = (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
-    run = preview.Preview(counts, args.port, root=args.root, output=output / "private",
-                          sandbox_root=output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers")
+    sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
+    materialize_inventory(sandbox_root, product_worker_world(counts))
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root)
     result = {"passed": False}
     started = time.monotonic()
     try:

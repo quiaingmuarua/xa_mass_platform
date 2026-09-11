@@ -5,6 +5,10 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,10 +56,10 @@ record WorkerSimulatorGroupConfig(
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
     }
 
-    Map<String, String> generateProperties(int ordinal) {
+    Map<String, String> generateProperties(long seed, int ordinal) {
         if (ordinal < 1 || ordinal > count) throw new IllegalArgumentException("ordinal outside Group count");
         Map<String, String> properties = new LinkedHashMap<>();
-        propertiesTemplate.forEach((key, value) -> properties.put(key, evaluate(value, ordinal)));
+        propertiesTemplate.forEach((key, value) -> properties.put(key, evaluate(seed, key, value, ordinal)));
         return Collections.unmodifiableMap(properties);
     }
 
@@ -91,21 +95,39 @@ record WorkerSimulatorGroupConfig(
         return Map.of(operator, List.of(first, second));
     }
 
-    private static String evaluate(Object value, int ordinal) {
+    private String evaluate(long seed, String propertyName, Object value, int ordinal) {
         if (value instanceof String literal) return literal;
         Map<?, ?> expression = (Map<?, ?>) value;
         String operator = (String) expression.keySet().iterator().next();
         List<?> params = (List<?>) expression.get(operator);
         long offset = ordinal - 1L;
-        if (operator.equals("$choice")) return (String) params.get((int) (offset % params.size()));
+        if (operator.equals("$choice")) {
+            return (String) params.get((int) Long.remainderUnsigned(hash64(seed, propertyName, offset), params.size()));
+        }
         long first = (Long) params.get(0);
         long second = (Long) params.get(1);
         try {
             return Long.toString(operator.equals("$index")
                     ? Math.addExact(first, Math.multiplyExact(offset, second))
-                    : Math.addExact(first, offset % Math.addExact(Math.subtractExact(second, first), 1)));
+                    : Math.addExact(first, Long.remainderUnsigned(hash64(seed, propertyName, offset),
+                            Math.addExact(Math.subtractExact(second, first), 1))));
         } catch (ArithmeticException error) {
             throw new IllegalArgumentException("template integer result overflows", error);
+        }
+    }
+
+    private long hash64(long seed, String propertyName, long offset) {
+        byte[] group = workerGroupId.getBytes(StandardCharsets.UTF_8);
+        byte[] property = propertyName.getBytes(StandardCharsets.UTF_8);
+        // Fixed big-endian tuple encoding; neither iteration order nor population size is an input.
+        byte[] input = ByteBuffer.allocate(24 + group.length + property.length)
+                .putLong(seed).putInt(group.length).put(group)
+                .putInt(property.length).put(property).putLong(offset).array();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input);
+            return ByteBuffer.wrap(digest).getLong();
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException("Required SHA-256 algorithm is unavailable", error);
         }
     }
 

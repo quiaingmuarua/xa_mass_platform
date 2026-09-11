@@ -23,7 +23,7 @@ final class SimulatorTestConfig {
 
     static WorkerSimulatorConfig config(String groups, Path root) {
         return new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:18082"),
-                root, 0, groups(groups), WorkerSimulatorStartupPlan.defaults());
+                root, 0, 0, groups(groups), WorkerSimulatorStartupPlan.defaults());
     }
 
     static List<WorkerSimulatorGroupConfig> products(int count) {

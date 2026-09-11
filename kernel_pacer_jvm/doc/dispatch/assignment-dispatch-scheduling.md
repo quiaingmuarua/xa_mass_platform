@@ -113,10 +113,11 @@ Task Dispatch observes claimable Items in order
   -> final exact confirmation, Item claim, and Delivery Command publication
 ```
 
-The per-Task per-round index budget is 100, split evenly among distinct selector values;
-remainder goes in first Item occurrence order. Equal expressions share one call.
-Actual take size is the smaller of that query's budget and its waiting Item count.
-The budget is a ceiling: touching surplus identities can give an entire small
+The per-Task per-round input contains at most 100 Items. Equal expressions share
+one index call, in first Item occurrence order, taking exactly that condition's
+waiting Item count. These disjoint counts already sum to at most 100; a second
+equal-share cap would waste capacity for skewed demand (20/70/10 must not become
+20/33/10). The budget remains a ceiling: touching surplus identities can give an entire small
 country bucket the same time, repeatedly favoring its lexical prefix for sparse work.
 Explicit IDs precede indexed selection, which precedes ANY; round Worker dedup
 is retained. There is no same-round refill, local cursor, Match Demand or Candidate

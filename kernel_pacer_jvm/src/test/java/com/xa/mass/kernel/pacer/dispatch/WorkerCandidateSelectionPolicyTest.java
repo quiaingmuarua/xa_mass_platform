@@ -25,7 +25,9 @@ import org.junit.jupiter.api.Test;
 
 class WorkerCandidateSelectionPolicyTest {
 
-    @Test void indexedBudgetIsSharedByDistinctQueriesInItemOrderWithoutRefill() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"34,33,33", "20,70,10", "1,98,1", "1,2,1"})
+    void indexedBudgetFollowsActualItemCountsWithoutSurplusOrRefill(int usCount, int cnCount, int gbCount) {
         var scores = mock(WorkerScoreCore.class);
         var cache = mock(CandidateWorkerCache.class);
         var catalog = mock(WorkerResourceCatalog.class);
@@ -35,15 +37,15 @@ class WorkerCandidateSelectionPolicyTest {
         var us = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("US")));
         var cn = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
         var gb = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("GB")));
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < usCount + cnCount + gbCount; i++) {
             String id = "item-" + i;
-            targets.put(id, TaskItemWorkerSelector.parse((i % 3 == 0 ? us : i % 3 == 1 ? cn : gb).expression()));
+            targets.put(id, TaskItemWorkerSelector.parse((i < usCount ? us : i < usCount + cnCount ? cn : gb).expression()));
         }
         assertEquals(Map.of(), policy.acquireOnDemandCandidates("group-1", targets, Set.of(), 5000));
         var order = org.mockito.Mockito.inOrder(index);
-        order.verify(index).takeWorkerIds("group-1", us, 34);
-        order.verify(index).takeWorkerIds("group-1", cn, 33);
-        order.verify(index).takeWorkerIds("group-1", gb, 33);
+        order.verify(index).takeWorkerIds("group-1", us, usCount);
+        order.verify(index).takeWorkerIds("group-1", cn, cnCount);
+        order.verify(index).takeWorkerIds("group-1", gb, gbCount);
         order.verifyNoMoreInteractions();
         verifyNoInteractions(scores, cache, catalog);
     }

@@ -192,13 +192,10 @@ final class WorkerCandidateSelectionPolicy {
                 indexedItems.computeIfAbsent(selector, ignored -> new ArrayList<>()).add(messageId);
             }
         });
-        int queryOrdinal = 0;
         for (var entry : indexedItems.entrySet()) {
-            int budget = MAX_UNIQUE_WORKERS_PER_ROUND / indexedItems.size()
-                    + (queryOrdinal++ < MAX_UNIQUE_WORKERS_PER_ROUND % indexedItems.size() ? 1 : 0);
-            // Taking advances rotation time. Do not touch surplus identities that cannot
-            // serve an Item this round.
-            int takeLimit = Math.min(budget, entry.getValue().size());
+            // The complete input already has at most 100 Items. Its disjoint selector
+            // groups therefore fit the same budget without equal-share caps or surplus takes.
+            int takeLimit = entry.getValue().size();
             List<String> ids = candidateIndex.takeWorkerIds(workerGroupId, entry.getKey(), takeLimit).stream()
                     .filter(id -> !unavailableWorkerIds.contains(id)).toList();
             if (ids.isEmpty()) continue;

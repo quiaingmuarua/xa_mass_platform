@@ -11,10 +11,10 @@ class DispatchConvergenceRuntimeTest {
 
     @Test
     void keepsFiniteAssignmentPresetValuesInsideTheDispatchPackage() {
-        assertAssignment(PolicyPreset.DEFAULT, 100);
-        assertAssignment(PolicyPreset.SERVICEABILITY_DEFAULT, 100);
-        assertAssignment(PolicyPreset.SCENARIO_LAB, 20);
-        assertAssignment(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 100);
+        assertAssignment(PolicyPreset.DEFAULT, 100, 50);
+        assertAssignment(PolicyPreset.SERVICEABILITY_DEFAULT, 100, 50);
+        assertAssignment(PolicyPreset.SCENARIO_LAB, 20, 20);
+        assertAssignment(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 100, 50);
     }
 
     @Test
@@ -31,7 +31,8 @@ class DispatchConvergenceRuntimeTest {
 
     private static void assertAssignment(
             PolicyPreset preset,
-            long expectedInterval
+            long expectedInterval,
+            long expectedDispatchInterval
     ) {
         AssignmentDispatchConfig config =
                 DispatchConvergenceRuntime.assignmentConfigForPreset(preset);
@@ -44,7 +45,7 @@ class DispatchConvergenceRuntimeTest {
                 config.taskInitializationIntervalMillis()
         );
         assertEquals(
-                expectedInterval,
+                expectedDispatchInterval,
                 config.taskDispatchIntervalMillis()
         );
     }

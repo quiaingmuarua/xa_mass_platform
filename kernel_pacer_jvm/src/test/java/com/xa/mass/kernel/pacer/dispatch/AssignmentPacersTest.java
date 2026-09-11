@@ -16,6 +16,7 @@ import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -28,14 +29,61 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 class AssignmentPacersTest {
+
+    @Test
+    void unusedSpeculativeHoldDoesNotBlockNextOnDemandWorkForAnExecutionLease() {
+        var scores = mock(WorkerScoreCore.class);
+        var cache = mock(CandidateWorkerCache.class);
+        var matches = matchDemands();
+        var catalog = mock(WorkerResourceCatalog.class);
+        var index = mock(WorkerCandidateIndex.class);
+        var now = new AtomicLong(1_000L);
+        var speculativeDeadline = new AtomicLong();
+        when(cache.candidateWorkerCounts(List.of("precomputed"))).thenReturn(Map.of());
+        when(scores.observeDueHotScoreCandidates("group-1", null, 1))
+                .thenReturn(Map.of("worker", 101L));
+        when(scores.acquireObservedHotScoreLeases(eq("group-1"), eq(Map.of("worker", 101L)), anyLong()))
+                .thenAnswer(call -> {
+                    speculativeDeadline.set(call.getArgument(2));
+                    return Map.of("worker", transitioned(201L));
+                });
+        // The handoff is accepted, but this Worker matches none of the PRECOMPUTED needs.
+        // No Cache entry or compensating release is produced; only lease expiry frees it.
+        when(matches.offer(any())).thenReturn(true);
+        var allocation = new TaskWorkerAllocationPolicy(scores, cache, matches, null, now::get);
+        assertEquals(1, allocation.allocateCandidateWorkers(List.of(
+                allocationNeed("precomputed", 1, 1))));
+
+        now.set(1_600L);
+        var selector = new TaskItemWorkerSelector(Map.of("worker.test", List.of("eligible")));
+        when(index.takeWorkerIds("group-1", selector, 1)).thenReturn(List.of("worker"));
+        when(scores.observeDueHotScores("group-1", List.of("worker"), null))
+                .thenAnswer(call -> now.get() > speculativeDeadline.get() ? Map.of("worker", 201L) : Map.of());
+        when(scores.acquireObservedHotScoreLeases("group-1", Map.of("worker", 201L), 6_600L))
+                .thenReturn(Map.of("worker", transitioned(301L)));
+        when(index.retainWorkerIds("group-1", selector, List.of("worker"))).thenReturn(Set.of("worker"));
+        when(catalog.getWorkerDescriptors(List.of("worker"))).thenReturn(Map.of("worker",
+                new WorkerResourceCatalog.WorkerDescriptor("worker", "group-1", "adapter")));
+
+        var selected = new WorkerCandidateSelectionPolicy(scores, cache, catalog, null, index)
+                .acquireOnDemandCandidates("group-1", Map.of("sms", selector), Set.of(),
+                        now.get() + TaskDispatchPolicy.ITEM_CLAIM_LEASE_MILLIS);
+
+        assertEquals("worker", selected.get("sms").workerId());
+        verify(scores).acquireObservedHotScoreLeases("group-1", Map.of("worker", 201L), 6_600L);
+        verify(scores, never()).releaseScoreHolds(any(), any(), anyLong());
+        verify(scores, never()).releaseCompletedHotScoreHolds(any(), any(), anyLong());
+    }
 
     @Test
     void allocationPublishesOrderedNeedsAndExactHeldScores() {
@@ -70,7 +118,7 @@ class AssignmentPacersTest {
         when(scores.observeDueHotScoreCandidates("group-1", 900L, 3))
                 .thenReturn(observed);
         when(scores.acquireObservedHotScoreLeases(
-                "group-1", observed, 6_000L
+                "group-1", observed, 1_500L
         )).thenReturn(Map.of(
                 "worker-a", transitioned(201L),
                 "worker-b", new WorkerScoreTransitionResult(
@@ -94,7 +142,7 @@ class AssignmentPacersTest {
                                 new TaskCandidateNeed("task-lower", 5)
                         ))
                         && demand.heldWorkerLeaseScores().equals(held)
-                        && demand.holdUntilMillis() == 6_000L));
+                        && demand.holdUntilMillis() == 1_500L));
         InOrder order = org.mockito.Mockito.inOrder(cache, scores, matches);
         order.verify(cache).candidateWorkerCounts(List.of(
                 "task-lower", "task-higher"
@@ -103,7 +151,7 @@ class AssignmentPacersTest {
                 "group-1", 900L, 3
         );
         order.verify(scores).acquireObservedHotScoreLeases(
-                "group-1", observed, 6_000L
+                "group-1", observed, 1_500L
         );
         order.verify(matches).offer(any());
     }
@@ -129,7 +177,7 @@ class AssignmentPacersTest {
         when(scores.observeDueHotScoreCandidates("group-1", null, 1))
                 .thenReturn(Map.of("worker-a", 101L));
         when(scores.acquireObservedHotScoreLeases(
-                "group-1", Map.of("worker-a", 101L), 6_000L
+                "group-1", Map.of("worker-a", 101L), 1_500L
         )).thenReturn(Map.of("worker-a", transitioned(201L)));
         when(matches.offer(any())).thenReturn(true);
 
@@ -157,10 +205,10 @@ class AssignmentPacersTest {
         when(scores.observeDueHotScoreCandidates("group-b", null, 1))
                 .thenReturn(Map.of("worker-b", 102L));
         when(scores.acquireObservedHotScoreLeases(
-                "group-a", Map.of("worker-a", 101L), 6_000L
+                "group-a", Map.of("worker-a", 101L), 1_500L
         )).thenReturn(Map.of("worker-a", transitioned(201L)));
         when(scores.acquireObservedHotScoreLeases(
-                "group-b", Map.of("worker-b", 102L), 6_000L
+                "group-b", Map.of("worker-b", 102L), 1_500L
         )).thenReturn(Map.of("worker-b", transitioned(202L)));
         when(matches.offer(any())).thenReturn(true);
 
@@ -192,7 +240,7 @@ class AssignmentPacersTest {
         when(scores.observeDueHotScoreCandidates("group-1", null, 2))
                 .thenReturn(Map.of("worker-1", 101L));
         when(scores.acquireObservedHotScoreLeases(
-                "group-1", Map.of("worker-1", 101L), 6_000L
+                "group-1", Map.of("worker-1", 101L), 1_500L
         )).thenReturn(Map.of("worker-1", transitioned(201L)));
         when(matches.offer(any())).thenReturn(false);
 
@@ -230,7 +278,7 @@ class AssignmentPacersTest {
         when(scores.observeDueHotScoreCandidates("group-1", null, 4))
                 .thenReturn(observed);
         when(scores.acquireObservedHotScoreLeases(
-                "group-1", observed, 6_000L
+                "group-1", observed, 1_500L
         )).thenReturn(Map.of(
                 "worker-stale", new WorkerScoreTransitionResult(
                         WorkerScoreTransitionStatus.STALE, 101L

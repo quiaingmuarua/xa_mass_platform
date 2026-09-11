@@ -6,6 +6,7 @@ record AssignmentDispatchConfig(
         long taskDispatchIntervalMillis
 ) {
     static final long DEFAULT_INTERVAL_MILLIS = 100;
+    static final long DEFAULT_TASK_DISPATCH_INTERVAL_MILLIS = 50;
 
     AssignmentDispatchConfig {
         if (workerAllocationIntervalMillis <= 0
@@ -21,7 +22,7 @@ record AssignmentDispatchConfig(
         return create(
                 DEFAULT_INTERVAL_MILLIS,
                 DEFAULT_INTERVAL_MILLIS,
-                DEFAULT_INTERVAL_MILLIS
+                DEFAULT_TASK_DISPATCH_INTERVAL_MILLIS
         );
     }
 

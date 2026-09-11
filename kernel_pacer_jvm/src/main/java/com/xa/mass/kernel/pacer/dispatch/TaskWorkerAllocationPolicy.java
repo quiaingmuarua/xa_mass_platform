@@ -18,7 +18,9 @@ import java.util.function.LongSupplier;
 
 final class TaskWorkerAllocationPolicy {
 
-    static final long WORKER_HOLD_MILLIS = 5_000;
+    // This is a speculative Matching/cache handoff, not an execution lease.
+    // Nonmatching Workers also hold this fence until expiry, so keep it short.
+    static final long WORKER_HOLD_MILLIS = 500;
 
     private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;

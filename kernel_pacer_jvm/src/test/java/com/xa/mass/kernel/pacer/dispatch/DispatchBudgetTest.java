@@ -35,14 +35,14 @@ class DispatchBudgetTest {
         var run = scheduler.new SchedulerRun(executor, clock::get);
         run.step();
         assertEquals(1, executor.pending.size());
-        clock.addAndGet(500_000_000L); // Producer still occupies its one slot through five nominal intervals.
+        clock.addAndGet(500_000_000L); // Producer still occupies its one slot through ten nominal dispatch intervals.
         run.step();
         assertEquals(1, executor.pending.size());
         verifyNoInteractions(dispatch);
         executor.pending.removeFirst().run();
-        run.step(); // Observe completion at 1.5 s; next eligible at 1.6 s, not at 1.1 s.
+        run.step(); // Observe completion at 1.5 s; next eligible at 1.55 s, not at 1.05 s.
         assertTrue(executor.pending.isEmpty());
-        clock.addAndGet(99_999_999L);
+        clock.addAndGet(49_999_999L);
         run.step();
         assertTrue(executor.pending.isEmpty());
         clock.incrementAndGet();

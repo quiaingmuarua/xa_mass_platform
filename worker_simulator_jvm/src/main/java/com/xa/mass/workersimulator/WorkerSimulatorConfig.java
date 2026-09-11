@@ -12,6 +12,7 @@ record WorkerSimulatorConfig(
         URI runtimeApiBaseUrl,
         Path sandboxRoot,
         int controlPort,
+        long seed,
         List<WorkerSimulatorGroupConfig> workerGroups,
         WorkerSimulatorStartupPlan startupPlan
 ) {

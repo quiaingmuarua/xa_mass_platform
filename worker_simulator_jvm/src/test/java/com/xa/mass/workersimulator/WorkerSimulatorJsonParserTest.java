@@ -42,7 +42,7 @@ class WorkerSimulatorJsonParserTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("propertiesTemplate");
         var custom = parse("{\"unknown\":{\"events\":[\"one\"],\"propertiesTemplate\":{}}}").workerGroups().get(0);
         assertThat(custom.count()).isEqualTo(50);
-        assertThat(custom.generateProperties(1)).isEmpty();
+        assertThat(custom.generateProperties(0, 1)).isEmpty();
     }
 
     @Test void onlyGroupSelectionIsRequiredAndDefaultsAreResolvedBeforeUse() {
@@ -53,6 +53,7 @@ class WorkerSimulatorJsonParserTest {
         assertThat(config.runtimeApiBaseUrl()).isEqualTo(URI.create("http://127.0.0.1:18082"));
         assertThat(config.sandboxRoot()).isEqualTo(directory.resolve("data/scenario-workers"));
         assertThat(config.controlPort()).isEqualTo(18086);
+        assertThat(config.seed()).isZero();
         assertThat(config.startupPlan().startAll()).isTrue();
         assertThat(config.workerGroups()).extracting(WorkerSimulatorGroupConfig::count).containsExactly(50, 50, 60);
         assertThat(config.workerGroups()).allSatisfy(group -> {
@@ -63,24 +64,24 @@ class WorkerSimulatorJsonParserTest {
             assertThat(group.reconnectPolicy().stableConnectionDuration()).isEqualTo(Duration.ofSeconds(10));
             assertThat(group.events()).isNotEmpty();
         });
-        assertThat(config.workerGroups().get(0).generateProperties(50)).containsExactlyInAnyOrderEntriesOf(Map.of(
+        assertThat(config.workerGroups().get(0).generateProperties(0, 50)).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "runtime", "java", "capability", "libphonenumber", "region", "local", "labSlot", "50", "convergenceSlot", "A"));
-        assertThat(config.workerGroups().get(1).generateProperties(1)).containsEntry("capability", "string-utils");
+        assertThat(config.workerGroups().get(1).generateProperties(0, 1)).containsEntry("capability", "string-utils");
         var sim = config.workerGroups().get(2);
-        assertThat(sim.generateProperties(1)).containsEntry("phone", "861700000001").containsEntry("country", "CN")
+        assertThat(sim.generateProperties(0, 1)).containsEntry("phone", "861700000001").containsEntry("country", "CN")
                 .containsEntry("messaging.enabled", "true");
-        assertThat(sim.generateProperties(2)).containsEntry("phone", "861700000002").containsEntry("country", "US");
-        assertThat(sim.generateProperties(60)).containsEntry("phone", "861700000060").containsEntry("country", "GB");
+        assertThat(sim.generateProperties(0, 2)).containsEntry("phone", "861700000002").containsEntry("country", "US");
+        assertThat(sim.generateProperties(0, 60)).containsEntry("phone", "861700000060").containsEntry("country", "GB");
     }
 
     @Test void explicitTemplateReplacesDefaultsIncludingEmptyMap() {
         var replacement = parse("""
                 {"scenario-string-utils-workers":{"propertiesTemplate":{"only":"custom"}}}
                 """).workerGroups().get(0);
-        assertThat(replacement.generateProperties(1)).containsExactly(Map.entry("only", "custom"));
+        assertThat(replacement.generateProperties(0, 1)).containsExactly(Map.entry("only", "custom"));
         var empty = parse("{\"scenario-string-utils-workers\":{\"propertiesTemplate\":{}}}").workerGroups().get(0);
-        assertThat(empty.generateProperties(1)).isEmpty();
-        assertThat(parse("{\"scenario-string-utils-workers\":{}}").workerGroups().get(0).generateProperties(1))
+        assertThat(empty.generateProperties(0, 1)).isEmpty();
+        assertThat(parse("{\"scenario-string-utils-workers\":{}}").workerGroups().get(0).generateProperties(0, 1))
                 .containsEntry("runtime", "java").containsEntry("labSlot", "1");
     }
 
@@ -88,12 +89,12 @@ class WorkerSimulatorJsonParserTest {
         var sms = parse("""
                 {"demo-sim":{"events":["extension.worker.sms.listen.start","extension.worker.sms.listen.cancel"]}}
                 """).workerGroups().get(0);
-        assertThat(sms.generateProperties(1)).containsEntry("phone", "861700000001")
+        assertThat(sms.generateProperties(0, 1)).containsEntry("phone", "861700000001")
                 .containsEntry("country", "CN").doesNotContainKey("messaging.enabled");
         var messages = parse("""
                 {"demo-sim":{"events":["extension.worker.message.send"]}}
                 """).workerGroups().get(0);
-        assertThat(messages.generateProperties(1)).containsEntry("messaging.enabled", "true");
+        assertThat(messages.generateProperties(0, 1)).containsEntry("messaging.enabled", "true");
     }
 
     @Test void reconnectFieldsCanBeOverriddenIndependently() {
@@ -111,7 +112,7 @@ class WorkerSimulatorJsonParserTest {
     }
 
     @Test void explicitNullAndInvalidValuesNeverFallBackToDefaults() {
-        for (String field : List.of("runtimeApiBaseUrl", "sandboxRoot", "controlPort", "workerGroups", "startupPlan")) {
+        for (String field : List.of("runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan")) {
             String encoded = field.equals("workerGroups") ? "{\"workerGroups\":null}"
                     : "{\"workerGroups\":{},\"" + field + "\":null}";
             assertThatThrownBy(() -> WorkerSimulatorJsonParser.parse(encoded, Path.of(".")))
@@ -158,10 +159,10 @@ class WorkerSimulatorJsonParserTest {
         var raw = new LinkedHashMap<String, Object>(Map.of("events", List.of("test"), "count", 101, "propertiesTemplate", template));
         var group = WorkerSimulatorJsonParser.parseGroups(Map.of("g", raw)).get(0);
         choices.clear(); template.clear(); raw.clear();
-        assertThat(group.generateProperties(1)).containsEntry("i", "10").containsEntry("country", "CN");
-        assertThat(group.generateProperties(2)).containsEntry("country", "CN");
-        assertThat(group.generateProperties(3)).containsEntry("country", "US");
-        assertThat(group.generateProperties(101)).containsEntry("i", "210").containsEntry("battery", "81").containsEntry("empty", "");
+        assertThat(group.generateProperties(0, 1)).containsEntry("i", "10").containsEntry("country", "CN");
+        assertThat(group.generateProperties(0, 2)).containsEntry("country", "CN");
+        assertThat(group.generateProperties(0, 3)).containsEntry("country", "US");
+        assertThat(group.generateProperties(0, 101)).containsEntry("i", "210").containsEntry("battery", "80").containsEntry("empty", "");
         assertThatThrownBy(() -> group.propertiesTemplate().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -176,7 +177,7 @@ class WorkerSimulatorJsonParserTest {
                     .isInstanceOf(IllegalArgumentException.class);
         }
         var overflow = parse("{\"g\":{\"events\":[\"test\"],\"count\":2,\"propertiesTemplate\":{\"x\":{\"$index\":[9223372036854775807,1]}}}}").workerGroups().get(0);
-        assertThatThrownBy(() -> overflow.generateProperties(2)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> overflow.generateProperties(0, 2)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> parse("{\"g\":{\"events\":[\"test\"],\"count\":1,\"propertiesTemplate\":{\"labInventoryKey\":\"x\"}}}"))
                 .isInstanceOf(IllegalArgumentException.class);
     }

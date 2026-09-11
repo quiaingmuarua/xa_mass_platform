@@ -181,10 +181,10 @@ class WorkerSimulatorLabTest {
         var reset = new WorkerSimulatorGroupConfig(PHONE_GROUP, List.of("test"), 1, Map.of("new", "yes"),
                 true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
         var lab = new WorkerSimulatorLab(labRoot().toString());
-        assertThatThrownBy(() -> lab.prepare(List.of(reset, group(STRING_GROUP)),
+        assertThatThrownBy(() -> lab.prepare(List.of(reset, group(STRING_GROUP)), 0,
                 ignored -> { throw new IllegalArgumentException("invalid world"); })).hasMessage("invalid world");
         assertThat(Files.readAllLines(labRoot().resolve(PHONE_GROUP + "/workers-000.jsonl"))).hasSize(50);
-        var result = lab.prepare(List.of(reset, group(STRING_GROUP)), ignored -> {});
+        var result = lab.prepare(List.of(reset, group(STRING_GROUP)), 0, ignored -> {});
         assertThat(result.get(0).workers()).hasSize(1);
         assertThat(result.get(0).workers().get(0).workerProperties()).containsEntry("new", "yes");
         assertThat(Files.readString(preserved)).isEqualTo(before);
@@ -202,7 +202,7 @@ class WorkerSimulatorLabTest {
         }).when(lab).moveDirectory(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(target));
         var reset = new WorkerSimulatorGroupConfig(PHONE_GROUP, List.of("test"), 0, Map.of(),
                 true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
-        assertThatThrownBy(() -> lab.prepare(List.of(reset), ignored -> {}))
+        assertThatThrownBy(() -> lab.prepare(List.of(reset), 0, ignored -> {}))
                 .isInstanceOf(WorkerSimulatorAssemblyException.class);
         assertThat(Files.readString(target.resolve("workers-000.jsonl"))).isEqualTo(old);
         try (var paths = Files.list(labRoot())) { assertThat(paths.map(Path::getFileName).toList()).containsExactly(Path.of(PHONE_GROUP)); }
@@ -219,7 +219,7 @@ class WorkerSimulatorLabTest {
                 Map.of("phone", "861700000001", "country", "CN"), true,
                 Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
         var config = new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:1"),
-                labRoot(), 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults());
+                labRoot(), 0, 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults());
         try (var host = WorkerSimulator.create(config)) {
             assertThatThrownBy(host::start)
                     .hasRootCauseMessage("Duplicate inventory phone");
@@ -269,7 +269,7 @@ class WorkerSimulatorLabTest {
     }
 
     private static List<WorkerSimulatorLab.DiscoveredGroup> prepare(Path root, List<WorkerSimulatorGroupConfig> groups) {
-        return new WorkerSimulatorLab(root.toString()).prepare(groups, ignored -> {});
+        return new WorkerSimulatorLab(root.toString()).prepare(groups, 0, ignored -> {});
     }
 
     private static WorkerSimulatorGroupConfig group(String workerGroupId) {

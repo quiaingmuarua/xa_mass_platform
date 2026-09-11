@@ -29,9 +29,9 @@ def http(*args):
 def all_pages(*args):
     return []
 class Preview:
-    def __init__(self, counts, port, root, output, products, sandbox_root):
+    def __init__(self, count, port, root, output, products, sandbox_root):
         self.artifacts, self.peaks = {}, {}
-        Path(root, "launch.json").write_text(json.dumps({"counts": counts, "products": products, "sandboxRoot": str(sandbox_root)}))
+        Path(root, "launch.json").write_text(json.dumps({"count": count, "products": products, "sandboxRoot": str(sandbox_root)}))
     def __enter__(self):
         return self
     def __exit__(self, *_):
@@ -49,12 +49,16 @@ class Preview:
                     run_acceptance.main()
             self.assertEqual(0, stopped.exception.code)
             launch = json.loads((root / "launch.json").read_text())
-            self.assertEqual([1, 1, 1], launch["counts"])
+            self.assertEqual(3, launch["count"])
             self.assertEqual("sms", launch["products"])
             inventory = Path(launch["sandboxRoot"])
             self.assertEqual(root / "proof/private", inventory.parents[2])
             self.assertTrue(inventory.parents[1].name.startswith("inventory-"))
             self.assertEqual(Path("data/scenario-workers"), inventory.relative_to(inventory.parents[1]))
+            properties = [json.loads(line)["workerProperties"] for line in
+                          (inventory / "demo-sim/workers-000.jsonl").read_text().splitlines()]
+            self.assertEqual(["CN", "US", "GB"], [item["country"] for item in properties])
+            self.assertTrue(all("messaging.enabled" not in item for item in properties))
             summary = json.loads((root / "proof/summary.json").read_text())
             self.assertEqual(64, len(summary["launcherSha256"]))
 

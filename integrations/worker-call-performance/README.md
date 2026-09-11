@@ -26,7 +26,7 @@ Result-closure failures that prevent enabling the new scheduled composition.
 `--suite rpc-diagnosis` measures the primary `items:call` ON_DEMAND path and
 uses Direct Call as a control for the shared HTTP/Transport path. It freezes
 production configuration, including the 100-Item per-Task check bound and the
-DEFAULT 100ms completion-relative Dispatch interval. No tuning parameter is added.
+DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added.
 
 | Case | API and selector | Offered calls/s |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ Post-measurement Result evidence may close a sampled chain without changing the
 original HTTP outcome. Recording coverage and sampled-chain completeness are
 reported separately. Raw JFR remains private and bounded to 256 MiB per process.
 
-The structural single-Task budget is at most `100 / (0.1 + round_seconds)` checked
+The structural single-Task budget is at most `100 / (0.05 + round_seconds)` checked
 Items per second for continuously full rounds. Checked Items, assignment attempts
 and unique successful calls differ. The budget proof exercises real scheduling
 decisions with a controlled clock/executor, including a slow single-flight round;

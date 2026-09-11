@@ -54,6 +54,7 @@ final class WorkerSimulatorLab {
 
     List<DiscoveredGroup> prepare(
             List<WorkerSimulatorGroupConfig> groups,
+            long seed,
             Consumer<List<DiscoveredGroup>> validateWorld
     ) {
         Objects.requireNonNull(groups, "groups");
@@ -75,7 +76,7 @@ final class WorkerSimulatorLab {
                 if (!exists || group.newEnvironment()) {
                     source = Files.createTempDirectory(root, ".initializing-");
                     staged.put(group, source);
-                    generateGroup(group, source);
+                    generateGroup(group, seed, source);
                 }
                 world.add(discoverGroup(group, source));
             }
@@ -105,14 +106,14 @@ final class WorkerSimulatorLab {
 
     Path root() { return root; }
 
-    private void generateGroup(WorkerSimulatorGroupConfig group, Path directory) throws IOException {
+    private void generateGroup(WorkerSimulatorGroupConfig group, long seed, Path directory) throws IOException {
         for (int first = 1; first <= group.count(); first += WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE) {
             String name = String.format(Locale.ROOT, "workers-%03d.jsonl",
                     (first - 1) / WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE);
             List<String> lines = new ArrayList<>();
             int end = Math.min(group.count(), first + WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE - 1);
             for (int ordinal = first; ordinal <= end; ordinal++) {
-                Map<String, String> properties = new LinkedHashMap<>(group.generateProperties(ordinal));
+                Map<String, String> properties = new LinkedHashMap<>(group.generateProperties(seed, ordinal));
                 properties.put("labInventoryKey", name);
                 properties.put("labInventoryLine", Integer.toString(ordinal - first + 1));
                 lines.add(Jsons.toJson(Map.of("schemaVersion", 2, "workerProperties", properties)));

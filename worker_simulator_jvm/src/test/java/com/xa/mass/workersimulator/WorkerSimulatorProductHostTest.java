@@ -55,7 +55,7 @@ class WorkerSimulatorProductHostTest {
         Fixture(int firstCount, Path root) {
             this.root = root;
             var configs = SimulatorTestConfig.products(firstCount + 2);
-            workers = new WorkerSimulator(URI.create("http://127.0.0.1:1"), root.toString(), configs, Map.of(), (uri, group) -> {
+            workers = new WorkerSimulator(URI.create("http://127.0.0.1:1"), root.toString(), 0, configs, Map.of(), (uri, group) -> {
                 String groupId = group.group().config().workerGroupId();
                 var manager = mock(JavaWorkerManager.class);
                 managers.put(groupId, manager);
@@ -153,7 +153,7 @@ class WorkerSimulatorProductHostTest {
         var first = mock(JavaWorkerManager.class);
         doThrow(new IllegalStateException("start failed")).when(first).prepareAndStart(anyCollection());
         var workers = new WorkerSimulator(URI.create("http://127.0.0.1:1"), temp.resolve("other/data/scenario-workers").toString(),
-                SimulatorTestConfig.products(3), Map.of(),
+                0, SimulatorTestConfig.products(3), Map.of(),
                 (uri, group) -> first, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses());
         assertThatThrownBy(workers::start).isInstanceOf(WorkerSimulatorAssemblyException.class);
         workers.close(); workers.close();

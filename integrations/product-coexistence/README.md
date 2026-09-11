@@ -11,6 +11,10 @@ It never constructs Reports, calls Worker methods or reads Redis owner storage.
 Single SMS and message receipts use the stable Worker coordinate `:inputs` API.
 The runner retains fixture identity-to-coordinate addresses, not a second business
 router; the Host validates the selected Sender/Sim before any input side effect.
+The runner materializes the exact product population through shared proof inventory
+support before launching Preview: country quotas, phone order and file coordinates
+remain fixed. Interactive Preview instead uses count/seed random initialization.
+The proof neither searches for a suitable seed nor repairs sampled quotas.
 
 ## Small functional and lifecycle world
 
@@ -57,6 +61,10 @@ sent and match their latest replies and associations; channel identities must be
 unique. Evidence reports actual rates, percentile latency, queue observations,
 errors, fingerprints and two JVM resource peaks. This fixed fixture proves neither
 capacity limits, per-Task fairness, nor reliable receipt delivery under failure.
+An early producer/recipient failure retains its safe stage, exception type and
+accepted count instead of only a generic load-aborted assertion. The first failure
+also prints call-site names and elapsed time, never request or response bodies;
+diagnostics do not retry the failed mutation or relax the final oracle.
 
 ```powershell
 python integrations/product-coexistence/run_proof.py --build --scenario functional

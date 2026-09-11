@@ -30,6 +30,7 @@ public final class WorkerSimulator implements AutoCloseable {
             "extension.worker.";
 
     private final URI runtimeApiBaseUrl;
+    private final long seed;
     private final List<GroupAssembly> groups;
     private final WorkerSimulatorLab lab;
     private final SmsScenario sms;
@@ -50,6 +51,7 @@ public final class WorkerSimulator implements AutoCloseable {
     WorkerSimulator(
             URI runtimeApiBaseUrl,
             String sandboxRoot,
+            long seed,
             List<WorkerSimulatorGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>>
                     availableExtensionsByEventCode,
@@ -61,6 +63,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 runtimeApiBaseUrl,
                 "runtimeApiBaseUrl"
         );
+        this.seed = seed;
         groups = resolveGroups(
                 configs,
                 immutableDefinitionExtensions(
@@ -81,7 +84,7 @@ public final class WorkerSimulator implements AutoCloseable {
     static WorkerSimulator create(WorkerSimulatorConfig config) {
         try {
             WorkerSimulatorCommandCheckpoints checkpoints = new WorkerSimulatorCommandCheckpoints();
-            return new WorkerSimulator(config.runtimeApiBaseUrl(), config.sandboxRoot().toString(),
+            return new WorkerSimulator(config.runtimeApiBaseUrl(), config.sandboxRoot().toString(), config.seed(),
                     config.workerGroups(), availableDefinitionExtensions(checkpoints), null,
                     checkpoints, new WorkerSimulatorExecutionWitnesses());
         } catch (IllegalArgumentException error) {
@@ -516,7 +519,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 .map(GroupAssembly::config)
                 .toList();
         List<WorkerSimulatorLab.DiscoveredGroup> discovered =
-                lab.prepare(configs, world -> validateWorld(world, startupPlan));
+                lab.prepare(configs, seed, world -> validateWorld(world, startupPlan));
         if (discovered.size() != groups.size()) {
             throw new IllegalStateException(
                     "Worker Simulator returned incomplete groups"

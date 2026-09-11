@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,35 @@ def canonical_100_worker_world() -> dict[str, tuple[dict[str, str], ...]]:
 def canonical_1000_worker_world() -> dict[str, tuple[dict[str, str], ...]]:
     """Return the two-group, 1,000-Worker convergence baseline."""
     return _canonical_two_group_world(workers_per_group=500)
+
+
+def product_worker_world(
+    country_counts: Sequence[int], *, messages: bool = True,
+) -> dict[str, tuple[dict[str, str], ...]]:
+    """Exact CN/US/GB product fixture, not a Simulator template evaluator.
+
+    Keep the original phone/country order so existing product proof coordinates
+    and load oracles remain unchanged after seeded template initialization.
+    """
+    if (len(country_counts) != 3 or any(type(count) is not int or count < 1 for count in country_counts)
+            or sum(country_counts) > MAX_RECORDS_PER_GROUP):
+        raise ValueError("country_counts requires three positive counts, at most 15000 total")
+    divisor = math.gcd(*country_counts)
+    countries = tuple(country for country, count in zip(("CN", "US", "GB"), country_counts)
+                      for _ in range(count // divisor))
+    records = []
+    for index in range(sum(country_counts)):
+        properties = {
+            "runtime": "java",
+            "phone": str(861700000001 + index),
+            "country": countries[index % len(countries)],
+            "operator": "Preview SIM",
+            "simulated": "true",
+        }
+        if messages:
+            properties["messaging.enabled"] = "true"
+        records.append(properties)
+    return {"demo-sim": tuple(records)}
 
 
 def _canonical_two_group_world(

@@ -42,8 +42,11 @@ python -m pip install -r distribution/product-preview/requirements.txt
 python distribution/product-preview/run_preview.py --products sms --build
 ```
 
-打开 `http://127.0.0.1:18500/sms`，模拟器页面为 `http://127.0.0.1:18504/lab`。默认每国家 20 个模拟号码；首次体验可以使用
-`--counts 1,1,1`，方便观察多个订单共享同号。`Ctrl+C` 结束本轮场景。
+打开 `http://127.0.0.1:18500/sms`，模拟器页面为 `http://127.0.0.1:18504/lab`。默认共 60 个模拟号码，seed=0；
+可用 `--count 100 --seed 712` 生成另一份可复现人口。国家为等权抽样，不保证精确配额或小样本覆盖全部国家。
+已有库存不会因 seed 改变而重建。`Ctrl+C` 结束本轮场景。
+验收 runner 使用共享 proof inventory 工具预先物化 1/1/1 或 700/200/100 的精确库存，
+保留原号码、国家顺序及文件坐标；不依赖随机模板、挑选 seed 或减少原验收要求。
 `--port 18410` 同时将 Server、Adapter 和 Host 切换到
 18410、18413、18414。端口被占用时明确失败，不停止占用服务。
 

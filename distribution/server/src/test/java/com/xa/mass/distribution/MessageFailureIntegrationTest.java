@@ -51,9 +51,9 @@ class MessageFailureIntegrationTest {
                 assertThat(executed.await(20, TimeUnit.SECONDS)).isTrue();
                 var local = (Map<?, ?>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
                 String id = (String) local.get("messageId");
-                assertThat(channel.act(id, "deliver", Map.of())).containsEntry("sendAccepted", true);
-                assertThat(channel.act(id, "read", Map.of())).containsEntry("sendAccepted", true);
-                assertThat(channel.act(id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("sendAccepted", true);
+                assertThat(channel.act(sender, id, "deliver", Map.of())).containsEntry("sendAccepted", true);
+                assertThat(channel.act(sender, id, "read", Map.of())).containsEntry("sendAccepted", true);
+                assertThat(channel.act(sender, id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("sendAccepted", true);
                 var observed = fixture.awaitCampaign(campaign, "REPLIED");
                 String task = (String) observed.get("taskId");
                 assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);

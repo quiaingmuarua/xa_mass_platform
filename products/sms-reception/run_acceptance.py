@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import threading
 import time
 import urllib.error
@@ -18,6 +19,8 @@ import uuid
 
 PRODUCT = Path(__file__).resolve().parent
 PREVIEW = PRODUCT.parents[1] / "distribution" / "product-preview"
+sys.path.insert(0, str(PRODUCT.parents[1] / "integrations"))
+from worker_proof_support.scenario_inventory import materialize_inventory, product_worker_world
 
 
 def load_preview(root):
@@ -436,8 +439,10 @@ def main():
     output = (args.output or PRODUCT / "build" / "acceptance" / (args.scenario + "-" + time.strftime("%Y%m%d-%H%M%S"))).resolve()
     counts = (700, 200, 100) if args.scenario == "concurrency" else (1, 1, 1)
     result = {"passed": False, "scenario": args.scenario}
-    run = preview.Preview(counts, args.port, root=args.root, output=output / "private", products="sms",
-                          sandbox_root=output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers")
+    sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
+    materialize_inventory(sandbox_root, product_worker_world(counts, messages=False))
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", products="sms",
+                          sandbox_root=sandbox_root)
     try:
         with run:
             print("Real processes and verified Worker routes ready", flush=True)

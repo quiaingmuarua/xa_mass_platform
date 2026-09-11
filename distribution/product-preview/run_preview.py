@@ -6,7 +6,6 @@ import hashlib
 import http.client as http_client
 import io
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -84,10 +83,15 @@ def build():
 
 
 class Preview:
-    def __init__(self, counts=(20, 20, 20), port=18500, redis_url=None, root=PRODUCT, output=None, products="sms,messages", sandbox_root=None):
+    def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None, products="sms,messages", sandbox_root=None, seed=0):
+        if type(count) is not int or not 1 <= count <= 10_000:
+            raise ValueError("count must be an integer between 1 and 10000")
+        if type(seed) is not int or not -(2**63) <= seed < 2**63:
+            raise ValueError("seed must be a signed 64-bit integer")
         self.root = Path(root).resolve()
         self.sandbox_root = Path(sandbox_root or self.root / "data" / "scenario-workers").resolve()
-        self.counts = counts
+        self.count = count
+        self.seed = seed
         if products not in ("sms", "messages", "sms,messages"):
             raise ValueError("Unknown product combination")
         self.products = products
@@ -166,13 +170,10 @@ class Preview:
         self.worker_config_path = self.output / "worker-simulator.json"
         preset = "products" if self.products == "sms,messages" else self.products
         worker_config = json.loads((host_lib.parent / "config" / (preset + ".json")).read_text(encoding="utf-8"))
-        worker_config.update(runtimeApiBaseUrl=self.url, sandboxRoot=str(self.sandbox_root), controlPort=self.port + 4)
+        worker_config.update(runtimeApiBaseUrl=self.url, sandboxRoot=str(self.sandbox_root), controlPort=self.port + 4,
+                             seed=self.seed)
         group = worker_config["workerGroups"]["demo-sim"]
-        group["count"] = sum(self.counts)
-        divisor = math.gcd(*self.counts)
-        group["propertiesTemplate"]["country"] = {"$choice": [
-            country for country, count in zip(("CN", "US", "GB"), self.counts)
-            for _ in range(count // divisor)]}
+        group["count"] = self.count
         self.worker_config_path.write_text(json.dumps(worker_config, indent=2) + "\n", encoding="utf-8")
         self.launch("host", options + ["-Xmx1g", "-cp", str(host_lib / "*"),
                     "com.xa.mass.workersimulator.WorkerSimulatorMain",
@@ -180,7 +181,7 @@ class Preview:
         self.wait_for(self.host_ready, 90, "Host identities")
         self.wait_for(self.connected, 60, "verified WebSocket routes")
         (self.output / "run.json").write_text(json.dumps({"scope": self.scope, "url": self.url, "host": self.host,
-                "counts": self.counts, "sandboxRoot": str(self.sandbox_root), "products": self.products, "artifacts": self.artifacts,
+                "count": self.count, "seed": self.seed, "sandboxRoot": str(self.sandbox_root), "products": self.products, "artifacts": self.artifacts,
                 "pids": {k: p.pid for k, p in self.processes.items()}}, indent=2), encoding="utf-8")
         return self
 
@@ -281,19 +282,21 @@ class Preview:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", action="store_true")
-    parser.add_argument("--counts", default="20,20,20", help="CN,US,GB counts")
+    parser.add_argument("--count", type=int, default=60, help="Total Workers to initialize (1..10000); not a country quota")
+    parser.add_argument("--seed", type=int, default=0, help="Signed 64-bit initialization seed; existing inventory is reused")
     parser.add_argument("--sandbox-root", type=Path, help="Persistent inventory root ending in data/scenario-workers")
     parser.add_argument("--port", type=int, default=18500, help="Server base port; Adapter +3 and Host +4")
     parser.add_argument("--products", choices=["sms", "messages", "sms,messages"], default="sms,messages")
     args = parser.parse_args()
+    if not 1 <= args.count <= 10_000:
+        parser.error("count must be between 1 and 10000")
+    if not -(2**63) <= args.seed < 2**63:
+        parser.error("seed must be a signed 64-bit integer")
     if args.build:
         build()
-    counts = tuple(map(int, args.counts.split(",")))
-    if len(counts) != 3 or min(counts) < 1 or sum(counts) > 10_000:
-        parser.error("counts must specify three positive pools, at most 10,000 total")
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
-        with Preview(counts, args.port, products=args.products, sandbox_root=args.sandbox_root) as run:
+        with Preview(args.count, args.port, products=args.products, sandbox_root=args.sandbox_root, seed=args.seed) as run:
             print(f"Product Preview 0.1.0-preview: {run.url}/messages or /sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
             while True:
                 run.check()

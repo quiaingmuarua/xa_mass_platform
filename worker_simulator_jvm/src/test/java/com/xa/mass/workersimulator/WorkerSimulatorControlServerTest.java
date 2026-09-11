@@ -90,6 +90,7 @@ class WorkerSimulatorControlServerTest {
         workers = new WorkerSimulator(
                 URI.create("http://127.0.0.1:18082"),
                 root.toString(),
+                0,
                 SimulatorTestConfig.groups(Jsons.toJson(Map.of(
                         GROUP,
                         Map.of("events", List.of(

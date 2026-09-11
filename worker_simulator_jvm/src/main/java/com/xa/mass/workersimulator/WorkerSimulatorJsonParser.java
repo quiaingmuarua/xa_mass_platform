@@ -19,7 +19,7 @@ import java.util.Set;
 
 final class WorkerSimulatorJsonParser {
     private static final Set<String> ROOT_FIELDS = Set.of(
-            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "workerGroups", "startupPlan");
+            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan");
     private static final Set<String> GROUP_FIELDS = Set.of(
             "events", "count", "propertiesTemplate", "newEnvironment", "requestTimeoutMillis", "reconnectPolicy");
     private static final Set<String> RECONNECT_FIELDS = Set.of(
@@ -36,6 +36,7 @@ final class WorkerSimulatorJsonParser {
         int port = integer(root.getOrDefault("controlPort", 18086), "controlPort", 0, 65535);
         return new WorkerSimulatorConfig(
                 URI.create(baseUrl), configurationDirectory.resolve(sandbox), port,
+                WorkerSimulatorGroupConfig.integer(root.getOrDefault("seed", 0L), "seed"),
                 parseGroups(object(root.get("workerGroups"), "workerGroups")),
                 root.containsKey("startupPlan")
                         ? WorkerSimulatorStartupPlan.parse(object(root.get("startupPlan"), "startupPlan"))

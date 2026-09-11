@@ -67,6 +67,7 @@ There are no implicit additional Groups. Root defaults are:
 | `runtimeApiBaseUrl` | `http://127.0.0.1:18082` |
 | `sandboxRoot` | `./data/scenario-workers` |
 | `controlPort` | `18086` |
+| `seed` | `0` (signed 64-bit initialization seed) |
 | `startupPlan` | Start all discovered inventory, no scheduled stops |
 
 Relative `sandboxRoot` paths resolve against the configuration file's directory,
@@ -90,7 +91,7 @@ or unknown names. Empty `events` uses a finite local Group binding:
 | --- | --- | --- |
 | `scenario-phone-number-workers` | E.164, country and original-carrier tools | `runtime=java`, `capability=libphonenumber`, `region=local`, sequential `labSlot` from 1, `convergenceSlot=A` |
 | `scenario-string-utils-workers` | String tools and command checkpoint | Same Lab fields, with `capability=string-utils` |
-| `demo-sim` | SMS, Messages and shared string tools | `runtime=java`, sequential `phone` from 861700000001, cyclic `country=CN/US/GB`, `operator=Preview SIM`, `simulated=true`, `messaging.enabled=true` |
+| `demo-sim` | SMS, Messages and shared string tools | `runtime=java`, sequential `phone` from 861700000001, seeded equal-weight `country=CN/US/GB`, `operator=Preview SIM`, `simulated=true`, `messaging.enabled=true` |
 
 Other Groups must specify extensions and a template explicitly (an empty template
 is legal if the selected capabilities require no Properties). Group defaults are
@@ -106,14 +107,15 @@ The checked-in [Lab](config/lab.json), [SMS](config/sms.json),
 [Messages](config/messages.json) and [combined products](config/products.json)
 files are standalone examples, not preset loaders. Lab is a minimal Group-only
 configuration and initializes two Groups of 50 Workers. The product examples
-retain explicit templates for Preview's configurable country distribution and
+retain explicit templates for Preview's seeded country distribution and
 select only `demo-sim`. Installation and Preview
 archives include these files under `config`.
 
 ### Deterministic initialization templates
 
-Templates are an optional customization surface, particularly for precise CI
-fixtures. Omission selects the Group's default template; an explicitly supplied
+Templates are an optional customization surface for reproducible synthetic
+populations. Exact CI quotas are materialized as explicit inventory instead.
+Omission selects the Group's default template; an explicitly supplied
 template replaces it in full, with no implicit merge. `{}` generates no mutable
 Properties, not default Properties. Capability validation still applies, so an
 empty template cannot initialize number-capable Workers. For example, a complete
@@ -130,17 +132,31 @@ custom template for `demo-sim` can be:
 ```
 
 Each property value is a string or an object containing exactly one supported
-operator. Let `i` be the one-based Group generation ordinal, continuous across files:
+operator. Let `i` be the one-based Group generation ordinal, continuous across files,
+and `h = hash64(seed, workerGroupId, propertyName, i - 1)`:
 
 | Expression | Output |
 | --- | --- |
 | `{"$index":[start,step]}` | Decimal `start + (i - 1) * step`; step must be positive |
-| `{"$range":[min,max]}` | Decimal integers cycling through the inclusive range |
-| `{"$choice":["A","B",...]}` | Values cycling in supplied order; repeats retain their ratio |
+| `{"$range":[min,max]}` | Decimal `min + unsignedRemainder(h, max - min + 1)` |
+| `{"$choice":["A","B",...]}` | Select slot `unsignedRemainder(h, optionCount)`; repeated values are probability weights |
+
+Set the optional root `"seed": 712` to choose another reproducible population.
+The fixed hash is SHA-256 truncated to its first 8 bytes. Its input is big-endian:
+8-byte signed seed, 4-byte UTF-8 Group byte length plus Group bytes, 4-byte UTF-8
+property-name byte length plus name bytes, then 8-byte zero-based offset. The
+digest is interpreted as an unsigned 64-bit value for remainder calculations.
+There is no shared Random, mutable sequence or runtime random state. Algorithm
+and tuple encoding are fixed by golden-vector tests, not a configurable algorithm.
+Count, paths, file names, template parameters and traversal order are not hash
+inputs: extending a population or changing another property/Group does not
+perturb existing values. Reproducibility covers Properties and coordinates, not
+JSON object field order. Random sampling neither promises exact quotas nor that
+a small population contains every choice; unique phones continue using `$index`.
 
 Numeric arguments must be integral and fit signed 64-bit arithmetic; invalid
 ranges and generation overflow fail before installation. Choice accepts a
-nonempty array of strings. Literal empty strings are legal. No random values,
+nonempty array of strings. Literal empty strings are legal. No time-based seed,
 formatting, nested expressions, field references or runtime evaluation exist.
 The inventory Owner adds schema-v2 and file coordinates;
 `labInventoryKey`, `labInventoryLine` and `clientWorkerKey` cannot be supplied by
@@ -218,7 +234,7 @@ Product startup registers one mixed-country `demo-sim` Group; the Host never
 registers Groups. The example generates CN/US/GB numbers deterministically.
 All configurations use the same filename plus physical-line identity and the
 existing `SCENARIO_LAB` batch Prepare. Product examples do not implicitly start
-the Lab Groups. Existing inventory is reused regardless of count/template changes
+the Lab Groups. Existing inventory is reused regardless of seed/count/template changes
 unless that Group explicitly requests `newEnvironment=true`.
 
 SMS Properties contain phone, country, operator and simulated strings and are
@@ -316,11 +332,13 @@ stages all Groups requiring generation. It validates schema, capacity, number
 requirements, cross-Group phone uniqueness and startup coordinates against this
 effective world before changing any target directory.
 
-- With `newEnvironment=false`, a missing Group is generated from count/template;
+- With `newEnvironment=false`, a missing Group is generated from seed/count/template;
   an existing directory is reused exactly, even when empty. It is never topped up,
   truncated, repaired or overwritten.
 - With `newEnvironment=true`, only that Group is regenerated on process startup.
   A later single-Worker start reloads its file and never runs the template.
+- Changing seed does not overwrite retained edits or re-Prepare Workers. Use a
+  new inventory directory or explicit Group rebuild to generate a new population.
 - Generated files start at `workers-000.jsonl`, contain at most 100 records and
   retain continuous Group ordinals. Existing filenames and physical lines never
   change on reuse.
@@ -599,7 +617,10 @@ python -m unittest discover -s worker_simulator_jvm/src/test/python -p 'test_*.p
 The installed-entry proof launches the real generated script from another working
 directory with omitted process/template/resource settings, observes the actual
 control API, checks default Lab/SIM generation and 101-record cross-file numbering,
-and restarts against the retained inventory despite changed count/template input.
+and restarts against retained inventory despite changed seed/count/template input.
+It also compares two fresh processes in different directories with seed 712,
+including 101-record file boundaries, then checks retained edits and explicit
+seeded rebuild. Product proofs separately materialize their exact country quotas.
 
 Repository-level proofs start Redis, one Java Server and one independent
 Worker Simulator. Server owns the Java Kernel Pacer applications and its

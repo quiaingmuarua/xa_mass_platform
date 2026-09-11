@@ -354,6 +354,7 @@ class WorkerSimulatorTest {
         return new WorkerSimulator(
                 RUNTIME_API,
                 labRoot().toString(),
+                0,
                 SimulatorTestConfig.groups(json),
                 definitions(),
                 managerFactory,

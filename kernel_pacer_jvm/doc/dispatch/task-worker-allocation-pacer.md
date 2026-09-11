@@ -38,6 +38,15 @@ For each WorkerGroup, one allocation round:
 6. Exact-holds the observed Workers until one common deadline.
 7. Offers one `TaskRuleMatchDemand` containing only successful holds.
 
+The speculative hold lasts 500ms, independently of Dispatch's 5,000ms execution
+claim. It covers the local Matching/cache handoff, not Handler execution. Workers
+that do not match any current need remain held until expiry; giving this stage
+the execution budget can repeatedly reserve most of a mixed Group without doing
+work and prevent concurrent ON_DEMAND calls from meeting their deadlines.
+Dispatch exact-confirms and extends an accepted, still-valid candidate to its
+execution deadline before claiming the Item. A slow or expired handoff remains a
+bounded miss for a later round, with no renewal, compensation or fallback.
+
 Matching processes the supplied Task order and may append accepted candidates
 directly to each Candidate bucket. Allocation never waits for that work. A later
 Pacer round reads actual Cache counts and computes the remaining deficit.

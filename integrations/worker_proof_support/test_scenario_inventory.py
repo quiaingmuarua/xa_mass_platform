@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from integrations.worker_proof_support.scenario_inventory import (
     canonical_1000_worker_world,
     inventory_coordinates,
     materialize_inventory,
+    product_worker_world,
 )
 
 
@@ -21,6 +23,30 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ScenarioInventoryTest(unittest.TestCase):
+
+    def test_product_fixtures_keep_exact_quotas_original_order_and_coordinates(self):
+        for counts in ((1, 1, 1), (4, 4, 4), (700, 200, 100)):
+            with self.subTest(counts=counts), tempfile.TemporaryDirectory() as directory:
+                world = product_worker_world(counts)
+                records = world["demo-sim"]
+                self.assertEqual(dict(zip(("CN", "US", "GB"), counts)), Counter(p["country"] for p in records))
+                cycle = ["CN"] * 7 + ["US"] * 2 + ["GB"] if counts == (700, 200, 100) else ["CN", "US", "GB"]
+                for index, properties in enumerate(records):
+                    self.assertEqual({"runtime": "java", "phone": str(861700000001 + index),
+                                      "country": cycle[index % len(cycle)], "operator": "Preview SIM",
+                                      "simulated": "true", "messaging.enabled": "true"}, properties)
+                root = Path(directory) / "data/scenario-workers"
+                coordinates = materialize_inventory(root, world)["demo-sim"]
+                self.assertEqual("workers-000.jsonl:1", coordinates[0])
+                self.assertEqual(f"workers-{(sum(counts)-1)//100:03d}.jsonl:{(sum(counts)-1)%100+1}", coordinates[-1])
+                before = {path.name: path.read_bytes() for path in (root / "demo-sim").glob("*.jsonl")}
+                with self.assertRaisesRegex(ValueError, "already exist"):
+                    materialize_inventory(root, world)
+                self.assertEqual(before, {path.name: path.read_bytes() for path in (root / "demo-sim").glob("*.jsonl")})
+        self.assertTrue(all("messaging.enabled" not in p for p in product_worker_world((1, 1, 1), messages=False)["demo-sim"]))
+        for counts in ((1, 1), (0, 1, 1), (True, 1, 1), (1.5, 1, 1), (15000, 1, 1)):
+            with self.assertRaises(ValueError):
+                product_worker_world(counts)
 
     def test_materializes_fixed_chunks_and_location_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

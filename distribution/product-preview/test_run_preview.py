@@ -4,6 +4,8 @@ import shutil
 from unittest.mock import Mock, call, patch
 import socket
 import tempfile
+import subprocess
+import sys
 from pathlib import Path
 
 import run_preview
@@ -11,6 +13,23 @@ from run_preview import Preview, all_pages, build
 
 
 class PreviewLifecycleTest(unittest.TestCase):
+    def test_population_defaults_and_validation_do_not_accept_country_quota_arguments(self):
+        self.assertEqual((60, 0), (Preview().count, Preview().seed))
+        for count in (1, 10000):
+            for seed in (0, 712, -1, -(2**63), 2**63 - 1):
+                run = Preview(count=count, seed=seed)
+                self.assertEqual((count, seed), (run.count, run.seed))
+        for count in (0, 10001, True, 1.5, "60", (20, 20, 20)):
+            with self.assertRaises(ValueError):
+                Preview(count=count)
+        for seed in (None, True, "712", 1.5, -(2**63)-1, 2**63):
+            with self.assertRaises(ValueError):
+                Preview(seed=seed)
+        for arguments in (["--counts", "4,4,4"], ["--count", "0"], ["--seed", "9223372036854775808"]):
+            result = subprocess.run([sys.executable, str(Path(run_preview.__file__)), *arguments],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(2, result.returncode, result.stderr)
+
     def test_idle_connection_is_retired_before_the_next_mutation(self):
         recent, fresh = Mock(), Mock()
         for connection in (recent, fresh):
@@ -69,7 +88,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                                     host_lib.parent / "config")
                     (server_lib / "xa-mass-server-jvm-test.jar").write_bytes(b"fixture")
                     (host_lib / "host.jar").write_bytes(b"fixture")
-                    run = Preview(root=root, port=18410, products=products)
+                    run = Preview(root=root, port=18410, products=products, seed=712)
                     client = Mock()
                     client.info.return_value = {"redis_version": "7.4.10"}
                     client.scan_iter.return_value = []
@@ -91,6 +110,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                         config = json.loads(run.worker_config_path.read_text(encoding="utf-8"))
                         self.assertEqual("http://127.0.0.1:18410", config["runtimeApiBaseUrl"])
                         self.assertEqual(18414, config["controlPort"])
+                        self.assertEqual(712, config["seed"])
                         self.assertEqual(str(root / "data/scenario-workers"), config["sandboxRoot"])
                         group = config["workerGroups"]["demo-sim"]
                         self.assertEqual(60, group["count"])
@@ -99,11 +119,14 @@ class PreviewLifecycleTest(unittest.TestCase):
                         self.assertEqual("sms" in products, "extension.worker.sms.listen.start" in group["events"])
                         self.assertEqual("messages" in products, "extension.worker.message.send" in group["events"])
                         self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
+                        record = json.loads((run.output / "run.json").read_text())
+                        self.assertEqual((60, 712), (record["count"], record["seed"]))
+                        self.assertNotIn("counts", record)
                         self.assertEqual({"server", "hostClasspath", "frontendSha256"}, run.artifacts.keys())
                         run.close()
 
     def test_readiness_uses_discovered_inventory_not_initialization_counts(self):
-        run = Preview(counts=(700, 200, 100), sandbox_root=Path("test/data/scenario-workers"))
+        run = Preview(count=1000, sandbox_root=Path("test/data/scenario-workers"))
         with patch("run_preview.http", return_value={"started": True, "prepared": 3, "numbers": 3}):
             self.assertTrue(run.host_ready())
         with patch("run_preview.http", return_value={"started": True, "prepared": 0, "numbers": 0}):

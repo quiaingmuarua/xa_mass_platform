@@ -645,9 +645,13 @@ system.
   one immutable current Properties snapshot per record and common controls.
   Group `events` selects compiled business and verification capabilities; an
   empty list uses only the finite local Group defaults, not Server eventCodes.
-  Count/templates initialize missing or explicitly rebuilt Group inventories;
+  Seed/count/templates initialize missing or explicitly rebuilt Group inventories;
   otherwise reuse is exact, including an empty directory. Templates materialize
   string Properties once and never become another runtime Provider.
+  Choice/range values derive independently from the fixed seed, Group, property
+  name and ordinal; no shared Random sequence or runtime random state is owned.
+  Preview uses seeded sampling, while exact product-proof quotas are materialized
+  by the existing proof inventory utility, not enforced by the random generator.
   Preserve file coordinates when phone/country change. Persist before local
   address updates, then publish outside inventory and business gates. No second
   Provider, Host, Manager collection or plugin lifecycle belongs in a business package.

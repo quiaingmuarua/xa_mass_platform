@@ -20,18 +20,27 @@ Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or st
 
 Default `--products sms,messages` serves Messages at `http://127.0.0.1:18500/messages`,
 SMS at `/sms`, Runtime at `/runtime/workers`, and the Host at `http://127.0.0.1:18504/lab`.
-Select `--products sms` or `--products messages` for one product. `--counts 4,4,4`
-initializes missing CN/US/GB inventory, default 20 each; the fixed large proof uses `700,200,100`.
+Select `--products sms` or `--products messages` for one product. `--count 100 --seed 712`
+initializes a reproducible random population: defaults are 60 total Workers and
+seed 0. Count accepts 1..10,000; seed is a signed 64-bit integer. Country choices
+have equal weight, not exact quotas or guaranteed small-sample coverage.
+The previous country-count argument is removed rather than reinterpreted.
 Inventory persists at `<preview-root>/data/scenario-workers`; `--sandbox-root`
 selects another root with that suffix. Existing Group directories, including empty
-ones, are never reseeded or adjusted to the counts. Readiness uses actual inventory.
+ones, are never reseeded or adjusted to count/seed. Readiness uses actual inventory.
+To change the generated population, choose a fresh inventory root or explicitly
+rebuild the Group through Simulator configuration; changing seed alone preserves edits.
 Each acceptance run uses an isolated inventory root and reuses it for Host restarts.
 The launcher selects a complete Simulator example, writes the final Runtime URL,
-absolute inventory path, port, events, count and deterministic template into one
+absolute inventory path, port, events, count, seed and template into one
 `worker-simulator.json` in its run directory, and passes only `--config` to Main.
-Counts are expressed as the template's ordered country choice ratio; the launcher
-never evaluates templates. Product selection still belongs to Preview/Server
+The launcher never evaluates templates or corrects sampled country counts.
+`run.json` records count and seed, not a promised country distribution. Product selection still belongs to Preview/Server
 composition, not to a Simulator runtime mode.
+SMS and coexistence CI pre-materialize exact 1/1/1, 4/4/4 or 700/200/100 inventories
+using the shared proof inventory utility before starting this launcher. Their
+original coordinates, load thresholds and independent oracles remain unchanged;
+the same inventory is reused for Host restarts. No seed search or quota repair is used.
 `--port` sets Server base, Adapter +3 and Host +4. Occupied ports fail without
 stopping the existing service. Ctrl+C stops only owned processes and cleans the
 exact generated `test_products_<UUID>` scope through SCAN/UNLINK.

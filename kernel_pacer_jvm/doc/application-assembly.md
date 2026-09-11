@@ -108,15 +108,21 @@ no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
 DEFAULT Task Dispatch checks at most 100 Items per Task per round. Its next
-eligibility is set 100ms after the Main Scheduler processes producer completion;
+eligibility is set 50ms after the Main Scheduler processes producer completion;
 the interval does not start at dispatch launch. Slow producers remain single-flight
 and do not catch up with overlapping rounds. A continuously full single Task is
-therefore bounded above by `100 / (0.1 + round_seconds)` checked Items/s, before
+therefore bounded above by `100 / (0.05 + round_seconds)` checked Items/s, before
 scan/observation delay and unsuccessful assignments. This is a policy budget,
 not a platform QPS guarantee. Group-managed ON_DEMAND calls share that Task budget.
 `DispatchBudgetTest` proves the bounded check and completion-relative scheduling
 with controlled execution and time. These values remain preset-owned and have no
 Server override.
+
+Allocation and initialization keep their 100ms intervals. Dispatch alone uses
+50ms so candidate availability can be consumed without adding another full
+100ms idle interval after a mixed-Task round. The 100-Item ceiling, single-flight
+Producer, latest-due Item ordering and completion-relative backoff are unchanged;
+this is additional checking headroom, not Item fairness or an all-load SLA.
 
 Default-off `xa.mass.TaskDispatch` and `xa.mass.TaskResult` JFR events observe
 existing round/check/candidate/claim/publish and Result consume/process/release
