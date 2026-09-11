@@ -92,7 +92,7 @@ Let demonstrated business and operational needs drive later extraction.
 
 The first such workload, [SMS Reception](products/sms-reception/README.md),
 uses a separate business module and a page in the unified console, plus the SMS scene of the
-independently launched [Scenario Host](scenario_workers_jvm/README.md#sms-scenario).
+independently launched [Worker Simulator](worker_simulator_jvm/README.md#sms-scenario).
 Lab and SMS share its Java Worker management and local console. The distribution imports platform and SMS configuration into one Server;
 the `sms-reception` profile enables product routes and jobs. SMS calls the
 existing Server services and shares their Owner instances.
@@ -112,7 +112,7 @@ exercises their shared runtime and preserves each product's business semantics.
 | Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/Rules and bounded PRECOMPUTED Demand consumer |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
-| JVM simulation | [scenario_workers_jvm](scenario_workers_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
+| JVM simulation | [worker_simulator_jvm](worker_simulator_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
 | Proof clients | [TESTING](TESTING.md): Owner, boundary, Worker, Android and distribution claims; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) observes live facts during execution |
 | Frontend | [frontend](frontend/README.md): shared console for Runtime observation, SMS, Messages, finite Task files, Direct Debug and references |
@@ -129,13 +129,16 @@ to the Server and Pacer documents.
 
 The Server Runtime ZIP contains the Boot Server and compiled frontend and
 requires external Redis and Java 21. Worker SDKs are published separately.
-Scenario Host is a source-checkout Lab with an independent process lifecycle;
-Server never starts Worker processes. AgentForge consumes release artifacts
+Worker Simulator has an independent process lifecycle and one `--config` entry
+for Lab, SMS and Messages capabilities over shared inventory. Built-in Groups need
+only Group selection; optional configuration, including initialization templates,
+resolves to complete settings once. Its configuration examples ship in the install distribution and Product Preview;
+the production Runtime ZIP excludes it. Server never starts Worker processes. AgentForge consumes release artifacts
 and public APIs instead of copying source modules.
 
 For local work, `python run_local_runtime.py` builds the frontend and starts
 the Scenario Lab. `--profile agentforge` selects the clean Server/Adapter
-preset without Scenario Host. Profile coordinates and commands are documented
+preset without Worker Simulator. Profile coordinates and commands are documented
 by [Server](server_jvm/README.md#run) and [distribution](distribution/server/README.md).
 
 The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses Mock

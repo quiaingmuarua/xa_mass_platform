@@ -394,7 +394,8 @@ def main():
     output = (args.output or Path(__file__).parent / "build" / args.scenario).resolve()
     output.mkdir(parents=True, exist_ok=True)
     counts = (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
-    run = preview.Preview(counts, args.port, root=args.root, output=output / "private")
+    run = preview.Preview(counts, args.port, root=args.root, output=output / "private",
+                          sandbox_root=output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers")
     result = {"passed": False}
     started = time.monotonic()
     try:

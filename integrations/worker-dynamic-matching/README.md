@@ -7,7 +7,7 @@ Loaded Recovery retain their existing claims.
 
 ## Process And Evidence Boundaries
 
-Python owns one Runtime Server, one Scenario Host, one Java Harness, private Lab
+Python owns one Runtime Server, one Worker Simulator, one Java Harness, private Lab
 files and an exact Redis `test_*` scope. Java imports only the delivery JSON
 contract and uses public Runtime and loopback Lab HTTP. It neither imports
 implementations nor injects Reports or writes Redis.
@@ -108,6 +108,9 @@ facts/Score writes, Task fairness, every Worker executing, throughput or soak.
 Use Java 21, Python 3.11+ and Redis 7. Install `.github/scripts/requirements.txt`.
 Ports 18082/18083/18086 must be free; the runner never attaches to existing
 processes. An output directory must be fresh and below repository `build`.
+The runner materializes its exact proof inventory, writes one complete Simulator
+configuration selecting those Group events with inventory reuse, and starts Main
+with only `--config`. It does not evaluate initialization templates.
 
 ```powershell
 python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15
@@ -122,4 +125,4 @@ and private correlation mappings are excluded from uploaded artifacts.
 
 Auxiliary checks: `:integrations:worker-dynamic-matching:test`, Python
 `unittest discover -s integrations/worker-dynamic-matching -p 'test_*.py'`,
-Java Manager tests and Scenario Host tests. These do not replace the real runner.
+Java Manager tests and Worker Simulator tests. These do not replace the real runner.

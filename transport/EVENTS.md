@@ -248,7 +248,7 @@ retention of registration keys is provided.
 
 Concrete `extension.worker.*` events are intentionally not enumerated here.
 They belong to the Host or capability module that supplies their Definitions,
-such as [Scenario Workers](../scenario_workers_jvm/README.md) and
+such as [Scenario Workers](../worker_simulator_jvm/README.md) and
 [Android Capabilities](../xa-android/capabilities/README.md). Those Owners
 define their input, output, semantics, and evolution. Transport only validates
 the Definition shape, assembles the immutable Worker Handler map, and performs

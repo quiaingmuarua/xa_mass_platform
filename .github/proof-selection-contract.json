@@ -393,7 +393,7 @@
       "reason": "The distribution now builds the only Server executable, so its assembly dependencies inherit the host proof lanes."
     },
     {
-      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkerControlServer.java",
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulatorControlServer.java",
       "lanes": [
         "jvm_contracts",
         "worker_convergence_health",
@@ -404,7 +404,7 @@
       "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
     },
     {
-      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkers.java",
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulator.java",
       "lanes": [
         "jvm_contracts",
         "worker_convergence_health",
@@ -451,7 +451,7 @@
       "reason": "Dynamic matching crosses this production or proof entry."
     },
     {
-      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/ScenarioWorkerExecutionWitnesses.java",
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulatorExecutionWitnesses.java",
       "lanes": [
         "jvm_contracts",
         "worker_correctness",
@@ -568,7 +568,7 @@
       "reason": "Country Group and event declarations belong to distribution; product profiles share one platform."
     },
     {
-      "path": "scenario_workers_jvm/src/main/java/com/xa/mass/scenarioworkers/messaging/MessageScenario.java",
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java",
       "lanes": [
         "jvm_contracts",
         "product_coexistence",
@@ -614,6 +614,17 @@
         "product_coexistence"
       ],
       "reason": "Small CI and explicit 1k acceptance use product, Runtime and Lab inputs only."
+    },
+    {
+      "path": "worker_simulator_jvm/config/lab.json",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "product_coexistence"
+      ],
+      "reason": "Complete Simulator configurations replace main-resource defaults without reducing their selected proof set."
     }
   ]
 }

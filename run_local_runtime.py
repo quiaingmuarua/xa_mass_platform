@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+
 import argparse
 import os
 import re
@@ -63,7 +65,7 @@ def build_frontend() -> None:
 def gradle_tasks(profile: str) -> list[str]:
     tasks = [":distribution:server:bootJar"]
     if profile == DEFAULT_PROFILE:
-        tasks.append(":scenario_workers_jvm:installDist")
+        tasks.append(":worker_simulator_jvm:installDist")
     tasks.append(":distribution:server:installLocalPlatformDiagnosticCodes")
     return tasks
 
@@ -95,15 +97,15 @@ def build_runtime_processes(profile: str) -> tuple[Path, list[Path]]:
         return server_jar, []
     host_lib = (
         ROOT
-        / "scenario_workers_jvm"
+        / "worker_simulator_jvm"
         / "build"
         / "install"
-        / "xa-mass-scenario-workers"
+        / "xa-mass-worker-simulator"
         / "lib"
     )
     host_jars = sorted(host_lib.glob("*.jar"))
     if not host_jars:
-        raise RuntimeError(f"Scenario Worker Host libraries missing: {host_lib}")
+        raise RuntimeError(f"Worker Simulator libraries missing: {host_lib}")
     return server_jar, host_jars
 
 
@@ -189,14 +191,18 @@ def start_worker_host(
     environ: Mapping[str, str],
 ) -> subprocess.Popen[bytes]:
     classpath = os.pathsep.join(str(path) for path in host_jars)
+    config = json.loads((ROOT / "worker_simulator_jvm/config/lab.json").read_text(encoding="utf-8"))
+    config.update(runtimeApiBaseUrl=runtime_api_url, sandboxRoot=str(ROOT / "data/scenario-workers"))
+    config_path = ROOT / "build/local-runtime/worker-simulator.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     return subprocess.Popen(
         [
             java_executable(environ),
             "-cp",
             classpath,
-            "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain",
-            f"--runtime-api-base-url={runtime_api_url}",
-            f"--sandbox-root={ROOT / 'data' / 'scenario-workers'}",
+            "com.xa.mass.workersimulator.WorkerSimulatorMain",
+            "--config", str(config_path),
         ],
         cwd=ROOT,
         env=dict(environ),
@@ -223,7 +229,7 @@ def supervise(
         if worker_host is not None:
             host_exit = worker_host.poll()
             if host_exit is not None:
-                print(f"Scenario Worker Host exited with code {host_exit}")
+                print(f"Worker Simulator exited with code {host_exit}")
                 return host_exit if host_exit != 0 else 1
         server_exit = server.poll()
         if server_exit is not None:
@@ -258,7 +264,7 @@ def main(
     except KeyboardInterrupt:
         return 0
     finally:
-        stop_process(worker_host, "Scenario Worker Host")
+        stop_process(worker_host, "Worker Simulator")
         stop_process(server, "XA Mass Server")
 
 

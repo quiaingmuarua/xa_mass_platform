@@ -10,7 +10,7 @@ The JAR packages Server, its production dependencies and both business libraries
 Preview deployment coordinates live in explicit distribution/launcher configuration;
 product profiles enable business without injecting a second Adapter. The archive packages the compiled unified console
 for Runtime, Reference, SMS and Messages pages; the JAR embeds no separate SMS frontend. It does not
-package the repository-local Scenario Worker Host. It also generates and
+package the repository-local Worker Simulator. It also generates and
 packages the current-build Platform diagnostic code projection. Redis remains
 external.
 The compiled frontend also carries the committed, Server-verified OpenAPI
@@ -103,9 +103,11 @@ The Boot JAR leaves Redis lifecycle to the caller. The checked Profile selects
 its fixed Java Pacer preset; the archive contains no Pacer policy file and
 offers no per-field policy tuning. Server remains the sole Java Pacer lifecycle
 owner. The archive contains no Scenario Worker implementation, Python runtime,
-wheel or virtual environment. The standalone Scenario Lab remains available
-only from the source checkout through `run_local_runtime.py` or
-`:scenario_workers_jvm:runScenarioWorkers`.
+wheel or virtual environment. The independent Worker Simulator is available
+from its install distribution, the Product Preview, or the checkout through
+`run_local_runtime.py`. Direct Gradle launch is
+`:worker_simulator_jvm:runWorkerSimulator --args="--config worker_simulator_jvm/config/lab.json"`;
+all paths use the same Main and complete configuration.
 
 The archive verifier requires the diagnostic JSON and checks its version and
 full Git commit against `manifest.json`, plus the exact Server, Adapter and

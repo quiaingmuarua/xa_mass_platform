@@ -92,7 +92,7 @@ Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验
 | --- | --- |
 | `backend` | 普通 Java 业务模块：产品 API、有限监听状态、应用内幂等、有界 Task 提交和统一 Result 观察 |
 | [统一前端](../../frontend/README.md#sms-business-pages) | `src/sms/`：工作台、分页记录、业务指标；共享布局与主题，只调用同源 SMS API |
-| [Scenario Host](../../scenario_workers_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
+| [Worker Simulator](../../worker_simulator_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
 
 [发行入口](../../distribution/server/README.md) 显式导入
 [Server 配置](../../server_jvm/README.md) 和 SMS 产品配置，创建一个 Spring 上下文。
@@ -113,7 +113,7 @@ Worker 与 Adapter 均指向 Server 18390。产品服务调用不经过平台业
 平台 HTTP Call 复用同一提交服务，独立保留原有即时查询和异步等待。
 
 Host 每个号码对应一个 Worker；全部国家共用 `demo-sim` 的一个 JavaWorkerManager。
-SDK 以 CLIENT_KEY 准备身份；Properties 经真实 Adapter 观察进入 Matching，Prepare 不保存完整属性。
+SDK 按库存文件名＋行号使用 SCENARIO_LAB 批量准备身份；Properties 经真实 Adapter 观察进入 Matching，Prepare 不保存完整属性。
 Worker SDK 和 Adapter 的原有 HTTP/WebSocket 边界继续保留。
 
 ```text
@@ -188,12 +188,14 @@ Backend 只重读 Result，不修补平台事实，不保证最终到达。
 旧产品路径不保留别名。平台静态 OpenAPI 保持平台契约；启用 SMS 的实例实时 OpenAPI 同时包含平台与产品路由。
 产品异常处理局限于自己的 Controller。本预览尚无登录体系，同源部署本身不是订单授权或租户隔离。
 
-模拟控制仅由统一 Scenario Host 的独立端口提供；产品 Server 不代理这些请求。
-[Host Owner](../../scenario_workers_jvm/README.md#sms-scenario) 维护 `/lab` 页面、
+模拟控制仅由统一 Worker Simulator 的独立端口提供；产品 Server 不代理这些请求。
+[Host Owner](../../worker_simulator_jvm/README.md#sms-scenario) 维护 `/lab` 页面、
 `/lab/v1/sms/*` 接口、有限启动参数和号码启停规则。Host 直接使用 Worker SDK，
 与默认 Lab 共用主类、Manager 集合及 HTTP 控制服务，无独立产品模拟器模块。
 
-Host 页面对当前号码页轮询，支持短信注入、自动流和单 Worker 启停；SMS Properties 只读。
+Host 页面始终开放通用库存、Properties 和启停控制，额外展示短信注入和自动流。
+phone/country 热修改先持久化再更新本地快照，最后通过 SDK 上报；换号本地结束旧监听，不合成远端结束报告。
+功能验收独立读取 Adapter、Matching，验证新国家索引的实际执行者和 Host 重启后恢复。
 停止号码关闭本地监听准入并清理 Reporter，不发送产品取消命令或合成结束 Report。
 重启保持身份和本轮去重记录，不恢复旧监听；原订单缺少结束证据时仍显示“结果未确认”。
 本地运行状态、实际 Adapter 网络证据和 Kernel 可调度性分别归各自 Owner；页面不能混同它们。
@@ -220,7 +222,7 @@ Backend 活跃数量只包含已观察到建立且尚无终态的监听；建立
 在仓库根目录运行：
 
 ```powershell
-.\gradlew.bat :scenario_workers_jvm:test :products:sms-reception:backend:test
+.\gradlew.bat :worker_simulator_jvm:test :products:sms-reception:backend:test
 corepack pnpm@11.9.0 --dir frontend lint
 corepack pnpm@11.9.0 --dir frontend typecheck
 corepack pnpm@11.9.0 --dir frontend test
@@ -251,6 +253,13 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身份稳定的重启、去重保留以及
 新监听成功；旧监听的本地 INTERRUPTED 与产品 UNCONFIRMED 分别记录，不计入正常流的状态不一致。
 
+功能场景随后热修改同一 Worker 的号码和国家，独立读取 Adapter 缓存、Matching 事实，并用
+后续实际接码 Worker 证明索引归属改变。Server 私有访问日志仅记录方法、路径和状态码，
+校验初始文件批量 Prepare 以及热修改期间 Prepare 调用增量为零。重新启动 Host 时复用同一
+库存与 scope，验证文件编辑、Worker 身份和新号码继续有效；不恢复旧监听或 Reporter。
+重启时显式组合 execution-witness 能力，验证同一个产品 Worker 仍能处理 SMS，并执行
+所选验证 Handler、产生独立 Host 执行证据；不额外启动一批 Lab Worker。
+
 固定并发 world 为 1,000 个 Java Worker（CN/US/GB = 700/200/100）。完成身份和真实路由
 验证后，以 200 次监听申请/秒持续 60 秒，叠加最多 135 秒、300 条短信/秒的有限随机流。
 每次申请监听 60 秒；有限业务结束后比较 Host 和产品观察的状态及获胜短信关联。
@@ -268,7 +277,7 @@ Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端�
 保留现有 [Proof Selection](../../TESTING.md) 的平台规则。
 
 本场景证明有限产品与 country 索引闭环，不声明平台容量上限；不证明真实设备收信、
-app 索引、黑名单、可靠投递、租户隔离或重启恢复，也不扩大既有平台容量场景。
+app 索引、黑名单、可靠投递、租户隔离或业务订阅的重启恢复，也不扩大既有平台容量场景。
 
 归档检查比较 ZIP 中的全部前端文件与当前 `frontend/dist`（生成的诊断字典单独交付），
 并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：

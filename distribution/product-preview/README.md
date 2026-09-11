@@ -2,7 +2,7 @@
 
 Status: current shared product launch and archive owner.
 
-This finite preview starts one Server and one Scenario Host. SMS and Messages use
+This finite preview starts one Server and one Worker Simulator. SMS and Messages use
 one Redis scope, one WebSocket Adapter and the same Worker pool. It adds no product
 framework or platform owner. The production Runtime ZIP continues to exclude Host.
 
@@ -21,7 +21,17 @@ Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or st
 Default `--products sms,messages` serves Messages at `http://127.0.0.1:18500/messages`,
 SMS at `/sms`, Runtime at `/runtime/workers`, and the Host at `http://127.0.0.1:18504/lab`.
 Select `--products sms` or `--products messages` for one product. `--counts 4,4,4`
-sets CN/US/GB pools, default 20 each; the fixed large proof uses `700,200,100`.
+initializes missing CN/US/GB inventory, default 20 each; the fixed large proof uses `700,200,100`.
+Inventory persists at `<preview-root>/data/scenario-workers`; `--sandbox-root`
+selects another root with that suffix. Existing Group directories, including empty
+ones, are never reseeded or adjusted to the counts. Readiness uses actual inventory.
+Each acceptance run uses an isolated inventory root and reuses it for Host restarts.
+The launcher selects a complete Simulator example, writes the final Runtime URL,
+absolute inventory path, port, events, count and deterministic template into one
+`worker-simulator.json` in its run directory, and passes only `--config` to Main.
+Counts are expressed as the template's ordered country choice ratio; the launcher
+never evaluates templates. Product selection still belongs to Preview/Server
+composition, not to a Simulator runtime mode.
 `--port` sets Server base, Adapter +3 and Host +4. Occupied ports fail without
 stopping the existing service. Ctrl+C stops only owned processes and cleans the
 exact generated `test_products_<UUID>` scope through SCAN/UNLINK.
@@ -43,7 +53,9 @@ request; a failed or uncertain mutation is surfaced without automatic replay.
 python distribution/product-preview/verify_archive.py --archive distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip --frontend frontend/dist
 ```
 
-The ZIP contains the current Server JAR, Host classpath, unified frontend, config,
+The ZIP contains the current Server JAR, Host classpath in `worker-simulator/lib`,
+the four standalone Simulator examples in `worker-simulator/config` (including the
+minimal Lab configuration using built-in defaults), unified frontend, config,
 Python entry and requirements. After extraction install `requirements.txt` with pip
 and run `python run_preview.py`; select SMS alone with `--products sms`. No Node or
 Gradle is needed. The manifest identifies versions, HEAD, enabled defaults and
@@ -58,6 +70,8 @@ with `--root <extracted-directory>`; it loads the packaged launcher and starts t
 packaged artifacts. Archive verification compares frontend bytes and all manifest
 fingerprints. Runs store private process metadata/logs beneath `build/runs`; CI
 publishes only safe summaries, never message bodies, replies or full Properties.
+The private Server access log contains only HTTP method, path and status, enabling
+proofs to count Prepare calls independently without logging request or result bodies.
 The [SMS acceptance runner](../../products/sms-reception/README.md#检查与验收)
 retains its functional, lifecycle and fixed 1,000-Worker workload. It selects SMS
 through this same launcher and also accepts `--root` to load an extracted launcher:

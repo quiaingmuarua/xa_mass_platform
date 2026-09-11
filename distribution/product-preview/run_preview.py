@@ -6,6 +6,7 @@ import hashlib
 import http.client as http_client
 import io
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,7 +28,7 @@ PRODUCT = Path(__file__).resolve().parent
 _connections = threading.local()
 
 
-def http(base, path, body=None, timeout=6):
+def http(base, path, body=None, timeout=6, method=None):
     # One connection per calling thread and local endpoint. Never retry mutations.
     if not hasattr(_connections, "items"):
         _connections.items = {}
@@ -46,7 +47,7 @@ def http(base, path, body=None, timeout=6):
     if connection.sock:
         connection.sock.settimeout(timeout)
     try:
-        connection.request("GET" if body is None else "POST", path,
+        connection.request(method or ("GET" if body is None else "POST"), path,
                            body=None if body is None else json.dumps(body).encode(),
                            headers={"Content-Type": "application/json"})
         response = connection.getresponse()
@@ -83,13 +84,13 @@ def build():
 
 
 class Preview:
-    def __init__(self, counts=(20, 20, 20), port=18500, redis_url=None, root=PRODUCT, output=None, products="sms,messages"):
+    def __init__(self, counts=(20, 20, 20), port=18500, redis_url=None, root=PRODUCT, output=None, products="sms,messages", sandbox_root=None):
         self.root = Path(root).resolve()
+        self.sandbox_root = Path(sandbox_root or self.root / "data" / "scenario-workers").resolve()
         self.counts = counts
         if products not in ("sms", "messages", "sms,messages"):
             raise ValueError("Unknown product combination")
         self.products = products
-        self.scenario = "products" if products == "sms,messages" else products
         self.adapter = "products-websocket"
         self.lab = "/lab/v1/sms" if "sms" in products else "/lab/v1/messages"
         self.port = port
@@ -125,7 +126,7 @@ class Preview:
         packaged = (self.root / "lib").is_dir()
         if packaged:
             server_lib = self.root / "lib"
-            host_lib = self.root / "scenario-workers" / "lib"
+            host_lib = self.root / "worker-simulator" / "lib"
             platform_frontend = self.root / "frontend" / "dist"
         else:
             server_lib = self.root / "build" / "server"
@@ -153,21 +154,39 @@ class Preview:
         self.launch("server", options + ["-Xmx2g", "-jar", str(server_jar),
                     "--spring.profiles.active=" + ",".join(["product-preview"] + (["sms-reception"] if "sms" in self.products else []) + (["message-campaigns"] if "messages" in self.products else [])),
                     "--spring.config.additional-location=" + (self.root / "config").as_uri() + "/",
-                    "--spring.web.resources.static-locations=" + platform_frontend.as_uri() + "/"], env)
+                    "--spring.web.resources.static-locations=" + platform_frontend.as_uri() + "/",
+                    "--server.tomcat.accesslog.enabled=true", "--server.tomcat.accesslog.buffered=false",
+                    "--server.tomcat.accesslog.rotate=false", "--server.tomcat.accesslog.directory=" + str(self.output),
+                    "--server.tomcat.accesslog.prefix=runtime-http", "--server.tomcat.accesslog.suffix=.log",
+                    "--server.tomcat.accesslog.pattern=%m %U %s"], env)
         self.wait_for(lambda: http(self.url, "/actuator/health"), 60, "Server")
         for product in ("sms", "messages"):
             if product in self.products:
                 self.wait_for(lambda product=product: http(self.url, "/api/v1/" + product + "/catalog"), 60, product + " initialization")
+        self.worker_config_path = self.output / "worker-simulator.json"
+        preset = "products" if self.products == "sms,messages" else self.products
+        worker_config = json.loads((host_lib.parent / "config" / (preset + ".json")).read_text(encoding="utf-8"))
+        worker_config.update(runtimeApiBaseUrl=self.url, sandboxRoot=str(self.sandbox_root), controlPort=self.port + 4)
+        group = worker_config["workerGroups"]["demo-sim"]
+        group["count"] = sum(self.counts)
+        divisor = math.gcd(*self.counts)
+        group["propertiesTemplate"]["country"] = {"$choice": [
+            country for country, count in zip(("CN", "US", "GB"), self.counts)
+            for _ in range(count // divisor)]}
+        self.worker_config_path.write_text(json.dumps(worker_config, indent=2) + "\n", encoding="utf-8")
         self.launch("host", options + ["-Xmx1g", "-cp", str(host_lib / "*"),
-                    "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--scenario=" + self.scenario,
-                    "--runtime-api-base-url=" + self.url, "--control-port=" + str(self.port + 4),
-                    ("--sms-counts=" if self.scenario == "sms" else "--device-counts=") + ",".join(map(str, self.counts))], env)
-        self.wait_for(lambda: http(self.host, self.lab + "/health").get("prepared") == sum(self.counts), 90, "Host identities")
+                    "com.xa.mass.workersimulator.WorkerSimulatorMain",
+                    "--config", str(self.worker_config_path)], env)
+        self.wait_for(self.host_ready, 90, "Host identities")
         self.wait_for(self.connected, 60, "verified WebSocket routes")
         (self.output / "run.json").write_text(json.dumps({"scope": self.scope, "url": self.url, "host": self.host,
-                "counts": self.counts, "products": self.products, "artifacts": self.artifacts,
+                "counts": self.counts, "sandboxRoot": str(self.sandbox_root), "products": self.products, "artifacts": self.artifacts,
                 "pids": {k: p.pid for k, p in self.processes.items()}}, indent=2), encoding="utf-8")
         return self
+
+    def host_ready(self):
+        health = http(self.host, self.lab + "/health")
+        return health.get("started") is True and health.get("prepared") == health.get("numbers")
 
     def connected(self):
         inventory = all_pages(self.host, self.lab + "/inventory")
@@ -263,6 +282,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--counts", default="20,20,20", help="CN,US,GB counts")
+    parser.add_argument("--sandbox-root", type=Path, help="Persistent inventory root ending in data/scenario-workers")
     parser.add_argument("--port", type=int, default=18500, help="Server base port; Adapter +3 and Host +4")
     parser.add_argument("--products", choices=["sms", "messages", "sms,messages"], default="sms,messages")
     args = parser.parse_args()
@@ -273,7 +293,7 @@ def main():
         parser.error("counts must specify three positive pools, at most 10,000 total")
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
-        with Preview(counts, args.port, products=args.products) as run:
+        with Preview(counts, args.port, products=args.products, sandbox_root=args.sandbox_root) as run:
             print(f"Product Preview 0.1.0-preview: {run.url}/messages or /sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
             while True:
                 run.check()

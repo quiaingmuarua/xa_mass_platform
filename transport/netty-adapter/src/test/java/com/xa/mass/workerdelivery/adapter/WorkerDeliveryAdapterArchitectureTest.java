@@ -426,7 +426,7 @@ class WorkerDeliveryAdapterArchitectureTest {
         ArrayList<Path> roots = new ArrayList<>();
         addSourceRoot(repository.resolve("kernel_jvm"), roots);
         addSourceRoot(repository.resolve("server_jvm"), roots);
-        addSourceRoot(repository.resolve("scenario_workers_jvm"), roots);
+        addSourceRoot(repository.resolve("worker_simulator_jvm"), roots);
         addChildSourceRoots(repository.resolve("transport"), roots);
         addChildSourceRoots(repository.resolve("integrations"), roots);
         return List.copyOf(roots);

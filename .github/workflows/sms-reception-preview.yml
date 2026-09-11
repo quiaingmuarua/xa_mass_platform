@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - 'products/sms-reception/**'
-      - 'scenario_workers_jvm/**'
+      - 'worker_simulator_jvm/**'
       - 'frontend/**'
       - 'distribution/server/build.gradle'
       - 'distribution/server/src/**'
@@ -60,7 +60,7 @@ jobs:
           python -m pip install -r distribution/product-preview/requirements.txt
       - name: Product contracts and frontend
         run: |
-          ./gradlew :scenario_workers_jvm:test :products:sms-reception:backend:test :distribution:server:test :distribution:server:smsCompositionIntegrationTest --console=plain
+          ./gradlew :worker_simulator_jvm:test :products:sms-reception:backend:test :distribution:server:test :distribution:server:smsCompositionIntegrationTest --console=plain
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test

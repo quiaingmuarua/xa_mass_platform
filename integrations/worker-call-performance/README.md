@@ -39,7 +39,7 @@ DEFAULT 100ms completion-relative Dispatch interval. No tuning parameter is adde
 | `direct-step-2000` | Direct explicit Worker, round-robin | 2,000 |
 
 Every main case uses Ubuntu 24.04 with four logical CPUs, Java 21, Redis 7.4.10,
-one Group, 1,000 real connections in one Scenario Host JVM and one WebSocket
+one Group, 1,000 real connections in one Worker Simulator JVM and one WebSocket
 Adapter. Task calls share the Group's managed ON_DEMAND Task. Sorted known IDs,
 64-byte MD5 input, single-item requests, one-second HTTP wait, five-second client
 timeout and 4,096 in-flight bound match across the paths. Each case starts fresh,

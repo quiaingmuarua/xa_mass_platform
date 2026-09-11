@@ -50,7 +50,7 @@ jobs:
         run: |
           ./gradlew --no-daemon \
             :transport:java-worker:test \
-            :scenario_workers_jvm:test \
+            :worker_simulator_jvm:test \
             :integrations:worker-loaded-recovery:test
           python -m unittest \
             integrations.worker_proof_support.test_scenario_inventory

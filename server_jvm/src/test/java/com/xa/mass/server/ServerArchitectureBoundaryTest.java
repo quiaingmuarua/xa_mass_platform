@@ -238,7 +238,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':worker_matching_jvm')")
-                .doesNotContain("scenario_workers_jvm")
+                .doesNotContain("worker_simulator_jvm")
                 .doesNotContain("scenario_rpc_jvm")
                 .contains("implementation project(':transport:netty-adapter')")
                 .contains(
@@ -442,7 +442,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".hscan(")
                 .doesNotContain(".hgetall(")
                 .doesNotContain("com.xa.mass.transport")
-                .doesNotContain("ScenarioWorkers");
+                .doesNotContain("WorkerSimulator");
     }
 
     @Test
@@ -583,12 +583,12 @@ class ServerArchitectureBoundaryTest {
                 .contains("routeVerificationBatcher.close()")
                 .contains("WorkerGroupRegistrationService")
                 .contains("properties.groupConfigJson()")
-                .doesNotContain("ScenarioWorkers")
+                .doesNotContain("WorkerSimulator")
                 .doesNotContain("capabilityAssemblyJson")
                 .doesNotContain("runtimeApiBaseUrl")
                 .doesNotContain("sandboxRoot")
-                .doesNotContain("ScenarioWorkerBundles")
-                .doesNotContain("ScenarioWorkerBundleConfig")
+                .doesNotContain("WorkerSimulatorBundles")
+                .doesNotContain("WorkerSimulatorBundleConfig")
                 .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("adapter.netty.internal")
                 .doesNotContain("PHONE_NUMBER")

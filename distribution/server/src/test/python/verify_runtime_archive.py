@@ -58,7 +58,7 @@ def verify(archive: Path, version: str) -> None:
                 name.startswith(f"{root}/scenario-workers/")
                 for name in names
             ),
-            "runtime archive contains the repository-local Scenario Worker Host",
+            "runtime archive contains the repository-local Worker Simulator",
         )
         _require(
             not any(name.startswith(f"{root}/config/") for name in names),
@@ -94,8 +94,8 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
         _require(
-            "scenarioWorkerHost" not in manifest,
-            "manifest retains the repository-local Scenario Worker Host",
+            "workerSimulatorHost" not in manifest,
+            "manifest retains the repository-local Worker Simulator",
         )
 
         diagnostic_codes = json.loads(
@@ -200,14 +200,13 @@ def verify(archive: Path, version: str) -> None:
                 _require(
                     not any(
                         name.startswith(
-                            "BOOT-INF/lib/xa-mass-scenario-workers"
+                            "BOOT-INF/lib/xa-mass-worker-simulator"
                         )
                         or name.startswith("BOOT-INF/lib/libphonenumber-")
                         or name.startswith("BOOT-INF/lib/carrier-")
-                        or name.endswith("default-capability-assembly.json")
                         for name in server_entries
                     ),
-                    "Server Boot JAR contains Scenario Worker implementation",
+                    "Server Boot JAR contains Worker Simulator implementation",
                 )
         finally:
             server_jar_path.unlink(missing_ok=True)

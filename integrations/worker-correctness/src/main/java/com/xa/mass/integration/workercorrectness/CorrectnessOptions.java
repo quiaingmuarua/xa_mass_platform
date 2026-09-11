@@ -106,7 +106,7 @@ final class CorrectnessOptions {
         return value;
     }
 
-    Path scenarioWorkerLabRoot() {
+    Path workerSimulatorLabRoot() {
         return absolutePath(values.getOrDefault(
                 "scenario-worker-lab-root",
                 "../../data/scenario-workers"

@@ -198,7 +198,7 @@ def server_distribution(root):
 
 def build(root, harness=False):
     module = server_distribution(root).replace("/", ":")
-    tasks = [f":{module}:bootJar", ":scenario_workers_jvm:installDist"]
+    tasks = [f":{module}:bootJar", ":worker_simulator_jvm:installDist"]
     if harness:
         tasks.append(":integrations:worker-call-performance:installDist")
     # Keep builds outside all measurement windows.
@@ -408,14 +408,16 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
         wait_http("http://127.0.0.1:18082/actuator/health/readiness", processes["server"], sampler, min(deadline, time.monotonic() + 180))
         inventory = private / "data/scenario-workers"
         materialize_inventory(inventory, {GROUP: tuple({"runtime": "java", "capability": "string-utils"} for _ in range(worker_count))})
-        assembly = private / "capabilities.json"
-        write_json(assembly, {GROUP: {"eventCodes": ["extension.worker.string.md5", "extension.worker.lab.delay"],
+        config_path = private / "worker-simulator.json"
+        groups = {GROUP: {"events": ["extension.worker.string.md5", "extension.worker.lab.delay"],
+            "count": worker_count, "propertiesTemplate": {}, "newEnvironment": False,
             "requestTimeoutMillis": 60_000, "reconnectPolicy": {"maxUnstableAttempts": 600,
-            "reconnectIntervalMillis": 500, "stableConnectionDurationMillis": 10_000}}})
-        write_json(evidence / "host-configuration.json", json.loads(assembly.read_text()))
-        processes["host"] = start_process(["java", *JVM, *jfr_options(private, "host", diagnostics), "-cp", root / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*",
-            "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--runtime-api-base-url=http://127.0.0.1:18082",
-            f"--sandbox-root={inventory}", "--control-port=18086", f"--capability-assembly={assembly}"], private / "host.log", env)
+            "reconnectIntervalMillis": 500, "stableConnectionDurationMillis": 10_000}}}
+        write_json(config_path, {"runtimeApiBaseUrl": "http://127.0.0.1:18082", "sandboxRoot": str(inventory.resolve()),
+                                "controlPort": 18086, "workerGroups": groups})
+        write_json(evidence / "host-configuration.json", groups)
+        processes["host"] = start_process(["java", *JVM, *jfr_options(private, "host", diagnostics), "-cp", root / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*",
+            "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", str(config_path)], private / "host.log", env)
         sampler.register("host", processes["host"])
         wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler, min(deadline, time.monotonic() + 180))
         harness_output = evidence / "harness"

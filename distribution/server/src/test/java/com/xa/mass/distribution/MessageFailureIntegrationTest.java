@@ -4,7 +4,7 @@ import com.xa.mass.server.XaMassServerConfiguration;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.messages.backend.MessageProductConfiguration;
-import com.xa.mass.scenarioworkers.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageScenario;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
@@ -37,7 +37,7 @@ class MessageFailureIntegrationTest {
         try (var fixture = new Fixture(false); var channel = new MessageScenario()) {
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
-            var sender = channel.addSender("demo-sim", "one", "CN", "+861700000000", () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
+            var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
             var handler = WorkerEventDefinition.extension("message.send", WorkerEventParameterResolvers.jsonMap(), (request, reporter) -> {
                 // Hold the real synchronous handler completion; recipient actions still use its original Reporter.
                 var sent = channel.send(sender, request, reporter); executed.countDown();

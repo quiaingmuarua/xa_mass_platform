@@ -61,7 +61,7 @@ Backend 与 Host 各最多保留 50 批、50,000 条消息。Backend 用两个�
 
 ## 模拟收件端与交付
 
-[Scenario Host](../../scenario_workers_jvm/README.md#messages-and-shared-products) 拥有模拟通道、消息去重、
+[Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有模拟通道、消息去重、
 收件动作和 Reporter 关联。Backend 和测试输入不能直接创建收件记录。后续回执由业务动作产生，
 不是任意 Report 注入。停止 Worker 清理 Reporter；重启可继续本地阅读/回复旧消息，但不能更新旧 Item。
 本版无第三方通道、聊天历史、重启恢复、回执 ACK、可靠补偿或跨进程幂等。
@@ -73,7 +73,7 @@ Backend 与 Host 各最多保留 50 批、50,000 条消息。Backend 用两个�
 ## 检查与验收
 
 ```powershell
-.\gradlew.bat :products:message-campaigns:backend:test :scenario_workers_jvm:test
+.\gradlew.bat :products:message-campaigns:backend:test :worker_simulator_jvm:test
 .\gradlew.bat :distribution:server:productCompositionIntegrationTest
 python integrations/product-coexistence/run_proof.py --build --scenario functional
 python integrations/product-coexistence/run_proof.py --scenario lifecycle

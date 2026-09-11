@@ -17,7 +17,7 @@ class WorkerCorrectnessArchitectureTest {
         ));
         for (String forbidden : new String[]{
                 "project(':server_jvm')",
-                "project(':scenario_workers_jvm')",
+                "project(':worker_simulator_jvm')",
                 "project(':kernel_jvm')",
                 "project(':transport:netty-adapter')",
                 "project(':transport:java-worker')",
@@ -45,13 +45,14 @@ class WorkerCorrectnessArchitectureTest {
         String production = sources.toString();
         for (String forbidden : new String[]{
                 "JavaWorkerManager",
-                "ScenarioWorkers",
+                "new WorkerSimulator(",
+                "WorkerSimulator.fromJson(",
                 "WorkerRunController",
                 "NettyWorkerDeliveryAdapter",
                 "RedisClient",
                 "import com.xa.mass.server.",
                 "import com.xa.mass.kernel.",
-                "import com.xa.mass.scenarioworkers.",
+                "import com.xa.mass.workersimulator.",
                 "properties.toString()",
                 "/results:export",
                 "createTask(",

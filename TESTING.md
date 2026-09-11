@@ -111,7 +111,7 @@ Use the lowest-cost proof that owns the changed claim:
    the focused Owner test.
 2. A DTO, codec, HTTP, Redis or adjacent-owner contract changes: run the
    corresponding Boundary Proof in addition to focused Owner tests.
-3. Worker identity, Prepare, long-lived delivery, extensions, shared Lab/SMS Scenario Host or
+3. Worker identity, Prepare, long-lived delivery, extensions, shared Lab/SMS Worker Simulator or
    Worker-facing Server behavior changes: run Worker Correctness.
 4. Kernel/Pacer scheduling, serviceability, Runtime projections or Worker fault
    convergence changes: run Worker Convergence Health. TaskItem finality remains
@@ -159,9 +159,9 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | JVM Contracts | Explicit non-Android Gradle module `build` tasks | None |
 | Redis Owner | `.\gradlew.bat :server_jvm:redisOwnerIntegrationTest` | Redis 7 |
 | Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
-| Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
-| Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
-| Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
+| Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
+| Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
+| Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Schedule retains `--suite task` then `--suite direct-diagnosis`; manual `--suite nightly` (seven aligned RPC cases plus original mixed witness) awaits Result-closure acceptance. `--suite rpc-diagnosis --repetitions 3`, JFR and historical Direct are manual | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
 | Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
@@ -174,6 +174,12 @@ Correctness and Android Worker Proof after the Binding ownership move.
 
 The exact JVM module build list and Android assembly commands are maintained in
 [Proof CI](.github/workflows/proof-ci.yml), alongside their environment setup.
+The JVM lane also installs Worker Simulator and runs
+`python -m unittest discover -s worker_simulator_jvm/src/test/python -p 'test_*.py'`.
+This invokes its actual installed entry with one configuration from a different
+working directory and verifies generation and inventory reuse without a Server.
+It does not replace the independently observed Worker Correctness or product proofs.
+
 For documentation checks, run both the checker tests and the repository scan:
 
 ```powershell
@@ -232,7 +238,7 @@ Real Redis proofs use unique `test_*` scopes; the scope is the isolation
 contract. Cleanup is best-effort resource hygiene for persistent local Redis,
 uses bounded `SCAN` and `UNLINK` for only that exact scope, and never changes a
 Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
-Service container. A proof that needs a Server or Scenario Host owns those
+Service container. A proof that needs a Server or Worker Simulator owns those
 process lifecycles and stops all writers before a local cleanup attempt.
 
 The Runtime Boundary starts the Java Server for its full traversal. A separate
@@ -240,7 +246,7 @@ finite HTTP configuration test starts isolated contexts for the default pool,
 prestarted pool and virtual execution; real HTTP and Redis establish Direct
 success, occupied-slot rejection, timeout, late-report rejection and Owner
 shutdown, with exactly one servlet completion per request. Worker Correctness and
-Worker Convergence Health start Server and Scenario Host as independent
+Worker Convergence Health start Server and Worker Simulator as independent
 processes. Worker Loaded Capacity + Recovery Stability is a separate
 nightly/manual workflow and is not part of the pull-request Proof Gate.
 

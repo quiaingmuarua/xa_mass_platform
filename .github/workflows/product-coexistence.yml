@@ -45,7 +45,7 @@ jobs:
           python -m pip install -r distribution/product-preview/requirements.txt
       - name: Owner tests and real product composition
         run: |
-          ./gradlew :products:message-campaigns:backend:test :products:sms-reception:backend:test :scenario_workers_jvm:test :distribution:server:test :distribution:server:productCompositionIntegrationTest :distribution:product-preview:stageServer :distribution:product-preview:stageHost :distribution:product-preview:stageFrontend --console=plain
+          ./gradlew :products:message-campaigns:backend:test :products:sms-reception:backend:test :worker_simulator_jvm:test :distribution:server:test :distribution:server:productCompositionIntegrationTest :distribution:product-preview:stageServer :distribution:product-preview:stageHost :distribution:product-preview:stageFrontend --console=plain
           python -m unittest discover -s integrations/product-coexistence -p 'test_*.py'
           python -m unittest discover -s distribution/product-preview -p 'test_*.py'
           corepack pnpm@11.9.0 --dir frontend lint

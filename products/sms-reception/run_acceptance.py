@@ -7,10 +7,13 @@ from collections import Counter
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import uuid
 
 PRODUCT = Path(__file__).resolve().parent
@@ -128,7 +131,7 @@ def lifecycle(run):
     http(run.host, control + ":start", {})
     run.wait_for(run.connected, 30, "restarted Worker verified route")
     restarted = next(sim for sim in all_records(run.host, "/lab/v1/sms/inventory") if sim["country"] == "CN")
-    require(restarted["workerId"] == cn["workerId"], "Restart changed CLIENT_KEY identity")
+    require(restarted["workerId"] == cn["workerId"], "Restart changed file-coordinate identity")
     fresh = wait_state(run, create(run, request="after-stop"), {"LISTENING"})
     require(inject(run, cn["phone"], "[A] 111111", "stopped-sms")["status"] == "DUPLICATE", "Restart cleared SMS dedup")
     inject(run, cn["phone"], "[A] 222222", "restarted-sms")
@@ -142,6 +145,106 @@ def lifecycle(run):
     return {"passed": True, "scenario": "lifecycle", "workerId": cn["workerId"], "hostInterrupted": 1,
             "expectedUnconfirmed": 1, "newRunSmsObserved": 1, "dedupRetained": True,
             "reporterRebound": False, "metrics": http(run.url, "/api/v1/sms/metrics")}
+
+
+def dynamic_properties(run, inventory):
+    """Separate local, Adapter and Matching observations, then actual country-index execution."""
+    cn = next(worker for worker in inventory if worker["country"] == "CN")
+    us = next(worker for worker in inventory if worker["country"] == "US")
+    old = wait_state(run, create(run, request="before-hot-change"), {"LISTENING"})
+    prepare_before = prepare_counts(run.output / "runtime-http.log")
+    require(prepare_before["prepare"] == 0 and prepare_before["prepare-batch"] > 0,
+            "Product initialization did not exclusively use file batch Prepare")
+    before = {worker["replicaKey"]: worker["workerId"] for worker in inventory}
+    new_phone = "+861700999999"
+
+    def patch(worker, values):
+        path = "/lab/v1/workers/" + worker["workerGroupId"] + "/" + urllib.parse.quote(worker["replicaKey"], safe="")
+        response = http(run.host, path + ":properties", values, method="PATCH")
+        require(response["persisted"] and response["sendAccepted"], "Hot properties not accepted locally")
+        return http(run.host, path)["workerProperties"]
+
+    expected = {cn["workerId"]: patch(cn, {"phone": new_phone, "country": "US"}),
+                us["workerId"]: patch(us, {"country": "CN"})}
+    local = next(record for record in all_pages(run.host, "/lab/v1/sms/records") if record["listenerId"] == old["id"])
+    require(local["status"] == "INTERRUPTED" and not local["reportAccepted"], "Hot change emitted a synthetic ending report")
+    try:
+        inject(run, cn["phone"], "[A] 222222", "old-phone-after-change")
+        raise AssertionError("Old phone is still routed")
+    except urllib.error.HTTPError as error:
+        require(error.code == 400, "Old phone rejection has wrong status")
+
+    def adapter_observed():
+        response = http(run.url, f"/api/v1/worker-delivery/endpoint-managers/{run.adapter}/direct-calls", {
+            "messageType": "platform.adapter.worker-properties.snapshot", "waitTimeoutMillis": 1000,
+            "opaquePayload": json.dumps({"workerIds": list(expected)})})["results"][run.adapter]
+        if response["status"] != "observed":
+            return False
+        rows = json.loads(response["opaqueResultPayload"])["propertiesByWorkerId"]
+        return all(rows[worker].get("properties") == properties for worker, properties in expected.items())
+
+    def matching_observed():
+        rows = http(run.url, "/api/v1/runtime-view/worker-groups/demo-sim/workers:preview", 100)["workers"]
+        actual = {worker["workerId"]: worker["workerProperties"] for worker in rows}
+        return all(actual.get(worker) == properties for worker, properties in expected.items())
+
+    run.wait_for(adapter_observed, 15, "Adapter complete hot Properties")
+    run.wait_for(matching_observed, 15, "Matching complete hot Properties")
+    received = wait_state(run, create(run, country="US", request="after-hot-change"), {"LISTENING"})
+    require(received["workerId"] == cn["workerId"] and received["phone"] == new_phone,
+            "Country index did not select the changed Worker")
+    inject(run, new_phone, "[A] 444444", "hot-change-sms")
+    wait_state(run, received, {"RECEIVED"})
+    require({worker["replicaKey"]: worker["workerId"] for worker in all_pages(run.host, "/lab/v1/sms/inventory")} == before,
+            "Hot Properties changed identity or topology")
+    require(prepare_counts(run.output / "runtime-http.log") == prepare_before, "Hot Properties invoked Prepare")
+
+    # Restart the real Host with exactly the same inventory and Server scope.
+    # The same product Workers now also install one explicitly selected proof Handler.
+    config_path = run.worker_config_path
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["workerGroups"]["demo-sim"]["events"].append("extension.worker.lab.execution-witness")
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    process = run.processes["host"]
+    args = list(process.args)
+    process.terminate()
+    process.wait(timeout=10)
+    run.launch("host", args, os.environ.copy())
+    run.wait_for(run.host_ready, 60, "Host inventory restart")
+    run.wait_for(run.connected, 30, "restarted Host routes")
+    require({worker["replicaKey"]: worker["workerId"] for worker in all_pages(run.host, "/lab/v1/sms/inventory")} == before,
+            "Host restart changed file-coordinate identities")
+    run.wait_for(adapter_observed, 15, "restarted Adapter baseline")
+    run.wait_for(matching_observed, 15, "restarted Matching facts")
+    restored = wait_state(run, create(run, country="US", request="after-hot-restart"), {"LISTENING"})
+    require(restored["workerId"] == cn["workerId"] and restored["phone"] == new_phone, "Restart did not retain edits")
+    inject(run, new_phone, "[A] 555555", "hot-restart-sms")
+    wait_state(run, restored, {"RECEIVED"})
+    witness = http(run.url, f"/api/v1/worker-delivery/endpoint-managers/{run.adapter}/direct-calls", {
+        "workerGroupId": "demo-sim", "workerPayloads": {
+            cn["workerId"]: json.dumps({"probeToken": "product-with-witness", "delayMillis": 0})},
+        "messageType": "extension.worker.lab.execution-witness", "waitTimeoutMillis": 5000})["results"][cn["workerId"]]
+    require(witness["status"] == "observed" and witness["messageType"] == "platform.worker.command.succeeded",
+            "Product Worker cannot execute its selected verification Handler")
+    records = http(run.host, "/lab/v1/execution-witnesses?after=0&limit=100")["records"]
+    require([record["state"] for record in records] == ["ENTERED", "COMPLETED"]
+            and all(record["labWorkerKey"] == cn["replicaKey"] for record in records),
+            "Verification witness did not execute on the product Worker")
+    return {"passed": True, "adapterObserved": True, "matchingObserved": True, "countryIndexExecutorChanged": True,
+            "identitiesUnchanged": True, "hostRestartRestoredEdits": True, "oldListeningInterruptedLocally": True,
+            "initialBatchPrepareObserved": True, "hotPrepareRequestDelta": 0,
+            "composedVerificationCapabilityExecuted": True}
+
+
+def prepare_counts(path):
+    counts = {"prepare": 0, "prepare-batch": 0}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        record = re.fullmatch(r"([A-Z]+) (/\S*) ([1-5][0-9]{2})", line)
+        require(record is not None, "Incomplete HTTP access record")
+        route = re.fullmatch(r"/api/v1/worker-groups/[^/]+/workers:(prepare|prepare-batch)", record[2])
+        if route:
+            counts[route[1]] += 1
+    return counts
 
 
 def functional(run):
@@ -222,10 +325,11 @@ def functional(run):
     evidence = compare(run)
     require(evidence["falseSuccesses"] == 0 and evidence["missingSmsObservations"] == 0
             and evidence["stateMismatches"] == 0, "Host and Backend business observations diverged")
+    hot = dynamic_properties(run, inventory)
     return {"passed": True, "scenario": "functional", "checks": ["country pools", "Adapter Properties baseline", "A/B/C shared number",
             "priority and stable ties", "request conflict", "SMS dedup", "Task duplicate", "no-listener/no-match",
             "expiry window", "targeted cancellation", "cancel during establishment", "finite auto traffic"],
-            "comparison": evidence, "mixedCapabilities": mixed, "metrics": http(run.url, "/api/v1/sms/metrics")}
+            "comparison": evidence, "mixedCapabilities": mixed, "dynamicProperties": hot, "metrics": http(run.url, "/api/v1/sms/metrics")}
 
 
 def percentile(values, p):
@@ -329,7 +433,8 @@ def main():
     output = (args.output or PRODUCT / "build" / "acceptance" / (args.scenario + "-" + time.strftime("%Y%m%d-%H%M%S"))).resolve()
     counts = (700, 200, 100) if args.scenario == "concurrency" else (1, 1, 1)
     result = {"passed": False, "scenario": args.scenario}
-    run = preview.Preview(counts, args.port, root=args.root, output=output / "private", products="sms")
+    run = preview.Preview(counts, args.port, root=args.root, output=output / "private", products="sms",
+                          sandbox_root=output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers")
     try:
         with run:
             print("Real processes and verified Worker routes ready", flush=True)

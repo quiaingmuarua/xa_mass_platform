@@ -36,7 +36,9 @@ class PreviewArchiveTest(unittest.TestCase):
         root = "xa-mass-product-preview-0.1.0-preview/"
         files = {name: b"launcher" for name in (
             "run_preview.py", "requirements.txt", "README.md", "config/application-product-preview.yaml")}
-        files["scenario-workers/lib/xa-mass-scenario-workers-test.jar"] = b"host"
+        files["worker-simulator/lib/xa-mass-worker-simulator-test.jar"] = b"host"
+        for name in ("lab", "sms", "messages", "products"):
+            files["worker-simulator/config/" + name + ".json"] = b"{}"
         files["lib/server.jar"] = jar.getvalue()
         for asset in self.frontend.rglob("*"):
             if asset.is_file():
@@ -54,6 +56,20 @@ class PreviewArchiveTest(unittest.TestCase):
 
     def test_accepts_current_unified_build(self):
         self.assertTrue(verify(self.archive(), self.frontend)["passed"])
+
+    def test_requires_each_complete_simulator_example(self):
+        original = self.archive()
+        incomplete = self.directory / "incomplete.zip"
+        with zipfile.ZipFile(original) as source, zipfile.ZipFile(incomplete, "w") as target:
+            for name in source.namelist():
+                if not name.endswith("/worker-simulator/config/lab.json"):
+                    target.writestr(name, source.read(name))
+        with self.assertRaisesRegex(ValueError, "Incomplete"):
+            verify(incomplete, self.frontend)
+
+    def test_never_packages_materialized_inventory(self):
+        with self.assertRaisesRegex(ValueError, "private run material"):
+            verify(self.archive(extra="xa-mass-product-preview-0.1.0-preview/worker-simulator/config/data/scenario-workers/demo-sim/workers-000.jsonl"), self.frontend)
 
     def test_rejects_stale_frontend(self):
         archive = self.archive()

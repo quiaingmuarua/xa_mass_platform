@@ -578,17 +578,24 @@ registration, identity inference, thread or Core API.
 
 ## Scenario And Android Capabilities
 
-[Scenario Host](scenario_workers_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
+[Worker Simulator](worker_simulator_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
 
-`scenario_workers_jvm` is a finite standalone Java 21 Lab/SMS/Messages Worker Host, not a
+`worker_simulator_jvm` is a finite standalone Java 21 Lab/SMS/Messages Worker Host, not a
 Kernel owner, Server profile, Adapter, production Worker platform or plugin
 system.
 
 - It may depend on Worker Core and Java Worker, not Kernel, Server, Adapter,
   Redis, reflection or configurable class names.
+- Its only process input is `--config` (plus `--help`): one JSON owns
+  process coordinates, Group events/count/templates/reuse and the embedded startup
+  plan. Only Group selection is mandatory for built-in Groups; resolve omitted
+  fields to local defaults once, before Host assembly. Explicit templates replace
+  defaults in full; invalid explicit inputs must not fall back. Relative inventory
+  paths, including the default, resolve from that file. No CLI overrides,
+  implicit presets, separate capability or plan files belong in the Host.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
-- Preserve the [Lab inventory contract](scenario_workers_jvm/README.md#persistent-worker-lab)
+- Preserve the [Lab inventory contract](worker_simulator_jvm/README.md#persistent-worker-lab)
   for schema, string Properties, per-file and per-Group bounds and immutable
   physical identity coordinates. `labWorkerKey` is Lab-local, not a universal
   Worker identity field. Scenario uses the Server-owned `SCENARIO_LAB` Prepare
@@ -599,9 +606,13 @@ system.
   Scenario resolves a control target under its short inventory gate, then
   performs Manager Prepare outside that gate so a slow control request cannot
   block scheduled stops or Host shutdown from entering their own owners.
-- An optional strict startup plan selects the initial finite Worker set and
-  startup-only scheduled stops. It is validated completely before any replica
-  starts and does not contain Properties, Worker IDs, Tasks or Kernel claims.
+- An optional embedded startup plan selects the initial finite Worker set and
+  startup-only scheduled stops. Validate the entire effective inventory, capability
+  requirements, number uniqueness and plan before committing generated Groups or
+  creating Managers. Group-local newEnvironment stages and validates replacement,
+  retains the old directory until installation succeeds, and attempts restoration
+  on failure; it does not reset Redis or Server identity. The plan does not contain
+  Properties, Worker IDs, Tasks or Kernel claims.
 - The String Lab command checkpoint is a bounded Scenario-only fault fixture.
   It must not become a Worker Core hook, generic action DSL or production
   lifecycle mechanism.
@@ -625,14 +636,22 @@ system.
   must not wait for publication. Local acceptance is not remote ACK; never
   compensate, retry or add pending publication state.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
-- SMS and Messages use generated CLIENT_KEY replicas in the same Manager collection. Keep
-  Lab inventory keys local to Lab, and SMS Properties read-only. SMS adds only
-  its fixed per-number events beside shared string events; no second Host,
-  HTTP server, Manager collection or plugin lifecycle belongs in the SMS package.
+- Lab, SMS and Messages share the file inventory, SCENARIO_LAB batch Prepare,
+  one immutable current Properties snapshot per record and common controls.
+  Group `events` selects compiled business and verification capabilities; an
+  empty list uses only the finite local Group defaults, not Server eventCodes.
+  Count/templates initialize missing or explicitly rebuilt Group inventories;
+  otherwise reuse is exact, including an empty directory. Templates materialize
+  string Properties once and never become another runtime Provider.
+  Preserve file coordinates when phone/country change. Persist before local
+  address updates, then publish outside inventory and business gates. No second
+  Provider, Host, Manager collection or plugin lifecycle belongs in a business package.
 - SMS stop closes number admission and clears active Reporters before SDK stop,
   without waiting for network publication or emitting synthetic ending Reports.
   Restart retains identity and process-wide dedup, never restores subscriptions
-  or transfers an old run's Reporter. Default Lab starts no SMS clock or routes.
+  or transfers an old run's Reporter. Hot phone change locally interrupts old
+  SMS listeners without a synthetic Report; historical Messages keep their facts
+  and original Reporter. Construct business resources only for installed capabilities.
 - Server never depends on, constructs, starts or stops the Host. The root local
   launcher and proof lanes own the two independent process lifecycles.
 - Existing Group directories are not seeded or repaired; missing configured
@@ -713,7 +732,7 @@ Adapter connectivity, Kernel state or schedulability.
   finite TaskItems through public Task APIs; Server owns no Lab input/output
   directory.
 - Worker Correctness live Properties mutations use Lab HTTP and the real
-  Scenario Host/SDK connection before its existing Host restart phase. Java
+  Worker Simulator/SDK connection before its existing Host restart phase. Java
   observes Adapter/Server through public APIs; it must not call implementations
   or inject Reports. The runner owns process identity, control-file and initial
   Prepare/access-log audits. Fixed budgets and full snapshot oracles belong in
@@ -739,7 +758,7 @@ Adapter connectivity, Kernel state or schedulability.
   in executable and owner documents.
 - `distribution/server` is a packaging owner only. It assembles the current
   Server, production Pacer, frontend and configuration. It must not package the
-  repository-local Scenario Worker Host, add a fallback runtime owner, add a
+  repository-local Worker Simulator, add a fallback runtime owner, add a
   second production mechanism or introduce scheduling behavior.
 
 ## Product Composition
@@ -777,7 +796,7 @@ business flows; the directory name does not establish a commercial product bound
   observation, never business activation. Public Mock Demo makes no product requests.
   Do not invoke Controllers or use platform HTTP waiters or the Direct Call
   registry from product code.
-- The simulator is the SMS scene of the independent `scenario_workers_jvm` SDK
+- The simulator is the SMS scene of the independent `worker_simulator_jvm` SDK
   Host, sharing its main and local control service with the Lab. Its HTML and raw SMS
   controls must not become a product Result source or a platform control proxy.
 
@@ -793,7 +812,7 @@ business flows; the directory name does not establish a commercial product bound
   Keep first-Reporter association, business identity dedup and local-fact-before-publish
   ordering. Recipient hold/release accepts only already committed receipt IDs, never
   arbitrary Reports. Stop clears Reporters before SDK stop; a new run cannot adopt old
-  messages. Preserve the finite capacities in the [Host Owner](scenario_workers_jvm/README.md#messages-and-shared-products).
+  messages. Preserve the finite capacities in the [Host Owner](worker_simulator_jvm/README.md#messages-and-shared-products).
 - [Product Preview](distribution/product-preview/README.md) is a finite delivery owner
   for one Server and one Host, with the sole product Preview launcher, deployment
   configuration and ZIP. Product selection uses that same entry; do not retain

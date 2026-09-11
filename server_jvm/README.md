@@ -955,7 +955,7 @@ explicit profile or external configuration may:
 Server does not parse Worker files, construct business Definitions or own
 individual Worker lifecycle, and it never starts a Scenario Worker process.
 Those responsibilities belong to the independently launched
-[`scenario_workers_jvm`](../scenario_workers_jvm/README.md) Host.
+[`worker_simulator_jvm`](../worker_simulator_jvm/README.md) Host.
 
 The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
 Scenario WorkerGroup declarations and the advisory external Android demo
@@ -1065,7 +1065,7 @@ python run_local_runtime.py
 ```
 
 It builds and starts Server first, waits for readiness, then starts the
-standalone Scenario Worker Host against `data/scenario-workers`. Existing
+standalone Worker Simulator against `data/scenario-workers`. Existing
 Worker files remain persistent local state. Stopping Host closes its network
 resources without stopping Server or deleting Workers, WorkerGroups or managed
 Task Calls.
@@ -1085,7 +1085,7 @@ For a repository-independent deployment, extract the
 JAR directly from the Runtime root with Java 21, external Redis and explicit
 Profile and frontend arguments. The schema-v5 manifest lists the supported
 `scenario-workers` and `agentforge` Profiles. The Runtime ZIP does not contain
-the repository-local Scenario Worker Host; use `run_local_runtime.py` or the
+the repository-local Worker Simulator; use `run_local_runtime.py` or the
 module's Gradle task when that Lab is required. Source `bootRun` remains
 available for repository development.
 

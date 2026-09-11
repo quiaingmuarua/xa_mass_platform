@@ -16,6 +16,7 @@ def verify(archive, frontend):
             raise ValueError("Unsafe or duplicate archive member")
         files = {name[len(root) + 1:]: bundle.read(name) for name in names if not name.endswith("/")}
         required = {"run_preview.py", "requirements.txt", "README.md", "preview-manifest.json", "config/application-product-preview.yaml"}
+        required.update("worker-simulator/config/" + name + ".json" for name in ("lab", "sms", "messages", "products"))
         if not required <= files.keys():
             raise ValueError("Incomplete Preview entrypoints")
         manifest = json.loads(files["preview-manifest.json"])
@@ -42,15 +43,15 @@ def verify(archive, frontend):
         jars = [name for name in files if name.startswith("lib/") and name.endswith(".jar")]
         if len(jars) != 1:
             raise ValueError("Expected one Server JAR")
-        if not any(name.startswith("scenario-workers/lib/xa-mass-scenario-workers-") for name in files):
-            raise ValueError("Missing actual Scenario Host")
+        if not any(name.startswith("worker-simulator/lib/xa-mass-worker-simulator-") for name in files):
+            raise ValueError("Missing actual Worker Simulator")
         if any("node_modules" in PurePosixPath(name).parts or "private" in PurePosixPath(name).parts
                 or name.endswith((".jsonl", "package.json", "gradlew", "build.gradle", ".log")) for name in files):
             raise ValueError("Source toolchain or private run material in Preview")
         with zipfile.ZipFile(io.BytesIO(files[jars[0]])) as jar:
             entries = jar.namelist()
-            if any("sms-frontend/" in name or "scenario-workers" in name for name in entries):
-                raise ValueError("Server embeds a separate frontend or Scenario Host")
+            if any("sms-frontend/" in name or "worker-simulator" in name for name in entries):
+                raise ValueError("Server embeds a separate frontend or Worker Simulator")
             if not any("xa-mass-message-campaigns-" in name for name in entries):
                 raise ValueError("Messages backend absent")
     return {"passed": True, "archiveSha256": hashlib.sha256(archive.read_bytes()).hexdigest(),

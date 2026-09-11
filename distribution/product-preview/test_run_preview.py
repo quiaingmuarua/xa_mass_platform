@@ -1,4 +1,6 @@
 import unittest
+import json
+import shutil
 from unittest.mock import Mock, call, patch
 import socket
 import tempfile
@@ -50,19 +52,21 @@ class PreviewLifecycleTest(unittest.TestCase):
 
     def test_source_and_zip_compositions_use_two_jvms_and_one_server_address(self):
         combinations = [
-            ("sms", "sms", "sms-reception", "--sms-counts="),
-            ("messages", "messages", "message-campaigns", "--device-counts="),
-            ("sms,messages", "products", "sms-reception,message-campaigns", "--device-counts="),
+            ("sms", "sms-reception"),
+            ("messages", "message-campaigns"),
+            ("sms,messages", "sms-reception,message-campaigns"),
         ]
         for packaged in (False, True):
-            for products, scenario, profiles, count_option in combinations:
+            for products, profiles in combinations:
                 with self.subTest(packaged=packaged, products=products), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     server_lib = root / ("lib" if packaged else "build/server")
-                    host_lib = root / ("scenario-workers/lib" if packaged else "build/host/lib")
+                    host_lib = root / ("worker-simulator/lib" if packaged else "build/host/lib")
                     frontend = root / ("frontend/dist" if packaged else "build/frontend/dist")
                     for folder in (server_lib, host_lib, frontend):
                         folder.mkdir(parents=True)
+                    shutil.copytree(Path(__file__).resolve().parents[2] / "worker_simulator_jvm/config",
+                                    host_lib.parent / "config")
                     (server_lib / "xa-mass-server-jvm-test.jar").write_bytes(b"fixture")
                     (host_lib / "host.jar").write_bytes(b"fixture")
                     run = Preview(root=root, port=18410, products=products)
@@ -80,14 +84,32 @@ class PreviewLifecycleTest(unittest.TestCase):
                         self.assertIn("--spring.profiles.active=product-preview," + profiles, server.args[1])
                         self.assertIn("--spring.config.additional-location=" + (root / "config").as_uri() + "/", server.args[1])
                         self.assertIn(str(server_lib / "xa-mass-server-jvm-test.jar"), server.args[1])
+                        self.assertIn("--server.tomcat.accesslog.pattern=%m %U %s", server.args[1])
+                        self.assertIn("--server.tomcat.accesslog.buffered=false", server.args[1])
                         self.assertIn(str(host_lib / "*"), host.args[1])
-                        self.assertIn("--runtime-api-base-url=http://127.0.0.1:18410", host.args[1])
-                        self.assertIn("--scenario=" + scenario, host.args[1])
+                        self.assertEqual(["--config", str(run.worker_config_path)], host.args[1][-2:])
+                        config = json.loads(run.worker_config_path.read_text(encoding="utf-8"))
+                        self.assertEqual("http://127.0.0.1:18410", config["runtimeApiBaseUrl"])
+                        self.assertEqual(18414, config["controlPort"])
+                        self.assertEqual(str(root / "data/scenario-workers"), config["sandboxRoot"])
+                        group = config["workerGroups"]["demo-sim"]
+                        self.assertEqual(60, group["count"])
+                        self.assertFalse(group["newEnvironment"])
+                        self.assertEqual({"$choice": ["CN", "US", "GB"]}, group["propertiesTemplate"]["country"])
+                        self.assertEqual("sms" in products, "extension.worker.sms.listen.start" in group["events"])
+                        self.assertEqual("messages" in products, "extension.worker.message.send" in group["events"])
                         self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
-                        self.assertIn("--control-port=18414", host.args[1])
-                        self.assertIn(count_option + "20,20,20", host.args[1])
                         self.assertEqual({"server", "hostClasspath", "frontendSha256"}, run.artifacts.keys())
                         run.close()
+
+    def test_readiness_uses_discovered_inventory_not_initialization_counts(self):
+        run = Preview(counts=(700, 200, 100), sandbox_root=Path("test/data/scenario-workers"))
+        with patch("run_preview.http", return_value={"started": True, "prepared": 3, "numbers": 3}):
+            self.assertTrue(run.host_ready())
+        with patch("run_preview.http", return_value={"started": True, "prepared": 0, "numbers": 0}):
+            self.assertTrue(run.host_ready())
+        with patch("run_preview.http", return_value={"started": True, "prepared": 2, "numbers": 3}):
+            self.assertFalse(run.host_ready())
 
     def test_inventory_reads_bounded_pages_and_checks_progress(self):
         with patch("run_preview.http", side_effect=[

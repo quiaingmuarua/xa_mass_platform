@@ -37,7 +37,6 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "schemaVersion": 1,
                 "initialWorkers": [
                     {
                         "workerGroupId": PROOF.STRING_GROUP,
@@ -55,8 +54,8 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
             plan,
         )
 
-    def test_capability_assembly_survives_one_server_restart(self):
-        assembly = PROOF._capability_assembly()
+    def test_worker_groups_survives_one_server_restart(self):
+        assembly = PROOF._worker_groups()
 
         self.assertEqual(
             {PROOF.PHONE_GROUP, PROOF.STRING_GROUP},
@@ -73,22 +72,22 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
             )
         self.assertIn(
             "extension.worker.lab.checkpoint",
-            assembly[PROOF.STRING_GROUP]["eventCodes"],
+            assembly[PROOF.STRING_GROUP]["events"],
         )
         self.assertIn(
             "extension.worker.lab.delay",
-            assembly[PROOF.STRING_GROUP]["eventCodes"],
+            assembly[PROOF.STRING_GROUP]["events"],
         )
         self.assertIn(
             "extension.worker.lab.fail",
-            assembly[PROOF.STRING_GROUP]["eventCodes"],
+            assembly[PROOF.STRING_GROUP]["events"],
         )
         self.assertNotIn(
             "extension.worker.lab.delay",
-            assembly[PROOF.PHONE_GROUP]["eventCodes"],
+            assembly[PROOF.PHONE_GROUP]["events"],
         )
 
-    def test_server_catalog_matches_convergence_capability_assembly(self):
+    def test_server_catalog_matches_convergence_worker_groups(self):
         config = (
             PROOF.SERVER_CONFIG_DIRECTORY
             / "application-scenario-workers.yaml"

@@ -17,11 +17,7 @@ from integrations.worker_proof_support.scenario_inventory import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WORKERS = (
-    ROOT
-    / "scenario_workers_jvm/src/main/resources/com/xa/mass/scenarioworkers"
-    / "default-workers.json"
-)
+
 
 
 class ScenarioInventoryTest(unittest.TestCase):
@@ -99,22 +95,14 @@ class ScenarioInventoryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "already exist"):
                 materialize_inventory(root, {"group-a": ({"value": "1"},)})
 
-    def test_canonical_world_matches_scenario_default_resource(self) -> None:
+    def test_canonical_world_keeps_the_fixed_correctness_fixture(self) -> None:
         world = canonical_100_worker_world()
         self.assertEqual({PHONE_GROUP, STRING_GROUP}, set(world))
         self.assertEqual([50, 50], sorted(len(records) for records in world.values()))
-
-        encoded = json.loads(DEFAULT_WORKERS.read_text(encoding="utf-8"))
-        expected = {
-            group_id: {
-                "workers-000.jsonl": [
-                    {"schemaVersion": 2, "workerProperties": properties}
-                    for properties in records
-                ]
-            }
-            for group_id, records in world.items()
-        }
-        self.assertEqual(expected, encoded)
+        for group_id, records in world.items():
+            self.assertEqual("1", records[0]["labSlot"])
+            self.assertEqual("50", records[-1]["labSlot"])
+            self.assertTrue(all(record["convergenceSlot"] == "A" for record in records))
 
     def test_canonical_convergence_world_spans_five_files_per_group(self) -> None:
         world = canonical_1000_worker_world()

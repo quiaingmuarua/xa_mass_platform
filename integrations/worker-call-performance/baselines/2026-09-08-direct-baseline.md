@@ -16,7 +16,7 @@
 - Ubuntu 24.04.4、4 个逻辑 CPU、Temurin Java 21.0.12.1、Redis 7.4.10。
   Server、Host、Harness 和 Redis 共用一台 CI 主机。
 - 一个 Group、一个 WebSocket Adapter、1,000 个 Worker 实例。
-  Scenario Host 在一个 JVM 中维护 1,000 条真实 Worker 连接，不是 1,000 台物理设备。
+  Worker Simulator 在一个 JVM 中维护 1,000 条真实 Worker 连接，不是 1,000 台物理设备。
 - 调用方轮转指定已知 Worker，每个 HTTP 请求只调用一个 Worker；使用现有
   MD5 Handler 和固定 64 字节输入，不提交 Task Items 或后台任务。
 - 每个案例使用新 Server、Host、Redis 容器和 scope；预热 100/s、20 秒，

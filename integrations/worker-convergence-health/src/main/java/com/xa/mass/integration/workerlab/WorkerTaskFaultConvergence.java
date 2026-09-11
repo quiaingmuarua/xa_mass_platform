@@ -220,7 +220,7 @@ final class WorkerTaskFaultConvergence {
                                     worker.coordinate()
                             )
                     ),
-                    "Worker identity changed across Scenario Host recovery"
+                    "Worker identity changed across Worker Simulator recovery"
             ));
             String backupWorkerId = identities.get(BACKUP);
             require(backupWorkerId != null, "Backup Worker was not started");

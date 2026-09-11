@@ -98,7 +98,8 @@ jobs:
           :transport:worker-core:build
           :transport:java-worker:build
           :transport:netty-adapter:build
-          :scenario_workers_jvm:build
+          :worker_simulator_jvm:build
+          :worker_simulator_jvm:installDist
           :server_jvm:build
           :products:sms-reception:backend:build
           :products:message-campaigns:backend:build
@@ -108,6 +109,8 @@ jobs:
           :integrations:worker-loaded-recovery:build
           :integrations:worker-call-performance:build
           :distribution:server:verifyPlatformDiagnosticCodes
+      - name: Verify installed Simulator single-file entry
+        run: python3 -m unittest discover -s worker_simulator_jvm/src/test/python -p 'test_*.py'
       - name: Verify Worker inventory and loaded recovery runner contracts
         run: |
           python3 -m unittest \

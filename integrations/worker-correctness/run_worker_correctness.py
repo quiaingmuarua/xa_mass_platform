@@ -67,7 +67,7 @@ def main() -> int:
         str(_gradle()),
         "--no-daemon",
         ":distribution:server:bootJar",
-        ":scenario_workers_jvm:installDist",
+        ":worker_simulator_jvm:installDist",
         f"{MODULE}:installDist",
     ], environment)
 
@@ -202,15 +202,17 @@ def _start_host(
     environment: dict[str, str],
     log_name: str,
 ) -> subprocess.Popen[str]:
-    classpath = ROOT / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*"
+    classpath = ROOT / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*"
+    config = json.loads((ROOT / "worker_simulator_jvm/config/lab.json").read_text(encoding="utf-8"))
+    config.update(runtimeApiBaseUrl=RUNTIME_API, sandboxRoot=str(sandbox.resolve()), controlPort=18086)
+    config_path = output / "private/worker-simulator.json"
+    config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
     return _start_process([
         "java",
         "-cp",
         str(classpath),
-        "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain",
-        f"--runtime-api-base-url={RUNTIME_API}",
-        f"--sandbox-root={sandbox}",
-        "--control-port=18086",
+        "com.xa.mass.workersimulator.WorkerSimulatorMain",
+        "--config", str(config_path),
     ], output / log_name, environment)
 
 

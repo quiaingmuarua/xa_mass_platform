@@ -38,7 +38,7 @@ public final class CapabilityHttpArchitectureTest {
                 "transport:netty-adapter",
                 "server_jvm",
                 "kernel_jvm",
-                "scenario_workers_jvm",
+                "worker_simulator_jvm",
                 "org.springframework",
                 "io.netty",
                 "redis",

@@ -14,7 +14,7 @@ The fixed world is:
 one WebSocket Adapter
 two managed items:call batches x 50 Items
 eight rounds of live Properties replacement + 32 incremental updates
-one graceful Scenario Host restart
+one graceful Worker Simulator restart
 ```
 
 The initial phase proves:
@@ -33,7 +33,7 @@ Properties with malformed coordinates remain invalid. No Prepare, Report
 injection or local mutation is issued to repair this observation.
 
 The fixed phase order is `initial -> live-properties -> Host restart -> restart`.
-The restart phase stops and restarts only Scenario Host while Server, Redis and
+The restart phase stops and restarts only Worker Simulator while Server, Redis and
 Lab files remain. All 100 Lab addresses must map to their original worker IDs
 and re-establish the same live relationships.
 
@@ -45,11 +45,14 @@ WebSocket/Socket/Polling topology breadth.
 
 ## Live Properties
 
-The runner owns independent Server, Scenario Host and Harness processes and one
-Redis scope. The Java Harness mutates only through loopback Lab HTTP:
+The runner owns independent Server, Worker Simulator and Harness processes and one
+Redis scope. It materializes the exact proof inventory and writes one complete
+Simulator configuration based on the Lab example, with absolute paths and reuse.
+Initial startup and restart use the same `--config` entry. The Java Harness
+mutates only through loopback Lab HTTP:
 
 ```text
-Integration -> Lab HTTP -> Scenario Host -> existing Worker SDK/connection
+Integration -> Lab HTTP -> Worker Simulator -> existing Worker SDK/connection
 -> Adapter cache -> SYSTEM Report -> Server admission / Matching -> Runtime View
 ```
 
@@ -94,7 +97,7 @@ proof dependency set once:
 python -m pip install -r .github/scripts/requirements.txt
 ```
 
-The one-shot runner builds the Harness distribution and owns Server, Scenario Host, isolated Lab state,
+The one-shot runner builds the Harness distribution and owns Server, Worker Simulator, isolated Lab state,
 a unique `test_*` scope and safe evidence. It explicitly materializes the
 shared canonical 100-Worker Inventory rather than depending on Scenario default
 seeding:

@@ -108,7 +108,7 @@ def _build_artifacts() -> None:
             "--daemon",
             "-Dorg.gradle.daemon.idletimeout=300000",
             ":distribution:server:bootJar",
-            ":scenario_workers_jvm:installDist",
+            ":worker_simulator_jvm:installDist",
             f"{MODULE_TASK}:classes",
         ],
         cwd=REPOSITORY_ROOT,
@@ -355,32 +355,29 @@ def _start_host(
     *,
     log_name: str = "scenario-host.log",
 ) -> subprocess.Popen[str]:
-    plan_path = scenario_root / f"startup-{log_name.removesuffix('.log')}.json"
-    assembly_path = scenario_root / "capability-assembly.json"
-    _atomic_write_json(plan_path, plan)
-    _atomic_write_json(assembly_path, _capability_assembly())
+    config_path = scenario_root / f"simulator-{log_name.removesuffix('.log')}.json"
+    _atomic_write_json(config_path, {
+        "runtimeApiBaseUrl": RUNTIME_API, "sandboxRoot": str(sandbox.resolve()), "controlPort": 18086,
+        "workerGroups": _worker_groups(), "startupPlan": plan,
+    })
     classpath = (
         REPOSITORY_ROOT
-        / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*"
+        / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*"
     )
     return _start_process(
         [
             "java",
             "-cp",
             str(classpath),
-            "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain",
-            f"--runtime-api-base-url={RUNTIME_API}",
-            f"--sandbox-root={sandbox}",
-            "--control-port=18086",
-            f"--startup-plan={plan_path}",
-            f"--capability-assembly={assembly_path}",
+            "com.xa.mass.workersimulator.WorkerSimulatorMain",
+            "--config", str(config_path),
         ],
         scenario_root / log_name,
         environment,
     )
 
 
-def _capability_assembly() -> dict[str, object]:
+def _worker_groups() -> dict[str, object]:
     reconnect_policy = {
         "maxUnstableAttempts": 600,
         "reconnectIntervalMillis": 500,
@@ -388,12 +385,14 @@ def _capability_assembly() -> dict[str, object]:
     }
     return {
         PHONE_GROUP: {
-            "eventCodes": ["extension.worker.phonenumber.e164"],
+            "count": 500, "propertiesTemplate": {}, "newEnvironment": False,
+            "events": ["extension.worker.phonenumber.e164"],
             "requestTimeoutMillis": 10_000,
             "reconnectPolicy": reconnect_policy,
         },
         STRING_GROUP: {
-            "eventCodes": [
+            "count": 500, "propertiesTemplate": {}, "newEnvironment": False,
+            "events": [
                 "extension.worker.string.md5",
                 "extension.worker.lab.checkpoint",
                 "extension.worker.lab.delay",
@@ -424,7 +423,6 @@ def _startup_plan(
     scheduled_stops: tuple[tuple[tuple[str, str], int], ...],
 ) -> dict[str, object]:
     return {
-        "schemaVersion": 1,
         "initialWorkers": [
             {"workerGroupId": group, "labWorkerKey": key}
             for group, key in initial_workers

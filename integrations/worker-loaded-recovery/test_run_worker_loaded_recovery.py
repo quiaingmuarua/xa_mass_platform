@@ -79,11 +79,11 @@ class WorkerLoadedRecoveryRunnerTest(unittest.TestCase):
                 topology["stoppedLabWorkerKeys"][0],
             )
 
-    def test_capability_assembly_keeps_only_the_existing_md5_capability(self):
-        assembly = RUNNER._capability_assembly()
+    def test_configured_group_keeps_only_the_existing_md5_capability(self):
+        assembly = RUNNER._worker_groups(15000)
         self.assertEqual([RUNNER.WORKER_GROUP], list(assembly))
         group = assembly[RUNNER.WORKER_GROUP]
-        self.assertEqual(["extension.worker.string.md5"], group["eventCodes"])
+        self.assertEqual(["extension.worker.string.md5"], group["events"])
         self.assertEqual(600, group["reconnectPolicy"]["maxUnstableAttempts"])
 
     def test_fixed_stage_order_has_one_graceful_and_two_hard_restarts(self):

@@ -127,7 +127,7 @@ public class AndroidWorkerDemoArchitectureTest {
         for (String forbidden : new String[]{
                 "server_jvm",
                 "kernel_jvm",
-                "scenario_workers_jvm",
+                "worker_simulator_jvm",
                 "transport:netty-adapter",
                 "com.xa.mass.server",
                 "com.xa.mass.worker.javase",

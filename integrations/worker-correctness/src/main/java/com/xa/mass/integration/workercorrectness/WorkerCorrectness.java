@@ -131,13 +131,13 @@ final class WorkerCorrectness {
         );
         Map<String, Map<String, String>> inventory;
         try {
-            inventory = ScenarioWorkerInventory.await(
-                        options.scenarioWorkerLabRoot(),
+            inventory = WorkerSimulatorInventory.await(
+                        options.workerSimulatorLabRoot(),
                         spec,
                         api,
                         maximumWait
                 );
-        } catch (ScenarioWorkerInventory.InventoryMismatch error) {
+        } catch (WorkerSimulatorInventory.InventoryMismatch error) {
             throw new ProofFailure(
                     error.invariant(),
                     error.groupId(),

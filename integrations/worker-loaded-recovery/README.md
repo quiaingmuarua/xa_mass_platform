@@ -2,7 +2,7 @@
 
 `integrations:worker-loaded-recovery` is the nightly/manual proof of loaded
 capacity, repeated recovery and process-resource stability for one Java 21
-Scenario Worker Host process, one `JavaWorkerManager`, one WorkerGroup and one
+Worker Simulator process, one `JavaWorkerManager`, one WorkerGroup and one
 WebSocket Adapter Endpoint.
 
 ```text

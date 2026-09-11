@@ -104,9 +104,9 @@ class RedisWorkerIdentityRegistryIntegrationTest {
         String scenarioKey = "scenario-lab:15:workers-a.jsonl:1";
 
         String clientWorker = registry.registerAll("group-1", List.of(clientKey)).getFirst();
-        String scenarioWorker = registry.registerAll("group-1", List.of(scenarioKey)).getFirst();
+        String workerSimulator = registry.registerAll("group-1", List.of(scenarioKey)).getFirst();
 
-        assertThat(clientWorker).isNotEqualTo(scenarioWorker);
+        assertThat(clientWorker).isNotEqualTo(workerSimulator);
         assertThat(connection.sync().hlen(
                 testScope.keyspace().base()
                         + ":worker:identity:group-1"

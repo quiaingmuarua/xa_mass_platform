@@ -34,8 +34,8 @@ After an explicit restart, the Properties witness observes the new Adapter
 publication independently of the local start result. It never re-Prepares or
 injects facts to repair a missing observation.
 
-The Integration owns a Server catalog override and Scenario capability
-assembly that add `extension.worker.lab.delay` and
+The Integration owns a Server catalog override and one complete Simulator
+configuration (including the embedded startup plan) whose Group events add `extension.worker.lab.delay` and
 `extension.worker.lab.fail` only to the existing String Group. Every String
 batch offers one 10-second delay Item and one immediate Handler-failure Item as
 non-witness background work. The fixed 700/300 workloads remain unchanged as
@@ -69,7 +69,7 @@ The phase order is:
 6. Reconfirm the directed Worker is locally STOPPED, disconnected and scheduling
    unavailable. Submit wave six and a separate finite PRECOMPUTED Task requiring
    `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
-   restart Runtime Server while retaining Scenario Host.
+   restart Runtime Server while retaining Worker Simulator.
 7. Require the other 999 stable identities to reconnect and become HOT while
    the directed Worker stays stopped. Replace its stopped-state slot and start
    it once. Require its original identity, canonical Property and connected/HOT
@@ -94,7 +94,7 @@ String Item in wave two is the only checkpoint execution promoted to an oracle.
    explicit Worker ID selector containing only the target and backup IDs.
    There is no `labSlot` condition or backup Properties mutation. With the
    backup unavailable, wait for the target Handler to enter the checkpoint.
-3. Kill Scenario Host and require the entire 1,000-Worker world to become
+3. Kill Worker Simulator and require the entire 1,000-Worker world to become
    disconnected and scheduling unavailable.
 4. Restart 999 Workers, including the backup, while excluding the original
    target. Require the 999 identities to reconnect unchanged and the explicitly

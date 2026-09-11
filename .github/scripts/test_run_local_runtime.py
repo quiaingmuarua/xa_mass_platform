@@ -32,7 +32,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             launcher.gradle_tasks("scenario-workers"),
             [
                 ":distribution:server:bootJar",
-                ":scenario_workers_jvm:installDist",
+                ":worker_simulator_jvm:installDist",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
         )

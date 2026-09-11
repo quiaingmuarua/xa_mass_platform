@@ -159,7 +159,12 @@ def main() -> int:
     spec = materialize(inventory)
     (private / "spec.json").write_text(json.dumps({"workers": spec}), encoding="utf-8")
     assembly = {group: {"eventCodes": [EVENT]} for group in (STRING_GROUP, PHONE_GROUP)}
-    (private / "assembly.json").write_text(json.dumps(assembly), encoding="utf-8")
+    simulator_config = private / "worker-simulator.json"
+    simulator_config.write_text(json.dumps({
+        "runtimeApiBaseUrl": "http://127.0.0.1:18082", "sandboxRoot": str(inventory.resolve()), "controlPort": 18086,
+        "workerGroups": {group: {"events": [EVENT], "count": 500, "propertiesTemplate": {}, "newEnvironment": False}
+                         for group in (STRING_GROUP, PHONE_GROUP)},
+    }), encoding="utf-8")
     config = private / "server.properties"
     config.write_text("xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n", encoding="utf-8")
     scope = "test_worker_dynamic_matching_" + uuid.uuid4().hex[:12]
@@ -168,7 +173,7 @@ def main() -> int:
     processes = []
     evidence = {"schemaVersion": 1, "phase": "build", "status": "failed"}
     try:
-        subprocess.run([gradle, "--no-daemon", ":distribution:server:bootJar", ":scenario_workers_jvm:installDist",
+        subprocess.run([gradle, "--no-daemon", ":distribution:server:bootJar", ":worker_simulator_jvm:installDist",
                         f"{MODULE}:installDist"], cwd=ROOT, env=environment, check=True)
         jars = [p for p in (ROOT / "distribution/server/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
@@ -180,9 +185,8 @@ def main() -> int:
                         "--server.tomcat.accesslog.pattern=%m %U %s"], output / "runtime-server.log", environment)
         processes.append(server)
         wait_ready("http://127.0.0.1:18082/actuator/health/readiness", server)
-        host = start(["java", "-cp", str(ROOT / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*"),
-                      "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain", "--runtime-api-base-url=http://127.0.0.1:18082",
-                      f"--sandbox-root={inventory}", f"--capability-assembly={private / 'assembly.json'}", "--control-port=18086"],
+        host = start(["java", "-cp", str(ROOT / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*"),
+                      "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", str(simulator_config)],
                      output / "scenario-host.log", environment)
         processes.append(host)
         wait_ready("http://127.0.0.1:18086/lab/v1/workers", host)

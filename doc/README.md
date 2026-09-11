@@ -24,7 +24,7 @@ Status: current repository document index.
 - [Runtime API Server](../server_jvm/README.md)
 - [Transport](../transport/README.md)
 - [Transport Platform Event Catalog](../transport/EVENTS.md)
-- [Scenario Workers](../scenario_workers_jvm/README.md)
+- [Scenario Workers](../worker_simulator_jvm/README.md)
 - [Android surfaces](../xa-android/README.md)
 - [Worker Correctness](../integrations/worker-correctness/README.md)
 - [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)

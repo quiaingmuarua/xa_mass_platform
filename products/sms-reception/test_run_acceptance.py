@@ -21,9 +21,9 @@ def http(*args):
 def all_pages(*args):
     return []
 class Preview:
-    def __init__(self, counts, port, root, output, products):
+    def __init__(self, counts, port, root, output, products, sandbox_root):
         self.artifacts, self.peaks = {}, {}
-        Path(root, "launch.json").write_text(json.dumps({"counts": counts, "products": products}))
+        Path(root, "launch.json").write_text(json.dumps({"counts": counts, "products": products, "sandboxRoot": str(sandbox_root)}))
     def __enter__(self):
         return self
     def __exit__(self, *_):
@@ -40,10 +40,26 @@ class Preview:
                 with self.assertRaises(SystemExit) as stopped:
                     run_acceptance.main()
             self.assertEqual(0, stopped.exception.code)
-            self.assertEqual({"counts": [1, 1, 1], "products": "sms"},
-                             json.loads((root / "launch.json").read_text()))
+            launch = json.loads((root / "launch.json").read_text())
+            self.assertEqual([1, 1, 1], launch["counts"])
+            self.assertEqual("sms", launch["products"])
+            inventory = Path(launch["sandboxRoot"])
+            self.assertEqual(root / "proof/private", inventory.parents[2])
+            self.assertTrue(inventory.parents[1].name.startswith("inventory-"))
+            self.assertEqual(Path("data/scenario-workers"), inventory.relative_to(inventory.parents[1]))
             summary = json.loads((root / "proof/summary.json").read_text())
             self.assertEqual(64, len(summary["launcherSha256"]))
+
+    def test_prepare_audit_counts_both_paths_and_rejects_incomplete_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime-http.log"
+            path.write_text("POST /api/v1/worker-groups/demo-sim/workers:prepare-batch 200\n"
+                            "PATCH /lab/v1/workers/demo-sim/record:properties 200\n"
+                            "POST /api/v1/worker-groups/demo-sim/workers:prepare 503\n", encoding="utf-8")
+            self.assertEqual({"prepare": 1, "prepare-batch": 1}, run_acceptance.prepare_counts(path))
+            path.write_text("POST /api/v1/worker-groups/demo-sim/workers:prepare", encoding="utf-8")
+            with self.assertRaisesRegex(AssertionError, "Incomplete"):
+                run_acceptance.prepare_counts(path)
 
     def test_missing_packaged_launcher_has_no_checkout_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

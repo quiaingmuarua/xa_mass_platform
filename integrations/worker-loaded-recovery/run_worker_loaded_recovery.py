@@ -115,8 +115,11 @@ def main() -> int:
         coordinates,
         options.retained_workers,
     ))
-    capability_assembly = private_root / "capability-assembly.json"
-    _write_json(capability_assembly, _capability_assembly())
+    worker_config = private_root / "worker-simulator.json"
+    _write_json(worker_config, {
+        "runtimeApiBaseUrl": RUNTIME_API, "sandboxRoot": str(sandbox.resolve()), "controlPort": 18086,
+        "workerGroups": _worker_groups(options.prepared_workers),
+    })
 
     scope = "test_worker_loaded_recovery_" + uuid.uuid4().hex[:12]
     proof_id = "worker-loaded-recovery-" + scope[-12:]
@@ -141,8 +144,7 @@ def main() -> int:
 
         host = _start_host(
             output_root,
-            sandbox,
-            capability_assembly,
+            worker_config,
             environment,
         )
         processes["worker-host"] = host
@@ -487,7 +489,7 @@ def _build_artifacts() -> None:
             str(_gradle_wrapper()),
             "--no-daemon",
             ":distribution:server:bootJar",
-            ":scenario_workers_jvm:installDist",
+            ":worker_simulator_jvm:installDist",
             ":integrations:worker-loaded-recovery:installDist",
         ],
         cwd=REPOSITORY_ROOT,
@@ -522,10 +524,11 @@ def _partition_topology(
     }
 
 
-def _capability_assembly() -> dict[str, object]:
+def _worker_groups(count: int) -> dict[str, object]:
     return {
         WORKER_GROUP: {
-            "eventCodes": ["extension.worker.string.md5"],
+            "events": ["extension.worker.string.md5"],
+            "count": count, "propertiesTemplate": {}, "newEnvironment": False,
             "requestTimeoutMillis": 60_000,
             "reconnectPolicy": {
                 "maxUnstableAttempts": 600,
@@ -572,13 +575,12 @@ def _start_server(
 
 def _start_host(
     output_root: Path,
-    sandbox: Path,
-    capability_assembly: Path,
+    worker_config: Path,
     environment: dict[str, str],
 ) -> subprocess.Popen[str]:
     classpath = (
         REPOSITORY_ROOT
-        / "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*"
+        / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*"
     )
     return _start_process(
         [
@@ -587,11 +589,8 @@ def _start_host(
             "-XX:+ExitOnOutOfMemoryError",
             "-cp",
             str(classpath),
-            "com.xa.mass.scenarioworkers.ScenarioWorkerHostMain",
-            f"--runtime-api-base-url={RUNTIME_API}",
-            f"--sandbox-root={sandbox}",
-            "--control-port=18086",
-            f"--capability-assembly={capability_assembly}",
+            "com.xa.mass.workersimulator.WorkerSimulatorMain",
+            "--config", str(worker_config),
         ],
         output_root / "scenario-worker-host.log",
         environment,

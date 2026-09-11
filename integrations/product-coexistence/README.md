@@ -68,3 +68,6 @@ functional proof. The dedicated Product Coexistence workflow accepts explicit
 Artifacts contain only `summary.json` and archive fingerprints. Raw logs, source
 Properties, messages/replies and private phase records remain excluded. Generic
 monotonic Owner behavior remains owned by Redis Owner and Runtime Boundary.
+Every invocation selects a fresh private inventory directory, even when reusing
+an explicit output location. Host restarts within that invocation reuse its same
+inventory; the interactive Preview instead keeps its persistent inventory.

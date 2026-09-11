@@ -22,7 +22,7 @@ dependencies {
     testImplementation project(':kernel_pacer_jvm')
     testImplementation project(':worker_matching_jvm')
     testImplementation project(':transport:java-worker')
-    testImplementation project(':scenario_workers_jvm')
+    testImplementation project(':worker_simulator_jvm')
     testImplementation project(':transport:netty-adapter')
     testImplementation 'io.lettuce:lettuce-core'
 }
