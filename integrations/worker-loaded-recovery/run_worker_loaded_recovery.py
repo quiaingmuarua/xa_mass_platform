@@ -40,6 +40,8 @@ MAXIMUM_OPEN_FILE_DESCRIPTORS = {
 }
 STABLE_HOST_NATIVE_THREADS = 128
 STABLE_SERVER_NATIVE_THREADS = 256
+RESOURCE_SAMPLE_INTERVAL_SECONDS = 5.0
+MAXIMUM_RESOURCE_SAMPLE_GAP_SECONDS = 15.0
 INITIAL_STABLE_OPEN_FILES = 15_512
 RETAINED_STABLE_OPEN_FILES = 10_512
 MAXIMUM_FINAL_HOST_FD_GROWTH = 128
@@ -140,6 +142,7 @@ def main() -> int:
             server,
             options.maximum_convergence_wait_millis,
             output_root / "runtime-server-1.log",
+            sampler,
         )
 
         host = _start_host(
@@ -154,6 +157,7 @@ def main() -> int:
             host,
             options.maximum_convergence_wait_millis,
             output_root / "scenario-worker-host.log",
+            sampler,
         )
 
         baseline = private_root / "worker-ids.json"
@@ -182,6 +186,7 @@ def main() -> int:
             stage_process,
             stage_log,
             options.maximum_convergence_wait_millis,
+            sampler,
         )
         _validate_gate(
             headroom_ready,
@@ -203,6 +208,7 @@ def main() -> int:
             stage_process,
             stage_log,
             options,
+            sampler,
         )
         stage_process = None
         initial_summary = _read_json(initial_summary_path)
@@ -238,6 +244,7 @@ def main() -> int:
                 stage_process,
                 stage_log,
                 options.maximum_convergence_wait_millis,
+                sampler,
             )
             _validate_gate(
                 mutation_ready,
@@ -253,6 +260,7 @@ def main() -> int:
                 current_server,
                 server_signal,
                 mutation_ready,
+                sampler,
             )
             processes.pop(current_server_owner, None)
             sampler.unregister(current_server_owner)
@@ -272,6 +280,7 @@ def main() -> int:
                 current_server,
                 options.maximum_convergence_wait_millis,
                 current_server_log,
+                sampler,
             )
             restart_durations[stage] = round(
                 (time.monotonic() - signal_started) * 1_000
@@ -289,7 +298,7 @@ def main() -> int:
                 stage,
                 "server-mutation",
             )
-            _wait_stage(stage_process, stage_log, options)
+            _wait_stage(stage_process, stage_log, options, sampler)
             stage_process = None
 
             stage_summary = _read_json(summary_path)
@@ -300,6 +309,7 @@ def main() -> int:
                 ("worker-host", current_server_owner),
             )
 
+        sampler.close()
         sampler.sample_now()
         resources = sampler.summary()
         _validate_resource_contract(resources, resource_checkpoints)
@@ -369,6 +379,7 @@ def main() -> int:
                     for stage, _, _ in RESTART_STAGES
                 },
                 "resourceCheckpoints": resource_checkpoints,
+                "resourceSampling": sampler.diagnostics(),
                 "maximumWorkerHostNativeThreads": worker_resources[
                     "maximumNativeThreads"
                 ],
@@ -405,15 +416,15 @@ def main() -> int:
         )
         return 0
     except BaseException as error:
-        _write_failure_summary(evidence_root, proof_id, options, error)
+        _write_failure_summary(evidence_root, proof_id, options, error, sampler)
         raise
     finally:
+        sampler.close()
         if stage_process is not None:
             _stop_process(stage_process, force=True, timeout_seconds=15)
         for process in tuple(processes.values())[::-1]:
             _stop_process(process, force=True, timeout_seconds=15)
         processes.clear()
-        sampler.close()
         shutil.rmtree(private_root / "gates", ignore_errors=True)
         baseline = private_root / "worker-ids.json"
         baseline.unlink(missing_ok=True)
@@ -656,6 +667,7 @@ def _wait_stage(
     process: subprocess.Popen[str],
     log_path: Path,
     options: argparse.Namespace,
+    sampler: _ProcessSampler,
 ) -> None:
     timeout_seconds = (
         options.maximum_convergence_wait_millis
@@ -664,7 +676,7 @@ def _wait_stage(
         + 120_000
     ) / 1_000
     try:
-        result = process.wait(timeout=timeout_seconds)
+        result = _wait_with_sampling(process, timeout_seconds, sampler)
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(
             f"loaded recovery Java stage timed out; log:\n{_tail(log_path)}"
@@ -680,9 +692,11 @@ def _wait_gate(
     process: subprocess.Popen[str],
     log_path: Path,
     maximum_wait_millis: int,
+    sampler: _ProcessSampler,
 ) -> dict[str, object]:
     deadline = time.monotonic() + maximum_wait_millis / 1_000
     while time.monotonic() < deadline:
+        sampler.check()
         _require_running(process, log_path)
         if path.exists():
             return _read_json(path)
@@ -763,7 +777,9 @@ def _terminate_server_for_stage(
     process: subprocess.Popen[str],
     server_signal: signal.Signals,
     mutation_ready: dict[str, object],
+    sampler: _ProcessSampler,
 ) -> None:
+    sampler.check()
     ready_at = mutation_ready["atEpochMillis"]
     assert isinstance(ready_at, int)
     signal_delay_millis = int(time.time() * 1_000) - ready_at
@@ -776,12 +792,31 @@ def _terminate_server_for_stage(
     os.killpg(process.pid, server_signal)
     timeout_seconds = 60 if server_signal == signal.SIGTERM else 15
     try:
-        process.wait(timeout=timeout_seconds)
+        _wait_with_sampling(process, timeout_seconds, sampler)
     except subprocess.TimeoutExpired as error:
         signal_name = "SIGTERM" if server_signal == signal.SIGTERM else "SIGKILL"
         raise RuntimeError(
             f"Runtime Server did not exit after {signal_name}"
         ) from error
+
+
+def _wait_with_sampling(
+    process: subprocess.Popen[str],
+    timeout_seconds: float,
+    sampler: _ProcessSampler,
+) -> int:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        sampler.check()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout_seconds)
+        try:
+            result = process.wait(timeout=min(1.0, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+        sampler.check()
+        return result
 
 
 def _append_jsonl(path: Path, value: object) -> None:
@@ -791,13 +826,22 @@ def _append_jsonl(path: Path, value: object) -> None:
         output.write("\n")
 
 
+class _ResourceSamplingError(RuntimeError):
+    pass
+
+
 class _ProcessSampler:
 
     def __init__(
         self,
         path: Path,
+        *,
+        interval_seconds: float = RESOURCE_SAMPLE_INTERVAL_SECONDS,
+        maximum_gap_seconds: float = MAXIMUM_RESOURCE_SAMPLE_GAP_SECONDS,
     ) -> None:
         self._path = path
+        self._interval_seconds = interval_seconds
+        self._maximum_gap_seconds = maximum_gap_seconds
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._lock = threading.Lock()
         self._sample_lock = threading.Lock()
@@ -809,11 +853,23 @@ class _ProcessSampler:
         )
         self._summary: dict[str, dict[str, float | int]] = {}
         self._previous_cpu: dict[str, tuple[int, float, int]] = {}
+        self._failure: BaseException | None = None
+        self._failure_details: dict[str, object] | None = None
+        self._started_at: int | None = None
+        self._finished_at: int | None = None
+        self._last_periodic_at: int | None = None
+        self._last_periodic_monotonic = time.monotonic()
+        self._periodic_cycles = 0
+        self._maximum_periodic_gap_millis = 0
+        self._exited_during_sample: list[dict[str, object]] = []
 
     def start(self) -> None:
+        self._started_at = int(time.time() * 1_000)
+        self._last_periodic_monotonic = time.monotonic()
         self._thread.start()
 
     def register(self, owner: str, process: subprocess.Popen[str]) -> None:
+        self.check()
         with self._lock:
             self._processes[owner] = process
             self._previous_cpu.pop(owner, None)
@@ -823,75 +879,167 @@ class _ProcessSampler:
             self._processes.pop(owner, None)
             self._previous_cpu.pop(owner, None)
 
+    def _record_failure(
+        self,
+        error: BaseException,
+        owner: str | None = None,
+        pid: int | None = None,
+    ) -> None:
+        with self._lock:
+            if self._failure is None:
+                self._failure = error
+                self._failure_details = {
+                    "type": type(error).__name__,
+                    "message": (str(error) or type(error).__name__)[:300],
+                    "atEpochMillis": int(time.time() * 1_000),
+                    "process": owner,
+                    "pid": pid,
+                }
+
+    def check(self) -> None:
+        problem = None
+        with self._lock:
+            if self._failure is None:
+                if self._started_at is None:
+                    problem = "resource sampler has not started"
+                elif not self._closed.is_set():
+                    if not self._thread.is_alive():
+                        problem = "resource sampler thread stopped unexpectedly"
+                    elif (
+                        time.monotonic() - self._last_periodic_monotonic
+                        > self._maximum_gap_seconds
+                    ):
+                        problem = "resource sampler exceeded the maximum periodic sample gap"
+        if problem is not None:
+            self._record_failure(RuntimeError(problem))
+        with self._lock:
+            failure, details = self._failure, self._failure_details
+        if failure is not None:
+            raise _ResourceSamplingError(f"resource sampling failed: {details}") from failure
+
     def _run(self) -> None:
-        while not self._closed.wait(5):
-            self.sample_now()
+        try:
+            while not self._closed.wait(self._interval_seconds):
+                self.sample_now(periodic=True)
+                now = time.monotonic()
+                with self._lock:
+                    gap = now - self._last_periodic_monotonic
+                    self._maximum_periodic_gap_millis = max(
+                        self._maximum_periodic_gap_millis,
+                        round(gap * 1_000),
+                    )
+                    self._last_periodic_monotonic = now
+                    self._last_periodic_at = int(time.time() * 1_000)
+                    self._periodic_cycles += 1
+                if gap > self._maximum_gap_seconds:
+                    self._record_failure(RuntimeError(
+                        "resource sampler exceeded the maximum periodic sample gap"
+                    ))
+                    return
+        except BaseException as error:
+            self._record_failure(error)
 
     def sample_now(
         self,
         checkpoint: str | None = None,
+        *,
+        periodic: bool = False,
     ) -> dict[str, dict[str, int]]:
+        self.check()
         observed: dict[str, dict[str, int]] = {}
-        with self._sample_lock:
-            with self._lock:
-                processes = tuple(self._processes.items())
-            for owner, process in processes:
-                if process.poll() is not None:
-                    continue
-                try:
-                    sample = _process_sample(process.pid)
-                except (FileNotFoundError, ProcessLookupError):
-                    continue
-                sampled_at = time.monotonic()
-                value = {
-                    "atEpochMillis": int(time.time() * 1_000),
-                    "process": owner,
-                    "pid": process.pid,
-                    **sample,
-                }
-                if checkpoint is not None:
-                    value["checkpoint"] = checkpoint
+        owner, pid = None, None
+        try:
+            while not self._sample_lock.acquire(timeout=0.2):
+                self.check()
+            try:
+                self.check()
                 with self._lock:
-                    current = self._summary.setdefault(owner, {})
-                    current["sampleCount"] = current.get("sampleCount", 0) + 1
-                    for field, target in (
-                        ("rssBytes", "maximumRssBytes"),
-                        ("nativeThreads", "maximumNativeThreads"),
-                        ("openFileDescriptors", "maximumOpenFileDescriptors"),
-                    ):
-                        current[target] = max(current.get(target, 0), sample[field])
-                    previous = self._previous_cpu.get(owner)
-                    if previous is not None and previous[0] == process.pid:
-                        elapsed_seconds = sampled_at - previous[1]
-                        cpu_delta_millis = sample["cpuTimeMillis"] - previous[2]
-                        cpu_cores = _interval_cpu_cores(
-                            elapsed_seconds,
-                            cpu_delta_millis,
+                    processes = tuple(self._processes.items())
+                for owner, process in processes:
+                    pid = process.pid
+                    if process.poll() is not None:
+                        continue
+                    try:
+                        sample = _process_sample(pid)
+                    except (FileNotFoundError, ProcessLookupError, PermissionError) as error:
+                        # A dying Linux process can lose /proc/fd access before waitpid
+                        # observes exit. Confirm exit once; never retry the resource read.
+                        if process.poll() is None:
+                            try:
+                                process.wait(timeout=1)
+                            except subprocess.TimeoutExpired:
+                                raise error
+                        with self._lock:
+                            self._exited_during_sample.append({
+                                "process": owner,
+                                "pid": pid,
+                                "errorType": type(error).__name__,
+                                "atEpochMillis": int(time.time() * 1_000),
+                            })
+                        continue
+                    sampled_at = time.monotonic()
+                    value = {
+                        "atEpochMillis": int(time.time() * 1_000),
+                        "process": owner,
+                        "pid": pid,
+                        "sampleKind": (
+                            "periodic" if periodic
+                            else "checkpoint" if checkpoint else "final"
+                        ),
+                        **sample,
+                    }
+                    if checkpoint is not None:
+                        value["checkpoint"] = checkpoint
+                    with self._lock:
+                        current = self._summary.setdefault(owner, {})
+                        current["sampleCount"] = current.get("sampleCount", 0) + 1
+                        current["periodicSampleCount"] = (
+                            current.get("periodicSampleCount", 0) + int(periodic)
                         )
-                        if cpu_cores is not None:
-                            value["intervalAverageCpuCores"] = cpu_cores
-                            current["maximumCpuCores"] = max(
-                                current.get("maximumCpuCores", 0.0),
-                                cpu_cores,
+                        current.setdefault("firstSampleAtEpochMillis", value["atEpochMillis"])
+                        current["lastSampleAtEpochMillis"] = value["atEpochMillis"]
+                        for field, target in (
+                            ("rssBytes", "maximumRssBytes"),
+                            ("nativeThreads", "maximumNativeThreads"),
+                            ("openFileDescriptors", "maximumOpenFileDescriptors"),
+                        ):
+                            current[target] = max(current.get(target, 0), sample[field])
+                        previous = self._previous_cpu.get(owner)
+                        if previous is not None and previous[0] == pid:
+                            elapsed_seconds = sampled_at - previous[1]
+                            cpu_delta_millis = sample["cpuTimeMillis"] - previous[2]
+                            cpu_cores = _interval_cpu_cores(
+                                elapsed_seconds,
+                                cpu_delta_millis,
                             )
-                            current["cpuCoreSeconds"] = (
-                                current.get("cpuCoreSeconds", 0.0)
-                                + cpu_cores * elapsed_seconds
-                            )
-                            current["cpuObservedSeconds"] = (
-                                current.get("cpuObservedSeconds", 0.0)
-                                + elapsed_seconds
-                            )
-                    self._previous_cpu[owner] = (
-                        process.pid,
-                        sampled_at,
-                        sample["cpuTimeMillis"],
-                    )
-                    self._path.parent.mkdir(parents=True, exist_ok=True)
-                    with self._path.open("a", encoding="utf-8", newline="\n") as out:
-                        out.write(json.dumps(value, separators=(",", ":"), sort_keys=True))
-                        out.write("\n")
-                observed[owner] = dict(sample)
+                            if cpu_cores is not None:
+                                value["intervalAverageCpuCores"] = cpu_cores
+                                current["maximumCpuCores"] = max(
+                                    current.get("maximumCpuCores", 0.0),
+                                    cpu_cores,
+                                )
+                                current["cpuCoreSeconds"] = (
+                                    current.get("cpuCoreSeconds", 0.0)
+                                    + cpu_cores * elapsed_seconds
+                                )
+                                current["cpuObservedSeconds"] = (
+                                    current.get("cpuObservedSeconds", 0.0)
+                                    + elapsed_seconds
+                                )
+                        self._previous_cpu[owner] = (
+                            pid,
+                            sampled_at,
+                            sample["cpuTimeMillis"],
+                        )
+                    # File I/O must not hold the health-state lock: the main thread
+                    # still needs to detect a stalled writer within the sample budget.
+                    _append_jsonl(self._path, value)
+                    observed[owner] = dict(sample)
+            finally:
+                self._sample_lock.release()
+        except BaseException as error:
+            self._record_failure(error, owner, pid)
+            self.check()
         return observed
 
     def checkpoint(
@@ -918,6 +1066,9 @@ class _ProcessSampler:
         }
 
     def summary(self) -> dict[str, dict[str, float | int]]:
+        self.check()
+        if self.diagnostics()["status"] != "complete":
+            raise _ResourceSamplingError("resource sampling coverage is incomplete")
         with self._lock:
             result: dict[str, dict[str, float | int]] = {}
             for owner, value in self._summary.items():
@@ -936,10 +1087,60 @@ class _ProcessSampler:
                 result[owner] = public
             return result
 
+    def diagnostics(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "status": (
+                    "complete"
+                    if self._finished_at is not None
+                    and self._failure is None
+                    and self._periodic_cycles > 0
+                    else "incomplete"
+                ),
+                "intervalMillis": round(self._interval_seconds * 1_000),
+                "maximumAllowedGapMillis": round(self._maximum_gap_seconds * 1_000),
+                "maximumPeriodicGapMillis": self._maximum_periodic_gap_millis,
+                "periodicCycles": self._periodic_cycles,
+                "startedAtEpochMillis": self._started_at,
+                "lastPeriodicAtEpochMillis": self._last_periodic_at,
+                "finishedAtEpochMillis": self._finished_at,
+                "failure": dict(self._failure_details) if self._failure_details else None,
+                "confirmedExitsDuringSample": list(self._exited_during_sample),
+                "processes": {
+                    owner: {
+                        field: value[field]
+                        for field in (
+                            "sampleCount",
+                            "periodicSampleCount",
+                            "firstSampleAtEpochMillis",
+                            "lastSampleAtEpochMillis",
+                        )
+                    }
+                    for owner, value in self._summary.items()
+                },
+            }
+
     def close(self) -> None:
+        if self._closed.is_set():
+            return
         self._closed.set()
-        self._thread.join(timeout=10)
-        self.sample_now()
+        if self._started_at is not None:
+            self._thread.join(timeout=10)
+            if self._thread.is_alive():
+                self._record_failure(RuntimeError(
+                    "resource sampler did not stop within ten seconds"
+                ))
+            gap = time.monotonic() - self._last_periodic_monotonic
+            with self._lock:
+                self._maximum_periodic_gap_millis = max(
+                    self._maximum_periodic_gap_millis,
+                    round(gap * 1_000),
+                )
+            if gap > self._maximum_gap_seconds:
+                self._record_failure(RuntimeError(
+                    "resource sampler exceeded the maximum periodic sample gap"
+                ))
+        self._finished_at = int(time.time() * 1_000)
 
 
 def _process_sample(pid: int) -> dict[str, int]:
@@ -986,6 +1187,8 @@ def _validate_resource_contract(
     for owner in MAXIMUM_OPEN_FILE_DESCRIPTORS:
         label = owner.replace("-", " ").title()
         observed = resources.get(owner, {})
+        if observed.get("periodicSampleCount", 0) <= 0:
+            raise RuntimeError(f"{label} periodic resource evidence is missing")
         native_threads = observed.get("maximumNativeThreads", 0)
         open_files = observed.get("maximumOpenFileDescriptors", 0)
         if native_threads <= 0:
@@ -1251,14 +1454,17 @@ def _wait_http(
     process: subprocess.Popen[str],
     maximum_wait_millis: int,
     log_path: Path,
+    sampler: _ProcessSampler,
 ) -> None:
     deadline = time.monotonic() + maximum_wait_millis / 1_000
     latest: BaseException | None = None
     while time.monotonic() < deadline:
+        sampler.check()
         _require_running(process, log_path)
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
                 if 200 <= response.status < 300:
+                    sampler.check()
                     return
         except (OSError, urllib.error.URLError) as error:
             latest = error
@@ -1305,6 +1511,7 @@ def _write_failure_summary(
     proof_id: str,
     options: argparse.Namespace,
     error: BaseException,
+    sampler: _ProcessSampler,
 ) -> None:
     evidence_root.mkdir(parents=True, exist_ok=True)
     path = evidence_root / "worker-loaded-recovery-summary.json"
@@ -1314,8 +1521,13 @@ def _write_failure_summary(
             "proofId": proof_id,
             "lane": "worker-loaded-recovery",
             "status": "failed",
-            "failureKind": "proof-not-established",
+            "failureKind": (
+                "resource-sampling-failed"
+                if isinstance(error, _ResourceSamplingError)
+                else "proof-not-established"
+            ),
             "failure": (str(error) or type(error).__name__)[:500],
+            "resourceSampling": sampler.diagnostics(),
             "preparedWorkers": options.prepared_workers,
             "retainedWorkers": options.retained_workers,
             "minimumInitialConnectedAndHot": (

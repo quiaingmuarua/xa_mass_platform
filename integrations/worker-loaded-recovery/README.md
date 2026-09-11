@@ -94,6 +94,33 @@ first retained checkpoint is at most 128 FDs and 32 threads. RSS, cumulative
 CPU time and interval average CPU core usage are recorded without cross-machine
 limits. Every Server process has a separate resource label.
 
+Resource sampling is a required oracle, independent of the loaded-work and
+recovery results. The background sampler targets five-second intervals, with
+a fixed 15-second maximum gap between completed periodic cycles (including
+startup and the final tail). Each process must have periodic samples; checkpoint
+or final samples cannot substitute for them. The JSONL records distinguish
+`periodic`, `checkpoint` and `final` samples. `resourceSampling` in the final
+summary records cycle count, first/last timing, maximum gap, per-process sample
+counts, confirmed exit races and any first failure.
+
+A `/proc` read may race a planned Server exit, including `PermissionError` while
+the process is dying. The sampler makes one bounded exit check of at most one
+second. Only a confirmed exit permits skipping that measurement; a still-live
+process's read error, invalid data or evidence-write error makes sampling fail.
+Failure is sticky, as is an unexpectedly stopped sampler or an excessive gap.
+The runner checks sampler health during HTTP, gate and Harness/process waits;
+later successful checkpoints cannot restore the resource claim. Final sampling
+is stopped and joined before a passing summary is published. Sampling failure
+writes `status=failed`, `failureKind=resource-sampling-failed` and incomplete
+coverage diagnostics, then exits nonzero; it does not publish partial maxima as
+a passed resource-stability result. Cleanup does not take additional samples.
+
+Runner tests cover live-process read failures, confirmed exit races, evidence
+write failures, stalled writers and finalization races. On unprivileged Linux,
+a real child process disables dumpability after valid `/proc` samples; the test
+requires the resulting permission loss to interrupt the main Harness wait and
+produce failed evidence while the child is still alive.
+
 Run quick contracts on any development host:
 
 ```powershell

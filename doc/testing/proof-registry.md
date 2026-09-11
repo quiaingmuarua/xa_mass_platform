@@ -102,6 +102,11 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** sustained loaded operation after deterministic Worker contraction,
   repeated graceful and hard Server recovery, exact terminal Task exports and
   bounded process resource drift.
+- **Resource witness:** periodic sampling must remain healthy through finalization.
+  Sampler failure or a coverage gap fails the lane even when workload/recovery
+  assertions pass; sparse checkpoints and partial maxima do not establish resource
+  stability. Confirmed process-exit read races are recorded without masking errors
+  on a still-live process.
 - **Deliberate nonclaims:** every prepared or retained Worker online, Task fairness, fixed
   execution ratio, completion order, throughput, latency, Handler concurrency,
   topology breadth and soak.
