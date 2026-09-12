@@ -1129,7 +1129,8 @@ The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
 `XA_MASS_KERNEL_PACER_PRESET` environment override or
 `--xa.mass.kernel-pacer.preset=...`; an unknown preset fails configuration
 binding before Runtime construction. Normal JVM tests use the `test` profile
-with this lifecycle disabled.
+with this lifecycle disabled and an unreachable Redis URL, so a local Redis
+cannot hide an unintended connection during assembly.
 
 `xa.mass.redis` is the single production source for the Redis URL and scope.
 `kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT

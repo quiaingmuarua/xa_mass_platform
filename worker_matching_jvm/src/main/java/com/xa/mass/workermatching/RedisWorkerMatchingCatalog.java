@@ -60,8 +60,8 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
     public void rebuildIndexes() {
-        var redis=commands();
         for (String group:handlersByGroup.keySet()) {
+            var redis=commands();
             ScanCursor cursor=ScanCursor.INITIAL;
             do {
                 var page=redis.scan(cursor,new ScanArgs().match(indexBase(group)+":*").limit(100));

@@ -133,7 +133,8 @@ confirmed execution is not revoked by a later facts observation.
 
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
-malformed facts abort startup. There is no background matching consumer, queue,
+malformed facts abort startup. With no configured Groups, rebuild is a no-op
+and opens no Redis connection. There is no background matching consumer, queue,
 index repair scan, lease registry or per-Task candidate publication.
 
 ## Bounded Query and Failure Semantics

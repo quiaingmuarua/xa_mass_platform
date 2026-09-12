@@ -1,4 +1,7 @@
 xa:
   mass:
+    redis:
+      # Assembly contract tests must not depend on a locally running Redis.
+      url: redis://127.0.0.1:1/15
     kernel-pacer:
       enabled: false
