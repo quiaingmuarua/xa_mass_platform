@@ -11,7 +11,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Owner | Responsibility |
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
-| Worker Matching | Worker/Platform Properties, property-bound indexes and take time (currently country), PRECOMPUTED Rules and ordered filtering of a bounded held pool |
+| Worker Matching | Worker/Platform Properties, fixed Rule Handlers, Task bindings, materialized eligibility indexes and take time |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
@@ -26,8 +26,8 @@ scheduling eligibility.
 ```text
 TASK
 API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
-    -> PRECOMPUTED: Kernel holds a bounded pool; Matching filters into Candidate Cache
-       ON_DEMAND: one workerSelector query Map; explicit IDs, Matching indexed identities, or ANY
+    -> Matching resolves Task binding and Item selector into bounded eligible IDs
+    -> Kernel intersects HOT, holds Workers and rechecks membership
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
@@ -70,13 +70,12 @@ producer, Binding and Group in one delivery reception use case before creating
 or replacing Matching-owned Worker facts. Every upstream observation replaces
 the complete Worker Map; independent Platform Properties management never
 patches that Map. Before the first valid observation, identity may exist without facts:
-PRECOMPUTED skips that Worker while ON_DEMAND ANY/explicit IDs can use its identity;
-country selection requires indexed facts. Polling
-currently has no Properties reporting path and uses ON_DEMAND for new Workers.
-New Matching Demands read observed facts without re-Prepare. Reporting is lossy.
+Default Rule ANY/explicit IDs can use identity without facts; named Rules require
+indexed eligibility. Polling currently has no Properties reporting path and uses
+default identity selection for new Workers. Live facts update indexes without
+re-Prepare. Reporting is lossy.
 After actual Worker or Platform facts changes, Server requests best-effort
-candidate invalidation through the Score Owner. Existing Candidate entries
-remain, while final exact confirmation rejects invalidated holds. Confirmed
+candidate invalidation through the Score Owner. Final exact confirmation rejects invalidated holds without cache cleanup. Confirmed
 work continues; the [HOT lease protocol](kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 owns the separate commits and expiry limits.
 WorkerGroup event declarations likewise do not prove that handlers are loaded;
@@ -98,7 +97,7 @@ the `sms-reception` profile enables product routes and jobs. SMS calls the
 existing Server services and shares their Owner instances.
 It owns listening orders and SMS routing; Kernel retains assignment and scheduling.
 
-[Message Campaigns](products/message-campaigns/README.md) adds finite PRECOMPUTED
+[Message Campaigns](products/message-campaigns/README.md) adds finite Rule-bound
 batches and later delivery, read and repeated reply observations. The
 [shared Preview](distribution/product-preview/README.md) runs both products on the
 same Server, Adapter and Worker pool. Products remain independent libraries using
@@ -107,9 +106,9 @@ exercises their shared runtime and preserves each product's business semantics.
 
 | Surface | Entry and owner |
 | --- | --- |
-| Kernel mechanisms | [kernel_jvm](kernel_jvm/README.md): stable contracts, Redis providers, Scores, resources and Candidate Cache |
+| Kernel mechanisms | [kernel_jvm](kernel_jvm/README.md): stable contracts, Redis providers, Scores, resources and bounded identity ports |
 | Kernel policy | [kernel_pacer_jvm](kernel_pacer_jvm/README.md): fixed Result/Dispatch Convergence behind one KernelPacerRuntime |
-| Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/Rules and bounded PRECOMPUTED Demand consumer |
+| Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/bindings and bounded Rule index queries |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
 | JVM simulation | [worker_simulator_jvm](worker_simulator_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
@@ -121,7 +120,7 @@ exercises their shared runtime and preserves each product's business semantics.
 ## Runtime And Deployment
 
 The [distribution entry](distribution/server/README.md) starts Server configuration,
-which assembles one KernelPacerRuntime and the Matching runtime. Only one
+which assembles one KernelPacerRuntime and the Matching catalog. Only one
 Server per Kernel Redis scope may enable the Pacer lifecycle; there is no
 distributed Pacer leader election. Profile selects assembly and policy preset;
 Redis scope selects the data boundary. Provider and lifecycle details belong
@@ -157,8 +156,7 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
 
-Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
-queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
-exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
-original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
-lifecycle is independent of this allocation choice.
+All Tasks bind to a Matching Rule before Kernel creation. Matching resolves
+Task IDs in one bounded batch and supplies prepared queries and eligible IDs.
+Kernel retains HOT, initial hold, membership recheck, exact confirmation and
+claim. Matching owns no Task lifecycle or asynchronous candidate job.

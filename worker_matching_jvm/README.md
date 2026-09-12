@@ -1,292 +1,178 @@
 # XA Mass Worker Matching JVM
 
-Status: current Worker facts, named country Rule, shared DSL definitions and Task binding owner.
+Status: current Worker facts, fixed Rule Handlers, Task bindings and materialized eligibility index Owner.
 
-`worker_matching_jvm` is a Java 21 internal runtime module. It owns Worker and
-Platform facts, shared Rules, Task-to-Rule bindings, interpretation of those rules, and the bounded country index.
-It does not observe or change Worker score, choose scheduling priority, own
-ANY/explicit-ID scheduling decisions, claim a TaskItem, or publish a Delivery Command.
+Matching pairs two functions in each Rule Handler: project Worker/Platform facts
+into an index, and interpret a bounded query against that index. A Rule is a
+stable semantic ID selected at composition; it has no create/update/delete API,
+Task lifecycle, persisted DSL definition or runtime registration.
 
 ## Owner Boundary
 
 ```text
-PRECOMPUTED (explicit allocationRule DSL path)
-Kernel Pacer sorts Task needs and exact-holds a bounded due Worker pool
-  -> WorkerMatchingRuntime resolves Task bindings to shared Rules and reads Worker facts
-  -> evaluates held Workers in the supplied order
-  -> appends accepted workerId + opaque held score to CandidateWorkerCache
-  -> Kernel Dispatch consumes the Candidate bucket and performs exact confirmation,
-     Item claim, and Command publication
+Worker / Platform facts
+  -> enabled Rule Handler projections, in the same facts mutation
+  -> shared Group eligibility indexes
 
-INDEXED_TASK
-Worker facts -> the fixed worker.country Handler maintains the Group index
-  -> Dispatch resolves its Task binding through WorkerCandidateIndex.prepareTaskQuery
-  -> TaskQuery takes a bounded batch of Worker IDs
-  -> Kernel observes HOT and acquires initial holds
-  -> TaskQuery rechecks membership; Kernel exact-confirms and claims
-
-ON_DEMAND
-Server passes the finite workerSelector to the Kernel parser
-  -> Kernel captures one immutable selector and handles ANY/explicit ID mechanics
-  -> Server asks the Catalog to validate binding/parameters and enabled Group before Item writes
-  -> Kernel Dispatch takes indexed identities through WorkerCandidateIndex when requested
-  -> observes due HOT scores, exact-holds, and rechecks indexed membership after hold
-  -> exact confirmation, Item claim and delivery remain Kernel operations
+Task ID -> Matching Task binding -> prepared TaskQuery
+Item selector -> bounded eligible Worker IDs
+  -> Kernel HOT observation / initial hold
+  -> same TaskQuery membership recheck
+  -> Kernel exact confirmation / Item claim / Command
 ```
 
-| Owner | Owns |
-| --- | --- |
-| Worker Matching | Worker and Platform Properties, shared Rules and Task bindings, property selector/index binding, constraint interpretation, ordered filtering of a supplied held pool |
-| Kernel | Task/Item/Worker score, finite Item selector capture and ANY/ID mechanics, Task ordering and deficit, Worker observation and exact hold, Candidate Cache truth, round uniqueness, Item claim, retry and finality |
-| Server | public validation, ordered cross-owner writes, Runtime View composition and lifecycle assembly |
-| Transport | Identity preparation, best-effort Properties observations, and execution of an already-targeted Command |
+Matching owns facts, bindings, index encoding and take-time rotation. It never
+reads Worker Score, acquires or releases leases, claims Items, ranks Tasks or
+publishes Commands. Kernel receives Task IDs and bounded identity evidence;
+Rule IDs and index coordinates stop at Matching. Server validates and composes
+Owner calls. Transport supplies admitted observations and executes Commands.
 
-`WorkerMatchQueue` lives in `kernel_jvm` as the complete PRECOMPUTED handoff
-contract: Kernel Pacer offers Demands, the resident Matching runtime consumes
-them, and health observation reads the same Queue size. The current Server
-assembly selects `InMemoryWorkerMatchQueue`; neither producer nor consumer
-depends on that implementation, so a future distributed Queue does not change
-their policy contracts. One
-`TaskRuleMatchDemand` contains a WorkerGroup, an ordered list of opaque
-Task IDs and static candidate limits, the exact held scores for at
-most 100 Workers, and the common hold deadline. It contains no Rule,
-Properties, endpoint, Item, or Delivery DTO. Matching carries held scores
-unchanged into Candidate Cache; it must not decode, compare, calculate, renew,
-or release them.
+## Shared Rule Binding
 
-`taskId` addresses the Kernel Candidate Cache and the Matching-owned binding.
-Matching resolves that binding to an internal `ruleId`; Kernel/Pacer never receives
-the Rule ID or reads a Rule. Sharing a definition does not share a Task's Cache,
-capacity or Worker hold. Matching owns only the association, not Task metadata or
-lifecycle, and does not read Kernel Task resources.
+Every Task, including a managed Call, has a create-only binding established
+before its Kernel descriptor. Omitted public `ruleId` selects `worker.default`.
+`bindTaskRule(taskId, workerGroupId, ruleId)` uses one Lua on the binding HASH.
+An identical binding is unchanged; a different or corrupt stored value conflicts.
+Unknown or unavailable Rules are rejected. Failed Kernel creation may leave an
+inert binding; no rollback, discovery, cleanup job or Task lifecycle is added.
 
-## Persistent Catalog
+`loadTaskBindings` returns Task binding snapshots, not Rule definitions.
+`prepareTaskQueries(taskId -> workerGroupId)` accepts at most 100 Tasks, uses one
+HMGET and returns a dispatch-local query per valid binding. Missing/corrupt
+bindings, wrong Groups and disabled Handlers return no query. They never select
+a default Rule implicitly. The query has no thread, cache, close or lifecycle.
+The same resolved query performs admission, take and post-hold membership checks.
+Sharing a Rule shares eligibility indexes, not Task state or Worker leases.
 
-`RedisWorkerMatchingCatalog` owns these keys under the configured
-`xa_mass:<scope>` base:
+## Fixed Handlers and Selectors
 
-```text
-:matching:worker:facts:<workerGroupId>
-:matching:worker:platform-properties:<workerGroupId>
-:matching:candidate:rules
-:matching:task:rules
-:matching:worker:index:country:<workerGroupId> (enabled Groups only)
-```
-
-Server-admitted Adapter observations create or replace the complete Worker
-Properties value and preserve the independently written Platform Properties
-value. Prepare does not write this Catalog. Platform patch requires an existing
-Worker facts row, including a genuinely observed empty Map; an identity with no
-facts does not satisfy that precondition. Missing Kernel resources leave inert
-orphan facts or Task bindings; no background repair or Rule lifecycle is owned here.
-
-### Shared Rule Binding
-
-`bindTaskRule(taskId, workerGroupId, ruleId)` binds the fixed `worker.country`
-Handler after validating that the Group index is enabled. It does not persist a
-Handler definition. `bindTaskAllocationRule(taskId, workerGroupId, allocationRule)`
-retains the separate DSL path and its shared content-addressed definitions.
-
-The Task bindings HASH stores exactly `{"workerGroupId":"...","ruleId":"..."}`
-under taskId. The definitions HASH retains DSL values with exactly workerGroupId
-and allocationRule. DSL IDs remain rule- plus lowercase SHA-256 of canonical
-UTF-8 definition bytes, including Group. Object key sorting preserves arrays,
-numeric encodings and operator names; it does not merge logically equivalent Rules.
-
-Each binding uses one Lua. Exact retries are UNCHANGED, missing stages are filled
-with APPLIED, and different or damaged values conflict without being overwritten.
-Invalid input is INVALID and infrastructure errors propagate. Kernel Task creation
-commits separately: no rollback, binding cleanup or Rule lifecycle is installed.
-
-`loadTaskRules` resolves at most 100 unique Tasks in one Lua, returning each DSL
-definition once. Named Rules return ID and Group with null allocationRule.
-Missing, corrupt, unknown or Group-inconsistent records return null. Legacy string
-bindings are not read; this format uses the explicitly scoped stop-and-rebuild
-cutover. No non-test scope is cleaned automatically.
-
-### Named Rule Queries
-
-CountryRuleHandler owns facts/index materialization and the matching query pair.
-Task creation and closure neither build nor delete a Group index. Existing
-configured startup rebuilding remains the reconstruction path.
-
-`prepareTaskQuery(taskId, group)` uses one HMGET. Its dispatch-local query retains
-the immutable binding for take and post-hold retain, exposes no Rule ID or Redis
-key to Kernel, and owns no cache, thread, retry or close lifecycle. Missing,
-corrupt, wrong-Group, unknown and disabled bindings return null, never ANY or DSL.
-
-One take Lua handles at most 100 queries requesting at most 100 identities total.
-One retain Lua checks at most 100 held identities. Empty batches make no Redis
-call. The Matching budget is one binding HMGET, one take EVAL and zero or one
-retain EVAL, independent of Item count; it is not a throughput claim.
-Country queries merge bounded heads by low take time, avoiding fixed country
-prefix preference. Explicit IDs use bounded membership reads and take-time
-rotation. Empty queries sample indexed members with ZRANDMEMBER. Take touches
-without removing members or reading Worker Score; retain checks membership
-without loading facts. A named Rule constrains ANY and explicit IDs too: only
-valid indexed country members qualify. Unbound ANY/IDs retain identity-only meaning.
-
-INDEXED_TASK uses no Match Demand, DSL consumer or Candidate Cache. Index errors
-reach the existing dispatch failure boundary. Rejected and unused holds expire
-naturally; there is no compensation, replay or repair queue.
-
-### Properties Writes
-
-Live ingestion uses `upsertWorkerFactsBatch(groupId, propertiesByWorkerId)` for
-1..100 unique Worker IDs in one Group. Each value is a complete flat string KV
-Map (non-blank keys, non-null strings, empty strings allowed). The Catalog
-canonically encodes complete values. Unindexed Groups compare with one `HMGET`
-and issue one multi-field `HSET` for changed values; indexed Groups atomically
-replace facts and maintain membership in one bounded Lua call. Unchanged content returns
-UNCHANGED; invalid Properties return INVALID for that Worker. Empty Maps clear
-all Worker Properties; omitted keys, including any previously stored registration
-properties, are not retained. Independent Identity, Binding, Kernel resource
-and Platform Properties records are unaffected.
-
-The bounded batch is the sole Worker facts write operation, including for one
-Worker and the first observation. Existing stored values remain readable without
-migration. No observation version or late-snapshot rejection is introduced. Concurrent batches follow their
-effective Redis writes, not observation time or HTTP arrival order. Each stored
-JSON Map is replaced whole. Only indexed Groups serialize facts and index membership;
-the unindexed compare followed by write does not promise cross-request serialization.
-
-The upstream SYSTEM path is one-shot best-effort: a queue or HTTP failure can
-leave no facts or old facts until new Host input or a later connection baseline arrives.
-One Server delivery reception use case owns producer/Binding/Group admission
-and complete batch writes, not Rule interpretation. Server never reads old
-Worker facts to apply an Adapter delta. Independently managed Platform
-Properties are a separate Map and are not part of this observation replacement.
-Complete upstream observations avoid old-fact merging at Server, but cannot
-repair input lost before reaching the Adapter cache. Every
-new Demand loads the current Catalog facts; there is no refresh notification,
-Matching facts cache or Candidate Cache cleanup. String comparison remains lexical;
-numeric-string coercion and new constraint semantics are not part of this path.
-
-A Worker without usable facts is skipped even for an unrestricted Rule or a
-Worker-ID-only Rule. ON_DEMAND ANY and explicit IDs do not require facts;
-indexed selection requires current index membership. The current Catalog returns null for both absent and
-undecodable facts; Runtime Preview may display the identity with empty Maps,
-but that display must not be reused as matching evidence.
-
-PRECOMPUTED Rules use the finite constraint language. Roots are
-`workerId`, `worker.*`, and `platform.*`; operators are `$eq`/`$equal`, `$ne`,
-`$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$exists`, and `$range`. All conditions
-are ANDed and `{}` is unrestricted.
-
-Named Rule and indexed ON_DEMAND Items use explicit query objects:
+| Rule | Projection | Query |
+| --- | --- | --- |
+| `worker.default` | no required facts for identity selection | `{}` and sole `workerId` lists use Kernel HOT selection; property conditions use the enabled country Handler |
+| `worker.country` | Workers with a two-uppercase-letter country | ANY, explicit IDs, or `worker.country` eq/in |
+| `worker.messaging.available` | country-valid Workers with `messaging.enabled=true`, plus an optional phone partition | ANY/IDs constrained by membership; country eq/in and optional one phone combined with AND |
+| `proof.worker.facts` | fixed proof pool/target/platform and convergence-slot partitions | finite proof selectors; enabled only in proof Group configurations |
 
 ```json
 {}
-{"workerId": ["worker-a", "worker-b"]}
-{"worker.country": {"op": "eq", "values": ["CN"]}}
-{"worker.country": {"op": "in", "values": ["CN", "US"]}}
+{"workerId":["worker-a","worker-b"]}
+{"worker.country":{"op":"in","values":["CN","US"]}}
+{"worker.country":{"op":"eq","values":["CN"]},"worker.phone":{"op":"eq","values":["+86123"]}}
 ```
 
-There is at most one condition. eq takes one country; in takes 1..100 values,
-deduplicated in first-appearance order. Matching rejects unknown fields,
-operators, old country parameter lists and unsupported property bindings.
-Kernel stores immutable bounded structure and owns only ANY/explicit-ID
-mechanics. Queries are never expanded to IDs at submission. The same
-interpretation governs take and post-hold retain.
+Kernel captures bounded immutable JSON, ANY and explicit-ID structure. Matching
+interprets full property names and `{op, values}`; eq requires one string, in
+accepts 1..100 strings. Each Handler admits only its supported fields and shapes.
+No general boolean expression evaluator or scan-over-facts query is installed.
+Named Rules constrain ANY and explicit IDs as well as property selectors.
+Adding a Rule/index changes Matching's finite composition and proof, not Kernel
+Task metadata, Pacer branches or Transport.
 
-## Country Index
+Enable non-default Handlers explicitly per Group:
 
-Enable Groups with `xa.mass.worker-matching.country-index.worker-groups`; the
-ordinary default is empty. Country is the literal Worker `country` property,
-strict `[A-Z]{2}` without trimming, case conversion or ISO registry validation.
-`code=(first-'A')*26+(second-'A')`: AA=0, CN=65, GB=157, US=538, ZZ=675.
-All 676 inputs map uniquely; no configured numbering or app index exists.
+```yaml
+xa:
+  mass:
+    worker-matching:
+      rules:
+        worker-groups:
+          demo-sim: [worker.country, worker.messaging.available]
+```
 
-The Group ZSET member is workerId. Its exact integer score is
-`code * 2^43 + (lastTakenMillis - 946684800000)`. The epoch is 2000-01-01 UTC;
-the 43-bit time range ends at 2278-09-26T15:10:22.207Z. All coordinates fit the
-exact integer range of Redis doubles. Lua formats decimal integers explicitly;
-time outside the range fails rather than wrapping into another country.
+Each configured ID must name an installed Handler. The default Rule is available
+without configuration. A property query cannot silently downgrade when its
+required Group index is unavailable.
 
-One facts-write Lua call handles at most 100 Workers. Country unchanged or
-changed preserves the existing low time bits; first insertion uses zero.
-Missing, empty or invalid country removes membership without rejecting other
-valid string Properties. Platform Properties never affect this index.
+## Persistent Catalog
 
-Unbound ON_DEMAND takeWorkerIds/retainWorkerIds delegate to the same country
-Handler. A take reads Redis TIME once inside Lua and formats exact integer scores
-explicitly. Rotation is approximate: same-millisecond repeats are allowed and no
-strict fairness, lease or scheduling eligibility is implied.
-
-Before exposing the Catalog bean, Server assembly rebuilds configured derived
-indexes by streaming existing facts with HSCAN and Lua batches of at most 100.
-It may reset take times, modifies no facts/Binding/Score/Cache, and fails startup
-on rebuild failure. There is no background rebuild, persistent cursor or new thread.
-Facts/index replacement and subsequent Server dirty invalidation remain separate
-commits: an already confirmed execution is not revoked.
-
-## PRECOMPUTED Runtime
-
-One resident virtual thread consumes whole Group demands:
+All keys use the configured `xa_mass:<scope>` base:
 
 ```text
-take one TaskRuleMatchDemand
-  -> resolve at most 100 Task bindings to shared Rules in one batch
-  -> normalize each distinct Rule once for this Demand
-  -> load facts only for the at most 100 held Worker IDs
-  -> process Candidate needs in Pacer order
-  -> append matching candidates atomically up to each address's static maximum
-  -> remove only Cache-accepted Workers from this demand's available pool
+:matching:worker:facts:<group>                         HASH workerId -> Worker JSON
+:matching:worker:platform-properties:<group>           HASH workerId -> Platform JSON
+:matching:task:rules                                  HASH taskId -> {ruleId,workerGroupId}
+:matching:worker:index:<encoded-group>:<handler>       ZSET workerId -> internal coordinate
+:matching:worker:index:<encoded-group>:<handler>:partitions
+                                                      HASH workerId -> partition suffixes
+:matching:worker:index:<encoded-group>:<handler>:partition:<digest>
+                                                      ZSET workerId -> same coordinate
 ```
 
-The current in-memory Demand Queue capacity is 10,000. Queue capacity is the
-only admission condition; there is no separate pending-Group registry. A held
-Worker may enter at most one Candidate bucket in one Demand. A missing,
-wrong-Group, or invalid Rule skips that Task and leaves the
-Worker pool available to later Candidate needs.
+`encoded-group` is UTF-8 Base64 URL without padding; partition digests are SHA-1
+of Handler-owned suffixes. Encoded namespaces make Group-local startup cleanup
+unambiguous even for IDs containing separators or glob characters. These are
+derived eligibility structures, never scheduling truth or per-Task caches.
 
-Candidate Cache remains a Kernel mechanical owner. Matching is only a bounded
-writer through `appendCandidateWorkers`; it cannot read Cache state or consume
-candidates. The atomic Cache operation removes expired entries, observes the
-address's current candidate count, accepts only the remaining capacity, and
-returns the Worker IDs it actually stored.
+Current shared index mechanics encode `countryCode * 2^43 + lastTakenMillis`,
+where countryCode is base-26 A..Z (0..675) and time is relative to 2000-01-01 UTC.
+All values are exact Redis doubles. Proof partitions use prefix zero. Initial
+take time is zero; a facts update preserves existing low take time. Take rotates
+the primary and all current partition memberships together. Index time has no
+Worker lease or availability meaning.
 
-Queue rejection, an unaccepted candidate, a missing match, or a Matching
-failure does not release a Worker hold. The score lease expires naturally.
-Partial Cache writes completed before a later Candidate failure remain valid,
-and a later Pacer round computes the remaining deficit from current Cache
-counts.
-Unexpected `Error` ends the runtime in `FAILED`; Server readiness reports the
-failure and does not silently restart it.
+## Facts Writes and Index Maintenance
 
-## Candidate Semantics
+Prepare creates no facts. An admitted Adapter observation replaces the complete
+Worker string Map, including an observed empty Map, while preserving Platform
+Properties. Platform patch requires an existing Worker facts row and changes
+only supplied Platform fields; null removes a field. Nested Platform JSON,
+including empty arrays and objects, retains its shape.
 
-A Candidate entry proves only that a Worker matched the facts read before the
-supplied hold deadline and carries the exact opaque score produced by Kernel's
-hold. It is not current availability or a completed scheduling decision.
-After an APPLIED Worker or Platform facts write, Server requests best-effort
-Score dirty invalidation. Cache entries and in-flight Match Demands retain the
-original held score. Kernel's final exact confirmation rejects that fence once
-invalidation succeeds, including an entry appended later by an old Demand.
-Matching performs no Score reads and no Cache revocation. Facts-write and dirty
-invalidation are separate commits: an intervening confirmation may succeed,
-and an invalidation failure leaves existing deadlines as the fallback. An
-UNCHANGED write does not request invalidation. Only a new initial hold restores
-candidate eligibility before another PRECOMPUTED Matching round.
+A batch of 1..100 Worker replacements or one bounded Platform patch uses one Lua.
+That operation reads the latest opposite facts, validates stored objects/index
+metadata, computes enabled projections and writes facts with the corresponding
+memberships. There is no Java pre-read/CAS loop. Worker and Platform writes cannot
+lose each other's independent changes. Missing eligibility removes memberships.
+Unexpected/corrupt stored data fails; it is not converted to empty eligible facts.
 
-## Non-Owners
+Server separately asks Worker Score Owner to invalidate candidate eligibility
+after APPLIED facts writes. Facts/index and dirty are different Owner commits;
+there is no cross-owner transaction, guaranteed retry or repair. Post-hold
+membership recheck and exact dirty confirmation remain Kernel fences. Already
+confirmed execution is not revoked by a later facts observation.
 
-This module must not own:
+Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
+pages, before admission and Pacer start. Retained facts are the rebuild input;
+malformed facts abort startup. There is no background matching consumer, queue,
+index repair scan, lease registry or per-Task candidate publication.
 
-```text
-Worker Score interpretation or transitions
-Candidate Cache state or consumption
-Task ordering, deficit, priority, or round uniqueness
-Kernel Task metadata or lifecycle
-TaskItem claim, retry, or finality
-DeliveryCommand / DeliveryReport
-HTTP, Spring, Netty, or Worker lifecycle
-```
+## Bounded Query and Failure Semantics
 
-Build and owner tests:
+A take accepts at most 100 selectors with a total demand of at most 100 IDs in
+first-appearance order. Equal selectors share their actual Item demand. Country
+queries merge bounded country heads by low take time; ANY samples bounded
+members; explicit IDs are intersected with the selected Rule index. Sparse phone
+queries read their partition directly, not a truncated country sample. One Lua
+returns unique IDs across the batch and rotates take time. It does not overfetch
+for a busy Worker or refill within the same round.
 
-```text
-./gradlew :worker_matching_jvm:test
-./gradlew :server_jvm:redisOwnerIntegrationTest
-./gradlew :server_jvm:runtimeBoundaryIntegrationTest
-```
+Kernel intersects with HOT and obtains initial holds, then calls one bounded
+retain Lua on the same query. Membership loss or competing holds can yield fewer
+assignments. Successfully held but rejected IDs remain excluded for that round
+and expire naturally. Missing evidence never becomes ANY; infrastructure failures
+reach the existing caller error/backoff boundary. Due work is rediscovered by
+Kernel scheduling without Matching jobs or compensating releases.
+
+Client command budgets, not throughput promises:
+
+- 1..100 Task bindings: one HMGET per dispatch round.
+- Each Task's indexed subset: one take Lua, plus zero or one retain Lua.
+- Default ANY/IDs: no index command after the common binding read.
+- 1..100 Worker replacements: one facts/index Lua; Platform patch: one Lua.
+
+Kernel additionally owns HOT/hold, endpoint reads, confirmation and claim.
+
+## Proof and Cutover
+
+Matching unit tests own selector admission and fixed Handler pairing. Redis Owner
+proves concurrent binding/facts updates, exact index projection, sparse phone
+queries, post-hold membership change, corrupt metadata, isolated startup rebuild
+and command budgets. Pacer tests own grouped demand, missing-binding behavior,
+round exclusions and opaque fences. Runtime Boundary, Worker Dynamic Matching
+and product proofs witness real execution after live facts changes.
+
+Task/API and storage cutover retires the old modes, DSL, Rule definition HASH,
+Match Demand and Candidate Cache. Stop processes for an explicitly selected
+scope, clear only that scope with SCAN + UNLINK and rebuild Groups/Tasks/Workers
+from configuration and source facts. No old-format runtime reader, alias, online
+migration or automatic non-test cleanup is supplied. See [TESTING](../TESTING.md).

@@ -183,7 +183,7 @@ def functional(run):
     require(duplicate["sendAccepted"], "First identified reply rejected")
     _, duplicate = action(run, rows[0], "reply", "second", "duplicate-reply")
     require(duplicate["unchanged"] and not duplicate["sendAccepted"], "Reply operation was replayed")
-    # Execute the identical send through a real Worker using the shared ON_DEMAND Task.
+    # Execute the identical send through a real Worker using the shared default Rule Task.
     task = next(c["taskId"] for c in sms_catalog["countries"] if c["id"] == "CN")
     payload = {k: rows[0][k] for k in ("campaignId", "messageId", "country", "recipientId", "body")}
     duplicate_id = str(uuid.uuid4())

@@ -68,7 +68,7 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,kernel,kernelRedis,workerMatching
+          include: readinessState,kernel,kernelRedis
 
 springdoc:
   paths-to-match: /api/v1/**

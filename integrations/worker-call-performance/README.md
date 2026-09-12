@@ -2,7 +2,7 @@
 
 Primary claim: offered online call load, observed completion, latency distributions
 and saturation behavior of the existing Task Call and caller-targeted Direct
-Call paths. Task Call also measures coexistence with one finite PRECOMPUTED Task.
+Call paths. Task Call also measures coexistence with one finite Rule-index Task.
 Each suite's fixed Worker count is a measurement fixture, not another
 correctness, recovery or scale tier.
 
@@ -23,7 +23,7 @@ Result-closure failures that prevent enabling the new scheduled composition.
 
 ## RPC Mainline Diagnosis
 
-`--suite rpc-diagnosis` measures the primary `items:call` ON_DEMAND path and
+`--suite rpc-diagnosis` measures the primary `items:call` default Rule path and
 uses Direct Call as a control for the shared HTTP/Transport path. It freezes
 production configuration, including the 100-Item per-Task check bound and the
 DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added.
@@ -40,7 +40,7 @@ DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added
 
 Every main case uses Ubuntu 24.04 with four logical CPUs, Java 21, Redis 7.4.10,
 one Group, 1,000 real connections in one Worker Simulator JVM and one WebSocket
-Adapter. Task calls share the Group's managed ON_DEMAND Task. Sorted known IDs,
+Adapter. Task calls share the Group's managed default Rule Task. Sorted known IDs,
 64-byte MD5 input, single-item requests, one-second HTTP wait, five-second client
 timeout and 4,096 in-flight bound match across the paths. Each case starts fresh,
 warms at 100/s for 20 seconds and closes warmup before continuous 120-second
@@ -66,7 +66,7 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
 ```
 
 The nightly manifest contains these seven main cases plus **only** the original
-`mixed-500`: 100 Workers, 30 seconds, 50,000 PRECOMPUTED Items, 100ms Handler,
+`mixed-500`: 100 Workers, 30 seconds, 50,000 Rule-index Items, 100ms Handler,
 at most 50 candidates. This independent coexistence witness is not included in
 aligned path-cost ratios. The runner checks exact case membership and continues
 collecting remaining case evidence after a case failure. It never calls this
@@ -144,13 +144,13 @@ capability files are excluded from CI artifacts.
 | `any-1000` | 1,000 calls/s, ANY | None |
 | `any-2000` | 2,000 calls/s, ANY | None |
 | `targeted-500` | 500 calls/s, explicit Worker IDs in round-robin order | None |
-| `mixed-500` | 500 calls/s, ANY | One PRECOMPUTED Task, 50,000 Items, 100ms delay, at most 50 candidates |
+| `mixed-500` | 500 calls/s, ANY | One Rule-index Task, 50,000 Items, 100ms delay, at most 50 candidates |
 
 Each case warms up at 100 calls/s for 20 seconds, observes successful warmup
 closure, then measures for 30 seconds. A call submits one Item with a fresh
 Message ID and a fixed 64-byte MD5 input. HTTP wait is 1 second, client timeout
 5 seconds and Item TTL 120 seconds. These are fixture values, not a production
-SLA. Calls use the registered Group's managed ON_DEMAND Task.
+SLA. Calls use the registered Group's managed default Rule Task.
 
 The background Task is fully seeded and approved once after warmup, and must
 produce a successful Result within 60 seconds. A bounded observer checks its

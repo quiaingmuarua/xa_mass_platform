@@ -17,7 +17,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResultPage;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.operation.OperationGuard;
@@ -274,38 +273,20 @@ class TaskResultsExportServiceTest {
     private static TaskDescriptor finiteTask(String taskId) {
         return descriptor(
                 taskId,
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of()
-        );
+                TaskIdleDisposition.CLOSE_WHEN_IDLE);
     }
 
     private static TaskDescriptor managedTask(String taskId) {
         return descriptor(
                 taskId,
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                null
-        );
+                TaskIdleDisposition.PARK_WHEN_IDLE);
     }
 
     private static TaskDescriptor descriptor(
             String taskId,
-            WorkerAllocationMechanism mechanism,
-            TaskIdleDisposition disposition,
-            Map<String, Object> allocationRule
+            TaskIdleDisposition disposition
     ) {
-        return new TaskDescriptor(
-                taskId,
-                "group-1",
-                mechanism,
-                disposition,
-                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE ? Map.of(
-                        "priority", "50",
-                        "maximumCandidateWorkers", "10",
-                        "maxRetryTimes", "3"
-                ) : Map.of("priority", "50", "maxRetryTimes", "3")
-        );
+        return new TaskDescriptor(taskId, "group-1", disposition, Map.of("priority", "50", "maxRetryTimes", "3"));
     }
 
     private static TaskScoreState score(

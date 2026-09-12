@@ -38,10 +38,6 @@ class DispatchConvergenceRuntimeTest {
                 DispatchConvergenceRuntime.assignmentConfigForPreset(preset);
         assertEquals(
                 expectedInterval,
-                config.workerAllocationIntervalMillis()
-        );
-        assertEquals(
-                expectedInterval,
                 config.taskInitializationIntervalMillis()
         );
         assertEquals(

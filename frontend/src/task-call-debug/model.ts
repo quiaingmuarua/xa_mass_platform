@@ -41,12 +41,6 @@ export function taskCallDebugAvailability(
       reason: "Task 描述符缺失，不能调用当前配置坐标。"
     };
   }
-  if (entry.task.workerAllocationMechanism !== "ON_DEMAND_ITEM_RULE") {
-    return {
-      enabled: false,
-      reason: "该 Task 不接受 Item Worker Selector。"
-    };
-  }
   if (entry.task.idleDisposition !== "PARK_WHEN_IDLE") {
     return {
       enabled: false,

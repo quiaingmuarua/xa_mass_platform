@@ -44,7 +44,7 @@ const filteredEntries = computed(() => {
       entry.taskId,
       entry.scoreBand,
       entry.task?.workerGroupId,
-      entry.task?.workerAllocationMechanism,
+      entry.task?.ruleId,
       entry.task?.idleDisposition
     ]
       .filter((value): value is string => value !== undefined)
@@ -281,7 +281,7 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
           </el-table-column>
           <el-table-column label="ALLOCATION" min-width="190">
             <template #default="{ row }">
-              {{ row.task?.workerAllocationMechanism ?? "—" }}
+              {{ row.task?.ruleId ?? "—" }}
             </template>
           </el-table-column>
           <el-table-column label="IDLE DISPOSITION" min-width="170">
@@ -371,9 +371,9 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
                   <dd>{{ workerGroupId(selectedEntry) }}</dd>
                 </div>
                 <div>
-                  <dt>Worker allocation</dt>
+                  <dt>Rule binding</dt>
                   <dd>
-                    {{ selectedEntry.task?.workerAllocationMechanism ?? "描述符缺失" }}
+                    {{ selectedEntry.task?.ruleId ?? "描述符缺失" }}
                   </dd>
                 </div>
                 <div>
@@ -384,10 +384,6 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
             </section>
 
             <template v-if="selectedEntry.task">
-              <section>
-                <h2>Task-level allocation rule</h2>
-                <JsonBlock :value="selectedEntry.task.allocationRule" />
-              </section>
               <section>
                 <h2>Config</h2>
                 <JsonBlock :value="selectedEntry.task.config" />

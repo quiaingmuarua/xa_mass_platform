@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 record AssignmentDispatchConfig(
-        long workerAllocationIntervalMillis,
         long taskInitializationIntervalMillis,
         long taskDispatchIntervalMillis
 ) {
@@ -9,8 +8,7 @@ record AssignmentDispatchConfig(
     static final long DEFAULT_TASK_DISPATCH_INTERVAL_MILLIS = 50;
 
     AssignmentDispatchConfig {
-        if (workerAllocationIntervalMillis <= 0
-                || taskInitializationIntervalMillis <= 0
+        if (taskInitializationIntervalMillis <= 0
                 || taskDispatchIntervalMillis <= 0) {
             throw new IllegalArgumentException(
                     "Assignment Dispatch intervals must be positive"
@@ -21,18 +19,15 @@ record AssignmentDispatchConfig(
     static AssignmentDispatchConfig defaults() {
         return create(
                 DEFAULT_INTERVAL_MILLIS,
-                DEFAULT_INTERVAL_MILLIS,
                 DEFAULT_TASK_DISPATCH_INTERVAL_MILLIS
         );
     }
 
     static AssignmentDispatchConfig create(
-            long workerAllocationIntervalMillis,
             long taskInitializationIntervalMillis,
             long taskDispatchIntervalMillis
     ) {
         return new AssignmentDispatchConfig(
-                workerAllocationIntervalMillis,
                 taskInitializationIntervalMillis,
                 taskDispatchIntervalMillis
         );

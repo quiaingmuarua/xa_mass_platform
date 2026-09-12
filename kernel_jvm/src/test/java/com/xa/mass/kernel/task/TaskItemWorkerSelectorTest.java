@@ -30,6 +30,7 @@ class TaskItemWorkerSelectorTest {
                 Map.of("worker.country", Map.of("op", "in", "values", List.of("cn"))),
                 Map.of("worker.country", Map.of("op", "in", "values", List.of("CN", "US"))),
                 Map.of("worker.test.region", List.of("east", "west")),
+                Map.of("a", List.of("x"), "b", List.of("y")),
                 Map.of("worker.future", List.of("", "$eq", "", "value")))) {
             var selector = TaskItemWorkerSelector.parse(input);
             assertEquals(input, selector.expression());
@@ -46,7 +47,6 @@ class TaskItemWorkerSelectorTest {
         var nullKey = new HashMap<String, Object>();
         nullKey.put(null, List.of("value"));
         List<Map<?, ?>> invalid = List.of(
-                Map.of("a", List.of("x"), "b", List.of("y")),
                 Map.of("", List.of("x")), Map.of(" ", List.of("x")), Map.of(1, List.of("x")),
                 Map.of("worker.future", Arrays.asList("x", null)), nullValue, nullKey,
                 Map.of("workerId", List.of(" ")), Map.of("workerId", List.of("id", "id")));

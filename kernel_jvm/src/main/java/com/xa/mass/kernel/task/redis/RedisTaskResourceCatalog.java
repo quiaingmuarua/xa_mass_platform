@@ -4,7 +4,6 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -70,7 +69,6 @@ public final class RedisTaskResourceCatalog
         try {
             if (!fields.keySet().equals(Set.of(
                     "workerGroupId",
-                    "workerAllocationMechanism",
                     "idleDisposition",
                     "configJson"
             ))) {
@@ -82,11 +80,6 @@ public final class RedisTaskResourceCatalog
                     fields,
                     "workerGroupId"
             );
-            WorkerAllocationMechanism allocationMechanism =
-                    WorkerAllocationMechanism.valueOf(required(
-                    fields,
-                    "workerAllocationMechanism"
-            ));
             TaskIdleDisposition idleDisposition =
                     TaskIdleDisposition.valueOf(required(
                             fields,
@@ -100,7 +93,6 @@ public final class RedisTaskResourceCatalog
             return new TaskDescriptor(
                     taskId,
                     workerGroupId,
-                    allocationMechanism,
                     idleDisposition,
                     config
             );

@@ -20,7 +20,7 @@ WebSocket Adapter Endpoint.
 ```
 
 The ten Tasks share one WorkerGroup, empty allocation rules and the same
-candidate pool. Each Task has `maximumCandidateWorkers=100`. All ten are fully
+candidate pool through the default Rule. All ten are fully
 populated before consecutive approval. The proof records their independent
 progress but makes no fairness, execution-ratio or completion-order claim.
 It is not a TPS/P99 benchmark, a 10,000 concurrent Handler claim or a soak test.

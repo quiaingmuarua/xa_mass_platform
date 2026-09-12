@@ -25,7 +25,6 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     private final TaskLifecycleService lifecycle;
     private final String workerGroupId;
     private final List<String> events;
-    private final int candidates;
     private final Object gate = new Object();
     private final Map<String, Campaign> campaigns = new LinkedHashMap<>();
     private final Map<String, Campaign> requests = new HashMap<>();
@@ -39,11 +38,11 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
 
     public CampaignService(WorkerGroupRegistrationService registrations, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId,
-            List<String> events, int candidates) {
-        if (workerGroupId == null || workerGroupId.isBlank() || candidates < 1 || candidates > 1000)
-            throw new IllegalArgumentException("Expected WorkerGroup and 1..1000 candidates");
+            List<String> events) {
+        if (workerGroupId == null || workerGroupId.isBlank())
+            throw new IllegalArgumentException("Expected WorkerGroup");
         this.registrations = registrations; this.creation = creation; this.data = data; this.lifecycle = lifecycle;
-        this.workerGroupId = workerGroupId; this.events = List.copyOf(events); this.candidates = candidates;
+        this.workerGroupId = workerGroupId; this.events = List.copyOf(events);
     }
 
     @Override public synchronized void start() {
@@ -96,18 +95,16 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     void submit(Campaign campaign) {
         try {
             requireRunning();
-            Map<String, Object> rule = new LinkedHashMap<>();
-            rule.put("worker.messaging.enabled", Map.of("$eq", "true"));
-            rule.put("worker.country", Map.of("$eq", campaign.specification.country()));
-            if (campaign.specification.senderPhone() != null)
-                rule.put("worker.phone", Map.of("$eq", campaign.specification.senderPhone()));
-            campaign.taskId = creation.create(new TaskCreateRequest(campaign.group, rule, null, 50, candidates, 3)).taskId();
+            Map<String,Object> selector=new LinkedHashMap<>();
+            selector.put("worker.country",Map.of("op","eq","values",List.of(campaign.specification.country())));
+            if (campaign.specification.senderPhone()!=null) selector.put("worker.phone",Map.of("op","eq","values",List.of(campaign.specification.senderPhone())));
+            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3)).taskId();
             for (int start = 0; start < campaign.messages.size(); start += 100) {
                 requireRunning();
                 var items = campaign.messages.subList(start, Math.min(start + 100, campaign.messages.size())).stream()
                         .map(message -> new TaskItemRequest(message.id, "extension.worker.message.send", Map.of(
                                 "campaignId", campaign.id, "messageId", message.id, "country", campaign.specification.country(),
-                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, null)).toList();
+                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, selector)).toList();
                 var appended = data.appendFiniteTaskItems(campaign.taskId, items);
                 if (appended.size() != items.size() || items.stream().anyMatch(item ->
                         appended.get(item.messageId()) == null || !"applied".equals(appended.get(item.messageId()).status().wireValue())))

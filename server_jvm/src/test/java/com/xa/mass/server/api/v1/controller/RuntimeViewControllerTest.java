@@ -22,7 +22,6 @@ import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
@@ -69,7 +68,7 @@ class RuntimeViewControllerTest {
         workerScheduling = mock(WorkerSchedulingService.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(matchingCatalog.loadTaskRules(anyList()))
+        when(matchingCatalog.loadTaskBindings(anyList()))
                 .thenReturn(Map.of());
         when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
                 .thenAnswer(invocation -> {
@@ -133,6 +132,11 @@ class RuntimeViewControllerTest {
         tasks.put("task-terminal", task("task-terminal", "group-a"));
         when(taskCatalog.loadTaskAllocationDescriptors(taskIds))
                 .thenReturn(tasks);
+        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
+            List<String> ids=call.getArgument(0); var bindings=new LinkedHashMap<String,WorkerMatchingCatalog.TaskRuleBinding>();
+            ids.forEach(id -> bindings.put(id,new WorkerMatchingCatalog.TaskRuleBinding("worker.default",tasks.get(id).workerGroupId())));
+            return bindings;
+        });
 
         var groups = new LinkedHashMap<String, WorkerGroupDescriptor>();
         groups.put("group-b", group(
@@ -170,8 +174,8 @@ class RuntimeViewControllerTest {
                         "$.entries[0].workerGroup.attributes.capability"
                 ).value("beta"))
                 .andExpect(jsonPath(
-                        "$.entries[0].task.workerAllocationMechanism"
-                ).value("ON_DEMAND_ITEM_RULE"))
+                        "$.entries[0].task.ruleId"
+                ).value("worker.default"))
                 .andExpect(jsonPath("$.entries[0].task.idleDisposition")
                         .value("PARK_WHEN_IDLE"))
                 .andExpect(jsonPath(
@@ -206,7 +210,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
-        verify(matchingCatalog, never()).loadTaskRules(anyList());
+        verify(matchingCatalog).loadTaskBindings(List.of("task-review", "task-group-missing", "task-terminal"));
     }
 
     @Test
@@ -713,17 +717,14 @@ class RuntimeViewControllerTest {
         when(taskScores.previewScoreStates(1000)).thenReturn(ids.stream()
                 .map(id -> scoreState(id, TaskScoreBand.RUNNING_VISIBLE)).toList());
         when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
-                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(
-                        id, "group-a", WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                        TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maximumCandidateWorkers", "1", "maxRetryTimes", "3")
-                ))));
+                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3")))));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
                 .thenReturn(groupLookup("group-a"));
-        when(matchingCatalog.loadTaskRules(anyList())).thenAnswer(invocation -> {
+        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(invocation -> {
             List<String> batch = invocation.getArgument(0);
             org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
             return batch.stream().collect(Collectors.toMap(id -> id,
-                    id -> new WorkerMatchingCatalog.MatchingRule("rule-shared", "group-a", Map.of())));
+                    id -> new WorkerMatchingCatalog.TaskRuleBinding("rule-shared", "group-a")));
         });
         mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1000"))
@@ -732,7 +733,7 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.entries.length()").value(1000))
                 .andExpect(jsonPath("$.entries[0].taskId").value("task-0"))
                 .andExpect(jsonPath("$.entries[999].taskId").value("task-999"));
-        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadTaskRules(anyList());
+        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadTaskBindings(anyList());
     }
 
     @Test
@@ -912,16 +913,10 @@ class RuntimeViewControllerTest {
             String taskId,
             String workerGroupId
     ) {
-        return new TaskDescriptor(
-                taskId,
-                workerGroupId,
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                )
-        );
+                ));
     }
 
     private static TaskScoreState scoreState(

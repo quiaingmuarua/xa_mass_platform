@@ -21,7 +21,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.List;
 import java.util.Map;
@@ -234,16 +233,10 @@ class TaskAssignmentDispatcherTest {
     }
 
     private static TaskDescriptor descriptor() {
-        return new TaskDescriptor(
-                "task-1",
-                "group-1",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        return new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "1"
-                )
-        );
+                ));
     }
 
     private static TaskItem item() {

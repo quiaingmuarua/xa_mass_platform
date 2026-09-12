@@ -12,7 +12,6 @@ import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionResult;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -93,16 +92,10 @@ class TaskIdleSettlementTest {
 
     private static ObservedTask dueTask() {
         return new ObservedTask(
-                new TaskDescriptor(
-                        "task-1",
-                        "group-1",
-                        WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                        TaskIdleDisposition.PARK_WHEN_IDLE,
-                        Map.of(
+                new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                                 "priority", "0",
                                 "maxRetryTimes", "1"
-                        )
-                ),
+                        )),
                 777_777_777L
         );
     }

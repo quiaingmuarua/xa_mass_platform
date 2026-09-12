@@ -172,12 +172,10 @@ Worker score. Server requests bounded dirty invalidation after actual Worker or
 Platform facts changes; final assignment confirmation also sets dirty=1.
 
 HOT candidate acquisition is a bounded read-only range query. It returns
-`(workerId, observedScore)` pairs to Kernel policy. PRECOMPUTED allocation
-exact-holds a bounded identity set, then publishes the held IDs and opaque
-scores for external Rule/Properties interpretation and Candidate Cache append.
-ON_DEMAND point-observes explicit IDs extracted from the stored selector or
-Matching-supplied indexed identities, or observes a bounded ANY pool, then
-exact-holds directly. Indexed identities are rechecked by Matching after hold.
+`(workerId, observedScore)` pairs to Kernel policy. The point query intersects
+explicit targets or Matching-supplied eligible identities with HOT; the bounded
+range query serves default ANY. Kernel exact-holds the observations and Matching
+rechecks indexed membership after hold without receiving Worker scores.
 Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
@@ -357,8 +355,8 @@ Only positive due scores are returned and neither query modifies them. The
 point form preserves the bounded caller-supplied Worker universe and is used
 after Kernel extracts explicit IDs from the stored selector or Matching returns
 bounded indexed identities. The Score Owner never interprets that selector.
-Assignment-dispatch may pass a Worker into PRECOMPUTED matching
-only after an exact observed-score lease succeeds.
+Only a successful exact observed-score hold may enter final confirmation.
+Matching supplies identities before hold and rechecks their membership afterward.
 
 When optional periodic Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
@@ -927,7 +925,7 @@ Serviceability policy and evidence classification are defined in
 | manual enable / release | yes | exact observed-score same-polarity release |
 | Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
 | Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
-| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before PRECOMPUTED Demand or ON_DEMAND claim |
+| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before membership recheck and final claim |
 | assignment owner consumes active clean HOT_ACQUIRE holds | yes | `confirm_active_hot_score_leases` exact-CAS sets dirty=1 and returns the execution fence; dirty entries return STALE |
 | Server after APPLIED Worker or Platform facts writes | best-effort | `mark_current_leases_dirty` preserves coordinates; failure does not undo the facts response |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
@@ -1111,7 +1109,7 @@ slot registry redesign
   use exact observed-score CAS. Never write a future lease from WorkerId or due
   membership alone.
 - Do not create per-task candidate keys inside WorkerScoreCore.
-  CandidateWorkerCache is the separate owner of candidate-scoped keys.
+  Matching owns derived eligibility index keys.
 - Do not fan out score across placement-tag buckets in the first slice.
 - Do not store transport/session evidence in worker scheduling metadata.
 - Do not let read projections or trace materialization drive worker score.

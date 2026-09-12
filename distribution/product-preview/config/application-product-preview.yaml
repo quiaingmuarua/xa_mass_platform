@@ -4,8 +4,9 @@ server:
 xa:
   mass:
     worker-matching:
-      country-index:
-        worker-groups: [demo-sim]
+      rules:
+        worker-groups:
+          demo-sim: [worker.country, worker.messaging.available]
     kernel-pacer:
       enabled: true
       preset: DEFAULT

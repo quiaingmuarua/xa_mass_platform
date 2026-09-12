@@ -102,18 +102,9 @@
       },
       "TaskCreateRequest" : {
         "properties" : {
-          "allocationRule" : {
-            "additionalProperties" : { },
-            "type" : "object"
-          },
           "maxRetryTimes" : {
             "format" : "int32",
             "maximum" : 98,
-            "minimum" : 0,
-            "type" : "integer"
-          },
-          "maximumCandidateWorkers" : {
-            "format" : "int32",
             "minimum" : 0,
             "type" : "integer"
           },
@@ -271,10 +262,6 @@
       },
       "TaskView" : {
         "properties" : {
-          "allocationRule" : {
-            "additionalProperties" : { },
-            "type" : "object"
-          },
           "config" : {
             "additionalProperties" : {
               "type" : "string"
@@ -288,9 +275,6 @@
             "type" : "string"
           },
           "taskId" : {
-            "type" : "string"
-          },
-          "workerAllocationMechanism" : {
             "type" : "string"
           },
           "workerGroupId" : {

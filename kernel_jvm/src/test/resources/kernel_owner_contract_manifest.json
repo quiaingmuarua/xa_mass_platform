@@ -49,10 +49,6 @@
       "MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT": 100,
       "MAX_WORKER_BATCH_SIZE": 100
     },
-    "TaskRuleMatchDemand": {
-      "MAX_HELD_WORKERS": 100,
-      "MAX_TASKS": 100
-    },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
       "HOT_ACQUIRE_POLARITY": 1,
@@ -88,21 +84,14 @@
       "on_probe_unavailable",
       "on_route_unavailable"
     ],
-    "CandidateWorkerCache": [
-      "append_candidate_workers",
-      "candidate_worker_counts",
-      "consume_candidate_workers"
+    "TaskQuery": [
+      "retain",
+      "take",
+      "uses_identity_selection",
+      "validate"
     ],
-    "WorkerMatchQueue": [
-      "consume",
-      "offer",
-      "size"
-    ],
-    "TaskQuery": ["retain", "take"],
     "WorkerCandidateIndex": [
-      "prepare_task_query",
-      "retain_worker_ids",
-      "take_worker_ids"
+      "prepare_task_queries"
     ],
     "TaskEvidenceRuntime": [
       "append_task_evidence",
@@ -199,10 +188,6 @@
       "endpoint_manager_id",
       "observed_at_millis"
     ],
-    "CandidateWorkerEntry": [
-      "worker_id",
-      "held_worker_lease_score"
-    ],
     "DeliveryReport": [
       "src",
       "source_id",
@@ -219,7 +204,6 @@
     "TaskDescriptor": [
       "task_id",
       "worker_group_id",
-      "worker_allocation_mechanism",
       "idle_disposition",
       "config"
     ],
@@ -232,7 +216,9 @@
       "expire_at_millis",
       "worker_selector"
     ],
-    "TaskItemWorkerSelector": ["expression"],
+    "TaskItemWorkerSelector": [
+      "expression"
+    ],
     "TaskItemAppendResult": [
       "status",
       "reason"
@@ -266,16 +252,6 @@
     "TaskScoreTransitionResult": [
       "status",
       "score"
-    ],
-    "TaskCandidateNeed": [
-      "task_id",
-      "maximum_candidate_workers"
-    ],
-    "TaskRuleMatchDemand": [
-      "worker_group_id",
-      "ordered_task_needs",
-      "held_worker_lease_scores",
-      "hold_until_millis"
     ],
     "DeliveryCommand": [
       "src",
@@ -366,11 +342,6 @@
       "noop",
       "stale",
       "invalid"
-    ],
-    "WorkerAllocationMechanism": [
-      "PRECOMPUTED_TASK_RULE",
-      "INDEXED_TASK",
-      "ON_DEMAND_ITEM_RULE"
     ],
     "TaskIdleDisposition": [
       "CLOSE_WHEN_IDLE",

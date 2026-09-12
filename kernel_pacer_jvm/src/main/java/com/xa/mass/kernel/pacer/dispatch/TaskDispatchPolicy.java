@@ -7,7 +7,7 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -90,6 +90,16 @@ final class TaskDispatchPolicy {
 
     int dispatchTasks(List<ObservedTask> tasks) {
         Objects.requireNonNull(tasks, "tasks");
+        Map<String, String> coordinates = new LinkedHashMap<>();
+        tasks.forEach(task -> coordinates.put(task.taskId(), task.descriptor().workerGroupId()));
+        Map<String, TaskQuery> queries;
+        try {
+            queries = candidateSelection.prepareQueries(coordinates);
+        } catch (RuntimeException failure) {
+            System.getLogger(TaskDispatchPolicy.class.getName()).log(System.Logger.Level.WARNING,
+                    "operation=dispatch.prepareQueries candidate admission unavailable", failure);
+            queries = Map.of();
+        }
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
                 dispatchTimeMillis,
@@ -154,6 +164,7 @@ final class TaskDispatchPolicy {
                 Map<String, HeldWorkerCandidate> assignments =
                         assignments(
                                 task,
+                                queries.get(task.taskId()),
                                 claimableIds,
                                 items,
                                 claimUntilMillis,
@@ -193,67 +204,24 @@ final class TaskDispatchPolicy {
 
     private Map<String, HeldWorkerCandidate> assignments(
             ObservedTask task,
+            TaskQuery query,
             List<String> messageIds,
             Map<String, TaskItem> items,
             long leaseUntilMillis,
             Set<String> roundWorkerIds
     ) {
-        if (task.descriptor().workerAllocationMechanism()
-                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-            String taskId = task.taskId();
-            List<HeldWorkerCandidate> acquired = candidateSelection
-                    .consumeCachedCandidates(
-                            task.descriptor().workerGroupId(),
-                            taskId,
-                            messageIds.size()
-                    );
-            return pair(
-                    messageIds,
-                    acquired,
-                    roundWorkerIds
-            );
-        }
         var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
         for (String messageId : messageIds) {
             selectors.put(messageId, Objects.requireNonNull(
                     items.get(messageId), "claimable TaskItem").workerSelector());
         }
-        Map<String, HeldWorkerCandidate> acquired = task.descriptor().workerAllocationMechanism()
-                == WorkerAllocationMechanism.INDEXED_TASK
-                ? candidateSelection.acquireIndexedCandidates(task.taskId(), task.descriptor().workerGroupId(),
-                        selectors, Set.copyOf(roundWorkerIds), leaseUntilMillis)
-                : candidateSelection.acquireOnDemandCandidates(
-                        task.descriptor().workerGroupId(),
-                        selectors,
-                        Set.copyOf(roundWorkerIds),
-                        leaseUntilMillis
-                );
-        LinkedHashMap<String, HeldWorkerCandidate> result =
-                new LinkedHashMap<>();
-        for (String messageId : messageIds) {
-            HeldWorkerCandidate worker = acquired.get(messageId);
-            if (worker != null && roundWorkerIds.add(worker.workerId())) {
-                result.put(messageId, worker);
-            }
-        }
-        return java.util.Collections.unmodifiableMap(result);
-    }
-
-    private static Map<String, HeldWorkerCandidate> pair(
-            List<String> messageIds,
-            List<HeldWorkerCandidate> workers,
-            Set<String> roundWorkerIds
-    ) {
-        LinkedHashMap<String, HeldWorkerCandidate> result =
-                new LinkedHashMap<>();
-        int count = Math.min(messageIds.size(), workers.size());
-        for (int index = 0; index < count; index++) {
-            HeldWorkerCandidate worker = workers.get(index);
-            if (roundWorkerIds.add(worker.workerId())) {
-                result.put(messageIds.get(index), worker);
-            }
-        }
-        return java.util.Collections.unmodifiableMap(result);
+        return candidateSelection.acquireCandidates(
+                query,
+                task.descriptor().workerGroupId(),
+                selectors,
+                roundWorkerIds,
+                leaseUntilMillis
+        );
     }
 
     private static boolean failed(

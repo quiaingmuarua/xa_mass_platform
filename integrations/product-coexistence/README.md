@@ -19,9 +19,9 @@ The proof neither searches for a suitable seed nor repairs sampled quotas.
 ## Small functional and lifecycle world
 
 The mixed `demo-sim` Group has four Workers per country (12 total). SMS uses
-the ON_DEMAND country index; Messages uses PRECOMPUTED country constraints.
+the default Rule country index; Messages uses Rule-index country constraints.
 A real SMS listener supplies the number
-for a targeted PRECOMPUTED campaign; both execute on the same Worker and the SMS
+for a targeted Rule-index campaign; both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
 terminal before deliver/read/reply; another Task is explicitly closed first.
 Each receipt is checked independently through Result, Item Score and product

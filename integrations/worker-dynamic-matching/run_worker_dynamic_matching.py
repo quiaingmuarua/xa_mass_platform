@@ -166,7 +166,9 @@ def main() -> int:
                          for group in (STRING_GROUP, PHONE_GROUP)},
     }), encoding="utf-8")
     config = private / "server.properties"
-    config.write_text("xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n", encoding="utf-8")
+    config.write_text("xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n" + "".join(
+        f"xa.mass.worker-matching.rules.worker-groups[{group}][0]=proof.worker.facts\n"
+        for group in (STRING_GROUP, PHONE_GROUP)), encoding="utf-8")
     scope = "test_worker_dynamic_matching_" + uuid.uuid4().hex[:12]
     environment = {**os.environ, "XA_MASS_REDIS_URL": options.redis_url, "XA_MASS_REDIS_SCOPE": scope}
     gradle = str(ROOT / ("gradlew.bat" if os.name == "nt" else "gradlew"))

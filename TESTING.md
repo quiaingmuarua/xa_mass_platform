@@ -64,7 +64,7 @@ a prerequisite or Boundary Witness, not a second owner of that invariant.
 | Owner Test | Local algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | Encoding and behavior across adjacent owners or processes |
 | [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, live Properties without Prepare, extension, Result and restart closure |
-| [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) | Loaded PRECOMPUTED work follows live facts, with actual executor and Result witnesses |
+| [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) | Loaded Rule-index work follows live facts, with actual executor and Result witnesses |
 | [Worker Convergence Health](integrations/worker-convergence-health/README.md) | Named witness convergence after established state and process faults |
 | [Worker Loaded Capacity + Recovery Stability](integrations/worker-loaded-recovery/README.md) | Sustained work, repeated Server recovery and resource bounds |
 | [Android Worker](integrations/android-worker-proof/README.md) | Real Android lifecycle and fixed multi-process isolation |
@@ -105,15 +105,14 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 
 ## Selection Decision
 
-Shared Rule binding proof belongs to Redis Owner: canonical identity, concurrent
-binding conflicts/reuse, partial or unknown owner results, corrupt storage and
-one-command bind/100-Task resolution with deduplicated definitions. Matching tests
-preserve Task order, independent capacities and exclusion of Cache-accepted holds.
-Runtime Boundary creates two Tasks with the same Rule through the API and runs an
-actual Worker for both, including execution after the other Task closes. Rule
-sharing is asserted independently of execution. Existing dirty/exact-confirmation
-proofs retain ownership of scheduling safety; these tests do not claim cross-owner
-transactions, loss repair or end-to-end latency.
+Rule binding and index proof belongs to Redis Owner: concurrent create-only
+bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
+one-Lua facts/index updates, independent Worker/Platform writes and startup
+rebuild isolation. Matching tests prove Handler/query pairing and unsupported
+condition rejection. Pacer tests prove actual grouped demand, one bounded query
+batch, post-hold membership recheck, round exclusions and opaque exact fences.
+Runtime Boundary runs actual Workers across shared Rules and independent Task
+closure. These are not cross-owner transactions or loss-repair guarantees.
 
 Use the lowest-cost proof that owns the changed claim:
 
@@ -292,16 +291,18 @@ observations fail immediately; only temporary HTTP transport failures remain
 eligible for bounded polling. Android is not a secondary witness for the Java
 Worker proof.
 
-## Named Rule index cutover
+## Direct index acquisition
 
-Redis Owner proves shared named bindings, strict corrupt-data handling, bounded
-country union rotation, fact changes and the 100-Item HMGET + EVAL + EVAL budget.
-Runtime Boundary runs actual WebSocket and Socket Workers through two finite
-INDEXED_TASK Tasks sharing worker.country, changes live country, checks the actual
-executor, repeatable results/export and a retained Reporter observation after Task
-closure, and verifies no Task-specific Demand or
-Candidate Cache operations occurred. Existing DSL dynamic matching remains its
-own unchanged workload; the named Rule witness does not replace its assertions.
+Redis Owner proves strict bindings, index rotation, sparse phone partitions,
+live Worker/Platform projection, corrupted metadata rejection and command budgets:
+one binding HMGET per at-most-100-Task round, one take plus optional retain per
+Task indexed subset, and one facts/index Lua per Worker batch. Default identity
+selection still performs the common binding read. Focused Pacer tests retain
+exact HOT/hold/retain/descriptor boundaries and explicit targets beyond the first
+100 identities. Runtime Boundary uses actual WebSocket, Socket and Polling
+Workers and independent Task closure. Dynamic Matching preserves its 1,000
+Worker/150,400 Item workload using a fixed proof Rule and Item selectors;
+Messages validates country plus sparse phone through its named Handler.
 
 ## CI Gate
 

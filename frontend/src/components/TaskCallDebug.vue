@@ -142,7 +142,7 @@ async function scrollToLatest(): Promise<void> {
       </div>
       <div>
         <dt>Allocation</dt>
-        <dd>{{ entry.task?.workerAllocationMechanism ?? "MISSING" }}</dd>
+        <dd>{{ entry.task?.ruleId ?? "MISSING" }}</dd>
       </div>
     </dl>
 

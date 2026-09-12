@@ -117,17 +117,6 @@ describe("Task Call Debug request model", () => {
       taskCallDebugAvailability(
         "api",
         entry({
-          task: {
-            ...entry().task!,
-            workerAllocationMechanism: "PRECOMPUTED_TASK_RULE"
-          }
-        })
-      )
-    ).toMatchObject({ enabled: false });
-    expect(
-      taskCallDebugAvailability(
-        "api",
-        entry({
           task: { ...entry().task!, idleDisposition: "CLOSE_WHEN_IDLE" }
         })
       )
@@ -483,9 +472,8 @@ function entry(
     task: {
       taskId: "task-1",
       workerGroupId: "group-a",
-      workerAllocationMechanism: "ON_DEMAND_ITEM_RULE",
       idleDisposition: "PARK_WHEN_IDLE",
-      allocationRule: null,
+      ruleId: "worker.default",
       config: {
         priority: "0",
         maxRetryTimes: "3"

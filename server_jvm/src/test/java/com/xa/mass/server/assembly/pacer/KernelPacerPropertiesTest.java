@@ -5,9 +5,6 @@ import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.InMemoryWorkerMatchQueue;
-import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
@@ -30,14 +27,8 @@ class KernelPacerPropertiesTest {
                     .withUserConfiguration(KernelPacerConfiguration.class)
                     .withBean(WorkerCandidateIndex.class,
                             () -> mock(WorkerCandidateIndex.class))
-                    .withBean(
-                            CandidateWorkerCache.class,
-                            () -> mock(CandidateWorkerCache.class)
-                    )
-                    .withBean(
-                            WorkerMatchQueue.class,
-                            () -> new InMemoryWorkerMatchQueue(1)
-                    )
+
+
                     .withBean(
                             WorkerCommandRuntime.class,
                             () -> mock(WorkerCommandRuntime.class)

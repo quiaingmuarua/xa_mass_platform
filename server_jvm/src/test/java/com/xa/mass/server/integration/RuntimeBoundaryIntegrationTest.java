@@ -9,10 +9,6 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
-import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
-import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -154,16 +150,13 @@ class RuntimeBoundaryIntegrationTest {
     @MockitoSpyBean
     private WorkerMatchingCatalog matchingCatalog;
     @MockitoSpyBean
-    private WorkerMatchQueue matchQueue;
-    @MockitoSpyBean
-    private CandidateWorkerCache candidateCache;
-    @MockitoSpyBean
     private WorkerPreparationService preparationService;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
-        registry.add("xa.mass.worker-matching.country-index.worker-groups[0]", () -> "country-index-websocket");
-        registry.add("xa.mass.worker-matching.country-index.worker-groups[1]", () -> "country-index-socket");
+        registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.rules.worker-groups[property-tools-boundary][0]", () -> "proof.worker.facts");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
         registry.add("xa.mass.task-item-outcomes.names[8]", () -> "read");
         registry.add("xa.mass.task-item-outcomes.names[9]", () -> "replied");
@@ -294,15 +287,11 @@ class RuntimeBoundaryIntegrationTest {
                 long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
                 workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
                 long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
-                String oldCandidate = matchNewFacts(groupId, workerId, held, holdUntil,
-                        Map.of("worker.network.type", Map.of("$eq", "wifi")));
 
                 host.set(Map.of("network.type", "cellular", "ssid", "lab"));
                 assertThat(worker.reportProperties(Map.of("network.type", "cellular"))).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
-                matchNewFacts(groupId, workerId, held, holdUntil,
-                        Map.of("worker.network.type", Map.of("$eq", "cellular")));
-                assertThat(candidateCache.candidateWorkerCounts(List.of(oldCandidate)).get(oldCandidate)).isEqualTo(1);
+                assertThat(workerScores.getScoreStates(groupId,List.of(workerId)).get(workerId).dirty()).isEqualTo(1);
 
                 // Re-Prepare cannot replace the observed baseline with stale startup input.
                 var scoreBeforePrepare = workerScores.getScoreStates(groupId, List.of(workerId));
@@ -318,8 +307,6 @@ class RuntimeBoundaryIntegrationTest {
                 host.set(Map.of());
                 assertThat(worker.reportProperties()).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, Map.of());
-                matchNewFacts(groupId, workerId, held, holdUntil,
-                        Map.of("worker.ssid", Map.of("$exists", false)));
 
                 CountDownLatch failedSubmission = new CountDownLatch(1);
                 AtomicInteger submissions = new AtomicInteger();
@@ -381,8 +368,9 @@ class RuntimeBoundaryIntegrationTest {
                 String firstId = first.snapshot().workerId(), secondId = second.snapshot().workerId();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutor(taskId, "CN", firstId, "first");
-                assertCountryExecutor(taskId, "US", secondId, "second");
+                assertCountryExecutors(taskId, Map.of(
+                        "CN", Map.of("executor", firstId, "host", "first"),
+                        "US", Map.of("executor", secondId, "host", "second")));
                 String indexedFirst = createIndexedTask(group);
                 String indexedSecond = createIndexedTask(group);
                 String indexedItem = assertFiniteCountryExecutor(indexedFirst, "CN", firstId, "first");
@@ -394,22 +382,17 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(second.reportProperties()).isTrue();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutor(taskId, "CN", secondId, "second");
-                assertCountryExecutor(taskId, "US", firstId, "first");
+                assertCountryExecutors(taskId, Map.of(
+                        "CN", Map.of("executor", secondId, "host", "second"),
+                        "US", Map.of("executor", firstId, "host", "first")));
                 assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
-                for (String indexed : List.of(indexedFirst, indexedSecond)) {
-                    verify(matchingCatalog, org.mockito.Mockito.atLeastOnce()).prepareTaskQuery(indexed, group);
-                    verify(matchQueue, org.mockito.Mockito.never()).offer(org.mockito.ArgumentMatchers.argThat(demand ->
-                            demand != null && demand.orderedTaskNeeds().stream().anyMatch(need -> need.taskId().equals(indexed))));
-                    verify(candidateCache, org.mockito.Mockito.never()).consumeCandidateWorkers(eq(indexed), org.mockito.ArgumentMatchers.anyInt());
-                    verify(candidateCache, org.mockito.Mockito.never()).candidateWorkerCounts(org.mockito.ArgumentMatchers.argThat(ids -> ids != null && ids.contains(indexed)));
-                }
-                assertThat(matchingCatalog.loadTaskRules(List.of(indexedFirst, indexedSecond)).values())
+                verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).prepareTaskQueries(org.mockito.ArgumentMatchers.argThat(
+                        tasks -> tasks!=null && (group.equals(tasks.get(indexedFirst)) || group.equals(tasks.get(indexedSecond)))));
+                assertThat(matchingCatalog.loadTaskBindings(List.of(indexedFirst, indexedSecond)).values())
                         .allSatisfy(rule -> assertThat(rule.ruleId()).isEqualTo("worker.country"));
                 assertThat(first.snapshot().workerId()).isEqualTo(firstId);
                 assertThat(second.snapshot().workerId()).isEqualTo(secondId);
                 verify(preparationService, times(2)).prepareAll(eq(group), any(), any(), anyList());
-                verify(matchingCatalog, org.mockito.Mockito.atLeastOnce()).retainWorkerIds(eq(group), any(), anyList());
             }
         }
     }
@@ -454,18 +437,26 @@ class RuntimeBoundaryIntegrationTest {
         return messageId;
     }
 
-    private void assertCountryExecutor(String taskId, String country, String workerId, String host) throws Exception {
-        String messageId = UUID.randomUUID().toString();
+    private void assertCountryExecutors(String taskId, Map<String, Map<String, String>> expectedByCountry) throws Exception {
+        var items = new ArrayList<Map<String, Object>>();
+        var expected = new LinkedHashMap<String, Map<String, String>>();
+        expectedByCountry.forEach((country, executor) -> {
+            String messageId = UUID.randomUUID().toString();
+            expected.put(messageId, executor);
+            items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
+                    "payload", Map.of(), "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))));
+        });
         var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
-                "items", List.of(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
-                        "payload", Map.of(), "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country))))),
-                "waitTimeoutMillis", 10000)));
+                "items", items, "waitTimeoutMillis", 10000)));
         assertThat(response.statusCode()).isEqualTo(200);
-        var result = JSON.readTree(response.body()).get(messageId);
-        assertThat(result.get("status").asText()).isEqualTo("succeeded");
-        assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText()))
-                .containsEntry("executor", workerId).containsEntry("host", host);
+        var results = JSON.readTree(response.body());
+        expected.forEach((id, executor) -> {
+            var result = results.get(id);
+            assertThat(result.get("status").asText()).isEqualTo("succeeded");
+            assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText())).containsAllEntriesOf(executor);
+        });
     }
+
 
     @Test
     void lostFullPropertiesPublicationIsReplacedByNextIncrementalObservationOnBothTextProtocols() throws Exception {
@@ -524,11 +515,6 @@ class RuntimeBoundaryIntegrationTest {
                 long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
                 workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
                 long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
-                matchNewFacts(groupId, workerId, held, holdUntil, Map.of(
-                        "worker.network.type", Map.of("$eq", "cellular"),
-                        "worker.battery", Map.of("$eq", "89"),
-                        "worker.ssid", Map.of("$exists", false),
-                        "platform.pool", Map.of("$eq", "retained")));
                 assertThat(worker.snapshot().workerId()).isEqualTo(workerId);
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
                 verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
@@ -548,17 +534,6 @@ class RuntimeBoundaryIntegrationTest {
         Map<?, ?> observations = (Map<?, ?>) payload.get("propertiesByWorkerId");
         Map<?, ?> observation = (Map<?, ?>) observations.get(workerId);
         assertThat(observation.get("properties")).isEqualTo(expected);
-    }
-
-    private String matchNewFacts(String groupId, String workerId, long held, long holdUntil,
-                                 Map<String, Object> rule) throws Exception {
-        String taskId = "properties-candidate-" + UUID.randomUUID();
-        assertThat(matchingCatalog.bindTaskAllocationRule(taskId, groupId, rule).status())
-                .isEqualTo(WorkerMatchingCatalog.MutationStatus.APPLIED);
-        assertThat(matchQueue.offer(new TaskRuleMatchDemand(groupId,
-                List.of(new TaskCandidateNeed(taskId, 1)), Map.of(workerId, held), holdUntil))).isTrue();
-        awaitCondition(() -> candidateCache.candidateWorkerCounts(List.of(taskId)).get(taskId) == 1);
-        return taskId;
     }
 
     private void awaitRuntimeProperties(String groupId, String workerId, String adapterId,
@@ -593,7 +568,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
-    void onDemandClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
+    void defaultRuleClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
             throws Exception {
         runWorkerGroupTaskCall(TransportProfile.POLLING);
     }
@@ -694,7 +669,7 @@ class RuntimeBoundaryIntegrationTest {
     void sharedRuleTasksUseCanonicalFactsAndRemainIndependentAfterClosure()
             throws Exception {
         String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "property-tools-" + suffix;
+        String workerGroupId = "property-tools-boundary";
         String clientWorkerKey = "property-worker-" + suffix;
 
         assertThat(send(
@@ -710,7 +685,7 @@ class RuntimeBoundaryIntegrationTest {
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
-                Map.of("region", "cn-east")
+                Map.of("region", "cn-east", "proofPool", "A")
         );
         String workerId = boundWorker.workerId();
 
@@ -719,7 +694,7 @@ class RuntimeBoundaryIntegrationTest {
                 clientWorkerKey,
                 workerId,
                 boundWorker.endpointUri(),
-                Map.of("region", "cn-east"),
+                Map.of("region", "cn-east", "proofPool", "A"),
                 TransportProfile.WEBSOCKET
         );
         try {
@@ -729,22 +704,19 @@ class RuntimeBoundaryIntegrationTest {
                     "/api/v1/worker-groups/" + workerGroupId
                             + "/workers/" + workerId
                             + "/platform-properties",
-                    "{\"pool\":\"batch\"}"
+                    "{\"proofEnabled\":\"yes\"}"
             ).statusCode()).isEqualTo(200);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
-            String propertyRule = "{"
-                    + "\"workerId\":{\"$eq\":\"" + workerId + "\"},"
-                    + "\"worker.region\":{\"$eq\":\"cn-east\"},"
-                    + "\"platform.pool\":{\"$in\":[\"batch\"]}"
-                    + "}";
-            String taskId = createTask(workerGroupId, propertyRule);
-            String otherTaskId = createTask(workerGroupId, propertyRule);
-            var sharedRules = matchingCatalog.loadTaskRules(List.of(taskId, otherTaskId));
-            assertThat(sharedRules.get(taskId)).isNotNull().isSameAs(sharedRules.get(otherTaskId));
+            Map<String,Object> selector=Map.of("worker.proofPool",Map.of("op","eq","values",List.of("A")),
+                    "platform.proofEnabled",Map.of("op","eq","values",List.of("yes")));
+            String taskId=createTask(workerGroupId,"proof.worker.facts");
+            String otherTaskId=createTask(workerGroupId,"proof.worker.facts");
+            var sharedRules = matchingCatalog.loadTaskBindings(List.of(taskId, otherTaskId));
+            assertThat(sharedRules.get(taskId)).isNotNull().isEqualTo(sharedRules.get(otherTaskId));
             assertThat(sharedRules.get(taskId).ruleId()).isNotIn(taskId, otherTaskId);
-            appendItem(taskId, firstMessageId);
-            appendItem(taskId, secondMessageId);
+            appendItem(taskId, firstMessageId, selector);
+            appendItem(taskId, secondMessageId, selector);
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/approve",
@@ -780,9 +752,9 @@ class RuntimeBoundaryIntegrationTest {
             ).statusCode()).isEqualTo(200);
             // The second Task already shared the Rule before the first closed.
             // Its independent append, approval and execution still work afterwards.
-            assertThat(matchingCatalog.loadTaskRules(List.of(taskId, otherTaskId)).values())
+            assertThat(matchingCatalog.loadTaskBindings(List.of(taskId, otherTaskId)).values())
                     .containsOnly(sharedRules.get(taskId));
-            appendItem(otherTaskId, "after-other-task-closed");
+            appendItem(otherTaskId, "after-other-task-closed", selector);
             assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve", null).statusCode()).isEqualTo(200);
             awaitStoredResult(otherTaskId, "after-other-task-closed");
             awaitTaskExport(otherTaskId);
@@ -1031,16 +1003,13 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(restored.laneRank())
                     .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
 
-            demandTaskId = createTask(
-                    workerGroupId,
-                    "{\"workerId\":{\"$eq\":\"missing-worker-"
-                            + suffix + "\"}}"
-            );
+            demandTaskId=createTask(workerGroupId,"worker.default");
             demandTaskCreated = true;
             // Establish due work before approval; an approved empty finite Task can close immediately.
             appendItem(
                     demandTaskId,
-                    "serviceability-demand-item-" + suffix
+                    "serviceability-demand-item-" + suffix,
+                    Map.of("workerId",List.of("missing-worker-"+suffix))
             );
             assertThat(send(
                     "POST",
@@ -1406,8 +1375,8 @@ class RuntimeBoundaryIntegrationTest {
                     && workerGroupId.equals(
                             workerGroup.get("workerGroupId").asText()
                     )
-                    && "ON_DEMAND_ITEM_RULE".equals(task.get(
-                            "workerAllocationMechanism"
+                    && "worker.default".equals(task.get(
+                            "ruleId"
                     ).asText())
                     && "PARK_WHEN_IDLE".equals(
                             task.get("idleDisposition").asText()
@@ -1600,21 +1569,14 @@ class RuntimeBoundaryIntegrationTest {
 
     private void appendItem(
             String taskId,
-            String messageId
+            String messageId,
+            Map<String,Object> selector
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
                 "/api/v1/tasks/" + taskId + "/items",
-                """
-                        [{
-                            "messageId": "%s",
-                            "eventCode": "%s",
-                            "payload": {"value": "input"}
-                          }]
-                        """.formatted(
-                        messageId,
-                        TEST_EVENT_CODE
-                )
+                JSON.writeValueAsString(List.of(Map.of("messageId",messageId,"eventCode",TEST_EVENT_CODE,
+                        "payload",Map.of("value","input"),"workerSelector",selector)))
         );
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("\"status\":\"applied\"");
@@ -1827,7 +1789,7 @@ class RuntimeBoundaryIntegrationTest {
 
     private String createTask(
             String workerGroupId,
-            String allocationRule
+            String ruleId
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
@@ -1835,14 +1797,13 @@ class RuntimeBoundaryIntegrationTest {
                 """
                 {
                   "workerGroupId": "%s",
-                  "allocationRule": %s,
+                  "ruleId": "%s",
                   "priority": 0,
-                  "maximumCandidateWorkers": 1,
                   "maxRetryTimes": 3
                 }
                 """.formatted(
                 workerGroupId,
-                allocationRule
+                ruleId
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);

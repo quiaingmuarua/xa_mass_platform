@@ -18,7 +18,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -44,11 +43,14 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskRuntime = mock(TaskRuntime.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
+        var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
+        when(matching.bindTaskRule(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.APPLIED));
         service = new WorkerGroupTaskCallRegistrationService(
                 workerCatalog,
                 taskCatalog,
                 taskRuntime,
-                taskLifecycle
+                taskLifecycle, matching
         );
         when(workerCatalog.getWorkerGroupDescriptors(List.of("phone-tools")))
                 .thenReturn(Map.of(
@@ -109,16 +111,10 @@ class WorkerGroupTaskCallRegistrationServiceTest {
 
     @Test
     void conflictingPersistentDescriptorRejectsRegistration() {
-        TaskDescriptor conflict = new TaskDescriptor(
-                "scenario-rpc-phone-tools",
-                "phone-tools",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        TaskDescriptor conflict = new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                )
-        );
+                ));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -234,16 +230,10 @@ class WorkerGroupTaskCallRegistrationServiceTest {
     }
 
     private static TaskDescriptor expectedDescriptor() {
-        return new TaskDescriptor(
-                "scenario-rpc-phone-tools",
-                "phone-tools",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        return new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                )
-        );
+                ));
     }
 
     private static void assertError(

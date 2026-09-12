@@ -13,14 +13,18 @@ public record TaskItemWorkerSelector(Map<String, Object> expression) {
     private static final int MAX_TARGET_WORKERS = 100;
     private static final String WORKER_ID = "workerId";
 
+    @SuppressWarnings("unchecked")
     public TaskItemWorkerSelector {
-        if (expression == null || expression.size() > 1) {
-            throw new IllegalArgumentException("workerSelector must be an empty object or one binding/parameters entry");
+        if (expression == null || expression.size() > 100) {
+            throw new IllegalArgumentException("workerSelector must be an empty object, identity list or at most 100 property conditions");
         }
         if (expression.isEmpty()) {
             expression = Map.of();
         } else {
-            Map.Entry<?, ?> entry = expression.entrySet().iterator().next();
+            if (expression.containsKey(WORKER_ID) && expression.size() != 1) {
+                throw new IllegalArgumentException("workerId cannot be combined with property conditions");
+            }
+            for (Map.Entry<?, ?> entry : expression.entrySet()) {
             if (!(entry.getKey() instanceof String binding) || binding.isBlank()) {
                 throw new IllegalArgumentException("selector requires a non-blank binding");
             }
@@ -41,7 +45,8 @@ public record TaskItemWorkerSelector(Map<String, Object> expression) {
                     throw new IllegalArgumentException("property query must be an object or string parameters");
                 }
             }
-            expression = Map.of(binding, snapshot(entry.getValue(), 0));
+            }
+            expression = (Map<String, Object>) snapshot(expression, 0);
         }
     }
 

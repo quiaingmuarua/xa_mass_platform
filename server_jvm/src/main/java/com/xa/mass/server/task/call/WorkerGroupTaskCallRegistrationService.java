@@ -10,7 +10,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -32,14 +32,17 @@ public final class WorkerGroupTaskCallRegistrationService {
     private final WorkerResourceCatalog workerCatalog;
     private final TaskResourceCatalog taskCatalog;
     private final TaskRuntime taskRuntime;
+    private final WorkerMatchingCatalog matching;
     private final TaskLifecycleCommands taskLifecycle;
 
     public WorkerGroupTaskCallRegistrationService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
             TaskRuntime taskRuntime,
-            TaskLifecycleCommands taskLifecycle
+            TaskLifecycleCommands taskLifecycle,
+            WorkerMatchingCatalog matching
     ) {
+        this.matching = Objects.requireNonNull(matching,"matching");
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
@@ -55,6 +58,13 @@ public final class WorkerGroupTaskCallRegistrationService {
     public Registration register(String workerGroupId) {
         requireWorkerGroup(workerGroupId, REGISTER_OPERATION);
         TaskDescriptor expected = descriptor(workerGroupId);
+        try {
+            var binding=matching.bindTaskRule(expected.taskId(),workerGroupId,WorkerMatchingCatalog.DEFAULT_RULE_ID);
+            if (binding==null || !(binding.status()==WorkerMatchingCatalog.MutationStatus.APPLIED
+                    || binding.status()==WorkerMatchingCatalog.MutationStatus.UNCHANGED)) {
+                throw new IllegalStateException("Call Task binding unavailable or conflicting");
+            }
+        } catch (RuntimeException failure) { throw unavailable(REGISTER_OPERATION,"Call Task binding unavailable",failure); }
         TaskDescriptor existing = loadDescriptor(
                 expected.taskId(),
                 REGISTER_OPERATION
@@ -226,7 +236,6 @@ public final class WorkerGroupTaskCallRegistrationService {
         return new TaskDescriptor(
                 taskId(workerGroupId),
                 workerGroupId,
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 TASK_CONFIG
         );

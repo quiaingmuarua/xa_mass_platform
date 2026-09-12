@@ -8,9 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
-import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -56,11 +53,6 @@ class KernelOwnerContractManifestTest {
             ),
             Map.entry("WorkerScoreCore", WorkerScoreCore.class),
             Map.entry(
-                    "CandidateWorkerCache",
-                    CandidateWorkerCache.class
-            ),
-            Map.entry("WorkerMatchQueue", WorkerMatchQueue.class),
-            Map.entry(
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
             ),
@@ -75,10 +67,6 @@ class KernelOwnerContractManifestTest {
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
             Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
             Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),
-            Map.entry(
-                    "CandidateWorkerEntry",
-                    CandidateWorkerCache.CandidateWorkerEntry.class
-            ),
             Map.entry(
                     "DeliveryReport",
                     WorkerDeliveryProtocol.DeliveryReport.class
@@ -123,14 +111,6 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "TaskScoreTransitionResult",
                     TaskScoreBandCore.TaskScoreTransitionResult.class
-            ),
-            Map.entry(
-                    "TaskCandidateNeed",
-                    TaskRuleMatchDemand.TaskCandidateNeed.class
-            ),
-            Map.entry(
-                    "TaskRuleMatchDemand",
-                    TaskRuleMatchDemand.class
             ),
             Map.entry(
                     "DeliveryCommand",
@@ -189,10 +169,6 @@ class KernelOwnerContractManifestTest {
                             "TaskScoreTransitionStatus",
                             TaskScoreBandCore
                                     .TaskScoreTransitionStatus.class
-                    ),
-                    Map.entry(
-                            "WorkerAllocationMechanism",
-                            TaskRuntime.WorkerAllocationMechanism.class
                     ),
                     Map.entry(
                             "TaskIdleDisposition",
@@ -363,7 +339,6 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
-                "TaskRuleMatchDemand", TaskRuleMatchDemand.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         var expected = new TreeMap<String, Map<String, Long>>();
@@ -394,7 +369,6 @@ class KernelOwnerContractManifestTest {
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,
-                "TaskRuleMatchDemand", TaskRuleMatchDemand.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         @SuppressWarnings("unchecked")

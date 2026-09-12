@@ -34,9 +34,8 @@ agents change the repository; it is not the canonical mechanism narrative.
   score/resource mechanisms.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
-- `worker_matching_jvm/` owns Worker/Platform Properties, PRECOMPUTED
-  shared Rules and Task bindings, constraint interpretation and ordered candidate
-  publication.
+- `worker_matching_jvm/` owns Worker/Platform Properties, fixed Rule Handlers,
+  Task bindings, materialized eligibility indexes and bounded query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `distribution/server/` owns the sole production main and Boot JAR. It imports
   Server and optional product configuration; it owns no business or resource logic.
@@ -174,7 +173,7 @@ The liveness target is work-conserving convergence, not per-Task fairness:
 
 - fully occupied compatible Workers that keep completing assigned work are
   normal backpressure;
-- bounded scan, exact CAS and Candidate refill may create short convergence
+- bounded scan, exact CAS and bounded index take may create short convergence
   delay;
 - persistently due work plus persistently available compatible Workers that
   still cannot form any assignment across repeated eligible rounds is a
@@ -199,27 +198,19 @@ architectures.
 - Missing operations fail with `KernelOperationNotImplementedException`.
 - Java Redis operations live in their owning module and package.
 - Server connection/health packages must not own Redis keys.
-- Candidate Cache remains a stable mechanical owner here;
-  Pacer policy and loop code do not.
-- Task Owner stores only scheduling descriptors and TaskItem execution data.
-  It must not store PRECOMPUTED allocation Rules or interpret Match Property
-  names and constraint operators; persistent Rules and their
-  semantics belong to Worker Matching. Matching owns Task-to-Rule association
-  without reading Kernel Task metadata or lifecycle. Kernel/Pacer uses Task IDs,
-  never Rule IDs; Rule sharing must not share Candidate caches or held Workers.
-  For ON_DEMAND it stores one immutable
-  `workerSelector` query Map and owns generic structure, ANY and explicit ID
-  semantics only. Matching validates other selectors and binds indexes directly
-  to full property names; adding an index within this selector contract must not
-  change Kernel/Pacer production code. Matching owns acquisition and take time through
-  `WorkerCandidateIndex`; Kernel retains due HOT observation, initial hold,
-  post-hold membership recheck, exact confirm and claim. Index failure must not
-  fall back to ANY; ON_DEMAND and INDEXED_TASK use no Match Demand or Candidate Cache.
-  INDEXED_TASK resolves a named Rule by Task ID and reuses a dispatch-local
-  TaskQuery for take and post-hold membership recheck. It owns no lifecycle,
-  cache or close operation. Named Rules constrain ANY and explicit IDs too;
-  Kernel never receives their IDs or index coordinates. Only DSL Tasks retain
-  maximumCandidateWorkers configuration.
+- Candidate identity query contracts remain bounded here;
+  index storage belongs to Matching and loop code belongs to Pacer.
+- Task Owner stores only scheduling descriptors and Item execution data. It owns
+  generic immutable selector structure, ANY and explicit ID semantics. Matching
+  owns every Task binding, fixed Rule Handler and property/index interpretation.
+  Kernel/Pacer sees Task IDs, never Rule IDs, matching modes or index coordinates.
+  All Tasks resolve through one bounded `WorkerCandidateIndex.prepareTaskQueries`
+  call per dispatch round. Default identity selectors need no facts; named Rules
+  constrain ANY/IDs too. Missing or unavailable bindings must never fall back.
+  Matching owns paired projection/query functions; adding an index must not add
+  Kernel/Pacer branches. Kernel retains HOT, initial hold, membership recheck,
+  dirty/exact confirmation and claim. No per-Task Candidate Cache, Match Demand,
+  Matching consumer, Rule lifecycle or candidate-capacity config participates.
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
   A success may replace an earlier failed Result; storing terminal failure
@@ -257,26 +248,16 @@ kernel_jvm`.
   replace failed and request promotion of the existing score to
   `TERMINAL(tag=6)`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
-- [Allocation Policy](kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
-  owns PRECOMPUTED deficits, priority, initial holds and ordered Match Demand.
-  [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-  belongs to Task Dispatch and owns acquisition and endpoint-bearing assembly.
-  Neither Pacer Policy may read Rules or Properties or interpret constraints;
-  [Matching](worker_matching_jvm/README.md) owns that interpretation and may
-  append accepted held candidates through the Kernel Cache Owner. Dispatch
-  exact-confirms the clean cached score, consumes its eligibility and carries the
-  returned execution fence into ResultContext. Properties invalidation uses the
-  Score Owner after APPLIED facts writes; never fan out to Candidate Caches. Unmatched and unselected holds expire naturally;
-  do not compensate-release them or add a pending lease registry.
-  PRECOMPUTED DSL, INDEXED_TASK and ON_DEMAND are explicit fixed workflows; do not add
-  a generic acquisition Strategy, Cache exchange or cached-to-on-demand fallback.
-- `WorkerMatchQueue` is the complete PRECOMPUTED handoff contract. Pacer
-  offers, Matching consumes, and health reads size through the same Queue
-  interface; do not split producer and consumer operations behind another
-  Runtime or write-only port. The current Server assembly selects the bounded
-  in-memory implementation, but Pacer and Matching must not depend on that
-  storage choice. Queue size is diagnostic, while `offer` is the admission
-  result.
+- [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
+  belongs to Task Dispatch. It resolves the complete bounded Task binding batch,
+  queries actual per-selector Item demand, intersects HOT and obtains initial
+  holds. Matching rechecks membership; Kernel exact-confirms the clean score,
+  consumes eligibility and carries the returned execution fence into ResultContext.
+  Properties invalidation follows APPLIED facts writes through Score Owner.
+  Unused or rejected holds expire naturally; do not compensate-release them or
+  add a pending lease registry. Rule indexes have no per-Task queue, consumer,
+  cache or lifecycle. Do not add a generic acquisition Strategy or a fallback
+  from unavailable Rule evidence to ANY.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
@@ -310,7 +291,7 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
-Server establishes named Task bindings or PRECOMPUTED shared DSL Rules before
+Server establishes every Task binding, including the default Rule, before
 Kernel Task metadata; failed Task creation does not roll back Matching data.
 Worker Prepare resolves identity and asks Kernel to establish Binding and cold
 Score membership in separate, retryable stages. Valid network evidence requests
@@ -722,10 +703,10 @@ Adapter connectivity, Kernel state or schedulability.
   Runtime Preview is only a per-Group sample, never fleet enumeration.
   Each deterministic scenario stops mutation injection and evaluates the
   actual observed local world instead of installing a preferred final world.
-  It uses managed ON_DEMAND batch calls as offered load and `results:load` only
+  It uses managed batch calls as offered load and `results:load` only
   for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
   offered Items to succeed, count `FAILED` as a successful witness, poll
-  `results:export`, or broaden the separate PRECOMPUTED Properties witness into
+  `results:export`, or broaden the separate Rule-bound Properties witness into
   repeated topology claims owned by Runtime Boundary.
 - [Worker Loaded Recovery](integrations/worker-loaded-recovery/README.md) owns
   sustained-load, repeated-recovery and resource-stability claims in its separate
@@ -758,7 +739,7 @@ Adapter connectivity, Kernel state or schedulability.
   outside the CI artifact whitelist; local Harness success requires the runner
   audit before it can become phase success.
 - [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns
-  loaded PRECOMPUTED execution under live Worker/Platform Properties changes.
+  loaded Rule-index execution under live Worker/Platform Properties changes.
   Scenario's optional execution witness must capture the actual Group/replica
   in the construction-time Handler closure; request tokens only correlate.
   Keep its finite paginated journal explicit on overflow and outside artifacts.

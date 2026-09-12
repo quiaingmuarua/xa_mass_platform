@@ -4,7 +4,6 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
@@ -46,8 +45,7 @@ public final class TaskCreationService {
 
     public TaskCreateResponse create(TaskCreateRequest request) {
         if (request == null || request.workerGroupId() == null || request.workerGroupId().isBlank()
-                || request.allocationRule() != null && request.ruleId() != null || request.priority() < 0 || request.priority() > 99
-                || request.maximumCandidateWorkers() != null && (request.allocationRule() == null || request.maximumCandidateWorkers() < 1)
+                || request.priority() < 0 || request.priority() > 99
                 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
         }
@@ -57,12 +55,9 @@ public final class TaskCreationService {
         var config = new java.util.LinkedHashMap<String, String>();
         config.put("priority", Integer.toString(request.priority()));
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
-        if (request.allocationRule() != null) config.put("maximumCandidateWorkers", Integer.toString(request.maximumCandidateWorkers()));
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
                 request.workerGroupId(),
-                request.allocationRule() != null ? WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                        : request.ruleId() != null ? WorkerAllocationMechanism.INDEXED_TASK : WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config
         );
@@ -97,12 +92,10 @@ public final class TaskCreationService {
             String taskId,
             TaskCreateRequest request
     ) {
-        if (request.ruleId() == null && request.allocationRule() == null) return;
         MutationResult result;
         try {
-            result = request.ruleId() != null
-                    ? matchingCatalog.bindTaskRule(taskId, request.workerGroupId(), request.ruleId())
-                    : matchingCatalog.bindTaskAllocationRule(taskId, request.workerGroupId(), request.allocationRule());
+            result = matchingCatalog.bindTaskRule(taskId, request.workerGroupId(),
+                    request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId());
         } catch (RuntimeException error) {
             throw unavailable(error);
         }

@@ -10,7 +10,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -45,16 +44,21 @@ public final class TaskCallSubmissionService {
         // Capture every input, including duplicates, before any Owner call.
         List<TaskItemWorkerSelector> selectors = captureSelectors(items);
         TaskDescriptor descriptor = requireCallableTask(taskId);
+        com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery query;
+        try {
+            query = matching.prepareTaskQueries(java.util.Map.of(taskId, descriptor.workerGroupId())).get(taskId);
+            if (query == null) throw new IllegalStateException("Task Rule binding unavailable");
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE,"taskRpc.prepareQuery",null,error);
+        }
         long createdAtMillis = taskItems.nowMillis();
         var latest = new LinkedHashMap<String, TaskItem>();
         try {
             for (int i = 0; i < items.size(); i++) {
                 TaskItemWorkerSelector selector = selectors.get(i);
-                if (!selector.isAny() && !selector.hasExplicitWorkerIds()) {
-                    matching.validateWorkerSelector(descriptor.workerGroupId(), selector);
-                }
+                query.validate(selector);
                 TaskItemRequest item = items.get(i);
-                latest.put(item.messageId(), taskItems.onDemandItem(item, createdAtMillis, selector));
+                latest.put(item.messageId(), taskItems.callItem(item, createdAtMillis, selector));
             }
         } catch (IllegalArgumentException error) {
             throw invalid(error.getMessage());
@@ -113,9 +117,7 @@ public final class TaskCallSubmissionService {
                     null
             );
         }
-        if (descriptor.workerAllocationMechanism()
-                != WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
-                || descriptor.idleDisposition()
+        if (descriptor.idleDisposition()
                 != TaskIdleDisposition.PARK_WHEN_IDLE) {
             throw new ServerException(
                     ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,

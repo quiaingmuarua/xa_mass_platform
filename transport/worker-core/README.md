@@ -274,7 +274,7 @@ Client onOpen still sends only identity; no ready state or ACK is added.
 If the first request or upstream publication is lost, a new identity may remain
 without Matching facts until explicit full reporting or a later connection
 baseline. Polling has no equivalent Properties observation path; its new
-Workers can use ON_DEMAND without a matching baseline.
+Workers can use default Rule without a matching baseline.
 
 Both report payloads are direct string KV Maps. `updated` overwrites supplied
 keys and retains the rest; `replaced` replaces the whole Map and removes omitted

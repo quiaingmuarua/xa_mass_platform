@@ -18,7 +18,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResultPage;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.RedisClient;
@@ -57,9 +56,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "HSET",
               key,
               "workerGroupId", ARGV[1],
-              "workerAllocationMechanism", ARGV[2],
-              "idleDisposition", ARGV[3],
-              "configJson", ARGV[4]
+              "idleDisposition", ARGV[2],
+              "configJson", ARGV[3]
             )
             return 1
             """;
@@ -294,10 +292,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("workerGroupId", descriptor.workerGroupId());
         fields.put(
-                "workerAllocationMechanism",
-                descriptor.workerAllocationMechanism().name()
-        );
-        fields.put(
                 "idleDisposition",
                 descriptor.idleDisposition().name()
         );
@@ -314,7 +308,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 ScriptOutputType.INTEGER,
                 new String[]{taskDescriptorKey(taskId)},
                 fields.get("workerGroupId"),
-                fields.get("workerAllocationMechanism"),
                 fields.get("idleDisposition"),
                 fields.get("configJson")
         );
@@ -365,8 +358,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             try {
                 MaterializedItem materialized = materialize(
                         item,
-                        nowMillis,
-                        appendPolicy.workerAllocationMechanism()
+                        nowMillis
                 );
                 records.put(messageId, encodeItem(materialized));
                 dueMillis.put(messageId, initialDueMillis(materialized));
@@ -648,7 +640,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private TaskAppendPolicy loadAppendPolicy(String taskId) {
         List<KeyValue<String, String>> fields = commands().hmget(
                 taskDescriptorKey(taskId),
-                "workerAllocationMechanism",
                 "configJson"
         );
         if (fields.stream().allMatch(field -> !field.hasValue())) {
@@ -660,11 +651,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                         "Task append policy fields are incomplete"
                 );
             }
-            WorkerAllocationMechanism mechanism =
-                    WorkerAllocationMechanism.valueOf(
-                            fields.get(0).getValue()
-                    );
-            JsonNode config = mapper.readTree(fields.get(1).getValue());
+            JsonNode config = mapper.readTree(fields.get(0).getValue());
             JsonNode value = config.get("maxRetryTimes");
             if (value == null
                     || !value.isTextual()
@@ -679,7 +666,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                         "maxRetryTimes must be in 0..98"
                 );
             }
-            return new TaskAppendPolicy(mechanism, decoded);
+            return new TaskAppendPolicy(decoded);
         } catch (JacksonException | IllegalArgumentException error) {
             throw new IllegalStateException(
                     "Task scheduling declaration is corrupt",
@@ -690,15 +677,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private MaterializedItem materialize(
             TaskItem item,
-            long nowMillis,
-            WorkerAllocationMechanism mechanism
+            long nowMillis
     ) {
-        if (mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                && !item.workerSelector().isAny()) {
-            throw new IllegalArgumentException(
-                    "PRECOMPUTED TaskItem must have an empty workerSelector"
-            );
-        }
         rejectNonFiniteNumbers(item.payload());
         long expiry;
         if (item.expireAtMillis() == null) {
@@ -962,7 +942,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     }
 
     private record TaskAppendPolicy(
-            WorkerAllocationMechanism workerAllocationMechanism,
             int maxRetryTimes
     ) {
     }

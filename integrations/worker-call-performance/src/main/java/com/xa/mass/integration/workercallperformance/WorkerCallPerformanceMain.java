@@ -214,8 +214,7 @@ public final class WorkerCallPerformanceMain {
     }
 
     private static String createBackground(CallApi api, String prefix) throws Exception {
-        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("workerGroupId", CallApi.GROUP,
-                "allocationRule", Map.of(), "priority", 50, "maximumCandidateWorkers", 50, "maxRetryTimes", 3)), "taskId");
+        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("workerGroupId", CallApi.GROUP, "priority", 50, "maxRetryTimes", 3)), "taskId");
         for (int offset = 0; offset < 50_000; offset += 100) {
             var items = new ArrayList<Map<String, Object>>();
             for (int i = offset; i < offset + 100; i++) items.add(Map.of("messageId", prefix + "-bg-" + i,

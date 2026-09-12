@@ -731,20 +731,19 @@
           </div>
           <div class="grid-2 section-block">
             <article class="card matching">
-              <span class="owner">PRECOMPUTED</span>
+              <span class="owner">Rule Index</span>
               <h3>按属性条件匹配</h3>
               <p>
-                Kernel 先持有一个有限 Worker 池，Matching 用任务规则过滤出候选。
-                最终分配前，Kernel 仍要再次确认资源有效。
+                Matching 将 Worker 属性提前物化为索引，按 Task 绑定与任务项条件提供候选。
+                Kernel 获取可用资源、持有并复核资格，最后确认分配。
               </p>
             </article>
             <article class="card kernel">
-              <span class="owner">ON_DEMAND</span>
+              <span class="owner">Default Rule</span>
               <h3>按身份范围获取</h3>
               <p>
-                任务项提供明确的 Worker ID 列表，或用空列表（ANY）让 Kernel
-                在所属分组内获取可用
-                Worker。这条路径不解释属性条件，也不使用预计算候选缓存。
+                任务项提供明确的 Worker ID 列表，或用空条件（ANY）让 Kernel
+                在所属分组内获取可用 Worker。绑定具名 Rule 时，身份选择也必须满足该 Rule 的资格。
               </p>
             </article>
           </div>

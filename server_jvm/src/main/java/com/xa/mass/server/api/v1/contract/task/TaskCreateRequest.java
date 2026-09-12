@@ -8,15 +8,18 @@ import java.util.Map;
 
 public record TaskCreateRequest(
         @NotBlank String workerGroupId,
-        Map<String, Object> allocationRule,
         String ruleId,
         @Min(0) @Max(99) Integer priority,
-        @Positive Integer maximumCandidateWorkers,
         @Min(0) @Max(98) Integer maxRetryTimes
 ) {
     public TaskCreateRequest {
         priority = priority == null ? 50 : priority;
-        if (maximumCandidateWorkers == null && allocationRule != null) maximumCandidateWorkers = 10;
         maxRetryTimes = maxRetryTimes == null ? 3 : maxRetryTimes;
+    }
+
+    /** An unknown constraint must never silently turn into the default unconstrained Rule. */
+    @com.fasterxml.jackson.annotation.JsonAnySetter
+    public void rejectUnknown(String field, Object value) {
+        throw new IllegalArgumentException("Unsupported Task creation field: " + field);
     }
 }

@@ -16,7 +16,6 @@ import java.util.UUID;
 final class LoadedRecoveryWorkload {
 
     static final int TASK_COUNT = 10;
-    static final int MAXIMUM_CANDIDATE_WORKERS = 100;
     private static final int APPEND_PAGE_SIZE = 100;
     private static final int RESULT_PAGE_SIZE = 1_000;
     private static final Duration RESULT_POLL_INTERVAL = Duration.ofSeconds(1);

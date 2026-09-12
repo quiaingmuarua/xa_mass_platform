@@ -33,7 +33,7 @@ public final class TaskItemMapper {
                 request.workerSelector() == null ? Map.of() : request.workerSelector()));
     }
 
-    public TaskItem onDemandItem(
+    public TaskItem callItem(
             TaskItemRequest request,
             long createdAtMillis,
             TaskItemWorkerSelector selector

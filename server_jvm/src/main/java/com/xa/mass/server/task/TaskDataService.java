@@ -8,7 +8,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
@@ -94,8 +93,8 @@ public final class TaskDataService {
                 );
             }
 
-            if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.INDEXED_TASK
-                    && matchingCatalog.prepareTaskQuery(taskId, descriptor.workerGroupId()) == null) {
+            var query = matchingCatalog.prepareTaskQueries(Map.of(taskId, descriptor.workerGroupId())).get(taskId);
+            if (query == null) {
                 throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.appendItems",
                         "Task Rule binding is unavailable", null);
             }
@@ -108,15 +107,8 @@ public final class TaskDataService {
             for (Map.Entry<String, TaskItemRequest> entry
                     : latest.entrySet()) {
                 try {
-                    if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                            && entry.getValue().workerSelector() != null) {
-                        throw new IllegalArgumentException("DSL TaskItem forbids workerSelector");
-                    }
                     TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis);
-                    if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.INDEXED_TASK
-                            || !item.workerSelector().isAny() && !item.workerSelector().hasExplicitWorkerIds()) {
-                        matchingCatalog.validateWorkerSelector(descriptor.workerGroupId(), item.workerSelector());
-                    }
+                    query.validate(item.workerSelector());
                     validItems.add(item);
                 } catch (IllegalArgumentException error) {
                     results.put(
@@ -231,9 +223,7 @@ public final class TaskDataService {
     }
 
     private static boolean isManagedCallTask(TaskDescriptor descriptor) {
-        return descriptor.workerAllocationMechanism()
-                == WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
-                && descriptor.idleDisposition()
+        return descriptor.idleDisposition()
                 == TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE;
     }
 

@@ -5,7 +5,7 @@ Status: current business workload and simulator owner document.
 这是 XA Mass 的首个具有真实业务形态的系统验证载体，以接码预览版提供页面和 API。
 现阶段 `Product` 表示用来检验平台的业务场景，尚不代表独立的商业产品单元。
 页面和产品 API 创建监听订单，
-Java Worker 模拟自有设备的 SIM，通过真实 Prepare、WebSocket、ON_DEMAND
+Java Worker 模拟自有设备的 SIM，通过真实 Prepare、WebSocket、default Rule
 Task 和后续 Outcome 观察完成接码。只使用模拟短信，不连接真实短信供应商。
 
 ## 验证目的与演进
@@ -254,7 +254,7 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 不暴露 Reporter、不作为 Backend 的结果来源。
 
 功能场景还从实际 Worker 读取事件快照，再在 CN 同一号码保持监听期间，通过同 Group 的
-有限 PRECOMPUTED Task 执行字符串事件，随后验证短信结果。这只证明同一 Worker 承接两类
+有限 Rule-index Task 执行字符串事件，随后验证短信结果。这只证明同一 Worker 承接两类
 Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身份稳定的重启、去重保留以及
 新监听成功；旧监听的本地 INTERRUPTED 与产品 UNCONFIRMED 分别记录，不计入正常流的状态不一致。
 

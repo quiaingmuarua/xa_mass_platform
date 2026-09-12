@@ -113,7 +113,6 @@ export function createTaskManagementStore(
       try {
         const created = await client.createTask({
           workerGroupId: request.workerGroupId,
-          allocationRule: {},
           ...request.config
         });
         const now = new Date().toISOString();
@@ -258,8 +257,7 @@ function validConfig(config: CreateFiniteTaskExecutionRequest["config"]): boolea
     Number.isInteger(config.priority) &&
     config.priority >= 0 &&
     config.priority <= 99 &&
-    Number.isInteger(config.maximumCandidateWorkers) &&
-    config.maximumCandidateWorkers > 0 &&
+    (config.ruleId === undefined || config.ruleId.trim().length > 0) &&
     Number.isInteger(config.maxRetryTimes) &&
     config.maxRetryTimes >= 0 &&
     config.maxRetryTimes <= 98

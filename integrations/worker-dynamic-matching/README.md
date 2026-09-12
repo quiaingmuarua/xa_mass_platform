@@ -1,6 +1,6 @@
 # Worker Dynamic Matching
 
-Primary proof: continuous PRECOMPUTED work overlaps real Worker Properties
+Primary proof: continuous Rule-index work overlaps real Worker Properties
 changes, independently observed facts and actual execution on eligible replicas.
 This lane has its own claim and evidence; Correctness, Convergence Health and
 Loaded Recovery retain their existing claims.
@@ -26,7 +26,9 @@ ready/continue files. These files coordinate the proof only. Harness success is
 `pending-runner-audit` until unchanged live Host/Server processes, 900 control
 records and zero additional single/batch Prepare requests are independently
 confirmed. The access log is unbuffered, unrotated and contains method/path/status
-only; rejected Prepare attempts also fail the audit.
+only; rejected Prepare attempts also fail the audit. After the Harness finishes
+its assertions and saves evidence, it stops its HTTP clients without waiting for
+cancelled reader requests. Client shutdown does not replace the runner audit.
 
 ## Fixed World And Workload
 
@@ -37,9 +39,9 @@ only; rejected Prepare attempts also fail the audit.
   `platform.proofEnabled=yes`. Initial Platform Properties are written through
   their public API only after the first independent Worker facts observation.
 - Three background Tasks: String A, String B and unrestricted Phone. Each has
-  50,000 Items, 1,000 ms Handler delay, priority 50 and at most 500 candidates.
-- Four witness Tasks each have 100 Items, 100 ms delay, priority 10 and at most
-  100 candidates. All Tasks use the public finite PRECOMPUTED lifecycle with
+  50,000 Items, 1,000 ms Handler delay, priority 50.
+- Four witness Tasks each have 100 Items, 100 ms delay, priority 10. All Tasks bind to `proof.worker.facts`; their Items carry pool/target/platform
+  selectors. They use the public finite lifecycle with
   maxRetryTimes=3. Total: seven Tasks and 150,400 submitted Items.
 
 Each Group has five 100-record files. Each String file contains 40 stable A,

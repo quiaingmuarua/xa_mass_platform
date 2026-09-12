@@ -1319,7 +1319,6 @@ def _validate_stage_summary(
             options.prepared_workers - options.retained_workers
         ),
         "activeTaskCount": TASKS_PER_STAGE,
-        "maximumCandidateWorkersPerTask": 100,
         "offeredItemsPerTask": items_per_task,
         "totalOfferedItems": total_items,
         "appendBatchCount": expected_batches,

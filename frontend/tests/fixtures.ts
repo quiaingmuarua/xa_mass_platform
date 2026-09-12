@@ -23,9 +23,8 @@ export function task(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
     workerGroupId,
-    workerAllocationMechanism: "ON_DEMAND_ITEM_RULE",
     idleDisposition: "PARK_WHEN_IDLE",
-    allocationRule: null,
+    ruleId: "worker.default",
     config: {
       priority: "0",
       maxRetryTimes: "3"

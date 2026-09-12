@@ -19,8 +19,8 @@ const draft = ref({
   workerGroupId: "",
   eventCode: "",
   payloadKey: "value",
+  ruleId: "",
   priority: 50,
-  maximumCandidateWorkers: 10,
   maxRetryTimes: 3
 });
 
@@ -42,8 +42,8 @@ async function openCreate(): Promise<void> {
     workerGroupId: group?.workerGroupId ?? "",
     eventCode: group?.eventCodes[0] ?? "",
     payloadKey: "value",
+    ruleId: "",
     priority: 50,
-    maximumCandidateWorkers: 10,
     maxRetryTimes: 3
   };
   inputFile.value = undefined;
@@ -70,7 +70,7 @@ async function createAndAppend(): Promise<void> {
     file: inputFile.value,
     config: {
       priority: Number(draft.value.priority),
-      maximumCandidateWorkers: Number(draft.value.maximumCandidateWorkers),
+      ...(draft.value.ruleId.trim() ? { ruleId: draft.value.ruleId.trim() } : {}),
       maxRetryTimes: Number(draft.value.maxRetryTimes)
     }
   });
@@ -368,11 +368,8 @@ function formatBytes(value: number): string {
             ><input v-model.number="draft.priority" type="number" min="0" max="99"
           /></label>
           <label
-            ><span>Candidates</span
-            ><input
-              v-model.number="draft.maximumCandidateWorkers"
-              type="number"
-              min="1"
+            ><span>Rule ID（可选）</span
+            ><input v-model="draft.ruleId" type="text" placeholder="worker.default"
           /></label>
           <label
             ><span>Retries</span

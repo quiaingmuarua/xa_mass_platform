@@ -3,7 +3,6 @@ package com.xa.mass.kernel.pacer.dispatch;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -33,7 +32,6 @@ final class DispatchMainScheduler {
     private final TaskScoreBandCore taskScores;
     private final TaskResourceCatalog taskCatalog;
     private final TaskInitializationPolicy initialization;
-    private final TaskWorkerAllocationPolicy allocation;
     private final TaskDispatchPolicy dispatch;
     private final WorkerServiceabilityDispatchPolicy serviceability;
     private final AssignmentDispatchConfig assignmentConfig;
@@ -43,7 +41,6 @@ final class DispatchMainScheduler {
             TaskScoreBandCore taskScores,
             TaskResourceCatalog taskCatalog,
             TaskInitializationPolicy initialization,
-            TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability,
             AssignmentDispatchConfig assignmentConfig,
@@ -58,7 +55,6 @@ final class DispatchMainScheduler {
                 initialization,
                 "initialization"
         );
-        this.allocation = Objects.requireNonNull(allocation, "allocation");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
         this.serviceability = serviceability;
         this.assignmentConfig = Objects.requireNonNull(
@@ -228,33 +224,12 @@ final class DispatchMainScheduler {
                 Set<DispatchProducerId> eligible,
                 List<ObservedTask> normalTasks
         ) {
-            List<CandidateAllocationNeed> allocationNeeds = normalTasks.stream()
-                    .filter(task -> task.descriptor()
-                            .workerAllocationMechanism()
-                            == WorkerAllocationMechanism
-                            .PRECOMPUTED_TASK_RULE)
-                    .map(task -> new CandidateAllocationNeed(
-                            task.descriptor().workerGroupId(),
-                            task.taskId(),
-                            task.descriptor().priority(),
-                            task.descriptor().maximumCandidateWorkers()
-                    ))
-                    .toList();
             LinkedHashSet<String> groupIds = new LinkedHashSet<>();
             normalTasks.forEach(task -> groupIds.add(
                     task.descriptor().workerGroupId()
             ));
             List<String> workerGroupIds = List.copyOf(groupIds);
 
-            if (eligible.contains(DispatchProducerId.WORKER_ALLOCATION)) {
-                startProducer(
-                        DispatchProducerId.WORKER_ALLOCATION,
-                        allocationNeeds.size(),
-                        () -> allocation.allocateCandidateWorkers(
-                                allocationNeeds
-                        )
-                );
-            }
             if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
                 startProducer(
                         DispatchProducerId.TASK_DISPATCH,
@@ -435,13 +410,6 @@ final class DispatchMainScheduler {
                 ProducerRuntime.fromMillis(
                         DispatchProducerId.TASK_INITIALIZATION,
                         assignmentConfig.taskInitializationIntervalMillis()
-                )
-        );
-        result.put(
-                DispatchProducerId.WORKER_ALLOCATION,
-                ProducerRuntime.fromMillis(
-                        DispatchProducerId.WORKER_ALLOCATION,
-                        assignmentConfig.workerAllocationIntervalMillis()
                 )
         );
         result.put(

@@ -2,7 +2,7 @@
 
 Status: current Message Campaigns business owner.
 
-Messages 是有限消息触达业务，用来验证 PRECOMPUTED Task 的发送执行与 Task 结束后的持续业务观察。
+Messages 是有限消息触达业务，用来验证 Rule-index Task 的发送执行与 Task 结束后的持续业务观察。
 与 [SMS Reception](../sms-reception/README.md) 共同运行时，两产品使用同一 Server、Redis scope、
 Adapter 和真实 Worker 池；产品之间没有代码依赖。
 
@@ -16,7 +16,7 @@ Adapter 和真实 Worker 池；产品之间没有代码依赖。
 
 ```text
 POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
-  -> 创建有限 PRECOMPUTED Task -> 每次最多 100 Items -> 全部确认后批准
+  -> 创建有限 Rule-index Task -> 每次最多 100 Items -> 全部确认后批准
   -> Kernel / Matching -> 共用 Adapter -> 实际 Worker message.send
   -> 模拟通道创建唯一消息 -> SENT 执行 Result
 收件端 deliver / read / reply -> 本地事实 -> 原 Worker run 的 Reporter
@@ -25,9 +25,9 @@ POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
 
 一个收件人对应一个稳定 messageId 和 TaskItem；收件人地址与 Worker 身份无关。
 匹配规则始终包含 `worker.messaging.enabled = "true"`，可选的发送号码增加 `worker.phone` 等值条件。
-所有国家使用同一 Group。PRECOMPUTED 规则包含 `worker.country $eq`、
-`worker.messaging.enabled $eq "true"` 和可选 `worker.phone`，产品不选 Worker。默认候选数 100，可通过
-`xa.mass.messages.maximum-candidate-workers` 在 1..1000 内设置。
+所有国家使用同一 Group。Task 绑定 `worker.messaging.available`：Handler 提前物化
+`messaging.enabled=true` 的 Worker；Item 使用 `worker.country` eq/in 与可选 `worker.phone` eq
+条件，结构为 `{op, values}`。phone 直接查询分区索引，产品不选 Worker，Task 不配置候选容量。
 
 ## API 与业务记录
 

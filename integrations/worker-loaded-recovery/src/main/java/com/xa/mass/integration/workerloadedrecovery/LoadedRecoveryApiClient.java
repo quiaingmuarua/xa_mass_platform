@@ -16,7 +16,6 @@ final class LoadedRecoveryApiClient {
     private static final int OBSERVATION_LIMIT = 100;
     private static final int RESULT_LOAD_LIMIT = 1_000;
     private static final int STOP_BATCH_LIMIT = 100;
-    private static final int MAXIMUM_CANDIDATE_WORKERS = 100;
 
     private final LoadedRecoveryHttpClient lab;
     private final LoadedRecoveryHttpClient runtime;
@@ -168,9 +167,7 @@ final class LoadedRecoveryApiClient {
                 "/api/v1/tasks",
                 Map.of(
                         "workerGroupId", workerGroupId,
-                        "allocationRule", Map.of(),
                         "priority", 50,
-                        "maximumCandidateWorkers", MAXIMUM_CANDIDATE_WORKERS,
                         "maxRetryTimes", 3
                 )
         );

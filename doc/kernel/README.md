@@ -12,7 +12,7 @@ kernel_pacer_jvm
   scheduling Policy, convergence loops and finite lifecycle
 
 worker_matching_jvm
-  Worker facts, PRECOMPUTED Rules and bounded identity evidence
+  Worker facts, fixed Rule Handlers and bounded identity evidence
 
 server_jvm
   Spring assembly and public Runtime API
@@ -57,7 +57,7 @@ Policy and lifecycle documents:
 - [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md)
 - [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 - [Task Initialization](../../kernel_pacer_jvm/doc/dispatch/task-initialization-policy.md)
-- [Worker Allocation](../../kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
+- [Candidate Selection](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 - [Task Dispatch](../../kernel_pacer_jvm/doc/dispatch/task-dispatch-pacer.md)
 - [Worker Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 - [Result Convergence](../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
@@ -98,9 +98,3 @@ guarded by
 
 Python Kernel历史实现可在
 `python-kernel-verification-final-2026-08-28` Tag中查看。
-
-Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
-queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
-exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
-original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
-lifecycle is independent of this allocation choice.

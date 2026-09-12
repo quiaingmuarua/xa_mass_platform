@@ -3,8 +3,6 @@ package com.xa.mass.server.assembly.kernel;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
-import com.xa.mass.kernel.assignment.redis.RedisCandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandAppendStatus;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
@@ -34,7 +32,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
-    private RedisCandidateWorkerCache candidateCache;
     private RedisWorkerCommandRuntime commands;
 
     @BeforeEach
@@ -44,7 +41,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        candidateCache = new RedisCandidateWorkerCache(redisClient, keyspace);
         commands = new RedisWorkerCommandRuntime(
                 redisClient,
                 new WorkerDeliveryCodec(),
@@ -57,9 +53,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         if (redis != null) {
             testScope.cleanup(redis);
         }
-        if (candidateCache != null) {
-            candidateCache.close();
-        }
         if (commands != null) {
             commands.close();
         }
@@ -69,156 +62,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         if (redisClient != null) {
             redisClient.shutdown();
         }
-    }
-
-    @Test
-    void cachedAndLatePublishedCandidatesRetainTheirInvalidatedFenceUntilConsumed() {
-        long now = redisTimeMillis();
-        String group = "g";
-        try (var scores = new com.xa.mass.kernel.score.redis.RedisWorkerScoreCore(redisClient, keyspace)) {
-            scores.initializeRegisteredScores(group, List.of("w"));
-            scores.applyServiceabilityEvidence(group, Map.of("w", now - 1000),
-                    com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE);
-            var due = scores.observeDueHotScores(group, List.of("w"), null);
-            long held = scores.acquireObservedHotScoreLeases(group, due, now + 30_000).get("w").score();
-            var entry = new CandidateWorkerEntry("w", held);
-            candidateCache.appendCandidateWorkers("cached", 1, List.of(entry), now + 30_000);
-            scores.markCurrentLeasesDirty(group, List.of("w"));
-            // A Matching consumer can finish an old Demand after invalidation.
-            candidateCache.appendCandidateWorkers("late", 1, List.of(entry), now + 30_000);
-            assertThat(candidateCache.candidateWorkerCounts(List.of("cached", "late")))
-                    .containsEntry("cached", 1).containsEntry("late", 1);
-            for (String candidate : List.of("cached", "late")) {
-                var consumed = candidateCache.consumeCandidateWorkers(candidate, 1).getFirst();
-                assertThat(consumed).isEqualTo(entry);
-                assertThat(scores.confirmActiveHotScoreLeases(group,
-                        Map.of(consumed.workerId(), consumed.heldWorkerLeaseScore()), now + 20_000)
-                        .get("w").status()).isEqualTo(
-                                com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
-            }
-        }
-    }
-
-    @Test
-    void candidateCacheIsBoundedExpiringAndDestructivelyConsumed() {
-        long nowMillis = redisTimeMillis();
-        CandidateWorkerEntry first = new CandidateWorkerEntry(
-                "worker-1",
-                101L
-        );
-        CandidateWorkerEntry second = new CandidateWorkerEntry(
-                "worker-2",
-                102L
-        );
-        candidateCache.appendCandidateWorkers(
-                "candidate-1",
-                2,
-                List.of(first, second),
-                nowMillis + 60_000
-        );
-        assertThat(candidateCache.candidateWorkerCounts(List.of(
-                "candidate-1",
-                "candidate-1",
-                "missing"
-        ))).containsExactly(
-                Map.entry("candidate-1", 2),
-                Map.entry("missing", 0)
-        );
-
-        List<CandidateWorkerEntry> firstPage = candidateCache
-                .consumeCandidateWorkers("candidate-1", 1);
-        List<CandidateWorkerEntry> secondPage = candidateCache
-                .consumeCandidateWorkers("candidate-1", 10);
-        assertThat(firstPage).hasSize(1);
-        assertThat(secondPage).hasSize(1);
-        assertThat(List.of(firstPage.getFirst(), secondPage.getFirst()))
-                .containsExactlyInAnyOrder(first, second);
-        assertThat(candidateCache.consumeCandidateWorkers(
-                "candidate-1",
-                10
-        )).isEmpty();
-
-        redis.zadd(
-                keyspace.base()
-                        + ":dispatch:candidate:old-shape:workers",
-                nowMillis + 60_000,
-                """
-                        {"workerId":"worker-old",\
-                        "workerGroupId":"group-1",\
-                        "endpointManagerId":"adapter-old",\
-                        "workerLeaseScore":103}
-                        """
-        );
-        assertThat(candidateCache.consumeCandidateWorkers(
-                "old-shape",
-                10
-        )).isEmpty();
-
-        redis.zadd(
-                keyspace.base()
-                        + ":dispatch:candidate:corrupt:workers",
-                nowMillis + 60_000,
-                "{not-json"
-        );
-        assertThat(candidateCache.consumeCandidateWorkers(
-                "corrupt",
-                10
-        )).isEmpty();
-        assertThat(redis.exists(
-                keyspace.base()
-                        + ":dispatch:candidate:corrupt:workers"
-        )).isZero();
-    }
-
-    @Test
-    void candidateAppendOnlyFillsRemainingAddressCapacityInInputOrder() {
-        long expiresAtMillis = redisTimeMillis() + 60_000;
-        assertThat(candidateCache.appendCandidateWorkers(
-                "task-capacity",
-                10,
-                candidateEntries(1, 7),
-                expiresAtMillis
-        )).containsExactly(
-                "worker-1",
-                "worker-2",
-                "worker-3",
-                "worker-4",
-                "worker-5",
-                "worker-6",
-                "worker-7"
-        );
-
-        assertThat(candidateCache.appendCandidateWorkers(
-                "task-capacity",
-                10,
-                candidateEntries(8, 12),
-                expiresAtMillis
-        )).containsExactly("worker-8", "worker-9", "worker-10");
-        assertThat(candidateCache.candidateWorkerCounts(
-                List.of("task-capacity")
-        )).containsEntry("task-capacity", 10);
-    }
-
-    @Test
-    void concurrentCandidateAppendsCannotExceedAddressCapacity() {
-        long expiresAtMillis = redisTimeMillis() + 60_000;
-        CountDownLatch start = new CountDownLatch(1);
-        CompletableFuture<List<String>> first = CompletableFuture.supplyAsync(
-                () -> appendAfter(start, "task-concurrent", 10,
-                        candidateEntries(1, 10), expiresAtMillis)
-        );
-        CompletableFuture<List<String>> second = CompletableFuture.supplyAsync(
-                () -> appendAfter(start, "task-concurrent", 10,
-                        candidateEntries(11, 20), expiresAtMillis)
-        );
-
-        start.countDown();
-        int acceptedCount = first.join().size() + second.join().size();
-
-        assertThat(acceptedCount).isEqualTo(10);
-        assertThat(candidateCache.candidateWorkerCounts(
-                List.of("task-concurrent")
-        )).containsEntry("task-concurrent", 10);
     }
 
     @Test
@@ -274,42 +117,7 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         )).isEqualTo(task);
     }
 
-    private List<String> appendAfter(
-            CountDownLatch start,
-            String taskId,
-            int maximumCandidateWorkers,
-            List<CandidateWorkerEntry> entries,
-            long expiresAtMillis
-    ) {
-        try {
-            start.await();
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(error);
-        }
-        return candidateCache.appendCandidateWorkers(
-                taskId,
-                maximumCandidateWorkers,
-                entries,
-                expiresAtMillis
-        );
-    }
-
-    private static List<CandidateWorkerEntry> candidateEntries(
-            int first,
-            int last
-    ) {
-        return java.util.stream.IntStream.rangeClosed(first, last)
-                .mapToObj(index -> new CandidateWorkerEntry(
-                        "worker-" + index,
-                        100L + index
-                ))
-                .toList();
-    }
-
     private long redisTimeMillis() {
-        List<String> parts = redis.time();
-        return Long.parseLong(parts.get(0)) * 1_000L
-                + Long.parseLong(parts.get(1)) / 1_000L;
+        var time=redis.time(); return Long.parseLong(time.get(0))*1000+Long.parseLong(time.get(1))/1000;
     }
 }

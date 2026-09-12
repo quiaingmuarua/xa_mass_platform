@@ -1,6 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,13 +7,11 @@ import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
-/** Persistent Worker facts and allocation-rule owner. */
+/** Worker facts, fixed Rule bindings and bounded eligibility index queries. */
 public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerCandidateIndex {
 
     int MAX_BATCH_SIZE = 100;
-
-    /** Rejects unsupported queries or Groups without an enabled index; performs no selection. */
-    void validateWorkerSelector(String workerGroupId, TaskItemWorkerSelector selector);
+    String DEFAULT_RULE_ID = "worker.default";
 
     /** Creates or replaces complete string Properties for 1..100 Workers in one Group. */
     Map<String, MutationResult> upsertWorkerFactsBatch(
@@ -33,18 +30,11 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
             List<String> workerIds
     );
 
-    /** Establishes an immutable Task binding to a shared, content-addressed Rule. */
-    MutationResult bindTaskAllocationRule(
-            String taskId,
-            String workerGroupId,
-            Map<String, Object> allocationRule
-    );
-
     /** Binds a fixed named Handler; rejects unavailable Group indexes. */
     MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId);
 
     /** Resolves up to 100 unique Task IDs in one batch; unavailable Rules map to null. */
-    Map<String, @Nullable MatchingRule> loadTaskRules(
+    Map<String, @Nullable TaskRuleBinding> loadTaskBindings(
             List<String> taskIds
     );
 
@@ -80,15 +70,14 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
         }
     }
 
-    record MatchingRule(
+    /** A Task binding snapshot, not a persisted Rule definition or lifecycle. */
+    record TaskRuleBinding(
             String ruleId,
-            String workerGroupId,
-            @Nullable Map<String, Object> allocationRule
+            String workerGroupId
     ) {
-        public MatchingRule {
+        public TaskRuleBinding {
             requireNonBlank(ruleId, "ruleId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            allocationRule = allocationRule == null ? null : immutableMap(allocationRule);
         }
     }
 

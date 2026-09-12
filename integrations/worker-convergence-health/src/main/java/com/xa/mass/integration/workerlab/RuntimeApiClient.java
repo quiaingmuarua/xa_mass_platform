@@ -247,20 +247,20 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(statuses);
     }
 
-    PrecomputedWitness submitPrecomputedWitness(
+    RuleWitness submitRuleWitness(
             String workerGroupId,
-            Map<String, Object> allocationRule,
+            Map<String, Object> workerSelector,
             String messageId,
             String eventCode,
             Map<String, Object> payload
     ) {
         if (workerGroupId == null || workerGroupId.isBlank()
-                || allocationRule == null
+                || workerSelector == null
                 || messageId == null || messageId.isBlank()
                 || eventCode == null || eventCode.isBlank()
                 || payload == null) {
             throw new IllegalArgumentException(
-                    "Precomputed witness inputs are invalid"
+                    "Rule witness inputs are invalid"
             );
         }
         JsonHttpClient.Response created = http.send(
@@ -268,13 +268,12 @@ final class RuntimeApiClient {
                 "/api/v1/tasks",
                 Map.of(
                         "workerGroupId", workerGroupId,
-                        "allocationRule", allocationRule,
+                        "ruleId", "proof.worker.facts",
                         "priority", 50,
-                        "maximumCandidateWorkers", 1,
                         "maxRetryTimes", 3
                 )
         );
-        requireStatus(created, 200, "create precomputed witness Task");
+        requireStatus(created, 200, "create Rule witness Task");
         String taskId = JsonValues.requiredString(created.body(), "taskId");
 
         JsonHttpClient.Response appended = http.send(
@@ -283,13 +282,14 @@ final class RuntimeApiClient {
                 List.of(Map.of(
                         "messageId", messageId,
                         "eventCode", eventCode,
-                        "payload", payload
+                        "payload", payload,
+                        "workerSelector", workerSelector
                 ))
         );
-        requireStatus(appended, 200, "append precomputed witness Item");
+        requireStatus(appended, 200, "append Rule witness Item");
         Map<String, Object> appendOutcome = JsonValues.object(
                 appended.body().get(messageId),
-                "precomputed witness append outcome"
+                "Rule witness append outcome"
         );
         String appendStatus = JsonValues.requiredString(
                 appendOutcome,
@@ -298,7 +298,7 @@ final class RuntimeApiClient {
         if (!"applied".equals(appendStatus)
                 && !"unchanged".equals(appendStatus)) {
             throw JsonValues.invalid(
-                    "Precomputed witness Item was not accepted"
+                    "Rule witness Item was not accepted"
             );
         }
 
@@ -307,7 +307,7 @@ final class RuntimeApiClient {
                 "/api/v1/tasks/" + segment(taskId) + "/approve",
                 null
         );
-        requireStatus(approved, 200, "approve precomputed witness Task");
+        requireStatus(approved, 200, "approve Rule witness Task");
         String approvalStatus = JsonValues.requiredString(
                 approved.body(),
                 "status"
@@ -315,10 +315,10 @@ final class RuntimeApiClient {
         if (!"applied".equals(approvalStatus)
                 && !"unchanged".equals(approvalStatus)) {
             throw JsonValues.invalid(
-                    "Precomputed witness Task was not approved"
+                    "Rule witness Task was not approved"
             );
         }
-        return new PrecomputedWitness(taskId, messageId);
+        return new RuleWitness(taskId, messageId);
     }
 
     static String managedTaskId(String workerGroupId) {
@@ -429,12 +429,12 @@ final class RuntimeApiClient {
     record WorkerView(String workerId, Map<String, Object> workerProperties) {
     }
 
-    record PrecomputedWitness(String taskId, String messageId) {
-        PrecomputedWitness {
+    record RuleWitness(String taskId, String messageId) {
+        RuleWitness {
             if (taskId == null || taskId.isBlank()
                     || messageId == null || messageId.isBlank()) {
                 throw new IllegalArgumentException(
-                        "Precomputed witness identities must be non-blank"
+                        "Rule witness identities must be non-blank"
                 );
             }
         }

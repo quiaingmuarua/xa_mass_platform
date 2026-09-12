@@ -42,7 +42,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
@@ -156,12 +155,18 @@ class RuntimeApiControllerTest {
         });
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
+        var preparedQuery=org.mockito.Mockito.mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
+        when(matchingCatalog.prepareTaskQueries(anyMap())).thenAnswer(call -> {
+            Map<String,String> coordinates=call.getArgument(0);
+            var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
+            coordinates.keySet().forEach(task -> result.put(task,preparedQuery)); return result;
+        });
         when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.bindTaskAllocationRule(any(), any(), any()))
+        when(matchingCatalog.bindTaskRule(any(), any(), any()))
                 .thenReturn(new MutationResult(MutationStatus.APPLIED));
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
@@ -261,7 +266,7 @@ class RuntimeApiControllerTest {
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
-                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class)),
+                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, matchingCatalog),
                 taskRuntime, taskRpcRegistry, rpcProperties
         );
         WorkerGroupTaskCallRegistrationService registrations =
@@ -269,7 +274,8 @@ class RuntimeApiControllerTest {
                         workerCatalog,
                         taskCatalog,
                         taskRuntime,
-                        taskLifecycle
+                        taskLifecycle,
+                        matchingCatalog
                 );
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
@@ -531,13 +537,11 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk());
         var descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(descriptors.capture());
-        assertThat(descriptors.getAllValues()).extracting(TaskDescriptor::workerAllocationMechanism)
-                .containsExactly(WorkerAllocationMechanism.INDEXED_TASK, WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE);
         assertThat(descriptors.getAllValues()).allSatisfy(task -> {
             assertThat(task.idleDisposition()).isEqualTo(TaskIdleDisposition.CLOSE_WHEN_IDLE);
             assertThat(task.config()).doesNotContainKey("maximumCandidateWorkers");
         });
-        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskAllocationRule(anyString(), anyString(), anyMap());
+        verify(matchingCatalog).bindTaskRule(anyString(), eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID));
     }
 
     @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
@@ -557,8 +561,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId": "phone-tools",
-                                  "allocationRule": {}
+                                  "workerGroupId": "phone-tools"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -576,7 +579,6 @@ class RuntimeApiControllerTest {
         assertThat(descriptorCaptor.getValue().config()).containsExactlyInAnyOrderEntriesOf(
                 Map.of(
                         "priority", "50",
-                        "maximumCandidateWorkers", "10",
                         "maxRetryTimes", "3"
                 )
         );
@@ -721,7 +723,6 @@ class RuntimeApiControllerTest {
                         .content("""
                                 {
                                   "workerGroupId": "phone-tools",
-                                  "allocationRule": {},
                                   "priority": 100
                                 }
                                 """))
@@ -744,8 +745,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"missing",
-                                  "allocationRule":{}
+                                  "workerGroupId":"missing"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -767,8 +767,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"phone-tools",
-                                  "allocationRule":{}
+                                  "workerGroupId":"phone-tools"
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())
@@ -791,8 +790,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"phone-tools",
-                                  "allocationRule":{}
+                                  "workerGroupId":"phone-tools"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -967,7 +965,7 @@ class RuntimeApiControllerTest {
                 "{\"workerId\":\"worker\"}", "{\"workerId\":[]}",
                 "{\"workerId\":[1]}", "{\"workerId\":[true]}", "{\"workerId\":[null]}",
                 "{\"workerId\":[{}]}", "{\"workerId\":[[\"worker\"]]}",
-                "{\"a\":[\"x\"],\"b\":[\"y\"]}", "{\" \":[\"x\"]}")) {
+                "{\" \":[\"x\"]}")) {
             mockMvc.perform(post("/api/v1/tasks/scenario-rpc-phone-tools/items:call")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -1307,20 +1305,11 @@ class RuntimeApiControllerTest {
 
     private static TaskDescriptor descriptor(String taskId) {
         boolean scenarioRpc = taskId.startsWith("scenario-rpc-");
-        return new TaskDescriptor(
-                taskId,
-                "phone-tools",
-                scenarioRpc
-                        ? WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
-                        : WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                scenarioRpc
+        return new TaskDescriptor(taskId, "phone-tools", scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE
-                        : TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                !scenarioRpc ? Map.of(
+                        : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ) : Map.of("priority", "0", "maxRetryTimes", "3")
-        );
+                ) : Map.of("priority", "0", "maxRetryTimes", "3"));
     }
 }

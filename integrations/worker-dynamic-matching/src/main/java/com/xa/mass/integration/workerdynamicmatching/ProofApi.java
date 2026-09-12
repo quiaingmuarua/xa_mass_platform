@@ -47,7 +47,8 @@ final class ProofApi implements AutoCloseable {
         object(value).forEach((key, child) -> result.put(key, text(child)));
         return Map.copyOf(result);
     }
-    @Override public void close() { http.close(); }
+    // Observations have finished; cancelled reader requests must not delay process exit.
+    @Override public void close() { http.shutdownNow(); }
     static final class ProofFailure extends IllegalStateException {
         final String code;
         ProofFailure(String code) { super(code); this.code = code; }

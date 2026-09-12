@@ -480,7 +480,6 @@ def _summary(stage: str) -> dict[str, object]:
         "observedRetainedIdentities": 10_000,
         "stoppedIdentities": 5_000,
         "activeTaskCount": 10,
-        "maximumCandidateWorkersPerTask": 100,
         "offeredItemsPerTask": 5_000,
         "totalOfferedItems": 50_000,
         "appendBatchCount": 500,

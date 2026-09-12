@@ -32,14 +32,8 @@ const taskViewSchema = z
   .object({
     taskId: z.string().min(1),
     workerGroupId: z.string().min(1),
-    workerAllocationMechanism: z.enum([
-      "PRECOMPUTED_TASK_RULE",
-      "INDEXED_TASK",
-      "ON_DEMAND_ITEM_RULE"
-    ]),
     idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
-    allocationRule: attributesSchema.nullable(),
-    ruleId: z.string().min(1).nullable().optional(),
+    ruleId: z.string().min(1),
     config: z.record(z.string(), z.string())
   })
   .strict();

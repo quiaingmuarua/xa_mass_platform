@@ -15,10 +15,7 @@ import org.junit.jupiter.api.Test;
 
 class DispatchBudgetTest {
     private static TaskRuntime.TaskDescriptor descriptor() {
-        return new TaskRuntime.TaskDescriptor("task", "group",
-                TaskRuntime.WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority", "10", "maxRetryTimes", "1"));
+        return new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "10", "maxRetryTimes", "1"));
     }
 
     @Test void aSlowRoundRemainsSingleFlightAndNextIntervalStartsAfterCompletion() {
@@ -29,7 +26,7 @@ class DispatchBudgetTest {
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor()));
         var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
-                mock(TaskWorkerAllocationPolicy.class), dispatch, null, AssignmentDispatchConfig.defaults(), null);
+                dispatch, null, AssignmentDispatchConfig.defaults(), null);
         var clock = new AtomicLong(1_000_000_000L);
         var executor = new ManualExecutor();
         var run = scheduler.new SchedulerRun(executor, clock::get);

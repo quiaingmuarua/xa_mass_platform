@@ -17,8 +17,7 @@ public class MessageProductConfiguration {
     CampaignService campaigns(WorkerGroupRegistrationService registrations, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle,
             @Qualifier("productWorkerGroup") String workerGroupId,
-            @Qualifier("productWorkerEvents") List<String> events,
-            @Value("${xa.mass.messages.maximum-candidate-workers:100}") int candidates) {
-        return new CampaignService(registrations, creation, data, lifecycle, workerGroupId, events, candidates);
+            @Qualifier("productWorkerEvents") List<String> events) {
+        return new CampaignService(registrations, creation, data, lifecycle, workerGroupId, events);
     }
 }

@@ -1,9 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.task.TaskItemWorkerSelector;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
@@ -24,14 +22,12 @@ final class WorkerCandidateSelectionPolicy {
     private static final int MAX_UNIQUE_WORKERS_PER_ROUND = 100;
 
     private final WorkerScoreCore workerScores;
-    private final CandidateWorkerCache candidateCache;
     private final WorkerResourceCatalog workerCatalog;
     private final Long hotEligibilityFloorMillis;
     private final WorkerCandidateIndex candidateIndex;
 
     WorkerCandidateSelectionPolicy(
             WorkerScoreCore workerScores,
-            CandidateWorkerCache candidateCache,
             WorkerResourceCatalog workerCatalog,
             Long hotEligibilityFloorMillis,
             WorkerCandidateIndex candidateIndex
@@ -39,10 +35,6 @@ final class WorkerCandidateSelectionPolicy {
         this.workerScores = Objects.requireNonNull(
                 workerScores,
                 "workerScores"
-        );
-        this.candidateCache = Objects.requireNonNull(
-                candidateCache,
-                "candidateCache"
         );
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -72,7 +64,8 @@ final class WorkerCandidateSelectionPolicy {
     private Map<String, Long> holdObservedCandidates(
             String workerGroupId,
             Map<String, Long> observedScores,
-            long holdUntilMillis
+            long holdUntilMillis,
+            Set<String> roundHeldWorkerIds
     ) {
         Objects.requireNonNull(observedScores, "observedScores");
         if (observedScores.isEmpty()) {
@@ -92,132 +85,56 @@ final class WorkerCandidateSelectionPolicy {
                             == WorkerScoreTransitionStatus.TRANSITIONED
                     && result.score() != null) {
                 held.put(workerId, result.score());
+                roundHeldWorkerIds.add(workerId);
             }
         });
         return Collections.unmodifiableMap(held);
     }
 
-    List<HeldWorkerCandidate> consumeCachedCandidates(
-            String workerGroupId,
-            String taskId,
-            int limit
-    ) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        requireNonBlank(taskId, "taskId");
-        if (limit < 1 || limit > MAX_UNIQUE_WORKERS_PER_ROUND) {
-            throw new IllegalArgumentException(
-                    "candidate limit must be in 1.."
-                            + MAX_UNIQUE_WORKERS_PER_ROUND
-            );
-        }
-        List<CandidateWorkerEntry> cached =
-                candidateCache.consumeCandidateWorkers(taskId, limit);
-        if (cached.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashMap<String, Long> heldScores = new LinkedHashMap<>();
-        for (CandidateWorkerEntry entry : cached) {
-            if (entry != null) {
-                heldScores.putIfAbsent(
-                        entry.workerId(),
-                        entry.heldWorkerLeaseScore()
-                );
-            }
-        }
-        return describe(
-                workerGroupId,
-                List.copyOf(heldScores.keySet()),
-                heldScores
-        );
+    Map<String, WorkerCandidateIndex.TaskQuery> prepareQueries(Map<String, String> taskGroups) {
+        return candidateIndex.prepareTaskQueries(taskGroups);
     }
 
-    Map<String, HeldWorkerCandidate> acquireIndexedCandidates(
-            String taskId, String workerGroupId,
-            Map<String, TaskItemWorkerSelector> selectorsByMessageId,
-            Set<String> excludedWorkerIds, long leaseUntilMillis
-    ) {
-        Map<String, TaskItemWorkerSelector> selectors = validateSelectors(selectorsByMessageId);
-        WorkerCandidateIndex.TaskQuery query = candidateIndex.prepareTaskQuery(taskId, workerGroupId);
-        if (query == null) return Map.of();
-        var limits = new LinkedHashMap<TaskItemWorkerSelector, Integer>();
-        selectors.values().forEach(selector -> limits.merge(selector, 1, Integer::sum));
-        Map<TaskItemWorkerSelector, List<String>> candidates = query.take(limits);
-        var ids = new LinkedHashSet<String>();
-        candidates.values().forEach(ids::addAll);
-        ids.removeAll(excludedWorkerIds);
-        if (ids.isEmpty()) return Map.of();
-        Map<String, Long> observed = workerScores.observeDueHotScores(workerGroupId, List.copyOf(ids), hotEligibilityFloorMillis);
-        var selectedByMessage = new LinkedHashMap<String, String>();
-        var selectedScores = new LinkedHashMap<String, Long>();
-        selectors.forEach((message, selector) -> {
-            for (String id : candidates.getOrDefault(selector, List.of())) {
-                if (ids.contains(id) && observed.get(id) != null && !selectedScores.containsKey(id)) {
-                    selectedByMessage.put(message, id);
-                    selectedScores.put(id, observed.get(id));
-                    break;
-                }
-            }
-        });
-        Map<String, Long> held = holdObservedCandidates(workerGroupId, selectedScores, leaseUntilMillis);
-        if (held.isEmpty()) return Map.of();
-        var byQuery = new LinkedHashMap<TaskItemWorkerSelector, List<String>>();
-        selectedByMessage.forEach((message, id) -> {
-            if (held.containsKey(id)) byQuery.computeIfAbsent(selectors.get(message), ignored -> new ArrayList<>()).add(id);
-        });
-        Map<TaskItemWorkerSelector, Set<String>> retained = query.retain(byQuery);
-        var usable = new LinkedHashMap<String, Long>();
-        selectedByMessage.forEach((message, id) -> {
-            if (held.containsKey(id) && retained.getOrDefault(selectors.get(message), Set.of()).contains(id)) {
-                usable.put(id, held.get(id));
-            }
-        });
-        Map<String, HeldWorkerCandidate> described = describeById(workerGroupId, usable);
-        var result = new LinkedHashMap<String, HeldWorkerCandidate>();
-        selectedByMessage.forEach((message, id) -> {
-            if (described.containsKey(id)) result.put(message, described.get(id));
-        });
-        return Collections.unmodifiableMap(result);
-    }
-
-    Map<String, HeldWorkerCandidate> acquireOnDemandCandidates(
+    /** The caller owns the round set; register each confirmed initial hold before any later fallible operation. */
+    Map<String, HeldWorkerCandidate> acquireCandidates(
+            WorkerCandidateIndex.TaskQuery query,
             String workerGroupId,
             Map<String, TaskItemWorkerSelector> selectorsByMessageId,
-            Set<String> excludedWorkerIds,
+            Set<String> roundHeldWorkerIds,
             long leaseUntilMillis
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
         Map<String, TaskItemWorkerSelector> selectors = validateSelectors(selectorsByMessageId);
-        Objects.requireNonNull(excludedWorkerIds, "excludedWorkerIds");
+        Objects.requireNonNull(roundHeldWorkerIds, "roundHeldWorkerIds");
+        if (query == null) return Map.of();
+        selectors.values().forEach(query::validate);
 
         LinkedHashMap<String, String> selectedByMessageId =
                 new LinkedHashMap<>();
         LinkedHashMap<String, Long> selectedScores = new LinkedHashMap<>();
         LinkedHashSet<String> unavailableWorkerIds = new LinkedHashSet<>(
-                excludedWorkerIds
+                roundHeldWorkerIds
         );
 
-        for (Map.Entry<String, TaskItemWorkerSelector> item : selectors.entrySet()) {
-            if (!item.getValue().hasExplicitWorkerIds()) {
-                continue;
+        // At most 100 Items x 100 explicit targets; select at most 100 holds after one HOT read.
+        var explicitTargets = new LinkedHashSet<String>();
+        for (var selector : selectors.values()) {
+            if (!query.usesIdentitySelection(selector) || !selector.hasExplicitWorkerIds()) continue;
+            for (String id : selector.targetWorkerIds()) {
+                if (!unavailableWorkerIds.contains(id)) {
+                    explicitTargets.add(id);
+                }
             }
-            List<String> availableTargets = item.getValue().targetWorkerIds().stream()
-                    .filter(workerId ->
-                            !unavailableWorkerIds.contains(workerId))
-                    .toList();
-            if (availableTargets.isEmpty()) {
-                continue;
-            }
-            Map<String, Long> observed = workerScores.observeDueHotScores(
-                    workerGroupId,
-                    availableTargets,
-                    hotEligibilityFloorMillis
-            );
-            for (String workerId : availableTargets) {
-                Long score = observed.get(workerId);
-                if (score != null && unavailableWorkerIds.add(workerId)) {
-                    selectedByMessageId.put(item.getKey(), workerId);
-                    selectedScores.put(workerId, score);
-                    break;
+        }
+        Map<String, Long> explicitObserved = explicitTargets.isEmpty() ? Map.of()
+                : workerScores.observeDueHotScores(workerGroupId,List.copyOf(explicitTargets),hotEligibilityFloorMillis);
+        for (var item : selectors.entrySet()) {
+            var selector = item.getValue();
+            if (!query.usesIdentitySelection(selector) || !selector.hasExplicitWorkerIds()) continue;
+            for (String id : selector.targetWorkerIds()) {
+                Long score = explicitObserved.get(id);
+                if (score != null && unavailableWorkerIds.add(id)) {
+                    selectedByMessageId.put(item.getKey(),id); selectedScores.put(id,score); break;
                 }
             }
         }
@@ -226,51 +143,60 @@ final class WorkerCandidateSelectionPolicy {
                 holdObservedCandidates(
                         workerGroupId,
                         selectedScores,
-                        leaseUntilMillis
+                        leaseUntilMillis,
+                        roundHeldWorkerIds
                 )
         );
         selectedByMessageId.entrySet().removeIf(entry ->
                 !held.containsKey(entry.getValue()));
         unavailableWorkerIds.addAll(held.keySet());
 
-        // One bounded query per distinct selector, in first Item appearance order.
+        // One batch for the complete indexed subset, preserving actual per-selector demand.
         Map<TaskItemWorkerSelector, List<String>> indexedItems = new LinkedHashMap<>();
         selectors.forEach((messageId, selector) -> {
-            if (!selector.isAny() && !selector.hasExplicitWorkerIds()) {
+            if (!query.usesIdentitySelection(selector)) {
                 indexedItems.computeIfAbsent(selector, ignored -> new ArrayList<>()).add(messageId);
             }
         });
-        for (var entry : indexedItems.entrySet()) {
-            // The complete input already has at most 100 Items. Its disjoint selector
-            // groups therefore fit the same budget without equal-share caps or surplus takes.
-            int takeLimit = entry.getValue().size();
-            List<String> ids = candidateIndex.takeWorkerIds(workerGroupId, entry.getKey(), takeLimit).stream()
-                    .filter(id -> !unavailableWorkerIds.contains(id)).toList();
-            if (ids.isEmpty()) continue;
-            Map<String, Long> observed = workerScores.observeDueHotScores(workerGroupId, ids, hotEligibilityFloorMillis);
-            Map<String, Long> selected = new LinkedHashMap<>();
-            for (String id : ids) {
-                if (observed.get(id) != null) {
-                    selected.put(id, observed.get(id));
-                    if (selected.size() == entry.getValue().size()) break;
-                }
-            }
-            Map<String, Long> indexHeld = holdObservedCandidates(workerGroupId, selected, leaseUntilMillis);
+        if (!indexedItems.isEmpty()) {
+            Map<TaskItemWorkerSelector, Integer> limits = new LinkedHashMap<>();
+            indexedItems.forEach((selector, messages) -> limits.put(selector, messages.size()));
+            Map<TaskItemWorkerSelector, List<String>> candidates = query.take(limits);
+            Set<String> ids = new LinkedHashSet<>();
+            indexedItems.keySet().forEach(selector -> ids.addAll(candidates.getOrDefault(selector, List.of())));
+            ids.removeAll(unavailableWorkerIds);
+            Map<String, Long> indexHeld = ids.isEmpty() ? Map.of() : holdObservedCandidates(
+                    workerGroupId,
+                    workerScores.observeDueHotScores(workerGroupId, List.copyOf(ids), hotEligibilityFloorMillis),
+                    leaseUntilMillis,
+                    roundHeldWorkerIds
+            );
+            // Rejected membership still consumes this round's hold; it expires naturally.
             unavailableWorkerIds.addAll(indexHeld.keySet());
-            if (indexHeld.isEmpty()) continue;
-            // Initial hold clears dirty. Recheck *after* it, without loading Properties.
-            Set<String> retained = candidateIndex.retainWorkerIds(workerGroupId, entry.getKey(), List.copyOf(indexHeld.keySet()));
-            int item = 0;
-            for (var worker : indexHeld.entrySet()) {
-                if (retained.contains(worker.getKey())) {
-                    selectedByMessageId.put(entry.getValue().get(item++), worker.getKey());
-                    held.put(worker.getKey(), worker.getValue());
-                }
+            if (!indexHeld.isEmpty()) {
+                Map<TaskItemWorkerSelector, List<String>> recheck = new LinkedHashMap<>();
+                indexedItems.keySet().forEach(selector -> {
+                    List<String> workers = candidates.getOrDefault(selector, List.of()).stream()
+                            .filter(indexHeld::containsKey).toList();
+                    if (!workers.isEmpty()) recheck.put(selector, workers);
+                });
+                // Initial hold clears dirty, so membership must be checked afterwards.
+                Map<TaskItemWorkerSelector, Set<String>> retained = query.retain(recheck);
+                recheck.forEach((selector, workers) -> {
+                    int item = 0;
+                    for (String workerId : workers) {
+                        if (retained.getOrDefault(selector, Set.of()).contains(workerId)
+                                && !held.containsKey(workerId)) {
+                            selectedByMessageId.put(indexedItems.get(selector).get(item++), workerId);
+                            held.put(workerId, indexHeld.get(workerId));
+                        }
+                    }
+                });
             }
         }
 
         List<String> anyMessageIds = selectors.entrySet().stream()
-                .filter(entry -> entry.getValue().isAny())
+                .filter(entry -> query.usesIdentitySelection(entry.getValue()) && entry.getValue().isAny())
                 .map(Map.Entry::getKey)
                 .toList();
         if (!anyMessageIds.isEmpty()) {
@@ -297,7 +223,8 @@ final class WorkerCandidateSelectionPolicy {
             Map<String, Long> anyHeld = holdObservedCandidates(
                     workerGroupId,
                     anyScores,
-                    leaseUntilMillis
+                    leaseUntilMillis,
+                    roundHeldWorkerIds
             );
             int messageIndex = 0;
             for (String workerId : anyScores.keySet()) {
@@ -329,25 +256,6 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private List<HeldWorkerCandidate> describe(
-            String workerGroupId,
-            List<String> workerIds,
-            Map<String, Long> heldScores
-    ) {
-        Map<String, HeldWorkerCandidate> described = describeById(
-                workerGroupId,
-                heldScores
-        );
-        List<HeldWorkerCandidate> result = new ArrayList<>();
-        workerIds.forEach(workerId -> {
-            HeldWorkerCandidate candidate = described.get(workerId);
-            if (candidate != null) {
-                result.add(candidate);
-            }
-        });
-        return List.copyOf(result);
-    }
-
     private Map<String, HeldWorkerCandidate> describeById(
             String workerGroupId,
             Map<String, Long> heldScores
@@ -364,7 +272,8 @@ final class WorkerCandidateSelectionPolicy {
         heldScores.forEach((workerId, heldScore) -> {
             WorkerDescriptor descriptor = descriptors.get(workerId);
             if (descriptor != null
-                    && workerGroupId.equals(descriptor.workerGroupId())) {
+                    && workerGroupId.equals(descriptor.workerGroupId())
+                    && workerId.equals(descriptor.workerId())) {
                 result.put(workerId, new HeldWorkerCandidate(
                         descriptor.workerId(),
                         descriptor.workerGroupId(),

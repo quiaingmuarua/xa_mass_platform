@@ -21,25 +21,19 @@ controls acquisition, lease and serviceability eligibility.
 
 ```text
 Server creation
-  -> Matching Task binding and shared Rule first for PRECOMPUTED
-     or Kernel capture and Matching property admission of an ON_DEMAND Worker Selector
-  -> Kernel Task descriptor and TaskItem records
+  -> Matching Task binding (explicit default or named Rule)
+  -> Kernel Task descriptor; captured Item selector validated by Matching
 
 Kernel Main Scheduler
-  -> one bounded due RUNNING Task score observation
-  -> Owner-derived INITIAL subset -> initialization Producer
-  -> NORMAL descriptors -> allocation, Task dispatch and optional serviceability
-
-PRECOMPUTED allocation
-  -> Kernel orders Candidate deficits and exact-holds a bounded due Worker pool
-  -> WorkerMatchQueue admits the ordered Demand
-  -> Matching resolves supplied Task IDs to Rules, reads held Worker facts and writes accepted Candidates
+  -> bounded due RUNNING observation -> INITIAL initialization
+  -> NORMAL descriptors -> Task dispatch and optional Serviceability
 
 Task dispatch
-  -> observe due Items and classify TTL/exhaustion
-  -> consume PRECOMPUTED Cache or acquire ON_DEMAND explicit/indexed IDs/ANY
-  -> exact Worker confirmation -> exact Item claim -> targeted Command publication
-  -> complete ACTIVE recheck before exact Task close or idle park
+  -> one bounded Task binding read -> prepared Task queries
+  -> due Items; TTL/exhaustion settlement
+  -> eligible IDs -> HOT -> initial hold -> membership recheck
+  -> exact Worker confirmation -> exact Item claim -> Command
+  -> ACTIVE recheck before exact Task close or idle park
 ```
 
 The Main Scheduler supplies every Producer's root Task/Group identities.
@@ -48,23 +42,20 @@ skip that snapshot; they do not accumulate a pending source queue. Assembly and
 lifecycle are defined in
 [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md).
 
-Matching owns facts and Rule interpretation, not priority, Score or assignment.
-A Candidate carries bounded matching evidence and an opaque held score; final
-confirmation rejects it after successful Properties dirty invalidation. Unmatched, unselected or rejected holds expire naturally
-without a compensation-release registry. ON_DEMAND persists one immutable
-workerSelector query Map. Matching interprets property conditions and takes indexed identities; Kernel
-holds and rechecks membership before exact confirmation, without reading
-Properties or falling back to Candidate Cache. The detailed flow is
-[Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
+Matching owns paired facts projection and bounded query functions. Indexes are
+shared derived eligibility, not Task jobs or scheduling truth. Kernel holds and
+rechecks identities; exact confirmation rejects dirty/stale fences. Unselected
+or rejected holds expire naturally. Kernel never reads Rule IDs, facts or index
+coordinates. See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
 
 ## Results And Recovery
 
 ```text
 Worker/Adapter Result evidence -> Server validates and selects its owner
   TASK -> Kernel Result Policy -> TaskItem and Worker semantic events
-  KERNEL -> optional Serviceability Result Policy -> Worker semantic events
+  KERNEL -> Serviceability Result Policy in every preset -> Worker semantic events
   SERVER -> Server Direct Call waiter
-  SYSTEM -> platform event destination; currently rejected without Owner calls
+  SYSTEM -> platform event destination; admitted Properties observations enter Matching
 ```
 
 SUCCESS stores the Result projection before separately requesting Item success
@@ -84,7 +75,7 @@ owns parsing, grouping and semantic publication;
 [Result storage](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
 owns the projection format and interruption windows. The
 [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
-owns the opaque fence across allocation, assignment and release.
+owns the opaque fence across initial hold, assignment and release.
 
 Optional [Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 combines bounded demanded-Group probes and Adapter evidence. Dispatch advances
@@ -103,7 +94,7 @@ small bounded active Task set
 ```
 
 Fully occupied compatible Workers that keep completing work are normal
-backpressure. Bounded scans, exact CAS and Candidate refill can add short
+backpressure. Bounded scans, exact CAS and bounded index take can add short
 convergence delay. Persistently due work and persistently idle compatible
 Workers failing to form assignments across repeated eligible rounds is a
 liveness defect. A full Task page alone does not establish starvation.
@@ -124,9 +115,3 @@ Use [TESTING](../../TESTING.md) to select proof by claim. Focused policy tests
 establish decisions, Redis Owner tests establish atomic fences, and Runtime
 Boundary/system lanes establish their own finite cross-process relationships.
 A passing layer does not substitute for another layer's evidence.
-
-Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
-queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
-exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
-original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
-lifecycle is independent of this allocation choice.

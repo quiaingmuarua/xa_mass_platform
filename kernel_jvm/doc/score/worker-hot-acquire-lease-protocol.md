@@ -2,7 +2,7 @@
 
 Status: active Java Kernel HOT lease mechanism contract.
 
-This document owns the opaque Worker fence across allocation, assignment and
+This document owns the opaque Worker fence across initial hold, assignment and
 result disposition. [Worker Score](worker-score-band-scheduling.md) owns its
 encoding, primitive validation and atomic transitions; this protocol adds no
 reservation store, attempt lifecycle or lease registry.
@@ -18,9 +18,9 @@ slot reuse or assign independent Items behind the same Worker lease.
 ## Acquisition And Handoff
 
 ```text
-due HOT observation -> exact initial hold and dirty clear
-  PRECOMPUTED -> ordered Match Demand -> accepted Candidate Cache entry
-  ON_DEMAND  -> explicit IDs, indexed identities plus post-hold recheck, or ANY
+prepared Rule query / default identity selection
+  -> due HOT observation -> exact initial hold and dirty clear
+  -> post-hold index membership recheck when required
   -> final exact Worker confirmation -> exact Item claim -> Command publication
   -> opaque ResultContext/WorkerLeaseReference -> exact result disposition
 ```
@@ -31,25 +31,12 @@ writes a future coordinate and clears dirty. Concurrent observations do not
 create concurrent leases: only the exact CAS winner holds the Worker. Optional
 Serviceability eligibility filtering is owned by the Score operations.
 
-[Allocation Policy](../../../kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
-holds the PRECOMPUTED pool before publishing Demand. Matching receives ordered
-Task IDs, held Worker IDs and opaque scores, then appends accepted
-entries through the Candidate Cache Owner. It removes only Cache-accepted IDs
-from that Demand's available pool. It cannot decode, compare, renew or release
-the held scores, and receives no endpoint or Item state.
-
-ON_DEMAND keeps one selector: explicit IDs and ANY use Kernel mechanics directly;
-property conditions pass unchanged to Matching for bounded identities and
-post-hold membership recheck. It uses no PRECOMPUTED Demand or Candidate Cache. The
-[Assignment Policy](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
-owns deficits, priority, pairing and round uniqueness. Neither a cached miss nor
-a stale candidate switches allocation mechanism.
-
-Unmatched, unselected, Cache-rejected and Demand-rejected holds expire
-naturally. Queue rejection is not a reason to add compensation release or a
-pending-lease registry. Actual Properties changes request score-local dirty
-invalidation after the facts write; Candidate entries remain until consumption
-or expiry. Their original fence cannot pass final confirmation after invalidation.
+[Candidate Selection](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
+resolves Task bindings in a bounded batch and obtains Rule-eligible identities.
+Default ANY/explicit IDs use Kernel HOT mechanics; named Rules constrain all
+selectors through Matching. A prepared query rechecks indexed identities after
+hold. Matching receives no Worker score or lease authority. Kernel owns pairing,
+priority and round uniqueness. Stale or missing evidence never relaxes selection.
 
 ## Confirmation Before Claim
 
@@ -86,13 +73,13 @@ Facts and Score commit independently. Confirmation may win between the facts
 write and invalidation; already confirmed work continues. Invalidation failure
 keeps the successful facts response and emits an aggregate diagnostic, with no
 replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
-scores and Cache entries remain bounded by their existing deadlines.
+scores remain bounded by their existing deadlines.
 
 Due scans include dirty=1. Only a new exact initial HOT hold clears dirty;
-PRECOMPUTED then matches again. ON_DEMAND uses the same confirmation fence but
-asks Matching to recheck indexed identities after hold using the same property selector.
-ANY and explicit IDs require no Matching call. Do not clear an active hold or fetch a newer score to
-rescue a stale Candidate. Cache counts may temporarily include invalid entries.
+Matching rechecks indexed membership after hold using the same prepared query.
+Default identity selectors need no index membership. Do not fetch a newer score
+to rescue a stale candidate or clear an existing execution hold. There is no
+per-Task Candidate Cache to invalidate or repair.
 
 ## Result Disposition
 

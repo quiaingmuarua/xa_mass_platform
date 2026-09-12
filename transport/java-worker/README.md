@@ -110,7 +110,7 @@ observations and Server admission; Prepare never refreshes those facts. The
 Worker caches no Endpoint URI, Command, or Result. A lost first publication can
 leave no Matching facts until a later full report or connection baseline;
 there is no automatic upstream repair. Polling has no such Properties path and
-new Polling Workers use ON_DEMAND without requiring facts.
+new Polling Workers use default Rule without requiring facts.
 
 ## Proactive Properties
 

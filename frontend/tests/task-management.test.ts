@@ -68,9 +68,7 @@ describe("HttpFiniteTaskClient", () => {
 
     await client.createTask({
       workerGroupId: "group-1",
-      allocationRule: {},
       priority: 50,
-      maximumCandidateWorkers: 10,
       maxRetryTimes: 3
     });
     await client.appendItems("task-1", [
@@ -251,7 +249,7 @@ function executionRequest(contents: string) {
     eventCode: "extension.worker.string.md5",
     payloadKey: "value",
     file: textFile("seed.txt", contents),
-    config: { priority: 50, maximumCandidateWorkers: 10, maxRetryTimes: 3 }
+    config: { priority: 50, maxRetryTimes: 3 }
   };
 }
 

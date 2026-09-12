@@ -97,19 +97,18 @@ def mixed_capabilities(run, inventory):
                  "extension.worker.string.base64.encode"]).issubset(events), "Mixed events are not installed")
     listener = wait_state(run, create(run, request="mixed-worker"), {"LISTENING"})
     require(listener["workerId"] == cn["workerId"], "SMS listener identity changed")
-    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "allocationRule": {"workerId": {"$eq": cn["workerId"]}},
-                "maximumCandidateWorkers": 1})["taskId"]
+    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim"})["taskId"]
     messages = [str(uuid.uuid4()) for _ in range(3)]
     http(run.url, f"/api/v1/tasks/{task}/items", [
         {"messageId": message, "eventCode": "extension.worker.string.md5",
-         "payload": {"value": "shared-sms-worker"}, "ttlMillis": 30000} for message in messages])
+         "payload": {"value": "shared-sms-worker"}, "workerSelector": {"workerId": [cn["workerId"]]}, "ttlMillis": 30000} for message in messages])
     http(run.url, f"/api/v1/tasks/{task}/approve", {})
     results = {}
     def strings_observed():
         nonlocal results
         results = http(run.url, f"/api/v1/tasks/{task}/results:load", messages)
         return all(results[message]["status"] == "succeeded" for message in messages)
-    run.wait_for(strings_observed, 30, "same Group PRECOMPUTED string results")
+    run.wait_for(strings_observed, 30, "same Group targeted string results")
     expected = hashlib.md5(b"shared-sms-worker").hexdigest()
     require(all(json.loads(results[message]["opaqueResultPayload"])["md5"] == expected for message in messages),
             "String handler results mismatch")
@@ -118,7 +117,7 @@ def mixed_capabilities(run, inventory):
     inject(run, cn["phone"], "[A] 654321", "mixed-worker-sms")
     received = wait_state(run, listener, {"RECEIVED"})
     require(received["workerId"] == cn["workerId"], "Shared Worker identity mismatch")
-    return {"workerId": cn["workerId"], "precomputedTaskId": task, "stringResults": len(results),
+    return {"workerId": cn["workerId"], "targetedTaskId": task, "stringResults": len(results),
             "smsObserved": True, "installedEvents": events,
             "claim": "one actual Worker serves both Tasks; no fairness or capacity claim"}
 

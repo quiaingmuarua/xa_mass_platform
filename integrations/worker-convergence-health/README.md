@@ -13,7 +13,7 @@ Each scenario uses:
 ```text
 2 WorkerGroups x 500 Workers
 one WebSocket Adapter
-ON_DEMAND_ITEM_RULE through managed batch items:call
+default Rule through managed batch items:call
 independent Lab, Network, Scheduling and Task observations
 ```
 
@@ -50,9 +50,9 @@ phase and is not treated as downstream convergence evidence.
 Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
 250-millisecond immediate observation window. Item one is the named valid
 witness, every tenth Item has deterministic invalid input, and String Items
-two and three are the delay and fail background work. Managed ON_DEMAND waves
-use empty Worker Selectors. A separate finite PRECOMPUTED Task owns the
-Properties-matching witness; it does not change the ON_DEMAND mechanism.
+two and three are the delay and fail background work. Managed default Rule waves
+use empty Worker Selectors. A separate finite Rule-index Task owns the
+Properties-matching witness; it does not change the default Rule mechanism.
 
 The phase order is:
 
@@ -67,13 +67,13 @@ The phase order is:
    only those 499 Workers and close the wave.
 5. Complete waves two through five.
 6. Reconfirm the directed Worker is locally STOPPED, disconnected and scheduling
-   unavailable. Submit wave six and a separate finite PRECOMPUTED Task requiring
+   unavailable. Submit wave six and a separate finite Rule-index Task requiring
    `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
    restart Runtime Server while retaining Worker Simulator.
 7. Require the other 999 stable identities to reconnect and become HOT while
    the directed Worker stays stopped. Replace its stopped-state slot and start
    it once. Require its original identity, canonical Property and connected/HOT
-   observations; close the PRECOMPUTED witness, wave six and final wave seven.
+   observations; close the Rule-index witness, wave six and final wave seven.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
 witnesses. The workload also offers seven delay and seven fail Items. These are

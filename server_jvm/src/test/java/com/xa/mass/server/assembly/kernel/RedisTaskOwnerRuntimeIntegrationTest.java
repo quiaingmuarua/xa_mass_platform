@@ -33,7 +33,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.controller.TaskControlController;
@@ -130,7 +129,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void appendAndSuccessResultMatchTaskOwnerShape() {
         long createdAt = redisTimeMillis();
-        storeTask("task-1", "PRECOMPUTED_TASK_RULE");
+        storeTask("task-1");
         TaskItem item = new TaskItem(
                 "message-1",
                 "telecom.phone.inspect",
@@ -213,9 +212,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void taskItemTargetsAreOwnedByOnDemandTasksOnly() {
+    void taskItemTargetsRoundTripWithoutMatchingSemantics() {
         long createdAt = redisTimeMillis();
-        storeTask("on-demand-targets", "ON_DEMAND_ITEM_RULE");
+        storeTask("on-demand-targets");
         TaskItem targeted = new TaskItem(
                 "message-targeted",
                 "event",
@@ -237,39 +236,19 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 List.of("message-targeted")
         )).containsEntry("message-targeted", targeted);
 
-        storeTask("precomputed-targets", "PRECOMPUTED_TASK_RULE");
-        assertThat(runtime.appendItems(
-                "precomputed-targets",
-                List.of(new TaskItem(
-                        "message-invalid",
-                        "event",
-                        createdAt,
-                        Map.of(),
-                        0,
-                        createdAt + 60_000,
-                        TaskItemWorkerSelector.parse(Map.of("workerId", List.of("worker-a")))
-                ))
-        ).get("message-invalid").status()).isEqualTo(
-                TaskItemAppendStatus.INVALID
-        );
-        assertThat(redis.hlen(
-                keyspace.base() + ":task:precomputed-targets:items"
-        )).isZero();
+
     }
 
-    @Test void opaquePropertySelectorRoundTripsWithoutKernelInterpretationAndPrecomputedRejectsIt() {
+    @Test void opaquePropertySelectorRoundTripsWithoutKernelInterpretation() {
         long now = redisTimeMillis();
         var selector = TaskItemWorkerSelector.parse(Map.of("worker.test.region", List.of("east", "west")));
         var item = new TaskItem("indexed", "event", now, Map.of(), 0, now + 60_000, selector);
-        storeTask("indexed-task", "ON_DEMAND_ITEM_RULE");
+        storeTask("indexed-task");
         assertThat(runtime.appendItems("indexed-task", List.of(item)).get("indexed").status()).isEqualTo(TaskItemAppendStatus.APPENDED);
         assertThat(runtime.loadTaskItems("indexed-task", List.of("indexed"))).containsEntry("indexed", item);
         assertThat(Jsons.parseObject(redis.hget(keyspace.base() + ":task:indexed-task:items", "indexed")))
                 .containsEntry("workerSelector", selector.expression())
                 .doesNotContainKeys("indexQuery", "targetWorkerIds");
-        storeTask("indexed-precomputed", "PRECOMPUTED_TASK_RULE");
-        assertThat(runtime.appendItems("indexed-precomputed", List.of(item)).get("indexed").status()).isEqualTo(TaskItemAppendStatus.INVALID);
-        assertThat(redis.hlen(keyspace.base() + ":task:indexed-precomputed:items")).isZero();
 
     }
 
@@ -421,7 +400,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void catalogReadsTheCanonicalDescriptorAndMissingAppendIsNarrow() {
-        storeTask("task-1", "ON_DEMAND_ITEM_RULE");
+        storeTask("task-1");
 
         var descriptor = catalog.loadTaskAllocationDescriptors(
                 List.of("task-1", "missing")
@@ -447,7 +426,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void legacyRuleFieldsAreRejectedAtTheKernelStorageBoundary() {
-        storeTask("legacy-task", "ON_DEMAND_ITEM_RULE");
+        storeTask("legacy-task");
         String descriptorKey = keyspace.base()
                 + ":task:legacy-task:descriptor";
         redis.hset(descriptorKey, "allocationRuleJson", "{}");
@@ -480,7 +459,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 keyspace.base() + ":task:task-commands:descriptor"
         )).isEqualTo(Map.of(
                 "workerGroupId", "phone-tools",
-                "workerAllocationMechanism", "ON_DEMAND_ITEM_RULE",
+
                 "idleDisposition", "PARK_WHEN_IDLE",
                 "configJson", "{\"maxRetryTimes\":\"3\","
                         + ""
@@ -600,7 +579,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(redis.hgetall(
                 keyspace.base() + ":task:" + taskId + ":descriptor"
         )).containsEntry("workerGroupId", "phone-tools")
-                .containsEntry("workerAllocationMechanism", "ON_DEMAND_ITEM_RULE")
                 .containsEntry("idleDisposition", "PARK_WHEN_IDLE");
     }
 
@@ -1156,13 +1134,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 mock(TaskCreationService.class),
                 new TaskLifecycleService(lifecycle, catalog)
         );
-        var created = runtime.createTask(new TaskDescriptor(
-                "public-task",
-                "phone-tools",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of("priority", "2", "maximumCandidateWorkers", "1", "maxRetryTimes", "3")
-        ));
+        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3")));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task").status()
@@ -1303,7 +1275,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void hundredItemPromotionAndStateQueryHaveConstantClientCommandBudgets() {
-        storeTask("outcomes", "ON_DEMAND_ITEM_RULE");
+        storeTask("outcomes");
         Map<String, Long> due = new LinkedHashMap<>();
         IntStream.range(0, 100).forEach(i -> due.put("id-" + i, 0L));
         itemScoreCore.initializeItemScores("outcomes", due, 0);
@@ -1481,13 +1453,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(
-                taskId,
-                "phone-tools",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                config(priority)
-        );
+        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority));
     }
 
     private static Map<String, String> config(int priority) {
@@ -1511,16 +1477,16 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 + suffix;
     }
 
-    private void storeTask(String taskId, String allocationMechanism) {
+    private void storeTask(String taskId) {
         redis.hset(
                 keyspace.base() + ":task:" + taskId + ":descriptor",
                 Map.of(
                         "workerGroupId", "phone-tools",
-                        "workerAllocationMechanism", allocationMechanism,
+
                         "idleDisposition", "PARK_WHEN_IDLE",
                         "configJson",
                         "{\"maxRetryTimes\":\"3\","
-                                + (allocationMechanism.equals("PRECOMPUTED_TASK_RULE") ? "\"maximumCandidateWorkers\":\"1\"," : "")
+
                                 + "\"priority\":\"0\"}"
                 )
         );

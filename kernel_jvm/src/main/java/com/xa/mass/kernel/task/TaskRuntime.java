@@ -15,7 +15,6 @@ public interface TaskRuntime {
 
     Set<String> CONFIG_KEYS = Set.of(
             "priority",
-            "maximumCandidateWorkers",
             "maxRetryTimes"
     );
 
@@ -51,12 +50,6 @@ public interface TaskRuntime {
             String cursor,
             int countHint
     );
-
-    enum WorkerAllocationMechanism {
-        PRECOMPUTED_TASK_RULE,
-        INDEXED_TASK,
-        ON_DEMAND_ITEM_RULE
-    }
 
     enum TaskIdleDisposition {
         CLOSE_WHEN_IDLE,
@@ -134,37 +127,24 @@ public interface TaskRuntime {
     record TaskDescriptor(
             String taskId,
             String workerGroupId,
-            WorkerAllocationMechanism workerAllocationMechanism,
             TaskIdleDisposition idleDisposition,
             Map<String, String> config
     ) {
         public TaskDescriptor {
             requireNonBlank(taskId, "taskId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            Objects.requireNonNull(
-                    workerAllocationMechanism,
-                    "workerAllocationMechanism"
-            );
             Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
-            if (!config.keySet().equals(workerAllocationMechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                    ? CONFIG_KEYS : Set.of("priority", "maxRetryTimes"))) {
+            if (!config.keySet().equals(CONFIG_KEYS)) {
                 throw new IllegalArgumentException(
                         "config must contain exactly the declared keys"
                 );
             }
             int priority = decimalConfig(config, "priority");
-            int maximumCandidates = workerAllocationMechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                    ? decimalConfig(config, "maximumCandidateWorkers") : 1;
             int maxRetryTimes = decimalConfig(config, "maxRetryTimes");
             if (priority < 0 || priority > 99) {
                 throw new IllegalArgumentException(
                         "Task priority must be in 0..99"
-                );
-            }
-            if (maximumCandidates <= 0) {
-                throw new IllegalArgumentException(
-                        "maximumCandidateWorkers must be positive"
                 );
             }
             if (maxRetryTimes < 0 || maxRetryTimes > 98) {
@@ -181,14 +161,6 @@ public interface TaskRuntime {
             return Integer.parseInt(config.get("priority"));
         }
 
-        public int maximumCandidateWorkers() {
-            if (workerAllocationMechanism != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-                throw new IllegalStateException("Task does not use a Candidate Cache");
-            }
-            return Integer.parseInt(
-                    config.get("maximumCandidateWorkers")
-            );
-        }
     }
 
     record TaskItemAppendResult(

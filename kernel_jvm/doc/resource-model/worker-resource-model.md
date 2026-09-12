@@ -20,8 +20,8 @@ identity constraint.
 
 Kernel does not store or interpret Worker/Platform Properties or Rules.
 Prepare does not write Matching facts. An admitted Adapter Properties
-observation may create the first Matching facts later. PRECOMPUTED skips a
-Worker with no facts; ON_DEMAND requires no Matching facts. Both need eligible
+observation may create the first Matching facts later. Named Rules require indexed facts; default identity selection needs no Matching
+facts. Both require eligible
 Worker Score coordinates before assignment. `WorkerGroup.eventCodes` is
 create-only directory metadata, not proof of loaded handlers.
 

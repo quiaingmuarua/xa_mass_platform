@@ -12,7 +12,6 @@ import com.xa.mass.server.api.v1.controller.RuntimeViewController;
 import com.xa.mass.server.api.v1.controller.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.controller.AdapterDirectCallController;
 import com.xa.mass.server.api.v1.controller.WorkerPointDeliveryController;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
@@ -166,9 +165,6 @@ class ServerApplicationContextTest {
         )).hasSize(1);
         assertThat(applicationContext.getBean(WorkerScoreCore.class))
                 .isInstanceOf(RedisWorkerScoreCore.class);
-        assertThat(applicationContext.getBeansOfType(
-                CandidateWorkerCache.class
-        )).hasSize(1);
         assertThat(applicationContext.getBean(
                 ServerWorkerDeliveryAdapterProperties.class
         ).instances()).isEmpty();
@@ -176,7 +172,7 @@ class ServerApplicationContextTest {
                 ServerConfiguredRuntimeLifecycleHost.class
         )).isNotNull();
         assertThat(healthEndpointGroups.get("readiness")
-                .isMember("workerMatching")).isTrue();
+                .isMember("workerMatching")).isFalse();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

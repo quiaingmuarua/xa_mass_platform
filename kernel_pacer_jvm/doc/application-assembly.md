@@ -17,7 +17,6 @@ Java Server
            -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
               -> TASK_INITIALIZATION resource producer
-              -> WORKER_ALLOCATION resource producer
               -> TASK_DISPATCH resource producer
               -> WORKER_SERVICEABILITY resource producer optional
 ```
@@ -58,14 +57,13 @@ WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
 TaskInitializationPolicy
 TaskAssignmentDispatcher / TaskIdleSettlement
-CandidateWorkerCache
+WorkerCandidateIndex
 WorkerCommandRuntime / TaskEvidenceRuntime
 WorkerServiceabilityRuntime
 ```
 
-Candidate Cache is a disposable derived owner. There is no Candidate retry or
-warmup index: due RUNNING Task score is the only demand source for allocation,
-dispatch, and serviceability policy.
+Due RUNNING Task score is the only demand source for dispatch and serviceability.
+Matching eligibility indexes are shared derived facts, independent of Task demand.
 
 The module direction remains:
 
@@ -74,7 +72,7 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 ```
 
 - `kernel_jvm` owns mechanical contracts, Redis providers, finite cross-owner
-  Mechanisms, Candidate Cache, and codecs.
+  Mechanisms, bounded query ports, and codecs.
 - `kernel_pacer_jvm` owns Main Scheduler input planning, Resource Producer
   policy, presets, and finite thread lifecycle.
 - `server_jvm` owns Owner assembly, Spring lifecycle delegation, and Health.
@@ -113,12 +111,12 @@ the interval does not start at dispatch launch. Slow producers remain single-fli
 and do not catch up with overlapping rounds. A continuously full single Task is
 therefore bounded above by `100 / (0.05 + round_seconds)` checked Items/s, before
 scan/observation delay and unsuccessful assignments. This is a policy budget,
-not a platform QPS guarantee. Group-managed ON_DEMAND calls share that Task budget.
+not a platform QPS guarantee. Group-managed calls share that Task budget.
 `DispatchBudgetTest` proves the bounded check and completion-relative scheduling
 with controlled execution and time. These values remain preset-owned and have no
 Server override.
 
-Allocation and initialization keep their 100ms intervals. Dispatch alone uses
+Initialization keeps its 100ms interval. Dispatch alone uses
 50ms so candidate availability can be consumed without adding another full
 100ms idle interval after a mixed-Task round. The 100-Item ceiling, single-flight
 Producer, latest-due Item ordering and completion-relative backoff are unchanged;
@@ -135,14 +133,13 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| WORKER_ALLOCATION | PRECOMPUTED NORMAL Tasks | Candidate deficit acquisition and cache publication |
 | TASK_DISPATCH | NORMAL RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
-Allocation and Task Dispatch may run concurrently. A Candidate produced during
-one batch is not guaranteed to be consumed in the same batch; later RUNNING
-discovery provides convergence. Candidate entries left behind after a Task is
-parked or closed expire with their existing lease/cache deadline.
+Dispatch resolves at most 100 Task bindings in one Matching read inside its
+single-flight Producer. Queries are local to that dispatch round and have no
+lifecycle. Matching read failure blocks assignments, while exhausted/expired Item
+handling and idle settlement continue. No second producer fills a Task cache.
 
 A Task Source or INITIAL-classification failure defers every currently eligible
 Producer. Descriptor loading failure defers only NORMAL Producers; already

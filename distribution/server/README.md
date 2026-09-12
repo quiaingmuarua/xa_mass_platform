@@ -68,7 +68,7 @@ Groups and jobs. `ProductWorkerConfiguration` supplies one mixed-country `demo-s
 Group for every product combination and the enabled products' complete extension
 event declarations. Each product consumes exactly that input via
 the existing idempotent Group registration service; distribution owns no registration
-workflow. One context retains one Pacer, Matching consumer and set of Redis Owners.
+workflow. One context retains one Pacer, Matching catalog and set of Redis Owners.
 
 The [shared Preview](../product-preview/README.md) owns the common port/Redis/Adapter
 configuration, separate Host process and sole product Preview ZIP. Its `--products`

@@ -16,7 +16,6 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,18 +37,11 @@ class DispatchConvergenceLifecycleTest {
                 enabledServiceability()
         );
         stubProjectedBatch(fixture);
-        CountDownLatch rounds = new CountDownLatch(4);
+        CountDownLatch rounds = new CountDownLatch(3);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
-        AtomicReference<List<CandidateAllocationNeed>> allocationNeeds =
-                new AtomicReference<>();
         AtomicReference<List<String>> dispatchedTasks = new AtomicReference<>();
         AtomicReference<List<String>> serviceabilityGroups =
                 new AtomicReference<>();
-        doAnswer(invocation -> {
-            List<CandidateAllocationNeed> needs = invocation.getArgument(0);
-            allocationNeeds.set(needs);
-            return complete(rounds, allVirtual);
-        }).when(fixture.allocation).allocateCandidateWorkers(any());
         doAnswer(ignored -> {
             complete(rounds, allVirtual);
             return null;
@@ -77,24 +69,15 @@ class DispatchConvergenceLifecycleTest {
                 "task-initial", 100L
         ));
         verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
-                "task-precomputed",
-                "task-on-demand",
+                "task-first",
+                "task-second",
                 "task-repeat-group",
                 "task-invalid"
         ));
         assertEquals(
-                List.of(new CandidateAllocationNeed(
-                        "group-1",
-                        "task-precomputed",
-                        0,
-                        1
-                )),
-                allocationNeeds.get()
-        );
-        assertEquals(
                 List.of(
-                        "task-precomputed",
-                        "task-on-demand",
+                        "task-first",
+                        "task-second",
                         "task-repeat-group"
                 ),
                 dispatchedTasks.get()
@@ -131,7 +114,6 @@ class DispatchConvergenceLifecycleTest {
 
         assertTrue(sourceAttempt.await(2, TimeUnit.SECONDS));
         verify(fixture.initialization, never()).initialize(any());
-        verify(fixture.allocation, never()).allocateCandidateWorkers(any());
         verify(fixture.dispatch, never()).dispatchTasks(any());
         verify(fixture.serviceability, never()).dispatchProbes(
                 any(), any()
@@ -140,50 +122,6 @@ class DispatchConvergenceLifecycleTest {
         fixture.runtime.stop(2_000);
     }
 
-    @Test
-    void descriptorFailureDoesNotBlockFormedInitializationInput()
-            throws Exception {
-        Fixture fixture = fixture(oneShotAssignment(), null);
-        stubMixedBatch(fixture);
-        CountDownLatch initialized = new CountDownLatch(1);
-        doAnswer(ignored -> {
-            initialized.countDown();
-            return null;
-        }).when(fixture.initialization).initialize(any());
-        when(fixture.taskCatalog.loadTaskAllocationDescriptors(any()))
-                .thenThrow(new IllegalStateException("catalog unavailable"));
-
-        fixture.runtime.start();
-
-        assertTrue(initialized.await(2, TimeUnit.SECONDS));
-        verify(fixture.initialization).initialize(Map.of(
-                "task-initial", 100L
-        ));
-        verify(fixture.allocation, never()).allocateCandidateWorkers(any());
-        verify(fixture.dispatch, never()).dispatchTasks(any());
-        assertTrue(fixture.runtime.isRunning());
-        fixture.runtime.stop(2_000);
-    }
-
-    @Test
-    void runtimeFailureIsProducerLocalAndLaterRoundsContinue()
-            throws Exception {
-        Fixture fixture = fixture(fastAssignment(), null);
-        stubNormalBatch(fixture);
-        AtomicInteger rounds = new AtomicInteger();
-        doAnswer(ignored -> {
-            if (rounds.incrementAndGet() == 1) {
-                throw new IllegalStateException("round failure");
-            }
-            return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any());
-
-        fixture.runtime.start();
-
-        await(Duration.ofSeconds(2), () -> rounds.get() >= 2);
-        assertTrue(fixture.runtime.isRunning());
-        fixture.runtime.stop(2_000);
-    }
 
     @Test
     void persistentlyDueNormalTaskIsRediscoveredAcrossCadences()
@@ -203,77 +141,31 @@ class DispatchConvergenceLifecycleTest {
         fixture.runtime.stop(2_000);
     }
 
+
     @Test
-    void blockedAllocationDoesNotBlockOtherProducersOrReenter()
-            throws Exception {
-        Fixture fixture = fixture(
-                fastAssignment(),
-                enabledServiceability()
-        );
+    void blockedDispatchDoesNotStopServiceabilityAndShutdownInterruptsItsOneRun() throws Exception {
+        Fixture fixture = fixture(fastAssignment(), enabledServiceability());
         stubNormalBatch(fixture);
-        CountDownLatch allocationStarted = new CountDownLatch(1);
-        CountDownLatch releaseAllocation = new CountDownLatch(1);
-        CountDownLatch otherProducers = new CountDownLatch(2);
-        AtomicInteger allocationRounds = new AtomicInteger();
-        doAnswer(ignored -> {
-            allocationRounds.incrementAndGet();
-            allocationStarted.countDown();
-            releaseAllocation.await(2, TimeUnit.SECONDS);
-            return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any());
-        doAnswer(ignored -> {
-            otherProducers.countDown();
+        var entered = new CountDownLatch(1);
+        var interrupted = new CountDownLatch(1);
+        var probes = new CountDownLatch(3);
+        var dispatches = new AtomicInteger();
+        doAnswer(call -> {
+            dispatches.incrementAndGet(); entered.countDown();
+            try { new CountDownLatch(1).await(); }
+            catch (InterruptedException stop) { interrupted.countDown(); Thread.currentThread().interrupt(); }
             return 0;
         }).when(fixture.dispatch).dispatchTasks(any());
-        doAnswer(ignored -> {
-            otherProducers.countDown();
-            return 0;
-        }).when(fixture.serviceability).dispatchProbes(
-                any(), any()
-        );
-
+        doAnswer(call -> { probes.countDown(); return 0; })
+                .when(fixture.serviceability).dispatchProbes(any(), any());
         fixture.runtime.start();
-
-        assertTrue(allocationStarted.await(2, TimeUnit.SECONDS));
-        assertTrue(otherProducers.await(2, TimeUnit.SECONDS));
-        Thread.sleep(30);
-        assertEquals(1, allocationRounds.get());
-        releaseAllocation.countDown();
-        fixture.runtime.stop(2_000);
-    }
-
-    @Test
-    void blockedInitializationDoesNotBlockNormalProducersOrReenter()
-            throws Exception {
-        Fixture fixture = fixture(fastAssignment(), null);
-        stubMixedBatch(fixture);
-        CountDownLatch initializationStarted = new CountDownLatch(1);
-        CountDownLatch releaseInitialization = new CountDownLatch(1);
-        CountDownLatch normalProducers = new CountDownLatch(2);
-        AtomicInteger initializationRounds = new AtomicInteger();
-        doAnswer(ignored -> {
-            initializationRounds.incrementAndGet();
-            initializationStarted.countDown();
-            releaseInitialization.await(2, TimeUnit.SECONDS);
-            return null;
-        }).when(fixture.initialization).initialize(any());
-        doAnswer(ignored -> {
-            normalProducers.countDown();
-            return 0;
-        }).when(fixture.allocation).allocateCandidateWorkers(any());
-        doAnswer(ignored -> {
-            normalProducers.countDown();
-            return 0;
-        }).when(fixture.dispatch).dispatchTasks(any());
-
-        fixture.runtime.start();
-
-        assertTrue(initializationStarted.await(2, TimeUnit.SECONDS));
-        assertTrue(normalProducers.await(2, TimeUnit.SECONDS));
-        Thread.sleep(30);
-        assertEquals(1, initializationRounds.get());
-        releaseInitialization.countDown();
-        fixture.runtime.stop(2_000);
+        try {
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            assertTrue(probes.await(2, TimeUnit.SECONDS));
+            assertEquals(1, dispatches.get());
+        } finally { fixture.runtime.stop(2000); }
+        assertTrue(interrupted.await(2, TimeUnit.SECONDS));
+        assertEquals("STOPPED", fixture.runtime.state());
     }
 
     @Test
@@ -308,11 +200,11 @@ class DispatchConvergenceLifecycleTest {
     }
 
     private static AssignmentDispatchConfig fastAssignment() {
-        return AssignmentDispatchConfig.create(5, 5, 5);
+        return AssignmentDispatchConfig.create(5, 5);
     }
 
     private static AssignmentDispatchConfig oneShotAssignment() {
-        return AssignmentDispatchConfig.create(10_000, 10_000, 10_000);
+        return AssignmentDispatchConfig.create(10_000, 10_000);
     }
 
     private static WorkerServiceabilityDispatchConfig
@@ -333,20 +225,9 @@ class DispatchConvergenceLifecycleTest {
 
     private static TaskDescriptor descriptor(
             String taskId,
-            String workerGroupId,
-            WorkerAllocationMechanism mechanism
+            String workerGroupId
     ) {
-        return new TaskDescriptor(
-                taskId,
-                workerGroupId,
-                mechanism,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE ? Map.of(
-                        "priority", "0",
-                        "maximumCandidateWorkers", "1",
-                        "maxRetryTimes", "1"
-                ) : Map.of("priority", "0", "maxRetryTimes", "1")
-        );
+        return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"));
     }
 
     private static Fixture fixture(
@@ -358,9 +239,6 @@ class DispatchConvergenceLifecycleTest {
         TaskInitializationPolicy initialization = mock(
                 TaskInitializationPolicy.class
         );
-        TaskWorkerAllocationPolicy allocation = mock(
-                TaskWorkerAllocationPolicy.class
-        );
         TaskDispatchPolicy dispatch = mock(TaskDispatchPolicy.class);
         WorkerServiceabilityDispatchPolicy serviceability = mock(
                 WorkerServiceabilityDispatchPolicy.class
@@ -371,7 +249,6 @@ class DispatchConvergenceLifecycleTest {
                                 taskScores,
                                 taskCatalog,
                                 initialization,
-                                allocation,
                                 dispatch,
                                 serviceabilityConfig == null
                                         ? null
@@ -383,7 +260,6 @@ class DispatchConvergenceLifecycleTest {
                 taskScores,
                 taskCatalog,
                 initialization,
-                allocation,
                 dispatch,
                 serviceability
         );
@@ -401,9 +277,7 @@ class DispatchConvergenceLifecycleTest {
                         "task-normal",
                         descriptor(
                                 "task-normal",
-                                "group-1",
-                                WorkerAllocationMechanism
-                                        .PRECOMPUTED_TASK_RULE
+                                "group-1"
                         )
                 ));
     }
@@ -423,17 +297,15 @@ class DispatchConvergenceLifecycleTest {
                         "task-normal",
                         descriptor(
                                 "task-normal",
-                                "group-1",
-                                WorkerAllocationMechanism
-                                        .PRECOMPUTED_TASK_RULE
+                                "group-1"
                         )
                 ));
     }
 
     private static void stubProjectedBatch(Fixture fixture) {
         LinkedHashMap<String, Long> scores = new LinkedHashMap<>();
-        scores.put("task-precomputed", 104L);
-        scores.put("task-on-demand", 103L);
+        scores.put("task-first", 104L);
+        scores.put("task-second", 103L);
         scores.put("task-repeat-group", 102L);
         scores.put("task-invalid", 101L);
         scores.put("task-initial", 100L);
@@ -443,30 +315,25 @@ class DispatchConvergenceLifecycleTest {
         );
         when(fixture.taskCatalog.loadTaskAllocationDescriptors(any()))
                 .thenReturn(Map.of(
-                        "task-precomputed",
+                        "task-first",
                         descriptor(
-                                "task-precomputed",
-                                "group-1",
-                                WorkerAllocationMechanism
-                                        .PRECOMPUTED_TASK_RULE
+                                "task-first",
+                                "group-1"
                         ),
-                        "task-on-demand",
+                        "task-second",
                         descriptor(
-                                "task-on-demand",
-                                "group-2",
-                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
+                                "task-second",
+                                "group-2"
                         ),
                         "task-repeat-group",
                         descriptor(
                                 "task-repeat-group",
-                                "group-1",
-                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
+                                "group-1"
                         ),
                         "task-invalid",
                         descriptor(
                                 "other-task",
-                                "group-3",
-                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
+                                "group-3"
                         )
                 ));
     }
@@ -487,7 +354,6 @@ class DispatchConvergenceLifecycleTest {
             TaskScoreBandCore taskScores,
             TaskResourceCatalog taskCatalog,
             TaskInitializationPolicy initialization,
-            TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability
     ) {

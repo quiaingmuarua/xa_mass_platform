@@ -58,9 +58,8 @@ function mockTask(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
     workerGroupId,
-    workerAllocationMechanism: "ON_DEMAND_ITEM_RULE",
     idleDisposition: "PARK_WHEN_IDLE",
-    allocationRule: null,
+    ruleId: "worker.default",
     config: {
       priority: "0",
       maxRetryTimes: "3"
@@ -78,9 +77,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[0]!,
         taskId: "mock-finite-awaiting-review",
-        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
-        idleDisposition: "CLOSE_WHEN_IDLE",
-        allocationRule: {}
+        idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[0]!
     },
@@ -90,9 +87,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-initial",
-        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
-        idleDisposition: "CLOSE_WHEN_IDLE",
-        allocationRule: {}
+        idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!
     },
@@ -108,9 +103,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-closed",
-        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
-        idleDisposition: "CLOSE_WHEN_IDLE",
-        allocationRule: {}
+        idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!
     }

@@ -195,9 +195,9 @@ public final class DynamicMatchingMain {
 
     private Map<String, Object> rule(String pool, boolean target, boolean enabled) {
         var rule = new LinkedHashMap<String, Object>();
-        rule.put("worker.proofPool", pool == null ? Map.of("$exists", false) : Map.of("$eq", pool));
-        if (target) rule.put("worker.proofTarget", Map.of("$eq", "yes"));
-        if (enabled) rule.put("platform.proofEnabled", Map.of("$eq", "yes"));
+        rule.put("worker.proofPool", Map.of("op","eq","values",List.of(pool==null ? "~" : pool)));
+        if (target) rule.put("worker.proofTarget", Map.of("op","eq","values",List.of("yes")));
+        if (enabled) rule.put("platform.proofEnabled", Map.of("op","eq","values",List.of("yes")));
         return rule;
     }
 
@@ -210,8 +210,7 @@ public final class DynamicMatchingMain {
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
         var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group,
-                "allocationRule", rule, "priority", witness ? 10 : 50,
-                "maximumCandidateWorkers", witness ? TARGET_COUNT : GROUP_SIZE, "maxRetryTimes", 3), false);
+                "ruleId", "proof.worker.facts", "priority", witness ? 10 : 50, "maxRetryTimes", 3), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {
@@ -225,7 +224,7 @@ public final class DynamicMatchingMain {
             t.tokens.add(token);
             tokenTasks.put(token, t);
             items.add(Map.of("messageId", token, "eventCode", EVENT,
-                    "payload", Map.of("probeToken", token, "delayMillis", delay)));
+                    "payload", Map.of("probeToken", token, "delayMillis", delay), "workerSelector", rule));
         }
         for (int offset = 0; offset < items.size(); offset += 100) {
             var page = items.subList(offset, Math.min(offset + 100, items.size()));

@@ -26,7 +26,7 @@ class CampaignServiceTest {
         });
         when(data.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of());
         var service = new CampaignService(mock(WorkerGroupRegistrationService.class), creation, data, lifecycle,
-                "demo-sim", List.of("extension.worker.message.send"), 100);
+                "demo-sim", List.of("extension.worker.message.send"));
         service.start(); return service;
     }
     Map<String, Object> input(int count) {
@@ -41,9 +41,8 @@ class CampaignServiceTest {
             verify(lifecycle, timeout(3000)).approve("finite-task");
             var order = inOrder(creation, data, lifecycle);
             order.verify(creation).create(argThat(r -> r.workerGroupId().equals("demo-sim")
-                    && r.allocationRule().get("worker.country").equals(Map.of("$eq", "CN"))
-                    && r.allocationRule().containsKey("worker.messaging.enabled") && r.allocationRule().containsKey("worker.phone")));
-            order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100));
+                    && r.ruleId().equals("worker.messaging.available")));
+            order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100 && items.stream().allMatch(i -> i.workerSelector().equals(Map.of("worker.country", Map.of("op", "eq", "values", List.of("CN")), "worker.phone", Map.of("op", "eq", "values", List.of("+86123")))))));
             order.verify(data).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 1));
             order.verify(lifecycle).approve("finite-task");
             assertThat(service.create(input(201)).get("id")).isEqualTo(created.get("id"));

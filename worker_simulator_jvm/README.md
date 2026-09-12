@@ -631,7 +631,7 @@ configured Adapter; each proof runner owns the Worker Host process:
   extension reachability, 100 final Results and identity reuse across a real
   Host restart;
 - [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
-  proves loaded PRECOMPUTED execution follows live Worker and Platform facts,
+  proves loaded Rule-index execution follows live Worker and Platform facts,
   with actual replica witnesses and independent Result closure;
 - [`worker-convergence-health`](../integrations/worker-convergence-health/)
   owns two isolated 2x500 scenarios: deterministic Worker/Server state

@@ -38,12 +38,14 @@ Status: current repository document index.
 Module READMEs explain only their assembly, public entrypoints, local owner
 mechanism and verification.
 
-## Completed Changes
+## Historical Change Records
 
-- [Task and Rule decoupling record](task-rule-decoupling-plan.md) records the
-  completed Matching-owned Task binding and shared Rule cutover and its local proofs.
-- [Named Rule index cutover](named-rule-index-plan.md) records the first fixed
-  Handler, direct index dispatch and local proofs.
+- [Task and Rule decoupling record](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/task-rule-decoupling-plan.md) records the
+  earlier Matching-owned binding cutover and its version-scoped local proofs.
+- [Named Rule index cutover](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/named-rule-index-plan.md) records the first fixed
+  Handler, direct index dispatch and version-scoped local proofs.
+
+Current binding/query and storage semantics belong to the [Matching Owner](../worker_matching_jvm/README.md).
 
 ## Historical Assets
 

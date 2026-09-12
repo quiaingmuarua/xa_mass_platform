@@ -4,7 +4,6 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
-import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -12,12 +11,9 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,278 +28,160 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Redis persistence for Worker facts, shared Rules and Task bindings. */
-public final class RedisWorkerMatchingCatalog
-        implements WorkerMatchingCatalog, AutoCloseable {
-
-    private static final String BIND_TASK_RULE_SCRIPT = """
-            local binding = redis.call('HGET', KEYS[1], ARGV[1])
-            local definition = nil
-            if ARGV[4] ~= '' then definition = redis.call('HGET', KEYS[2], ARGV[3]) end
-            if (binding and binding ~= ARGV[2]) or (definition and definition ~= ARGV[4]) then
-              return -1
-            end
-            if binding and (definition or ARGV[4] == '') then return 0 end
-            if not definition and ARGV[4] ~= '' then redis.call('HSET', KEYS[2], ARGV[3], ARGV[4]) end
-            if not binding then redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]) end
-            return 1
+/** Matching owns facts, immutable Task bindings, and the finite Group index projections. */
+public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, AutoCloseable {
+    private static final String BIND = """
+            local old=redis.call('HGET',KEYS[1],ARGV[1])
+            if old then return old==ARGV[2] and 0 or -1 end
+            redis.call('HSET',KEYS[1],ARGV[1],ARGV[2]); return 1
             """;
-
-    private static final String LOAD_TASK_RULES_SCRIPT = """
-            local bindings = redis.call('HMGET', KEYS[1], unpack(ARGV))
-            local ids, seen = {}, {}
-            for _, raw in ipairs(bindings) do
-              if raw then
-                local ok,binding=pcall(cjson.decode,raw)
-                local id=ok and type(binding)=='table' and binding.ruleId or nil
-                if type(id)=='string' and not seen[id] then
-                  seen[id]=true
-                  ids[#ids+1]=id
-                end
-              end
-            end
-            local definitions = {}
-            if #ids > 0 then definitions = redis.call('HMGET', KEYS[2], unpack(ids)) end
-            return {bindings, ids, definitions}
-            """;
-
-    private static final String PATCH_PLATFORM_SCRIPT = """
-            if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 0 then
-              return -1
-            end
-            local current = redis.call('HGET', KEYS[2], ARGV[1])
-            if ARGV[2] == 'missing' then
-              if current then return 0 end
-            elseif not current or current ~= ARGV[3] then
-              return 0
-            end
-            redis.call('HSET', KEYS[2], ARGV[1], ARGV[4])
-            return 1
-            """;
-
     private final RedisClient redisClient;
-    private final ObjectMapper mapper = JsonMapper.builder()
-            .enable(DeserializationFeature.USE_LONG_FOR_INTS)
-            .build();
+    private final ObjectMapper mapper=JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
     private final RedisKeyspace keyspace;
-    private final Set<String> countryIndexGroups;
-    private volatile StatefulRedisConnection<String, String> connection;
+    private final Map<String,Set<RuleHandler>> handlersByGroup;
+    private final Map<String,String> scriptsByGroup;
+    private static final String NO_INDEX_SCRIPT=FactsIndexStore.script(Set.of());
+    private volatile StatefulRedisConnection<String,String> connection;
 
-    public RedisWorkerMatchingCatalog(
-            RedisClient redisClient,
-            RedisKeyspace keyspace,
-            Set<String> countryIndexGroups
-    ) {
-        this.redisClient = Objects.requireNonNull(redisClient, "redisClient");
-        this.keyspace = Objects.requireNonNull(keyspace, "keyspace");
-        this.countryIndexGroups = Set.copyOf(countryIndexGroups);
-        this.countryIndexGroups.forEach(group -> requireNonBlank(group, "country index Group"));
+    public RedisWorkerMatchingCatalog(RedisClient client,RedisKeyspace keyspace,Map<String,Set<String>> groupRules) {
+        this.redisClient=Objects.requireNonNull(client,"redisClient"); this.keyspace=Objects.requireNonNull(keyspace,"keyspace");
+        var handlers=new LinkedHashMap<String,Set<RuleHandler>>();
+        groupRules.forEach((group,ids) -> {
+            requireNonBlank(group,"WorkerGroup");
+            var enabled=java.util.EnumSet.noneOf(RuleHandler.class);
+            ids.forEach(id -> enabled.add(RuleHandler.named(id)));
+            handlers.put(group,Collections.unmodifiableSet(enabled));
+        });
+        handlersByGroup=Map.copyOf(handlers);
+        var scripts=new LinkedHashMap<String,String>();
+        handlers.forEach((group,enabled) -> scripts.put(group,FactsIndexStore.script(enabled)));
+        scriptsByGroup=Map.copyOf(scripts);
     }
 
-    /** Startup only, before exposing this Catalog to producers or the Pacer. */
-    public void rebuildCountryIndexes() {
-        for (String group : countryIndexGroups) {
-            RedisCommands<String, String> redis = commands();
-            redis.del(countryIndexKey(group));
-            ScanCursor cursor = ScanCursor.INITIAL;
+    /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
+    public void rebuildIndexes() {
+        var redis=commands();
+        for (String group:handlersByGroup.keySet()) {
+            ScanCursor cursor=ScanCursor.INITIAL;
             do {
-                MapScanCursor<String, String> page = redis.hscan(workerFactsKey(group), cursor, new ScanArgs().limit(100));
-                List<String> batch = new ArrayList<>();
-                for (Map.Entry<String, String> entry : page.getMap().entrySet()) {
-                    // Fail startup on corrupt facts, never install a partial silent interpretation.
-                    decodeObject(entry.getValue());
-                    batch.add(entry.getKey());
-                    batch.add(entry.getValue());
-                    if (batch.size() == 200) {
-                        rebuildBatch(group, batch);
-                        batch.clear();
-                    }
+                var page=redis.scan(cursor,new ScanArgs().match(indexBase(group)+":*").limit(100));
+                if (!page.getKeys().isEmpty()) redis.unlink(page.getKeys().toArray(String[]::new));
+                cursor=page;
+            } while (!cursor.isFinished());
+            cursor=ScanCursor.INITIAL;
+            do {
+                var page=redis.hscan(workerFactsKey(group),cursor,new ScanArgs().limit(100));
+                var ids=new ArrayList<String>();
+                for (var entry:page.getMap().entrySet()) {
+                    decodeObject(entry.getValue()); ids.add(entry.getKey()); ids.add("{}");
+                    if (ids.size()==200) { mutate(group,"rebuild",ids); ids.clear(); }
                 }
-                if (!batch.isEmpty()) rebuildBatch(group, batch);
-                cursor = page;
+                if (!ids.isEmpty()) mutate(group,"rebuild",ids);
+                cursor=page;
             } while (!cursor.isFinished());
         }
     }
 
-    private void rebuildBatch(String group, List<String> batch) {
-        commands().eval(CountryRuleHandler.REBUILD_INDEX_SCRIPT, ScriptOutputType.INTEGER,
-                new String[]{workerFactsKey(group), countryIndexKey(group)}, batch.toArray(String[]::new));
-    }
-
-    @Override
-    public void validateWorkerSelector(String workerGroupId, TaskItemWorkerSelector selector) {
-        requireCountryIndex(workerGroupId);
-        CountryRuleHandler.validate(selector);
-    }
-
-    private void requireCountryIndex(String workerGroupId) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        if (!countryIndexGroups.contains(workerGroupId)) {
-            throw new IllegalArgumentException("country index is not enabled for WorkerGroup");
-        }
-    }
-
-    @Override
-    public @Nullable TaskQuery prepareTaskQuery(String taskId, String workerGroupId) {
-        requireNonBlank(taskId, "taskId");
-        requireNonBlank(workerGroupId, "workerGroupId");
-        String raw = commands().hmget(taskRulesKey(), taskId).getFirst().getValueOrElse(null);
-        MatchingRule binding = decodeBinding(raw);
-        if (binding == null || !workerGroupId.equals(binding.workerGroupId())
-                || !CountryRuleHandler.ID.equals(binding.ruleId()) || !countryIndexGroups.contains(workerGroupId)) {
-            return null;
-        }
-        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId));
-    }
-
-    @Override
-    public List<String> takeWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, int limit) {
-        validateWorkerSelector(workerGroupId, selector);
-        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId)).take(Map.of(selector, limit)).get(selector);
-    }
-
-    @Override
-    public Set<String> retainWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, List<String> workerIds) {
-        validateWorkerSelector(workerGroupId, selector);
-        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId)).retain(Map.of(selector, workerIds)).get(selector);
-    }
-
-    private String countryIndexKey(String group) {
-        return keyspace.base() + ":matching:worker:index:country:" + group;
-    }
-
-    @Override
-    public Map<String, MutationResult> upsertWorkerFactsBatch(
-            String workerGroupId,
-            Map<String, Map<String, String>> propertiesByWorkerId
-    ) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        Objects.requireNonNull(propertiesByWorkerId, "propertiesByWorkerId");
-        if (propertiesByWorkerId.isEmpty() || propertiesByWorkerId.size() > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException("Worker facts batch must contain 1..100 entries");
-        }
-        propertiesByWorkerId.keySet().forEach(id -> requireNonBlank(id, "workerId"));
-        Map<String, String> encoded = new LinkedHashMap<>();
-        Map<String, MutationResult> results = new LinkedHashMap<>();
-        propertiesByWorkerId.forEach((id, properties) -> {
-            if (properties == null || ((Map<?, ?>) properties).entrySet().stream().anyMatch(
-                    entry -> !(entry.getKey() instanceof String key) || key.isBlank()
-                            || !(entry.getValue() instanceof String))) {
-                results.put(id, result(MutationStatus.INVALID, "invalid Worker properties"));
-            } else {
-                encoded.put(id, encodeObject(properties));
-            }
+    @Override public Map<String,@Nullable TaskQuery> prepareTaskQueries(Map<String,String> taskGroups) {
+        Objects.requireNonNull(taskGroups,"taskGroups");
+        if (taskGroups.size()>MAX_BATCH_SIZE) throw new IllegalArgumentException("at most 100 Tasks");
+        taskGroups.forEach((id,group) -> { requireNonBlank(id,"taskId"); requireNonBlank(group,"workerGroupId"); });
+        var bindings=loadTaskBindings(List.copyOf(taskGroups.keySet()));
+        Map<String,TaskQuery> result=new LinkedHashMap<>();
+        taskGroups.forEach((task,group) -> {
+            var binding=bindings.get(task);
+            result.put(task,binding!=null && group.equals(binding.workerGroupId()) ? query(group,binding.ruleId()) : null);
         });
-        results.putAll(storeWorkerFacts(workerGroupId, encoded));
-        return Collections.unmodifiableMap(results);
+        return immutableNullableMap(result);
     }
 
-    private Map<String, MutationResult> storeWorkerFacts(
-            String workerGroupId,
-            Map<String, String> encoded
-    ) {
-        if (encoded.isEmpty()) {
-            return Map.of();
-        }
-        if (countryIndexGroups.contains(workerGroupId)) {
-            List<Long> effects = CountryRuleHandler.replaceFacts(commands(), workerFactsKey(workerGroupId),
-                    countryIndexKey(workerGroupId), encoded);
-            Map<String, MutationResult> results = new LinkedHashMap<>();
-            int i = 0;
-            for (String id : encoded.keySet()) {
-                results.put(id, new MutationResult(effects.get(i++) == 0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED));
+    private @Nullable TaskQuery query(String group,String id) {
+        if (DEFAULT_RULE_ID.equals(id)) return new TaskQuery() {
+            private TaskQuery propertyQuery() {
+                var query=RedisWorkerMatchingCatalog.this.query(group,RuleHandler.COUNTRY.id);
+                if (query==null) throw new IllegalArgumentException("country index unavailable");
+                return query;
             }
-            return Collections.unmodifiableMap(results);
-        }
-        String key = workerFactsKey(workerGroupId);
-        RedisCommands<String, String> commands = commands();
-        List<KeyValue<String, String>> current = commands.hmget(key, encoded.keySet().toArray(String[]::new));
-        Map<String, String> changed = new LinkedHashMap<>();
-        Map<String, MutationResult> results = new LinkedHashMap<>();
-        for (KeyValue<String, String> value : current) {
-            String replacement = encoded.get(value.getKey());
-            boolean unchanged = replacement.equals(value.getValueOrElse(null));
-            results.put(value.getKey(), new MutationResult(
-                    unchanged ? MutationStatus.UNCHANGED : MutationStatus.APPLIED
-            ));
-            if (!unchanged) {
-                changed.put(value.getKey(), replacement);
+            @Override public boolean usesIdentitySelection(TaskItemWorkerSelector selector) {
+                return selector.isAny() || selector.hasExplicitWorkerIds();
             }
-        }
-        if (!changed.isEmpty()) {
-            // Whole JSON values, no observation-order fence between batches.
-            commands.hset(key, changed);
-        }
-        return Collections.unmodifiableMap(results);
+            @Override public void validate(TaskItemWorkerSelector selector) {
+                if (!usesIdentitySelection(selector)) propertyQuery().validate(selector);
+            }
+            @Override public Map<TaskItemWorkerSelector,List<String>> take(Map<TaskItemWorkerSelector,Integer> limits) {
+                return propertyQuery().take(limits);
+            }
+            @Override public Map<TaskItemWorkerSelector,Set<String>> retain(Map<TaskItemWorkerSelector,List<String>> held) {
+                return propertyQuery().retain(held);
+            }
+        };
+        RuleHandler handler;
+        try { handler=RuleHandler.named(id); } catch (IllegalArgumentException unknown) { return null; }
+        if (!handlersByGroup.getOrDefault(group,Set.of()).contains(handler)) return null;
+        return RuleIndex.query(this::commands,indexBase(group)+":"+handler.indexName,handler::criteria);
     }
 
-    @Override
-    public MutationResult patchWorkerPlatformProperties(
-            String workerGroupId,
-            String workerId,
-            Map<String, @Nullable Object> properties
-    ) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        requireNonBlank(workerId, "workerId");
-        Objects.requireNonNull(properties, "properties");
-        if (properties.keySet().stream().anyMatch(key ->
-                key == null || key.isBlank())) {
-            return result(
-                    MutationStatus.INVALID,
-                    "platform property names must be non-blank"
-            );
-        }
-        RedisCommands<String, String> commands = commands();
-        String factsKey = workerFactsKey(workerGroupId);
-        String platformKey = workerPlatformFactsKey(workerGroupId);
-        for (int attempt = 0; attempt < 8; attempt++) {
-            String observed = commands.hget(platformKey, workerId);
-            Map<String, Object> current;
-            try {
-                current = observed == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(decodeObject(observed));
-                properties.forEach((name, value) -> {
-                    if (value == null) {
-                        current.remove(name);
-                    } else {
-                        current.put(name, snapshotJsonValue(value));
-                    }
-                });
-            } catch (IllegalArgumentException error) {
-                return result(
-                        MutationStatus.INVALID,
-                        "invalid platform properties"
-                );
-            }
-            String replacement = encodeObject(current);
-            if (replacement.equals(observed)
-                    || observed == null && current.isEmpty()) {
-                return commands.hexists(factsKey, workerId)
-                        ? new MutationResult(MutationStatus.UNCHANGED)
-                        : new MutationResult(MutationStatus.NOT_FOUND);
-            }
-            Number changed = commands.eval(
-                    PATCH_PLATFORM_SCRIPT,
-                    ScriptOutputType.INTEGER,
-                    new String[]{factsKey, platformKey},
-                    workerId,
-                    observed == null ? "missing" : "present",
-                    observed == null ? "" : observed,
-                    replacement
-            );
-            if (changed != null && changed.longValue() == 1) {
-                return new MutationResult(MutationStatus.APPLIED);
-            }
-            if (changed != null && changed.longValue() == -1) {
-                return new MutationResult(MutationStatus.NOT_FOUND);
-            }
-        }
-        return result(
-                MutationStatus.CONFLICT,
-                "platform properties changed concurrently"
-        );
+    private List<Long> mutate(String group,String mode,List<String> input) {
+        var args=new ArrayList<String>(); args.add(mode); args.addAll(input);
+        return commands().eval(scriptsByGroup.getOrDefault(group,NO_INDEX_SCRIPT),ScriptOutputType.MULTI,
+                new String[]{workerFactsKey(group),workerPlatformFactsKey(group),indexBase(group)},args.toArray(String[]::new));
     }
+
+    @Override public Map<String,MutationResult> upsertWorkerFactsBatch(String group,Map<String,Map<String,String>> facts) {
+        requireNonBlank(group,"workerGroupId"); Objects.requireNonNull(facts,"facts");
+        if (facts.isEmpty() || facts.size()>100) throw new IllegalArgumentException("Worker facts batch must contain 1..100 entries");
+        var args=new ArrayList<String>(); var ids=new ArrayList<String>(); var result=new LinkedHashMap<String,MutationResult>();
+        facts.forEach((id,properties) -> {
+            requireNonBlank(id,"workerId");
+            if (properties==null || ((Map<?,?>)properties).entrySet().stream().anyMatch(e -> !(e.getKey() instanceof String key) || key.isBlank() || !(e.getValue() instanceof String))) {
+                result.put(id,result(MutationStatus.INVALID,"invalid Worker properties"));
+            } else { ids.add(id); args.add(id); args.add(encodeObject(properties)); }
+        });
+        if (!args.isEmpty()) {
+            var effects=mutate(group,"replace",args);
+            for (int i=0;i<ids.size();i++) result.put(ids.get(i),new MutationResult(effects.get(i)==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED));
+        }
+        var ordered=new LinkedHashMap<String,MutationResult>(); facts.keySet().forEach(id -> ordered.put(id,result.get(id)));
+        return Collections.unmodifiableMap(ordered);
+    }
+
+    @Override public MutationResult patchWorkerPlatformProperties(String group,String id,Map<String,@Nullable Object> properties) {
+        requireNonBlank(group,"workerGroupId"); requireNonBlank(id,"workerId"); Objects.requireNonNull(properties,"properties");
+        String encoded;
+        try {
+            if (properties.size()>100 || properties.keySet().stream().anyMatch(key -> key==null || key.isBlank())) throw new IllegalArgumentException("invalid property names");
+            encoded=encodeObject(properties);
+        } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"invalid platform properties"); }
+        long effect=mutate(group,"patch",List.of(id,encoded)).getFirst();
+        return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
+    }
+
+    @Override public MutationResult bindTaskRule(String taskId,String group,String ruleId) {
+        try {
+            requireNonBlank(taskId,"taskId"); requireNonBlank(group,"workerGroupId"); requireNonBlank(ruleId,"ruleId");
+            if (query(group,ruleId)==null) throw new IllegalArgumentException("unavailable Rule");
+        } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"unknown Rule or unavailable Group index"); }
+        String binding=encodeObject(Map.of("workerGroupId",group,"ruleId",ruleId));
+        long effect=commands().eval(BIND,ScriptOutputType.INTEGER,new String[]{taskRulesKey()},taskId,binding);
+        return effect<0 ? result(MutationStatus.CONFLICT,"Task binding conflicts with stored value")
+                : new MutationResult(effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
+    }
+
+    @Override public Map<String,@Nullable TaskRuleBinding> loadTaskBindings(List<String> taskIds) {
+        var ids=boundedUnique(taskIds,"taskIds"); if (ids.isEmpty()) return Map.of();
+        var rows=commands().hmget(taskRulesKey(),ids.toArray(String[]::new));
+        var result=new LinkedHashMap<String,TaskRuleBinding>();
+        for (var row:rows) {
+            var binding=decodeBinding(row.getValueOrElse(null));
+            result.put(row.getKey(),binding!=null && query(binding.workerGroupId(),binding.ruleId())!=null ? binding : null);
+        }
+        return immutableNullableMap(result);
+    }
+
+    private String indexBase(String group) { return keyspace.base()+":matching:worker:index:"+java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(group.getBytes(StandardCharsets.UTF_8)); }
+    private String workerFactsKey(String group) { return keyspace.base()+":matching:worker:facts:"+group; }
+    private String workerPlatformFactsKey(String group) { return keyspace.base()+":matching:worker:platform-properties:"+group; }
+    private String taskRulesKey() { return keyspace.base()+":matching:task:rules"; }
 
     @Override
     public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
@@ -349,106 +227,6 @@ public final class RedisWorkerMatchingCatalog
         return immutableNullableMap(result);
     }
 
-    @Override
-    public MutationResult bindTaskAllocationRule(
-            String taskId,
-            String workerGroupId,
-            Map<String, Object> allocationRule
-    ) {
-        String encoded;
-        try {
-            requireNonBlank(taskId, "taskId");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            encoded = encodeRule(workerGroupId, requireObject(allocationRule));
-        } catch (IllegalArgumentException error) {
-            return result(MutationStatus.INVALID, "invalid Task rule binding");
-        }
-        return bind(taskId, workerGroupId, ruleId(encoded), encoded);
-    }
-
-    @Override
-    public MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId) {
-        try {
-            requireNonBlank(taskId, "taskId");
-            requireCountryIndex(workerGroupId);
-            if (!CountryRuleHandler.ID.equals(ruleId)) throw new IllegalArgumentException("unknown Rule");
-        } catch (IllegalArgumentException error) {
-            return result(MutationStatus.INVALID, "unknown Rule or unavailable Group index");
-        }
-        return bind(taskId, workerGroupId, ruleId, "");
-    }
-
-    private MutationResult bind(String taskId, String workerGroupId, String id, String definition) {
-        String binding = encodeObject(Map.of("workerGroupId", workerGroupId, "ruleId", id));
-        long effect = commands().eval(BIND_TASK_RULE_SCRIPT, ScriptOutputType.INTEGER,
-                new String[]{taskRulesKey(), rulesKey()}, taskId, binding, id, definition);
-        return switch ((int) effect) {
-            case 1 -> new MutationResult(MutationStatus.APPLIED);
-            case 0 -> new MutationResult(MutationStatus.UNCHANGED);
-            default -> result(MutationStatus.CONFLICT, "Task binding or shared Rule conflicts with stored value");
-        };
-    }
-
-    @Override
-    public Map<String, @Nullable MatchingRule> loadTaskRules(
-            List<String> taskIds
-    ) {
-        Objects.requireNonNull(taskIds, "taskIds");
-        List<String> ids = boundedUnique(new ArrayList<>(new LinkedHashSet<>(taskIds)), "taskIds");
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
-        List<?> rows = commands().eval(LOAD_TASK_RULES_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{taskRulesKey(), rulesKey()}, ids.toArray(String[]::new));
-        List<?> bindings = (List<?>) rows.get(0);
-        List<?> ruleIds = (List<?>) rows.get(1);
-        List<?> definitions = (List<?>) rows.get(2);
-        Map<String, MatchingRule> rules = new LinkedHashMap<>();
-        for (int index = 0; index < ruleIds.size(); index++) {
-            String id = (String) ruleIds.get(index);
-            String raw = (String) definitions.get(index);
-            rules.put(id, raw == null ? null : decodeMatchingRule(id, raw));
-        }
-        LinkedHashMap<String, MatchingRule> result = new LinkedHashMap<>();
-        for (int index = 0; index < ids.size(); index++) {
-            MatchingRule binding = decodeBinding((String) bindings.get(index));
-            MatchingRule rule = binding == null ? null : rules.get(binding.ruleId());
-            if (binding != null && CountryRuleHandler.ID.equals(binding.ruleId())) {
-                rule = binding;
-            }
-            result.put(ids.get(index), binding != null && rule != null
-                    && binding.workerGroupId().equals(rule.workerGroupId()) ? rule : null);
-        }
-        return immutableNullableMap(result);
-    }
-
-    private static String ruleId(String encoded) {
-        try {
-            return "rule-" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(encoded.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException error) {
-            throw new IllegalStateException("SHA-256 is unavailable", error);
-        }
-    }
-
-    private String workerFactsKey(String workerGroupId) {
-        return keyspace.base() + ":matching:worker:facts:" + workerGroupId;
-    }
-
-    private String workerPlatformFactsKey(String workerGroupId) {
-        return keyspace.base()
-                + ":matching:worker:platform-properties:"
-                + workerGroupId;
-    }
-
-    private String rulesKey() {
-        return keyspace.base() + ":matching:candidate:rules";
-    }
-
-    private String taskRulesKey() {
-        return keyspace.base() + ":matching:task:rules";
-    }
-
     private RedisCommands<String, String> commands() {
         return connection().sync();
     }
@@ -482,43 +260,12 @@ public final class RedisWorkerMatchingCatalog
         return new MutationResult(status, reason);
     }
 
-    private String encodeRule(
-            String workerGroupId,
-            Map<String, Object> allocationRule
-    ) {
-        return encodeObject(Map.of(
-                "workerGroupId", workerGroupId,
-                "allocationRule", allocationRule
-        ));
-    }
-
-    private @Nullable MatchingRule decodeBinding(@Nullable String raw) {
+    private @Nullable TaskRuleBinding decodeBinding(@Nullable String raw) {
         if (raw == null) return null;
         try {
             Map<String, Object> object = decodeObject(raw);
             requireExactFields(object, Set.of("ruleId", "workerGroupId"));
-            return new MatchingRule(requireString(object.get("ruleId")), requireString(object.get("workerGroupId")), null);
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
-    }
-
-    private MatchingRule decodeMatchingRule(
-            String id,
-            String raw
-    ) {
-        try {
-            if (!ruleId(raw).equals(id)) return null;
-            Map<String, Object> object = decodeObject(raw);
-            requireExactFields(
-                    object,
-                    Set.of("workerGroupId", "allocationRule")
-            );
-            return new MatchingRule(
-                    id,
-                    requireString(object.get("workerGroupId")),
-                    requireObject(object.get("allocationRule"))
-            );
+            return new TaskRuleBinding(requireString(object.get("ruleId")), requireString(object.get("workerGroupId")));
         } catch (IllegalArgumentException error) {
             return null;
         }

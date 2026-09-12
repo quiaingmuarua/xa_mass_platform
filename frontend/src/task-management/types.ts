@@ -1,4 +1,4 @@
-import type { JsonValue, RuntimeDataSourceMode } from "@/runtime-viewer/types";
+import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
 
 export type FiniteTaskStage =
   | "CREATED"
@@ -8,7 +8,7 @@ export type FiniteTaskStage =
 
 export interface FiniteTaskConfig {
   priority: number;
-  maximumCandidateWorkers: number;
+  ruleId?: string;
   maxRetryTimes: number;
 }
 
@@ -42,7 +42,6 @@ export interface CreateFiniteTaskExecutionRequest {
 
 export interface TaskCreateApiRequest extends FiniteTaskConfig {
   workerGroupId: string;
-  allocationRule: Record<string, JsonValue>;
 }
 
 export interface TaskCreateApiResponse {

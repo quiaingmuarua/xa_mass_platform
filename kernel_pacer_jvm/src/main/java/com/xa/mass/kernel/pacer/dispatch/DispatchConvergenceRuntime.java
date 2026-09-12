@@ -1,8 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
@@ -44,13 +42,11 @@ public final class DispatchConvergenceRuntime {
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
             TaskResourceCatalog taskCatalog,
-            CandidateWorkerCache candidateCache,
             WorkerScoreCore workerScores,
             WorkerResourceCatalog workerCatalog,
             TaskRuntime taskRuntime,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchQueue workerMatchQueue,
             ResultContextCodec resultContextCodec,
             WorkerCandidateIndex candidateIndex
     ) {
@@ -71,17 +67,9 @@ public final class DispatchConvergenceRuntime {
         Long assignmentHotFloor = serviceabilityConfig == null
                 ? null
                 : serviceabilityConfig.hotEligibilityFloorMillis();
-        TaskWorkerAllocationPolicy allocation =
-                new TaskWorkerAllocationPolicy(
-                        workerScores,
-                        candidateCache,
-                        workerMatchQueue,
-                        assignmentHotFloor
-                );
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(
                         workerScores,
-                        candidateCache,
                         workerCatalog,
                         assignmentHotFloor,
                         candidateIndex
@@ -126,7 +114,6 @@ public final class DispatchConvergenceRuntime {
                 taskScores,
                 taskCatalog,
                 initialization,
-                allocation,
                 dispatch,
                 serviceabilityDispatch,
                 assignment,
@@ -205,7 +192,6 @@ public final class DispatchConvergenceRuntime {
     ) {
         return switch (Objects.requireNonNull(preset, "preset")) {
             case SCENARIO_LAB -> AssignmentDispatchConfig.create(
-                    LAB_INTERVAL_MILLIS,
                     LAB_INTERVAL_MILLIS,
                     LAB_INTERVAL_MILLIS
             );

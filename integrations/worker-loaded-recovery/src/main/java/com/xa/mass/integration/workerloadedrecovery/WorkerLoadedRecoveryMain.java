@@ -226,10 +226,6 @@ public final class WorkerLoadedRecoveryMain {
             );
             summary.put("activeTaskCount", LoadedRecoveryWorkload.TASK_COUNT);
             summary.put(
-                    "maximumCandidateWorkersPerTask",
-                    LoadedRecoveryWorkload.MAXIMUM_CANDIDATE_WORKERS
-            );
-            summary.put(
                     "offeredItemsPerTask",
                     options.workloadItemsPerTask()
             );

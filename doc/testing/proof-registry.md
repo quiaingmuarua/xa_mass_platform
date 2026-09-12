@@ -48,7 +48,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   and Polling witnesses. Prepare establishes identity and cold registration
   without Matching facts; network evidence activates scheduling availability;
   text-protocol observations independently create facts, and Polling executes
-  ON_DEMAND without them. Preview can expose an identity before a baseline.
+  default Rule without them. Preview can expose an identity before a baseline.
   Actual Handlers return send success before reporting delivered/read/replied
   through all three transports; state queries, repeatable latest-reply reads
   and subsequent Item execution witness the continuous observation boundary.
@@ -72,7 +72,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 ## worker_dynamic_matching
 
 - **Primary owner:** `:integrations:worker-dynamic-matching`.
-- **Claim:** continuous PRECOMPUTED work overlaps live Worker and Platform
+- **Claim:** continuous Rule-index work overlaps live Worker and Platform
   Properties changes; independent Adapter/Runtime snapshots converge, blocked
   witnesses stay unexecuted, eligible witnesses execute on actual target
   replicas, and all submitted Results close with completed execution witnesses
@@ -117,7 +117,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Primary owner:** `:integrations:worker-call-performance` and its separate workflow.
 - **Claim:** fixed offered Task Call and caller-targeted Direct Call load,
   successful response and latency distributions, and saturation. Task Call also
-  measures coexistence with one PRECOMPUTED background Task and bounded Result
+  measures coexistence with one Rule-index background Task and bounded Result
   follow-up; Direct Call retains timeout/rejection/unknown outcomes without
   inventing a persistent Result lookup. Generator limitations stay explicit.
 - **Deliberate nonclaims:** absolute production SLA, larger-world correctness,

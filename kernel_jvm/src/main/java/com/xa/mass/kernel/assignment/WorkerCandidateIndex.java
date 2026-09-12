@@ -8,26 +8,24 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Matching-owned property selector interpretation and bounded identity evidence.
- * Unbound callers handle ANY/explicit IDs themselves and pass property selectors unchanged.
- * A Task query constrains every selector, including ANY and explicit IDs, to its binding.
- * Index evidence does not establish HOT availability, a lease or a Candidate Cache.
+ * Every Task has a Matching binding. Index evidence establishes neither HOT availability nor a lease.
  */
 public interface WorkerCandidateIndex {
-    /** Resolves one immutable Task binding. Missing or unusable bindings return null, never ANY. */
-    @Nullable TaskQuery prepareTaskQuery(String taskId, String workerGroupId);
+    /** One bounded read for at most 100 Task/Group coordinates. Unusable bindings map to null. */
+    Map<String, @Nullable TaskQuery> prepareTaskQueries(Map<String, String> taskGroups);
 
     /** One dispatch-local query; owns no cache, thread or close lifecycle. */
     interface TaskQuery {
+        /** True only when this query permits Kernel's unconstrained ANY/explicit identity selection. */
+        boolean usesIdentitySelection(TaskItemWorkerSelector selector);
+
+        /** Admission and dispatch use the same bound query semantics; performs no Redis read. */
+        void validate(TaskItemWorkerSelector selector);
+
         /** At most 100 queries, requesting at most 100 identities in total. */
         Map<TaskItemWorkerSelector, List<String>> take(Map<TaskItemWorkerSelector, Integer> limits);
 
-        /** Rechecks at most 100 held identities in total against the same Rule and queries. */
+        /** Rechecks at most 100 held identities against the prepared queries and any Task binding. */
         Map<TaskItemWorkerSelector, Set<String>> retain(Map<TaskItemWorkerSelector, List<String>> held);
     }
-
-    /** Takes up to 100 ordered identities and advances their owner-local rotation time. */
-    List<String> takeWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, int limit);
-
-    /** Rechecks at most 100 held identities against the current index membership. */
-    Set<String> retainWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, List<String> workerIds);
 }

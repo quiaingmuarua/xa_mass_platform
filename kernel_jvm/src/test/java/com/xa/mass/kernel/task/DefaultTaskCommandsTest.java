@@ -11,7 +11,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -276,16 +275,10 @@ class DefaultTaskCommandsTest {
     }
 
     private static TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(
-                taskId,
-                "workers",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        return new TaskDescriptor(taskId, "workers", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", Integer.toString(priority),
                         "maxRetryTimes", "3"
-                )
-        );
+                ));
     }
 
     private static DefaultTaskLifecycleCommands lifecycle(

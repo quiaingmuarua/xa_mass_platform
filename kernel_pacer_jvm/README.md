@@ -76,39 +76,30 @@ Serviceability transitions. Observations retain each Item's maximum state target
 and latest content by tag then reported milliseconds; their Mechanism never
 touches Worker leases. All four lanes share this finite lifecycle.
 
-Dispatch Convergence owns one Main Scheduler and four fixed single-flight
+Dispatch Convergence owns one Main Scheduler and three fixed single-flight
 Resource Producers. The Main Scheduler reads one bounded descending
 `taskId -> opaque score` map, asks the Task Score Owner for its INITIAL subset,
 and loads Descriptors once for only the NORMAL complement. It explicitly plans
-the complete root input for Initialization, PRECOMPUTED Worker Allocation,
+the complete root input for Initialization,
 Task Dispatch and optional ordered WorkerGroup Serviceability. There is no Task
 Score point recheck; exact downstream transitions reject stale observations.
 A busy Producer skips the current source snapshot without storing a pending
 hint.
 
-Dispatch policies own Match Demand publication, bounded due-pool observation,
-exact hold, selection, priority, deficits, retry cadence and Group rotation.
-For PRECOMPUTED Tasks they publish an ordered Group Demand containing the
-successfully held Worker IDs and opaque exact scores; Matching filters that
-pool and directly appends accepted entries to Candidate Cache. Dispatch later
-consumes and exact-confirms those entries. ON_DEMAND Items carry normalized
-explicit Worker IDs or ANY and acquire due HOT Workers directly without a
-Matching runtime round trip. Pacer code does not load Rules, Properties or
-interpret constraints. Package-private mechanisms in this module protect raw
-Score fences and cross-owner claim/Command sequences. Policy directly calls a
-bounded Owner when the operation already belongs to that policy decision, for
-example Candidate count observation and Adapter Probe request offer. This is
-not a generic Mechanism layer. Task, Item and Worker score correlations remain
-opaque. Producers may discover TaskItems and Workers only under identities
-supplied by the Main Scheduler. Serviceability retains sweep hints only for
-Groups visible in the current bounded Task batch.
+Dispatch resolves one bounded Task binding batch through Matching, then owns
+HOT observation, initial hold, membership recheck, exact confirmation, Item claim
+and delivery. Default ANY/IDs use identity selection; other queries consume the
+bound Rule index. Pacer does not load Rules, Properties or interpret conditions.
+Package-private mechanisms protect exact Score fences and claim/Command ordering.
+Producers discover only resources under the Main Scheduler's root identities;
+Serviceability retains sweep hints only for Groups in that Task batch.
 
 The production load model is intentionally a small bounded active Task set,
 many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The
 vertical Item acquisition/lease/claim/delivery/result chain is the primary
 backpressure surface. The Pacer targets work-conserving convergence rather than
 per-Task fairness: fully utilized Workers are normal backpressure, while a
-bounded scan, exact CAS or Candidate refill may add short convergence delay.
+bounded scan, exact CAS or bounded index take may add short convergence delay.
 Persistently due work and persistently idle compatible Workers failing to form
 an assignment across repeated eligible rounds is a liveness defect. A full Task
 page by itself proves neither starvation nor sufficient capacity. Massive
@@ -124,9 +115,9 @@ compose existing configuration value objects; there is no Java policy file,
 per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
 or fallback path.
 
-Spring assembly belongs to `server_jvm`. Candidate Cache, ResultContextCodec
-and Kernel Redis providers remain in `kernel_jvm`; persistent matching facts,
-rules and the resident matching consumer remain in `worker_matching_jvm`;
+Spring assembly belongs to `server_jvm`. ResultContextCodec and mechanical Redis
+providers remain in `kernel_jvm`; facts, bindings and synchronous Rule index
+operations remain in `worker_matching_jvm`;
 dispatch-only mechanisms remain package-private here.
 
 Build:

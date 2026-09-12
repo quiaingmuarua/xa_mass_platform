@@ -1,5 +1,10 @@
 xa:
   mass:
+    worker-matching:
+      rules:
+        worker-groups:
+          scenario-string-utils-workers: [proof.worker.facts]
+          scenario-phone-number-workers: [proof.worker.facts]
     worker-assembly:
       group-config-json: |
         {

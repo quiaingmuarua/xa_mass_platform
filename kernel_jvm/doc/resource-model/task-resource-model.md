@@ -4,125 +4,58 @@ Status: active Java Kernel Task scheduling metadata contract.
 
 ## Owner Boundary
 
-Kernel stores Task and TaskItem state required for scheduling, claim, retry and
-finality. It does not store or interpret Rules or Task-to-Rule bindings. It does
-own selector structure, ANY and explicit Worker ID mechanics. Other
-selector meaning belongs to Matching; the expression is captured and passed unchanged.
+Kernel owns scheduling, claim, retry and finality. Matching owns Task-to-Rule
+bindings, facts and Rule semantics. Kernel never stores a Rule ID, matching mode,
+index key or per-Task candidate capacity.
 
 ```text
-TaskDescriptor
-  taskId
-  workerGroupId
-  workerAllocationMechanism
-  idleDisposition
-  config
-
-TaskItem
-  messageId
-  eventCode
-  createdAtMillis
-  payload
-  priority
-  expireAtMillis
-  workerSelector (one immutable query Map)
+TaskDescriptor = taskId, workerGroupId, idleDisposition, config
+TaskItem = messageId, eventCode, createdAtMillis, payload, priority,
+           expireAtMillis, workerSelector
 ```
 
-`workerAllocationMechanism` selects two deliberately separate inputs:
-
-| Mechanism | Input owner | Kernel workflow |
-| --- | --- | --- |
-| `PRECOMPUTED_TASK_RULE` | Matching resolves its Task binding to a shared Rule | hold due Workers, publish ordered Candidate Demand, consume Task-scoped Candidate Cache |
-| `INDEXED_TASK` | Matching named Rule binding | bounded index query, HOT observation, initial hold, membership recheck and exact claim |
-| `ON_DEMAND_ITEM_RULE` | Kernel structural capture; Matching property interpretation | persist selector unchanged; bounded acquisition and hold before claim |
-
-The mechanism is a fixed scheduling workflow label. It is not a rule parser or
-a generic strategy extension point.
+Task config contains exactly the string values `priority` (0 is highest) and
+`maxRetryTimes` (initial Item budget). A new key requires a named scheduling
+consumer. Config is not a container for Matching data.
 
 ## Cross-Owner Creation
 
-Server preserves the public Task API while directing each fact to its owner:
+Server first establishes an explicit Matching Task binding; omission selects
+`worker.default`. It then creates the Kernel descriptor. Identical bindings are
+idempotent; rebinding conflicts. A failed descriptor write may leave an inert
+binding. These writes are not transactional and Matching has no Task lifecycle.
 
-```text
-Named Rule or DSL Task creation
-  -> create-only Task binding to a shared Rule in WorkerMatchingCatalog
-  -> create Kernel Task descriptor without Rule
+Before Item append or managed Call, Server captures the selector with Kernel's
+bounded parser and validates it with the prepared Matching query. Kernel stores
+the immutable Map unchanged. ANY is `{}`; explicit IDs use the sole key
+`workerId`; other maps are Handler-owned property conditions, including bounded
+multi-field AND queries. Kernel does not interpret operators or facts.
 
-Non-DSL Item append or managed items:call
-  -> Kernel captures workerSelector; Matching validates property conditions through Server admission
-  -> append Kernel TaskItems with the same selector, without PRECOMPUTED Rule syntax
-```
+## Scheduling Handoff
 
-Equivalent Task binding writes are idempotent; rebinding conflicts. The
-Task creation cross-owner writes are not transactional. A binding without a Kernel
-Task may remain inert after failed creation. Matching does not discover or repair
-Tasks. Kernel stores no Rule ID; Pacer submits Task IDs and Matching resolves its
-own associations. Shared Rules do not couple Task lifecycle or Candidate Cache.
+Dispatch resolves at most 100 Task IDs/Groups through one `prepareTaskQueries`
+call. Missing or unusable binding fails closed for assignment. A prepared query
+returns bounded IDs and rechecks membership after initial hold; it carries no
+Rule ID, index coordinate, cache or lifecycle into Kernel.
 
-## Config
+Default ANY and explicit IDs use Kernel's bounded HOT path. Named Rules constrain
+all selectors through their index. Kernel retains HOT intersection, initial hold,
+round uniqueness, exact clean confirmation, Item claim and Command construction.
+Properties may invalidate a held candidate through dirty; no per-Task cache
+invalidation is required. Unused holds expire naturally.
 
-Task config remains a finite map of string values:
-
-| Key | Meaning |
-| --- | --- |
-| `priority` | scheduling priority, `0` highest |
-| `maximumCandidateWorkers` | Task-local Candidate Cache target for PRECOMPUTED |
-| `maxRetryTimes` | initial TaskItem retry budget |
-
-PRECOMPUTED config contains all three fields. INDEXED and ON_DEMAND config contain
-exactly priority and maxRetryTimes, without a synthetic cache capacity.
-
-Adding a config key requires a named scheduling consumer. Config must not be
-used to smuggle rule syntax or Worker facts back into Kernel.
-
-## Scheduling Handoffs
-
-For PRECOMPUTED Tasks, Kernel orders current deficits, exact-holds a bounded
-due HOT pool, and offers one Group Demand to `WorkerMatchQueue`. The contract
-owns offer, size observation, and consumption together; the current Server
-assembly chooses an in-memory implementation without exposing that choice to
-Pacer or Matching.
-Matching resolves Task bindings to Rules and loads only the supplied Worker Facts, then
-appends matches directly through the Kernel-owned Candidate Cache operation
-while carrying held scores opaquely. Kernel later consumes the Candidate
-bucket and owns
-final exact renewal, round uniqueness, TaskItem claim, Command construction,
-retry, and finality.
-
-For non-DSL Items, TaskItemWorkerSelector captures one immutable expression:
-ANY `{}`, explicit IDs `{"workerId":["a","b"]}`, or a query such as
-`{"worker.country":{"op":"in","values":["CN","US"]}}`. Matching owns operation
-and value validation. Kernel owns generic bounded JSON capture and explicit-ID
-validation. PRECOMPUTED Items continue to require an empty stored selector.
-
-INDEXED_TASK contains no Rule ID or index key. Matching resolves taskId and
-supplies bounded identities. A dispatch-local WorkerCandidateIndex.TaskQuery
-reuses one binding for take and post-hold retain. Kernel owns HOT, hold, dirty,
-exact confirmation and claim. There is no Match Demand or Candidate Cache in
-this path and missing index evidence never becomes ANY.
-
-Finite lifecycle is independent of allocation mechanism: CLOSE_WHEN_IDLE applies
-to DSL, indexed and unbound finite Tasks; managed Calls retain PARK_WHEN_IDLE.
+Task lifecycle is independent: finite Tasks use CLOSE_WHEN_IDLE and managed
+Calls use PARK_WHEN_IDLE. Matching absence must not block Item exhaustion/expiry
+or idle settlement. Item terminal outcomes remain terminal for scheduling while
+accepting later monotonic observations, independently of Task closure.
 
 ## Redis Shape
 
-Kernel Task descriptors and TaskItems use exact JSON field sets matching the
-records above. The stored `workerSelector` is the Map itself, not a value-object
-envelope. Empty, explicit-ID and property selectors all use this one field.
+Descriptors use exactly workerGroupId, idleDisposition and configJson in their
+HASH. TaskItem JSON has the exact fields above; workerSelector is the Map itself,
+not an envelope. Old descriptor mode/capacity fields, missing/null selectors and
+old wrapper/array forms are rejected rather than interpreted as unrestricted.
 
-This cutover uses a new scope: old `targetWorkerIds`/`indexQuery` records,
-array selectors (including empty arrays), missing/null selectors and wrapper
-objects are rejected, never interpreted as ANY.
-There is no dual-read, migration or cleanup of old scopes.
-PRECOMPUTED Rule maps remain rejected at the Kernel Redis boundary; Rules use
-the independent Matching keyspace documented by
-[`worker_matching_jvm`](../../../worker_matching_jvm/README.md).
-
-## Non-Owners
-
-Task resource code does not own:
-
-- Rule or Task-to-Rule binding persistence and validation;
-- Worker Properties or constraint evaluation;
-- Candidate-rule evaluation or ownership of Candidate Cache state;
-- Worker score interpretation or lease policy;
-- Adapter delivery, Result routing, or public runtime-view joins.
+This is a stop-and-rebuild cutover for an explicitly selected scope. No dual
+reader, automatic data migration or cleanup of unspecified scopes is added.
+Matching storage belongs to [its Owner](../../../worker_matching_jvm/README.md).

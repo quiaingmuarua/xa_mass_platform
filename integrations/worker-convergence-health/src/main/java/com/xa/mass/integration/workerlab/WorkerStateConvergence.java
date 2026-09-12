@@ -13,7 +13,7 @@ import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.safe
 
 import com.xa.mass.integration.workerlab.ConvergenceWorkload.Batch;
 import com.xa.mass.integration.workerlab.RuntimeApiClient.CallStatus;
-import com.xa.mass.integration.workerlab.RuntimeApiClient.PrecomputedWitness;
+import com.xa.mass.integration.workerlab.RuntimeApiClient.RuleWitness;
 import com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.WorkerRef;
 import com.xa.mass.integration.workerlab.WorkerLabControlClient.WorkerSnapshot;
 import java.io.IOException;
@@ -228,13 +228,12 @@ final class WorkerStateConvergence {
             );
             awaitWaveWitnesses(workload, restartWave, options);
             String propertyMessageId = options.proofId()
-                    + "-precomputed-slot-c";
-            PrecomputedWitness propertyWitness =
-                    runtime.submitPrecomputedWitness(
+                    + "-rule-slot-c";
+            RuleWitness propertyWitness =
+                    runtime.submitRuleWitness(
                             STRING_GROUP,
                             Map.of(MATCH_PROPERTY, Map.of(
-                                    "$eq",
-                                    UNMATCHED_SLOT
+                                    "op", "eq", "values", List.of(UNMATCHED_SLOT)
                             )),
                             propertyMessageId,
                             WorkerLabConvergenceSupport.STRING_EVENT,
@@ -246,7 +245,7 @@ final class WorkerStateConvergence {
                             List.of(propertyWitness.messageId())
                     ).get(propertyWitness.messageId())
                             == CallStatus.NOT_OBSERVED,
-                    "PRECOMPUTED property witness was observed before slot C existed"
+                    "Rule property witness was observed before slot C existed"
             );
             new StateConvergencePhaseState(
                     options.proofId(),
@@ -738,7 +737,7 @@ final class WorkerStateConvergence {
     ) {
         try {
             await(
-                    "precomputed-property-witness",
+                    "rule-property-witness",
                     options.maximumWait(),
                     () -> runtime.loadResultStatuses(
                             taskId,

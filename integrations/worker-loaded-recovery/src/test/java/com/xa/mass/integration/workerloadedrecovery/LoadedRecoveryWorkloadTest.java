@@ -198,8 +198,6 @@ class LoadedRecoveryWorkloadTest {
         });
 
         assertThat(LoadedRecoveryWorkload.TASK_COUNT).isEqualTo(10);
-        assertThat(LoadedRecoveryWorkload.MAXIMUM_CANDIDATE_WORKERS)
-                .isEqualTo(100);
         assertThat(defaults.workloadItemsPerTask()).isEqualTo(5_000);
         assertThat(
                 LoadedRecoveryWorkload.TASK_COUNT
@@ -275,7 +273,7 @@ class LoadedRecoveryWorkloadTest {
                     exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8
             ));
-            assertThat(request.get("maximumCandidateWorkers")).isEqualTo(100L);
+            assertThat(request).containsOnlyKeys("workerGroupId", "priority", "maxRetryTimes");
             String taskId = String.format(
                     "task-%02d",
                     createdTasks.incrementAndGet()

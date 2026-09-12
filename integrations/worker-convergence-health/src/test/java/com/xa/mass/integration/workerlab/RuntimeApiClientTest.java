@@ -99,13 +99,13 @@ class RuntimeApiClientTest {
                 ));
             } else if (path.equals("/api/v1/tasks")) {
                 respondJson(exchange, 200, Map.of(
-                        "taskId", "precomputed-1"
+                        "taskId", "rule-task-1"
                 ));
-            } else if (path.endsWith("/precomputed-1/items")) {
+            } else if (path.endsWith("/rule-task-1/items")) {
                 respondJson(exchange, 200, Map.of(
                         "property-message", Map.of("status", "applied")
                 ));
-            } else if (path.endsWith("/precomputed-1/approve")) {
+            } else if (path.endsWith("/rule-task-1/approve")) {
                 respondJson(exchange, 200, Map.of("status", "applied"));
             } else if (path.endsWith("/results:load")) {
                 respondJson(exchange, 200, Map.of(
@@ -177,14 +177,14 @@ class RuntimeApiClientTest {
                             RuntimeApiClient.CallStatus.NOT_OBSERVED
                     )
             );
-            assertThat(client.submitPrecomputedWitness(
+            assertThat(client.submitRuleWitness(
                     "group-1",
-                    Map.of("worker.slot", Map.of("$eq", "C")),
+                    Map.of("worker.convergenceSlot", Map.of("op", "eq", "values", List.of("C"))),
                     "property-message",
                     "event.one",
                     Map.of("value", "property")
-            )).isEqualTo(new RuntimeApiClient.PrecomputedWitness(
-                    "precomputed-1",
+            )).isEqualTo(new RuntimeApiClient.RuleWitness(
+                    "rule-task-1",
                     "property-message"
             ));
             assertThat(client.loadResultStatuses(
@@ -240,12 +240,16 @@ class RuntimeApiClientTest {
                         );
             });
             assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).endsWith("/rule-task-1/items");
+                assertThat(((Map<?, ?>) Jsons.parseArray(request.body()).getFirst()).get("workerSelector")).isEqualTo(Map.of("worker.convergenceSlot", Map.of("op", "eq", "values", List.of("C"))));
+            });
+            assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).isEqualTo("/api/v1/tasks");
                 assertThat(Jsons.parseObject(request.body()))
                         .containsEntry("workerGroupId", "group-1")
                         .containsEntry(
-                                "allocationRule",
-                                Map.of("worker.slot", Map.of("$eq", "C"))
+                                "ruleId",
+                                "proof.worker.facts"
                         );
             });
         } finally {

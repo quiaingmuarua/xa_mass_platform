@@ -4,7 +4,6 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
@@ -21,7 +20,7 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MatchingRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.TaskRuleBinding;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -90,15 +89,12 @@ public final class RuntimeViewService {
                 validateTaskIdentity(taskId, task);
                 if (task != null) {
                     workerGroupIds.add(task.workerGroupId());
-                    if (task.workerAllocationMechanism()
-                            != WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE) {
-                        boundTaskIds.add(taskId);
-                    }
+                    boundTaskIds.add(taskId);
                 }
             }
-            Map<String, MatchingRule> taskRules = new LinkedHashMap<>();
+            Map<String, TaskRuleBinding> taskRules = new LinkedHashMap<>();
             for (int offset = 0; offset < boundTaskIds.size(); offset += WorkerMatchingCatalog.MAX_BATCH_SIZE) {
-                taskRules.putAll(matchingCatalog.loadTaskRules(boundTaskIds.subList(
+                taskRules.putAll(matchingCatalog.loadTaskBindings(boundTaskIds.subList(
                         offset, Math.min(offset + WorkerMatchingCatalog.MAX_BATCH_SIZE, boundTaskIds.size())
                 )));
             }
@@ -358,33 +354,16 @@ public final class RuntimeViewService {
 
     private static TaskView toView(
             TaskDescriptor descriptor,
-            MatchingRule rule
+            TaskRuleBinding rule
     ) {
-        Map<String, Object> allocationRule = null;
-        String ruleId = null;
-        if (descriptor.workerAllocationMechanism() != WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE) {
-            if (rule == null
-                    || !descriptor.workerGroupId().equals(
-                            rule.workerGroupId()
-                    )) {
-                throw new IllegalStateException(
-                        "Task Rule binding is missing or inconsistent"
-                );
-            }
-            if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-                allocationRule = immutableMap(rule.allocationRule());
-            } else {
-                if (rule.allocationRule() != null) throw new IllegalStateException("Indexed Task has a DSL binding");
-                ruleId = rule.ruleId();
-            }
+        if (rule==null || !descriptor.workerGroupId().equals(rule.workerGroupId())) {
+            throw new IllegalStateException("Task Rule binding is missing or inconsistent");
         }
         return new TaskView(
                 descriptor.taskId(),
                 descriptor.workerGroupId(),
-                descriptor.workerAllocationMechanism().name(),
                 descriptor.idleDisposition().name(),
-                allocationRule,
-                ruleId,
+                rule.ruleId(),
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
                 )

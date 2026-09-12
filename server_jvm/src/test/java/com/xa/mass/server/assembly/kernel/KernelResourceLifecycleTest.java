@@ -1,6 +1,5 @@
 package com.xa.mass.server.assembly.kernel;
 
-import com.xa.mass.kernel.assignment.redis.RedisCandidateWorkerCache;
 import com.xa.mass.kernel.score.redis.RedisTaskItemScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
@@ -28,7 +27,6 @@ class KernelResourceLifecycleTest {
     @Test void sharedOwnersCloseOnceBeforeTheirClient() {
         var client = mock(RedisClient.class);
         try (var clients = mockStatic(RedisClient.class);
-             var candidates = mockConstruction(RedisCandidateWorkerCache.class);
              var scores = mockConstruction(RedisTaskScoreBandCore.class);
              var items = mockConstruction(RedisTaskItemScoreBandCore.class);
              var tasks = mockConstruction(RedisTaskRuntime.class);
@@ -42,7 +40,7 @@ class KernelResourceLifecycleTest {
             assertThat(context.getBean(RedisTaskRuntime.class)).isSameAs(tasks.constructed().getFirst());
             context.close();
             context.close();
-            var order = inOrder(candidates.constructed().getFirst(), scores.constructed().getFirst(),
+            var order = inOrder(scores.constructed().getFirst(),
                     items.constructed().getFirst(), tasks.constructed().getFirst(), catalogs.constructed().getFirst(),
                     workers.constructed().getFirst(), bindings.constructed().getFirst(), client);
             order.verify(bindings.constructed().getFirst()).close();
@@ -51,7 +49,6 @@ class KernelResourceLifecycleTest {
             order.verify(tasks.constructed().getFirst()).close();
             order.verify(items.constructed().getFirst()).close();
             order.verify(scores.constructed().getFirst()).close();
-            order.verify(candidates.constructed().getFirst()).close();
             order.verify(client).shutdown();
             order.verifyNoMoreInteractions();
         }
@@ -60,7 +57,6 @@ class KernelResourceLifecycleTest {
     @Test void failedBeanCreationReleasesEarlierOwnersAndClient() {
         var client = mock(RedisClient.class);
         try (var clients = mockStatic(RedisClient.class);
-             var candidates = mockConstruction(RedisCandidateWorkerCache.class);
              var scores = mockConstruction(RedisTaskScoreBandCore.class);
              var items = mockConstruction(RedisTaskItemScoreBandCore.class);
              var tasks = mockConstruction(RedisTaskRuntime.class, (mock, context) -> {
@@ -71,7 +67,6 @@ class KernelResourceLifecycleTest {
             assertThatThrownBy(context::refresh).isInstanceOf(RuntimeException.class);
             verify(items.constructed().getFirst()).close();
             verify(scores.constructed().getFirst()).close();
-            verify(candidates.constructed().getFirst()).close();
             verify(client).shutdown();
         }
     }

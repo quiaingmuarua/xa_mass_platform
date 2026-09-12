@@ -26,7 +26,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
@@ -489,27 +488,28 @@ class TaskRpcCallServiceTest {
                 });
         TaskItemMapper taskItems = mock(TaskItemMapper.class);
         when(taskItems.nowMillis()).thenReturn(1_000L);
-        when(taskItems.onDemandItem(
-                any(TaskItemRequest.class), eq(1_000L), any(TaskItemWorkerSelector.class))).thenAnswer(invocation -> new TaskItemMapper().onDemandItem(
+        when(taskItems.callItem(
+                any(TaskItemRequest.class), eq(1_000L), any(TaskItemWorkerSelector.class))).thenAnswer(invocation -> new TaskItemMapper().callItem(
                 invocation.getArgument(0),
                 invocation.getArgument(1), invocation.getArgument(2)));
+        var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
+        var query=mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
+        when(matching.prepareTaskQueries(org.mockito.ArgumentMatchers.anyMap())).thenAnswer(call -> {
+            Map<String,String> coordinates=call.getArgument(0);
+            var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
+            coordinates.keySet().forEach(task -> result.put(task,query)); return result;
+        });
         return new TaskRpcCallService(
-                new TaskCallSubmissionService(submission, taskCatalog, taskItems, org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class)),
+                new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching),
                 taskRuntime, registry, properties
         );
     }
 
     private static TaskDescriptor callableDescriptor(String taskId) {
-        return new TaskDescriptor(
-                taskId,
-                "group-1",
-                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+        return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                )
-        );
+                ));
     }
 
     private static TaskItemRequest item(
