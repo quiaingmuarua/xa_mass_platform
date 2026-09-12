@@ -27,8 +27,8 @@ class TaskItemWorkerSelectorTest {
     @Test
     void parameterMeaningBelongsToMatchingNotKernel() {
         for (Map<?, ?> input : List.of(
-                Map.of("worker.country", List.of("cn")),
-                Map.of("worker.country", List.of("CN", "US")),
+                Map.of("worker.country", Map.of("op", "in", "values", List.of("cn"))),
+                Map.of("worker.country", Map.of("op", "in", "values", List.of("CN", "US"))),
                 Map.of("worker.test.region", List.of("east", "west")),
                 Map.of("worker.future", List.of("", "$eq", "", "value")))) {
             var selector = TaskItemWorkerSelector.parse(input);
@@ -48,10 +48,6 @@ class TaskItemWorkerSelectorTest {
         List<Map<?, ?>> invalid = List.of(
                 Map.of("a", List.of("x"), "b", List.of("y")),
                 Map.of("", List.of("x")), Map.of(" ", List.of("x")), Map.of(1, List.of("x")),
-                Map.of("worker.future", "x"), Map.of("worker.future", 1),
-                Map.of("worker.future", Map.of()), Map.of("worker.future", List.of()),
-                Map.of("worker.future", List.of(1)), Map.of("worker.future", List.of(true)),
-                Map.of("worker.future", List.of(List.of("x"))),
                 Map.of("worker.future", Arrays.asList("x", null)), nullValue, nullKey,
                 Map.of("workerId", List.of(" ")), Map.of("workerId", List.of("id", "id")));
         invalid.forEach(input -> assertThrows(IllegalArgumentException.class,
@@ -67,7 +63,7 @@ class TaskItemWorkerSelectorTest {
     @Test
     void capturesMapAndParameterListsAndHasStableValueEquality() {
         var ids = new ArrayList<>(List.of("worker-b", "worker-a"));
-        var input = new HashMap<String, List<String>>(Map.of("workerId", ids));
+        var input = new HashMap<String, Object>(Map.of("workerId", ids));
         var selector = new TaskItemWorkerSelector(input);
         var expected = TaskItemWorkerSelector.parse(Map.of("workerId", List.copyOf(ids)));
         int hash = selector.hashCode();
@@ -77,6 +73,6 @@ class TaskItemWorkerSelectorTest {
         assertEquals(hash, selector.hashCode());
         assertEquals(List.of("worker-b", "worker-a"), selector.targetWorkerIds());
         assertThrows(UnsupportedOperationException.class, () -> selector.expression().clear());
-        assertThrows(UnsupportedOperationException.class, () -> selector.expression().get("workerId").clear());
+        assertThrows(UnsupportedOperationException.class, () -> selector.targetWorkerIds().clear());
     }
 }

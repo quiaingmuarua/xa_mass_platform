@@ -16,18 +16,18 @@ class WorkerSelectorAdmissionTest {
         RedisClient client = RedisClient.create("redis://127.0.0.1:1");
         try (var catalog = new RedisWorkerMatchingCatalog(client, new RedisKeyspace("test_selector_admission"), Set.of("g"))) {
             assertDoesNotThrow(() -> catalog.validateWorkerSelector("g",
-                    TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")))));
+                    TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))))));
             for (Map<?, ?> expression : List.of(
                     Map.of("worker.test.region", List.of("east", "west")),
                     Map.of("country", List.of("CN")),
-                    Map.of("worker.country", List.of("CN", "US")),
-                    Map.of("worker.country", List.of("$eq", "CN")),
-                    Map.of("worker.country", List.of("")),
-                    Map.of("worker.country", List.of("cn")),
-                    Map.of("worker.country", List.of(" CN")),
-                    Map.of("worker.country", List.of("中国")),
-                    Map.of("worker.country", List.of("ABC")),
-                    Map.of("workerId", List.of("worker")), Map.of())) {
+                    Map.of("worker.country", Map.of("op", "range", "values", List.of("CN", "US"))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of("$eq", "CN"))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of(""))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of("cn"))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of(" CN"))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of("中国"))),
+                    Map.of("worker.country", Map.of("op", "in", "values", List.of("ABC"))),
+                    Map.of("worker.country", List.of("CN")))) {
                 var selector = TaskItemWorkerSelector.parse(expression);
                 assertThrows(IllegalArgumentException.class,
                         () -> catalog.validateWorkerSelector("g", selector), expression.toString());
@@ -36,7 +36,7 @@ class WorkerSelectorAdmissionTest {
                         () -> catalog.retainWorkerIds("g", selector, List.of("worker")));
             }
             assertThrows(IllegalArgumentException.class, () -> catalog.validateWorkerSelector("disabled",
-                    TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")))));
+                    TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))))));
         } finally {
             client.shutdown();
         }

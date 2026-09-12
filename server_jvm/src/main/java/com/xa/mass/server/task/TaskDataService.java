@@ -26,6 +26,7 @@ import java.util.Set;
 @Service
 public final class TaskDataService {
 
+    private final com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog;
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
     private final TaskItemMapper taskItems;
@@ -37,13 +38,15 @@ public final class TaskDataService {
             TaskResourceCatalog taskCatalog,
             TaskItemMapper taskItems,
             TaskItemScoreBandCore itemScores,
-            TaskItemOutcomeProperties outcomes
+            TaskItemOutcomeProperties outcomes,
+            com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
         this.itemScores = itemScores;
         this.outcomes = outcomes;
+        this.matchingCatalog = matchingCatalog;
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
@@ -91,6 +94,11 @@ public final class TaskDataService {
                 );
             }
 
+            if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.INDEXED_TASK
+                    && matchingCatalog.prepareTaskQuery(taskId, descriptor.workerGroupId()) == null) {
+                throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.appendItems",
+                        "Task Rule binding is unavailable", null);
+            }
             var validItems = new ArrayList<TaskItem>();
             var results = new LinkedHashMap<
                     String,
@@ -100,10 +108,16 @@ public final class TaskDataService {
             for (Map.Entry<String, TaskItemRequest> entry
                     : latest.entrySet()) {
                 try {
-                    validItems.add(taskItems.finiteItem(
-                            entry.getValue(),
-                            createdAtMillis
-                    ));
+                    if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                            && entry.getValue().workerSelector() != null) {
+                        throw new IllegalArgumentException("DSL TaskItem forbids workerSelector");
+                    }
+                    TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis);
+                    if (descriptor.workerAllocationMechanism() == WorkerAllocationMechanism.INDEXED_TASK
+                            || !item.workerSelector().isAny() && !item.workerSelector().hasExplicitWorkerIds()) {
+                        matchingCatalog.validateWorkerSelector(descriptor.workerGroupId(), item.workerSelector());
+                    }
+                    validItems.add(item);
                 } catch (IllegalArgumentException error) {
                     results.put(
                             entry.getKey(),
@@ -212,9 +226,7 @@ public final class TaskDataService {
     }
 
     private static boolean isPublicFiniteTask(TaskDescriptor descriptor) {
-        return descriptor.workerAllocationMechanism()
-                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                && descriptor.idleDisposition()
+        return descriptor.idleDisposition()
                 == TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE;
     }
 

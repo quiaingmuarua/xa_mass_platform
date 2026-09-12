@@ -37,7 +37,7 @@ recheck and exact close or private idle park.
 ## PRECOMPUTED
 
 ```text
-consume Candidate Cache entries for candidateId
+consume Candidate Cache entries for taskId
   -> load current minimal Worker descriptors for the Task WorkerGroup
   -> pair candidates with claimable Items in bounded order
   -> final exact confirmation through TaskAssignmentDispatcher
@@ -56,7 +56,7 @@ Each ON_DEMAND TaskItem stores one immutable selector expression:
 {}                                   -> ANY due HOT Worker in the Group
 {"workerId": ["worker-a"]}             -> explicit target
 {"workerId": ["a", "b"]}               -> ordered explicit targets, at most 100
-{"worker.country": ["CN"]}             -> opaque binding parameters sent to Matching
+{"worker.country":{"op":"eq","values":["CN"]}}             -> opaque query sent to Matching
 ```
 
 For claimable Items in order, Kernel:
@@ -123,3 +123,8 @@ Properties.
 - Do not infer Item failure from absent candidates.
 - Do not add an ON_DEMAND Candidate Cache or Matching runtime round trip.
 - Do not treat Result observation as TaskItem finality.
+
+Named Rule Tasks use INDEXED_TASK: a dispatch-local Matching TaskQuery supplies
+bounded IDs and post-hold membership recheck. It shares the exact assignment
+closure above and never uses the PRECOMPUTED Allocation Producer or Candidate
+Cache. See [index flow](assignment-dispatch-scheduling.md#named-rule-index-flow).

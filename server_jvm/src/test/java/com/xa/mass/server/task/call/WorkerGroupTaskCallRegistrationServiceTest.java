@@ -116,7 +116,6 @@ class WorkerGroupTaskCallRegistrationServiceTest {
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of(
                         "priority", "1",
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
                 )
         );
@@ -242,7 +241,6 @@ class WorkerGroupTaskCallRegistrationServiceTest {
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of(
                         "priority", "0",
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
                 )
         );

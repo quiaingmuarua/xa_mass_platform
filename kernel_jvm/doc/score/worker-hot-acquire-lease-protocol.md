@@ -33,7 +33,7 @@ Serviceability eligibility filtering is owned by the Score operations.
 
 [Allocation Policy](../../../kernel_pacer_jvm/doc/dispatch/task-worker-allocation-pacer.md)
 holds the PRECOMPUTED pool before publishing Demand. Matching receives ordered
-Candidate addresses, held Worker IDs and opaque scores, then appends accepted
+Task IDs, held Worker IDs and opaque scores, then appends accepted
 entries through the Candidate Cache Owner. It removes only Cache-accepted IDs
 from that Demand's available pool. It cannot decode, compare, renew or release
 the held scores, and receives no endpoint or Item state.

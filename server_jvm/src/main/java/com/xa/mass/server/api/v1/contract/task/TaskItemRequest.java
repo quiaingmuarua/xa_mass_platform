@@ -14,10 +14,9 @@ public record TaskItemRequest(
         @NotNull Map<String, Object> payload,
         @Min(0) @Max(10) Integer priority,
         @Positive Long ttlMillis,
-        @Schema(description = "ON_DEMAND only: {} for ANY, {workerId: [id, ...]}, "
-                + "or {worker.country: [CN]} for a country-index-enabled Group (one strict [A-Z]{2} value). "
-                + "At most one binding with 1..100 string parameters; omit for finite TaskItems",
-                maxProperties = 1, additionalPropertiesSchema = String[].class)
+        @Schema(description = "{} for ANY, {workerId: [id, ...]}, or {worker.country: {op: eq|in, values: [CN, ...]}}. "
+                + "eq requires one value; in accepts 1..100 strict [A-Z]{2} values. "
+                + "Named Rules constrain all queries including ANY and explicit IDs. Omit for DSL TaskItems.", maxProperties = 1)
         Map<String, Object> workerSelector
 ) {
     public TaskItemRequest {

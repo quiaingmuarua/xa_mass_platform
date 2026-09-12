@@ -153,9 +153,9 @@ class RuntimeBoundaryIntegrationTest {
 
     @MockitoSpyBean
     private WorkerMatchingCatalog matchingCatalog;
-    @Autowired
+    @MockitoSpyBean
     private WorkerMatchQueue matchQueue;
-    @Autowired
+    @MockitoSpyBean
     private CandidateWorkerCache candidateCache;
     @MockitoSpyBean
     private WorkerPreparationService preparationService;
@@ -363,8 +363,12 @@ class RuntimeBoundaryIntegrationTest {
             var secondProperties = new AtomicReference<>(Map.of("country", "US", "host", "second"));
             var firstRef = new AtomicReference<JavaWorker>();
             var secondRef = new AtomicReference<JavaWorker>();
+            var firstOutcome = new AtomicReference<WorkerOutcomeReporter>();
             var firstEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
-                    ignored -> Jsons.toJson(Map.of("executor", firstRef.get().snapshot().workerId(), "host", "first")));
+                    (ignored, reporter) -> {
+                        firstOutcome.set(reporter);
+                        return Jsons.toJson(Map.of("executor", firstRef.get().snapshot().workerId(), "host", "first"));
+                    });
             var secondEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
                     ignored -> Jsons.toJson(Map.of("executor", secondRef.get().snapshot().workerId(), "host", "second")));
             try (var first = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "first", type,
@@ -379,6 +383,11 @@ class RuntimeBoundaryIntegrationTest {
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
                 assertCountryExecutor(taskId, "CN", firstId, "first");
                 assertCountryExecutor(taskId, "US", secondId, "second");
+                String indexedFirst = createIndexedTask(group);
+                String indexedSecond = createIndexedTask(group);
+                String indexedItem = assertFiniteCountryExecutor(indexedFirst, "CN", firstId, "first");
+                assertThat(firstOutcome.get().report(9, System.currentTimeMillis(), "reply after Task closure")).isTrue();
+                awaitTrackedState(indexedFirst, indexedItem, 9);
                 firstProperties.set(Map.of("country", "US", "host", "first"));
                 secondProperties.set(Map.of("country", "CN", "host", "second"));
                 assertThat(first.reportProperties(Map.of("country", "US"))).isTrue();
@@ -387,6 +396,16 @@ class RuntimeBoundaryIntegrationTest {
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
                 assertCountryExecutor(taskId, "CN", secondId, "second");
                 assertCountryExecutor(taskId, "US", firstId, "first");
+                assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
+                for (String indexed : List.of(indexedFirst, indexedSecond)) {
+                    verify(matchingCatalog, org.mockito.Mockito.atLeastOnce()).prepareTaskQuery(indexed, group);
+                    verify(matchQueue, org.mockito.Mockito.never()).offer(org.mockito.ArgumentMatchers.argThat(demand ->
+                            demand != null && demand.orderedTaskNeeds().stream().anyMatch(need -> need.taskId().equals(indexed))));
+                    verify(candidateCache, org.mockito.Mockito.never()).consumeCandidateWorkers(eq(indexed), org.mockito.ArgumentMatchers.anyInt());
+                    verify(candidateCache, org.mockito.Mockito.never()).candidateWorkerCounts(org.mockito.ArgumentMatchers.argThat(ids -> ids != null && ids.contains(indexed)));
+                }
+                assertThat(matchingCatalog.loadTaskRules(List.of(indexedFirst, indexedSecond)).values())
+                        .allSatisfy(rule -> assertThat(rule.ruleId()).isEqualTo("worker.country"));
                 assertThat(first.snapshot().workerId()).isEqualTo(firstId);
                 assertThat(second.snapshot().workerId()).isEqualTo(secondId);
                 verify(preparationService, times(2)).prepareAll(eq(group), any(), any(), anyList());
@@ -395,11 +414,51 @@ class RuntimeBoundaryIntegrationTest {
         }
     }
 
+
+    private String createIndexedTask(String group) throws Exception {
+        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "ruleId", "worker.country")));
+        assertThat(created.statusCode()).isEqualTo(200);
+        return JSON.readTree(created.body()).get("taskId").asText();
+    }
+
+    private String assertFiniteCountryExecutor(String taskId, String country, String workerId, String host) throws Exception {
+        String messageId = UUID.randomUUID().toString();
+        var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of(
+                "messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(),
+                "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))))));
+        assertThat(appended.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(appended.body()).get(messageId).get("status").asText()).isEqualTo("applied");
+        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve", null).statusCode()).isEqualTo(200);
+        long deadline = System.nanoTime() + RESULT_CONVERGENCE_TIMEOUT.toNanos();
+        boolean observed = false;
+        while (System.nanoTime() < deadline) {
+            var response = send("POST", "/api/v1/tasks/"+taskId+"/results:load", Jsons.toJson(List.of(messageId)));
+            if (response.statusCode() == 200 && "succeeded".equals(JSON.readTree(response.body()).get(messageId).get("status").asText())) {
+                observed = true;
+                break;
+            }
+            Thread.sleep(20);
+        }
+        assertThat(observed).isTrue();
+        for (int i=0; i<2; i++) {
+            var loaded = send("POST", "/api/v1/tasks/"+taskId+"/results:load", Jsons.toJson(List.of(messageId)));
+            var result = JSON.readTree(loaded.body()).get(messageId);
+            assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText()))
+                    .containsEntry("executor", workerId).containsEntry("host", host);
+        }
+        awaitTaskExport(taskId);
+        var states = send("POST", "/api/v1/tasks/"+taskId+"/items:states", Jsons.toJson(List.of(messageId)));
+        assertThat(states.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(states.body()).get(messageId).get("tag").asInt()).isEqualTo(6);
+        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/close", null).statusCode()).isEqualTo(200);
+        return messageId;
+    }
+
     private void assertCountryExecutor(String taskId, String country, String workerId, String host) throws Exception {
         String messageId = UUID.randomUUID().toString();
         var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
                 "items", List.of(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
-                        "payload", Map.of(), "workerSelector", Map.of("worker.country", List.of(country)))),
+                        "payload", Map.of(), "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country))))),
                 "waitTimeoutMillis", 10000)));
         assertThat(response.statusCode()).isEqualTo(200);
         var result = JSON.readTree(response.body()).get(messageId);
@@ -493,13 +552,13 @@ class RuntimeBoundaryIntegrationTest {
 
     private String matchNewFacts(String groupId, String workerId, long held, long holdUntil,
                                  Map<String, Object> rule) throws Exception {
-        String candidateId = "properties-candidate-" + UUID.randomUUID();
-        assertThat(matchingCatalog.createCandidateRule(candidateId, groupId, rule).status())
+        String taskId = "properties-candidate-" + UUID.randomUUID();
+        assertThat(matchingCatalog.bindTaskAllocationRule(taskId, groupId, rule).status())
                 .isEqualTo(WorkerMatchingCatalog.MutationStatus.APPLIED);
         assertThat(matchQueue.offer(new TaskRuleMatchDemand(groupId,
-                List.of(new TaskCandidateNeed(candidateId, 1)), Map.of(workerId, held), holdUntil))).isTrue();
-        awaitCondition(() -> candidateCache.candidateWorkerCounts(List.of(candidateId)).get(candidateId) == 1);
-        return candidateId;
+                List.of(new TaskCandidateNeed(taskId, 1)), Map.of(workerId, held), holdUntil))).isTrue();
+        awaitCondition(() -> candidateCache.candidateWorkerCounts(List.of(taskId)).get(taskId) == 1);
+        return taskId;
     }
 
     private void awaitRuntimeProperties(String groupId, String workerId, String adapterId,
@@ -632,7 +691,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
-    void explicitWorkerSchedulingUsesCanonicalWorkerAndPlatformProperties()
+    void sharedRuleTasksUseCanonicalFactsAndRemainIndependentAfterClosure()
             throws Exception {
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "property-tools-" + suffix;
@@ -680,6 +739,10 @@ class RuntimeBoundaryIntegrationTest {
                     + "\"platform.pool\":{\"$in\":[\"batch\"]}"
                     + "}";
             String taskId = createTask(workerGroupId, propertyRule);
+            String otherTaskId = createTask(workerGroupId, propertyRule);
+            var sharedRules = matchingCatalog.loadTaskRules(List.of(taskId, otherTaskId));
+            assertThat(sharedRules.get(taskId)).isNotNull().isSameAs(sharedRules.get(otherTaskId));
+            assertThat(sharedRules.get(taskId).ruleId()).isNotIn(taskId, otherTaskId);
             appendItem(taskId, firstMessageId);
             appendItem(taskId, secondMessageId);
             assertThat(send(
@@ -715,6 +778,15 @@ class RuntimeBoundaryIntegrationTest {
                     "/api/v1/tasks/" + taskId + "/close",
                     null
             ).statusCode()).isEqualTo(200);
+            // The second Task already shared the Rule before the first closed.
+            // Its independent append, approval and execution still work afterwards.
+            assertThat(matchingCatalog.loadTaskRules(List.of(taskId, otherTaskId)).values())
+                    .containsOnly(sharedRules.get(taskId));
+            appendItem(otherTaskId, "after-other-task-closed");
+            assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve", null).statusCode()).isEqualTo(200);
+            awaitStoredResult(otherTaskId, "after-other-task-closed");
+            awaitTaskExport(otherTaskId);
+            assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/close", null).statusCode()).isEqualTo(200);
         } finally {
             worker.close();
         }
@@ -965,15 +1037,16 @@ class RuntimeBoundaryIntegrationTest {
                             + suffix + "\"}}"
             );
             demandTaskCreated = true;
+            // Establish due work before approval; an approved empty finite Task can close immediately.
+            appendItem(
+                    demandTaskId,
+                    "serviceability-demand-item-" + suffix
+            );
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + demandTaskId + "/approve",
                     null
             ).statusCode()).isEqualTo(200);
-            appendItem(
-                    demandTaskId,
-                    "serviceability-demand-item-" + suffix
-            );
             awaitServiceabilitySnapshot(workerGroupId, workerId);
         } finally {
             if (demandTaskCreated) {
@@ -1138,7 +1211,7 @@ class RuntimeBoundaryIntegrationTest {
                 WorkerScorePolarity.HOT_ACQUIRE,
                 Duration.ofSeconds(10)
         );
-        // The unmatched demand may hold this Worker for one 5-second
+        // The unmatched demand may hold this Worker for one 500ms
         // allocation window. Serviceability observes it only after that
         // exact hold becomes due, then advances the RECOVERY coordinate.
         assertThat(after.timeMillis()).isGreaterThan(

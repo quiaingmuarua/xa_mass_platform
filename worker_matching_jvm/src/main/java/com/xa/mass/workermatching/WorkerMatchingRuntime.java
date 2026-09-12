@@ -6,7 +6,7 @@ import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
 import com.xa.mass.workermatching.ConstraintEvaluator.Condition;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MatchingRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -161,11 +161,11 @@ public final class WorkerMatchingRuntime implements AutoCloseable {
         if (demand.holdUntilMillis() <= System.currentTimeMillis()) {
             return;
         }
-        List<String> candidateIds = demand.orderedTaskNeeds().stream()
-                .map(TaskCandidateNeed::candidateId)
+        List<String> taskIds = demand.orderedTaskNeeds().stream()
+                .map(TaskCandidateNeed::taskId)
                 .toList();
-        Map<String, CandidateRule> rules = catalog.loadCandidateRules(
-                candidateIds
+        Map<String, MatchingRule> rules = catalog.loadTaskRules(
+                taskIds
         );
         Map<String, WorkerFacts> facts = catalog.loadWorkerFacts(
                 demand.workerGroupId(),
@@ -174,30 +174,41 @@ public final class WorkerMatchingRuntime implements AutoCloseable {
         LinkedHashMap<String, Long> available = new LinkedHashMap<>(
                 demand.heldWorkerLeaseScores()
         );
+        Map<String, List<Condition>> conditionsByRule = new LinkedHashMap<>();
         for (TaskCandidateNeed need : demand.orderedTaskNeeds()) {
             if (available.isEmpty()
                     || demand.holdUntilMillis()
                             <= System.currentTimeMillis()) {
                 return;
             }
-            CandidateRule rule = rules.get(need.candidateId());
-            if (rule == null
+            MatchingRule rule = rules.get(need.taskId());
+            if (rule == null || rule.allocationRule() == null
                     || !demand.workerGroupId().equals(rule.workerGroupId())) {
-                logUnavailableRule(need.candidateId());
+                logUnavailableRule(need.taskId());
                 continue;
             }
             List<CandidateWorkerEntry> matches;
             try {
-                matches = matchCandidates(available, facts, rule);
+                if (!conditionsByRule.containsKey(rule.ruleId())) {
+                    // Retain invalid normalization too: a shared Rule is interpreted once per batch.
+                    conditionsByRule.put(rule.ruleId(), null);
+                    conditionsByRule.put(rule.ruleId(), evaluator.normalize(rule.allocationRule()));
+                }
+                List<Condition> conditions = conditionsByRule.get(rule.ruleId());
+                if (conditions == null) {
+                    logInvalidRule(need.taskId());
+                    continue;
+                }
+                matches = matchCandidates(available, facts, conditions);
             } catch (IllegalArgumentException invalidRule) {
-                logInvalidRule(need.candidateId());
+                logInvalidRule(need.taskId());
                 continue;
             }
             if (matches.isEmpty()) {
                 continue;
             }
             List<String> accepted = candidateCache.appendCandidateWorkers(
-                    need.candidateId(),
+                    need.taskId(),
                     need.maximumCandidateWorkers(),
                     matches,
                     demand.holdUntilMillis()
@@ -209,11 +220,8 @@ public final class WorkerMatchingRuntime implements AutoCloseable {
     private List<CandidateWorkerEntry> matchCandidates(
             LinkedHashMap<String, Long> available,
             Map<String, WorkerFacts> facts,
-            CandidateRule rule
+            List<Condition> conditions
     ) {
-        List<Condition> conditions = evaluator.normalize(
-                rule.allocationRule()
-        );
         List<CandidateWorkerEntry> matches = new ArrayList<>();
         available.forEach((workerId, heldScore) -> {
             WorkerFacts worker = facts.get(workerId);
@@ -278,19 +286,19 @@ public final class WorkerMatchingRuntime implements AutoCloseable {
         }
     }
 
-    private static void logInvalidRule(String candidateId) {
+    private static void logInvalidRule(String taskId) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
-                "operation=workerMatching.evaluate invalidRuleKind=candidate "
-                        + "key=" + candidateId
+                "operation=workerMatching.evaluate reason=invalid_rule "
+                        + "taskId=" + taskId
         );
     }
 
-    private static void logUnavailableRule(String candidateId) {
+    private static void logUnavailableRule(String taskId) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
                 "operation=workerMatching.evaluate "
-                        + "unavailableRuleKind=candidate key=" + candidateId
+                        + "reason=unavailable_rule taskId=" + taskId
         );
     }
 }

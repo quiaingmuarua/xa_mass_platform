@@ -38,6 +38,13 @@ Status: current repository document index.
 Module READMEs explain only their assembly, public entrypoints, local owner
 mechanism and verification.
 
+## Completed Changes
+
+- [Task and Rule decoupling record](task-rule-decoupling-plan.md) records the
+  completed Matching-owned Task binding and shared Rule cutover and its local proofs.
+- [Named Rule index cutover](named-rule-index-plan.md) records the first fixed
+  Handler, direct index dispatch and local proofs.
+
 ## Historical Assets
 
 The following documents retain engineering lessons from the superseded Java

@@ -63,7 +63,6 @@ function mockTask(taskId: string, workerGroupId: string): TaskView {
     allocationRule: null,
     config: {
       priority: "0",
-      maximumCandidateWorkers: "1",
       maxRetryTimes: "3"
     }
   };

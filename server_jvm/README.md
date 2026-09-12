@@ -68,7 +68,8 @@ Public API
   -> owner-local Java Redis provider
 
 WorkerMatchingAssembly
-  -> persistent Worker/Platform facts and PRECOMPUTED Candidate rules
+  -> persistent Worker/Platform facts, shared DSL Rules and Task bindings
+  -> fixed named Rule Handler with bounded index queries
   -> one bounded PRECOMPUTED Demand consumer writing Candidate Cache
 
 KernelPacerAssembly
@@ -102,7 +103,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server writes PRECOMPUTED Candidate rules before Kernel Task records; ON_DEMAND selectors are captured by Kernel and property conditions admitted by Matching before Item persistence; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server establishes named or DSL Matching bindings before Kernel Task records; non-DSL selectors are captured by Kernel and property queries admitted by Matching before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
@@ -112,7 +113,7 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | `kernel_pacer_jvm` orders and holds PRECOMPUTED demand or directly acquires ON_DEMAND candidates from stored selectors, then owns Score renewal, uniqueness, lease and claim |
+| Assignment Dispatch | `kernel_pacer_jvm` orders and holds PRECOMPUTED demand or acquires bounded INDEXED/ON_DEMAND candidates, then owns exact confirmation, uniqueness, lease and claim |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -158,20 +159,29 @@ profile selector:
 POST /api/v1/tasks
 ```
 
-The request identifies one registered WorkerGroup and contains allocation plus
-numeric Task configuration. Server generates the `task-{UUID}` coordinate and
-creates only `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; callers do not supply a
-Task ID or Task type. Multiple finite Tasks may belong to the same Group.
+The request names one registered WorkerGroup. Server generates task-{UUID}.
+Matching is selected by mutually exclusive fields:
+
+| Input | Kernel allocation mechanism |
+| --- | --- |
+| allocationRule, including `{}` | original PRECOMPUTED_TASK_RULE DSL |
+| ruleId: worker.country | INDEXED_TASK |
+| neither field | ON_DEMAND_ITEM_RULE without a Task Rule |
+
+All create finite CLOSE_WHEN_IDLE Tasks. Unknown/blank Rule IDs, disabled Group
+indexes, both fields together, or maximumCandidateWorkers on non-DSL requests
+are rejected. Priority defaults to 50 and retry budget to 3; candidate capacity
+defaults to 10 only for DSL Tasks.
 
 ```json
-{
-  "workerGroupId": "scenario-string-utils-workers",
-  "allocationRule": {},
-  "priority": 50,
-  "maximumCandidateWorkers": 10,
-  "maxRetryTimes": 3
-}
+{"workerGroupId":"country-workers","ruleId":"worker.country","priority":50,"maxRetryTimes":3}
 ```
+
+Server establishes a named binding or shared DSL definition through Matching,
+then separately creates the Kernel descriptor. Failed creation may leave an inert
+binding. No rollback, HTTP idempotency or Rule management lifecycle is introduced.
+Task closure does not delete definitions, bindings or indexes. Rule IDs and facts
+remain outside Kernel descriptors.
 
 Every registered WorkerGroup also owns exactly one managed, approved
 `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` Task. Registration returns its Task ID:
@@ -273,17 +283,18 @@ export may therefore contain newer content.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
-derives the absolute expiry. Finite Task append omits `workerSelector`;
+derives the absolute expiry. DSL Task append omits `workerSelector`; other finite Tasks may supply it and omission means `{}`;
 managed Task Call requires a Selector object, where `{}` means no Worker
 restriction inside the Group and `{"workerId":["a","b"]}` names ordered explicit IDs.
-Nonempty objects have exactly one non-blank binding name and 1..100 string
-parameters, without scalar coercion. `{"worker.country":["CN"]}` requests a
-country index. Country accepts exactly one parameter and must be
-exactly two uppercase ASCII letters; all 676 syntactic values are accepted,
-not just ISO country names. Enable Groups through
-`xa.mass.worker-matching.country-index.worker-groups` (default empty).
-Disabled Groups, unsupported bindings/parameters and malformed country are rejected
-before Item writes, including invalid entries overwritten by duplicate message IDs.
+Nonempty objects have one condition. Country uses
+`{"worker.country":{"op":"eq","values":["CN"]}}` or in with 1..100 values.
+Values are strict uppercase ASCII pairs. Old country parameter lists are rejected;
+ANY and explicit-ID JSON are unchanged. Enable Groups with
+xa.mass.worker-matching.country-index.worker-groups.
+For named Rules, even ANY and explicit IDs must satisfy Rule membership.
+Submission validates the binding but does not take candidates. Finite invalid
+members retain per-member rejection; managed calls validate every original
+query, including overwritten duplicate IDs, before submission.
 
 The HTTP Call service and the SMS business module share Server's
 `TaskCallSubmissionService`: complete input validation, bounded managed-Task
@@ -437,8 +448,10 @@ cursor, total, stable order, or completeness meaning; unreadable sampled rows
 are counted and omitted from the returned views. Task Preview performs one
 descending `ZREVRANGE ... WITHSCORES` for the highest `1..1000` Task Score
 coordinates, then projects Task and WorkerGroup descriptors through their
-bounded Owner reads. PRECOMPUTED Rules are read from Matching in batches of at
-most 100. It exposes only the Owner-defined Score Band, never the raw Score.
+bounded Owner reads. PRECOMPUTED Rules are resolved by Task ID through Matching
+in batches of at most 100, each using one Lua. The projection checks Group and
+retains `allocationRule` without exposing internal Rule IDs or querying Rules for
+ON_DEMAND Tasks and exposes ruleId for INDEXED_TASK. It exposes only the Owner-defined Score Band, never the raw Score.
 A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
 meaning, and its order is not business priority or execution evidence.

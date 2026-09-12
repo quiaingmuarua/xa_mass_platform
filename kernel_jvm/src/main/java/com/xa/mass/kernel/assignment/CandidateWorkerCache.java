@@ -4,19 +4,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/** Task-scoped held candidates; sharing a matching Rule does not share this cache. */
 public interface CandidateWorkerCache {
 
     List<String> appendCandidateWorkers(
-            String candidateId,
+            String taskId,
             int maximumCandidateWorkers,
             List<CandidateWorkerEntry> candidateWorkers,
             long expiresAtMillis
     );
 
-    Map<String, Integer> candidateWorkerCounts(List<String> candidateIds);
+    Map<String, Integer> candidateWorkerCounts(List<String> taskIds);
 
     List<CandidateWorkerEntry> consumeCandidateWorkers(
-            String candidateId,
+            String taskId,
             int limit
     );
 

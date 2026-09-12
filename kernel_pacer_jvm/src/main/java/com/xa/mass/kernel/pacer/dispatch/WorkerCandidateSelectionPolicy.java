@@ -99,11 +99,11 @@ final class WorkerCandidateSelectionPolicy {
 
     List<HeldWorkerCandidate> consumeCachedCandidates(
             String workerGroupId,
-            String candidateId,
+            String taskId,
             int limit
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
-        requireNonBlank(candidateId, "candidateId");
+        requireNonBlank(taskId, "taskId");
         if (limit < 1 || limit > MAX_UNIQUE_WORKERS_PER_ROUND) {
             throw new IllegalArgumentException(
                     "candidate limit must be in 1.."
@@ -111,7 +111,7 @@ final class WorkerCandidateSelectionPolicy {
             );
         }
         List<CandidateWorkerEntry> cached =
-                candidateCache.consumeCandidateWorkers(candidateId, limit);
+                candidateCache.consumeCandidateWorkers(taskId, limit);
         if (cached.isEmpty()) {
             return List.of();
         }
@@ -129,6 +129,54 @@ final class WorkerCandidateSelectionPolicy {
                 List.copyOf(heldScores.keySet()),
                 heldScores
         );
+    }
+
+    Map<String, HeldWorkerCandidate> acquireIndexedCandidates(
+            String taskId, String workerGroupId,
+            Map<String, TaskItemWorkerSelector> selectorsByMessageId,
+            Set<String> excludedWorkerIds, long leaseUntilMillis
+    ) {
+        Map<String, TaskItemWorkerSelector> selectors = validateSelectors(selectorsByMessageId);
+        WorkerCandidateIndex.TaskQuery query = candidateIndex.prepareTaskQuery(taskId, workerGroupId);
+        if (query == null) return Map.of();
+        var limits = new LinkedHashMap<TaskItemWorkerSelector, Integer>();
+        selectors.values().forEach(selector -> limits.merge(selector, 1, Integer::sum));
+        Map<TaskItemWorkerSelector, List<String>> candidates = query.take(limits);
+        var ids = new LinkedHashSet<String>();
+        candidates.values().forEach(ids::addAll);
+        ids.removeAll(excludedWorkerIds);
+        if (ids.isEmpty()) return Map.of();
+        Map<String, Long> observed = workerScores.observeDueHotScores(workerGroupId, List.copyOf(ids), hotEligibilityFloorMillis);
+        var selectedByMessage = new LinkedHashMap<String, String>();
+        var selectedScores = new LinkedHashMap<String, Long>();
+        selectors.forEach((message, selector) -> {
+            for (String id : candidates.getOrDefault(selector, List.of())) {
+                if (ids.contains(id) && observed.get(id) != null && !selectedScores.containsKey(id)) {
+                    selectedByMessage.put(message, id);
+                    selectedScores.put(id, observed.get(id));
+                    break;
+                }
+            }
+        });
+        Map<String, Long> held = holdObservedCandidates(workerGroupId, selectedScores, leaseUntilMillis);
+        if (held.isEmpty()) return Map.of();
+        var byQuery = new LinkedHashMap<TaskItemWorkerSelector, List<String>>();
+        selectedByMessage.forEach((message, id) -> {
+            if (held.containsKey(id)) byQuery.computeIfAbsent(selectors.get(message), ignored -> new ArrayList<>()).add(id);
+        });
+        Map<TaskItemWorkerSelector, Set<String>> retained = query.retain(byQuery);
+        var usable = new LinkedHashMap<String, Long>();
+        selectedByMessage.forEach((message, id) -> {
+            if (held.containsKey(id) && retained.getOrDefault(selectors.get(message), Set.of()).contains(id)) {
+                usable.put(id, held.get(id));
+            }
+        });
+        Map<String, HeldWorkerCandidate> described = describeById(workerGroupId, usable);
+        var result = new LinkedHashMap<String, HeldWorkerCandidate>();
+        selectedByMessage.forEach((message, id) -> {
+            if (described.containsKey(id)) result.put(message, described.get(id));
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     Map<String, HeldWorkerCandidate> acquireOnDemandCandidates(

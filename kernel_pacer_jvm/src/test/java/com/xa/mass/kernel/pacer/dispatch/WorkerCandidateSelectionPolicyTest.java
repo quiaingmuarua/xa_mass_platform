@@ -34,9 +34,9 @@ class WorkerCandidateSelectionPolicyTest {
         var index = mock(WorkerCandidateIndex.class);
         var policy = new WorkerCandidateSelectionPolicy(scores, cache, catalog, null, index);
         var targets = new LinkedHashMap<String, TaskItemWorkerSelector>();
-        var us = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("US")));
-        var cn = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
-        var gb = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("GB")));
+        var us = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("US"))));
+        var cn = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
+        var gb = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("GB"))));
         for (int i = 0; i < usCount + cnCount + gbCount; i++) {
             String id = "item-" + i;
             targets.put(id, TaskItemWorkerSelector.parse((i < usCount ? us : i < usCount + cnCount ? cn : gb).expression()));
@@ -53,7 +53,7 @@ class WorkerCandidateSelectionPolicyTest {
     @Test void oneIndexedItemDoesNotTouchAnEntireCountryBucketJustBecauseBudgetAllowsIt() {
         var scores = mock(WorkerScoreCore.class);
         var index = mock(WorkerCandidateIndex.class);
-        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
+        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
         var policy = new WorkerCandidateSelectionPolicy(scores, mock(CandidateWorkerCache.class),
                 mock(WorkerResourceCatalog.class), null, index);
         when(index.takeWorkerIds("group-1", query, 1)).thenReturn(List.of("busy"), List.of("offline"));
@@ -71,7 +71,7 @@ class WorkerCandidateSelectionPolicyTest {
         var cache = mock(CandidateWorkerCache.class);
         var catalog = mock(WorkerResourceCatalog.class);
         var index = mock(WorkerCandidateIndex.class);
-        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
+        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
         var targets = new LinkedHashMap<String, TaskItemWorkerSelector>();
         targets.put("any", TaskItemWorkerSelector.parse(Map.of()));
         targets.put("country", query);
@@ -109,7 +109,7 @@ class WorkerCandidateSelectionPolicyTest {
     @Test void indexFailureNeverFallsBackToAny() {
         var scores = mock(WorkerScoreCore.class);
         var index = mock(WorkerCandidateIndex.class);
-        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
+        var query = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
         when(index.takeWorkerIds("group-1", query, 1)).thenThrow(new IllegalStateException("unavailable"));
         var policy = new WorkerCandidateSelectionPolicy(scores, mock(CandidateWorkerCache.class), mock(WorkerResourceCatalog.class), null, index);
         assertThrows(IllegalStateException.class, () -> policy.acquireOnDemandCandidates("group-1", Map.of("m", query), Set.of(), 5000));
@@ -314,6 +314,51 @@ class WorkerCandidateSelectionPolicyTest {
                 policy.acquireOnDemandCandidates(
                         "group-1", tooMany, Set.of(), 5_000L
                 ));
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void namedRuleRechecksAfterInitialHoldAndNeverUsesCache(boolean retained) {
+        var scores = mock(WorkerScoreCore.class);
+        var cache = mock(CandidateWorkerCache.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var index = mock(WorkerCandidateIndex.class);
+        var query = mock(WorkerCandidateIndex.TaskQuery.class);
+        var selector = TaskItemWorkerSelector.parse(Map.of());
+        var policy = new WorkerCandidateSelectionPolicy(scores, cache, catalog, null, index);
+        when(index.prepareTaskQuery("task", "group-1")).thenReturn(query);
+        when(query.take(Map.of(selector, 2))).thenReturn(Map.of(selector, List.of("worker-1", "cold")));
+        when(scores.observeDueHotScores("group-1", List.of("worker-1", "cold"), null)).thenReturn(Map.of("worker-1", 123L));
+        when(scores.acquireObservedHotScoreLeases("group-1", Map.of("worker-1", 123L), 5000L))
+                .thenReturn(Map.of("worker-1", transitioned(456L)));
+        when(query.retain(Map.of(selector, List.of("worker-1"))))
+                .thenReturn(Map.of(selector, retained ? Set.of("worker-1") : Set.of()));
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", workerDescriptor("worker-1")));
+        var items = new LinkedHashMap<String, TaskItemWorkerSelector>();
+        items.put("first", selector); items.put("second", selector);
+        var result = policy.acquireIndexedCandidates("task", "group-1", items, Set.of(), 5000L);
+        assertEquals(retained ? Map.of("first", worker("worker-1", 456L)) : Map.of(), result);
+        var order = org.mockito.Mockito.inOrder(index, query, scores);
+        order.verify(index).prepareTaskQuery("task", "group-1");
+        order.verify(query).take(Map.of(selector, 2));
+        order.verify(scores).observeDueHotScores("group-1", List.of("worker-1", "cold"), null);
+        order.verify(scores).acquireObservedHotScoreLeases("group-1", Map.of("worker-1", 123L), 5000L);
+        order.verify(query).retain(Map.of(selector, List.of("worker-1")));
+        verifyNoInteractions(cache);
+        if (!retained) verifyNoInteractions(catalog);
+    }
+
+    @Test void unavailableNamedRuleCannotBecomeAnyOrConsumeCachedWorkers() {
+        var scores = mock(WorkerScoreCore.class);
+        var cache = mock(CandidateWorkerCache.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var index = mock(WorkerCandidateIndex.class);
+        var policy = new WorkerCandidateSelectionPolicy(scores, cache, catalog, null, index);
+        assertEquals(Map.of(), policy.acquireIndexedCandidates("missing", "group-1",
+                Map.of("item", TaskItemWorkerSelector.parse(Map.of())), Set.of(), 5000));
+        verify(index).prepareTaskQuery("missing", "group-1");
+        verifyNoInteractions(scores, cache, catalog);
     }
 
     private static WorkerCandidateSelectionPolicy policy(

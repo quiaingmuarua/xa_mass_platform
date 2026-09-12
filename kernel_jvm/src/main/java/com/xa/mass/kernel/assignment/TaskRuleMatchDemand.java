@@ -32,11 +32,11 @@ public record TaskRuleMatchDemand(
     }
 
     public record TaskCandidateNeed(
-            String candidateId,
+            String taskId,
             int maximumCandidateWorkers
     ) {
         public TaskCandidateNeed {
-            requireNonBlank(candidateId, "candidateId");
+            requireNonBlank(taskId, "taskId");
             if (maximumCandidateWorkers <= 0) {
                 throw new IllegalArgumentException(
                         "maximumCandidateWorkers must be positive"
@@ -55,13 +55,13 @@ public record TaskRuleMatchDemand(
                             + " tasks"
             );
         }
-        LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
+        LinkedHashSet<String> taskIds = new LinkedHashSet<>();
         for (TaskCandidateNeed value : values) {
             Objects.requireNonNull(value, "candidate need");
-            if (!candidateIds.add(value.candidateId())) {
+            if (!taskIds.add(value.taskId())) {
                 throw new IllegalArgumentException(
                         "orderedTaskNeeds must not contain duplicate "
-                                + "candidateIds"
+                                + "taskIds"
                 );
             }
         }

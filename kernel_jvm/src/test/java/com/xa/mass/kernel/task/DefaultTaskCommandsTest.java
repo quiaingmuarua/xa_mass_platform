@@ -283,7 +283,6 @@ class DefaultTaskCommandsTest {
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of(
                         "priority", Integer.toString(priority),
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
                 )
         );

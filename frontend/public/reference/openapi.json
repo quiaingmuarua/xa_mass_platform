@@ -123,12 +123,15 @@
             "minimum" : 0,
             "type" : "integer"
           },
+          "ruleId" : {
+            "type" : "string"
+          },
           "workerGroupId" : {
             "minLength" : 1,
             "type" : "string"
           }
         },
-        "required" : [ "allocationRule", "workerGroupId" ],
+        "required" : [ "workerGroupId" ],
         "type" : "object"
       },
       "TaskCreateResponse" : {
@@ -165,13 +168,8 @@
             "type" : "integer"
           },
           "workerSelector" : {
-            "additionalProperties" : {
-              "items" : {
-                "type" : "string"
-              },
-              "type" : "array"
-            },
-            "description" : "ON_DEMAND only: {} for ANY, {workerId: [id, ...]}, or {worker.country: [CN]} for a country-index-enabled Group (one strict [A-Z]{2} value). At most one binding with 1..100 string parameters; omit for finite TaskItems",
+            "additionalProperties" : { },
+            "description" : "{} for ANY, {workerId: [id, ...]}, or {worker.country: {op: eq|in, values: [CN, ...]}}. eq requires one value; in accepts 1..100 strict [A-Z]{2} values. Named Rules constrain all queries including ANY and explicit IDs. Omit for DSL TaskItems.",
             "maxProperties" : 1,
             "type" : "object"
           }
@@ -284,6 +282,9 @@
             "type" : "object"
           },
           "idleDisposition" : {
+            "type" : "string"
+          },
+          "ruleId" : {
             "type" : "string"
           },
           "taskId" : {

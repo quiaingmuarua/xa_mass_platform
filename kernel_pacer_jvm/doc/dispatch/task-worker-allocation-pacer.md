@@ -23,7 +23,7 @@ Due PRECOMPUTED Tasks
 Each `ObservedTask` contains a minimal `TaskDescriptor` and its opaque observed
 Task score. The Task ID is derived from the descriptor rather than copied into
 a second field. The descriptor has no Rule. It supplies the fixed WorkerGroup,
-priority, and `maximumCandidateWorkers`. Receiving an ON_DEMAND Task is a
+priority, and `maximumCandidateWorkers`. Receiving an INDEXED_TASK or ON_DEMAND Task is a
 caller error.
 
 ## One Round
@@ -57,7 +57,7 @@ Pacer round reads actual Cache counts and computes the remaining deficit.
 TaskRuleMatchDemand
   workerGroupId
   orderedTaskNeeds[]
-    candidateId
+    taskId
     maximumCandidateWorkers
   heldWorkerLeaseScores
     workerId -> opaque exact held score
@@ -70,6 +70,10 @@ earlier write has filled the Task. The current deficit is a Pacer-local input:
 it controls how many Workers are observed and held but is not copied into the
 Demand.
 
+Matching resolves these Task IDs through its own Task-to-Rule bindings. Rule IDs
+never cross into Pacer. Tasks sharing a Rule keep independent Candidate capacity;
+only Cache-accepted Worker IDs are removed from the current held pool.
+
 `WorkerMatchQueue` accepts or rejects each complete Demand without blocking.
 Its interface owns offer, size observation, and consumption; the current
 bounded in-memory provider is an assembly choice rather than a Pacer
@@ -81,7 +85,7 @@ release the already-created holds. They expire naturally.
 Worker Matching calls the Kernel-owned atomic append operation:
 
 ```text
-candidateId
+taskId
 maximumCandidateWorkers
 CandidateWorkerEntry[] = workerId + heldWorkerLeaseScore
 expiresAtMillis = holdUntilMillis
@@ -102,7 +106,7 @@ Item claim.
 
 Allocation owns Task ordering, deficit computation, bounded Worker observation,
 exact initial hold, and Demand timing. Matching owns Rule and Properties
-interpretation. Candidate Cache owns atomic Candidate-address capacity.
+interpretation and Task-to-Rule association. Candidate Cache owns atomic Task-scoped capacity.
 Dispatch owns final exact confirmation, round uniqueness, Item claim, and Command
 publication. No failure path compensates by releasing an unmatched or
 unaccepted hold.

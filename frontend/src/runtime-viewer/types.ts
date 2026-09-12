@@ -37,9 +37,13 @@ export interface WorkerGroupView {
 export interface TaskView {
   taskId: string;
   workerGroupId: string;
-  workerAllocationMechanism: "PRECOMPUTED_TASK_RULE" | "ON_DEMAND_ITEM_RULE";
+  workerAllocationMechanism:
+    | "PRECOMPUTED_TASK_RULE"
+    | "INDEXED_TASK"
+    | "ON_DEMAND_ITEM_RULE";
   idleDisposition: "CLOSE_WHEN_IDLE" | "PARK_WHEN_IDLE";
   allocationRule: Record<string, JsonValue> | null;
+  ruleId?: string | null;
   config: Record<string, string>;
 }
 

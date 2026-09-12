@@ -24,7 +24,7 @@ class ListenerServiceTest {
             verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
             for (String country : ListenerService.COUNTRIES) {
                 verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream()
-                        .anyMatch(item -> item.workerSelector().equals(Map.of("worker.country", List.of(country))))));
+                        .anyMatch(item -> item.workerSelector().equals(Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))))));
             }
         }
     }

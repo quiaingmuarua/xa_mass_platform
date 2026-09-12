@@ -241,7 +241,6 @@ class TaskAssignmentDispatcherTest {
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of(
                         "priority", "0",
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "1"
                 )
         );

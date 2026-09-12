@@ -110,29 +110,33 @@ function parseWorkerSelector(text: string): TaskItemWorkerSelector {
   if (entries.length === 0) return {};
   if (entries.length !== 1) throw invalidWorkerSelector();
   const [binding, parameters] = entries[0];
-  if (
-    !isNonBlankString(binding) ||
-    !Array.isArray(parameters) ||
-    parameters.length < 1 ||
-    parameters.length > 100 ||
-    !parameters.every((parameter): parameter is string => typeof parameter === "string")
-  ) {
-    throw invalidWorkerSelector();
+  if (!isNonBlankString(binding)) throw invalidWorkerSelector();
+  if (binding === "workerId") {
+    if (
+      !Array.isArray(parameters) ||
+      parameters.length < 1 ||
+      parameters.length > 100 ||
+      !parameters.every(isNonBlankString) ||
+      new Set(parameters).size !== parameters.length
+    ) {
+      throw invalidWorkerSelector();
+    }
+    return { [binding]: [...parameters] };
   }
   if (
-    binding === "workerId" &&
-    (!parameters.every(isNonBlankString) ||
-      new Set(parameters).size !== parameters.length)
-  ) {
+    parameters === null ||
+    Array.isArray(parameters) ||
+    typeof parameters !== "object" ||
+    Object.keys(parameters).length === 0
+  )
     throw invalidWorkerSelector();
-  }
-  return { [binding]: [...parameters] };
+  return { [binding]: parameters };
 }
 
 function invalidWorkerSelector(): Error {
   return taskCallDebugConfigurationError(
-    "Worker Selector 必须是 {} 或单个绑定名称到 1..100 个字符串参数的对象，" +
-      '例如 {"workerId":["id"]}、{"worker.country":["CN"]}。' +
+    "Worker Selector 必须是 {}、Worker ID 列表或单个属性查询对象，" +
+      '例如 {"workerId":["id"]}、{"worker.country":{"op":"in","values":["CN"]}}。' +
       "Worker ID 必须非空白且唯一；属性参数由 Matching 校验。"
   );
 }

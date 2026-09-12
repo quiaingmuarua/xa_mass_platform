@@ -84,12 +84,12 @@ public final class RedisCandidateWorkerCache
 
     @Override
     public List<String> appendCandidateWorkers(
-            String candidateId,
+            String taskId,
             int maximumCandidateWorkers,
             List<CandidateWorkerEntry> candidateWorkers,
             long expiresAtMillis
     ) {
-        requireCandidateId(candidateId);
+        requireTaskId(taskId);
         if (maximumCandidateWorkers <= 0) {
             throw new IllegalArgumentException(
                     "maximumCandidateWorkers must be positive"
@@ -132,7 +132,7 @@ public final class RedisCandidateWorkerCache
         Object raw = commands().eval(
                 APPEND_CANDIDATES,
                 ScriptOutputType.MULTI,
-                new String[]{candidateKey(candidateId)},
+                new String[]{candidateKey(taskId)},
                 arguments.toArray(String[]::new)
         );
         if (!(raw instanceof List<?> values) || values.isEmpty()) {
@@ -143,32 +143,32 @@ public final class RedisCandidateWorkerCache
 
     @Override
     public Map<String, Integer> candidateWorkerCounts(
-            List<String> candidateIds
+            List<String> taskIds
     ) {
-        if (candidateIds == null) {
+        if (taskIds == null) {
             throw new IllegalArgumentException(
-                    "candidateIds must be present"
+                    "taskIds must be present"
             );
         }
         LinkedHashSet<String> uniqueIds = new LinkedHashSet<>();
-        candidateIds.forEach(candidateId -> {
-            requireCandidateId(candidateId);
-            uniqueIds.add(candidateId);
+        taskIds.forEach(taskId -> {
+            requireTaskId(taskId);
+            uniqueIds.add(taskId);
         });
         if (uniqueIds.isEmpty()) {
             return Map.of();
         }
         long nowMillis = redisTimeMillis();
         LinkedHashMap<String, Integer> counts = new LinkedHashMap<>();
-        for (String candidateId : uniqueIds) {
-            String key = candidateKey(candidateId);
+        for (String taskId : uniqueIds) {
+            String key = candidateKey(taskId);
             commands().zremrangebyscore(
                     key,
                     Double.NEGATIVE_INFINITY,
                     nowMillis
             );
             counts.put(
-                    candidateId,
+                    taskId,
                     Math.toIntExact(commands().zcount(
                             key,
                             io.lettuce.core.Range.from(
@@ -185,10 +185,10 @@ public final class RedisCandidateWorkerCache
 
     @Override
     public List<CandidateWorkerEntry> consumeCandidateWorkers(
-            String candidateId,
+            String taskId,
             int limit
     ) {
-        requireCandidateId(candidateId);
+        requireTaskId(taskId);
         if (limit <= 0) {
             throw new IllegalArgumentException(
                     "consume limit must be positive"
@@ -197,7 +197,7 @@ public final class RedisCandidateWorkerCache
         Object raw = commands().eval(
                 CONSUME_CANDIDATES,
                 ScriptOutputType.MULTI,
-                new String[]{candidateKey(candidateId)},
+                new String[]{candidateKey(taskId)},
                 Long.toString(redisTimeMillis()),
                 Integer.toString(limit)
         );
@@ -289,17 +289,17 @@ public final class RedisCandidateWorkerCache
         return current;
     }
 
-    private String candidateKey(String candidateId) {
+    private String candidateKey(String taskId) {
         return keyspace.base()
                 + ":dispatch:candidate:"
-                + candidateId
+                + taskId
                 + ":workers";
     }
 
-    private static void requireCandidateId(String candidateId) {
-        if (candidateId == null || candidateId.isBlank()) {
+    private static void requireTaskId(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
             throw new IllegalArgumentException(
-                    "candidateId must be non-blank"
+                    "taskId must be non-blank"
             );
         }
     }

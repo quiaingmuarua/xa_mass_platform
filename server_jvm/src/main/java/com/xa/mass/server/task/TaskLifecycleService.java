@@ -103,9 +103,7 @@ public final class TaskLifecycleService {
         if (descriptor == null) {
             throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
         }
-        if (descriptor.workerAllocationMechanism()
-                != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                || descriptor.idleDisposition()
+        if (descriptor.idleDisposition()
                 != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
             throw failure(
                     ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,

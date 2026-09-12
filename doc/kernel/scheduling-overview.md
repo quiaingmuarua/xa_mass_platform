@@ -21,7 +21,7 @@ controls acquisition, lease and serviceability eligibility.
 
 ```text
 Server creation
-  -> Matching Candidate Rule first for PRECOMPUTED
+  -> Matching Task binding and shared Rule first for PRECOMPUTED
      or Kernel capture and Matching property admission of an ON_DEMAND Worker Selector
   -> Kernel Task descriptor and TaskItem records
 
@@ -33,7 +33,7 @@ Kernel Main Scheduler
 PRECOMPUTED allocation
   -> Kernel orders Candidate deficits and exact-holds a bounded due Worker pool
   -> WorkerMatchQueue admits the ordered Demand
-  -> Matching reads supplied Rules/facts and writes accepted Candidate entries
+  -> Matching resolves supplied Task IDs to Rules, reads held Worker facts and writes accepted Candidates
 
 Task dispatch
   -> observe due Items and classify TTL/exhaustion
@@ -52,7 +52,7 @@ Matching owns facts and Rule interpretation, not priority, Score or assignment.
 A Candidate carries bounded matching evidence and an opaque held score; final
 confirmation rejects it after successful Properties dirty invalidation. Unmatched, unselected or rejected holds expire naturally
 without a compensation-release registry. ON_DEMAND persists one immutable
-workerSelector binding-to-parameters Map. Matching interprets property conditions and takes indexed identities; Kernel
+workerSelector query Map. Matching interprets property conditions and takes indexed identities; Kernel
 holds and rechecks membership before exact confirmation, without reading
 Properties or falling back to Candidate Cache. The detailed flow is
 [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
@@ -124,3 +124,9 @@ Use [TESTING](../../TESTING.md) to select proof by claim. Focused policy tests
 establish decisions, Redis Owner tests establish atomic fences, and Runtime
 Boundary/system lanes establish their own finite cross-process relationships.
 A passing layer does not substitute for another layer's evidence.
+
+Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
+queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
+exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
+original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
+lifecycle is independent of this allocation choice.

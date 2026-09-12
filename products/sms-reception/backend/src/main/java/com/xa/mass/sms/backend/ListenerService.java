@@ -171,7 +171,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
                 + (command.cancel ? "cancel" : "start"), payload, 5,
                 command.cancel ? SETUP_MILLIS : Math.max(1, record.setupDeadline - clock.millis()),
                 command.cancel ? Map.of("workerId", List.of(command.workerId))
-                        : Map.of("worker.country", List.of(record.country)));
+                        : Map.of("worker.country", Map.of("op", "in", "values", List.of(record.country))));
     }
     public Map<String, Object> get(String id) { return require(id).view(); }
     public Map<String, Object> page(int offset, int pageSize) {

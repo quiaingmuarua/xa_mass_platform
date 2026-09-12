@@ -22,8 +22,8 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 Candidate Cache stays here because it is a bounded, disposable Kernel
 mechanism with its own Redis shape. Allocation policy, result disposition,
 serviceability policy, Pacer loops and thread lifecycle belong to
-[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, PRECOMPUTED Candidate
-Rules and constraint evaluation belong to
+[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, shared PRECOMPUTED
+Rules, Task-to-Rule bindings and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
 The three Result event interfaces are stable semantic Mechanism ports rather
@@ -100,3 +100,9 @@ Build:
 ```text
 ./gradlew :kernel_jvm:build
 ```
+
+Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
+queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
+exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
+original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
+lifecycle is independent of this allocation choice.

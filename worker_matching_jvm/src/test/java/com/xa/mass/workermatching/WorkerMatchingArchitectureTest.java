@@ -26,6 +26,7 @@ class WorkerMatchingArchitectureTest {
         for (String forbidden : List.of(
                 "com.xa.mass.kernel.score",
                 "TaskRuntime",
+                "TaskResourceCatalog",
                 "WorkerResourceCatalog",
                 "com.xa.mass.kernel.pacer",
                 "com.xa.mass.server",
@@ -38,8 +39,6 @@ class WorkerMatchingArchitectureTest {
                 "WorkerFactsPage",
                 "itemCursors",
                 "ItemRule",
-                "taskId",
-                ":matching:task:",
                 "ArrayBlockingQueue"
         )) {
             assertFalse(

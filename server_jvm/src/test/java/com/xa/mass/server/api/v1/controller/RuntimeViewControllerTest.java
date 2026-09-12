@@ -69,7 +69,7 @@ class RuntimeViewControllerTest {
         workerScheduling = mock(WorkerSchedulingService.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(matchingCatalog.loadCandidateRules(anyList()))
+        when(matchingCatalog.loadTaskRules(anyList()))
                 .thenReturn(Map.of());
         when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
                 .thenAnswer(invocation -> {
@@ -206,7 +206,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
-        verify(matchingCatalog, never()).loadCandidateRules(anyList());
+        verify(matchingCatalog, never()).loadTaskRules(anyList());
     }
 
     @Test
@@ -715,15 +715,15 @@ class RuntimeViewControllerTest {
         when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
                 .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(
                         id, "group-a", WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                        TaskIdleDisposition.CLOSE_WHEN_IDLE, task(id, "group-a").config()
+                        TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maximumCandidateWorkers", "1", "maxRetryTimes", "3")
                 ))));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
                 .thenReturn(groupLookup("group-a"));
-        when(matchingCatalog.loadCandidateRules(anyList())).thenAnswer(invocation -> {
+        when(matchingCatalog.loadTaskRules(anyList())).thenAnswer(invocation -> {
             List<String> batch = invocation.getArgument(0);
             org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
             return batch.stream().collect(Collectors.toMap(id -> id,
-                    id -> new WorkerMatchingCatalog.CandidateRule(id, "group-a", Map.of())));
+                    id -> new WorkerMatchingCatalog.MatchingRule("rule-shared", "group-a", Map.of())));
         });
         mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1000"))
@@ -732,7 +732,7 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.entries.length()").value(1000))
                 .andExpect(jsonPath("$.entries[0].taskId").value("task-0"))
                 .andExpect(jsonPath("$.entries[999].taskId").value("task-999"));
-        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadCandidateRules(anyList());
+        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadTaskRules(anyList());
     }
 
     @Test
@@ -919,7 +919,6 @@ class RuntimeViewControllerTest {
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of(
                         "priority", "0",
-                        "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
                 )
         );

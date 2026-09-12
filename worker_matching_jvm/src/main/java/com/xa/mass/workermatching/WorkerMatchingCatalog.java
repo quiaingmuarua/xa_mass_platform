@@ -33,14 +33,19 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
             List<String> workerIds
     );
 
-    MutationResult createCandidateRule(
-            String candidateId,
+    /** Establishes an immutable Task binding to a shared, content-addressed Rule. */
+    MutationResult bindTaskAllocationRule(
+            String taskId,
             String workerGroupId,
             Map<String, Object> allocationRule
     );
 
-    Map<String, @Nullable CandidateRule> loadCandidateRules(
-            List<String> candidateIds
+    /** Binds a fixed named Handler; rejects unavailable Group indexes. */
+    MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId);
+
+    /** Resolves up to 100 unique Task IDs in one batch; unavailable Rules map to null. */
+    Map<String, @Nullable MatchingRule> loadTaskRules(
+            List<String> taskIds
     );
 
     enum MutationStatus {
@@ -75,15 +80,15 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
         }
     }
 
-    record CandidateRule(
-            String candidateId,
+    record MatchingRule(
+            String ruleId,
             String workerGroupId,
-            Map<String, Object> allocationRule
+            @Nullable Map<String, Object> allocationRule
     ) {
-        public CandidateRule {
-            requireNonBlank(candidateId, "candidateId");
+        public MatchingRule {
+            requireNonBlank(ruleId, "ruleId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            allocationRule = immutableMap(allocationRule);
+            allocationRule = allocationRule == null ? null : immutableMap(allocationRule);
         }
     }
 

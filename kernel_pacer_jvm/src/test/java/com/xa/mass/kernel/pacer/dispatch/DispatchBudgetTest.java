@@ -18,7 +18,7 @@ class DispatchBudgetTest {
         return new TaskRuntime.TaskDescriptor("task", "group",
                 TaskRuntime.WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority", "10", "maximumCandidateWorkers", "100", "maxRetryTimes", "1"));
+                Map.of("priority", "10", "maxRetryTimes", "1"));
     }
 
     @Test void aSlowRoundRemainsSingleFlightAndNextIntervalStartsAfterCompletion() {

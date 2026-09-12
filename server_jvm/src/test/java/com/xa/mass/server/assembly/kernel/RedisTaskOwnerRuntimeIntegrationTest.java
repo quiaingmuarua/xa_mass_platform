@@ -483,7 +483,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "workerAllocationMechanism", "ON_DEMAND_ITEM_RULE",
                 "idleDisposition", "PARK_WHEN_IDLE",
                 "configJson", "{\"maxRetryTimes\":\"3\","
-                        + "\"maximumCandidateWorkers\":\"1\","
+                        + ""
                         + "\"priority\":\"7\"}"
         ));
         var created = scoreCore.getScoreStates(
@@ -1161,7 +1161,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "phone-tools",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                config(2)
+                Map.of("priority", "2", "maximumCandidateWorkers", "1", "maxRetryTimes", "3")
         ));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
@@ -1332,7 +1332,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
             calls.clear();
             var service = new com.xa.mass.server.task.TaskDataService(runtime, catalog,
                     new com.xa.mass.server.task.TaskItemMapper(), itemScoreCore,
-                    new com.xa.mass.server.task.TaskItemOutcomeProperties(Map.of()));
+                    new com.xa.mass.server.task.TaskItemOutcomeProperties(Map.of()),
+                    org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
             assertThat(service.loadTaskItemStates("outcomes", ids).values())
                     .allMatch(state -> state.tag() == 6 && state.outcomeName().equals("succeeded"));
             assertThat(calls).containsExactly("HGETALL", "ZMSCORE");
@@ -1492,7 +1493,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     private static Map<String, String> config(int priority) {
         return Map.of(
                 "priority", Integer.toString(priority),
-                "maximumCandidateWorkers", "1",
                 "maxRetryTimes", "3"
         );
     }
@@ -1520,7 +1520,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         "idleDisposition", "PARK_WHEN_IDLE",
                         "configJson",
                         "{\"maxRetryTimes\":\"3\","
-                                + "\"maximumCandidateWorkers\":\"1\","
+                                + (allocationMechanism.equals("PRECOMPUTED_TASK_RULE") ? "\"maximumCandidateWorkers\":\"1\"," : "")
                                 + "\"priority\":\"0\"}"
                 )
         );

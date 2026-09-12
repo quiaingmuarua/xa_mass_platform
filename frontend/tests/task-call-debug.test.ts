@@ -24,10 +24,10 @@ describe("Task Call Debug request model", () => {
   it("captures binding parameters without interpreting Matching semantics", () => {
     for (const selector of [
       {},
-      { "worker.country": ["CN"] },
-      { "worker.country": ["cn", "US"] },
-      { "worker.test.region": ["east", "west"] },
-      { "worker.future": ["", "$eq", "", "value"] },
+      { "worker.country": { op: "eq", values: ["CN"] } },
+      { "worker.country": { op: "in", values: ["cn", "US"] } },
+      { "worker.test.region": { op: "in", values: ["east", "west"] } },
+      { "worker.future": { futureOperation: ["", "$eq", "", "value"] } },
       { workerId: ["worker-b", "worker-a"] }
     ]) {
       expect(
@@ -488,7 +488,6 @@ function entry(
       allocationRule: null,
       config: {
         priority: "0",
-        maximumCandidateWorkers: "1",
         maxRetryTimes: "3"
       }
     },

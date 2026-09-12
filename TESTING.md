@@ -105,6 +105,16 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 
 ## Selection Decision
 
+Shared Rule binding proof belongs to Redis Owner: canonical identity, concurrent
+binding conflicts/reuse, partial or unknown owner results, corrupt storage and
+one-command bind/100-Task resolution with deduplicated definitions. Matching tests
+preserve Task order, independent capacities and exclusion of Cache-accepted holds.
+Runtime Boundary creates two Tasks with the same Rule through the API and runs an
+actual Worker for both, including execution after the other Task closes. Rule
+sharing is asserted independently of execution. Existing dirty/exact-confirmation
+proofs retain ownership of scheduling safety; these tests do not claim cross-owner
+transactions, loss repair or end-to-end latency.
+
 Use the lowest-cost proof that owns the changed claim:
 
 1. A local algorithm, state transition, validation rule or race changes: run
@@ -281,6 +291,17 @@ ADB, Server, App, and Redis-scope process choreography. Contract-invalid
 observations fail immediately; only temporary HTTP transport failures remain
 eligible for bounded polling. Android is not a secondary witness for the Java
 Worker proof.
+
+## Named Rule index cutover
+
+Redis Owner proves shared named bindings, strict corrupt-data handling, bounded
+country union rotation, fact changes and the 100-Item HMGET + EVAL + EVAL budget.
+Runtime Boundary runs actual WebSocket and Socket Workers through two finite
+INDEXED_TASK Tasks sharing worker.country, changes live country, checks the actual
+executor, repeatable results/export and a retained Reporter observation after Task
+closure, and verifies no Task-specific Demand or
+Candidate Cache operations occurred. Existing DSL dynamic matching remains its
+own unchanged workload; the named Rule witness does not replace its assertions.
 
 ## CI Gate
 

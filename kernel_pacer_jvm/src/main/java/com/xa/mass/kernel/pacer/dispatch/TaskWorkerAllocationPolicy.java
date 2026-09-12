@@ -79,11 +79,11 @@ final class TaskWorkerAllocationPolicy {
             return 0;
         }
 
-        List<String> candidateIds = allocationNeeds.stream()
-                .map(CandidateAllocationNeed::candidateId)
+        List<String> taskIds = allocationNeeds.stream()
+                .map(CandidateAllocationNeed::taskId)
                 .toList();
         Map<String, Integer> candidateCounts =
-                candidateCache.candidateWorkerCounts(candidateIds);
+                candidateCache.candidateWorkerCounts(taskIds);
         LinkedHashMap<String, List<CandidateAllocationNeed>> needsByGroup =
                 new LinkedHashMap<>();
         for (CandidateAllocationNeed need : allocationNeeds) {
@@ -103,7 +103,7 @@ final class TaskWorkerAllocationPolicy {
                     .sorted(Comparator
                             .comparingInt(CandidateAllocationNeed::priority)
                             .thenComparing(
-                                    CandidateAllocationNeed::candidateId
+                                    CandidateAllocationNeed::taskId
                             ))
                     .limit(TaskRuleMatchDemand.MAX_TASKS)
                     .toList();
@@ -137,7 +137,7 @@ final class TaskWorkerAllocationPolicy {
             }
             List<TaskCandidateNeed> taskNeeds = ordered.stream()
                     .map(need -> new TaskCandidateNeed(
-                            need.candidateId(),
+                            need.taskId(),
                             need.maximumCandidateWorkers()
                     ))
                     .toList();
@@ -205,7 +205,7 @@ final class TaskWorkerAllocationPolicy {
                 0,
                 need.maximumCandidateWorkers()
                         - candidateCounts.getOrDefault(
-                                need.candidateId(),
+                                need.taskId(),
                                 0
                         )
         );

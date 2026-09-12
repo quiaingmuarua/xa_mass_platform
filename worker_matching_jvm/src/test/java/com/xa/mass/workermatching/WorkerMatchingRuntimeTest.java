@@ -11,7 +11,7 @@ import com.xa.mass.kernel.assignment.InMemoryWorkerMatchQueue;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand;
 import com.xa.mass.kernel.assignment.TaskRuleMatchDemand.TaskCandidateNeed;
 import com.xa.mass.kernel.assignment.WorkerMatchQueue;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.CandidateRule;
+import com.xa.mass.workermatching.WorkerMatchingCatalog.MatchingRule;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.util.ArrayList;
@@ -23,6 +23,8 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
@@ -50,7 +52,7 @@ class WorkerMatchingRuntimeTest {
             assertTrue(queue.offer(singleTaskDemand("group-1", "deleted-new", "worker-a")));
             await(() -> cache.appends.size() == 3);
             assertEquals(List.of("wifi-old", "cellular-new", "deleted-new"),
-                    cache.appends.stream().map(Append::candidateId).toList());
+                    cache.appends.stream().map(Append::taskId).toList());
         }
     }
 
@@ -71,10 +73,19 @@ class WorkerMatchingRuntimeTest {
     }
 
     @Test
-    void writesCandidatesInPacerTaskAndWorkerOrder() {
+    void sharedRulePreservesIndependentTaskLimitsAndDoesNotReuseAcceptedHolds() {
         FakeCatalog catalog = catalogWithWorkers("worker-a", "worker-b");
-        catalog.rules.put("task-first", rule("task-first", Map.of()));
-        catalog.rules.put("task-second", rule("task-second", Map.of()));
+        AtomicInteger normalizations = new AtomicInteger();
+        Map<String, Object> operators = new LinkedHashMap<>() {
+            @Override public void forEach(BiConsumer<? super String, ? super Object> action) {
+                normalizations.incrementAndGet();
+                super.forEach(action);
+            }
+        };
+        operators.put("$exists", true);
+        MatchingRule shared = rule("rule-shared", Map.of("worker.region", operators));
+        catalog.rules.put("task-first", shared);
+        catalog.rules.put("task-second", shared);
         RecordingCandidateCache cache = new RecordingCandidateCache();
         WorkerMatchQueue queue = queue(4);
 
@@ -90,9 +101,10 @@ class WorkerMatchingRuntimeTest {
             )));
 
             await(() -> cache.appends.size() == 2);
+            assertEquals(1, normalizations.get());
             assertEquals(
                     "task-first",
-                    cache.appends.get(0).candidateId()
+                    cache.appends.get(0).taskId()
             );
             assertEquals(1, cache.appends.get(0).maximum());
             assertEquals(
@@ -104,7 +116,7 @@ class WorkerMatchingRuntimeTest {
             );
             assertEquals(
                     "task-second",
-                    cache.appends.get(1).candidateId()
+                    cache.appends.get(1).taskId()
             );
             assertEquals(7, cache.appends.get(1).maximum());
             assertEquals(
@@ -117,8 +129,9 @@ class WorkerMatchingRuntimeTest {
     @Test
     void cacheRejectionLeavesWorkerAvailableForLaterTask() {
         FakeCatalog catalog = catalogWithWorkers("worker-a");
-        catalog.rules.put("task-full", rule("task-full", Map.of()));
-        catalog.rules.put("task-next", rule("task-next", Map.of()));
+        MatchingRule shared = rule("rule-shared", Map.of());
+        catalog.rules.put("task-full", shared);
+        catalog.rules.put("task-next", shared);
         RecordingCandidateCache cache = new RecordingCandidateCache();
         cache.rejectCandidates.add("task-full");
         WorkerMatchQueue queue = queue(4);
@@ -153,6 +166,7 @@ class WorkerMatchingRuntimeTest {
                 )
         );
         catalog.rules.put("task-valid", rule("task-valid", Map.of()));
+        catalog.rules.put("task-wrong-group", new MatchingRule("rule-other-group", "other", Map.of()));
         RecordingCandidateCache cache = new RecordingCandidateCache();
         WorkerMatchQueue queue = queue(4);
 
@@ -163,6 +177,7 @@ class WorkerMatchingRuntimeTest {
                     List.of(
                             new TaskCandidateNeed("task-missing", 1),
                             new TaskCandidateNeed("task-invalid", 1),
+                            new TaskCandidateNeed("task-wrong-group", 1),
                             new TaskCandidateNeed("task-valid", 1)
                     ),
                     Map.of("worker-a", 101L)
@@ -171,7 +186,7 @@ class WorkerMatchingRuntimeTest {
             await(() -> cache.appends.size() == 1);
             assertEquals(
                     "task-valid",
-                    cache.appends.get(0).candidateId()
+                    cache.appends.get(0).taskId()
             );
         }
     }
@@ -184,12 +199,12 @@ class WorkerMatchingRuntimeTest {
                 "worker-c"
         );
         catalog.rules.put("task-a", rule("task-a", Map.of()));
-        catalog.rules.put("task-b", new CandidateRule(
+        catalog.rules.put("task-b", new MatchingRule(
                 "task-b",
                 "group-2",
                 Map.of()
         ));
-        catalog.rules.put("task-c", new CandidateRule(
+        catalog.rules.put("task-c", new MatchingRule(
                 "task-c",
                 "group-3",
                 Map.of()
@@ -293,12 +308,12 @@ class WorkerMatchingRuntimeTest {
         return catalog;
     }
 
-    private static CandidateRule rule(
-            String candidateId,
+    private static MatchingRule rule(
+            String ruleId,
             Map<String, Object> allocationRule
     ) {
-        return new CandidateRule(
-                candidateId,
+        return new MatchingRule(
+                ruleId,
                 "group-1",
                 allocationRule
         );
@@ -306,12 +321,12 @@ class WorkerMatchingRuntimeTest {
 
     private static TaskRuleMatchDemand singleTaskDemand(
             String workerGroupId,
-            String candidateId,
+            String taskId,
             String workerId
     ) {
         return demand(
                 workerGroupId,
-                List.of(new TaskCandidateNeed(candidateId, 1)),
+                List.of(new TaskCandidateNeed(taskId, 1)),
                 Map.of(workerId, 101L)
         );
     }
@@ -357,7 +372,7 @@ class WorkerMatchingRuntimeTest {
     }
 
     private record Append(
-            String candidateId,
+            String taskId,
             int maximum,
             List<CandidateWorkerEntry> candidates
     ) {
@@ -374,20 +389,20 @@ class WorkerMatchingRuntimeTest {
 
         @Override
         public List<String> appendCandidateWorkers(
-                String candidateId,
+                String taskId,
                 int maximumCandidateWorkers,
                 List<CandidateWorkerEntry> candidates,
                 long expiresAtMillis
         ) {
             appends.add(new Append(
-                    candidateId,
+                    taskId,
                     maximumCandidateWorkers,
                     List.copyOf(candidates)
             ));
             if (failNext.compareAndSet(true, false)) {
                 throw new IllegalStateException("offline");
             }
-            return rejectCandidates.contains(candidateId)
+            return rejectCandidates.contains(taskId)
                     ? List.of()
                     : candidates.stream()
                             .limit(maximumCandidateWorkers)
@@ -397,14 +412,14 @@ class WorkerMatchingRuntimeTest {
 
         @Override
         public Map<String, Integer> candidateWorkerCounts(
-                List<String> candidateIds
+                List<String> taskIds
         ) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public List<CandidateWorkerEntry> consumeCandidateWorkers(
-                String candidateId,
+                String taskId,
                 int limit
         ) {
             throw new UnsupportedOperationException();
@@ -412,6 +427,12 @@ class WorkerMatchingRuntimeTest {
     }
 
     private static final class FakeCatalog implements WorkerMatchingCatalog {
+        @Override public TaskQuery prepareTaskQuery(String taskId, String group) {
+            throw new UnsupportedOperationException("DSL fixture has no named Rule");
+        }
+        @Override public MutationResult bindTaskRule(String taskId, String group, String ruleId) {
+            throw new UnsupportedOperationException("DSL fixture has no named Rule");
+        }
         @Override public void validateWorkerSelector(String group, com.xa.mass.kernel.task.TaskItemWorkerSelector query) {
             throw new UnsupportedOperationException("PRECOMPUTED fixture has no index");
         }
@@ -421,7 +442,7 @@ class WorkerMatchingRuntimeTest {
         @Override public java.util.Set<String> retainWorkerIds(String group, com.xa.mass.kernel.task.TaskItemWorkerSelector query, List<String> ids) {
             throw new UnsupportedOperationException("PRECOMPUTED fixture has no index");
         }
-        private final Map<String, CandidateRule> rules =
+        private final Map<String, MatchingRule> rules =
                 new LinkedHashMap<>();
         private final Map<String, WorkerFacts> facts = new LinkedHashMap<>();
         private final AtomicBoolean blockLoads = new AtomicBoolean();
@@ -457,8 +478,8 @@ class WorkerMatchingRuntimeTest {
         }
 
         @Override
-        public MutationResult createCandidateRule(
-                String candidateId,
+        public MutationResult bindTaskAllocationRule(
+                String taskId,
                 String workerGroupId,
                 Map<String, Object> allocationRule
         ) {
@@ -466,8 +487,8 @@ class WorkerMatchingRuntimeTest {
         }
 
         @Override
-        public Map<String, CandidateRule> loadCandidateRules(
-                List<String> candidateIds
+        public Map<String, MatchingRule> loadTaskRules(
+                List<String> taskIds
         ) {
             if (blockLoads.get()) {
                 loadEntered.countDown();
@@ -478,11 +499,11 @@ class WorkerMatchingRuntimeTest {
                     throw new IllegalStateException(interrupted);
                 }
             }
-            LinkedHashMap<String, CandidateRule> result =
+            LinkedHashMap<String, MatchingRule> result =
                     new LinkedHashMap<>();
-            candidateIds.forEach(candidateId -> result.put(
-                    candidateId,
-                    rules.get(candidateId)
+            taskIds.forEach(taskId -> result.put(
+                    taskId,
+                    rules.get(taskId)
             ));
             return result;
         }

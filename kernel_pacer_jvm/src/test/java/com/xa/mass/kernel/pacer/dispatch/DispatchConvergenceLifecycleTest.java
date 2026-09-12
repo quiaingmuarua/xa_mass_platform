@@ -341,11 +341,11 @@ class DispatchConvergenceLifecycleTest {
                 workerGroupId,
                 mechanism,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of(
+                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE ? Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "1"
-                )
+                ) : Map.of("priority", "0", "maxRetryTimes", "1")
         );
     }
 

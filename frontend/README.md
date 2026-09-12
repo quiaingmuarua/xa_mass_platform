@@ -199,7 +199,7 @@ WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
 debug composer
 accepts an advisory Event Name, a JSON Object Payload, and an Item-level
 `workerSelector` object: `{}` for ANY, `{"workerId":["worker-a"]}` for explicit
-IDs, or `{"worker.country":["CN"]}` for binding parameters. The browser validates
+IDs, or `{"worker.country":{"op":"eq","values":["CN"]}}` for a structured property query. The browser validates
 one binding and its 1..100 string parameters plus explicit-ID uniqueness; Matching
 owns supported bindings, parameter semantics and Group enablement. Calls go
 through Kernel scheduling; the browser does not query the index or infer

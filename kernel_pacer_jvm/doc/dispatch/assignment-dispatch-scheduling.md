@@ -33,7 +33,7 @@ claim Items, or dispatch Commands.
 
 | Mechanism | Persistent Rule owner | Worker acquisition | Candidate Cache |
 | --- | --- | --- | --- |
-| `PRECOMPUTED_TASK_RULE` | Matching Candidate Rule keyed by candidateId | ordered Group Demand filters a Pacer-held pool | used |
+| `PRECOMPUTED_TASK_RULE` | Matching-owned Task binding to a shared Rule | ordered Group Demand filters a Pacer-held pool | Task-scoped |
 | `ON_DEMAND_ITEM_RULE` | Kernel stores selector; Matching interprets property conditions | explicit IDs, indexed identities, then ANY | forbidden |
 
 Task creation still accepts a PRECOMPUTED allocation Rule, which Server stores
@@ -50,7 +50,7 @@ Main selects due PRECOMPUTED Tasks
   -> current deficits bound due HOT observation to at most 100 Workers
   -> Pacer exact-holds the observed pool
   -> one ordered TaskRuleMatchDemand is offered for the Group
-  -> Matching reads Candidate Rules and Worker facts
+  -> Matching resolves Task bindings to Rules and reads Worker facts
   -> Matching appends accepted workerId + opaque held score to Candidate buckets
   -> Dispatch consumes a Candidate bucket and exact-confirms before Item claim
 ```
@@ -59,7 +59,7 @@ The Demand contains:
 
 ```text
 workerGroupId
-ordered (candidateId, maximumCandidateWorkers) needs, at most 100
+ordered (taskId, maximumCandidateWorkers) needs, at most 100
 ordered workerId -> exact held score map, at most 100
 holdUntilMillis
 ```
@@ -79,7 +79,7 @@ partial failures, and unselected holds recover through lease expiry.
 Candidate Cache remains disposable address-oriented state:
 
 ```text
-candidateId -> CandidateWorkerEntry[]
+taskId -> CandidateWorkerEntry[]
 CandidateWorkerEntry = workerId + exact heldWorkerLeaseScore
 ZSET score = candidate expiry
 ```
@@ -95,7 +95,7 @@ The current public selectors include:
 {}
 {"workerId": ["worker-id"]}
 {"workerId": ["worker-a", "worker-b"]}
-{"worker.country": ["CN"]}
+{"worker.country": {"op": "eq", "values": ["CN"]}}
 ```
 
 Kernel validates generic structure and explicit-ID mechanics; Matching admits
@@ -129,6 +129,25 @@ indexed Workers are batch-rechecked by Matching before exact confirmation. Faile
 rechecks and unused holds expire naturally, without release compensation. Pacer passes the same selector to both index calls and
 does not interpret binding names/parameters, read Properties or encode index scores; facts-write and dirty invalidation
 remain separate commits and do not revoke already confirmed execution.
+
+## Named Rule Index Flow
+
+INDEXED_TASK uses the same final assignment closure with a different bounded
+identity source. Dispatch groups up to 100 Items by equal selectors, resolves
+one immutable Matching Task binding, and requests up to 100 IDs total through
+TaskQuery.take. It observes due HOT scores, acquires initial holds, then calls
+TaskQuery.retain for current membership before describing and exact-confirming.
+Matching owns both query interpretation and the shared Group index; Kernel never
+receives Rule IDs, property facts or index coordinates. Query objects last for one
+batch and own no lifecycle or cache. Missing bindings and index failure never
+fall back to ANY, DSL or Candidate Cache. The old Allocation Producer selects
+only PRECOMPUTED Tasks, so INDEXED_TASK never reserves Workers for an async match.
+
+Named Rules constrain empty queries and explicit IDs as well. Unbound finite
+Tasks use existing ON_DEMAND semantics, with CLOSE_WHEN_IDLE independently
+controlling lifecycle. Grouping and Worker dedup preserve Item order. No same-round
+refill, hold compensation, additional queue or persistent query cursor is added.
+The Matching command budget is HMGET + EVAL + optional EVAL per Task batch.
 
 ## Candidate Selection
 
@@ -166,7 +185,7 @@ Confirmation must return TRANSITIONED with a new execution fence even when the
 initial hold already covers the claim deadline. ResultContext stores that
 returned fence. Properties invalidation before confirmation rejects the old
 Candidate; after confirmation it preserves the dirty execution score.
-PRECOMPUTED and ON_DEMAND share this closure. Invalid Cache entries can retain
+PRECOMPUTED, INDEXED_TASK and ON_DEMAND share this closure. Invalid Cache entries can retain
 capacity until consumption or expiry; no fan-out or compensation is added.
 
 ## Failure Semantics
@@ -175,7 +194,7 @@ capacity until consumption or expiry; no fan-out or compensation is added.
 | --- | --- |
 | PRECOMPUTED Demand queue full | offer is skipped; hold expires; a later due round recomputes deficit |
 | Matching catalog or Cache failure | consumed Demand is dropped; completed Cache writes remain; other holds expire |
-| missing or invalid Candidate Rule | Candidate is skipped inside the Demand; Workers remain available to later needs |
+| missing or invalid Rule | Candidate is skipped inside the Demand; Workers remain available to later needs |
 | Candidate expiry or stale Worker score | Cache entry is dropped or final exact confirmation fails |
 | invalid ON_DEMAND Worker Selector | public mutation fails before Kernel TaskItem append |
 | Matching runtime unexpected exit | Matching health DOWN; no silent restart or Pacer fallback |

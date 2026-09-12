@@ -26,14 +26,14 @@ class TaskCallSubmissionServiceTest {
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
-                TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maximumCandidateWorkers", "100", "maxRetryTimes", "3"));
+                TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching);
-        var cn = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("CN")));
-        var malformed = TaskItemWorkerSelector.parse(Map.of("worker.country", List.of("cn")));
+        var cn = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
+        var malformed = TaskItemWorkerSelector.parse(Map.of("worker.country", Map.of("op", "in", "values", List.of("cn"))));
         doThrow(new IllegalArgumentException("invalid country")).when(matching).validateWorkerSelector("group", malformed);
-        var bad = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, Map.of("worker.country", List.of("cn")));
-        var good = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, Map.of("worker.country", List.of("CN")));
+        var bad = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, Map.of("worker.country", Map.of("op", "in", "values", List.of("cn"))));
+        var good = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, Map.of("worker.country", Map.of("op", "in", "values", List.of("CN"))));
         assertThatThrownBy(() -> service.submit("task", List.of(bad, good))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission);
         doThrow(new IllegalArgumentException("index disabled")).when(matching).validateWorkerSelector("group", cn);
@@ -82,13 +82,13 @@ class TaskCallSubmissionServiceTest {
         var descriptor = new TaskRuntime.TaskDescriptor("task", "group",
                 TaskRuntime.WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority", "0", "maximumCandidateWorkers", "100", "maxRetryTimes", "3"));
+                Map.of("priority", "0", "maxRetryTimes", "3"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching);
         var any = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, Map.of());
-        for (Map<String, List<String>> expression : List.of(
+        for (Map<String, ?> expression : List.of(
                 Map.of("worker.test.region", List.of("east", "west")),
-                Map.of("worker.country", List.of("CN", "US")))) {
+                Map.of("worker.country", Map.of("op", "in", "values", List.of("CN", "US"))))) {
             var selector = TaskItemWorkerSelector.parse(expression);
             doThrow(new IllegalArgumentException("unsupported")).when(matching).validateWorkerSelector("group", selector);
             var rejected = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new HashMap<>(expression));
@@ -104,7 +104,7 @@ class TaskCallSubmissionServiceTest {
         var runtime = mock(TaskRuntime.class);
         var catalog = mock(TaskResourceCatalog.class);
         var service = new TaskDataService(runtime, catalog, new TaskItemMapper(),
-                mock(TaskItemScoreBandCore.class), new TaskItemOutcomeProperties(Map.of()));
+                mock(TaskItemScoreBandCore.class), new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
         var cases = new ArrayList<List<String>>();
         cases.add(null);
         cases.add(List.of());

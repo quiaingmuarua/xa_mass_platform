@@ -26,7 +26,6 @@ public final class WorkerGroupTaskCallRegistrationService {
     private static final String RESOLVE_OPERATION = "taskCall.resolve";
     private static final Map<String, String> TASK_CONFIG = Map.of(
             "priority", "0",
-            "maximumCandidateWorkers", "1",
             "maxRetryTimes", "3"
     );
 

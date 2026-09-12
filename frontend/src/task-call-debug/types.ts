@@ -1,6 +1,6 @@
 import type { JsonValue } from "@/runtime-viewer/types";
 
-export type TaskItemWorkerSelector = Record<string, string[]>;
+export type TaskItemWorkerSelector = Record<string, JsonValue>;
 
 export interface TaskCallDebugDraft {
   taskId: string;

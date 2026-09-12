@@ -200,11 +200,11 @@ final class TaskDispatchPolicy {
     ) {
         if (task.descriptor().workerAllocationMechanism()
                 == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-            String candidateId = task.taskId();
+            String taskId = task.taskId();
             List<HeldWorkerCandidate> acquired = candidateSelection
                     .consumeCachedCandidates(
                             task.descriptor().workerGroupId(),
-                            candidateId,
+                            taskId,
                             messageIds.size()
                     );
             return pair(
@@ -218,8 +218,11 @@ final class TaskDispatchPolicy {
             selectors.put(messageId, Objects.requireNonNull(
                     items.get(messageId), "claimable TaskItem").workerSelector());
         }
-        Map<String, HeldWorkerCandidate> acquired = candidateSelection
-                .acquireOnDemandCandidates(
+        Map<String, HeldWorkerCandidate> acquired = task.descriptor().workerAllocationMechanism()
+                == WorkerAllocationMechanism.INDEXED_TASK
+                ? candidateSelection.acquireIndexedCandidates(task.taskId(), task.descriptor().workerGroupId(),
+                        selectors, Set.copyOf(roundWorkerIds), leaseUntilMillis)
+                : candidateSelection.acquireOnDemandCandidates(
                         task.descriptor().workerGroupId(),
                         selectors,
                         Set.copyOf(roundWorkerIds),

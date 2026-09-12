@@ -1,5 +1,8 @@
 package com.xa.mass.server.api.v1.controller;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyMap;
+
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.error.ServerErrorCode;
 
@@ -158,7 +161,7 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.createCandidateRule(any(), any(), any()))
+        when(matchingCatalog.bindTaskAllocationRule(any(), any(), any()))
                 .thenReturn(new MutationResult(MutationStatus.APPLIED));
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
@@ -252,7 +255,8 @@ class RuntimeApiControllerTest {
                 taskCatalog,
                 taskItems,
                 itemScores,
-                new TaskItemOutcomeProperties(Map.of(7, "delivered", 8, "read", 9, "replied"))
+                new TaskItemOutcomeProperties(Map.of(7, "delivered", 8, "read", 9, "replied")),
+                matchingCatalog
         );
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
@@ -513,6 +517,38 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.status").value("unchanged"))
                 .andExpect(jsonPath("$.code").doesNotExist())
                 .andExpect(jsonPath("$.message").doesNotExist());
+    }
+
+
+    @Test void createsNamedRuleAndUnrestrictedFiniteTasksWithoutCandidateCapacity() throws Exception {
+        when(matchingCatalog.bindTaskRule(anyString(), anyString(), anyString())).thenReturn(
+                new WorkerMatchingCatalog.MutationResult(WorkerMatchingCatalog.MutationStatus.APPLIED));
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"workerGroupId\":\"phone-tools\"}"))
+                .andExpect(status().isOk());
+        var descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(descriptors.capture());
+        assertThat(descriptors.getAllValues()).extracting(TaskDescriptor::workerAllocationMechanism)
+                .containsExactly(WorkerAllocationMechanism.INDEXED_TASK, WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE);
+        assertThat(descriptors.getAllValues()).allSatisfy(task -> {
+            assertThat(task.idleDisposition()).isEqualTo(TaskIdleDisposition.CLOSE_WHEN_IDLE);
+            assertThat(task.config()).doesNotContainKey("maximumCandidateWorkers");
+        });
+        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskAllocationRule(anyString(), anyString(), anyMap());
+    }
+
+    @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
+        for (String extra : List.of("\"ruleId\":\"worker.country\",\"allocationRule\":{}",
+                "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10")) {
+            mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"workerGroupId\":\"phone-tools\","+extra+"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskRule(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -1280,11 +1316,11 @@ class RuntimeApiControllerTest {
                 scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of(
+                !scenarioRpc ? Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                )
+                ) : Map.of("priority", "0", "maxRetryTimes", "3")
         );
     }
 }

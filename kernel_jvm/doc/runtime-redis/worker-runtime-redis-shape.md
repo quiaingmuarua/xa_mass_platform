@@ -10,7 +10,7 @@ keys; Server and Pacer use mechanical contracts rather than bypassing them.
 ```text
 Kernel WorkerResourceCatalog  WorkerGroup directory and persistent Binding
 Kernel WorkerScoreCore        registered members and scheduling Score
-WorkerMatchingCatalog         Worker/Platform facts and Candidate Rules
+WorkerMatchingCatalog         Worker/Platform facts and Rules
 Server Identity               external typed registration coordinates
 Server Endpoint Directory     local defaults and ID -> URI; no Redis connection
 ```
@@ -53,8 +53,12 @@ xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
   value       = complete canonical Platform Properties JSON
 
 xa_mass:<scope>:matching:candidate:rules
-  HASH field = candidateId
+  HASH field = ruleId
   value       = {"workerGroupId":"...","allocationRule":{...}}
+
+xa_mass:<scope>:matching:task:rules
+  HASH field = taskId
+  value       = {"ruleId":"...","workerGroupId":"..."}
 ```
 
 Worker Prepare does not write Matching facts. Server-validated Adapter
@@ -63,16 +67,22 @@ preserving the separate Platform row. Platform patch requires an existing
 Worker facts row, applies nullable field updates and uses bounded compare-and-set
 retries.
 
-Candidate Rules are create-only. Equal content is unchanged; different content
-conflicts. Orphan facts or Rules are inert. The resident Matching Runtime reads
-Candidate Rules only for a bounded PRECOMPUTED Demand containing Kernel-held
-Worker IDs.
+Task bindings have exactly two nonempty string fields and are create-only. Named
+Rules and DSL Rules share this HASH, but only DSL Rules have persisted definitions.
+One Matching Lua checks the binding and any DSL definition before filling missing
+state; exact retry is unchanged and rebinding conflicts. Old string binding values
+require scope rebuilding. The resident DSL Matching Runtime resolves at most 100
+Task bindings per Demand in one Lua, with unique definition reads. Kernel/Pacer
+carries only Task IDs and opaque held Worker scores. Canonical content identity,
+corruption and rebuild semantics belong to
+[Matching](../../../worker_matching_jvm/README.md#shared-rule-binding).
 
-ON_DEMAND stores one immutable workerSelector binding-to-parameters Map: ANY, explicit IDs or a
-property condition interpreted only by Matching.
-Indexed acquisition uses Matching's derived country ZSET and bounded post-hold
-membership recheck; it does not scan Group facts or use PRECOMPUTED Demand/Cache.
-The index shape, startup rebuild and timestamp bounds belong to
+Non-DSL Items store one immutable workerSelector expression: ANY, explicit IDs or
+a property query interpreted only by Matching. The named worker.country Rule is
+a fixed Handler and uses the same Group index as ON_DEMAND country queries.
+INDEXED_TASK prepares its binding once, batches queries and rechecks membership
+after hold. It does not scan Group facts or use PRECOMPUTED Demand/Cache. The index
+shape, startup rebuild and timestamp bounds belong to
 [Matching](../../../worker_matching_jvm/README.md#country-index).
 
 ## Worker Score
@@ -137,7 +147,7 @@ truth records nor atomic snapshots across these keys.
 ## Guardrails
 
 - Do not restore `worker:properties` or Properties inside Kernel metadata.
-- Do not place PRECOMPUTED Candidate Rules in Kernel Task JSON.
+- Do not place PRECOMPUTED Rules in Kernel Task JSON.
 - Do not add ON_DEMAND Item Rule storage; Kernel TaskItems carry one selector,
   not Properties, derived query/ID mirrors or index scores.
 - Do not use identity ownership for Worker discovery.

@@ -13,7 +13,6 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 
@@ -47,25 +46,25 @@ public final class TaskCreationService {
 
     public TaskCreateResponse create(TaskCreateRequest request) {
         if (request == null || request.workerGroupId() == null || request.workerGroupId().isBlank()
-                || request.allocationRule() == null || request.priority() < 0 || request.priority() > 99
-                || request.maximumCandidateWorkers() < 1 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
+                || request.allocationRule() != null && request.ruleId() != null || request.priority() < 0 || request.priority() > 99
+                || request.maximumCandidateWorkers() != null && (request.allocationRule() == null || request.maximumCandidateWorkers() < 1)
+                || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
         }
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
-        createCandidateRule(taskId, request);
+        bindTaskMatching(taskId, request);
+        var config = new java.util.LinkedHashMap<String, String>();
+        config.put("priority", Integer.toString(request.priority()));
+        config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
+        if (request.allocationRule() != null) config.put("maximumCandidateWorkers", Integer.toString(request.maximumCandidateWorkers()));
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
                 request.workerGroupId(),
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                request.allocationRule() != null ? WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                        : request.ruleId() != null ? WorkerAllocationMechanism.INDEXED_TASK : WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of(
-                        "priority", Integer.toString(request.priority()),
-                        "maximumCandidateWorkers",
-                        Integer.toString(request.maximumCandidateWorkers()),
-                        "maxRetryTimes",
-                        Integer.toString(request.maxRetryTimes())
-                )
+                config
         );
         TaskCreationResult result;
         try {
@@ -94,17 +93,16 @@ public final class TaskCreationService {
         };
     }
 
-    private void createCandidateRule(
-            String candidateId,
+    private void bindTaskMatching(
+            String taskId,
             TaskCreateRequest request
     ) {
+        if (request.ruleId() == null && request.allocationRule() == null) return;
         MutationResult result;
         try {
-            result = matchingCatalog.createCandidateRule(
-                    candidateId,
-                    request.workerGroupId(),
-                    request.allocationRule()
-            );
+            result = request.ruleId() != null
+                    ? matchingCatalog.bindTaskRule(taskId, request.workerGroupId(), request.ruleId())
+                    : matchingCatalog.bindTaskAllocationRule(taskId, request.workerGroupId(), request.allocationRule());
         } catch (RuntimeException error) {
             throw unavailable(error);
         }

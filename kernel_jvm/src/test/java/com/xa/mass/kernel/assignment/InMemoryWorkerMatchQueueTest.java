@@ -32,10 +32,10 @@ class InMemoryWorkerMatchQueueTest {
         );
     }
 
-    private static TaskRuleMatchDemand demand(String candidateId) {
+    private static TaskRuleMatchDemand demand(String taskId) {
         return new TaskRuleMatchDemand(
                 "group-1",
-                List.of(new TaskCandidateNeed(candidateId, 1)),
+                List.of(new TaskCandidateNeed(taskId, 1)),
                 Map.of("worker-1", 101L),
                 Long.MAX_VALUE
         );

@@ -492,13 +492,13 @@ class AssignmentPacersTest {
     }
 
     private static CandidateAllocationNeed allocationNeed(
-            String candidateId,
+            String taskId,
             int priority,
             int maximumCandidateWorkers
     ) {
         return allocationNeed(
                 "group-1",
-                candidateId,
+                taskId,
                 priority,
                 maximumCandidateWorkers
         );
@@ -506,13 +506,13 @@ class AssignmentPacersTest {
 
     private static CandidateAllocationNeed allocationNeed(
             String workerGroupId,
-            String candidateId,
+            String taskId,
             int priority,
             int maximumCandidateWorkers
     ) {
         return new CandidateAllocationNeed(
                 workerGroupId,
-                candidateId,
+                taskId,
                 priority,
                 maximumCandidateWorkers
         );
@@ -565,12 +565,12 @@ class AssignmentPacersTest {
                         "group-1",
                         mechanism,
                         idle,
-                        Map.of(
+                        mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE ? Map.of(
                                 "priority", Integer.toString(priority),
                                 "maximumCandidateWorkers",
                                 Integer.toString(maximumCandidateWorkers),
                                 "maxRetryTimes", "1"
-                        )
+                        ) : Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1")
                 ),
                 777_777_777L
         );

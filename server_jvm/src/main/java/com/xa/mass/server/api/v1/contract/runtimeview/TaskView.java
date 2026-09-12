@@ -9,6 +9,7 @@ public record TaskView(
         String workerAllocationMechanism,
         String idleDisposition,
         @Nullable Map<String, Object> allocationRule,
+        @Nullable String ruleId,
         Map<String, String> config
 ) {
 }

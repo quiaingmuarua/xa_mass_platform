@@ -54,6 +54,7 @@ public interface TaskRuntime {
 
     enum WorkerAllocationMechanism {
         PRECOMPUTED_TASK_RULE,
+        INDEXED_TASK,
         ON_DEMAND_ITEM_RULE
     }
 
@@ -146,16 +147,15 @@ public interface TaskRuntime {
             );
             Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
-            if (!config.keySet().equals(CONFIG_KEYS)) {
+            if (!config.keySet().equals(workerAllocationMechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                    ? CONFIG_KEYS : Set.of("priority", "maxRetryTimes"))) {
                 throw new IllegalArgumentException(
                         "config must contain exactly the declared keys"
                 );
             }
             int priority = decimalConfig(config, "priority");
-            int maximumCandidates = decimalConfig(
-                    config,
-                    "maximumCandidateWorkers"
-            );
+            int maximumCandidates = workerAllocationMechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                    ? decimalConfig(config, "maximumCandidateWorkers") : 1;
             int maxRetryTimes = decimalConfig(config, "maxRetryTimes");
             if (priority < 0 || priority > 99) {
                 throw new IllegalArgumentException(
@@ -182,6 +182,9 @@ public interface TaskRuntime {
         }
 
         public int maximumCandidateWorkers() {
+            if (workerAllocationMechanism != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
+                throw new IllegalStateException("Task does not use a Candidate Cache");
+            }
             return Integer.parseInt(
                     config.get("maximumCandidateWorkers")
             );

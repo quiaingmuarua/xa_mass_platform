@@ -300,11 +300,11 @@ class TaskResultsExportServiceTest {
                 "group-1",
                 mechanism,
                 disposition,
-                Map.of(
+                mechanism == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE ? Map.of(
                         "priority", "50",
                         "maximumCandidateWorkers", "10",
                         "maxRetryTimes", "3"
-                )
+                ) : Map.of("priority", "50", "maxRetryTimes", "3")
         );
     }
 

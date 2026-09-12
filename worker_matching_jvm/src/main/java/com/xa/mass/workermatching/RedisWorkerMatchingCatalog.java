@@ -11,9 +11,13 @@ import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,9 +32,40 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Redis persistence for Worker facts and PRECOMPUTED Candidate Rules. */
+/** Redis persistence for Worker facts, shared Rules and Task bindings. */
 public final class RedisWorkerMatchingCatalog
         implements WorkerMatchingCatalog, AutoCloseable {
+
+    private static final String BIND_TASK_RULE_SCRIPT = """
+            local binding = redis.call('HGET', KEYS[1], ARGV[1])
+            local definition = nil
+            if ARGV[4] ~= '' then definition = redis.call('HGET', KEYS[2], ARGV[3]) end
+            if (binding and binding ~= ARGV[2]) or (definition and definition ~= ARGV[4]) then
+              return -1
+            end
+            if binding and (definition or ARGV[4] == '') then return 0 end
+            if not definition and ARGV[4] ~= '' then redis.call('HSET', KEYS[2], ARGV[3], ARGV[4]) end
+            if not binding then redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]) end
+            return 1
+            """;
+
+    private static final String LOAD_TASK_RULES_SCRIPT = """
+            local bindings = redis.call('HMGET', KEYS[1], unpack(ARGV))
+            local ids, seen = {}, {}
+            for _, raw in ipairs(bindings) do
+              if raw then
+                local ok,binding=pcall(cjson.decode,raw)
+                local id=ok and type(binding)=='table' and binding.ruleId or nil
+                if type(id)=='string' and not seen[id] then
+                  seen[id]=true
+                  ids[#ids+1]=id
+                end
+              end
+            end
+            local definitions = {}
+            if #ids > 0 then definitions = redis.call('HMGET', KEYS[2], unpack(ids)) end
+            return {bindings, ids, definitions}
+            """;
 
     private static final String PATCH_PLATFORM_SCRIPT = """
             if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 0 then
@@ -43,86 +78,6 @@ public final class RedisWorkerMatchingCatalog
               return 0
             end
             redis.call('HSET', KEYS[2], ARGV[1], ARGV[4])
-            return 1
-            """;
-
-    // All numeric Redis arguments are formatted explicitly: Lua tostring loses significant
-    // digits for these 53-bit integer coordinates.
-    private static final String STORE_INDEXED_FACTS_SCRIPT = """
-            local scale = 8796093022208
-            local results = {}
-            for i = 1, #ARGV, 3 do
-              local id, replacement, code = ARGV[i], ARGV[i+1], tonumber(ARGV[i+2])
-              local old = redis.call('HGET', KEYS[1], id)
-              if old == replacement then
-                results[#results+1] = 0
-              else
-                redis.call('HSET', KEYS[1], id, replacement)
-                results[#results+1] = 1
-              end
-              if code < 0 then
-                redis.call('ZREM', KEYS[2], id)
-              else
-                local prior = redis.call('ZSCORE', KEYS[2], id)
-                if not prior or math.floor(tonumber(prior) / scale) ~= code then
-                  local low = prior and (tonumber(prior) % scale) or 0
-                  redis.call('ZADD', KEYS[2], string.format('%.0f', code * scale + low), id)
-                end
-              end
-            end
-            return results
-            """;
-
-    private static final String TAKE_INDEX_SCRIPT = """
-            local scale = 8796093022208
-            local lower = tonumber(ARGV[1]) * scale
-            local clock = redis.call('TIME')
-            local relative = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000) - 946684800000
-            if relative < 0 or relative >= scale then
-              return redis.error_reply('country index time is outside its 43-bit range')
-            end
-            local ids = redis.call('ZRANGEBYSCORE', KEYS[1], string.format('%.0f', lower),
-              '(' .. string.format('%.0f', lower + scale), 'LIMIT', 0, ARGV[2])
-            if #ids > 0 then
-              local args = {}
-              local score = string.format('%.0f', lower + relative)
-              for _, id in ipairs(ids) do
-                args[#args+1] = score
-                args[#args+1] = id
-              end
-              redis.call('ZADD', KEYS[1], unpack(args))
-            end
-            return ids
-            """;
-
-    private static final String RETAIN_INDEX_SCRIPT = """
-            local lower = tonumber(ARGV[1]) * 8796093022208
-            local upper = lower + 8796093022208
-            local scores = redis.call('ZMSCORE', KEYS[1], unpack(ARGV, 2))
-            local ids = {}
-            for i, score in ipairs(scores) do
-              if score and tonumber(score) >= lower and tonumber(score) < upper then
-                ids[#ids+1] = ARGV[i+1]
-              end
-            end
-            return ids
-            """;
-
-    private static final String REBUILD_INDEX_SCRIPT = """
-            local args = {}
-            for i = 1, #ARGV, 2 do
-              local raw = redis.call('HGET', KEYS[1], ARGV[i])
-              if raw == ARGV[i+1] then
-                local facts = cjson.decode(raw)
-                local country = facts['country']
-                if type(country) == 'string' and string.match(country, '^[A-Z][A-Z]$') then
-                  local code = (string.byte(country, 1) - 65) * 26 + string.byte(country, 2) - 65
-                  args[#args+1] = string.format('%.0f', code * 8796093022208)
-                  args[#args+1] = ARGV[i]
-                end
-              end
-            end
-            if #args > 0 then redis.call('ZADD', KEYS[2], unpack(args)) end
             return 1
             """;
 
@@ -171,49 +126,46 @@ public final class RedisWorkerMatchingCatalog
     }
 
     private void rebuildBatch(String group, List<String> batch) {
-        commands().eval(REBUILD_INDEX_SCRIPT, ScriptOutputType.INTEGER,
+        commands().eval(CountryRuleHandler.REBUILD_INDEX_SCRIPT, ScriptOutputType.INTEGER,
                 new String[]{workerFactsKey(group), countryIndexKey(group)}, batch.toArray(String[]::new));
     }
 
     @Override
     public void validateWorkerSelector(String workerGroupId, TaskItemWorkerSelector selector) {
-        countryCode(workerGroupId, selector);
+        requireCountryIndex(workerGroupId);
+        CountryRuleHandler.validate(selector);
     }
 
-    private int countryCode(String workerGroupId, TaskItemWorkerSelector selector) {
+    private void requireCountryIndex(String workerGroupId) {
         requireNonBlank(workerGroupId, "workerGroupId");
-        Objects.requireNonNull(selector, "workerSelector");
-        List<String> parameters = selector.expression().get("worker.country");
-        if (parameters == null || parameters.size() != 1) {
-            throw new IllegalArgumentException("unsupported indexed Worker selector");
-        }
         if (!countryIndexGroups.contains(workerGroupId)) {
             throw new IllegalArgumentException("country index is not enabled for WorkerGroup");
         }
-        return CountryIndex.code(parameters.get(0));
+    }
+
+    @Override
+    public @Nullable TaskQuery prepareTaskQuery(String taskId, String workerGroupId) {
+        requireNonBlank(taskId, "taskId");
+        requireNonBlank(workerGroupId, "workerGroupId");
+        String raw = commands().hmget(taskRulesKey(), taskId).getFirst().getValueOrElse(null);
+        MatchingRule binding = decodeBinding(raw);
+        if (binding == null || !workerGroupId.equals(binding.workerGroupId())
+                || !CountryRuleHandler.ID.equals(binding.ruleId()) || !countryIndexGroups.contains(workerGroupId)) {
+            return null;
+        }
+        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId));
     }
 
     @Override
     public List<String> takeWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, int limit) {
-        int code = countryCode(workerGroupId, selector);
-        if (limit < 1 || limit > MAX_BATCH_SIZE) throw new IllegalArgumentException("limit must be in 1..100");
-        List<String> ids = commands().eval(TAKE_INDEX_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{countryIndexKey(workerGroupId)}, Integer.toString(code),
-                Integer.toString(limit));
-        return List.copyOf(ids);
+        validateWorkerSelector(workerGroupId, selector);
+        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId)).take(Map.of(selector, limit)).get(selector);
     }
 
     @Override
     public Set<String> retainWorkerIds(String workerGroupId, TaskItemWorkerSelector selector, List<String> workerIds) {
-        int code = countryCode(workerGroupId, selector);
-        List<String> ids = boundedUnique(workerIds, "workerIds");
-        if (ids.isEmpty()) return Set.of();
-        List<String> args = new ArrayList<>();
-        args.add(Integer.toString(code));
-        args.addAll(ids);
-        List<String> retained = commands().eval(RETAIN_INDEX_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{countryIndexKey(workerGroupId)}, args.toArray(String[]::new));
-        return Set.copyOf(retained);
+        validateWorkerSelector(workerGroupId, selector);
+        return CountryRuleHandler.query(this::commands, countryIndexKey(workerGroupId)).retain(Map.of(selector, workerIds)).get(selector);
     }
 
     private String countryIndexKey(String group) {
@@ -254,14 +206,8 @@ public final class RedisWorkerMatchingCatalog
             return Map.of();
         }
         if (countryIndexGroups.contains(workerGroupId)) {
-            List<String> args = new ArrayList<>();
-            encoded.forEach((id, json) -> {
-                args.add(id);
-                args.add(json);
-                args.add(Integer.toString(CountryIndex.optionalCode(decodeObject(json).get("country"))));
-            });
-            List<Long> effects = commands().eval(STORE_INDEXED_FACTS_SCRIPT, ScriptOutputType.MULTI,
-                    new String[]{workerFactsKey(workerGroupId), countryIndexKey(workerGroupId)}, args.toArray(String[]::new));
+            List<Long> effects = CountryRuleHandler.replaceFacts(commands(), workerFactsKey(workerGroupId),
+                    countryIndexKey(workerGroupId), encoded);
             Map<String, MutationResult> results = new LinkedHashMap<>();
             int i = 0;
             for (String id : encoded.keySet()) {
@@ -404,71 +350,85 @@ public final class RedisWorkerMatchingCatalog
     }
 
     @Override
-    public MutationResult createCandidateRule(
-            String candidateId,
+    public MutationResult bindTaskAllocationRule(
+            String taskId,
             String workerGroupId,
             Map<String, Object> allocationRule
     ) {
-        CandidateRule rule;
         String encoded;
         try {
-            rule = new CandidateRule(
-                    candidateId,
-                    workerGroupId,
-                    allocationRule
-            );
-            encoded = encodeRule(rule.workerGroupId(), rule.allocationRule());
+            requireNonBlank(taskId, "taskId");
+            requireNonBlank(workerGroupId, "workerGroupId");
+            encoded = encodeRule(workerGroupId, requireObject(allocationRule));
         } catch (IllegalArgumentException error) {
-            return result(MutationStatus.INVALID, "invalid Candidate rule");
+            return result(MutationStatus.INVALID, "invalid Task rule binding");
         }
-        return createOnly(
-                candidateRulesKey(),
-                rule.candidateId(),
-                encoded
-        );
+        return bind(taskId, workerGroupId, ruleId(encoded), encoded);
     }
 
     @Override
-    public Map<String, @Nullable CandidateRule> loadCandidateRules(
-            List<String> candidateIds
+    public MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId) {
+        try {
+            requireNonBlank(taskId, "taskId");
+            requireCountryIndex(workerGroupId);
+            if (!CountryRuleHandler.ID.equals(ruleId)) throw new IllegalArgumentException("unknown Rule");
+        } catch (IllegalArgumentException error) {
+            return result(MutationStatus.INVALID, "unknown Rule or unavailable Group index");
+        }
+        return bind(taskId, workerGroupId, ruleId, "");
+    }
+
+    private MutationResult bind(String taskId, String workerGroupId, String id, String definition) {
+        String binding = encodeObject(Map.of("workerGroupId", workerGroupId, "ruleId", id));
+        long effect = commands().eval(BIND_TASK_RULE_SCRIPT, ScriptOutputType.INTEGER,
+                new String[]{taskRulesKey(), rulesKey()}, taskId, binding, id, definition);
+        return switch ((int) effect) {
+            case 1 -> new MutationResult(MutationStatus.APPLIED);
+            case 0 -> new MutationResult(MutationStatus.UNCHANGED);
+            default -> result(MutationStatus.CONFLICT, "Task binding or shared Rule conflicts with stored value");
+        };
+    }
+
+    @Override
+    public Map<String, @Nullable MatchingRule> loadTaskRules(
+            List<String> taskIds
     ) {
-        List<String> ids = boundedUnique(candidateIds, "candidateIds");
+        Objects.requireNonNull(taskIds, "taskIds");
+        List<String> ids = boundedUnique(new ArrayList<>(new LinkedHashSet<>(taskIds)), "taskIds");
         if (ids.isEmpty()) {
             return Map.of();
         }
-        List<KeyValue<String, String>> values = commands().hmget(
-                candidateRulesKey(),
-                ids.toArray(String[]::new)
-        );
-        LinkedHashMap<String, CandidateRule> result = new LinkedHashMap<>();
+        List<?> rows = commands().eval(LOAD_TASK_RULES_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{taskRulesKey(), rulesKey()}, ids.toArray(String[]::new));
+        List<?> bindings = (List<?>) rows.get(0);
+        List<?> ruleIds = (List<?>) rows.get(1);
+        List<?> definitions = (List<?>) rows.get(2);
+        Map<String, MatchingRule> rules = new LinkedHashMap<>();
+        for (int index = 0; index < ruleIds.size(); index++) {
+            String id = (String) ruleIds.get(index);
+            String raw = (String) definitions.get(index);
+            rules.put(id, raw == null ? null : decodeMatchingRule(id, raw));
+        }
+        LinkedHashMap<String, MatchingRule> result = new LinkedHashMap<>();
         for (int index = 0; index < ids.size(); index++) {
-            String candidateId = ids.get(index);
-            String raw = values.get(index).getValueOrElse(null);
-            result.put(
-                    candidateId,
-                    raw == null
-                            ? null
-                            : decodeCandidateRule(candidateId, raw)
-            );
+            MatchingRule binding = decodeBinding((String) bindings.get(index));
+            MatchingRule rule = binding == null ? null : rules.get(binding.ruleId());
+            if (binding != null && CountryRuleHandler.ID.equals(binding.ruleId())) {
+                rule = binding;
+            }
+            result.put(ids.get(index), binding != null && rule != null
+                    && binding.workerGroupId().equals(rule.workerGroupId()) ? rule : null);
         }
         return immutableNullableMap(result);
     }
 
-    private MutationResult createOnly(
-            String key,
-            String field,
-            String encoded
-    ) {
-        RedisCommands<String, String> commands = commands();
-        if (commands.hsetnx(key, field, encoded)) {
-            return new MutationResult(MutationStatus.APPLIED);
+    private static String ruleId(String encoded) {
+        try {
+            return "rule-" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(encoded.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException("SHA-256 is unavailable", error);
         }
-        return encoded.equals(commands.hget(key, field))
-                ? new MutationResult(MutationStatus.UNCHANGED)
-                : result(
-                        MutationStatus.CONFLICT,
-                        "create-only value conflicts with stored value"
-                );
     }
 
     private String workerFactsKey(String workerGroupId) {
@@ -481,8 +441,12 @@ public final class RedisWorkerMatchingCatalog
                 + workerGroupId;
     }
 
-    private String candidateRulesKey() {
+    private String rulesKey() {
         return keyspace.base() + ":matching:candidate:rules";
+    }
+
+    private String taskRulesKey() {
+        return keyspace.base() + ":matching:task:rules";
     }
 
     private RedisCommands<String, String> commands() {
@@ -528,18 +492,30 @@ public final class RedisWorkerMatchingCatalog
         ));
     }
 
-    private CandidateRule decodeCandidateRule(
-            String candidateId,
+    private @Nullable MatchingRule decodeBinding(@Nullable String raw) {
+        if (raw == null) return null;
+        try {
+            Map<String, Object> object = decodeObject(raw);
+            requireExactFields(object, Set.of("ruleId", "workerGroupId"));
+            return new MatchingRule(requireString(object.get("ruleId")), requireString(object.get("workerGroupId")), null);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    private MatchingRule decodeMatchingRule(
+            String id,
             String raw
     ) {
         try {
+            if (!ruleId(raw).equals(id)) return null;
             Map<String, Object> object = decodeObject(raw);
             requireExactFields(
                     object,
                     Set.of("workerGroupId", "allocationRule")
             );
-            return new CandidateRule(
-                    candidateId,
+            return new MatchingRule(
+                    id,
                     requireString(object.get("workerGroupId")),
                     requireObject(object.get("allocationRule"))
             );

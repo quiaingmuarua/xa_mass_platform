@@ -101,7 +101,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             rule.put("worker.country", Map.of("$eq", campaign.specification.country()));
             if (campaign.specification.senderPhone() != null)
                 rule.put("worker.phone", Map.of("$eq", campaign.specification.senderPhone()));
-            campaign.taskId = creation.create(new TaskCreateRequest(campaign.group, rule, 50, candidates, 3)).taskId();
+            campaign.taskId = creation.create(new TaskCreateRequest(campaign.group, rule, null, 50, candidates, 3)).taskId();
             for (int start = 0; start < campaign.messages.size(); start += 100) {
                 requireRunning();
                 var items = campaign.messages.subList(start, Math.min(start + 100, campaign.messages.size())).stream()

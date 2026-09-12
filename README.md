@@ -11,7 +11,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Owner | Responsibility |
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
-| Worker Matching | Worker/Platform Properties, property-bound indexes and take time (currently country), PRECOMPUTED Candidate Rules and ordered filtering of a bounded held pool |
+| Worker Matching | Worker/Platform Properties, property-bound indexes and take time (currently country), PRECOMPUTED Rules and ordered filtering of a bounded held pool |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
@@ -25,9 +25,9 @@ scheduling eligibility.
 
 ```text
 TASK
-API -> Server coordinates Matching Rules and Kernel Task/Item writes
+API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
     -> PRECOMPUTED: Kernel holds a bounded pool; Matching filters into Candidate Cache
-       ON_DEMAND: one workerSelector binding-to-parameters Map; explicit IDs, Matching indexed identities, or ANY
+       ON_DEMAND: one workerSelector query Map; explicit IDs, Matching indexed identities, or ANY
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
@@ -156,3 +156,9 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 [human architecture overview](frontend/public/overview.htm) is a visual
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
+
+Named Rule dispatch uses `INDEXED_TASK`: Matching resolves the Task binding and
+queries its materialized Group index; Kernel retains HOT, hold, post-hold recheck,
+exact confirmation and claim. It uses no Match Demand or Candidate Cache. The
+original explicit allocationRule DSL retains its PRECOMPUTED path. Finite Task
+lifecycle is independent of this allocation choice.

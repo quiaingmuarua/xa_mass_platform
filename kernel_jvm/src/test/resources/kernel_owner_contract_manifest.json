@@ -98,7 +98,9 @@
       "offer",
       "size"
     ],
+    "TaskQuery": ["retain", "take"],
     "WorkerCandidateIndex": [
+      "prepare_task_query",
       "retain_worker_ids",
       "take_worker_ids"
     ],
@@ -266,7 +268,7 @@
       "score"
     ],
     "TaskCandidateNeed": [
-      "candidate_id",
+      "task_id",
       "maximum_candidate_workers"
     ],
     "TaskRuleMatchDemand": [
@@ -367,6 +369,7 @@
     ],
     "WorkerAllocationMechanism": [
       "PRECOMPUTED_TASK_RULE",
+      "INDEXED_TASK",
       "ON_DEMAND_ITEM_RULE"
     ],
     "TaskIdleDisposition": [

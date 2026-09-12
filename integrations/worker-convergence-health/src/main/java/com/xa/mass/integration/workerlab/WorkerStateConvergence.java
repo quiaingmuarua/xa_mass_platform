@@ -713,7 +713,7 @@ final class WorkerStateConvergence {
             WorkerRef worker
     ) {
         String workerId = identities.get(worker);
-        require(workerId != null, "Missing Worker identity for Candidate Rule");
+        require(workerId != null, "Missing Worker identity for Rule");
         return workerId;
     }
 

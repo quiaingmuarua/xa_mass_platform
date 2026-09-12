@@ -29,12 +29,8 @@ public final class TaskItemMapper {
             TaskItemRequest request,
             long createdAtMillis
     ) {
-        if (request.workerSelector() != null) {
-            throw new IllegalArgumentException(
-                    "finite TaskItem forbids workerSelector"
-            );
-        }
-        return item(request, createdAtMillis, TaskItemWorkerSelector.parse(Map.of()));
+        return item(request, createdAtMillis, TaskItemWorkerSelector.parse(
+                request.workerSelector() == null ? Map.of() : request.workerSelector()));
     }
 
     public TaskItem onDemandItem(

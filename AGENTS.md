@@ -35,7 +35,7 @@ agents change the repository; it is not the canonical mechanism narrative.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
 - `worker_matching_jvm/` owns Worker/Platform Properties, PRECOMPUTED
-  Candidate Rules, constraint interpretation and ordered candidate
+  shared Rules and Task bindings, constraint interpretation and ordered candidate
   publication.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `distribution/server/` owns the sole production main and Boot JAR. It imports
@@ -203,15 +203,23 @@ architectures.
   Pacer policy and loop code do not.
 - Task Owner stores only scheduling descriptors and TaskItem execution data.
   It must not store PRECOMPUTED allocation Rules or interpret Match Property
-  names and constraint operators; persistent Candidate Rules and their
-  semantics belong to Worker Matching. For ON_DEMAND it stores one immutable
-  `workerSelector` binding-to-parameters Map and owns generic structure, ANY and explicit ID
+  names and constraint operators; persistent Rules and their
+  semantics belong to Worker Matching. Matching owns Task-to-Rule association
+  without reading Kernel Task metadata or lifecycle. Kernel/Pacer uses Task IDs,
+  never Rule IDs; Rule sharing must not share Candidate caches or held Workers.
+  For ON_DEMAND it stores one immutable
+  `workerSelector` query Map and owns generic structure, ANY and explicit ID
   semantics only. Matching validates other selectors and binds indexes directly
   to full property names; adding an index within this selector contract must not
   change Kernel/Pacer production code. Matching owns acquisition and take time through
   `WorkerCandidateIndex`; Kernel retains due HOT observation, initial hold,
   post-hold membership recheck, exact confirm and claim. Index failure must not
-  fall back to ANY; ON_DEMAND uses no Match Demand or Candidate Cache.
+  fall back to ANY; ON_DEMAND and INDEXED_TASK use no Match Demand or Candidate Cache.
+  INDEXED_TASK resolves a named Rule by Task ID and reuses a dispatch-local
+  TaskQuery for take and post-hold membership recheck. It owns no lifecycle,
+  cache or close operation. Named Rules constrain ANY and explicit IDs too;
+  Kernel never receives their IDs or index coordinates. Only DSL Tasks retain
+  maximumCandidateWorkers configuration.
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
   A success may replace an earlier failed Result; storing terminal failure
@@ -260,7 +268,7 @@ kernel_jvm`.
   returned execution fence into ResultContext. Properties invalidation uses the
   Score Owner after APPLIED facts writes; never fan out to Candidate Caches. Unmatched and unselected holds expire naturally;
   do not compensate-release them or add a pending lease registry.
-  PRECOMPUTED and ON_DEMAND are mutually exclusive fixed workflows; do not add
+  PRECOMPUTED DSL, INDEXED_TASK and ON_DEMAND are explicit fixed workflows; do not add
   a generic acquisition Strategy, Cache exchange or cached-to-on-demand fallback.
 - `WorkerMatchQueue` is the complete PRECOMPUTED handoff contract. Pacer
   offers, Matching consumes, and health reads size through the same Queue
@@ -302,7 +310,8 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
-Server persists PRECOMPUTED Matching Rules before Kernel Task metadata.
+Server establishes named Task bindings or PRECOMPUTED shared DSL Rules before
+Kernel Task metadata; failed Task creation does not roll back Matching data.
 Worker Prepare resolves identity and asks Kernel to establish Binding and cold
 Score membership in separate, retryable stages. Valid network evidence requests
 activation best-effort in every Pacer preset; Prepare itself is not evidence.
