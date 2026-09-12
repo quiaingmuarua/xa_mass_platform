@@ -3,6 +3,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +19,7 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class WorkerServiceabilityDispatchPolicyTest {
@@ -106,6 +108,41 @@ class WorkerServiceabilityDispatchPolicyTest {
         verify(scores).advanceObservedRecoveryRechecks(
                 "group-1", Map.of("worker-1", opaqueScore)
         );
+    }
+
+    @Test
+    void recoveryAppearingAfterAnEmptyScanWaitsForTheSweepRestart() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        WorkerServiceabilityRuntime runtime = mock(WorkerServiceabilityRuntime.class);
+        AtomicLong now = new AtomicLong(10_000L);
+        long opaqueScore = -888_888_888L;
+        when(scores.acquireRecoveryRecheckCandidates("group-1", 0L, 100))
+                .thenReturn(List.of(), List.of(new WorkerScoreObservation("worker-1", opaqueScore)));
+        when(scores.getScoreStates("group-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", new WorkerScoreState(
+                        "worker-1", opaqueScore, WorkerScorePolarity.RECOVERY_RECHECK,
+                        10_000L, 0, 0)));
+        when(catalog.getWorkerDescriptors(List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(scores.advanceObservedRecoveryRechecks("group-1", Map.of("worker-1", opaqueScore)))
+                .thenReturn(Map.of("worker-1", transitioned(-321L)));
+        when(runtime.offerProbeRequests("adapter-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", ProbeRequestOfferStatus.OFFERED));
+        WorkerServiceabilityDispatchPolicy policy = new WorkerServiceabilityDispatchPolicy(
+                scores, catalog, runtime, now::get);
+
+        assertEquals(0, policy.dispatchProbes(List.of("group-1"), config()));
+        now.set(19_999L);
+        assertEquals(0, policy.dispatchProbes(List.of("group-1"), config()));
+        verify(scores, times(1)).acquireRecoveryRecheckCandidates("group-1", 0L, 100);
+        verify(runtime, never()).offerProbeRequests("adapter-1", List.of("worker-1"));
+
+        now.set(20_000L);
+        assertEquals(1, policy.dispatchProbes(List.of("group-1"), config()));
+        verify(scores, times(2)).acquireRecoveryRecheckCandidates("group-1", 0L, 100);
+        verify(scores).advanceObservedRecoveryRechecks("group-1", Map.of("worker-1", opaqueScore));
+        verify(runtime).offerProbeRequests("adapter-1", List.of("worker-1"));
     }
 
     @Test

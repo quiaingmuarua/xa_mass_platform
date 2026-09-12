@@ -98,6 +98,10 @@ class RuntimeBoundaryIntegrationTest {
     // Covers two complete 5-second lease recovery windows under CI load.
     private static final Duration RESULT_CONVERGENCE_TIMEOUT =
             Duration.ofSeconds(15);
+    // Covers a 10-second empty sweep cooldown, the next 1-second Producer
+    // round, and the Adapter/Result evidence handoff.
+    private static final Duration SERVICEABILITY_CONVERGENCE_TIMEOUT =
+            Duration.ofSeconds(15);
     private static final String SERVICEABILITY_WORKER_GROUP_ID =
             "serviceability-runtime-boundary";
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
@@ -1178,11 +1182,11 @@ class RuntimeBoundaryIntegrationTest {
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE,
-                Duration.ofSeconds(10)
+                SERVICEABILITY_CONVERGENCE_TIMEOUT
         );
-        // The unmatched demand may hold this Worker for one 500ms
-        // allocation window. Serviceability observes it only after that
-        // exact hold becomes due, then advances the RECOVERY coordinate.
+        // The explicit missing target cannot hold this Worker. A sweep may
+        // have observed empty RECOVERY before the fixture write; its next
+        // eligible round must advance the coordinate before offering a probe.
         assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );
@@ -1225,11 +1229,13 @@ class RuntimeBoundaryIntegrationTest {
     ) throws InterruptedException {
         long deadline = System.nanoTime()
                 + maximumWait.toNanos();
+        WorkerScoreState lastObserved = null;
         while (System.nanoTime() < deadline) {
             WorkerScoreState state = workerScores.getScoreStates(
                     workerGroupId,
                     List.of(workerId)
             ).get(workerId);
+            lastObserved = state;
             if (state != null
                     && state.polarity() == expectedPolarity) {
                 return state;
@@ -1238,6 +1244,7 @@ class RuntimeBoundaryIntegrationTest {
         }
         throw new AssertionError(
                 "Worker score did not become " + expectedPolarity
+                        + " within " + maximumWait + "; last observed: " + lastObserved
         );
     }
 

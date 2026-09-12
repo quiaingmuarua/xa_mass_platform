@@ -158,6 +158,12 @@ score page is never mutated or held by Serviceability. A Group outside the
 bounded due-Task page is intentionally ignored until Task demand exposes it in
 a later round.
 
+Runtime Boundary allows 15 seconds for its periodic recovery witness: the
+10-second empty-range cooldown, the next 1-second Producer round, and the
+Adapter/Result handoff. An empty scan may precede the fixture's RECOVERY write;
+it does not promise a probe within the cooldown itself. The controlled-clock
+Pacer proof checks this deferred discovery without changing production timing.
+
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former
 hard-coded Polling branch. An excluded HOT score is exact-toggled to RECOVERY;
