@@ -158,11 +158,14 @@ score page is never mutated or held by Serviceability. A Group outside the
 bounded due-Task page is intentionally ignored until Task demand exposes it in
 a later round.
 
-Runtime Boundary allows 15 seconds for its periodic recovery witness: the
-10-second empty-range cooldown, the next 1-second Producer round, and the
-Adapter/Result handoff. An empty scan may precede the fixture's RECOVERY write;
-it does not promise a probe within the cooldown itself. The controlled-clock
-Pacer proof checks this deferred discovery without changing production timing.
+Runtime Boundary establishes its connected RECOVERY fixture with an exact Owner
+toggle before approving the Task that exposes the Group to periodic discovery.
+It must not overwrite an in-flight probe hold with an earlier Score. The proof
+allows 15 seconds for recovery: the 10-second empty-range cooldown, the next
+1-second Producer round, and the Adapter/Result handoff. A fresh coordinate can
+still enter the due range after an empty scan; the bound does not promise a probe
+within the cooldown itself. The controlled-clock Pacer proof checks this deferred
+discovery without changing production timing.
 
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former

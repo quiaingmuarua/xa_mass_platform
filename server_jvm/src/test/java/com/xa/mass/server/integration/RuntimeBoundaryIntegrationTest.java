@@ -1015,12 +1015,7 @@ class RuntimeBoundaryIntegrationTest {
                     "serviceability-demand-item-" + suffix,
                     Map.of("workerId",List.of("missing-worker-"+suffix))
             );
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks/" + demandTaskId + "/approve",
-                    null
-            ).statusCode()).isEqualTo(200);
-            awaitServiceabilitySnapshot(workerGroupId, workerId);
+            awaitServiceabilitySnapshot(workerGroupId, workerId, demandTaskId);
         } finally {
             if (demandTaskCreated) {
                 send(
@@ -1153,40 +1148,35 @@ class RuntimeBoundaryIntegrationTest {
 
     private void awaitServiceabilitySnapshot(
             String workerGroupId,
-            String workerId
+            String workerId,
+            String demandTaskId
     ) throws Exception {
         WorkerScoreState before = awaitWorkerScore(
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        RedisClient client = RedisClient.create(REDIS_URL);
-        try (var connection = client.connect(StringCodec.UTF8)) {
-            var redis = connection.sync();
-            String scoreKey = REDIS_KEYSPACE.base()
-                    + ":worker:score:" + workerGroupId;
-            // Fixture-only: leave the Route connected while forcing the
-            // periodic snapshot path to converge RECOVERY back to HOT.
-            redis.zadd(scoreKey, -before.score(), workerId);
-            WorkerScoreState recovery = awaitWorkerScore(
-                    workerGroupId,
-                    workerId,
-                    WorkerScorePolarity.RECOVERY_RECHECK
-            );
-            assertThat(recovery.timeMillis()).isEqualTo(before.timeMillis());
-
-        } finally {
-            client.shutdown();
-        }
+        // Establish the exact RECOVERY fixture before Task approval exposes
+        // this Group to periodic probes. Never overwrite an in-flight hold.
+        assertThat(workerScores.toggleCurrentPolarity(
+                workerGroupId, workerId, before.score()
+        ).status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
+        WorkerScoreState recovery = awaitWorkerScore(
+                workerGroupId, workerId, WorkerScorePolarity.RECOVERY_RECHECK
+        );
+        assertThat(recovery.timeMillis()).isEqualTo(before.timeMillis());
+        assertThat(send(
+                "POST", "/api/v1/tasks/" + demandTaskId + "/approve", null
+        ).statusCode()).isEqualTo(200);
         WorkerScoreState after = awaitWorkerScore(
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE,
                 SERVICEABILITY_CONVERGENCE_TIMEOUT
         );
-        // The explicit missing target cannot hold this Worker. A sweep may
-        // have observed empty RECOVERY before the fixture write; its next
-        // eligible round must advance the coordinate before offering a probe.
+        // The explicit missing target cannot hold this Worker. A fresh RECOVERY
+        // coordinate may not be due at the first scan; a later eligible round
+        // must advance it before offering a probe.
         assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );
