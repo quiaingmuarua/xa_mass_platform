@@ -22,6 +22,12 @@ reused for take and membership recheck. Missing/corrupt bindings, wrong Groups,
 unavailable Handlers and read failures never select an unrestricted fallback.
 Item failure and idle settlement still run when candidate admission is unavailable.
 
+Dispatch orders the selected Tasks by actual previous service: unserved Tasks
+first, then least recently served. Only Command publication advances this bounded,
+process-local hint; empty rounds preserve it. The [Task Dispatch contract](task-dispatch-pacer.md#round-uniqueness)
+defines membership, restart and progress limits. It adds no Worker reservation
+or Redis operation.
+
 Each Task supplies at most 100 due Items. Kernel captures selectors; Matching
 interprets property names, operations and values. Default Rule identity selectors
 use HOT selection; named Rules constrain ANY/IDs through their index too.

@@ -2,7 +2,7 @@
 
 Primary claim: offered online call load, observed completion, latency distributions
 and saturation behavior of the existing Task Call and caller-targeted Direct
-Call paths. Task Call also measures coexistence with one finite Rule-index Task.
+Call paths. Task Call also measures coexistence with one finite default Rule ANY Task.
 Each suite's fixed Worker count is a measurement fixture, not another
 correctness, recovery or scale tier.
 
@@ -66,8 +66,8 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
 ```
 
 The nightly manifest contains these seven main cases plus **only** the original
-`mixed-500`: 100 Workers, 30 seconds, 50,000 Rule-index Items, 100ms Handler,
-at most 50 candidates. This independent coexistence witness is not included in
+`mixed-500`: 100 Workers, 30 seconds, 50,000 default Rule ANY Items, 100ms Handler,
+sharing the full Worker pool. This independent coexistence witness is not included in
 aligned path-cost ratios. The runner checks exact case membership and continues
 collecting remaining case evidence after a case failure. It never calls this
 single mixed case a complete historical Task suite. Historical `task`, `direct`
@@ -144,7 +144,7 @@ capability files are excluded from CI artifacts.
 | `any-1000` | 1,000 calls/s, ANY | None |
 | `any-2000` | 2,000 calls/s, ANY | None |
 | `targeted-500` | 500 calls/s, explicit Worker IDs in round-robin order | None |
-| `mixed-500` | 500 calls/s, ANY | One Rule-index Task, 50,000 Items, 100ms delay, at most 50 candidates |
+| `mixed-500` | 500 calls/s, ANY | One default Rule ANY Task, 50,000 Items, 100ms delay, full shared Worker pool |
 
 Each case warms up at 100 calls/s for 20 seconds, observes successful warmup
 closure, then measures for 30 seconds. A call submits one Item with a fresh
@@ -158,7 +158,17 @@ presence, nonterminal preview and unobserved Items in a fixed 1,000-ID sample
 spanning all 50,000 Items during measurement. It does not assume insertion order.
 The same conditions must still hold at the end. Failure stops the case; it does
 not create additional work or retry mutation. Background Items use a 600-second
-TTL. This case does not impose fairness or an online-call priority guarantee.
+TTL. Neither Task reserves Worker capacity. The current Dispatch recent-service
+hint prevents fixed-order monopolization; this case does not impose equal shares
+or an online-call priority guarantee. After the fixed drain budget every accepted
+online Item must have a succeeded Result: an observed failed Result fails this
+coexistence case, even though it satisfies the other Task cases' measurement-only
+closure contract. There is no response-rate or latency threshold.
+
+Task fixture version 4 records the current default Rule/full-pool world and this
+successful coexistence closure oracle. The retired version-1 background used a
+50-candidate cache bound; comparisons across that cutover must not treat the
+competition conditions as identical. No cache or capacity bound is restored.
 
 ## Measurement And Acceptance
 

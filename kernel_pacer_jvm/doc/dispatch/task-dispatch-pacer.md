@@ -49,6 +49,22 @@ lifecycle, cache, queue, persistent cursor or Worker lease authority.
 
 ## Round Uniqueness
 
+The single-flight Dispatch Policy retains only the IDs of recently served Tasks
+from the current Main-selected batch (at most 100). Unserved Tasks keep their
+observation order and precede served peers; served Tasks run least recently
+served first. A Task moves to the back only after at least one Command is
+published. Empty candidate rounds, failed confirmation/claim and unsuccessful
+publication do not advance its turn. This avoids synchronizing a blind per-round
+rotation with Worker release cadence. Progress in another Group cannot reset a
+waiting Task's turn.
+
+The hint holds no Worker, Score or binding data and adds no Redis command.
+Leaving the observed batch discards that Task's history; process restart clears all
+history. It prevents fixed-order monopolization among continuously observed
+competing Tasks, without promising equal throughput, weighted priority, Item
+fairness, a completion deadline or progress without usable candidate evidence.
+INITIAL priority and the Score Owner's bounded Task discovery remain unchanged.
+
 One dispatch round keeps a Worker-ID set shared across Tasks. A Worker can back
 at most one Item assignment in that round. Explicit targets are considered in
 Item and target order; ANY Items use the Score Owner's bounded due order.

@@ -97,6 +97,11 @@ no Task Score point recheck. INITIAL needs no Descriptor wrapper. These values
 are round evidence, not locks; every later mutation still uses exact owner
 fences.
 
+Inside its single-flight Producer, Task Dispatch reorders the selected batch
+using bounded recent-service history: unserved Tasks first, then least recently
+served. Successful Command publication advances the hint; no-progress rounds do
+not. It has no persistent cursor, additional discovery or capacity reservation.
+
 `DispatchConvergenceRuntime` owns one non-daemon Main Scheduler thread.
 `DispatchMainScheduler` owns one virtual thread per non-empty eligible Producer
 round. Every Producer is single-flight. The Main Scheduler reads the original

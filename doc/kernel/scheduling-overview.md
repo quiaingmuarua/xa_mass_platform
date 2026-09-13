@@ -99,8 +99,13 @@ convergence delay. Persistently due work and persistently idle compatible
 Workers failing to form assignments across repeated eligible rounds is a
 liveness defect. A full Task page alone does not establish starvation.
 
-Do not add Task rotation, tenant fairness or global Group discovery solely
-because work waits behind fully utilized Workers. Massive active Task/Group
+Within the Main-selected batch, Dispatch gives unserved Tasks a turn before
+previously served peers, then uses least-recent-service order. Successful
+Command publication advances this bounded process-local hint; empty rounds do
+not. It prevents fixed-order monopolization of returning compatible capacity
+without reserving Workers or promising equal shares and completion deadlines.
+
+Do not add global Group discovery or durable fairness coordination. Massive active Task/Group
 cardinality, multi-tenant isolation, sharding and fairness require a separate
 architecture. Adding threads does not partition an Owner's hot Redis key.
 

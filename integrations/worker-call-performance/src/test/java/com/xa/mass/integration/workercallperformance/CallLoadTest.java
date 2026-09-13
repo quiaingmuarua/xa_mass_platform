@@ -114,4 +114,17 @@ class CallLoadTest {
         assertThat(batch.samples().getFirst().observed).isEqualTo("not_observed");
         assertThat(batch.summary().get("unresolvedAcceptedIds")).isEqualTo(List.of("missing-0"));
     }
+
+    @Test void coexistenceCannotPassWithObservedFailuresAfterDrain() {
+        var clock = new AtomicLong(1_000_000_000L);
+        var batch = CallLoad.schedule(1, 1, 1, "mixed", Runnable::run,
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.NOT_OBSERVED), clock::get, clock::set);
+        batch.samples().getFirst().observed = "failed";
+        WorkerCallPerformanceMain.requireHealthy(batch);
+        assertThatThrownBy(() -> WorkerCallPerformanceMain.requireSucceededAcceptedResults(batch))
+                .hasMessageContaining("coexistence Items finished failed");
+        batch.samples().getFirst().observed = "succeeded";
+        WorkerCallPerformanceMain.requireSucceededAcceptedResults(batch);
+        assertThat(batch.summary()).containsEntry("successRate", 0.0).containsEntry("acceptedSuccessRateAfterDrain", 1.0);
+    }
 }

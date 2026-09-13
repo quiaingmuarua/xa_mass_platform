@@ -169,7 +169,7 @@ small bounded active Task set
   -> each finite WorkerGroup may contain many Workers
 ```
 
-The liveness target is work-conserving convergence, not per-Task fairness:
+The liveness target is work-conserving convergence with bounded Task progress:
 
 - fully occupied compatible Workers that keep completing assigned work are
   normal backpressure;
@@ -178,11 +178,16 @@ The liveness target is work-conserving convergence, not per-Task fairness:
 - persistently due work plus persistently available compatible Workers that
   still cannot form any assignment across repeated eligible rounds is a
   scheduling liveness defect.
+- Within the Main-selected Task set, Dispatch tries unserved Tasks before
+  previously served peers, then least recently served first. Only actual Command
+  publication advances this process-local ordering hint; empty rounds do not.
+  Fixed Task order must not let one continuously ready Task monopolize returning
+  compatible capacity. This is not a throughput-share or completion-time promise.
 
 A full Task page alone does not classify the condition: check whether compatible
-Worker capacity is actually idle. Do not add Task rotation, tenant fairness or
-global Group discovery merely because some Tasks wait while available Workers
-remain fully utilized. Massive active Task/WorkerGroup cardinality,
+Worker capacity is actually idle or repeatedly goes to the same competing Task.
+Keep the ordering hint bounded to the current Task batch, with no durable cursor,
+Worker reservation, new discovery or fairness queue. Massive active Task/WorkerGroup cardinality,
 multi-tenant fairness, sharding and SaaS-scale isolation are separate future
 architectures.
 

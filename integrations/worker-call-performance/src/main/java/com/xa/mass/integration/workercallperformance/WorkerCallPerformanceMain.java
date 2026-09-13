@@ -43,7 +43,7 @@ public final class WorkerCallPerformanceMain {
         Path output = Path.of(options.get("--output"));
         Files.createDirectories(output);
         var summary = new LinkedHashMap<String, Object>();
-        summary.put("fixtureVersion", diagnosis ? 3 : 1);
+        summary.put("fixtureVersion", 4);
         summary.put("callPath", "TASK");
         summary.put("workers", workers);
         summary.put("case", name);
@@ -104,7 +104,8 @@ public final class WorkerCallPerformanceMain {
             if (monitorFailure.get() != null) throw monitorFailure.get();
             summary.put("phase", "drain");
             settle(api, task, measured, 180);
-            requireHealthy(measured);
+            if (background == null) requireHealthy(measured);
+            else requireSucceededAcceptedResults(measured);
             summary.put("status", "passed");
             summary.put("phase", "complete");
         } catch (Exception error) {
@@ -172,6 +173,12 @@ public final class WorkerCallPerformanceMain {
             throw new CallLoad.ProtocolFailure("Invalid call response");
         if (batch.samples().stream().anyMatch(s -> s.accepted() && s.observed.equals("not_observed")))
             throw new IllegalStateException("Accepted Items remain unobserved after drain budget");
+    }
+
+    static void requireSucceededAcceptedResults(CallLoad.Batch batch) {
+        requireHealthy(batch);
+        if (batch.samples().stream().anyMatch(s -> s.accepted() && s.observed.equals("failed")))
+            throw new IllegalStateException("Accepted coexistence Items finished failed");
     }
 
     private static List<String> readyWorkers(CallApi api, int expectedWorkers) throws Exception {

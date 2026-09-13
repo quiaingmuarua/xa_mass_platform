@@ -392,7 +392,7 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM,
             "configurationSourceSha256": fingerprint(root), "workers": worker_count, "group": GROUP,
             "configurationSources": configuration_sources(root),
-            "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 100,
+            "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 50,
                 "resultIdleIntervalMillis": 100, "serviceabilityDispatchEnabled": False},
             "redisImage": REDIS_IMAGE, "maximumInFlight": 4096, "warmupSeconds": 20,
             "measurementSeconds": seconds, "httpRequestTimeoutSeconds": 5, "waitTimeoutMillis": 1000,
@@ -675,7 +675,7 @@ def main():
     runs = []
     final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
              "suite": options.suite,
-             "fixtureVersion": 3 if options.suite in ("rpc-diagnosis", "nightly") else 2 if options.suite == "direct-diagnosis" else 1,
+             "fixtureVersion": 4 if options.suite in ("task", "rpc-diagnosis", "nightly") else 2 if options.suite == "direct-diagnosis" else 1,
              "repetitions": options.repetitions, "expectedCases": list((options.case,) if options.case else cases),
              "diagnostics": options.diagnostics,
              "purpose": purpose,

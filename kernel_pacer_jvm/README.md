@@ -97,12 +97,17 @@ Serviceability retains sweep hints only for Groups in that Task batch.
 The production load model is intentionally a small bounded active Task set,
 many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The
 vertical Item acquisition/lease/claim/delivery/result chain is the primary
-backpressure surface. The Pacer targets work-conserving convergence rather than
-per-Task fairness: fully utilized Workers are normal backpressure, while a
+backpressure surface. The Pacer targets work-conserving convergence with bounded
+Task progress: fully utilized Workers are normal backpressure, while a
 bounded scan, exact CAS or bounded index take may add short convergence delay.
 Persistently due work and persistently idle compatible Workers failing to form
 an assignment across repeated eligible rounds is a liveness defect. A full Task
-page by itself proves neither starvation nor sufficient capacity. Massive
+page by itself proves neither starvation nor sufficient capacity. Within the
+selected batch, unserved Tasks precede served peers, then least recently served
+Tasks go first. Only Command publication advances the bounded process-local
+history; empty rounds do not. Returning compatible capacity must not be
+monopolized by fixed Task order. This does not promise throughput shares or
+completion deadlines. Massive
 active Task/WorkerGroup counts, multi-tenant fairness and sharding are outside
 this Pacer contract.
 

@@ -30,6 +30,9 @@ final class TaskDispatchPolicy {
     private final WorkerCandidateSelectionPolicy candidateSelection;
     private final LongSupplier currentTimeMillis;
     private final int failedOutcomeTag;
+    // Bounded ordering hint only. Immutable snapshots also tolerate a cancelled
+    // producer finishing during a Pacer restart; it may only replace this hint.
+    private volatile List<String> recentlyServedTaskIds = List.of();
 
     TaskDispatchPolicy(
             TaskScoreBandCore taskScores,
@@ -106,8 +109,11 @@ final class TaskDispatchPolicy {
                 ITEM_CLAIM_LEASE_MILLIS
         );
         Set<String> roundWorkerIds = new LinkedHashSet<>();
+        var servedTaskIds = new LinkedHashSet<>(recentlyServedTaskIds);
+        List<ObservedTask> orderedTasks = orderForDispatch(tasks, servedTaskIds);
+        recentlyServedTaskIds = List.copyOf(servedTaskIds);
         int published = 0;
-        for (ObservedTask task : tasks) {
+        for (ObservedTask task : orderedTasks) {
             long checkedAt = DispatchStageEvent.start();
             Map<String, TaskItemScoreObservation> observed =
                     itemScores.acquireItemScoreCandidates(
@@ -186,11 +192,17 @@ final class TaskDispatchPolicy {
                                 worker
                         )
                 ));
-                published += assignmentDispatcher.dispatch(
+                int taskPublished = assignmentDispatcher.dispatch(
                         task,
                         attempts,
                         claimUntilMillis
                 );
+                published += taskPublished;
+                if (taskPublished > 0) {
+                    servedTaskIds.remove(task.taskId());
+                    servedTaskIds.add(task.taskId());
+                    recentlyServedTaskIds = List.copyOf(servedTaskIds);
+                }
             } finally {
                 taskScores.rewriteSameBandTimeMillis(
                         task.taskId(),
@@ -200,6 +212,22 @@ final class TaskDispatchPolicy {
             }
         }
         return published;
+    }
+
+    private static List<ObservedTask> orderForDispatch(
+            List<ObservedTask> tasks,
+            Set<String> servedTaskIds
+    ) {
+        Map<String, ObservedTask> ordered = new LinkedHashMap<>();
+        tasks.forEach(task -> ordered.put(task.taskId(), task));
+        servedTaskIds.retainAll(ordered.keySet());
+        // Waiting Tasks precede served peers; empty rounds cannot phase-lock
+        // a fixed rotation with the Workers' release cadence.
+        for (String taskId : servedTaskIds) {
+            ObservedTask task = ordered.remove(taskId);
+            ordered.put(taskId, task);
+        }
+        return List.copyOf(ordered.values());
     }
 
     private Map<String, HeldWorkerCandidate> assignments(
