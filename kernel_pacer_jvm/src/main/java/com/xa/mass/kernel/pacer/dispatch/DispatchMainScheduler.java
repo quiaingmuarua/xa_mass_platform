@@ -278,9 +278,16 @@ final class DispatchMainScheduler {
                 return;
             }
             if (batchSize == 0) {
-                deferProducer(runtime);
+                if (producerId == DispatchProducerId.WORKER_SERVICEABILITY) {
+                    // Keep eligibility for the next existing Task observation.
+                    // Another full interval can repeatedly miss a paced Task.
+                    runtime.waitingForTaskSource = true;
+                } else {
+                    deferProducer(runtime);
+                }
                 return;
             }
+            runtime.waitingForTaskSource = false;
             runtime.inflight = true;
             try {
                 executor.submit(() -> {
@@ -320,6 +327,10 @@ final class DispatchMainScheduler {
                     eligible.add(producerId);
                 }
             });
+            // Waiting for input must not create another source poll or busy loop.
+            if (eligible.stream().allMatch(id -> runtimes.get(id).waitingForTaskSource)) {
+                eligible.clear();
+            }
             return eligible;
         }
 
@@ -360,6 +371,9 @@ final class DispatchMainScheduler {
             long waitNanos = Long.MAX_VALUE;
             boolean inflight = false;
             for (ProducerRuntime runtime : runtimes.values()) {
+                if (runtime.waitingForTaskSource) {
+                    continue;
+                }
                 if (runtime.inflight) {
                     inflight = true;
                     continue;
@@ -392,6 +406,7 @@ final class DispatchMainScheduler {
         }
 
         private void deferProducer(ProducerRuntime runtime) {
+            runtime.waitingForTaskSource = false;
             runtime.nextEligibleNanos = Math.addExact(nanoTime.getAsLong(), runtime.intervalNanos);
             if (runtime.id == DispatchProducerId.TASK_DISPATCH)
                 DispatchStageEvent.batch(DispatchStageEvent.start(), "DISPATCH_DEFER", 0, 0, false);
@@ -452,6 +467,7 @@ final class DispatchMainScheduler {
         private final DispatchProducerId id;
         private final long intervalNanos;
         private boolean inflight;
+        private boolean waitingForTaskSource;
         private long nextEligibleNanos;
 
         private ProducerRuntime(

@@ -110,6 +110,15 @@ its complete root input. A busy Producer skips that source snapshot and retains
 no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
+If an eligible Serviceability Producer receives no NORMAL Task input, it waits
+for the next source observation already triggered by another fixed Producer.
+An empty page does not consume another full Serviceability interval: otherwise
+its deadline can repeatedly coincide with Task pacing's current-slot gap. This
+wait stores no Task or Group input and neither wakes Main nor adds source reads.
+A non-empty round or source failure restores the ordinary completion/backoff
+interval. `DispatchBudgetTest` checks progress and the unchanged source-call count
+under deliberately aligned clocks.
+
 DEFAULT Task Dispatch checks at most 100 Items per Task per round. Its next
 eligibility is set 50ms after the Main Scheduler processes producer completion;
 the interval does not start at dispatch launch. Slow producers remain single-flight

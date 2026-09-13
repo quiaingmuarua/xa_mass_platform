@@ -105,6 +105,13 @@ and supplies that complete root input to the optional Worker Serviceability
 Producer. With no surviving due Task, the Producer is not invoked and therefore
 does not read Worker state or offer Probe requests.
 
+An eligible Producer that receives no NORMAL input remains ready for the next
+Task source observation already required by the other fixed Producers. Waiting
+does not create a poll, wake Main, or retain previous Group identities. This
+prevents the one-second deadline from repeatedly missing Tasks while their
+current 100ms pacing slot is outside the due range. After a non-empty round or
+source failure, the ordinary interval applies again.
+
 One Serviceability round receives distinct WorkerGroups from the Main Scheduler
 and visits each Group in that order. The Policy cannot discover or add Groups.
 There is no process-local Group rotation cursor. HOT and RECOVERY each keep one

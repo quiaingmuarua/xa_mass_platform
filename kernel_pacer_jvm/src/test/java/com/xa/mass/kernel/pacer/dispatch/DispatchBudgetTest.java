@@ -76,6 +76,33 @@ class DispatchBudgetTest {
         assertEquals(List.of(100, 1), observedSizes);
     }
 
+    @Test void serviceabilityUsesTheNextExistingTaskObservationAfterAnEmptyPage() {
+        var scores = mock(TaskScoreBandCore.class);
+        var catalog = mock(TaskResourceCatalog.class);
+        var serviceability = mock(WorkerServiceabilityDispatchPolicy.class);
+        var clock = new AtomicLong();
+        // Task pacing can hide the Group in the current 100 ms score slot.
+        // Every 1-second Serviceability deadline deliberately falls in that gap.
+        when(scores.acquireSchedulingTasks(100)).thenAnswer(call ->
+                clock.get() / 1_000_000L % 100 == 0 ? Map.of() : Map.of("task", 123L));
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(catalog.loadTaskAllocationDescriptors(List.of("task")))
+                .thenReturn(Map.of("task", descriptor()));
+        var config = WorkerServiceabilityDispatchConfig.defaults(100L);
+        var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
+                mock(TaskDispatchPolicy.class), serviceability, AssignmentDispatchConfig.defaults(), config);
+        var executor = new ManualExecutor();
+        var run = scheduler.new SchedulerRun(executor, clock::get);
+        for (int millis = 0; millis <= 3_000; millis += 50) {
+            clock.set(TimeUnit.MILLISECONDS.toNanos(millis));
+            run.step();
+            while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
+            run.step(); // Apply completions; waiting for input must not create a source poll.
+        }
+        verify(serviceability, times(3)).dispatchProbes(List.of("group"), config);
+        verify(scores, times(61)).acquireSchedulingTasks(100);
+    }
+
     private static final class ManualExecutor extends AbstractExecutorService {
         final LinkedList<Runnable> pending = new LinkedList<>();
         public void execute(Runnable command) { pending.add(command); }
