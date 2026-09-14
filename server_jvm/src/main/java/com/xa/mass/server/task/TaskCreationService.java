@@ -95,7 +95,7 @@ public final class TaskCreationService {
         MutationResult result;
         try {
             result = matchingCatalog.bindTaskRule(taskId, request.workerGroupId(),
-                    request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId());
+                    request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId(), request.refillTargets());
         } catch (RuntimeException error) {
             throw unavailable(error);
         }

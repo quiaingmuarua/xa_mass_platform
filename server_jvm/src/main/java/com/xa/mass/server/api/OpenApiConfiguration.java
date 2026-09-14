@@ -1,6 +1,6 @@
 package com.xa.mass.server.api;
 
-import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
+import io.swagger.v3.oas.models.media.Schema;
 
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Info;
@@ -66,10 +66,24 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiConfiguration {
 
     @Bean
+    OpenApiCustomizer eligibilityQuerySchema() {
+        return document -> {
+            // Matching's shared query validates itself without depending on HTTP schema annotations.
+            Schema<?> query = document.getComponents().getSchemas().get("EligibilityQuery");
+            query.setDescription("Operator-free query interpreted by the bound Rule. Empty or omitted query means ANY; "
+                    + "workerId lists select identities. Multiple values mean any of those values, not separate quotas.");
+            query.setRequired(List.of("count"));
+            query.setAdditionalProperties(false);
+            query.getProperties().get("count").setMinimum(java.math.BigDecimal.ONE);
+            query.getProperties().get("count").setMaximum(java.math.BigDecimal.valueOf(1000));
+        };
+    }
+
+    @Bean
     OpenApiCustomizer taskItemStateSchema() {
         return document -> {
             // Map value inference drops the DTO's nullable annotation.
-            var state = document.getComponents().getSchemas().get("TaskItemStateResponse");
+            Schema<?> state = document.getComponents().getSchemas().get("TaskItemStateResponse");
             state.setType(null);
             state.setTypes(new LinkedHashSet<>(List.of("object", "null")));
         };

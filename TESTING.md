@@ -117,10 +117,10 @@ Rule binding and index proof belongs to Redis Owner: concurrent create-only
 bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
 rebuild isolation. Matching tests prove Handler/query pairing and unsupported
-condition rejection. Pacer tests prove actual grouped demand, one bounded query
-batch, post-hold membership recheck, round exclusions and opaque exact fences.
-Runtime Boundary runs actual Workers across shared Rules and independent Task
-closure. These are not cross-owner transactions or loss-repair guarantees.
+condition rejection, shared MAX watermarks and atomic destructive consumption.
+Pacer tests prove refill without Item reads, independently scheduled consumption,
+round exclusions and opaque exact fences. Runtime Boundary runs actual Workers
+serving two Tasks from the same Eligibility and preserves independent Task closure. These are not cross-owner transactions or loss-repair guarantees.
 
 Use the lowest-cost proof that owns the changed claim:
 
@@ -299,18 +299,25 @@ observations fail immediately; only temporary HTTP transport failures remain
 eligible for bounded polling. Android is not a secondary witness for the Java
 Worker proof.
 
-## Direct index acquisition
+## Shared Eligibility refill and dispatch
 
 Redis Owner proves strict bindings, index rotation, sparse phone partitions,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
-one binding HMGET per at-most-100-Task round, one take plus optional retain per
-Task indexed subset, and one facts/index Lua per Worker batch. Default identity
-selection still performs the common binding read. Focused Pacer tests retain
-exact HOT/hold/retain/descriptor boundaries and explicit targets beyond the first
-100 identities. Runtime Boundary uses actual WebSocket, Socket and Polling
-Workers and independent Task closure. Dynamic Matching preserves its 1,000
-Worker/150,400 Item workload using a fixed proof Rule and Item selectors;
-Messages validates country plus sparse phone through its named Handler.
+one binding HMGET per at-most-100-Task round, six commands for named refill of
+100 identities even across 100 queries, and zero Redis access for local take or
+satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
+batches. Properties dirtying invalidates old fences; a fresh hold after natural
+expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.
+
+Focused tests cover MAX targets across Tasks, overlapping query stock, bounded
+capacities, concurrent take, constrained-target budget sharing and source failure
+after hold. Pacer tests keep refill independent of Item observation and dispatch
+independent of source reads/acquisition. Runtime Boundary uses actual WebSocket,
+Socket and Polling Workers, including multiple Tasks consuming one shared pool.
+Dynamic Matching preserves its 1,000 Worker/150,400 Item workload with explicit
+proof-Rule refill targets. Messages declares country plus sparse phone targets.
+The existing mixed Call workload supplies coexistence and aggregate Redis cost
+evidence; a local nonreference run is not a throughput improvement claim.
 
 ## CI Gate
 

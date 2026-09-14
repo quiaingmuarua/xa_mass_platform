@@ -35,11 +35,9 @@ class TaskDispatchProgressTest {
         var tasks = List.of(task("background", "shared"), task("online", "shared"), task("third", "shared"));
         for (int round = 0; round < 9; round++) {
             if (round % 3 == 0) rig.availableGroups.add("shared");
-            rig.policy.dispatchTasks(tasks);
+            rig.policy.dispatchTasks(tasks, Map.of());
         }
         assertEquals(List.of("background", "online", "third"), rig.published);
-        verify(rig.selection, times(9)).prepareQueries(Map.of(
-                "background", "shared", "online", "shared", "third", "shared"));
         for (var task : tasks) verify(rig.itemScores, times(9)).acquireItemScoreCandidates(task.taskId(), 100);
     }
 
@@ -50,7 +48,7 @@ class TaskDispatchProgressTest {
         for (int round = 0; round < 4; round++) {
             rig.availableGroups.addAll(List.of("shared", "other"));
             // Task score observation order can change independently of successful dispatch.
-            rig.policy.dispatchTasks(round % 2 == 0 ? tasks : List.of(tasks.get(2), tasks.get(0), tasks.get(1)));
+            rig.policy.dispatchTasks(round % 2 == 0 ? tasks : List.of(tasks.get(2), tasks.get(0), tasks.get(1)), Map.of());
         }
         assertEquals(List.of("background", "online", "background", "online"),
                 rig.published.stream().filter(id -> !id.equals("independent")).toList());
@@ -63,11 +61,11 @@ class TaskDispatchProgressTest {
         var first = task("first", "shared");
         var second = task("second", "shared");
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(first));
+        rig.policy.dispatchTasks(List.of(first), Map.of());
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(first, second));
+        rig.policy.dispatchTasks(List.of(first, second), Map.of());
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(second));
+        rig.policy.dispatchTasks(List.of(second), Map.of());
         assertEquals(List.of("first", "second", "second"), rig.published);
         verify(rig.itemScores, times(2)).acquireItemScoreCandidates("first", 100);
     }
@@ -77,13 +75,13 @@ class TaskDispatchProgressTest {
         var rig = new Rig();
         var tasks = List.of(task("first", "shared"), task("waiting", "shared"));
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(tasks);
+        rig.policy.dispatchTasks(tasks, Map.of());
         rig.availableGroups.add("shared");
         rig.rejectPublication = true;
-        assertEquals(0, rig.policy.dispatchTasks(tasks));
+        assertEquals(0, rig.policy.dispatchTasks(tasks, Map.of()));
         rig.rejectPublication = false;
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(tasks);
+        rig.policy.dispatchTasks(tasks, Map.of());
         assertEquals(List.of("first", "waiting"), rig.published);
     }
 
@@ -112,7 +110,7 @@ class TaskDispatchProgressTest {
                         TaskItemWorkerSelector.parse(Map.of()))));
                 return result;
             });
-            when(selection.acquireCandidates(any(), anyString(), anyMap(), anySet(), anyLong())).thenAnswer(call -> {
+            when(selection.takeCandidates(any(), anyString(), anyMap(), anySet())).thenAnswer(call -> {
                 String group = call.getArgument(1);
                 Map<String, TaskItemWorkerSelector> selectors = call.getArgument(2);
                 Set<String> roundWorkers = call.getArgument(3);

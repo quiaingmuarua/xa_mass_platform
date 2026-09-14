@@ -8,8 +8,8 @@ enum RuleHandler {
     COUNTRY("worker.country", "country", """
             return country(w['country']), {}
             """) {
-        @Override RuleIndex.Criteria criteria(TaskItemWorkerSelector selector) {
-            return countries(selector, Set.of("worker.country"), "");
+        @Override RuleIndex.Criteria criteria(Map<String,List<String>> query) {
+            return countries(query, Set.of("worker.country"), "");
         }
     },
     MESSAGING("worker.messaging.available", "messaging", """
@@ -18,14 +18,14 @@ enum RuleHandler {
             if type(w.phone) == 'string' and w.phone ~= '' then parts[1]='phone:'..w.phone end
             return country(w.country), parts
             """) {
-        @Override RuleIndex.Criteria criteria(TaskItemWorkerSelector selector) {
+        @Override RuleIndex.Criteria criteria(Map<String,List<String>> query) {
             String partition = "";
-            if (selector.expression().containsKey("worker.phone")) {
-                List<String> phones = conditionValues(selector.expression().get("worker.phone"));
+            if (query.containsKey("worker.phone")) {
+                List<String> phones = query.get("worker.phone");
                 if (phones.size() != 1) throw new IllegalArgumentException("phone requires one value");
                 partition = "phone:" + phones.getFirst();
             }
-            return countries(selector, Set.of("worker.country", "worker.phone"), partition);
+            return countries(query, Set.of("worker.country", "worker.phone"), partition);
         }
     },
     // Only explicitly enabled proof Groups install this projection. It is absent from normal profiles.
@@ -45,9 +45,9 @@ enum RuleHandler {
             parts[#parts+1]='slot:'..slot
             return 0, parts
             """) {
-        @Override RuleIndex.Criteria criteria(TaskItemWorkerSelector selector) {
-            if (selector.isAny() || selector.hasExplicitWorkerIds()) return identities(selector);
-            var expression=selector.expression();
+        @Override RuleIndex.Criteria criteria(Map<String,List<String>> query) {
+            if (query.isEmpty() || query.containsKey("workerId")) return identities(query);
+            var expression=query;
             if (expression.keySet().equals(Set.of("worker.convergenceSlot"))) {
                 return new RuleIndex.Criteria("slot:"+one(expression.get("worker.convergenceSlot")), "any", List.of());
             }
@@ -65,35 +65,42 @@ enum RuleHandler {
     RuleHandler(String id, String indexName, String projection) {
         this.id=id; this.indexName=indexName; this.projection=projection;
     }
-    abstract RuleIndex.Criteria criteria(TaskItemWorkerSelector selector);
+    abstract RuleIndex.Criteria criteria(Map<String,List<String>> query);
 
     static RuleHandler named(String id) {
         for (var handler : values()) if (handler.id.equals(id)) return handler;
         throw new IllegalArgumentException("unknown Rule");
     }
 
-    private static RuleIndex.Criteria identities(TaskItemWorkerSelector selector) {
-        return selector.isAny() ? new RuleIndex.Criteria("", "any", List.of())
-                : new RuleIndex.Criteria("", "ids", selector.targetWorkerIds());
+    static RuleIndex.Criteria identities(Map<String,List<String>> query) {
+        return query.isEmpty() ? new RuleIndex.Criteria("", "any", List.of())
+                : new RuleIndex.Criteria("", "ids", query.get("workerId"));
     }
 
-    private static RuleIndex.Criteria countries(TaskItemWorkerSelector selector, Set<String> supported, String partition) {
-        if (selector.isAny() || selector.hasExplicitWorkerIds()) return identities(selector);
-        if (!supported.containsAll(selector.expression().keySet())) throw new IllegalArgumentException("unsupported Rule condition");
-        if (!selector.expression().containsKey("worker.country")) return new RuleIndex.Criteria(partition,"any",List.of());
-        List<String> codes=conditionValues(selector.expression().get("worker.country")).stream()
+    private static RuleIndex.Criteria countries(Map<String,List<String>> query, Set<String> supported, String partition) {
+        if (query.isEmpty() || query.containsKey("workerId")) return identities(query);
+        if (!supported.containsAll(query.keySet())) throw new IllegalArgumentException("unsupported Rule condition");
+        if (!query.containsKey("worker.country")) return new RuleIndex.Criteria(partition,"any",List.of());
+        List<String> codes=query.get("worker.country").stream()
                 .map(value -> Integer.toString(CountryIndex.code(value))).distinct().toList();
         return new RuleIndex.Criteria(partition,"countries",codes);
     }
 
-    private static String optional(Map<String,Object> expression, String name) {
+    private static String optional(Map<String,List<String>> expression, String name) {
         return expression.containsKey(name) ? one(expression.get(name)) : "*";
     }
-    private static String one(Object expression) {
-        var values=conditionValues(expression);
+    private static String one(List<String> expression) {
+        var values=expression;
         if (values.size()!=1) throw new IllegalArgumentException("condition requires one value");
         return values.getFirst();
     }
+    static EligibilityQuery normalize(TaskItemWorkerSelector selector, int count) {
+        var query = new LinkedHashMap<String,List<String>>();
+        selector.expression().forEach((key, value) -> query.put(key,
+                key.equals("workerId") ? selector.targetWorkerIds() : conditionValues(value)));
+        return new EligibilityQuery(query, count);
+    }
+
     private static List<String> conditionValues(Object expression) {
         if (!(expression instanceof Map<?,?> condition) || !condition.keySet().equals(Set.of("op","values"))
                 || !(condition.get("op") instanceof String op) || !(condition.get("values") instanceof List<?> values)

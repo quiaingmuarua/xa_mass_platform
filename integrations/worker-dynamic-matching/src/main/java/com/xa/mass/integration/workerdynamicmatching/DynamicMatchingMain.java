@@ -209,8 +209,11 @@ public final class DynamicMatchingMain {
 
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
+        var refillQuery=new LinkedHashMap<String,Object>();
+        rule.forEach((field,condition) -> refillQuery.put(field,object(condition).get("values")));
         var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group,
-                "ruleId", "proof.worker.facts", "priority", witness ? 10 : 50, "maxRetryTimes", 3), false);
+                "ruleId", "proof.worker.facts", "priority", witness ? 10 : 50, "maxRetryTimes", 3,
+                "refillTargets",List.of(Map.of("query",refillQuery,"count",100))), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {

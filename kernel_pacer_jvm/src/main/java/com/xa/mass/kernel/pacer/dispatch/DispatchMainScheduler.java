@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import java.util.ArrayList;
@@ -33,6 +34,8 @@ final class DispatchMainScheduler {
     private final TaskResourceCatalog taskCatalog;
     private final TaskInitializationPolicy initialization;
     private final TaskDispatchPolicy dispatch;
+    private final WorkerCandidateIndex candidateIndex;
+    private final WorkerCandidateIndex.InitialHold initialHold;
     private final WorkerServiceabilityDispatchPolicy serviceability;
     private final AssignmentDispatchConfig assignmentConfig;
     private final WorkerServiceabilityDispatchConfig serviceabilityConfig;
@@ -42,6 +45,8 @@ final class DispatchMainScheduler {
             TaskResourceCatalog taskCatalog,
             TaskInitializationPolicy initialization,
             TaskDispatchPolicy dispatch,
+            WorkerCandidateIndex candidateIndex,
+            WorkerCandidateIndex.InitialHold initialHold,
             WorkerServiceabilityDispatchPolicy serviceability,
             AssignmentDispatchConfig assignmentConfig,
             WorkerServiceabilityDispatchConfig serviceabilityConfig
@@ -56,6 +61,8 @@ final class DispatchMainScheduler {
                 "initialization"
         );
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
+        this.candidateIndex=Objects.requireNonNull(candidateIndex,"candidateIndex");
+        this.initialHold=Objects.requireNonNull(initialHold,"initialHold");
         this.serviceability = serviceability;
         this.assignmentConfig = Objects.requireNonNull(
                 assignmentConfig,
@@ -230,6 +237,32 @@ final class DispatchMainScheduler {
             ));
             List<String> workerGroupIds = List.copyOf(groupIds);
 
+            Map<String,WorkerCandidateIndex.TaskQuery> prepared=Map.of();
+            if (!normalTasks.isEmpty() && (eligible.contains(DispatchProducerId.ELIGIBILITY_REFILL)
+                    || eligible.contains(DispatchProducerId.TASK_DISPATCH))) {
+                var coordinates=new LinkedHashMap<String,String>();
+                normalTasks.forEach(task -> coordinates.put(task.taskId(),task.descriptor().workerGroupId()));
+                try {
+                    prepared=Collections.unmodifiableMap(new LinkedHashMap<>(candidateIndex.prepareTaskQueries(coordinates)));
+                } catch (RuntimeException failure) {
+                    // Item expiry, exhaustion and idle settlement remain available without Matching evidence.
+                    logFailure("bindingPreparation",null,normalTasks.size(),failure);
+                }
+            }
+            final Map<String,WorkerCandidateIndex.TaskQuery> queries=prepared;
+            if (eligible.contains(DispatchProducerId.ELIGIBILITY_REFILL)) {
+                startProducer(DispatchProducerId.ELIGIBILITY_REFILL, normalTasks.size(), () -> {
+                    long started=DispatchStageEvent.start();
+                    int added=0;
+                    boolean failed=true;
+                    try {
+                        added=candidateIndex.refill(queries,1000,initialHold);
+                        failed=false;
+                    } finally {
+                        DispatchStageEvent.batch(started,"REFILL_ROUND",queries.size(),added,failed);
+                    }
+                });
+            }
             if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
                 startProducer(
                         DispatchProducerId.TASK_DISPATCH,
@@ -239,7 +272,7 @@ final class DispatchMainScheduler {
                             int published = 0;
                             boolean failed = true;
                             try {
-                                published = dispatch.dispatchTasks(normalTasks);
+                                published = dispatch.dispatchTasks(normalTasks,queries);
                                 failed = false;
                             } finally {
                                 DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), published, failed);
@@ -278,7 +311,8 @@ final class DispatchMainScheduler {
                 return;
             }
             if (batchSize == 0) {
-                if (producerId == DispatchProducerId.WORKER_SERVICEABILITY) {
+                if (producerId == DispatchProducerId.WORKER_SERVICEABILITY
+                        || producerId == DispatchProducerId.ELIGIBILITY_REFILL) {
                     // Keep eligibility for the next existing Task observation.
                     // Another full interval can repeatedly miss a paced Task.
                     runtime.waitingForTaskSource = true;
@@ -434,6 +468,8 @@ final class DispatchMainScheduler {
                         assignmentConfig.taskDispatchIntervalMillis()
                 )
         );
+        result.put(DispatchProducerId.ELIGIBILITY_REFILL,
+                ProducerRuntime.fromMillis(DispatchProducerId.ELIGIBILITY_REFILL, 50));
         if (serviceabilityConfig != null) {
             result.put(
                     DispatchProducerId.WORKER_SERVICEABILITY,

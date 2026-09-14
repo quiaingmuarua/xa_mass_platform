@@ -52,7 +52,9 @@ Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
 witness, every tenth Item has deterministic invalid input, and String Items
 two and three are the delay and fail background work. Managed default Rule waves
 use empty Worker Selectors. A separate finite Rule-index Task owns the
-Properties-matching witness; it does not change the default Rule mechanism.
+Properties-matching witness with an explicit one-candidate refill target. The
+scenario profile resolves managed default Rules to ANY 1000 at binding creation;
+refill remains shared and independent of the current Item batch.
 
 The phase order is:
 

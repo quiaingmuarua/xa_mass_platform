@@ -33,16 +33,17 @@ multi-field AND queries. Kernel does not interpret operators or facts.
 
 ## Scheduling Handoff
 
-Dispatch resolves at most 100 Task IDs/Groups through one `prepareTaskQueries`
-call. Missing or unusable binding fails closed for assignment. A prepared query
-returns bounded IDs and rechecks membership after initial hold; it carries no
-Rule ID, index coordinate, cache or lifecycle into Kernel.
+Main resolves at most 100 NORMAL Task IDs/Groups through one `prepareTaskQueries`
+call shared by refill and dispatch. Missing or unusable bindings block assignment.
+Matching merges stored refill targets by shared Group/Rule and normalized query,
+then requests Kernel initial holds and checks current projection before inventory
+admission. Task views reference shared stock without carrying Rule coordinates
+or targets into Kernel. All Item selectors consume that local inventory.
 
-Default ANY and explicit IDs use Kernel's bounded HOT path. Named Rules constrain
-all selectors through their index. Kernel retains HOT intersection, initial hold,
-round uniqueness, exact clean confirmation, Item claim and Command construction.
-Properties may invalidate a held candidate through dirty; no per-Task cache
-invalidation is required. Unused holds expire naturally.
+Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution
+confirmation, Item claim and Command construction. Properties invalidate old
+fences through dirty; stock can overcount until consumed or expired. No per-Task
+invalidation or compensation release is required.
 
 Task lifecycle is independent: finite Tasks use CLOSE_WHEN_IDLE and managed
 Calls use PARK_WHEN_IDLE. Matching absence must not block Item exhaustion/expiry

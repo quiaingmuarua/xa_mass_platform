@@ -160,6 +160,7 @@ class RuntimeBoundaryIntegrationTest {
     static void integrationProperties(DynamicPropertyRegistry registry) {
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.rules.worker-groups[shared-eligibility-boundary][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[property-tools-boundary][0]", () -> "proof.worker.facts");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
@@ -403,8 +404,56 @@ class RuntimeBoundaryIntegrationTest {
     }
 
 
+    @Test
+    void realWorkersServeTwoTasksFromTheSameRefilledEligibility() throws Exception {
+        String group="shared-eligibility-boundary";
+        String event="extension.worker.shared.executor";
+        assertThat(send("POST","/api/v1/worker-groups/"+group+":register",Jsons.toJson(Map.of("eventCodes",List.of(event)))).statusCode()).isEqualTo(200);
+        var host=new AtomicReference<JavaWorker>();
+        var handler=WorkerEventDefinition.extension("shared.executor",WorkerEventParameterResolvers.jsonMap(),
+                ignored -> Jsons.toJson(Map.of("executor",host.get().snapshot().workerId())));
+        try(var worker=JavaWorker.create(URI.create("http://127.0.0.1:"+port),group,"shared-host",WorkerTransportType.WEBSOCKET,
+                () -> Map.of("country","CN"),List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
+            host.set(worker); worker.start();
+            awaitCondition(() -> worker.snapshot().workerId()!=null);
+            String workerId=worker.snapshot().workerId();
+            awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,Map.of("country","CN"));
+            var tasks=new LinkedHashMap<String,List<String>>();
+            for(int t=0;t<2;t++) {
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"ruleId","worker.country",
+                        "refillTargets",List.of(Map.of("query",Map.of("worker.country",List.of("CN")),"count",t+1)))));
+                assertThat(response.statusCode()).isEqualTo(200);
+                String task=JSON.readTree(response.body()).get("taskId").asText();
+                var items=new ArrayList<Map<String,Object>>(); var ids=new ArrayList<String>();
+                for(int i=0;i<6;i++) {
+                    String id=UUID.randomUUID().toString();ids.add(id);
+                    items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
+                            "workerSelector",Map.of("worker.country",Map.of("op","eq","values",List.of("CN")))));
+                }
+                assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items)).statusCode()).isEqualTo(200);
+                tasks.put(task,ids);
+            }
+            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+            for(var task:tasks.entrySet()) {
+                awaitTaskExport(task.getKey());
+                var response=send("POST","/api/v1/tasks/"+task.getKey()+"/results:load",Jsons.toJson(task.getValue()));
+                var results=JSON.readTree(response.body());
+                for(String id:task.getValue()) {
+                    assertThat(results.get(id).get("status").asText()).isEqualTo("succeeded");
+                    assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor",workerId);
+                }
+            }
+            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).refill(org.mockito.ArgumentMatchers.argThat(
+                    prepared -> prepared!=null && prepared.keySet().containsAll(tasks.keySet())),eq(1000),any());
+            assertThat(matchingCatalog.loadTaskBindings(List.copyOf(tasks.keySet())).values())
+                    .allSatisfy(binding -> assertThat(binding.ruleId()).isEqualTo("worker.country"));
+            verify(preparationService,times(1)).prepareAll(eq(group),any(),any(),anyList());
+        }
+    }
+
     private String createIndexedTask(String group) throws Exception {
-        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "ruleId", "worker.country")));
+        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "ruleId", "worker.country",
+                "refillTargets",List.of(Map.of("query",Map.of("worker.country",List.of("CN")),"count",1)))));
         assertThat(created.statusCode()).isEqualTo(200);
         return JSON.readTree(created.body()).get("taskId").asText();
     }

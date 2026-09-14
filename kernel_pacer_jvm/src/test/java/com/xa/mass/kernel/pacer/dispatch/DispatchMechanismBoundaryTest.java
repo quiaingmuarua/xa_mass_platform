@@ -166,12 +166,12 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("acquireWorkerCandidates("));
         assertFalse(selection.contains("releaseScoreHolds("));
         assertFalse(selection.contains("releaseCompletedHotScoreHolds("));
-        assertTrue(selection.contains(
-                "private Map<String, Long> observeDueCandidates("
-        ));
-        assertTrue(selection.contains(
-                "private Map<String, Long> holdObservedCandidates("
-        ));
+        assertFalse(selection.contains("observeDueHot"));
+        assertFalse(selection.contains("acquireObservedHotScoreLeases"));
+        assertTrue(selection.contains("query.take(limits)"));
+        String refill=Files.readString(ROOT.resolve("WorkerInitialHoldPolicy.java"));
+        assertTrue(refill.contains("observeDueHotScoreCandidates"));
+        assertTrue(refill.contains("acquireObservedHotScoreLeases"));
     }
 
     @Test

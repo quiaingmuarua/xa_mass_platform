@@ -71,8 +71,8 @@ class AssignmentPacersTest {
         var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
         selectors.put(explicit.messageId(), explicit.workerSelector());
         selectors.put(anyWorker.messageId(), anyWorker.workerSelector());
-        when(selection.acquireCandidates(null,
-                "group-1", selectors, Set.of(), 6_000L
+        when(selection.takeCandidates(null,
+                "group-1", selectors, Set.of()
         )).thenReturn(Map.of(
                 explicit.messageId(), worker("worker-target", 201L),
                 anyWorker.messageId(), worker("worker-any", 202L)
@@ -92,10 +92,10 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        ));
+        , Map.of()));
 
-        verify(selection).acquireCandidates(null,
-                "group-1", selectors, Set.of(), 6_000L
+        verify(selection).takeCandidates(null,
+                "group-1", selectors, Set.of()
         );
     }
 
@@ -136,7 +136,7 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        ));
+        , Map.of()));
 
         InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
         order.verify(taskRuntime).storeTaskItemFailedResults(

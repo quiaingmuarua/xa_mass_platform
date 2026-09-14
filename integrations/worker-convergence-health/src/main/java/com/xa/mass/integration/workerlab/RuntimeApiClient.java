@@ -263,12 +263,15 @@ final class RuntimeApiClient {
                     "Rule witness inputs are invalid"
             );
         }
+        var refillQuery=new LinkedHashMap<String,Object>();
+        workerSelector.forEach((field,condition) -> refillQuery.put(field,JsonValues.object(condition,"condition").get("values")));
         JsonHttpClient.Response created = http.send(
                 "POST",
                 "/api/v1/tasks",
                 Map.of(
                         "workerGroupId", workerGroupId,
                         "ruleId", "proof.worker.facts",
+                        "refillTargets",List.of(Map.of("query",refillQuery,"count",1)),
                         "priority", 50,
                         "maxRetryTimes", 3
                 )

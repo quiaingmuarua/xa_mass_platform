@@ -237,7 +237,7 @@ class ServerArchitectureBoundaryTest {
                 .contains("id 'java-library'");
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .contains("implementation project(':worker_matching_jvm')")
+                .contains("api project(':worker_matching_jvm')")
                 .doesNotContain("worker_simulator_jvm")
                 .doesNotContain("scenario_rpc_jvm")
                 .contains("implementation project(':transport:netty-adapter')")

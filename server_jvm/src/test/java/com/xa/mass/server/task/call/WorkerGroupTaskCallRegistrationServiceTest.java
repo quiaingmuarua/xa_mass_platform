@@ -44,7 +44,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         taskRuntime = mock(TaskRuntime.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
         var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        when(matching.bindTaskRule(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString()))
+        when(matching.bindTaskRule(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull()))
                 .thenReturn(new com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.APPLIED));
         service = new WorkerGroupTaskCallRegistrationService(
                 workerCatalog,

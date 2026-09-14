@@ -85,13 +85,12 @@
       "on_route_unavailable"
     ],
     "TaskQuery": [
-      "retain",
       "take",
-      "uses_identity_selection",
       "validate"
     ],
     "WorkerCandidateIndex": [
-      "prepare_task_queries"
+      "prepare_task_queries",
+      "refill"
     ],
     "TaskEvidenceRuntime": [
       "append_task_evidence",
@@ -175,6 +174,10 @@
       "rewrite_current_scores",
       "sample_registered_worker_ids",
       "toggle_current_polarity"
+    ],
+    "InitialHold": [
+      "any",
+      "identities"
     ]
   },
   "dtos": {
@@ -300,6 +303,11 @@
     "TaskItemOutcomeTarget": [
       "tag",
       "time_millis"
+    ],
+    "HeldCandidate": [
+      "worker_id",
+      "score",
+      "expires_at_millis"
     ]
   },
   "enums": {

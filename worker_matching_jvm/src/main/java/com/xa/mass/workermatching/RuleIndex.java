@@ -1,7 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.*;
@@ -9,7 +7,6 @@ import java.util.function.Supplier;
 
 /** Bounded query mechanics shared by explicitly composed Rules; coordinates never leave Matching. */
 final class RuleIndex {
-    private RuleIndex() { }
     record Criteria(String partition, String kind, List<String> values) { }
     // Both facts replacement and take-time rotation validate metadata before their first write.
     static final String PARTITIONS_LUA = """
@@ -103,13 +100,13 @@ final class RuleIndex {
                   advance(best)
                 end
               end
-              result[#result+1]=selected
             end
             local memberships={}
             for i=1,#writes,2 do
               local parts=partitions(KEYS[1],writes[i+1])
               checkPartitionKeys(KEYS[1],parts)
               memberships[i]=parts
+              result[#result+1]={writes[i+1],tostring(math.floor(tonumber(writes[i])/scale)),parts}
             end
             if #writes > 0 then
               redis.call('ZADD',KEYS[1],unpack(writes))
@@ -122,89 +119,72 @@ final class RuleIndex {
             return result
             """;
 
-    private static final String RETAIN = """
-            local scale, pos, result = 8796093022208, 1, {}
-            while pos <= #ARGV do
-              local suffix,kind,count=ARGV[pos],ARGV[pos+1],tonumber(ARGV[pos+2]); pos=pos+3
-              local key=suffix == '' and KEYS[1] or KEYS[1]..':partition:'..redis.sha1hex(suffix)
-              local values={}
-              for i=1,count do values[ARGV[pos]]=true; pos=pos+1 end
-              local size=tonumber(ARGV[pos]); pos=pos+1
-              local ids={}
-              for i=1,size do ids[i]=ARGV[pos]; pos=pos+1 end
-              local scores=redis.call('ZMSCORE',key,unpack(ids))
-              local kept={}
-              for i,raw in ipairs(scores) do
-                if raw then
-                  local score=tonumber(raw)
-                  if not score or score < 0 or score >= 676*scale or score ~= math.floor(score) then
-                    return redis.error_reply('corrupt Rule index score')
-                  end
-                  if kind == 'any' or (kind == 'ids' and values[ids[i]]) or
-                    (kind == 'countries' and values[tostring(math.floor(score/scale))]) then kept[#kept+1]=ids[i] end
+    private static final String SNAPSHOT = PARTITIONS_LUA + """
+            local scores=redis.call('ZMSCORE',KEYS[1],unpack(ARGV))
+            local result={}
+            for i,raw in ipairs(scores) do
+              if not raw then result[i]={} else
+                local score=tonumber(raw)
+                if not score or score<0 or score>=676*8796093022208 or score~=math.floor(score) then
+                  return redis.error_reply('corrupt Rule index score')
                 end
+                result[i]={tostring(math.floor(score/8796093022208)),partitions(KEYS[1],ARGV[i])}
               end
-              result[#result+1]=kept
             end
             return result
             """;
 
-    static TaskQuery query(Supplier<RedisCommands<String, String>> commands, String key, java.util.function.Function<TaskItemWorkerSelector, Criteria> interpret) {
-        return new TaskQuery() {
-            @Override public boolean usesIdentitySelection(TaskItemWorkerSelector selector) { return false; }
-            @Override public void validate(TaskItemWorkerSelector selector) { interpret.apply(selector); }
-            @Override
-            public Map<TaskItemWorkerSelector, List<String>> take(Map<TaskItemWorkerSelector, Integer> limits) {
-                Objects.requireNonNull(limits, "limits");
-                if (limits.isEmpty()) return Map.of();
-                if (limits.size() > 100) throw new IllegalArgumentException("at most 100 queries");
-                var args = new ArrayList<String>();
-                var selectors = new ArrayList<TaskItemWorkerSelector>();
-                int total = 0;
-                for (var entry : limits.entrySet()) {
-                    Integer limit = entry.getValue();
-                    if (limit == null || limit < 1 || limit > 100 || (total += limit) > 100) {
-                        throw new IllegalArgumentException("total candidate limit must be in 1..100");
-                    }
-                    Criteria c = interpret.apply(entry.getKey());
-                    selectors.add(entry.getKey());
-                    args.add(c.partition()); args.add(c.kind()); args.add(limit.toString()); args.add(Integer.toString(c.values().size()));
-                    args.addAll(c.values());
-                }
-                List<?> rows = commands.get().eval(TAKE, ScriptOutputType.MULTI, new String[]{key, key+":partitions"}, args.toArray(String[]::new));
-                var result = new LinkedHashMap<TaskItemWorkerSelector, List<String>>();
-                for (int i=0; i<selectors.size(); i++) result.put(selectors.get(i), strings(rows.get(i)));
-                return Collections.unmodifiableMap(result);
-            }
+    record Projection(String prefix, Set<String> partitions) {
+        boolean matches(String id, Criteria criteria) {
+            return (criteria.partition().isEmpty() || partitions.contains(criteria.partition()))
+                    && switch (criteria.kind()) {
+                        case "any" -> true;
+                        case "ids" -> criteria.values().contains(id);
+                        case "countries" -> criteria.values().contains(prefix);
+                        default -> throw new IllegalArgumentException("unknown criteria");
+                    };
+        }
+    }
 
-            @Override
-            public Map<TaskItemWorkerSelector, Set<String>> retain(Map<TaskItemWorkerSelector, List<String>> held) {
-                Objects.requireNonNull(held, "held");
-                if (held.size() > 100) throw new IllegalArgumentException("at most 100 queries");
-                var args = new ArrayList<String>();
-                var selectors = new ArrayList<TaskItemWorkerSelector>();
-                var result = new LinkedHashMap<TaskItemWorkerSelector, Set<String>>();
-                int total = 0;
-                for (var entry : held.entrySet()) {
-                    Criteria c = interpret.apply(entry.getKey());
-                    List<String> ids = List.copyOf(entry.getValue());
-                    if ((total += ids.size()) > 100 || new LinkedHashSet<>(ids).size() != ids.size()
-                            || ids.stream().anyMatch(String::isBlank)) {
-                        throw new IllegalArgumentException("recheck requires at most 100 unique held identities");
-                    }
-                    result.put(entry.getKey(), Set.of());
-                    if (ids.isEmpty()) continue;
-                    selectors.add(entry.getKey());
-                    args.add(c.partition()); args.add(c.kind()); args.add(Integer.toString(c.values().size())); args.addAll(c.values());
-                    args.add(Integer.toString(ids.size())); args.addAll(ids);
-                }
-                if (!args.isEmpty()) {
-                    List<?> rows = commands.get().eval(RETAIN, ScriptOutputType.MULTI, new String[]{key, key+":partitions"}, args.toArray(String[]::new));
-                    for (int i=0; i<selectors.size(); i++) result.put(selectors.get(i), Set.copyOf(strings(rows.get(i))));
-                }
-                return Collections.unmodifiableMap(result);
+    private final Supplier<RedisCommands<String,String>> commands;
+    private final String key;
+
+    RuleIndex(Supplier<RedisCommands<String,String>> commands, String key) {
+        this.commands=commands; this.key=key;
+    }
+
+    record Member(String workerId, Projection projection) { }
+
+    List<Member> take(Map<Criteria,Integer> limits) {
+        if (limits.isEmpty()) return List.of();
+        int total=0;
+        var args=new ArrayList<String>();
+        for (var entry:limits.entrySet()) {
+            if (entry.getValue()<1 || (total+=entry.getValue())>100) {
+                throw new IllegalArgumentException("total source limit must be in 1..100");
             }
-        };
+            Criteria c=entry.getKey();
+            args.add(c.partition()); args.add(c.kind()); args.add(entry.getValue().toString());
+            args.add(Integer.toString(c.values().size())); args.addAll(c.values());
+        }
+        List<?> rows=commands.get().eval(TAKE,ScriptOutputType.MULTI,new String[]{key,key+":partitions"},args.toArray(String[]::new));
+        return rows.stream().map(value -> {
+            var row=(List<?>)value;
+            return new Member((String)row.get(0),new Projection((String)row.get(1),Set.copyOf(strings(row.get(2)))));
+        }).toList();
+    }
+
+    /** Recheck membership and obtain the entire query projection after the initial hold cleared dirty. */
+    Map<String,Projection> snapshot(List<String> ids) {
+        if (ids.isEmpty()) return Map.of();
+        if (ids.size()>100) throw new IllegalArgumentException("at most 100 identities");
+        List<?> rows=commands.get().eval(SNAPSHOT,ScriptOutputType.MULTI,new String[]{key,key+":partitions"},ids.toArray(String[]::new));
+        var result=new LinkedHashMap<String,Projection>();
+        for (int i=0;i<ids.size();i++) {
+            var row=(List<?>)rows.get(i);
+            if (!row.isEmpty()) result.put(ids.get(i),new Projection((String)row.getFirst(),Set.copyOf(strings(row.get(1)))));
+        }
+        return result;
     }
 
     private static List<String> strings(Object row) {

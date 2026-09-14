@@ -212,13 +212,15 @@ architectures.
   generic immutable selector structure, ANY and explicit ID semantics. Matching
   owns every Task binding, fixed Rule Handler and property/index interpretation.
   Kernel/Pacer sees Task IDs, never Rule IDs, matching modes or index coordinates.
-  All Tasks resolve through one bounded `WorkerCandidateIndex.prepareTaskQueries`
-  call per dispatch round. Default identity selectors need no facts; named Rules
-  constrain ANY/IDs too. Missing or unavailable bindings must never fall back.
-  Matching owns paired projection/query functions; adding an index must not add
-  Kernel/Pacer branches. Kernel retains HOT, initial hold, membership recheck,
-  dirty/exact confirmation and claim. No per-Task Candidate Cache, Match Demand,
-  Matching consumer, Rule lifecycle or candidate-capacity config participates.
+  Main resolves NORMAL Tasks through one bounded `WorkerCandidateIndex.prepareTaskQueries`
+  call shared by refill and dispatch. Default identity selectors need no facts;
+  named Rules constrain ANY/IDs too. Missing bindings never fall back. Matching
+  owns paired projection and deficits/refill/take interpretation, shared Group/Rule
+  inventory and Task-declared targets. Kernel provides only bounded initial hold
+  collaboration and retains HOT, Score, exact confirmation and claim authority.
+  No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
+  participates. Item queries consume inventory; they must never drive refill.
+
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
   A success may replace an earlier failed Result; storing terminal failure
@@ -257,15 +259,16 @@ kernel_jvm`.
   `TERMINAL(tag=6)`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
 - [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-  belongs to Task Dispatch. It resolves the complete bounded Task binding batch,
-  queries actual per-selector Item demand, intersects HOT and obtains initial
-  holds. Matching rechecks membership; Kernel exact-confirms the clean score,
-  consumes eligibility and carries the returned execution fence into ResultContext.
-  Properties invalidation follows APPLIED facts writes through Score Owner.
-  Unused or rejected holds expire naturally; do not compensate-release them or
-  add a pending lease registry. Rule indexes have no per-Task queue, consumer,
-  cache or lifecycle. Do not add a generic acquisition Strategy or a fallback
-  from unavailable Rule evidence to ANY.
+  separates the fixed refill Producer from Task Dispatch. Main shares one prepared
+  NORMAL binding batch. Refill uses Task-declared shared targets and no Item reads;
+  dispatch consumes local Matching stock for every selector. Kernel initial hold
+  collaboration owns HOT/floor/exact acquisition. Matching checks current projection
+  after hold and stores the opaque fence. Kernel exact-confirms clean candidates
+  and carries the returned execution fence into ResultContext. Properties writes
+  invalidate through Score Owner. Unused/rejected holds expire without release
+  compensation, renewal or a pending lease registry. Do not add Item-triggered
+  supply, per-Task stock or unavailable-Rule fallback.
+
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,

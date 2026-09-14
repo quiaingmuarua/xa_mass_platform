@@ -38,6 +38,7 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
             Map.entry("WorkerCandidateIndex", WorkerCandidateIndex.class),
             Map.entry("TaskQuery", WorkerCandidateIndex.TaskQuery.class),
+            Map.entry("InitialHold", WorkerCandidateIndex.InitialHold.class),
             Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),
@@ -64,6 +65,7 @@ class KernelOwnerContractManifestTest {
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
+            Map.entry("HeldCandidate", WorkerCandidateIndex.HeldCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
             Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
             Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),

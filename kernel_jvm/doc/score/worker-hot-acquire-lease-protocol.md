@@ -32,11 +32,17 @@ create concurrent leases: only the exact CAS winner holds the Worker. Optional
 Serviceability eligibility filtering is owned by the Score operations.
 
 [Candidate Selection](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-resolves Task bindings in a bounded batch and obtains Rule-eligible identities.
-Default ANY/explicit IDs use Kernel HOT mechanics; named Rules constrain all
-selectors through Matching. A prepared query rechecks indexed identities after
-hold. Matching receives no Worker score or lease authority. Kernel owns pairing,
-priority and round uniqueness. Stale or missing evidence never relaxes selection.
+uses a separate refill phase. Matching calls the narrow Kernel `InitialHold`
+collaboration port, which observes HOT and exact-acquires a default 5-second hold.
+After the hold clears dirty, Matching batch-checks the current Rule projection,
+then retains the opaque fence in shared Group/Rule inventory. TaskItems only take
+from that inventory. Matching never decodes Score or confirms/releases execution.
+
+Initial acquisition and execution confirmation reuse the same exact CAS logic.
+The Redis provider batches at most 100 identities on one Group key per Lua, with
+one preceding Redis time read; it no longer sends one CAS command per Worker.
+No Score encoding or transition rule changes. Inventory count and consumption do
+not read Worker Score. Old/unused/failed candidates expire without compensation.
 
 ## Confirmation Before Claim
 
@@ -76,7 +82,7 @@ replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
 scores remain bounded by their existing deadlines.
 
 Due scans include dirty=1. Only a new exact initial HOT hold clears dirty;
-Matching rechecks indexed membership after hold using the same prepared query.
+Matching obtains current indexed membership and query projection after hold, before shared inventory admission.
 Default identity selectors need no index membership. Do not fetch a newer score
 to rescue a stale candidate or clear an existing execution hold. There is no
 per-Task Candidate Cache to invalidate or repair.

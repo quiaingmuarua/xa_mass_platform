@@ -59,7 +59,7 @@ public final class WorkerGroupTaskCallRegistrationService {
         requireWorkerGroup(workerGroupId, REGISTER_OPERATION);
         TaskDescriptor expected = descriptor(workerGroupId);
         try {
-            var binding=matching.bindTaskRule(expected.taskId(),workerGroupId,WorkerMatchingCatalog.DEFAULT_RULE_ID);
+            var binding=matching.bindTaskRule(expected.taskId(),workerGroupId,WorkerMatchingCatalog.DEFAULT_RULE_ID,null);
             if (binding==null || !(binding.status()==WorkerMatchingCatalog.MutationStatus.APPLIED
                     || binding.status()==WorkerMatchingCatalog.MutationStatus.UNCHANGED)) {
                 throw new IllegalStateException("Call Task binding unavailable or conflicting");

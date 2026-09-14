@@ -91,18 +91,9 @@ final class TaskDispatchPolicy {
         );
     }
 
-    int dispatchTasks(List<ObservedTask> tasks) {
+    int dispatchTasks(List<ObservedTask> tasks, Map<String,TaskQuery> queries) {
         Objects.requireNonNull(tasks, "tasks");
-        Map<String, String> coordinates = new LinkedHashMap<>();
-        tasks.forEach(task -> coordinates.put(task.taskId(), task.descriptor().workerGroupId()));
-        Map<String, TaskQuery> queries;
-        try {
-            queries = candidateSelection.prepareQueries(coordinates);
-        } catch (RuntimeException failure) {
-            System.getLogger(TaskDispatchPolicy.class.getName()).log(System.Logger.Level.WARNING,
-                    "operation=dispatch.prepareQueries candidate admission unavailable", failure);
-            queries = Map.of();
-        }
+        Objects.requireNonNull(queries, "queries");
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
                 dispatchTimeMillis,
@@ -173,7 +164,6 @@ final class TaskDispatchPolicy {
                                 queries.get(task.taskId()),
                                 claimableIds,
                                 items,
-                                claimUntilMillis,
                                 roundWorkerIds
                         );
                 DispatchStageEvent.items(selectedAt, "CANDIDATES", task.taskId(), claimableIds, assignments.size(), false);
@@ -235,7 +225,6 @@ final class TaskDispatchPolicy {
             TaskQuery query,
             List<String> messageIds,
             Map<String, TaskItem> items,
-            long leaseUntilMillis,
             Set<String> roundWorkerIds
     ) {
         var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
@@ -243,12 +232,11 @@ final class TaskDispatchPolicy {
             selectors.put(messageId, Objects.requireNonNull(
                     items.get(messageId), "claimable TaskItem").workerSelector());
         }
-        return candidateSelection.acquireCandidates(
+        return candidateSelection.takeCandidates(
                 query,
                 task.descriptor().workerGroupId(),
                 selectors,
-                roundWorkerIds,
-                leaseUntilMillis
+                roundWorkerIds
         );
     }
 

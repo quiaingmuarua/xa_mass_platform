@@ -9,59 +9,48 @@ and [Delivery](../../../doc/kernel/worker-delivery-dispatch.md).
 
 ## Authority
 
-One Main Scheduler supplies complete bounded input to three fixed single-flight
-Producers: Task initialization, Task dispatch and optional Worker serviceability.
-Due Task score is the only scheduling demand source. Matching has no resident
-consumer, Task job, per-Task candidate cache or queue handoff.
+One Main Scheduler supplies complete bounded input to fixed single-flight
+initialization, Eligibility refill, Task dispatch and optional Serviceability
+Producers. It reads NORMAL Task bindings once and shares the prepared views.
+TaskItems only consume stock; they never generate refill demand or a matching job.
 
 ## Candidate Selection
 
-Within the Dispatch Producer, `prepareTaskQueries(taskId -> group)` resolves all
-at most 100 Tasks with one Matching HMGET. The returned dispatch-local query is
-reused for take and membership recheck. Missing/corrupt bindings, wrong Groups,
-unavailable Handlers and read failures never select an unrestricted fallback.
-Item failure and idle settlement still run when candidate admission is unavailable.
-
-Dispatch orders the selected Tasks by actual previous service: unserved Tasks
-first, then least recently served. Only Command publication advances this bounded,
-process-local hint; empty rounds preserve it. The [Task Dispatch contract](task-dispatch-pacer.md#round-uniqueness)
-defines membership, restart and progress limits. It adds no Worker reservation
-or Redis operation.
-
-Each Task supplies at most 100 due Items. Kernel captures selectors; Matching
-interprets property names, operations and values. Default Rule identity selectors
-use HOT selection; named Rules constrain ANY/IDs through their index too.
-
 ```text
-default explicit IDs -> one aggregate HOT observation -> initial holds
-indexed selectors -> group equal expressions using their actual waiting Item counts
-  -> one take -> deduplicate and exclude used IDs
-  -> one HOT observation -> one initial hold -> one membership retain
-  -> pair surviving IDs with the earliest waiting Items of each selector
-default ANY -> bounded Group HOT observation -> initial holds
-  -> one Binding descriptor read for all usable candidates
-  -> exact confirmation -> exact Item claim -> Command publication
+NORMAL RUNNING Tasks -> one prepared Binding batch
+  -> refill: shared target MAX -> deficit -> source -> Kernel initial hold
+      -> current membership/projection -> Matching shared inventory
+  -> dispatch: due Item queries -> local destructive take
+      -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
 
-Explicit targets are bounded by 100 Items x 100 IDs and aggregated into one Owner
-read; only at most 100 can be held. Truncating that input to the first 100 IDs
-would starve later Items and is forbidden. Indexed take demand sums to at most
-100, preserving skewed per-selector counts instead of an equal-share cap.
-Empty subsets skip their Owner operation. After the common binding read, default
-ANY/IDs require no Matching index operation.
+Matching owns query semantics and shared stock per Group/Rule. Kernel sees Task IDs
+and opaque held identities. No Task-private candidate cache or quota exists.
+Refill takes no Item input. All selectors, including ANY and explicit IDs, consume
+inventory; a miss leaves the Item due without a source query or fresh hold.
 
-Matching never reads Worker Score. Index take time rotates identity evidence and
-has no lease meaning. Kernel observes HOT, obtains initial holds and rechecks
-index membership because initial hold clears dirty. Every successfully held ID
-is excluded for the rest of the round, including membership-rejected IDs. Partial
-hold/retain results pair survivors with the earliest Items of the same selector.
-There is no same-round refill, overfetch, release compensation or pending registry.
+Refill runs at a 50ms completion-relative interval. It attempts at most 100 holds
+per Eligibility, 1000 per round; capacity and query page rotation stay Matching-owned.
+Kernel's narrow `InitialHold` port supports Group ANY and at most 100 explicit
+identities, observes HOT with the preset floor and requests a 5-second exact hold.
+It returns the Owner's opaque fence and cleanup deadline. Post-hold projection
+must be read because acquisition clears dirty. Unused/rejected holds expire.
 
-For each Task's indexed subset, Matching uses one take Lua and zero or one retain
-Lua. Kernel uses at most one indexed HOT observation/hold pair, plus the distinct
-bounded identity paths, and one descriptor HMGET. Final confirmation, claim and
-publication retain their existing costs. These are client-command budgets, not
-throughput or latency claims.
+Main-selected INITIAL Tasks never prewarm. Closed, parked or disabled Tasks supply
+no subsequent targets. A Main observation is round evidence; stopping a Task does
+not retroactively cancel an in-flight refill. Old stock expires without renewal.
+
+Dispatch preserves its 100-Item per-Task budget and actual-publication ordering
+hint: unserved Tasks first, then least recently served. Within a Task, normalized
+query demand sums actual requests; results pair with the existing Item order.
+Each take returns at most 100 unique candidates and removes them before address
+lookup, confirmation and claim. Failure never restores the candidate or refreshes
+its fence. No Item request bypasses inventory or relaxes missing Rule evidence.
+
+The [Matching Owner](../../../worker_matching_jvm/README.md#cost-failure-and-proof)
+records source/refill command costs. Counts and take are local. Endpoint HMGET,
+Worker confirmation, Item claim and mailbox publication remain bounded Owner calls.
+They are measured independently from refill, not asserted as a latency promise.
 
 ## Assignment Closure
 
@@ -89,10 +78,10 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 | --- | --- |
 | missing/unavailable Task binding | no assignment; failure/idle handling continues |
 | invalid selector | Server rejects before Item mutation; stored invalid input fails bounded acquisition |
-| index or HOT/hold failure | existing Dispatch backoff; no fallback or extra Matching job |
+| source, projection or initial hold failure | refill Producer backoff; partial holds expire |
 | changed membership, dirty or competing exact score | candidate cannot pass the required fence |
 | unused hold | expires naturally; no compensation |
-| restart | bindings/facts persist; startup rebuilds enabled indexes before admission; Kernel rediscovery resumes |
+| restart | local stock is lost; facts/bindings persist and normal refill acquires new holds |
 
 There is no Score/facts transaction, ACK, replay, repair scan or guarantee that
 lost Properties evidence eventually arrives. Rules never couple Task lifecycles.

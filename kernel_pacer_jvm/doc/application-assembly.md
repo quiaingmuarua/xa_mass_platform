@@ -17,6 +17,7 @@ Java Server
            -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
               -> TASK_INITIALIZATION resource producer
+              -> ELIGIBILITY_REFILL resource producer
               -> TASK_DISPATCH resource producer
               -> WORKER_SERVICEABILITY resource producer optional
 ```
@@ -39,12 +40,12 @@ registry, or per-field Server override.
 
 Every preset consumes Network Evidence. When periodic Serviceability is enabled,
 Runtime mints one Worker-Score-slot-aligned
-`hotEligibilityFloorMillis`. Serviceability Dispatch and Assignment candidate
+`hotEligibilityFloorMillis`. Serviceability Dispatch and refill initial
 acquisition receive the same immutable value. Network Evidence requests an
 availability transition and does not receive the floor. The floor is not stored in Redis or exposed
 through Health or Runtime APIs. Serviceability may widen only its own bounded
 HOT discovery up to the stale-HOT cutoff derived from its Probe retry interval;
-Assignment continues to use the immutable floor.
+Refill continues to use the immutable floor.
 
 ## Mechanical Owners
 
@@ -62,8 +63,9 @@ WorkerCommandRuntime / TaskEvidenceRuntime
 WorkerServiceabilityRuntime
 ```
 
-Due RUNNING Task score is the only demand source for dispatch and serviceability.
-Matching eligibility indexes are shared derived facts, independent of Task demand.
+Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
+Serviceability Groups. Source indexes project facts independently; held inventory
+is replenished from Task-declared targets without inspecting Items.
 
 The module direction remains:
 
@@ -110,7 +112,7 @@ its complete root input. A busy Producer skips that source snapshot and retains
 no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
-If an eligible Serviceability Producer receives no NORMAL Task input, it waits
+If an eligible Serviceability or refill Producer receives no NORMAL Task input, it waits
 for the next source observation already triggered by another fixed Producer.
 An empty page does not consume another full Serviceability interval: otherwise
 its deadline can repeatedly coincide with Task pacing's current-slot gap. This
@@ -130,14 +132,15 @@ not a platform QPS guarantee. Group-managed calls share that Task budget.
 with controlled execution and time. These values remain preset-owned and have no
 Server override.
 
-Initialization keeps its 100ms interval. Dispatch alone uses
+Initialization keeps its 100ms interval. Dispatch and refill each use
 50ms so candidate availability can be consumed without adding another full
 100ms idle interval after a mixed-Task round. The 100-Item ceiling, single-flight
 Producer, latest-due Item ordering and completion-relative backoff are unchanged;
 this is additional checking headroom, not Item fairness or an all-load SLA.
 
 Default-off `xa.mass.TaskDispatch` and `xa.mass.TaskResult` JFR events observe
-existing round/check/candidate/claim/publish and Result consume/process/release
+existing refill/initial-hold/round/check/candidate/confirmation-rejection/claim/publish
+and Result consume/process/release
 calls. Counts describe attempts or batches, not unique completed Items. Owner-local
 events add no registry, queue, Redis operation or Score interpretation; sampled
 correlation is joined only by the offline [call proof](../../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
@@ -147,13 +150,15 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| TASK_DISPATCH | NORMAL RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
+| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | shared deficits/refill, Kernel initial holds; no Item read |
+| TASK_DISPATCH | NORMAL RUNNING and the same prepared bindings | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
-Dispatch resolves at most 100 Task bindings in one Matching read inside its
-single-flight Producer. Queries are local to that dispatch round and have no
-lifecycle. Matching read failure blocks assignments, while exhausted/expired Item
-handling and idle settlement continue. No second producer fills a Task cache.
+Main resolves at most 100 NORMAL Task bindings once whenever refill or dispatch
+is eligible, then shares the result. Missing/unavailable bindings block candidate
+work while dispatch expiry/exhaustion and idle settlement continue. Refill is
+single-flight and targets shared Group/Rule stock. It has no Task-private cache,
+queue or additional Task discovery. See [Matching](../../worker_matching_jvm/README.md).
 
 A Task Source or INITIAL-classification failure defers every currently eligible
 Producer. Descriptor loading failure defers only NORMAL Producers; already

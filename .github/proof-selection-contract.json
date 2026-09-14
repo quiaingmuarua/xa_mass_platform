@@ -715,6 +715,35 @@
         "product_coexistence"
       ],
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/SharedEligibility.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Shared refill and destructive local take require the same Owner, real Worker, dynamic facts and convergence proofs as their Rule source."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerInitialHoldPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Refill acquisition preserves opaque HOT and exact fence authority across Pacer and real Worker proofs."
     }
   ]
 }

@@ -41,7 +41,10 @@ cancelled reader requests. Client shutdown does not replace the runner audit.
 - Three background Tasks: String A, String B and unrestricted Phone. Each has
   50,000 Items, 1,000 ms Handler delay, priority 50.
 - Four witness Tasks each have 100 Items, 100 ms delay, priority 10. All Tasks bind to `proof.worker.facts`; their Items carry pool/target/platform
-  selectors. They use the public finite lifecycle with
+  selectors. At Task creation the Harness declares matching refill targets
+  (count 100); live Items never generate refill demand. These targets share one
+  Group/Rule inventory, including the A/B background pools and target witnesses.
+  They use the public finite lifecycle with
   maxRetryTimes=3. Total: seven Tasks and 150,400 submitted Items.
 
 Each Group has five 100-record files. Each String file contains 40 stable A,
@@ -68,7 +71,7 @@ and SDK publication path. Platform Properties still use their independent Server
 | A baseline | Submit target-only B witness; three seconds with no execution or Result while background work runs. |
 | A to B | Four Lab writers issue eight `properties.update` rounds over 100 targets, sequential per Worker and at least 500 ms between rounds, without remote observation waits. B witness subsequently succeeds on actual targets. |
 | B stable | Submit target-only A witness; require no execution/Result for three seconds and retain it for final recovery. |
-| Pool removed | `properties.replace` omits `proofPool` and prior delta fields. A target-only `$exists:false` witness succeeds. |
+| Pool removed | `properties.replace` omits `proofPool` and prior delta fields. The fixed target-only pool-absent witness succeeds. |
 | Platform disabled | Restore B, change only target Platform Properties to `proofEnabled=no`, submit another B witness and establish a three-second negative window. |
 | Platform enabled | Patch only Platform Properties to `yes`; the waiting B witness succeeds. Worker Properties remain unchanged. |
 | Return A | Replace target Properties with their A baselines. The waiting A witness succeeds; drain all seven Tasks. |

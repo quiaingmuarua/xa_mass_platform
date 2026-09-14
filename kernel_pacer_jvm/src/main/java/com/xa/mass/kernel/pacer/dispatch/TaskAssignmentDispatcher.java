@@ -121,6 +121,7 @@ final class TaskAssignmentDispatcher {
             }
         });
         DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM", observedWorkers.size(), verifiedScores.size(), false);
+        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM_REJECTED", observedWorkers.size(), observedWorkers.size()-verifiedScores.size(), false);
 
         LinkedHashMap<String, Long> claimScores = new LinkedHashMap<>();
         attemptsByMessageId.forEach((messageId, attempt) -> {

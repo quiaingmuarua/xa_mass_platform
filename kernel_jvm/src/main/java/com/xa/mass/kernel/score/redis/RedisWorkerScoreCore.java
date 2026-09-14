@@ -110,28 +110,30 @@ public final class RedisWorkerScoreCore
             return result
             """;
 
-    private static final String CAS_UPDATE_SCRIPT = """
-            local key = KEYS[1]
-            local worker_id = ARGV[1]
-            local observed_score = tonumber(ARGV[2])
-            local next_score = tonumber(ARGV[3])
-
-            local stored = redis.call("ZSCORE", key, worker_id)
-            if not stored then
-              return {"stale"}
+    private static final String CAS_FUNCTION = """
+            local function update(key,worker_id,observed_score,next_score)
+              local stored=redis.call('ZSCORE',key,worker_id)
+              if not stored then return {'stale'} end
+              local score=tonumber(stored)
+              if score~=observed_score then return {'stale',score} end
+              if next_score==score then return {'noop',score} end
+              redis.call('ZADD',key,next_score,worker_id)
+              return {'transitioned',next_score}
             end
-
-            local stored_score = tonumber(stored)
-            if stored_score ~= observed_score then
-              return {"stale", stored_score}
+            """;
+    private static final String CAS_UPDATE_SCRIPT = CAS_FUNCTION + """
+            return update(KEYS[1],ARGV[1],tonumber(ARGV[2]),tonumber(ARGV[3]))
+            """;
+    private static final String CAS_BATCH_SCRIPT = CAS_FUNCTION + """
+            if #ARGV>300 or #ARGV%3~=0 then return redis.error_reply('bounded CAS requires at most 100 identities') end
+            local results={}
+            for i=1,#ARGV,3 do
+              local row=update(KEYS[1],ARGV[i],tonumber(ARGV[i+1]),tonumber(ARGV[i+2]))
+              results[#results+1]=ARGV[i]
+              results[#results+1]=row[1]
+              results[#results+1]=row[2] or ''
             end
-
-            if next_score == stored_score then
-              return {"noop", stored_score}
-            end
-
-            redis.call("ZADD", key, next_score, worker_id)
-            return {"transitioned", next_score}
+            return results
             """;
 
     private static final String SERVICEABILITY_HOLD_SCRIPT = """
@@ -790,21 +792,17 @@ public final class RedisWorkerScoreCore
         LinkedHashMap<String, WorkerScoreTransitionResult> transitioned =
                 new LinkedHashMap<>();
         if (!pending.isEmpty()) {
-            RedisAsyncCommands<String, String> async = connection().async();
-            List<RedisFuture<Object>> futures = new ArrayList<>(pending.size());
-            String key = scoreKey(homeBucketId);
-            pending.forEach((workerId, values) -> futures.add(async.eval(
-                    CAS_UPDATE_SCRIPT,
-                    ScriptOutputType.MULTI,
-                    new String[]{key},
-                    workerId,
-                    Long.toString(values[0]),
-                    Long.toString(values[1])
-            )));
-            transitioned.putAll(collectScriptResults(
-                    pending.keySet(),
-                    futures
-            ));
+            List<String> ids=new ArrayList<>(pending.keySet());
+            for (int offset=0;offset<ids.size();offset+=100) {
+                List<String> page=ids.subList(offset,Math.min(offset+100,ids.size()));
+                List<String> arguments=new ArrayList<>(page.size()*3);
+                page.forEach(id -> {
+                    long[] values=pending.get(id);
+                    arguments.add(id); arguments.add(Long.toString(values[0])); arguments.add(Long.toString(values[1]));
+                });
+                transitioned.putAll(batchScriptResults(page,commands().eval(CAS_BATCH_SCRIPT,ScriptOutputType.MULTI,
+                        new String[]{scoreKey(homeBucketId)},arguments.toArray(String[]::new)),"exact_hot_leases"));
+            }
         }
         LinkedHashMap<String, WorkerScoreTransitionResult> results =
                 new LinkedHashMap<>();

@@ -98,7 +98,8 @@ Build:
 ./gradlew :kernel_jvm:build
 ```
 
-All Tasks bind to a Matching Rule before Kernel creation. Matching resolves
-Task IDs in one bounded batch and supplies prepared queries and eligible IDs.
-Kernel retains HOT, initial hold, membership recheck, exact confirmation and
-claim. Matching owns no Task lifecycle or asynchronous candidate job.
+All Tasks bind to a Matching Rule and resolved refill targets before Kernel
+creation. Main prepares NORMAL bindings once for independent refill and dispatch.
+Matching replenishes shared Group/Rule inventory through Kernel initial holds,
+then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
+claim authority; no Task-private candidate cache or Item-triggered supply exists.

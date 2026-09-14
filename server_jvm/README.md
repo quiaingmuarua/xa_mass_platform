@@ -167,7 +167,10 @@ An optional `ruleId` names a fixed Matching Handler; omission binds explicitly t
 `worker.default`. Every Task has a binding before Kernel metadata is created.
 All finite Tasks use CLOSE_WHEN_IDLE. Unknown/blank Rules, unavailable Group
 indexes and unknown request fields are rejected. Priority defaults to 50 and
-retry budget to 3. No candidate capacity or matching mode is stored.
+retry budget to 3. Optional `refillTargets` stores 1..100 operator-free query/count targets in the
+Matching binding; counts are 1..1000. Omission resolves Matching Group/Rule defaults
+or ANY 100. These are shared Eligibility targets, with equal queries merged by MAX,
+not Task-private quotas. They never enter the Kernel Task descriptor.
 
 ```json
 {"workerGroupId":"country-workers","ruleId":"worker.country","priority":50,"maxRetryTimes":3}
@@ -919,7 +922,7 @@ An APPLIED Platform patch requests the same Score invalidation with one Worker.
 
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
-identity, Binding and Worker records remain intact. New Matching Demands read
+identity, Binding and Worker records remain intact. Subsequent refill rounds read
 the new facts. Invalidation sets dirty on the current score, preserving its
 polarity, rank and deadline; missing scores are not created. Existing Candidate
 entries remain until consumption or expiry, but their old fences cannot pass

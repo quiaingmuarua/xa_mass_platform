@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 public class WorkerMatchingConfiguration {
     @Bean(destroyMethod="close")
     RedisWorkerMatchingCatalog workerMatchingCatalog(RedisClient client,XaMassRedisProperties redis,MatchingRuleProperties rules) {
-        var catalog=new RedisWorkerMatchingCatalog(client,redis.keyspace(),rules.workerGroups());
+        var catalog=new RedisWorkerMatchingCatalog(client,redis.keyspace(),rules.workerGroups(),rules.defaultRefillTargets());
         try { catalog.rebuildIndexes(); return catalog; }
         catch (RuntimeException failure) { catalog.close(); throw failure; }
     }

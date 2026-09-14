@@ -15,7 +15,7 @@ observe due Item scores
   -> pace, close, or park the Task
 ```
 
-Kernel owns scheduling and finality; Matching supplies bounded identities through
+Kernel owns scheduling and finality; Matching supplies bounded opaque held identities through
 the query/recheck port.
 
 ## Common Item Flow
@@ -36,16 +36,12 @@ recheck and exact close or private idle park.
 
 ## Prepared Rule Query
 
-At round entry, Dispatch resolves all Task IDs/Groups in one bounded Matching
-read. Each Task reuses its prepared query for grouped take and post-hold retain.
-Default identity selectors take the bounded Kernel HOT path; named Rules apply
-index membership to ANY and explicit IDs too. Property operators and index
-coordinates remain private to Matching. See [Candidate Selection](assignment-dispatch-scheduling.md#candidate-selection)
-for bounds, ordering and client-command budgets.
-
-Binding failure prevents assignment without suppressing Item failure handling
-or idle settlement. Unavailable index evidence never becomes ANY. A query has no
-lifecycle, cache, queue, persistent cursor or Worker lease authority.
+Main supplies the once-prepared NORMAL Task binding batch to both refill and
+dispatch. Each Task's view references shared Eligibility stock. All selectors,
+including ANY and explicit IDs, use local destructive take. Only the separate
+refill Producer accesses source indexes and obtains initial holds. A take miss
+leaves the Item due without immediate supply. See [Candidate Selection](assignment-dispatch-scheduling.md#candidate-selection)
+for shared-target aggregation, bounded refill and exact assignment fences.
 
 ## Round Uniqueness
 

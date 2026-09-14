@@ -1,5 +1,12 @@
 xa:
   mass:
+    worker-matching:
+      rules:
+        default-refill-targets:
+          scenario-string-utils-workers:
+            "[worker.default]": [{count: 1000}]
+          scenario-phone-number-workers:
+            "[worker.default]": [{count: 1000}]
     task-item-outcomes:
       names:
         7: delivered

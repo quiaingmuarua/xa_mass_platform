@@ -11,23 +11,21 @@ class RuleHandlerTest {
         var selector=TaskItemWorkerSelector.parse(Map.of(
                 "worker.country",Map.of("op","eq","values",List.of("CN")),
                 "worker.phone",Map.of("op","eq","values",List.of("+86123"))));
-        var query=RuleHandler.MESSAGING.criteria(selector);
+        var query=RuleHandler.MESSAGING.criteria(RuleHandler.normalize(selector,1).query());
         assertEquals("phone:+86123",query.partition());
         assertEquals("countries",query.kind());
         assertEquals(List.of(Integer.toString(CountryIndex.code("CN"))),query.values());
-        assertThrows(IllegalArgumentException.class,()->RuleHandler.COUNTRY.criteria(selector));
+        assertThrows(IllegalArgumentException.class,()->RuleHandler.COUNTRY.criteria(RuleHandler.normalize(selector,1).query()));
     }
     @Test void namedRulesKeepAnyAndExplicitIdsInsideTheirIndex() {
         for (var handler:RuleHandler.values()) {
-            var query=RuleIndex.query(()->{throw new AssertionError("unexpected read");},"index",handler::criteria);
-            assertFalse(query.usesIdentitySelection(TaskItemWorkerSelector.parse(Map.of())));
-            assertFalse(query.usesIdentitySelection(TaskItemWorkerSelector.parse(Map.of("workerId",List.of("w")))));
+            assertEquals("any",handler.criteria(Map.of()).kind());
+            assertEquals("ids",handler.criteria(Map.of("workerId",List.of("w"))).kind());
         }
     }
     @Test void unknownFieldsAndIdentityPropertyMixturesAreRejected() {
         assertThrows(IllegalArgumentException.class,()->TaskItemWorkerSelector.parse(Map.of(
                 "workerId",List.of("w"),"worker.country",Map.of("op","eq","values",List.of("CN")))));
-        assertThrows(IllegalArgumentException.class,()->RuleHandler.MESSAGING.criteria(TaskItemWorkerSelector.parse(
-                Map.of("worker.unknown",Map.of("op","eq","values",List.of("x"))))));
+        assertThrows(IllegalArgumentException.class,()->RuleHandler.MESSAGING.criteria(Map.of("worker.unknown",List.of("x"))));
     }
 }

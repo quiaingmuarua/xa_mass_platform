@@ -166,7 +166,7 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.bindTaskRule(any(), any(), any()))
+        when(matchingCatalog.bindTaskRule(any(), any(), any(), org.mockito.ArgumentMatchers.isNull()))
                 .thenReturn(new MutationResult(MutationStatus.APPLIED));
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
@@ -527,7 +527,7 @@ class RuntimeApiControllerTest {
 
 
     @Test void createsNamedRuleAndUnrestrictedFiniteTasksWithoutCandidateCapacity() throws Exception {
-        when(matchingCatalog.bindTaskRule(anyString(), anyString(), anyString())).thenReturn(
+        when(matchingCatalog.bindTaskRule(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.isNull())).thenReturn(
                 new WorkerMatchingCatalog.MutationResult(WorkerMatchingCatalog.MutationStatus.APPLIED));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
@@ -541,7 +541,34 @@ class RuntimeApiControllerTest {
             assertThat(task.idleDisposition()).isEqualTo(TaskIdleDisposition.CLOSE_WHEN_IDLE);
             assertThat(task.config()).doesNotContainKey("maximumCandidateWorkers");
         });
-        verify(matchingCatalog).bindTaskRule(anyString(), eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID));
+        verify(matchingCatalog).bindTaskRule(anyString(), eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test void refillTargetsBelongOnlyToTheMatchingBinding() throws Exception {
+        when(matchingCatalog.bindTaskRule(anyString(),anyString(),anyString(),anyList()))
+                .thenReturn(new MutationResult(MutationStatus.APPLIED));
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content("""
+                {"workerGroupId":"phone-tools","ruleId":"worker.country",
+                 "refillTargets":[{"query":{"worker.country":["US","CN","US"]},"count":20}]}
+                """)).andExpect(status().isOk());
+        verify(matchingCatalog).bindTaskRule(anyString(),eq("phone-tools"),eq("worker.country"),eq(List.of(
+                new com.xa.mass.workermatching.EligibilityQuery(Map.of("worker.country",List.of("CN","US")),20))));
+        var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(descriptor.capture());
+        assertThat(descriptor.getValue().config()).containsOnlyKeys("priority","maxRetryTimes");
+    }
+
+    @Test void malformedRefillTargetsCannotSilentlyBecomeAny() throws Exception {
+        for(String targets:List.of("[]","[{\"count\":0}]","[{\"count\":1001}]",
+                "[{\"query\":{\"worker.country\":[\"\"]},\"count\":1}]",
+                "[{\"conditions\":{\"worker.country\":[\"CN\"]},\"count\":1}]",
+                "[{\"query\":{\"worker.country\":{\"op\":\"eq\",\"values\":[\"CN\"]}},\"count\":1}]")) {
+            mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"workerGroupId\":\"phone-tools\",\"refillTargets\":"+targets+"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
+        verify(matchingCatalog,org.mockito.Mockito.never()).bindTaskRule(anyString(),anyString(),anyString(),anyList());
     }
 
     @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
@@ -552,7 +579,7 @@ class RuntimeApiControllerTest {
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskRule(anyString(), anyString(), anyString());
+        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskRule(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test

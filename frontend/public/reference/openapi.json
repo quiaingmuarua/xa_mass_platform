@@ -100,6 +100,29 @@
         },
         "type" : "object"
       },
+      "EligibilityQuery" : {
+        "additionalProperties" : false,
+        "description" : "Operator-free query interpreted by the bound Rule. Empty or omitted query means ANY; workerId lists select identities. Multiple values mean any of those values, not separate quotas.",
+        "properties" : {
+          "count" : {
+            "format" : "int32",
+            "maximum" : 1000,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "query" : {
+            "additionalProperties" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            },
+            "type" : "object"
+          }
+        },
+        "required" : [ "count" ],
+        "type" : "object"
+      },
       "TaskCreateRequest" : {
         "properties" : {
           "maxRetryTimes" : {
@@ -113,6 +136,15 @@
             "maximum" : 99,
             "minimum" : 0,
             "type" : "integer"
+          },
+          "refillTargets" : {
+            "description" : "Optional shared Eligibility refill targets. Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default at binding creation, otherwise ANY 100. Targets are not private Task quotas.",
+            "items" : {
+              "$ref" : "#/components/schemas/EligibilityQuery"
+            },
+            "maxItems" : 100,
+            "minItems" : 1,
+            "type" : "array"
           },
           "ruleId" : {
             "type" : "string"

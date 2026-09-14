@@ -26,8 +26,8 @@ scheduling eligibility.
 ```text
 TASK
 API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
-    -> Matching resolves Task binding and Item selector into bounded eligible IDs
-    -> Kernel intersects HOT, holds Workers and rechecks membership
+    -> NORMAL Task targets refill shared Eligibility using Kernel initial holds
+    -> Item selectors consume held stock; Kernel checks exact clean fences
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
@@ -162,7 +162,8 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
 
-All Tasks bind to a Matching Rule before Kernel creation. Matching resolves
-Task IDs in one bounded batch and supplies prepared queries and eligible IDs.
-Kernel retains HOT, initial hold, membership recheck, exact confirmation and
-claim. Matching owns no Task lifecycle or asynchronous candidate job.
+All Tasks bind to a Matching Rule and resolved refill targets before Kernel
+creation. Main prepares NORMAL bindings once for independent refill and dispatch.
+Matching replenishes shared Group/Rule inventory through Kernel initial holds,
+then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
+claim authority; no Task-private candidate cache or Item-triggered supply exists.

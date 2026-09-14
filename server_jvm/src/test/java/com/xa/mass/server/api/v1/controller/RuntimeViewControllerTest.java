@@ -134,7 +134,7 @@ class RuntimeViewControllerTest {
                 .thenReturn(tasks);
         when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
             List<String> ids=call.getArgument(0); var bindings=new LinkedHashMap<String,WorkerMatchingCatalog.TaskRuleBinding>();
-            ids.forEach(id -> bindings.put(id,new WorkerMatchingCatalog.TaskRuleBinding("worker.default",tasks.get(id).workerGroupId())));
+            ids.forEach(id -> bindings.put(id,new WorkerMatchingCatalog.TaskRuleBinding("worker.default",tasks.get(id).workerGroupId(), List.of(new com.xa.mass.workermatching.EligibilityQuery(Map.of(),100)))));
             return bindings;
         });
 
@@ -724,7 +724,7 @@ class RuntimeViewControllerTest {
             List<String> batch = invocation.getArgument(0);
             org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
             return batch.stream().collect(Collectors.toMap(id -> id,
-                    id -> new WorkerMatchingCatalog.TaskRuleBinding("rule-shared", "group-a")));
+                    id -> new WorkerMatchingCatalog.TaskRuleBinding("rule-shared", "group-a", List.of(new com.xa.mass.workermatching.EligibilityQuery(Map.of(),100)))));
         });
         mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1000"))

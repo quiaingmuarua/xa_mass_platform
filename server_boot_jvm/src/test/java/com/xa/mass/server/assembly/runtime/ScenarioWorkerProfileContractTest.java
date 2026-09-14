@@ -46,7 +46,8 @@ class ScenarioWorkerProfileContractTest {
                             )
                     );
 
-    @EnableConfigurationProperties(WorkerEndpointDirectory.class)
+    @EnableConfigurationProperties({WorkerEndpointDirectory.class,
+            com.xa.mass.server.assembly.matching.MatchingRuleProperties.class})
     static class EndpointConfiguration {}
 
     @Test
@@ -57,6 +58,12 @@ class ScenarioWorkerProfileContractTest {
                 "spring.profiles.active=scenario-workers"
         ).run(context -> {
             assertThat(context).hasNotFailed();
+            var defaults=context.getBean(com.xa.mass.server.assembly.matching.MatchingRuleProperties.class)
+                    .defaultRefillTargets();
+            for (String group : List.of("scenario-string-utils-workers","scenario-phone-number-workers")) {
+                assertThat(defaults.get(group).get("worker.default")).containsExactly(
+                        new com.xa.mass.workermatching.EligibilityQuery(Map.of(),1000));
+            }
             assertThat(context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class
             ).instances()).containsOnlyKeys("scenario-websocket");

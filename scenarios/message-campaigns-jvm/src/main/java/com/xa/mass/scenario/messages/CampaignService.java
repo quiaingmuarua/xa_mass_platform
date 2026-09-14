@@ -98,7 +98,11 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             Map<String,Object> selector=new LinkedHashMap<>();
             selector.put("worker.country",Map.of("op","eq","values",List.of(campaign.specification.country())));
             if (campaign.specification.senderPhone()!=null) selector.put("worker.phone",Map.of("op","eq","values",List.of(campaign.specification.senderPhone())));
-            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3)).taskId();
+            var refillQuery=new LinkedHashMap<String,List<String>>();
+            refillQuery.put("worker.country",List.of(campaign.specification.country()));
+            if (campaign.specification.senderPhone()!=null) refillQuery.put("worker.phone",List.of(campaign.specification.senderPhone()));
+            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3,
+                    List.of(new com.xa.mass.workermatching.EligibilityQuery(refillQuery,100)))).taskId();
             for (int start = 0; start < campaign.messages.size(); start += 100) {
                 requireRunning();
                 var items = campaign.messages.subList(start, Math.min(start + 100, campaign.messages.size())).stream()

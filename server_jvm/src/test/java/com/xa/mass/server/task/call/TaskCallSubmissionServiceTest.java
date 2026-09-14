@@ -48,7 +48,7 @@ class TaskCallSubmissionServiceTest {
         verify(submission).submit(eq("task"), argThat(items -> items.size() == 1
                 && cn.equals(items.getFirst().workerSelector())));
         verify(query,never()).take(anyMap());
-        verify(query,never()).retain(anyMap());
+
     }
     @Test
     void invalidJavaInputsIncludingOverwrittenDuplicatesNeverReachAnOwner() {
@@ -98,7 +98,7 @@ class TaskCallSubmissionServiceTest {
         }
         verifyNoInteractions(submission);
         verify(query,never()).take(anyMap());
-        verify(query,never()).retain(anyMap());
+
     }
 
     @Test
