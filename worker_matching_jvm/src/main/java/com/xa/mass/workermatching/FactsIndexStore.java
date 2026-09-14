@@ -1,16 +1,11 @@
 package com.xa.mass.workermatching;
 
-import java.util.Set;
+import java.util.List;
 
-/** Compiles the finite Group projections into the same bounded facts mutation. */
+/** Facts and all enabled indexes prepare before the first write, in one bounded Lua operation. */
 final class FactsIndexStore {
     private FactsIndexStore() { }
-    private static final String HELPERS = RuleIndex.PARTITIONS_LUA + """
-            local scale=8796093022208
-            local function country(value)
-              if type(value)~='string' or not string.match(value,'^[A-Z][A-Z]$') then return -1 end
-              return (string.byte(value,1)-65)*26+string.byte(value,2)-65
-            end
+    private static final String HELPERS = """
             local function object(raw)
               if not raw or not string.match(raw,'^%s*{') then error('corrupt Matching facts') end
               local value=cjson.decode(raw)
@@ -54,38 +49,14 @@ final class FactsIndexStore {
               local encoded={}; for _,name in ipairs(names) do encoded[#encoded+1]=cjson.encode(name)..':'..values[name] end
               return '{'..table.concat(encoded,',')..'}'
             end
-            local updates={}
-            local function project(key,id,code,parts)
-              local raw=redis.call('ZSCORE',key,id)
-              local prior=raw and tonumber(raw) or 0
-              if not prior or prior<0 or prior>=676*scale or prior~=math.floor(prior) then error('corrupt Rule index') end
-              local old=partitions(key,id)
-              checkPartitionKeys(key,old); checkPartitionKeys(key,parts)
-              updates[#updates+1]={key,id,code,parts,old,prior%scale}
-            end
-            local function commit()
-              for _,u in ipairs(updates) do
-                local key,id,code,parts,old,low=unpack(u)
-                for _,suffix in ipairs(old) do redis.call('ZREM',key..':partition:'..redis.sha1hex(suffix),id) end
-                if code<0 then
-                  redis.call('ZREM',key,id); redis.call('HDEL',key..':partitions',id)
-                else
-                  local score=string.format('%.0f',code*scale+low)
-                  redis.call('ZADD',key,score,id)
-                  if #parts>0 then redis.call('HSET',key..':partitions',id,cjson.encode(parts))
-                  else redis.call('HDEL',key..':partitions',id) end
-                  for _,suffix in ipairs(parts) do redis.call('ZADD',key..':partition:'..redis.sha1hex(suffix),score,id) end
-                end
-              end
-            end
             """;
 
-    static String script(Set<RuleHandler> handlers) {
+    static String script(List<RuleHandler.IndexMutation> indexes) {
         var source=new StringBuilder(HELPERS);
-        for (var handler : handlers) source.append("local function derive_").append(handler.indexName)
-                .append("(w,p)\n").append(handler.projection).append("end\n");
+        for (int i=0;i<indexes.size();i++) source.append("local prepare_").append(i)
+                .append("=(function()\n").append(indexes.get(i).prepareLua()).append("\nend)()\n");
         source.append("""
-                local results, writes={},{}
+                local results, writes, updates={},{},{}
                 local mode=ARGV[1]
                 for i=2,#ARGV,2 do
                   local id,input=ARGV[i],ARGV[i+1]
@@ -101,13 +72,13 @@ final class FactsIndexStore {
                     results[#results+1]=effect
                     if effect==1 then writes[#writes+1]={mode=='patch' and KEYS[2] or KEYS[1],id,mode=='patch' and nextPlatform or replacement} end
                 """);
-        for (var handler : handlers) source.append("local code,parts=derive_").append(handler.indexName)
-                .append("(w,p)\nproject(KEYS[3]..':").append(handler.indexName).append("',id,code,parts)\n");
+        for (int i=0;i<indexes.size();i++) source.append("local apply=prepare_").append(i)
+                .append("(KEYS[3]..':").append(indexes.get(i).namespace()).append("',id,w,p)\nif type(apply)~='function' then error('invalid Rule update') end\nupdates[#updates+1]=apply\n");
         source.append("""
                   end
                 end
                 for _,w in ipairs(writes) do redis.call('HSET',unpack(w)) end
-                commit()
+                for _,apply in ipairs(updates) do apply() end
                 return results
                 """);
         return source.toString();

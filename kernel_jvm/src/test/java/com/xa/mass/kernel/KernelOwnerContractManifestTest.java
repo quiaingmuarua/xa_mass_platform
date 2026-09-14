@@ -38,7 +38,7 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
             Map.entry("WorkerCandidateIndex", WorkerCandidateIndex.class),
             Map.entry("TaskQuery", WorkerCandidateIndex.TaskQuery.class),
-            Map.entry("InitialHold", WorkerCandidateIndex.InitialHold.class),
+            Map.entry("CandidateRenewal", WorkerCandidateIndex.CandidateRenewal.class),
             Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),

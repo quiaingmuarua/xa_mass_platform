@@ -1,158 +1,133 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.InitialHold;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Executors;
+import com.xa.mass.workermatching.rules.DefaultRuleHandler;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class SharedEligibilityTest {
     final AtomicLong clock=new AtomicLong(1000);
     final SharedEligibilityInventory stock=new SharedEligibilityInventory(clock::get);
-    final SharedEligibilityInventory.Scope scope=new SharedEligibilityInventory.Scope("g","worker.country");
-    final RuleIndex source=mock(RuleIndex.class);
-    final InitialHold holds=mock(InitialHold.class);
-    final SharedEligibility index=new SharedEligibility(stock,scope,RuleHandler.COUNTRY,source,0);
-
-    static EligibilityQuery countries(int count,String... countries) {
-        return new EligibilityQuery(Map.of("worker.country",List.of(countries)),count);
+    final SharedEligibilityInventory.Scope scope=new SharedEligibilityInventory.Scope("g","test.pool");
+    final TestBound rule=new TestBound();
+    final SharedEligibility index=new SharedEligibility(stock,scope,rule);
+    final class TestBound implements RuleHandler.Bound {
+        Map<String,RuleHandler.Member> current=Map.of();
+        int snapshots;
+        boolean fail,foreign;
+        List<String> readIds=List.of();
+        public EligibilityQuery normalize(Map<String,?> expression,int count) {
+            @SuppressWarnings("unchecked") var query=(Map<String,List<String>>)expression;
+            return new EligibilityQuery(query,count);
+        }
+        public RuleHandler.Query compile(EligibilityQuery query) {
+            return member->{
+                assertFalse(Thread.holdsLock(stock),"Rule work must stay outside inventory locks");
+                return member.projection() instanceof String pool &&
+                        (query.query().isEmpty() || query.query().get("pool").contains(pool));
+            };
+        }
+        public Map<String,RuleHandler.Member> snapshot(List<String> ids) {
+            assertFalse(Thread.holdsLock(stock));snapshots++;readIds=List.copyOf(ids);
+            if(fail)throw new IllegalStateException("projection unavailable");
+            if(foreign)return Map.of("outside",new RuleHandler.Member("outside","US"));
+            var found=new LinkedHashMap<String,RuleHandler.Member>();
+            ids.forEach(id->{if(current.containsKey(id))found.put(id,current.get(id));});return found;
+        }
     }
-    static RuleIndex.Projection country(String code) {
-        return new RuleIndex.Projection(Integer.toString(CountryIndex.code(code)),Set.of());
+    static EligibilityQuery pools(int count,String... values) { return new EligibilityQuery(Map.of("pool",List.of(values)),count); }
+    void populate(int size,String pool) {
+        stock.add(scope,IntStream.range(0,size).mapToObj(i->new SharedEligibilityInventory.Entry(
+                new HeldCandidate("w"+i,100+i,6000),pool)).toList());
     }
-    void populate(int size,String country) {
-        stock.add(scope,IntStream.range(0,size).mapToObj(i -> new SharedEligibilityInventory.Entry(
-                new HeldCandidate("w"+i,100+i,6000),country(country))).toList());
+    List<HeldCandidate> offered(int count,String pool) {
+        var current=new LinkedHashMap<String,RuleHandler.Member>();
+        for(int i=0;i<count;i++)current.put("w"+i,new RuleHandler.Member("w"+i,pool));rule.current=current;
+        return IntStream.range(0,count).mapToObj(i->new HeldCandidate("w"+i,100+i,2000)).toList();
     }
-
-    @Test void fullTargetsAndTakeNeedNoSourceOrHoldCall() {
-        populate(20,"US");
-        var targets=List.of(countries(10,"US"),countries(20,"US","CN"));
+    List<SharedEligibilityInventory.Entry> select(List<EligibilityQuery> queries,List<HeldCandidate> offered) {
+        return index.select(queries,offered,100);
+    }
+    void commit(List<SharedEligibilityInventory.Entry> entries) {
+        stock.add(scope,entries.stream().map(e->new SharedEligibilityInventory.Entry(
+                new HeldCandidate(e.held().workerId(),e.held().score()+1000,6000),e.member().projection())).toList());
+    }
+    SharedEligibility defaults() {
+        return new SharedEligibility(stock,new SharedEligibilityInventory.Scope("g","worker.default"),
+                new DefaultRuleHandler().bind(()->{throw new AssertionError("facts read");},"index",Set.of()));
+    }
+    @Test void fullTargetsAndTakeNeedNoProjectionRead() {
+        populate(20,"US");var targets=List.of(pools(10,"US"),pools(20,"US","CN"));
         assertEquals(List.of(0,0),new ArrayList<>(index.deficits(targets).values()));
-        assertEquals(0,index.refill(targets,100,holds));
-        var request=countries(1,"CN","US");
-        assertEquals(1,index.take(List.of(request)).get(request).size());
-        verifyNoInteractions(source,holds);
+        assertTrue(select(targets,offered(1,"US")).isEmpty());
+        var query=pools(1,"CN","US");assertEquals(1,index.take(List.of(query)).get(query).size());assertEquals(0,rule.snapshots);
     }
-
-    @Test void overlappingTargetsRecountAfterAdmissionAndNeverDuplicatePhysicalStock() {
-        var us=countries(10,"US"); var either=countries(10,"US","CN");
-        var criteria=index.criteria(us);
-        var ids=IntStream.range(0,10).mapToObj(i -> "w"+i).toList();
-        var candidates=IntStream.range(0,10).mapToObj(i -> new HeldCandidate("w"+i,100+i,6000)).toList();
-        when(source.take(anyMap())).thenReturn(ids.stream().map(id -> new RuleIndex.Member(id,country("US"))).toList());
-        when(holds.identities("g",ids,10)).thenReturn(candidates);
-        var projections=new java.util.LinkedHashMap<String,RuleIndex.Projection>();
-        ids.forEach(id -> projections.put(id,country("US")));
-        when(source.snapshot(ids)).thenReturn(projections);
-        assertEquals(10,index.refill(List.of(us,either),100,holds));
-        verify(source,times(1)).take(anyMap());
-        assertEquals(10,index.take(List.of(either)).get(either).size());
+    @Test void overlappingQueriesShareOneProjectionAndOnlyRenewedEntriesBecomeVisible() {
+        var us=pools(10,"US");var either=pools(10,"US","CN");
+        var selected=select(List.of(us,either),offered(10,"US"));
+        assertEquals(10,selected.size());assertEquals(1,rule.snapshots);
+        assertTrue(index.take(List.of(either)).get(either).isEmpty());
+        commit(selected);
+        var taken=index.take(List.of(either)).get(either);
+        assertEquals(10,taken.size());assertTrue(taken.stream().allMatch(c->c.score()>=1100));
         assertTrue(index.take(List.of(us)).get(us).isEmpty());
     }
-
-    @Test void membershipIsRecheckedAfterHoldAndFailedProjectionLeavesNoStock() {
-        var target=countries(1,"US"); var criteria=index.criteria(target);
-        when(source.take(Map.of(criteria,1))).thenReturn(List.of(new RuleIndex.Member("w",country("US"))));
-        when(holds.identities("g",List.of("w"),1)).thenReturn(List.of(new HeldCandidate("w",123,6000)));
-        when(source.snapshot(List.of("w"))).thenReturn(Map.of("w",country("CN")));
-        assertEquals(0,index.refill(List.of(target),1,holds));
-        var order=inOrder(source,holds);
-        order.verify(source).take(anyMap()); order.verify(holds).identities("g",List.of("w"),1);
-        order.verify(source).snapshot(List.of("w"));
-        when(source.snapshot(List.of("w"))).thenThrow(new IllegalStateException("unavailable"));
-        assertThrows(IllegalStateException.class,() -> index.refill(List.of(target),1,holds));
-        assertTrue(index.take(List.of(target)).get(target).isEmpty());
-    }
-
-    @Test void manyQueryTargetsShareOneSupplyHoldAndPostHoldBatch() {
-        var targets=IntStream.range(0,100).mapToObj(i -> countries(1,
-                ""+(char)('A'+i/26)+(char)('A'+i%26))).toList();
-        var members=IntStream.range(0,100).mapToObj(i -> new RuleIndex.Member("w"+i,
-                country(targets.get(i).query().get("worker.country").getFirst()))).toList();
-        var candidates=IntStream.range(0,100).mapToObj(i -> new HeldCandidate("w"+i,100+i,6000)).toList();
-        var projections=new java.util.LinkedHashMap<String,RuleIndex.Projection>();
-        members.forEach(member -> projections.put(member.workerId(),member.projection()));
-        when(source.take(anyMap())).thenAnswer(call -> {
-            Map<?,Integer> limits=call.getArgument(0);
-            assertEquals(100,limits.size()); assertTrue(limits.values().stream().allMatch(n -> n==1));
-            return members;
-        });
-        when(holds.identities("g",List.copyOf(projections.keySet()),100)).thenReturn(candidates);
-        when(source.snapshot(List.copyOf(projections.keySet()))).thenReturn(projections);
-        assertEquals(100,index.refill(targets,100,holds));
-        verify(source).take(anyMap()); verify(source).snapshot(anyList());
-        verify(holds).identities(anyString(),anyList(),eq(100));
-        verifyNoMoreInteractions(source,holds);
-    }
-
-    @Test void saturatedConstrainedTargetCannotTakeTheWholeRefillBudgetFromItsPeer() {
-        var us=countries(100,"US"); var cn=countries(100,"CN");
-        when(source.take(anyMap())).thenAnswer(call -> {
-            assertEquals(Map.of(index.criteria(us),50,index.criteria(cn),50),call.getArgument(0));
-            return List.of();
-        });
-        assertEquals(0,index.refill(List.of(us,cn),100,holds));
-        verifyNoInteractions(holds);
-    }
-
-    @Test void concurrentConsumersDeliverEachFenceOnceAndExpiryNeedsNoIo() throws Exception {
-        populate(100,"US"); var query=countries(100,"US");
-        try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
-            var a=executor.submit(() -> index.take(List.of(query)).get(query));
-            var b=executor.submit(() -> index.take(List.of(query)).get(query));
-            var all=new ArrayList<>(a.get()); all.addAll(b.get());
-            assertEquals(100,all.size()); assertEquals(100,all.stream().map(HeldCandidate::workerId).distinct().count());
-        }
-        populate(10,"US"); clock.set(6000);
+    @Test void currentProjectionCanRejectTheIssuedBatchWithoutFindingAnotherWorker() {
+        var offered=offered(1,"CN");
+        var current=new LinkedHashMap<>(rule.current);current.put("better",new RuleHandler.Member("better","US"));rule.current=current;
+        var query=pools(1,"US");assertTrue(select(List.of(query),offered).isEmpty());assertEquals(List.of("w0"),rule.readIds);
+        rule.fail=true;assertThrows(IllegalStateException.class,()->select(List.of(query),offered));
         assertTrue(index.take(List.of(query)).get(query).isEmpty());
-        verifyNoInteractions(source,holds);
+        rule.fail=false;rule.foreign=true;assertThrows(IllegalStateException.class,()->select(List.of(query),offered));
     }
-
+    @Test void hundredQueriesShareOneBoundedProjectionRead() {
+        var targets=IntStream.range(0,100).mapToObj(i->pools(1,"p"+i)).toList();
+        var offered=offered(100,"unused");var current=new LinkedHashMap<String,RuleHandler.Member>();
+        for(int i=0;i<100;i++)current.put("w"+i,new RuleHandler.Member("w"+i,"p"+i));rule.current=current;
+        assertEquals(100,select(targets,offered).size());assertEquals(1,rule.snapshots);assertEquals(100,rule.readIds.size());
+    }
+    @Test void constrainedTargetsGetAdmissionRoomBeforeAny() {
+        var offered=offered(2,"US");rule.current=Map.of("w0",new RuleHandler.Member("w0","CN"),"w1",new RuleHandler.Member("w1","US"));
+        var selected=index.select(List.of(new EligibilityQuery(Map.of(),1),pools(1,"US")),offered,1);
+        assertEquals(List.of("w1"),selected.stream().map(e->e.held().workerId()).toList());
+    }
+    @Test void concurrentTakesDeliverEachObservedEntryAtMostOnce() throws Exception {
+        populate(100,"US");var query=pools(100,"US");
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var a=executor.submit(()->index.take(List.of(query)).get(query));
+            var b=executor.submit(()->index.take(List.of(query)).get(query));
+            var all=new ArrayList<>(a.get());all.addAll(b.get());
+            assertEquals(100,all.size());assertEquals(100,all.stream().map(HeldCandidate::workerId).distinct().count());
+        }
+        populate(10,"US");clock.set(6000);assertTrue(index.take(List.of(query)).get(query).isEmpty());
+    }
+    @Test void replacementCannotBeConsumedByAnOldInventorySnapshot() {
+        populate(1,"US");var observed=stock.snapshot(scope).getFirst();clock.set(6000);
+        var replacement=new SharedEligibilityInventory.Entry(new HeldCandidate("w0",900,9000),"US");
+        stock.add(scope,List.of(replacement));var query=pools(1,"US");
+        assertTrue(stock.take(scope,Map.of(query,List.of(observed))).get(query).isEmpty());assertEquals(List.of(replacement),stock.snapshot(scope));
+    }
     @Test void physicalCapacityIsSharedAndBoundedAcrossEligibilities() {
-        var entries=IntStream.range(0,1000).mapToObj(i -> new SharedEligibilityInventory.Entry(
-                new HeldCandidate("w"+i,1,6000),null)).toList();
-        for (int i=0;i<10;i++) assertEquals(1000,stock.add(new SharedEligibilityInventory.Scope("g","r"+i),entries));
-        assertEquals(0,stock.room(scope));
-        clock.set(6000);
-        assertEquals(1000,stock.room(scope));
-        for (int i=0;i<100;i++) stock.add(new SharedEligibilityInventory.Scope("g","r"+i),
-                List.of(new SharedEligibilityInventory.Entry(new HeldCandidate("w",1,9000),null)));
+        var entries=IntStream.range(0,1000).mapToObj(i->new SharedEligibilityInventory.Entry(new HeldCandidate("w"+i,1,6000),null)).toList();
+        for(int i=0;i<10;i++)assertEquals(1000,stock.add(new SharedEligibilityInventory.Scope("g","r"+i),entries));
+        assertEquals(0,stock.room(scope));clock.set(6000);assertEquals(1000,stock.room(scope));
+        for(int i=0;i<100;i++)stock.add(new SharedEligibilityInventory.Scope("g","r"+i),List.of(new SharedEligibilityInventory.Entry(new HeldCandidate("w",1,9000),null)));
         assertEquals(0,stock.room(scope));
     }
-
-    @Test void boundedExplicitIdentityPagesRotatePastOccupiedPrefixes() {
-        var defaults=new SharedEligibility(stock,scope,null,null,0);
-        var a=IntStream.range(0,100).mapToObj(i -> "a"+String.format("%02d",i)).toList();
-        var b=IntStream.range(0,100).mapToObj(i -> "b"+String.format("%02d",i)).toList();
-        var targets=List.of(new EligibilityQuery(Map.of("workerId",a),1),
-                new EligibilityQuery(Map.of("workerId",b),1));
-        assertEquals(0,defaults.refill(targets,100,holds));
-        assertEquals(0,new SharedEligibility(stock,scope,null,null,1).refill(targets,100,holds));
-        org.mockito.ArgumentCaptor<List<String>> pages=org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(holds,times(2)).identities(eq("g"),pages.capture(),eq(2));
-        assertEquals(100,pages.getAllValues().get(0).size());
-        assertEquals(100,pages.getAllValues().get(1).size());
-        var seen=new java.util.HashSet<>(pages.getAllValues().get(0));
-        seen.addAll(pages.getAllValues().get(1));
-        assertEquals(200,seen.size());
-        verifyNoInteractions(source);
+    @Test void finiteIdentityTargetsFilterOnlyTheBatchAndSaturateAtTheUniqueIds() {
+        var defaults=defaults();var query=new EligibilityQuery(Map.of("workerId",List.of("a","b","a")),100);
+        assertTrue(defaults.select(List.of(query),List.of(new HeldCandidate("outside",1,2000)),100).isEmpty());
+        var entries=defaults.select(List.of(query),List.of(new HeldCandidate("a",1,2000),new HeldCandidate("b",2,2000)),100);
+        assertEquals(2,entries.size());
+        stock.add(new SharedEligibilityInventory.Scope("g","worker.default"),entries.stream().map(e->new SharedEligibilityInventory.Entry(
+                new HeldCandidate(e.held().workerId(),90,6000),null)).toList());
+        assertEquals(0,defaults.deficits(List.of(query)).get(query));assertEquals(2,defaults.take(List.of(query)).get(query).size());
     }
-
-    @Test void defaultIdentityRequiresNoFactsAndKeepsExplicitIdentitySemantics() {
-        var defaults=new SharedEligibility(stock,scope,null,null,0);
-        var query=new EligibilityQuery(Map.of("workerId",List.of("busy","ready")),1);
-        when(holds.identities("g",List.of("busy","ready"),1))
-                .thenReturn(List.of(new HeldCandidate("ready",7,6000)));
-        assertEquals(1,defaults.refill(List.of(query),100,holds));
-        assertEquals("ready",defaults.take(List.of(query)).get(query).getFirst().workerId());
-        verifyNoInteractions(source);
+    @Test void commonQueryStructurePreservesOrderedAndDuplicateRuleParameters() {
+        var values=List.of("z","a","z");assertEquals(values,new EligibilityQuery(Map.of("custom",values),3).query().get("custom"));
     }
 }

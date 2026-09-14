@@ -1300,6 +1300,115 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(redis.zscore(scoreKey("g"), "paused")).isEqualTo((double) pause);
     }
 
+    @Test
+    void threeHoldStagesUseOneLuaPerHundredAndInvalidateEachPreviousFence() {
+        long now=redisTimeMillis();
+        var due=new LinkedHashMap<String,Long>();
+        for(int i=0;i<100;i++) {
+            long value=workerScore(1,now/100-10,i%100,1);
+            due.put("w"+i,value);redis.zadd(scoreKey("g"),value,"w"+i);
+        }
+        var commands=new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var listener=new io.lettuce.core.event.command.CommandListener() {
+            @Override public void commandStarted(io.lettuce.core.event.command.CommandStartedEvent event) {
+                commands.add(event.getCommand().getType().toString());
+            }
+        };
+        redisClient.addListener(listener);
+        try {
+            var s0=transitionedScores(scoreCore.acquireObservedHotScoreLeases("g",due,now+1000));
+            assertThat(s0).hasSize(100);assertThat(commands).containsExactly("EVAL");commands.clear();
+            var s1=transitionedScores(scoreCore.extendActiveHotScoreLeases("g",s0,now+5000));
+            assertThat(s1).hasSize(100);assertThat(commands).containsExactly("EVAL");commands.clear();
+            var s2=transitionedScores(scoreCore.confirmActiveHotScoreLeases("g",s1,now+3000));
+            assertThat(s2).hasSize(100);assertThat(commands).containsExactly("EVAL");
+            for(String id:due.keySet()) {
+                assertThat(s1.get(id)).isGreaterThan(s0.get(id));
+                assertThat(s1.get(id)%200).isEqualTo(due.get(id)%200-1);
+                assertThat(s2.get(id)).isEqualTo(s1.get(id)+1);
+            }
+            assertThat(scoreCore.extendActiveHotScoreLeases("g",s0,now+6000).values())
+                    .allSatisfy(r->assertThat(r.status()).isEqualTo(WorkerScoreTransitionStatus.STALE));
+            assertThat(scoreCore.confirmActiveHotScoreLeases("g",s1,now+6000).values())
+                    .allSatisfy(r->assertThat(r.status()).isEqualTo(WorkerScoreTransitionStatus.STALE));
+            assertThat(scoreCore.releaseCompletedHotScoreHolds("g",Map.of("w0",s1.get("w0")),now+500).get("w0").status())
+                    .isEqualTo(WorkerScoreTransitionStatus.STALE);
+            assertThat(scoreCore.releaseCompletedHotScoreHolds("g",Map.of("w0",s2.get("w0")),now+500).get("w0").status())
+                    .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+        } finally { redisClient.removeListener(listener); }
+    }
+
+    private static Map<String,Long> transitionedScores(Map<String,WorkerScoreTransitionResult> results) {
+        var scores=new LinkedHashMap<String,Long>();
+        results.forEach((id,result)-> {if(result.status()==WorkerScoreTransitionStatus.TRANSITIONED)scores.put(id,result.score());});
+        return scores;
+    }
+
+    @Test
+    void inventoryExtensionNeverReacquiresDirtyPausedExpiredOrChangedFences() {
+        long now=redisTimeMillis(),slot=now/100;
+        var observed=new LinkedHashMap<String,Long>();
+        observed.put("clean",workerScore(1,slot+100,17,0));
+        observed.put("dirty",workerScore(1,slot+100,17,1));
+        observed.put("pause",workerScore(1,WorkerScoreCore.PAUSE_TIME_SLOT,17,0));
+        observed.put("expired",workerScore(1,slot-1,17,0));
+        observed.put("recovery",workerScore(-1,slot+100,17,0));
+        observed.put("changed",workerScore(1,slot+100,17,0));
+        observed.forEach((id,score)->redis.zadd(scoreKey("g"),score,id));
+        redis.zadd(scoreKey("g"),observed.get("changed")+1,"changed");
+        observed.put("missing",observed.get("clean"));
+        assertThat(scoreCore.extendActiveHotScoreLeases("g",Map.of("clean",observed.get("clean")),now+5000).get("clean").status())
+                .isEqualTo(WorkerScoreTransitionStatus.NOOP);
+        assertThat(scoreCore.extendActiveHotScoreLeases("g",Map.of("clean",observed.get("clean")),(slot+100)*100).get("clean").status())
+                .isEqualTo(WorkerScoreTransitionStatus.NOOP);
+        var result=scoreCore.extendActiveHotScoreLeases("g",observed,now+20_000);
+        assertThat(transitionedScores(result)).containsOnlyKeys("clean");
+        for(String id:List.of("dirty","pause","expired","recovery"))assertThat(redis.zscore(scoreKey("g"),id)).isEqualTo(observed.get(id).doubleValue());
+        assertThat(redis.zscore(scoreKey("g"),"missing")).isNull();
+        for(int i=0;i<101;i++)observed.put("overflow"+i,1L);
+        assertThatThrownBy(()->scoreCore.extendActiveHotScoreLeases("g",observed,now+20_000)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void concurrentInventoryExtensionsHaveOneWinner() throws Exception {
+        long now=redisTimeMillis(),s0=workerScore(1,(now+1000)/100,7,0);
+        redis.zadd(scoreKey("g"),s0,"w");
+        var start=new CountDownLatch(1);
+        try(var competing=new RedisWorkerScoreCore(redisClient,keyspace);var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var a=executor.submit(()->{start.await();return scoreCore.extendActiveHotScoreLeases("g",Map.of("w",s0),now+5000).get("w").status();});
+            var b=executor.submit(()->{start.await();return competing.extendActiveHotScoreLeases("g",Map.of("w",s0),now+6000).get("w").status();});
+            start.countDown();
+            assertThat(List.of(a.get(5,TimeUnit.SECONDS),b.get(5,TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(WorkerScoreTransitionStatus.TRANSITIONED,WorkerScoreTransitionStatus.STALE);
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"acquire","extend","confirm"})
+    void leaseTimeIsCheckedAtLuaSubmissionAfterTheCallerCrossesTheSlot(String mode) {
+        long now=redisTimeMillis(),deadline=now+300;
+        long fence=workerScore(1,(mode.equals("acquire")?now-1000:deadline)/100,7,0);
+        redis.zadd(scoreKey("g"),fence,"w");
+        var listener=new io.lettuce.core.event.command.CommandListener() {
+            @Override public void commandStarted(io.lettuce.core.event.command.CommandStartedEvent event) {
+                if(!event.getCommand().getType().toString().equals("EVAL"))return;
+                try { Thread.sleep(Math.max(0,deadline-System.currentTimeMillis()+200)); }
+                catch(InterruptedException failure) { Thread.currentThread().interrupt();throw new IllegalStateException(failure); }
+            }
+        };
+        redisClient.addListener(listener);
+        WorkerScoreTransitionResult result;
+        try {
+            result=switch(mode) {
+                case "acquire" -> scoreCore.acquireObservedHotScoreLeases("g",Map.of("w",fence),deadline).get("w");
+                case "extend" -> scoreCore.extendActiveHotScoreLeases("g",Map.of("w",fence),now+5000).get("w");
+                default -> scoreCore.confirmActiveHotScoreLeases("g",Map.of("w",fence),now+5000).get("w");
+            };
+        } finally {redisClient.removeListener(listener);}
+        assertThat(result.status()).isEqualTo(mode.equals("acquire")?WorkerScoreTransitionStatus.INVALID:WorkerScoreTransitionStatus.STALE);
+        assertThat(redis.zscore(scoreKey("g"),"w")).isEqualTo((double)fence);
+    }
+
     private static WorkerGroupDescriptor group(
             String workerGroupId,
             Map<String, Object> attributes,

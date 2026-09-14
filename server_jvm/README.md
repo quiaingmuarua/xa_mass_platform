@@ -165,6 +165,12 @@ POST /api/v1/tasks
 The request names one registered WorkerGroup. Server generates task-{UUID}.
 An optional `ruleId` names a fixed Matching Handler; omission binds explicitly to
 `worker.default`. Every Task has a binding before Kernel metadata is created.
+Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
+configuration enables those instances. Rule interpretation stays in Matching.
+Default retains its optional country queries for current SMS start/cancel flows.
+Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
+configuration enables those instances. Rule interpretation stays in Matching.
+Default retains its optional country queries for current SMS start/cancel flows.
 All finite Tasks use CLOSE_WHEN_IDLE. Unknown/blank Rules, unavailable Group
 indexes and unknown request fields are rejected. Priority defaults to 50 and
 retry budget to 3. Optional `refillTargets` stores 1..100 operator-free query/count targets in the
@@ -284,13 +290,15 @@ Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
 derives the absolute expiry. Finite Task append may supply `workerSelector`; omission means `{}`;
 managed Task Call requires a Selector object, where `{}` means no Worker
-additional restriction within the bound Rule and `{"workerId":["a","b"]}` names ordered explicit IDs.
+additional restriction within the bound Rule. Only `worker.default` accepts
+`{"workerId":["a","b"]}`; those IDs remain restricted to the bound WorkerGroup.
 Property maps may combine the Handler's supported conditions with AND. Country uses
 `{"worker.country":{"op":"eq","values":["CN"]}}` or in with 1..100 values.
 Values are strict uppercase ASCII pairs. Old country parameter lists are rejected;
 ANY and explicit-ID JSON are unchanged. Enable Groups with
 `xa.mass.worker-matching.rules.worker-groups.<group>` with explicit Handler IDs.
-For named Rules, even ANY and explicit IDs must satisfy Rule membership.
+For named Rules, ANY requires Rule membership and explicit ID queries are rejected.
+Each Handler defines its query syntax; existing property Rules keep HTTP eq/in.
 Submission validates the binding but does not take candidates. Finite invalid
 members retain per-member rejection; managed calls validate every original
 query, including overwritten duplicate IDs, before submission.

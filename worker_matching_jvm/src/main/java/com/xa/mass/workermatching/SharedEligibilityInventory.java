@@ -13,28 +13,37 @@ final class SharedEligibilityInventory {
     static final int PROCESS_CAPACITY = 10_000;
     static final int ELIGIBILITY_CAPACITY = 100;
     record Scope(String workerGroupId, String ruleId) { }
-    record Entry(HeldCandidate held, RuleIndex.Projection projection) {
-        boolean matches(RuleIndex.Criteria criteria) {
-            if (projection != null) return projection.matches(held.workerId(), criteria);
-            return criteria.partition().isEmpty() && (criteria.kind().equals("any")
-                    || criteria.kind().equals("ids") && criteria.values().contains(held.workerId()));
+    static final class Entry {
+        private final HeldCandidate held;
+        private final RuleHandler.Member member;
+        Entry(HeldCandidate held,Object projection) {
+            this.held=held; this.member=new RuleHandler.Member(held.workerId(),projection);
         }
+        HeldCandidate held() { return held; }
+        RuleHandler.Member member() { return member; }
     }
 
     private final Map<Scope, LinkedHashMap<String, Entry>> pools = new LinkedHashMap<>();
     private final LongSupplier clock;
     private int size;
-    private long held, expired, admitted, consumed, takeRequested, capacityLimited;
+    private long held, selected, renewed, expired, admitted, consumed, takeRequested, capacityLimited;
 
     SharedEligibilityInventory() { this(System::currentTimeMillis); }
     SharedEligibilityInventory(LongSupplier clock) { this.clock = clock; }
 
     synchronized void recordHeld(int count) { held += count; }
 
-    synchronized int count(Scope scope, RuleIndex.Criteria criteria) {
+    synchronized void recordRenewal(int planned,int confirmed) { selected+=planned; renewed+=confirmed; }
+
+    synchronized int availableCapacity() {
+        for(Scope scope:List.copyOf(pools.keySet()))expire(scope);
+        return PROCESS_CAPACITY-size;
+    }
+
+    synchronized List<Entry> snapshot(Scope scope) {
         expire(scope);
-        var pool = pools.get(scope);
-        return pool == null ? 0 : (int) pool.values().stream().filter(entry -> entry.matches(criteria)).count();
+        var pool=pools.get(scope);
+        return pool==null?List.of():List.copyOf(pool.values());
     }
 
     synchronized int room(Scope scope) {
@@ -62,25 +71,23 @@ final class SharedEligibilityInventory {
     }
 
     synchronized Map<EligibilityQuery, List<HeldCandidate>> take(
-            Scope scope, Map<EligibilityQuery, RuleIndex.Criteria> queries) {
+            Scope scope, Map<EligibilityQuery, List<Entry>> selected) {
         expire(scope);
         var result = new LinkedHashMap<EligibilityQuery, List<HeldCandidate>>();
         var pool = pools.get(scope);
-        queries.forEach((query, criteria) -> {
+        selected.forEach((query, entries) -> {
             takeRequested += query.count();
             var taken = new ArrayList<HeldCandidate>();
-            if (pool != null) {
-                var iterator = pool.values().iterator();
-                while (iterator.hasNext() && taken.size() < query.count()) {
-                    Entry entry = iterator.next();
-                    if (entry.matches(criteria)) {
-                        taken.add(entry.held()); iterator.remove(); size--; consumed++;
-                    }
+            if (pool != null) for (Entry entry : entries) {
+                String id=entry.held().workerId();
+                // Compare the observed entry itself: a replacement never revives an old observation.
+                if (pool.get(id)==entry) {
+                    pool.remove(id); taken.add(entry.held()); size--; consumed++;
                 }
             }
-            result.put(query, List.copyOf(taken));
+            result.put(query,List.copyOf(taken));
         });
-        if (pool != null && pool.isEmpty()) pools.remove(scope);
+        if(pool!=null && pool.isEmpty())pools.remove(scope);
         return result;
     }
 
@@ -99,7 +106,9 @@ final class SharedEligibilityInventory {
 
     synchronized String diagnostics() {
         for (Scope resident : List.copyOf(pools.keySet())) expire(resident);
-        return "resident=" + size + " eligibilities=" + pools.size() + " held=" + held + " admitted=" + admitted
+        return "resident=" + size + " eligibilities=" + pools.size() + " offered=" + held + " admitted=" + admitted
+                + " renewed=" + renewed + " shortUnaccepted=" + (held-renewed) + " renewalRejected=" + (selected-renewed)
+                + " renewedNotAdmitted=" + (renewed-admitted)
                 + " takeRequested=" + takeRequested + " consumed=" + consumed
                 + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
     }

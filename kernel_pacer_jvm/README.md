@@ -86,10 +86,13 @@ Score point recheck; exact downstream transitions reject stale observations.
 A busy Producer skips the current source snapshot without storing a pending
 hint.
 
-Dispatch resolves one bounded Task binding batch through Matching, then owns
-HOT observation, initial hold, membership recheck, exact confirmation, Item claim
-and delivery. Default ANY/IDs use identity selection; other queries consume the
-bound Rule index. Pacer does not load Rules, Properties or interpret conditions.
+Main resolves one bounded NORMAL Task binding batch through Matching. The fixed
+refill Producer alone observes Group HOT and supplies closed 1-second S0 batches;
+Matching checks only supplied projections and requests one extension to 5-second S1.
+Dispatch consumes shared stock
+for every accepted selector, then exact-confirms, claims the Item and delivers.
+Only worker.default accepts explicit ID queries. Pacer does not load Rules,
+Properties or interpret conditions.
 Package-private mechanisms protect exact Score fences and claim/Command ordering.
 Producers discover only resources under the Main Scheduler's root identities;
 Serviceability retains sweep hints only for Groups in that Task batch.

@@ -552,7 +552,7 @@ class RuntimeApiControllerTest {
                  "refillTargets":[{"query":{"worker.country":["US","CN","US"]},"count":20}]}
                 """)).andExpect(status().isOk());
         verify(matchingCatalog).bindTaskRule(anyString(),eq("phone-tools"),eq("worker.country"),eq(List.of(
-                new com.xa.mass.workermatching.EligibilityQuery(Map.of("worker.country",List.of("CN","US")),20))));
+                new com.xa.mass.workermatching.EligibilityQuery(Map.of("worker.country",List.of("US","CN","US")),20))));
         var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority","maxRetryTimes");

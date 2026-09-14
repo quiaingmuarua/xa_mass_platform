@@ -141,7 +141,7 @@
       "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/RuleIndex.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/PartitionedZsetIndex.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -156,7 +156,7 @@
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
     {
-      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/RuleHandlerTest.java",
+      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/rules/RuleHandlerTest.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -729,10 +729,10 @@
         "worker_dynamic_matching",
         "product_coexistence"
       ],
-      "reason": "Shared refill and destructive local take require the same Owner, real Worker, dynamic facts and convergence proofs as their Rule source."
+      "reason": "Closed Pacer supply, merged renewal and destructive local take require Owner fence/command proofs plus real Worker, dynamic facts and convergence proofs."
     },
     {
-      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerInitialHoldPolicy.java",
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerEligibilityRefillPolicy.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

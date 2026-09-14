@@ -40,7 +40,7 @@ class JfrDiagnosticsTest {
             stage.payload = "secret-business-payload";
             stage.batchSize = 3;
             stage.commit();
-            for (String name : java.util.List.of("REFILL_ROUND","INITIAL_HOLD","WORKER_CONFIRM_REJECTED")) {
+            for (String name : java.util.List.of("REFILL_ROUND","INITIAL_HOLD","INVENTORY_HOLD","WORKER_CONFIRM_REJECTED")) {
                 var refill = new TestStage(); refill.stage = name; refill.batchSize = 5; refill.commit();
             }
             new TestExecutor().commit();
@@ -53,7 +53,7 @@ class JfrDiagnosticsTest {
         var summary = JfrDiagnostics.summarize(file, started, 120, "server");
         assertThat(summary).containsEntry("complete", false).containsEntry("cpuCoverageSamples", 0);
         String json = Jsons.toJson(summary);
-        assertThat(json).contains("REFILL_ROUND", "INITIAL_HOLD", "WORKER_CONFIRM_REJECTED", "UNRECOGNIZED", "\"batchSize\":3", "\"active\":null", "\"queued\":null")
+        assertThat(json).contains("REFILL_ROUND", "INITIAL_HOLD", "INVENTORY_HOLD", "WORKER_CONFIRM_REJECTED", "UNRECOGNIZED", "\"batchSize\":3", "\"active\":null", "\"queued\":null")
                 .doesNotContain("secret-worker-id", "secret-business-payload", "example.UnknownEvent", "secret-unknown-content");
     }
 }

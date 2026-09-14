@@ -172,10 +172,10 @@ Worker score. Server requests bounded dirty invalidation after actual Worker or
 Platform facts changes; final assignment confirmation also sets dirty=1.
 
 HOT candidate acquisition is a bounded read-only range query. It returns
-`(workerId, observedScore)` pairs to Kernel policy. The point query intersects
-explicit targets or Matching-supplied eligible identities with HOT; the bounded
-range query serves default ANY. Kernel exact-holds the observations and Matching
-rechecks indexed membership after hold without receiving Worker scores.
+`(workerId, observedScore)` pairs to Pacer. Production refill always uses the
+bounded Group range; explicit-ID queries do not initiate point acquisition.
+Pacer exact-holds the observations as S0 and Matching reads only those IDs
+for qualification, retaining their scores as opaque fences.
 Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
@@ -217,7 +217,8 @@ timeSlot >= nowSlot
   not acquired by hot acquisition
 
 timeSlot == nowSlot
-  current-slot occupied boundary; not acquired or renewed
+  current-slot occupied boundary; no due acquisition
+  exact clean active holds may still extend or confirm in this slot
 
 timeSlot > nowSlot
   future-held / occupied / temporarily unavailable for hot acquisition
@@ -352,11 +353,11 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 ```
 
 Only positive due scores are returned and neither query modifies them. The
-point form preserves the bounded caller-supplied Worker universe and is used
-after Kernel extracts explicit IDs from the stored selector or Matching returns
-bounded indexed identities. The Score Owner never interprets that selector.
-Only a successful exact observed-score hold may enter final confirmation.
-Matching supplies identities before hold and rechecks their membership afterward.
+point form is a mechanical bounded read, not a production refill supply path.
+Pacer uses the Group range for every Rule, acquires S0 and issues a closed batch.
+Matching qualifies only that batch and requests one exact extension to inventory
+S1. Dispatch consumes S1 and exact-confirms S2. The Score Owner never interprets
+selectors, and Matching cannot initiate either observation form.
 
 When optional periodic Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
@@ -856,6 +857,13 @@ acquire_observed_hot_score_leases(
   independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   each generic CAS requires storedScore == observedScore
 
+extend_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
+  at most 100 identities; exact HOT, clean, active and non-PAUSE fences only
+  target slot must be future; same/earlier existing deadline returns NOOP
+  writes a strictly later HOT deadline, preserving rank and dirty=0
+  returns the new inventory fence; only TRANSITIONED may enter stock
+  never reacquires an expired hold or clears dirty
+
 confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   each observedScore must decode to HOT_ACQUIRE
   each storedScore must equal its observedScore
@@ -869,12 +877,13 @@ confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
 
 ```
 
-Initial hold and confirmation operate on one WorkerGroup/ZSET with a shared
-target. They pipeline independent single-Worker CAS operations and do not
-promise cross-Worker atomicity. Dirty invalidation uses one bounded batch Lua
-operation. Properties writes and invalidation remain separate commits.
+Initial acquisition, inventory extension and confirmation use one bounded Lua per
+100 identities on one WorkerGroup/ZSET. The same Lua reads Redis TIME before
+checking deadlines and exact fences, then returns per-Worker results. There is no
+separate time confirmation read or per-Worker command. Dirty invalidation is also
+a bounded Lua. Properties writes and invalidation remain separate commits.
 
-RECOVERY_RECHECK scores must not pass either hot score lease primitive. Recovery
+RECOVERY_RECHECK scores must not pass any hot score lease primitive. Recovery
 validation must first move the worker back to HOT_ACQUIRE through owner-validated
 polarity transition.
 
@@ -918,14 +927,15 @@ Serviceability policy and evidence classification are defined in
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
 | hot candidate observation | no | bounded due range read with scores |
-| hot Worker allocation lease | yes | bounded due observation or explicit-ID point observation, then exact observed-score CAS |
+| hot Worker allocation lease | yes | Pacer bounded Group HOT observation, then exact observed-score CAS |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | slot contention / cooldown | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
-| Worker Matching Properties change | no | Matching facts only; later Demand sees the new snapshot |
+| Worker Matching Properties change | no | Matching facts only; later supplied-ID projection sees the new snapshot |
 | Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
-| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes and dirty clear before membership recheck and final claim |
+| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` checks Redis time and exact-CAS writes a short clean S0 in one bounded Lua |
+| Pacer extends accepted clean HOT_ACQUIRE handoff holds | yes | `extend_active_hot_score_leases` exact-extends S0 to S1 in one Group Lua; Matching can submit only batch-issued IDs |
 | assignment owner consumes active clean HOT_ACQUIRE holds | yes | `confirm_active_hot_score_leases` exact-CAS sets dirty=1 and returns the execution fence; dirty entries return STALE |
 | Server after APPLIED Worker or Platform facts writes | best-effort | `mark_current_leases_dirty` preserves coordinates; failure does not undo the facts response |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |

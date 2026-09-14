@@ -35,7 +35,7 @@ final class DispatchMainScheduler {
     private final TaskInitializationPolicy initialization;
     private final TaskDispatchPolicy dispatch;
     private final WorkerCandidateIndex candidateIndex;
-    private final WorkerCandidateIndex.InitialHold initialHold;
+    private final WorkerEligibilityRefillPolicy refill;
     private final WorkerServiceabilityDispatchPolicy serviceability;
     private final AssignmentDispatchConfig assignmentConfig;
     private final WorkerServiceabilityDispatchConfig serviceabilityConfig;
@@ -46,7 +46,7 @@ final class DispatchMainScheduler {
             TaskInitializationPolicy initialization,
             TaskDispatchPolicy dispatch,
             WorkerCandidateIndex candidateIndex,
-            WorkerCandidateIndex.InitialHold initialHold,
+            WorkerEligibilityRefillPolicy refill,
             WorkerServiceabilityDispatchPolicy serviceability,
             AssignmentDispatchConfig assignmentConfig,
             WorkerServiceabilityDispatchConfig serviceabilityConfig
@@ -62,7 +62,7 @@ final class DispatchMainScheduler {
         );
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
         this.candidateIndex=Objects.requireNonNull(candidateIndex,"candidateIndex");
-        this.initialHold=Objects.requireNonNull(initialHold,"initialHold");
+        this.refill=Objects.requireNonNull(refill,"refill");
         this.serviceability = serviceability;
         this.assignmentConfig = Objects.requireNonNull(
                 assignmentConfig,
@@ -256,7 +256,7 @@ final class DispatchMainScheduler {
                     int added=0;
                     boolean failed=true;
                     try {
-                        added=candidateIndex.refill(queries,1000,initialHold);
+                        added=refill.refill(workerGroupIds,queries);
                         failed=false;
                     } finally {
                         DispatchStageEvent.batch(started,"REFILL_ROUND",queries.size(),added,failed);

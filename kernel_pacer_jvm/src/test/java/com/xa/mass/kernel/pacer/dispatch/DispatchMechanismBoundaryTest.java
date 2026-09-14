@@ -169,7 +169,7 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("observeDueHot"));
         assertFalse(selection.contains("acquireObservedHotScoreLeases"));
         assertTrue(selection.contains("query.take(limits)"));
-        String refill=Files.readString(ROOT.resolve("WorkerInitialHoldPolicy.java"));
+        String refill=Files.readString(ROOT.resolve("WorkerEligibilityRefillPolicy.java"));
         assertTrue(refill.contains("observeDueHotScoreCandidates"));
         assertTrue(refill.contains("acquireObservedHotScoreLeases"));
     }

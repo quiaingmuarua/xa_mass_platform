@@ -92,6 +92,13 @@ public interface WorkerScoreCore {
             long targetTimeMillis
     );
 
+    /** Extends at most 100 exact, clean active HOT holds, preserving rank and dirty=0. */
+    Map<String, WorkerScoreTransitionResult> extendActiveHotScoreLeases(
+            String homeBucketId,
+            Map<String, Long> observedScores,
+            long targetTimeMillis
+    );
+
     /** Consumes each exact, clean active hold once and returns its execution fence. */
     Map<String, WorkerScoreTransitionResult> confirmActiveHotScoreLeases(
             String homeBucketId,

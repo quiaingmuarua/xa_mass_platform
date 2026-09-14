@@ -19,7 +19,7 @@ class DispatchBudgetTest {
         var scores=mock(TaskScoreBandCore.class);
         var catalog=mock(TaskResourceCatalog.class);
         var index=mock(WorkerCandidateIndex.class);
-        var hold=mock(WorkerCandidateIndex.InitialHold.class);
+        var hold=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
         var query=mock(WorkerCandidateIndex.TaskQuery.class);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L,"initial",100L));
@@ -32,7 +32,7 @@ class DispatchBudgetTest {
         run.step();
         assertEquals(3,executor.pending.size());
         executor.pending.remove(1).run(); // Refill only; initialization and dispatch are still queued.
-        verify(index).refill(Map.of("task",query),1000,hold);
+        verify(hold).refill(List.of("group"),Map.of("task",query));
         verifyNoInteractions(initialization,dispatch,query);
         executor.pending.removeLast().run();
         verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)),Map.of("task",query));
@@ -52,7 +52,7 @@ class DispatchBudgetTest {
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor()));
         var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
-                dispatch, mock(WorkerCandidateIndex.class), mock(WorkerCandidateIndex.InitialHold.class), null, AssignmentDispatchConfig.defaults(), null);
+                dispatch, mock(WorkerCandidateIndex.class), mock(WorkerEligibilityRefillPolicy.class), null, AssignmentDispatchConfig.defaults(), null);
         var clock = new AtomicLong(1_000_000_000L);
         var executor = new ManualExecutor();
         var run = scheduler.new SchedulerRun(executor, clock::get);
@@ -116,7 +116,7 @@ class DispatchBudgetTest {
                 .thenReturn(Map.of("task", descriptor()));
         var config = WorkerServiceabilityDispatchConfig.defaults(100L);
         var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
-                mock(TaskDispatchPolicy.class), mock(WorkerCandidateIndex.class), mock(WorkerCandidateIndex.InitialHold.class), serviceability, AssignmentDispatchConfig.defaults(), config);
+                mock(TaskDispatchPolicy.class), mock(WorkerCandidateIndex.class), mock(WorkerEligibilityRefillPolicy.class), serviceability, AssignmentDispatchConfig.defaults(), config);
         var executor = new ManualExecutor();
         var run = scheduler.new SchedulerRun(executor, clock::get);
         for (int millis = 0; millis <= 3_000; millis += 50) {

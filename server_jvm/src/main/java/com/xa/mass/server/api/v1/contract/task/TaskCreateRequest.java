@@ -14,7 +14,7 @@ public record TaskCreateRequest(
         @Min(0) @Max(98) Integer maxRetryTimes,
         @io.swagger.v3.oas.annotations.media.Schema(description = "Optional shared Eligibility refill targets. "
                 + "Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default "
-                + "at binding creation, otherwise ANY 100. Targets are not private Task quotas.")
+                + "at binding creation, otherwise ANY 100. Only worker.default accepts workerId queries; their effective target is capped by unique ID count. Targets are not private Task quotas.")
         @Size(min=1,max=100) List<EligibilityQuery> refillTargets
 ) {
     public TaskCreateRequest {

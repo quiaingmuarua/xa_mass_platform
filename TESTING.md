@@ -118,6 +118,11 @@ bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
 rebuild isolation. Matching tests prove Handler/query pairing and unsupported
 condition rejection, shared MAX watermarks and atomic destructive consumption.
+The separately assembled bucket SET/projection HASH Rule proves that a different
+index layout uses the public Handler contract without common-flow changes. Its
+Redis Owner cases cover batch costs, corrupt-index preflight and dirty invalidation;
+Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
+finite-ID target saturation and named-Rule identity rejection have focused proofs.
 Pacer tests prove refill without Item reads, independently scheduled consumption,
 round exclusions and opaque exact fences. Runtime Boundary runs actual Workers
 serving two Tasks from the same Eligibility and preserves independent Task closure. These are not cross-owner transactions or loss-repair guarantees.
@@ -339,3 +344,18 @@ multi-JDK matrix, Android API matrix, general topology Cartesian product,
 throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
 remain protocol/Runtime Boundary claims; the convergence health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.
+
+### Closed Pacer Supply and Three Hold Stages
+
+Core mechanism proof: Pacer is the only candidate supplier. The Matching Redis
+Owner proof issues A while a better B remains indexed, verifies B cannot be taken
+or renewed, and verifies two Eligibilities share one Group renewal. Pacer tests
+reject out-of-batch, duplicate, escaped and cross-thread renewal capabilities.
+The Worker Score Redis proof checks S0/S1/S2 invalidation, competing extensions,
+dirty/PAUSE/expiry rejection and a deliberate pre-EVAL delay across the time slot.
+Each 100-Worker acquisition, extension and confirmation uses one client Lua command.
+Runtime Boundary executes two Tasks using a test-only SET/HASH Rule and a real
+Worker, asserting that refill receives the Pacer-issued batch. Dynamic Matching
+and Convergence Health continue to own facts invalidation and scheduling progress.
+Call Performance measures selective short-hold costs separately; these functional
+or command-count proofs do not claim improved throughput or latency.

@@ -14,12 +14,20 @@ initialization, Eligibility refill, Task dispatch and optional Serviceability
 Producers. It reads NORMAL Task bindings once and shares the prepared views.
 TaskItems only consume stock; they never generate refill demand or a matching job.
 
+## Core Mechanism Change
+
+Candidate supply has moved out of Matching: Pacer alone observes HOT, chooses
+Group budgets and acquires leases. Matching may accept only the supplied IDs.
+The old direct 5-second acquisition is replaced by S0 (1 second), S1 (5 seconds)
+and execution S2. Explicit-ID queries filter stock; they do not target acquisition.
+All three lease operations check time inside their exact-CAS Lua.
+
 ## Candidate Selection
 
 ```text
 NORMAL RUNNING Tasks -> one prepared Binding batch
-  -> refill: shared target MAX -> deficit -> source -> Kernel initial hold
-      -> current membership/projection -> Matching shared inventory
+  -> refill: shared target MAX -> Group deficit -> Pacer HOT -> short S0
+      -> Matching projection/acceptance -> Kernel exact extension S1 -> inventory
   -> dispatch: due Item queries -> local destructive take
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
@@ -29,12 +37,25 @@ and opaque held identities. No Task-private candidate cache or quota exists.
 Refill takes no Item input. All selectors, including ANY and explicit IDs, consume
 inventory; a miss leaves the Item due without a source query or fresh hold.
 
-Refill runs at a 50ms completion-relative interval. It attempts at most 100 holds
-per Eligibility, 1000 per round; capacity and query page rotation stay Matching-owned.
-Kernel's narrow `InitialHold` port supports Group ANY and at most 100 explicit
-identities, observes HOT with the preset floor and requests a 5-second exact hold.
-It returns the Owner's opaque fence and cleanup deadline. Post-hold projection
-must be read because acquisition clears dirty. Unused/rejected holds expire.
+Refill runs at a 50ms completion-relative interval. Pacer rotates positive-deficit
+Groups and tries at most 100 IDs per Group, 1000 per round, independent of the
+business deficit count. It alone observes due HOT with the preset floor and
+acquires a 1-second S0. An empty round advances its bounded Group cursor too.
+
+Matching reads only the offered IDs' current projections, after dirty was cleared
+by acquisition. It rotates Eligibility/query acceptance, prioritizes constrained
+queries before ANY and plans each ID for at most one Eligibility. The union is
+renewed once to a 5-second S1. No S0 enters consumable inventory.
+
+Pacer's invocation-local renewal capability captures the Group and original fences.
+Only a unique subset of issued IDs is accepted, at most once, on the issuing thread,
+before refill returns. Invalid, duplicate, late or cross-batch uses cannot call the
+Score Owner. Rule Handlers never receive the capability. Plans remain local to the
+call; there is no pending lease registry or periodic renewal.
+
+This restores scheduling authority while accepting potentially longer waits for
+rare predicates/explicit IDs. Matching cannot compensate by discovering better IDs
+from its indexes. Unaccepted S0 and failed/ambiguous S1 expire naturally.
 
 Main-selected INITIAL Tasks never prewarm. Closed, parked or disabled Tasks supply
 no subsequent targets. A Main observation is round evidence; stopping a Task does
@@ -48,7 +69,7 @@ lookup, confirmation and claim. Failure never restores the candidate or refreshe
 its fence. No Item request bypasses inventory or relaxes missing Rule evidence.
 
 The [Matching Owner](../../../worker_matching_jvm/README.md#cost-failure-and-proof)
-records source/refill command costs. Counts and take are local. Endpoint HMGET,
+records supply/refill command costs. Counts and take are local. Endpoint HMGET,
 Worker confirmation, Item claim and mailbox publication remain bounded Owner calls.
 They are measured independently from refill, not asserted as a latency promise.
 
@@ -78,7 +99,7 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 | --- | --- |
 | missing/unavailable Task binding | no assignment; failure/idle handling continues |
 | invalid selector | Server rejects before Item mutation; stored invalid input fails bounded acquisition |
-| source, projection or initial hold failure | refill Producer backoff; partial holds expire |
+| HOT observation, projection, acquisition or renewal failure | refill Producer backoff; partial holds expire |
 | changed membership, dirty or competing exact score | candidate cannot pass the required fence |
 | unused hold | expires naturally; no compensation |
 | restart | local stock is lost; facts/bindings persist and normal refill acquires new holds |

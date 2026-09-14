@@ -4,7 +4,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.TreeSet;
 
 /** Operator-free request; the bound Rule interprets its fields. Count is a target or a take quantity. */
 public record EligibilityQuery(Map<String, List<String>> query, int count) {
@@ -20,11 +19,8 @@ public record EligibilityQuery(Map<String, List<String>> query, int count) {
                     || values.stream().anyMatch(value -> value == null || value.isBlank())) {
                 throw new IllegalArgumentException("query fields require 1..100 non-blank strings");
             }
-            normalized.put(key, List.copyOf(new TreeSet<>(values)));
+            normalized.put(key, List.copyOf(values));
         });
-        if (normalized.containsKey("workerId") && normalized.size() != 1) {
-            throw new IllegalArgumentException("workerId cannot be combined with property conditions");
-        }
         query = Collections.unmodifiableMap(normalized);
     }
     @com.fasterxml.jackson.annotation.JsonAnySetter

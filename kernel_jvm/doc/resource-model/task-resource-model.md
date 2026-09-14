@@ -36,7 +36,8 @@ multi-field AND queries. Kernel does not interpret operators or facts.
 Main resolves at most 100 NORMAL Task IDs/Groups through one `prepareTaskQueries`
 call shared by refill and dispatch. Missing or unusable bindings block assignment.
 Matching merges stored refill targets by shared Group/Rule and normalized query,
-then requests Kernel initial holds and checks current projection before inventory
+then qualifies only Pacer-issued short-held IDs and requests one batch-bound
+Kernel extension before inventory
 admission. Task views reference shared stock without carrying Rule coordinates
 or targets into Kernel. All Item selectors consume that local inventory.
 

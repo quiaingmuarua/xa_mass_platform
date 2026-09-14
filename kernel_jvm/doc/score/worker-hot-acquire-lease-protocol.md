@@ -15,34 +15,45 @@ carries one TaskItem and one DeliveryCommand; business batching stays inside
 that Item's payload. Never release a fence after publication to simulate early
 slot reuse or assign independent Items behind the same Worker lease.
 
+## Core Mechanism Change: Three Fences
+
+Pacer now supplies a closed batch independently of Matching indexes. A 1-second
+handoff hold S0 is followed by one exact extension to 5-second inventory S1, then
+execution confirmation S2. Matching cannot acquire IDs or choose Group/Score/time.
+This changes supply authority and lease timing; Score encoding remains unchanged.
+
 ## Acquisition And Handoff
 
 ```text
-prepared Rule query / default identity selection
-  -> due HOT observation -> exact initial hold and dirty clear
-  -> post-hold index membership recheck when required
-  -> final exact Worker confirmation -> exact Item claim -> Command publication
-  -> opaque ResultContext/WorkerLeaseReference -> exact result disposition
+NORMAL bindings -> local Group deficits
+  -> Pacer due HOT observation -> exact short S0, dirty=0
+  -> Matching supplied-ID current projection and acceptance plan
+  -> one Kernel exact extension S0 -> S1, dirty=0 -> shared inventory
+  -> local take -> exact Worker confirmation S1 -> S2, dirty=1
+  -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
 
-The Kernel observes only bounded due HOT scores and returns the exact opaque
-observations to the Score Owner. A successful initial hold preserves rank,
-writes a future coordinate and clears dirty. Concurrent observations do not
-create concurrent leases: only the exact CAS winner holds the Worker. Optional
-Serviceability eligibility filtering is owned by the Score operations.
+The Score Owner preserves rank when acquiring the due HOT observation and clears
+dirty. Concurrent callers using the same observation have at most one winner.
+The optional HOT floor remains a Score Owner observation constraint. Matching
+batch-reads projections only after S0 and may request extension only for accepted
+IDs through a Pacer-issued, single-use, invocation-bound capability.
 
-[Candidate Selection](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-uses a separate refill phase. Matching calls the narrow Kernel `InitialHold`
-collaboration port, which observes HOT and exact-acquires a default 5-second hold.
-After the hold clears dirty, Matching batch-checks the current Rule projection,
-then retains the opaque fence in shared Group/Rule inventory. TaskItems only take
-from that inventory. Matching never decodes Score or confirms/releases execution.
+Extension requires exact, HOT, clean, active and non-PAUSE S0. Its future target
+must be strictly later than the current deadline slot; otherwise it returns NOOP
+and cannot admit inventory. A TRANSITIONED S1 invalidates S0. It preserves rank
+and dirty=0, never rescues expired or changed observations and never clears dirty.
 
-Initial acquisition and execution confirmation reuse the same exact CAS logic.
-The Redis provider batches at most 100 identities on one Group key per Lua, with
-one preceding Redis time read; it no longer sends one CAS command per Worker.
-No Score encoding or transition rule changes. Inventory count and consumption do
-not read Worker Score. Old/unused/failed candidates expire without compensation.
+Acquisition, extension and confirmation each check Redis TIME inside the same
+bounded Lua as exact comparison and write, once per at most 100 identities on a
+Group key. No preceding time confirmation read is used. Existing 100ms semantics
+apply: acquisition requires slot < nowSlot, while active extension/confirmation
+allow slot == nowSlot. Targets must be later than nowSlot. The operations return
+individual results; Properties and other Owners remain independent commits.
+
+TaskItems only consume S1 inventory. Counts and take read no Worker Score.
+No-match S0, ambiguous renewal, failed insertion and unused S1 expire naturally;
+there is no periodic renewal, compensation release or restart adoption.
 
 ## Confirmation Before Claim
 
@@ -51,7 +62,7 @@ closure confirms supplied clean, active, non-PAUSE HOT fences. One CAS requires
 the entire original score, retains or extends its deadline, and sets dirty=1.
 Even a hold that already covers the requested deadline must transition: there
 is no successful NOOP. Dirty, expired, negative or stale observations cannot
-proceed to Item claim. One initial fence can be consumed only once.
+proceed to Item claim. One inventory fence can be consumed only once.
 
 Only a TRANSITIONED confirmation with a returned score participates in the Item
 claim batch. Only claimed Items become Commands. The returned execution fence,
@@ -112,7 +123,8 @@ TaskItem movement and cannot prove that all preceding Owner calls completed.
 | Stage | Failure | Existing behavior |
 | --- | --- | --- |
 | Initial hold | CAS lost | Exclude the Worker from that held pool |
-| Match handoff | rejection, no match or partial publication | Accepted entries remain; unaccepted holds expire |
+| Match handoff S0 | no match or projection failure | No stock; short holds expire |
+| Inventory extension S1 | rejection, response loss or insertion failure | Only confirmed new fences enter stock; other holds expire |
 | Confirmation | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
 | Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
 | Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |
@@ -136,8 +148,6 @@ Session, Attempt or Worker reservation owner is introduced here.
 
 ## Deployment
 
-No Redis shape or data migration is required. Coordinate the Server/Pacer
-restart so old and new assignment code do not run concurrently in one scope.
-An old dirty=0 execution lease can lose its early-release fence if invalidated
-after upgrade; existing lease expiry provides the accepted best-effort recovery.
-Do not rewrite historical scores or add an upgrade repair process.
+No HTTP, Binding, Redis key or Score encoding migration is required. Restart the
+existing Server/Pacer process; local inventory is discarded and previous holds
+expire. No data cleanup, historical rewrite or upgrade repair process is needed.

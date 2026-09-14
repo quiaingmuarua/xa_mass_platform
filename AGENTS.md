@@ -76,6 +76,9 @@ only when the task covers that behavior.
 
 ## Repository-Wide Rules
 
+- Core authority or scheduling-flow changes must be explicitly called out in the
+  implementation plan, report and Owner document; never hide them as cleanup.
+  Implement only the core mechanism changes explicitly discussed and authorized.
 - Preserve explicit owners for truth, evidence, address, correlation,
   projection and hints.
 - Treat every new Kernel operation as a long-lived cost commitment. Prefer
@@ -214,10 +217,17 @@ architectures.
   Kernel/Pacer sees Task IDs, never Rule IDs, matching modes or index coordinates.
   Main resolves NORMAL Tasks through one bounded `WorkerCandidateIndex.prepareTaskQueries`
   call shared by refill and dispatch. Default identity selectors need no facts;
-  named Rules constrain ANY/IDs too. Missing bindings never fall back. Matching
-  owns paired projection and deficits/refill/take interpretation, shared Group/Rule
-  inventory and Task-declared targets. Kernel provides only bounded initial hold
-  collaboration and retains HOT, Score, exact confirmation and claim authority.
+  only worker.default accepts explicit ID queries; named Rules constrain ANY and
+  interpret their own business queries. Missing bindings never fall back. Matching
+  uses fixed Rule ID-to-instance composition. Rule implementations own normalization,
+  index layout and paired projection/query functions; shared flow and inventory must
+  not depend on their business query types or index encoding. Facts and enabled
+  index updates still prepare before writing in one bounded Lua operation.
+  Matching owns paired projection and deficits/refill/take interpretation, shared Group/Rule
+  inventory and Task-declared targets. Pacer alone discovers HOT IDs and issues
+  closed 1-second S0 batches. Matching only qualifies those IDs and requests one
+  batch-bound exact extension to 5-second S1; Handlers have no acquisition or lease
+  capability. Kernel retains all Score, confirmation and claim authority.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
 
@@ -261,12 +271,16 @@ kernel_jvm`.
 - [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
   separates the fixed refill Producer from Task Dispatch. Main shares one prepared
   NORMAL binding batch. Refill uses Task-declared shared targets and no Item reads;
-  dispatch consumes local Matching stock for every selector. Kernel initial hold
-  collaboration owns HOT/floor/exact acquisition. Matching checks current projection
-  after hold and stores the opaque fence. Kernel exact-confirms clean candidates
+  dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
+  at most 100 HOT candidates per Group and 1000 per round, independent of deficit
+  count. Matching cannot discover IDs or initiate targeted acquisition. It checks
+  supplied projections, plans one Eligibility per ID and requests one union renewal
+  through the invocation-bound callback. Only returned S1 fences enter stock.
+  Acquisition, extension and confirmation check Redis time within their CAS Lua.
+  Kernel exact-confirms clean candidates
   and carries the returned execution fence into ResultContext. Properties writes
   invalidate through Score Owner. Unused/rejected holds expire without release
-  compensation, renewal or a pending lease registry. Do not add Item-triggered
+  compensation, periodic renewal or a pending lease registry. Do not add Item-triggered
   supply, per-Task stock or unavailable-Rule fallback.
 
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or

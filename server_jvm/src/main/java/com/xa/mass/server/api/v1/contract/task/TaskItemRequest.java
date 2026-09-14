@@ -14,9 +14,10 @@ public record TaskItemRequest(
         @NotNull Map<String, Object> payload,
         @Min(0) @Max(10) Integer priority,
         @Positive Long ttlMillis,
-        @Schema(description = "{} for ANY, {workerId: [id, ...]}, or {worker.country: {op: eq|in, values: [CN, ...]}}. "
-                + "eq requires one value; in accepts 1..100 strict [A-Z]{2} values. "
-                + "Named Rules constrain all queries including ANY and explicit IDs. Omit for DSL TaskItems.", maxProperties = 1)
+        @Schema(description = "{} selects within the bound Rule. Only worker.default accepts {workerId: [id, ...]}, scoped to its WorkerGroup. "
+                + "Other query parameters belong to the Handler. Existing country queries use {worker.country: {op: eq|in, values: [CN, ...]}}; "
+                + "eq requires one value and in accepts 1..100 strict [A-Z]{2} values. Named Rules reject workerId. "
+                + "Omission means ANY for finite append; managed Call requires a selector object.")
         Map<String, Object> workerSelector
 ) {
     public TaskItemRequest {

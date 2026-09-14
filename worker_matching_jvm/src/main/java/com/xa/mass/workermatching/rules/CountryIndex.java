@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching;
+package com.xa.mass.workermatching.rules;
 
 /** Exact Base-26 country coordinate and 43-bit relative millisecond coordinate. */
 final class CountryIndex {

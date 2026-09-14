@@ -252,7 +252,7 @@ class DispatchConvergenceLifecycleTest {
                                 initialization,
                                 dispatch,
                                 mock(WorkerCandidateIndex.class),
-                                mock(WorkerCandidateIndex.InitialHold.class),
+                                mock(WorkerEligibilityRefillPolicy.class),
                                 serviceabilityConfig == null
                                         ? null
                                         : serviceability,

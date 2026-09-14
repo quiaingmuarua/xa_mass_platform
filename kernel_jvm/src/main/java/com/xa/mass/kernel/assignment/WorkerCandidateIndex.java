@@ -12,13 +12,16 @@ public interface WorkerCandidateIndex {
     /** One bounded read for at most 100 Task/Group coordinates. Unusable bindings map to null. */
     Map<String, @Nullable TaskQuery> prepareTaskQueries(Map<String, String> taskGroups);
 
-    /** Replenishes shared inventory from prepared NORMAL Tasks, without observing their Items. */
-    int refill(Map<String, @Nullable TaskQuery> tasks, int budget, InitialHold kernelHold);
+    /** Local, capacity-bounded demand by Group from at most 100 prepared NORMAL Tasks. */
+    Map<String, Integer> deficits(Map<String, @Nullable TaskQuery> tasks);
 
-    /** Fixed refill collaboration. Each call requests at most 100 initial holds. */
-    interface InitialHold {
-        List<HeldCandidate> any(String workerGroupId, int limit);
-        List<HeldCandidate> identities(String workerGroupId, List<String> workerIds, int limit);
+    /** Admits only this Group's supplied batch (at most 100 unique held Workers). No discovery. */
+    int refill(Map<String, @Nullable TaskQuery> tasks, String workerGroupId,
+            List<HeldCandidate> offeredCandidates, CandidateRenewal renewal);
+
+    /** Valid only during one refill call; at most one nonempty subset of the issued batch. */
+    interface CandidateRenewal {
+        List<HeldCandidate> renew(List<String> acceptedWorkerIds);
     }
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */

@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching;
+package com.xa.mass.workermatching.rules;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.HashSet;
@@ -29,7 +29,7 @@ class CountryIndexTest {
     }
 
     @Test void rejectsInvalidCountryAndTimeRatherThanNormalizingOrWrapping() {
-        for (String invalid : new String[]{"", "C", "CHN", "cn", "Cn", " CN", "CN ", "中N", "ÅA", "A1"}) {
+        for (String invalid : new String[]{"", "C", "CHN", "cn", "Cn", " CN", "CN ", "涓璑", "脜A", "A1"}) {
             assertThrows(IllegalArgumentException.class, () -> CountryIndex.code(invalid));
         }
         assertThrows(IllegalArgumentException.class, () -> CountryIndex.code(null));

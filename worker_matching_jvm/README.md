@@ -2,29 +2,39 @@
 
 Status: current facts, Rule binding, source index and shared Eligibility inventory Owner.
 
-A Rule is a stable semantic ID in the fixed application composition. Its facts
-projection and query interpretation stay paired. It has no independent lifecycle,
+A Rule is a stable semantic ID mapped to one Handler instance in fixed application
+composition. Its facts projection and query interpretation stay paired. It has no independent lifecycle,
 persisted DSL, dynamic registry or per-Task candidate cache.
 
 ## Owner Boundary
 
+**Core mechanism change: candidate supply belongs exclusively to Pacer.** Matching no
+longer discovers IDs from an index or invokes an initial-acquisition port. It may
+qualify and adopt only the closed batch Pacer already holds.
+
+| Stage | Authority and fence |
+| --- | --- |
+| Supply | Pacer observes Group HOT and exact-acquires a 1-second handoff hold S0 |
+| Admission | Matching reads supplied-ID projections; one batch-bound callback exact-extends accepted IDs to a 5-second inventory hold S1 |
+| Execution | Kernel confirms S1 to S2, setting dirty=1, then exact-claims the Item |
+
 ```text
-Worker / Platform facts -> enabled Rule projections -> Redis supply indexes
-
-Main-selected NORMAL Tasks -> Matching bindings -> shared query targets (MAX)
-  -> deficits -> refill -> Kernel initial hold -> current projection recheck
+Worker / Platform facts -> enabled Rule projections -> Redis eligibility indexes
+NORMAL Tasks -> bindings -> shared query targets MAX -> local Group deficits
+  -> Pacer Group HOT observation -> short hold S0 -> offered IDs
+  -> Matching current projection -> acceptance plan -> one Kernel extension S1
   -> process-local shared Eligibility inventory
-
-TaskItems -> normalized queries (SUM) -> local take -> current address
-  -> Kernel exact clean confirmation -> exact Item claim -> Command
+TaskItems -> normalized queries SUM -> local take -> current address
+  -> Kernel exact clean confirmation S2 -> exact Item claim -> Command
 ```
 
 Inventory is shared by `workerGroupId + ruleId`. Matching owns its entries,
-query projection and cleanup deadline, retaining only opaque Kernel fences.
-It requests initial holds through the narrow Kernel collaboration port and
-never reads/constructs Score, confirms an execution, releases a hold, claims an
-Item or publishes Commands. Kernel/Pacer receives Task IDs and bounded held
-identities; Rule IDs, targets and source coordinates remain inside Matching.
+projection and cleanup deadline and retains opaque Kernel fences. Only Pacer
+chooses supply identities, Group budgets and lease deadlines. The renewal callback
+accepts only a unique subset of its issued IDs, once during the issuing call and on
+the calling thread. It captures Group and S0 fences; Matching cannot supply scores
+or deadlines. Rule Handlers receive no lease capability. Kernel/Pacer receives
+Task IDs and bounded held identities, never Rule IDs, targets or index coordinates.
 
 ## Shared Rule Binding
 
@@ -46,37 +56,82 @@ the same local Handler interpretation without reading facts or taking candidates
 
 The three paired Eligibility operations are:
 
-- `deficits(targets)`: count current local stock and return each target's shortfall.
-- `refill(targets, budget, kernelHold)`: recheck deficits, obtain source identities,
-  request initial holds, read current membership/projection and admit stock.
+- `deficits(preparedTasks)`: aggregate local query shortfalls and capacity into Group deficits.
+- `refill(preparedTasks, group, offeredCandidates, renewal)`: read current projections
+  for at most 100 supplied IDs, plan acceptance, renew the union once and admit only S1.
 - `take(requests)`: atomically remove matching local entries and return opaque fences.
 
 Their operator-free query is `{"query":{"worker.country":["US","CN"]},"count":1}`:
 choose one from either country. Independent minima use separate entries, such as
 US count 10 and CN count 15. An empty query (also the configuration binder's
 omitted empty object) means ANY. `workerId` lists mean explicit identity selection
-and cannot combine with properties. One batch has at most 100 queries; each count
+only in `worker.default` and cannot combine with properties. One batch has at most 100 queries; each count
 is 1..1000. Consumption additionally totals at most 100 candidates.
 
-Handler validation and normalization are shared by all three operations.
+The common Q type retains immutable bounded structure, including value order and
+duplicates. Each Handler owns semantic normalization; the existing identity and
+country Rules sort/deduplicate their set-valued parameters. Handler validation and
+normalization are shared by all three operations.
 HTTP Item selectors retain their existing `{op,values}` syntax; only Matching
 converts them to the common query. Equal normalized refill targets merge using
-MAX across Tasks; consumption counts sum actual requests. Overlapping queries
-share physical entries; projected supply is counted against all overlapping targets
-before requesting holds and checked again after acquisition. A US/CN OR
+MAX across Tasks; consumption counts sum actual requests. Default identity targets
+retain their declared count in the Binding but use `min(count, unique ID count)`
+for deficits. Two IDs with count 100 are full at two retained entries; no extra
+Worker existence read is performed. Overlapping queries
+share physical entries; each admission is counted against overlapping targets
+before further entries are planned. A US/CN OR
 query never silently becomes one quota per country.
 
 | Rule | Source projection | Query |
 | --- | --- | --- |
 | `worker.default` | no facts required for identity; optional country projection | ANY, IDs, and existing country property queries when enabled |
-| `worker.country` | valid two-uppercase-letter country | ANY, IDs, country eq/in |
-| `worker.messaging.available` | valid country and `messaging.enabled=true`; optional phone partition | membership-constrained ANY/IDs; country and optional one phone with AND |
+| `worker.country` | valid two-uppercase-letter country | ANY, country eq/in |
+| `worker.messaging.available` | valid country and `messaging.enabled=true`; optional phone partition | membership-constrained ANY; country and optional one phone with AND |
 | `proof.worker.facts` | fixed pool/target/platform and slot partitions | finite proof selectors on explicitly enabled Groups |
 
-The Rule set and HTTP selector admission remain unchanged in this slice.
-Business Rule extraction, default tightening and primary/secondary residency are
-separate work. Adding a Rule must keep projection and all three query operations
-paired without adding Kernel/Pacer branches.
+Only `worker.default` accepts Worker ID queries, both in refill targets and Item
+admission. Named Rules reject them instead of interpreting them as membership
+filters. Old named-Rule ID bindings read as unavailable; they never fall back.
+Default retains its existing optional country capability for current SMS start
+and cancellation flows. Removing that capability is a later binding migration.
+
+## Adding a Rule
+
+`RedisWorkerMatchingCatalog` receives an immutable `Map<String, RuleHandler>`.
+The application supplies `DefaultRuleHandler`, `CountryRuleHandler`,
+`MessagingRuleHandler` and explicitly enabled proof implementations. Unknown
+configured IDs, missing default and conflicting index namespaces fail construction.
+Implementations live under `rules`; the Catalog and stock mechanism do not import
+that package. A new Rule adds an implementation, a composition entry and its proof.
+There is no runtime registration, Rule lifecycle or per-Handler connection pool.
+
+The public [Rule Handler contract](src/main/java/com/xa/mass/workermatching/RuleHandler.java)
+pairs the functions behind the shared `deficits/refill/take` loop:
+
+- `bind` returns lightweight Group-bound functions using the Catalog's connection supplier.
+- `normalize` validates/canonicalizes Q; `selector` may translate the Rule's HTTP syntax
+  to that same Q. Existing property Rules keep HTTP eq/in; a new Rule may use list parameters.
+- `compile` returns a pure matcher over immutable Rule-owned projections and an effective
+  target bound where needed. It performs no Redis read.
+- `snapshot` reads only the supplied IDs in one bounded projection batch after S0.
+  Shared refill matches that evidence, then requests the single S1 extension. A Handler
+  cannot discover other IDs, acquire leases or rotate a source index during refill.
+- `indexes` declares exclusive namespace roots and fixed Lua preparation programs.
+  Each program returns a read/validate `prepare` function that returns an `apply` closure.
+  Namespaces include their descendants; preparation cannot write. The facts Owner prepares
+  the entire batch before its first write and rejects invalid update closures.
+
+A Rule may own multiple keys and choose its layout. `PartitionedZsetIndex` and
+`ZsetProjection` are helpers for the existing implementations, not universal query
+or storage models. Public projections are immutable Rule-owned values; shared stock
+retains them without decoding. Handler work runs outside stock locks. Take commits
+only entries from its observed snapshot that are still the exact resident objects;
+concurrent consumption or replacement can produce fewer results, never duplicates.
+
+The separately packaged [Bucket Rule proof](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketRuleHandler.java)
+uses bucket SETs and a projection HASH through only the public contract. Redis Owner
+proves update ordering, independent facts, command budgets and dirty-fence rejection;
+Runtime Boundary runs two Tasks through it with an actual Worker. It is test-only.
 
 Example composition, including a Group-managed Call target:
 
@@ -109,27 +164,31 @@ deadline. Tasks have neither private stock nor reserved shares.
 The fixed single-flight Pacer refill Producer uses only Main-selected NORMAL
 RUNNING Tasks, with a 50ms completion-relative interval. INITIAL does not prewarm.
 Closed/parked/disabled Tasks produce no later demand; in-flight evidence is not
-a lifecycle lock. Old entries expire naturally. A round attempts at most 100
-candidates per Eligibility and 1000 globally, rotating across selected pools and
-bounded query pages. Constrained targets share the bounded attempt budget before ANY. Query pages
-and their starting positions rotate, including when a page contains fewer than
-100 targets. Supply and post-hold projection are each one batch per Eligibility,
-not one Redis call per query. Explicit identity lists share a rotating bounded
-observation page so occupied prefixes do not permanently hide later identities.
-Watermarks are targets, not consumption gates or online/execution truth.
+a lifecycle lock. Old entries expire naturally. Pacer rotates Groups after every
+attempt, with up to 100 candidates per Group and 1000 per round. Positive business
+deficit enables a Group; its numeric value does not reduce the 100-ID scan budget.
+Matching rotates Eligibility acceptance and bounded query pages, including empty
+attempts. Constrained queries precede ANY within each Eligibility. One candidate
+can enter only one Eligibility; overlapping queries share its physical entry.
 
-Kernel chooses a 5-second initial deadline and applies HOT/floor/exact acquisition.
-After acquisition clears dirty, Matching batch-reads the current source projection
-before admission. Default identity candidates need no facts; available country
-projection enriches them for the existing default property query capability.
-Inventory operations are locally atomic; source, Kernel and other external calls
-execute outside its monitor. Source reads/holds are skipped at satisfied watermarks.
+Pacer exact-acquires S0 before any projection read. Matching collects acceptance
+plans across that Group, then invokes one renewal for their union. Only successful
+S1 transitions enter stock. Default identity membership needs no facts; enabled
+country projections support its existing property selectors. Explicit IDs only
+filter this batch and stock: they never initiate a targeted HOT read. Rare queries
+and IDs may wait longer under this bounded Group supply policy.
 
-Consumption and deadline expiry remove entries. Dirty may transiently overcount
-inventory until consumption or expiry, but final exact confirmation rejects the
-old fence. No watermarks read Score. No hold is renewed, returned after failed
-confirmation/claim, compensated or adopted across restart. Lost/failed admission
-leaves the hold to expire. Capacity exhaustion is a shortfall, with no wait queue.
+The plans live only in the current stack. Inventory snapshot/add/take are local
+atomic operations; Handler, Redis and renewal calls run outside the monitor.
+Satisfied watermarks or exhausted capacity skip supply. Counts are hints, not
+live execution truth: unobserved dirty changes may temporarily overcount stock.
+
+Consumption and expiry remove entries. S0 failures expire after the short hold;
+ambiguous renewal or failed insertion leaves S1 to expire. There is no periodic
+renewal, compensation release, candidate reinsertion or adoption across restart.
+Only the initial due acquisition may clear dirty. Extension and final confirmation
+require exact clean active non-PAUSE fences and check Redis time inside their Lua.
+Capacity exhaustion produces a shortfall with no wait queue.
 
 ## Persistent Catalog
 
@@ -147,10 +206,10 @@ All keys use `xa_mass:<scope>`:
 ```
 
 Group encoding is UTF-8 Base64 URL without padding; partition digests use SHA-1
-of Handler suffixes. The source coordinate remains `countryCode * 2^43 +
+of the existing ZSET Handler suffixes. Those implementations retain the source coordinate `countryCode * 2^43 +
 lastTakenMillis` with base-26 A..Z prefix 0..675 and milliseconds since 2000-01-01.
-Proof partitions use prefix zero. Facts preserve low take time; bounded source
-take rotates primary and partition entries together. This source coordinate is
+Proof partitions use prefix zero. The retained low time component is preserved
+by facts updates; refill no longer rotates or writes these coordinates. This index coordinate is
 neither a Kernel fence nor a consumable inventory entry.
 
 ## Facts Writes and Index Maintenance
@@ -176,27 +235,27 @@ confirmed execution is not revoked by a later facts observation.
 
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
-malformed facts abort startup. With no configured Groups, rebuild is a no-op
-and opens no Redis connection. The fixed Pacer refill Producer consumes these source indexes; there is no
-index repair scan, lease registry or per-Task candidate publication.
+malformed facts abort startup. Cleanup visits only the declared roots and descendants
+of enabled Rules, leaving other index namespaces untouched. With no configured Groups, rebuild is a no-op
+and opens no Redis connection. Refill reads their projections only for Pacer-issued IDs; there is no
+autonomous source take, index repair scan, lease registry or per-Task publication.
 
 ## Cost, Failure and Proof
 
 - Binding preparation: one HMGET per bounded Main batch.
 - Normalized stock counts and take: zero Redis commands or facts reads.
-- Named source refill with up to 100 distinct queries and 100 identities: one source Lua, one HOT ZMSCORE and
-  TIME, one acquisition TIME and bounded CAS Lua, one projection Lua (6 commands).
-- Default identity refill without a configured projection: HOT observation and
-  acquisition only. A mixed default request can use both bounded identity and
-  Group ANY hold calls, with at most 100 acquired candidates in total. Optional
-  country projection adds one combined post-hold snapshot.
-- Confirmation retains its TIME plus one bounded exact CAS per 100 identities.
+- Each eligible Group: existing HOT observation (TIME + bounded range), one S0 Lua,
+  at most one projection read per participating Handler, zero or one merged S1 Lua.
+  One named Handler with accepted stock uses five client commands for up to 100 IDs.
+- Default without a configured projection needs no projection read; it uses the same
+  Pacer Group supply, never an explicit-ID observation path.
+- Final confirmation: one bounded Lua, with its Redis TIME inside the operation.
   Address, Item claim, publication and Result paths retain their separate costs.
 
 These are client command counts, not throughput promises. Matching logs aggregate
-shortfall, acquired/admitted stock, requested/consumed candidates, unused expiry
-and capacity limits. Existing
-Pacer stage evidence separates refill, initial hold, confirmation rejection and
+shortfall, offered/renewed/admitted stock, short unaccepted holds, renewal rejection,
+renewed-but-not-inserted holds, consumption, unused expiry and capacity limits. Existing
+Pacer stage evidence separates refill, initial hold, inventory extension, confirmation rejection and
 dispatch. No management API or diagnostics thread is added.
 
 Binding failure blocks candidates while Item expiry/exhaustion/idle settlement
@@ -206,11 +265,11 @@ loses local inventory and rebuilds it through ordinary refill without adoption,
 ACK, replay or a repair scan.
 
 Focused tests cover interpretation, overlapping stock and concurrency. Redis
-Owner proves shared target MAX, local consumption, post-hold projection, exact
-confirmation, dirty/expiry, restart and command counts. Runtime Boundary and
+Owner proves closed supplied batches, one merged renewal, shared target MAX,
+post-hold projection, S0/S1/S2 fence invalidation, commit-time expiry and command counts. Runtime Boundary and
 Dynamic Matching witness real Worker execution; Call Performance separately
 measures mixed-workload behavior. See [TESTING](../TESTING.md).
 
-Binding shape changes use the agreed stop/rebuild cutover: stop processes for an
-explicit scope, clear only that scope with SCAN + UNLINK, then rebuild resources.
-No old binding reader, compatibility alias or automatic non-test cleanup exists.
+This supply-authority repair changes no HTTP, Binding shape, Redis keys or Score
+encoding. Restart the existing process: local stock is discarded and outstanding
+holds expire. It requires no runtime-data cleanup or migration.

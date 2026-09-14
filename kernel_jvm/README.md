@@ -100,6 +100,7 @@ Build:
 
 All Tasks bind to a Matching Rule and resolved refill targets before Kernel
 creation. Main prepares NORMAL bindings once for independent refill and dispatch.
-Matching replenishes shared Group/Rule inventory through Kernel initial holds,
+Pacer issues closed short-held batches; Matching qualifies those IDs and requests
+one exact extension before shared Group/Rule inventory admission,
 then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

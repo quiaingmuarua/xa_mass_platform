@@ -26,7 +26,7 @@ scheduling eligibility.
 ```text
 TASK
 API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
-    -> NORMAL Task targets refill shared Eligibility using Kernel initial holds
+    -> Pacer supplies short-held batches; Matching qualifies and stocks exact-extended candidates
     -> Item selectors consume held stock; Kernel checks exact clean fences
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
@@ -164,6 +164,7 @@ precedence over summaries and historical tags.
 
 All Tasks bind to a Matching Rule and resolved refill targets before Kernel
 creation. Main prepares NORMAL bindings once for independent refill and dispatch.
-Matching replenishes shared Group/Rule inventory through Kernel initial holds,
+Pacer issues closed short-held batches; Matching qualifies only those IDs and
+requests one extension before shared Group/Rule inventory admission,
 then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

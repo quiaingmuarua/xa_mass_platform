@@ -138,7 +138,7 @@
             "type" : "integer"
           },
           "refillTargets" : {
-            "description" : "Optional shared Eligibility refill targets. Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default at binding creation, otherwise ANY 100. Targets are not private Task quotas.",
+            "description" : "Optional shared Eligibility refill targets. Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default at binding creation, otherwise ANY 100. Only worker.default accepts workerId queries; their effective target is capped by unique ID count. Targets are not private Task quotas.",
             "items" : {
               "$ref" : "#/components/schemas/EligibilityQuery"
             },
@@ -192,8 +192,7 @@
           },
           "workerSelector" : {
             "additionalProperties" : { },
-            "description" : "{} for ANY, {workerId: [id, ...]}, or {worker.country: {op: eq|in, values: [CN, ...]}}. eq requires one value; in accepts 1..100 strict [A-Z]{2} values. Named Rules constrain all queries including ANY and explicit IDs. Omit for DSL TaskItems.",
-            "maxProperties" : 1,
+            "description" : "{} selects within the bound Rule. Only worker.default accepts {workerId: [id, ...]}, scoped to its WorkerGroup. Other query parameters belong to the Handler. Existing country queries use {worker.country: {op: eq|in, values: [CN, ...]}}; eq requires one value and in accepts 1..100 strict [A-Z]{2} values. Named Rules reject workerId. Omission means ANY for finite append; managed Call requires a selector object.",
             "type" : "object"
           }
         },
