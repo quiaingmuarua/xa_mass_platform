@@ -75,7 +75,7 @@ class WorkerSimulatorArchitectureBoundaryTest {
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")
                 .doesNotContain("com.xa.mass.server")
-                .doesNotContain("com.xa.mass.sms.backend")
+                .doesNotContain("com.xa.mass.scenario.sms")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("ScoreBand")
                 .doesNotContain("Pacer")

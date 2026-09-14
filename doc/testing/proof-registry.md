@@ -180,12 +180,12 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 
 ## product_coexistence
 
-- **Primary owner:** [Product Coexistence](../../integrations/product-coexistence/README.md).
+- **Primary owner:** [Scenario Coexistence](../../integrations/scenario-coexistence/README.md).
 - **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
   set and neutral Group declarations; finite message execution and later recipient
   observations remain correlated after Task completion or explicit closure.
   Duplicate/reordered receipts and Worker restart preserve latest content and run
-  isolation. Four-profile distribution composition and fresh unified Preview
+  isolation. Platform/preview executable composition and fresh unified Preview
   delivery remain consistent with public Console availability.
 - **Failure witnesses:** partial real append retains uncertain submission without
   approval/recreation; a real delayed synchronous execution Result cannot erase
@@ -198,15 +198,15 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 
 ## sms_reception_preview
 
-- **Primary owner:** [SMS Reception](../../products/sms-reception/README.md#检查与验收).
+- **Primary owner:** [SMS Reception](../../scenarios/sms-reception-jvm/README.md#检查与验收).
 - **Claim:** shared console navigation observes SMS enablement; page tabs and
   polling preserve business state without depending on Runtime stores. Distribution
   serves one frontend in either profile while SMS APIs, Groups and jobs remain
   profile-owned. Real Server/Host functional and lifecycle scenarios retain the
   listening and later-outcome business witnesses. Archive checks compare the
   current unified assets and reject embedded SMS assets. The source SMS oracle
-  loads the shared Preview's packaged launcher from a fresh extraction and selects
-  SMS alone, without a build step or a fallback to the checkout launcher. Launch
+  loads the shared Preview's packaged launcher from a fresh extraction and submits
+  only SMS workload with both scenarios enabled, without a build step or a fallback to the checkout launcher. Launch
   lifecycle and archive checks belong to Distribution; business witnesses stay here.
 - **Deliberate nonclaims:** Mock SMS execution, product authentication, business
   persistence across restart or new platform scheduling/capacity guarantees.

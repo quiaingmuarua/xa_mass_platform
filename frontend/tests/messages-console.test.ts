@@ -147,7 +147,7 @@ describe("Messages console", () => {
   ])("opens %s independently of unavailable SMS", async (path) => {
     const { fetcher } = installApi();
     const { host } = await mount(path, "invalid-runtime-setting");
-    expect(host.textContent).toContain("BUSINESS");
+    expect(host.textContent).toContain("SCENARIOS");
     expect(host.textContent).not.toContain("Runtime Viewer 配置不可用");
     expect(host.querySelector('aside a[href="/messages"]')).not.toBeNull();
     expect(host.querySelector('aside a[href="/sms"]')).toBeNull();
@@ -246,8 +246,8 @@ describe("Messages console", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const { host, router } = await mount("/messages", "mock");
-    expect(host.textContent).not.toContain("BUSINESS");
-    expect(host.textContent).toContain("不支持此业务");
+    expect(host.textContent).not.toContain("SCENARIOS");
+    expect(host.textContent).toContain("不运行此业务场景");
     await router.push("/sms");
     await settle();
     await vi.advanceTimersByTimeAsync(6000);

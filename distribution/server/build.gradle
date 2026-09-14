@@ -1,63 +1,8 @@
 import groovy.json.JsonOutput
-import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
-plugins {
-    id 'java'
-    id 'org.springframework.boot'
-}
+plugins { id 'base' }
 
-base { archivesName.set('xa-mass-server-jvm') }
-java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
-springBoot { mainClass = 'com.xa.mass.server.XaMassServerApplication' }
-dependencies {
-    implementation platform(SpringBootPlugin.BOM_COORDINATES)
-    implementation 'org.springframework.boot:spring-boot-starter'
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-    implementation project(':server_jvm')
-    implementation project(':products:sms-reception:backend')
-    implementation project(':products:message-campaigns:backend')
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testImplementation project(':kernel_jvm')
-    testImplementation project(':kernel_pacer_jvm')
-    testImplementation project(':worker_matching_jvm')
-    testImplementation project(':transport:java-worker')
-    testImplementation project(':worker_simulator_jvm')
-    testImplementation project(':transport:netty-adapter')
-    testImplementation 'io.lettuce:lettuce-core'
-}
-tasks.named('jar') { enabled = false }
-tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition', 'product-composition' } }
-tasks.register('productCompositionIntegrationTest', Test) {
-    group = 'verification'
-    description = 'Proves four product combinations share one platform and explicit page delivery.'
-    dependsOn 'buildFrontend'
-    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform { includeTags 'product-composition' }
-    outputs.upToDateWhen { false }
-    afterSuite { descriptor, result ->
-        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
-            throw new GradleException('Product composition must execute without skipped tests')
-        }
-    }
-}
-tasks.register('smsCompositionIntegrationTest', Test) {
-    group = 'verification'
-    description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
-    dependsOn 'buildFrontend'
-    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform { includeTags 'sms-composition' }
-    outputs.upToDateWhen { false }
-    afterSuite { descriptor, result ->
-        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
-            throw new GradleException('SMS composition proof must execute without skipped tests')
-        }
-    }
-}
+evaluationDependsOn(':spring_server_jvm')
 
 apply from: rootProject.file('gradle/platform-diagnostic-codes.gradle')
 
@@ -74,7 +19,7 @@ def stagedDirectory = layout.buildDirectory.dir("runtime/${runtimeVersion}")
 def generatedDirectory = layout.buildDirectory.dir('generated/runtime')
 def runtimeBaseName = 'xa-mass-server-runtime'
 def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
-def serverBootJar = tasks.named('bootJar')
+def serverBootJar = project(':spring_server_jvm').tasks.named('bootJar')
 def gitCommit = providers.exec {
     workingDir repositoryRoot
     commandLine 'git', 'rev-parse', 'HEAD'
@@ -164,8 +109,7 @@ tasks.register('generateRuntimeManifest') {
                         springProfiles  : [
                                 'scenario-workers',
                                 'agentforge',
-                                'sms-reception',
-                                'message-campaigns'
+                                'preview'
                         ],
                         frontendIncluded: true
                 ])) + System.lineSeparator(),

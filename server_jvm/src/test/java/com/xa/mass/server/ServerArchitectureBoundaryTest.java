@@ -233,7 +233,7 @@ class ServerArchitectureBoundaryTest {
     void serverUsesKernelContractsAndKeepsRedisInNamedOwners()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
-        assertThat(build).doesNotContain("products:sms-reception", "id 'org.springframework.boot'")
+        assertThat(build).doesNotContain("project(':scenarios:", "project(':spring_server_jvm')", "id 'org.springframework.boot'")
                 .contains("id 'java-library'");
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
@@ -255,7 +255,8 @@ class ServerArchitectureBoundaryTest {
 
         String serverSources = readSources(SERVER_SOURCE);
         assertThat(serverSources)
-                .doesNotContain("public static void main(", "com.xa.mass.sms.")
+                .doesNotContain("public static void main(", "com.xa.mass.scenario.", "com.xa.mass.springserver.",
+                        "SpringBootApplication", "SpringBootConfiguration", "EnableAutoConfiguration")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("\"tr:")

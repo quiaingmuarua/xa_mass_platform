@@ -1,8 +1,8 @@
 # XA Mass Worker Simulator JVM
 
 `worker_simulator_jvm` is a finite Java 21 device and business simulator using
-the real Java Worker SDK. Lab, [SMS](../products/sms-reception/README.md) and
-[Messages](../products/message-campaigns/README.md) compose capabilities on the
+the real Java Worker SDK. Lab, [SMS](../scenarios/sms-reception-jvm/README.md) and
+[Messages](../scenarios/message-campaigns-jvm/README.md) compose capabilities on the
 same file inventory, Properties, Managers and controls; scenario is a use case,
 not a separate kind of Worker.
 It has one process entry, one loopback control server and one HTML console.
@@ -191,7 +191,7 @@ SMS and Messages on the same replicas. Both examples use mixed-country `demo-sim
 distribution before Host startup. One Manager per nonempty Group and one HTTP server
 form the common Host assembly. Properties additionally contain
 `messaging.enabled="true"` and enter Matching through the existing SDK/Adapter path.
-Use the [shared launcher](../distribution/product-preview/README.md). Messages adds no timer, watcher or replay loop.
+Use the [shared launcher](../distribution/scenario-preview/README.md). Messages adds no timer, watcher or replay loop.
 
 `extension.worker.message.send` is the only way to create recipient records.
 It checks the five-field campaign/message/country/recipient/body contract and
@@ -263,7 +263,7 @@ SMS bodies are at most 8 KiB, while existing Lab body limits remain unchanged.
 | `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:stop` | Close number admission and request SDK stop; HTTP 202 acknowledges local control only |
 
 SMS owns one process-wide ListeningRegistry and one expiry/traffic clock.
-The [business contract](../products/sms-reception/README.md#监听和分发契约)
+The [business contract](../scenarios/sms-reception-jvm/README.md#监听和分发契约)
 owns templates, dedup and resource limits. Constructors start no timer. The actual
 installed capabilities determine whether the SMS clock/routes and Messages Owner
 exist; the common scheduled-stop Owner is available to every configured Group.

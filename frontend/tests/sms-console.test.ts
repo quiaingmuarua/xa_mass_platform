@@ -105,7 +105,7 @@ describe("unified SMS console", () => {
       const { fetcher } = installApi();
       const { host } = await mountConsole(path);
       expect(host.textContent).toContain("CONSOLE");
-      expect(host.textContent).toContain("BUSINESS");
+      expect(host.textContent).toContain("SCENARIOS");
       expect(host.querySelectorAll("aside")).toHaveLength(1);
       expect(
         host
@@ -268,7 +268,7 @@ describe("unified SMS console", () => {
     await settle();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     const drawer = document.querySelector('[role="dialog"]')!;
-    expect(drawer.textContent).toContain("BUSINESS");
+    expect(drawer.textContent).toContain("SCENARIOS");
     drawer.querySelector<HTMLAnchorElement>('a[href="/runtime/workers"]')!.click();
     await settle();
     expect(router.currentRoute.value.path).toBe("/runtime/workers");
@@ -283,7 +283,7 @@ describe("unified SMS console", () => {
       );
       vi.stubGlobal("fetch", fetcher);
       const { host } = await mountConsole();
-      expect(host.textContent).not.toContain("BUSINESS");
+      expect(host.textContent).not.toContain("SCENARIOS");
       expect(host.querySelector('aside a[href="/sms"]')).toBeNull();
       expect(host.textContent).toContain(status === 404 ? "未启用" : "无法确认");
       await vi.advanceTimersByTimeAsync(6000);
@@ -315,7 +315,7 @@ describe("unified SMS console", () => {
     );
     const { host } = await mountConsole();
     expect(host.textContent).toContain("正在确认");
-    expect(host.textContent).not.toContain("BUSINESS");
+    expect(host.textContent).not.toContain("SCENARIOS");
     complete(new Response("{}", { status: 404 }));
     await settle();
     expect(host.textContent).toContain("未启用");
@@ -325,11 +325,11 @@ describe("unified SMS console", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const { host, router } = await mountConsole("/sms", "mock");
-    expect(host.textContent).toContain("不支持此业务");
+    expect(host.textContent).toContain("不运行此业务场景");
     expect(host.querySelector('[data-testid="source-badge"]')?.textContent).toContain(
       "Mock source"
     );
-    expect(host.textContent).not.toContain("BUSINESS");
+    expect(host.textContent).not.toContain("SCENARIOS");
     await router.push("/sms/listeners");
     await settle();
     await vi.advanceTimersByTimeAsync(10_000);

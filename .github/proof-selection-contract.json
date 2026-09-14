@@ -487,7 +487,7 @@
       "reason": "Dynamic matching crosses this production or proof entry."
     },
     {
-      "path": "distribution/server/src/main/java/com/xa/mass/server/XaMassServerApplication.java",
+      "path": "spring_server_jvm/src/main/java/com/xa/mass/server/XaMassServerApplication.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -529,7 +529,7 @@
       "reason": "Shared navigation and theme must retain Runtime and SMS lifecycle isolation."
     },
     {
-      "path": "distribution/server/src/main/java/com/xa/mass/distribution/ConsoleFrontendConfiguration.java",
+      "path": "spring_server_jvm/src/main/java/com/xa/mass/springserver/ConsoleFrontendConfiguration.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -541,10 +541,10 @@
         "runtime_distribution",
         "product_coexistence"
       ],
-      "reason": "Distribution owns finite Console page forwards in enabled and ordinary instances."
+      "reason": "The executable owns finite Console page forwards in enabled and ordinary instances."
     },
     {
-      "path": "products/message-campaigns/backend/src/main/java/com/xa/mass/messages/backend/CampaignService.java",
+      "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/CampaignService.java",
       "lanes": [
         "jvm_contracts",
         "product_coexistence",
@@ -553,7 +553,7 @@
       "reason": "Finite campaign submission and continuous product observation require application contracts, archive composition and real shared Worker proof."
     },
     {
-      "path": "distribution/server/src/main/java/com/xa/mass/distribution/ProductWorkerConfiguration.java",
+      "path": "spring_server_jvm/src/main/java/com/xa/mass/springserver/PreviewConfiguration.java",
       "lanes": [
         "android_emulator",
         "jvm_contracts",
@@ -565,7 +565,7 @@
         "worker_correctness",
         "worker_dynamic_matching"
       ],
-      "reason": "Country Group and event declarations belong to distribution; product profiles share one platform."
+      "reason": "The preview configuration declares one Group and enables both scenarios on one platform."
     },
     {
       "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java",
@@ -588,28 +588,29 @@
       "reason": "Business navigation and lifecycle are unified Console contracts and delivered in the shared Preview."
     },
     {
-      "path": "distribution/product-preview/run_preview.py",
+      "path": "distribution/scenario-preview/run_preview.py",
       "lanes": [
         "product_coexistence"
       ],
       "reason": "Two-process source and ZIP assembly belong to the coexistence proof."
     },
     {
-      "path": "distribution/product-preview/config/application-product-preview.yaml",
+      "path": "spring_server_jvm/src/main/resources/application-preview.yaml",
       "lanes": [
+        "runtime_distribution",
         "product_coexistence"
       ],
-      "reason": "All product selections consume one distribution-owned deployment configuration."
+      "reason": "The executable owns the fixed preview profile; both archives consume its canonical configuration."
     },
     {
-      "path": "distribution/product-preview/verify_archive.py",
+      "path": "distribution/scenario-preview/verify_archive.py",
       "lanes": [
         "product_coexistence"
       ],
       "reason": "Shared archive fingerprints and source-to-ZIP delivery are checked by the product proof."
     },
     {
-      "path": "integrations/product-coexistence/run_proof.py",
+      "path": "integrations/scenario-coexistence/run_proof.py",
       "lanes": [
         "product_coexistence"
       ],
@@ -625,6 +626,65 @@
         "product_coexistence"
       ],
       "reason": "Complete Simulator configurations replace main-resource defaults without reducing their selected proof set."
+    },
+    {
+      "path": "spring_server_jvm/src/main/java/com/xa/mass/springserver/SpringServerConfiguration.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
+    },
+    {
+      "path": "spring_server_jvm/src/main/resources/application.yaml",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+    },
+    {
+      "path": "spring_server_jvm/src/main/resources/application-scenario-workers.yaml",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+    },
+    {
+      "path": "spring_server_jvm/src/main/resources/application-agentforge.yaml",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
     }
   ]
 }

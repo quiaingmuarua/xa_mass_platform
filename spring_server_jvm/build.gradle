@@ -1,0 +1,62 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot'
+}
+
+base { archivesName.set('xa-mass-server-jvm') }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+springBoot { mainClass = 'com.xa.mass.server.XaMassServerApplication' }
+dependencies {
+    implementation platform(SpringBootPlugin.BOM_COORDINATES)
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation project(':server_jvm')
+    implementation project(':scenarios:sms-reception-jvm')
+    implementation project(':scenarios:message-campaigns-jvm')
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation project(':kernel_jvm')
+    testImplementation project(':kernel_pacer_jvm')
+    testImplementation project(':worker_matching_jvm')
+    testImplementation project(':transport:java-worker')
+    testImplementation project(':worker_simulator_jvm')
+    testImplementation project(':transport:netty-adapter')
+    testImplementation 'io.lettuce:lettuce-core'
+}
+tasks.named('jar') { enabled = false }
+tasks.withType(Test).configureEach {
+    systemProperty 'xa.mass.repository.root', rootProject.projectDir.absolutePath
+}
+tasks.named('test') { useJUnitPlatform { excludeTags 'sms-composition', 'scenario-composition' } }
+tasks.register('scenarioCompositionIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Proves platform and preview composition share one platform and explicit page delivery.'
+    dependsOn ':distribution:server:buildFrontend'
+    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'scenario-composition' }
+    outputs.upToDateWhen { false }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
+            throw new GradleException('Scenario composition must execute without skipped tests')
+        }
+    }
+}
+tasks.register('smsCompositionIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
+    dependsOn ':distribution:server:buildFrontend'
+    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'sms-composition' }
+    outputs.upToDateWhen { false }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount == 0 || result.skippedTestCount != 0)) {
+            throw new GradleException('SMS composition proof must execute without skipped tests')
+        }
+    }
+}

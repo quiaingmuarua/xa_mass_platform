@@ -21,9 +21,12 @@ This is an ordinary Java library with importable `XaMassServerConfiguration`.
 It owns Group registration, Task submission and complete Task data services,
 as well as HTTP waiting, Prepare, Direct Call and every Worker Delivery route.
 Spring assembly creates and closes one set of clients, Owners and platform
-lifecycles. The [distribution](../distribution/server/README.md) owns the only
-production `XaMassServerApplication` main and Boot JAR. Server has no product
-dependency; products may consume only their approved service and DTO surface.
+lifecycles. The [Spring Server composition](../spring_server_jvm/README.md) owns
+the only production `XaMassServerApplication` main and Boot JAR. This library uses
+ordinary Spring configuration without Boot application auto-configuration or a
+production main. Its platform-only test bootstrap supplies Boot infrastructure
+for context tests and OpenAPI export. Server has no scenario dependency; scenarios
+may consume only their approved service and DTO surface.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
 retry, recovery, Task finality, allocation-rule interpretation, Adapter
@@ -103,7 +106,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server establishes named or DSL Matching bindings before Kernel Task records; non-DSL selectors are captured by Kernel and property queries admitted by Matching before Item persistence; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server establishes named or default Matching Rule bindings before Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
@@ -715,9 +718,9 @@ Delivery rejection still uses the same
 `400/503 + ApiErrorResponse` contract. No platform operation declares a business
 `404`, `409` or `422` response.
 
-The [SMS business module](../products/sms-reception/README.md) depends on the
+The [SMS business module](../scenarios/sms-reception-jvm/README.md) depends on the
 approved Group registration, Task submission and Task data services here.
-Distribution imports its configuration beside Server configuration in the same
+Spring Server composition imports its configuration beside Server configuration in the same
 context. Only `sms-reception` enables its API, jobs and Group registration.
 The unified console shares the Server origin; distribution owns its SMS page
 forwards while `/` keeps the Runtime entry. Frontend availability does not enable
@@ -725,7 +728,7 @@ product resources. The product creates no Redis clients or platform loops.
 Product callers stop before platform resources. Failed initialization fails
 startup and destroys already-created resources, including the Adapter host.
 
-[Message Campaigns](../products/message-campaigns/README.md) also consumes the
+[Message Campaigns](../scenarios/message-campaigns-jvm/README.md) also consumes the
 existing finite `TaskCreationService` and `TaskLifecycleService`. Creation validates
 Group, Rules and numeric fields before writes. `appendFiniteTaskItems` validates
 every input and the 1..100 batch bound before owner operations; `loadTaskItemResults`
@@ -962,31 +965,15 @@ individual Worker lifecycle, and it never starts a Scenario Worker process.
 Those responsibilities belong to the independently launched
 [`worker_simulator_jvm`](../worker_simulator_jvm/README.md) Host.
 
-The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
-Scenario WorkerGroup declarations and the advisory external Android demo
-Group. Registering those three declarations automatically provisions all three
-Task Calls. Server readiness does not depend on a Worker Host. The root
-`run_local_runtime.py` defaults to this Profile, starts Server first and starts
-the standalone JVM Host only after readiness. Its finite vertical Worker proof
-is owned by
-[`integrations/worker-correctness`](../integrations/worker-correctness/README.md).
-
-The checked `agentforge` profile is a separate downstream deployment preset.
-It starts exactly one `agentforge-websocket` Adapter at 18183, exposes Server
-at 18182, uses `profile_agentforge`, and has an empty configured Group manifest.
-AgentForge registers its own Groups through the public API; this Profile does
-not start or embed AgentForge or Scenario capability code.
+Deployment profiles, Group declarations and startup commands are maintained by
+[Spring Server composition](../spring_server_jvm/README.md#run).
 
 ## Configuration
 
-Default coordinates:
+Default application limits; deployment coordinates are maintained by
+[the executable configuration](../spring_server_jvm/README.md#pages-and-configuration):
 
 ```text
-Java Runtime API Server        http://127.0.0.1:18082
-Kernel Redis                   redis://localhost:6379/15
-Redis scope                    profile_default
-Kernel Pacer preset            DEFAULT
-Adapter instances              none
 Managed Task Call wait         30s default / 60s maximum
 Task Call waiters              10000 maximum
 Task Call observations         100000 pending waiter-message associations
@@ -1046,53 +1033,10 @@ dedup cache, activation ACK or replay is installed.
 
 ## Run
 
-Start the Java Runtime API from the repository root. Server selects the
-checked `DEFAULT` policy preset, constructs the one `KernelPacerRuntime`, and
-its Spring adapter starts that Runtime before later lifecycle components:
-
-```text
-./gradlew :server_jvm:bootRun
-```
-
-Start the checked local Scenario profile from the repository root:
-
-```text
-./gradlew :server_jvm:bootRun \
-  --args="--spring.profiles.active=scenario-workers"
-```
-
-This selects `SCENARIO_LAB` and starts Group/Task seeds, Pacer and Adapter, but
-no JVM Worker. For the complete local Lab use the one-command process launcher.
-Omitting `--profile` defaults to `scenario-workers`:
-
-```text
-python run_local_runtime.py
-```
-
-It builds and starts Server first, waits for readiness, then starts the
-standalone Worker Simulator against `data/scenario-workers`. Existing
-Worker files remain persistent local state. Stopping Host closes its network
-resources without stopping Server or deleting Workers, WorkerGroups or managed
-Task Calls.
-
-The same source launcher can start the checked clean downstream Profile:
-
-```text
-python run_local_runtime.py --profile agentforge
-```
-
-That path builds and serves the same frontend, then starts Server, Pacer and the
-single AgentForge WebSocket Adapter. It does not build or start the Scenario
-Worker Host. Unknown Profiles are rejected.
-
-For a repository-independent deployment, extract the
-[`distribution/server`](../distribution/server/) Runtime ZIP and start its Boot
-JAR directly from the Runtime root with Java 21, external Redis and explicit
-Profile and frontend arguments. The schema-v5 manifest lists the supported
-`scenario-workers` and `agentforge` Profiles. The Runtime ZIP does not contain
-the repository-local Worker Simulator; use `run_local_runtime.py` or the
-module's Gradle task when that Lab is required. Source `bootRun` remains
-available for repository development.
+The Server library has no production main or Boot tasks. Use the
+[executable startup commands](../spring_server_jvm/README.md#run) or the
+[Runtime distribution](../distribution/server/README.md). Configuration binding,
+provider construction and bounded resource shutdown remain in this library.
 
 Health endpoints:
 

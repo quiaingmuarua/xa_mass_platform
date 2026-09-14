@@ -10,8 +10,8 @@ const state = availability.state;
   <section v-else class="message-unavailable" aria-live="polite">
     <h1>Messages</h1>
     <p v-if="state.status === 'loading'">正在确认 Messages 可用性…</p>
-    <p v-else-if="state.status === 'disabled'">当前实例未启用消息触达业务。</p>
-    <p v-else-if="state.status === 'demo'">公开 Demo 不支持此业务。</p>
+    <p v-else-if="state.status === 'disabled'">当前实例未启用消息触达场景。</p>
+    <p v-else-if="state.status === 'demo'">公开 Demo 不运行此业务场景。</p>
     <template v-else-if="state.status === 'unavailable'">
       <p>{{ state.message }}</p>
       <el-button type="primary" @click="availability.load(true)"

@@ -82,8 +82,8 @@ on Runtime configuration or stores.
 ## SMS business pages
 
 `src/sms/` owns the SMS pages, API client and page-local business state. The
-[SMS Owner](../products/sms-reception/README.md) retains business semantics.
-The sidebar shows BUSINESS / SMS only after one successful, validated
+[SMS Owner](../scenarios/sms-reception-jvm/README.md) retains business semantics.
+The sidebar shows SCENARIOS / SMS only after one successful, validated
 `GET /api/v1/sms/catalog` observation. The shared catalog request has a five-second
 timeout and no periodic retry: 404 means disabled; other errors or invalid content
 mean availability is unconfirmed, with an explicit retry. Navigation and the page
@@ -96,15 +96,15 @@ resubmitting business commands. SMS uses only same-origin `/api/v1/sms/*` calls.
 The existing platform theme preference is used; no SMS theme store remains.
 Runtime configuration errors do not prevent SMS or Reference pages from loading.
 
-Public Mock Demo hides BUSINESS / SMS, makes no SMS requests, and explains that
+Public Mock Demo hides SCENARIOS / SMS, makes no SMS requests, and explains that
 SMS is unsupported on direct visits. An ordinary Server without SMS serves the
 same console pages but their catalog check reports the feature as disabled.
-Distribution owns the finite page forwards, including trailing slashes; unknown
-API and asset paths remain errors. Product APIs, Groups and jobs remain gated by
-`sms-reception`. The shared assets do not enable those resources.
+The Spring executable owns the finite page forwards, including trailing slashes; unknown
+API and asset paths remain errors. Scenario APIs, Groups and jobs remain gated by
+`preview`, which enables SMS and Messages together. The shared assets do not enable those resources.
 
-For SMS development, run the product launcher and set `VITE_RUNTIME_PROXY_TARGET`
-to its Server origin (default `http://127.0.0.1:18390`) before starting the same
+For SMS development, run the shared scenario launcher and set `VITE_RUNTIME_PROXY_TARGET`
+to its Server origin (default `http://127.0.0.1:18500`) before starting the same
 frontend Vite server. The same `/api` proxy carries platform and SMS requests.
 Runtime and SMS Preview ZIPs both package this `dist`; the Server JAR contains no
 separate SMS frontend.
@@ -113,19 +113,19 @@ separate SMS frontend.
 
 `src/message-campaigns/` owns campaign creation, detail/message pagination and
 metrics under `/messages`, `/messages/campaigns/{id}`, `/messages/metrics` (also
-trailing slashes). The [Messages Owner](../products/message-campaigns/README.md)
+trailing slashes). The [Messages Owner](../scenarios/message-campaigns-jvm/README.md)
 defines business states. `SENT` never implies delivery, read or reply; a missing
 receipt remains unobserved. The newest full reply is displayed without chat history.
 
 ConsoleLayout provides independent SMS and Messages catalog observations, each
 with one five-second request, no background discovery and manual retry after an
-unconfirmed failure. One unavailable product cannot block the other. Only enabled
-entries appear in BUSINESS; Mock Demo hides both and performs no product calls.
+unconfirmed failure. One unavailable scenario cannot block the other. Only enabled
+entries appear in SCENARIOS; Mock Demo hides both and performs no scenario calls.
 Runtime initialization stays in RuntimeProvider. Messages routes load lazily,
-retain forms across product tabs, abort pending work on exit and never replay an
+retain forms across scenario tabs, abort pending work on exit and never replay an
 uncertain creation. A changed runId reloads catalog and discards old local selection.
 The same theme, mobile navigation, Vite proxy and unified production build apply.
-Use [Product Preview](../distribution/product-preview/README.md) for simultaneous
+Use [Scenario Preview](../distribution/scenario-preview/README.md) for simultaneous
 business development (`VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500`).
 
 ## API Reference

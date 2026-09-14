@@ -29,8 +29,32 @@ def diagnosis_runs():
 
 
 class RunnerTest(unittest.TestCase):
+    def test_configuration_fingerprints_use_complete_current_or_historical_groups(self):
+        names = ("application.yaml", "application-scenario-workers.yaml")
+        self.assertEqual({f"spring_server_jvm/src/main/resources/{name}" for name in names},
+                         set(runner.fingerprint(runner.ROOT)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / "server_jvm/src/main/resources"
+            old.mkdir(parents=True)
+            for name in names:
+                (old / name).write_text("historical", encoding="utf-8")
+            self.assertEqual({f"server_jvm/src/main/resources/{name}" for name in names}, set(runner.fingerprint(root)))
+            with patch.object(runner, "ROOT", root):
+                with self.assertRaisesRegex(RuntimeError, "configuration group is missing"):
+                    runner.fingerprint(root)
+            current = root / "spring_server_jvm/src/main/resources"
+            current.mkdir(parents=True)
+            (current / names[0]).write_text("current", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "Incomplete"):
+                runner.fingerprint(root)
+            (current / names[1]).write_text("current", encoding="utf-8")
+            with patch.object(runner, "ROOT", root):
+                self.assertEqual({f"spring_server_jvm/src/main/resources/{name}" for name in names},
+                                 set(runner.fingerprint(root)))
+
     def test_current_build_and_immutable_baseline_use_their_own_server_entrypoints(self):
-        self.assertEqual("distribution/server", runner.server_distribution(runner.ROOT))
+        self.assertEqual("spring_server_jvm", runner.server_distribution(runner.ROOT))
         main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
         with tempfile.TemporaryDirectory() as directory:
             baseline = Path(directory)
@@ -44,12 +68,21 @@ class RunnerTest(unittest.TestCase):
             with patch.object(runner, "ROOT", baseline):
                 with self.assertRaisesRegex(RuntimeError, "entrypoint is missing"):
                     runner.server_distribution(baseline)
-            current_source = baseline / "distribution/server" / main
+            historical_source = baseline / "distribution/server" / main
+            historical_source.parent.mkdir(parents=True)
+            historical_source.touch()
+            with patch.object(runner.subprocess, "run") as launch:
+                runner.build(baseline)
+                self.assertIn(":distribution:server:bootJar", launch.call_args.args[0])
+            with patch.object(runner, "ROOT", baseline):
+                with self.assertRaisesRegex(RuntimeError, "entrypoint is missing"):
+                    runner.server_distribution(baseline)
+            current_source = baseline / "spring_server_jvm" / main
             current_source.parent.mkdir(parents=True)
             current_source.touch()
             with patch.object(runner.subprocess, "run") as launch:
                 runner.build(baseline, harness=True)
-                self.assertIn(":distribution:server:bootJar", launch.call_args.args[0])
+                self.assertIn(":spring_server_jvm:bootJar", launch.call_args.args[0])
                 self.assertIn(":integrations:worker-call-performance:installDist", launch.call_args.args[0])
 
     def test_rpc_rotates_only_paths_and_retains_the_exact_seven_case_manifest(self):

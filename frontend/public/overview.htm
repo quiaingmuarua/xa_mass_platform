@@ -734,8 +734,9 @@
               <span class="owner">Rule Index</span>
               <h3>按属性条件匹配</h3>
               <p>
-                Matching 将 Worker 属性提前物化为索引，按 Task 绑定与任务项条件提供候选。
-                Kernel 获取可用资源、持有并复核资格，最后确认分配。
+                Matching 将 Worker 属性提前物化为索引，按 Task
+                绑定与任务项条件提供候选。 Kernel
+                获取可用资源、持有并复核资格，最后确认分配。
               </p>
             </article>
             <article class="card kernel">
@@ -743,7 +744,8 @@
               <h3>按身份范围获取</h3>
               <p>
                 任务项提供明确的 Worker ID 列表，或用空条件（ANY）让 Kernel
-                在所属分组内获取可用 Worker。绑定具名 Rule 时，身份选择也必须满足该 Rule 的资格。
+                在所属分组内获取可用 Worker。绑定具名 Rule 时，身份选择也必须满足该 Rule
+                的资格。
               </p>
             </article>
           </div>
@@ -887,17 +889,18 @@
               <h2>服务端集中装配，执行端独立运行</h2>
             </div>
             <p>
-              Server 将平台 API、调度、匹配消费和 Adapter 装配在同一个 Java 进程中。 SMS
-              作为业务模块按 profile 启用，使用现有服务提交任务、读取结果。
-              产品前端独立构建并由同一 Server 提供；Worker Host 独立运行。
+              Spring 宿主在同一个 Java 进程中导入平台配置；Server 装配平台
+              API、调度、Matching 和 Adapter。 preview 同时启用 SMS 与
+              Messages，使用现有服务提交任务、观察后续结果。 SMS 与 Messages
+              作为业务场景接入统一前端和 preview 宿主；Worker Host 独立运行。
             </p>
           </div>
           <div class="split">
             <pre class="code-panel" aria-label="运行进程关系">
 运行环境
-├─ Server 进程（distribution/server 启动）
+├─ Server 进程（spring_server_jvm 启动）
 │  ├─ server_jvm：平台 API + 应用服务
-│  ├─ SMS 模块 + /sms 页面（按 profile 启用）
+│  ├─ SMS 与 Messages 场景 + 统一页面（preview 同时启用）
 │  ├─ Kernel：机械契约 + Pacer
 │  ├─ Worker Matching
 │  └─ 配置的 Adapter
@@ -941,7 +944,8 @@
               <h3>在本地建立实验环境</h3>
               <p>
                 Worker Simulator 共用一套 Java Worker 管理与本地控制台，运行 Lab
-                实验或 SMS 模拟号码。Host 独立于 Server 启动，随 SMS 预览包提供。
+                实验、SMS 模拟号码和消息回执。Host 独立于 Server 启动，随 Scenario
+                预览包提供。
               </p>
             </article>
           </div>

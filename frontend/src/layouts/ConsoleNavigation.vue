@@ -36,7 +36,7 @@ const messagesEnabled = computed(() => messages.state.value.status === "enabled"
     </router-link>
     <template v-if="smsEnabled || messagesEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
-        >BUSINESS</span
+        >SCENARIOS</span
       >
       <router-link
         v-if="smsEnabled"

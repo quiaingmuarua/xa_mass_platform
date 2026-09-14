@@ -48,6 +48,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +59,7 @@ import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles("test")
-@SpringBootTest(
+@SpringBootTest(classes = com.xa.mass.server.testsupport.ServerTestConfiguration.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 class ServerApplicationContextTest {
@@ -83,6 +84,15 @@ class ServerApplicationContextTest {
 
     @LocalServerPort
     private int port;
+
+    @Test
+    void platformTestsHaveNoHostDeploymentResources() throws Exception {
+        for (String name : List.of("application.yaml", "application-scenario-workers.yaml",
+                "application-agentforge.yaml", "application-preview.yaml")) {
+            assertThat(java.util.Collections.list(getClass().getClassLoader().getResources(name)))
+                    .as("Server test classpath excludes %s", name).isEmpty();
+        }
+    }
 
     @Test
     void assemblesTheRuntimeApiWithoutStartingDisabledJavaPacers()

@@ -46,6 +46,14 @@ Sharing a Rule shares eligibility indexes, not Task state or Worker leases.
 
 ## Fixed Handlers and Selectors
 
+The current fixed Handler set includes business-scenario eligibility and finite
+proof semantics alongside index mechanisms. Those definitions are implemented
+here today; enabling them in preview does not transfer index ownership to the
+scenario modules or establish a permanent public rule-extension contract.
+Future separation of scenario semantics must keep facts projection and query
+interpretation paired, and preserve the atomic facts/index write. This composition
+migration does not change Handlers, their enablement semantics or Redis shapes.
+
 | Rule | Projection | Query |
 | --- | --- | --- |
 | `worker.default` | no required facts for identity selection | `{}` and sole `workerId` lists use Kernel HOT selection; property conditions use the enabled country Handler |

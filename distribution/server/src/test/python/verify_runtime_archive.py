@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import zipfile
@@ -15,11 +16,36 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
+HOST_CONFIGURATIONS = {"application.yaml", "application-scenario-workers.yaml",
+                       "application-agentforge.yaml", "application-preview.yaml"}
+
+
+def is_application_configuration(name: str) -> bool:
+    return re.fullmatch(r"application(?:[-.][^/]*)?\.(?:yaml|yml|properties)", PurePosixPath(name).name) is not None
+
+
+def verify_server_configuration(server_jar: zipfile.ZipFile) -> None:
+    """Both distributions must deliver the same complete host-owned configuration."""
+    entries = server_jar.namelist()
+    expected = {"BOOT-INF/classes/" + name for name in HOST_CONFIGURATIONS}
+    actual = {name for name in entries if not name.startswith("BOOT-INF/lib/") and is_application_configuration(name)}
+    _require(actual == expected, "Server Boot JAR has missing or unexpected application configuration")
+    libraries = [name for name in entries if name.startswith("BOOT-INF/lib/xa-mass-") and name.endswith(".jar")]
+    _require(sum(name.startswith("BOOT-INF/lib/xa-mass-server-jvm-") for name in libraries) == 1,
+             "Server Boot JAR must contain one platform library")
+    for library in libraries:
+        with zipfile.ZipFile(io.BytesIO(server_jar.read(library))) as dependency:
+            _require(not any(is_application_configuration(name) for name in dependency.namelist()),
+                     "Platform or Scenario dependency contains application configuration: " + library)
+
+
 def verify(archive: Path, version: str) -> None:
     root = f"xa-mass-server-runtime-{version}"
     with zipfile.ZipFile(archive) as runtime:
         names = runtime.namelist()
         _require(names, "runtime archive is empty")
+        _require(not any(is_application_configuration(name) for name in names),
+                 "Runtime archive contains unexpected external application configuration")
         _require(
             all(PurePosixPath(name).parts[0] == root for name in names),
             "runtime archive has an entry outside its versioned root",
@@ -89,7 +115,7 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(
             manifest.get("springProfiles")
-            == ["scenario-workers", "agentforge", "sms-reception", "message-campaigns"],
+            == ["scenario-workers", "agentforge", "preview"],
             "Spring Profiles mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
@@ -191,6 +217,7 @@ def verify(archive: Path, version: str) -> None:
         try:
             server_jar_path.write_bytes(runtime.read(server_jar_name))
             with zipfile.ZipFile(server_jar_path) as server_jar:
+                verify_server_configuration(server_jar)
                 server_entries = server_jar.namelist()
                 _require(
                     not any(name.startswith("BOOT-INF/classes/sms-frontend/")

@@ -42,40 +42,40 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.9.0 --activate
-          python -m pip install -r distribution/product-preview/requirements.txt
+          python -m pip install -r distribution/scenario-preview/requirements.txt
       - name: Owner tests and real product composition
         run: |
-          ./gradlew :products:message-campaigns:backend:test :products:sms-reception:backend:test :worker_simulator_jvm:test :distribution:server:test :distribution:server:productCompositionIntegrationTest :distribution:product-preview:stageServer :distribution:product-preview:stageHost :distribution:product-preview:stageFrontend --console=plain
-          python -m unittest discover -s integrations/product-coexistence -p 'test_*.py'
-          python -m unittest discover -s distribution/product-preview -p 'test_*.py'
+          ./gradlew :scenarios:message-campaigns-jvm:test :scenarios:sms-reception-jvm:test :worker_simulator_jvm:test :spring_server_jvm:test :spring_server_jvm:scenarioCompositionIntegrationTest :distribution:scenario-preview:stageServer :distribution:scenario-preview:stageHost :distribution:scenario-preview:stageFrontend --console=plain
+          python -m unittest discover -s integrations/scenario-coexistence -p 'test_*.py'
+          python -m unittest discover -s distribution/scenario-preview -p 'test_*.py'
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test
       - name: Twelve shared Workers and lifecycle isolation
         if: inputs.scenario != 'load-1k'
         run: |
-          python integrations/product-coexistence/run_proof.py --scenario functional --output integrations/product-coexistence/build/ci-functional
-          python integrations/product-coexistence/run_proof.py --scenario lifecycle --port 18540 --output integrations/product-coexistence/build/ci-lifecycle
+          python integrations/scenario-coexistence/run_proof.py --scenario functional --output integrations/scenario-coexistence/build/ci-functional
+          python integrations/scenario-coexistence/run_proof.py --scenario lifecycle --port 18540 --output integrations/scenario-coexistence/build/ci-lifecycle
       - name: Explicit 1000 Worker combined acceptance
         if: inputs.scenario == 'load-1k'
-        run: python integrations/product-coexistence/run_proof.py --scenario load-1k --port 18560 --output integrations/product-coexistence/build/ci-1k
+        run: python integrations/scenario-coexistence/run_proof.py --scenario load-1k --port 18560 --output integrations/scenario-coexistence/build/ci-1k
       - name: Fresh unified Preview archive
         if: inputs.scenario != 'load-1k'
         run: |
-          ./gradlew :distribution:product-preview:previewZip --console=plain
-          python distribution/product-preview/verify_archive.py --archive distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip --frontend frontend/dist --output integrations/product-coexistence/build/archive.json
-          python -m zipfile -e distribution/product-preview/build/distributions/xa-mass-product-preview-0.1.0-preview.zip distribution/product-preview/build/ci-unpacked
-          python integrations/product-coexistence/run_proof.py --scenario functional --port 18580 --root distribution/product-preview/build/ci-unpacked/xa-mass-product-preview-0.1.0-preview --output integrations/product-coexistence/build/ci-zip-functional
+          ./gradlew :distribution:scenario-preview:previewZip --console=plain
+          python distribution/scenario-preview/verify_archive.py --archive distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist --output integrations/scenario-coexistence/build/archive.json
+          python -m zipfile -e distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip distribution/scenario-preview/build/ci-unpacked
+          python integrations/scenario-coexistence/run_proof.py --scenario functional --port 18580 --root distribution/scenario-preview/build/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output integrations/scenario-coexistence/build/ci-zip-functional
       - name: Upload safe summaries only
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: product-coexistence-proof-${{ github.run_attempt }}
           path: |
-            integrations/product-coexistence/build/ci-functional/summary.json
-            integrations/product-coexistence/build/ci-lifecycle/summary.json
-            integrations/product-coexistence/build/ci-1k/summary.json
-            integrations/product-coexistence/build/ci-zip-functional/summary.json
-            integrations/product-coexistence/build/archive.json
+            integrations/scenario-coexistence/build/ci-functional/summary.json
+            integrations/scenario-coexistence/build/ci-lifecycle/summary.json
+            integrations/scenario-coexistence/build/ci-1k/summary.json
+            integrations/scenario-coexistence/build/ci-zip-functional/summary.json
+            integrations/scenario-coexistence/build/archive.json
           if-no-files-found: warn
           retention-days: 7

@@ -71,7 +71,7 @@ import static org.mockito.Mockito.verify;
 import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles({"test", "integration-test"})
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@SpringBootTest(classes = com.xa.mass.server.testsupport.ServerTestConfiguration.class, webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @ContextConfiguration(
         initializers = RuntimeBoundaryIntegrationTest
                 .DedicatedRedisInitializer.class
@@ -158,6 +158,7 @@ class RuntimeBoundaryIntegrationTest {
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        registry.add("xa.mass.redis.url", () -> REDIS_URL);
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[property-tools-boundary][0]", () -> "proof.worker.facts");

@@ -83,26 +83,28 @@ process-local event snapshots report the actual immutable assembly.
 
 ## Active Surfaces
 
-`products/` currently hosts business-shaped workloads that validate XA Mass.
-The aim is inexpensive integration, realistic execution and failures exposed
-under load. The directory name does not imply a mature commercial product or
-require separate deployment, infrastructure or a public product SDK.
-Let demonstrated business and operational needs drive later extraction.
+`scenarios/` hosts real business-shaped workloads that validate XA Mass. SMS and
+Messages own Controllers, business state and result interpretation as Spring
+configuration libraries. The aim is inexpensive integration, realistic execution
+and failures exposed under load. Let demonstrated business and operational needs
+drive later graduation into independently deployed products.
 
-The first such workload, [SMS Reception](products/sms-reception/README.md),
+The first such workload, [SMS Reception](scenarios/sms-reception-jvm/README.md),
 uses a separate business module and a page in the unified console, plus the SMS scene of the
 independently launched [Worker Simulator](worker_simulator_jvm/README.md#sms-scenario).
-Lab and SMS share its Java Worker management and local console. The distribution imports platform and SMS configuration into one Server;
-the `sms-reception` profile enables product routes and jobs. SMS calls the
+Lab, SMS and Messages share its Java Worker management and local console. The
+[Spring Server composition](spring_server_jvm/README.md) imports platform and
+both business scenarios into one Server; `preview` enables both APIs and jobs.
+SMS calls the
 existing Server services and shares their Owner instances.
 It owns listening orders and SMS routing; Kernel retains assignment and scheduling.
 
-[Message Campaigns](products/message-campaigns/README.md) adds finite Rule-bound
+[Message Campaigns](scenarios/message-campaigns-jvm/README.md) adds finite Rule-bound
 batches and later delivery, read and repeated reply observations. The
-[shared Preview](distribution/product-preview/README.md) runs both products on the
-same Server, Adapter and Worker pool. Products remain independent libraries using
-Server application services; the [coexistence proof](integrations/product-coexistence/README.md)
-exercises their shared runtime and preserves each product's business semantics.
+[shared Preview](distribution/scenario-preview/README.md) runs both scenarios on the
+same Server, Adapter and Worker pool. Scenarios remain independent libraries using
+Server application services; the [coexistence proof](integrations/scenario-coexistence/README.md)
+exercises their shared runtime and preserves each scenario's business semantics.
 
 | Surface | Entry and owner |
 | --- | --- |
@@ -110,6 +112,7 @@ exercises their shared runtime and preserves each product's business semantics.
 | Kernel policy | [kernel_pacer_jvm](kernel_pacer_jvm/README.md): fixed Result/Dispatch Convergence behind one KernelPacerRuntime |
 | Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/bindings and bounded Rule index queries |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
+| Executable composition | [spring_server_jvm](spring_server_jvm/README.md): sole Boot entry and platform/preview composition |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
 | JVM simulation | [worker_simulator_jvm](worker_simulator_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
@@ -119,11 +122,12 @@ exercises their shared runtime and preserves each product's business semantics.
 
 ## Runtime And Deployment
 
-The [distribution entry](distribution/server/README.md) starts Server configuration,
+The [Spring executable](spring_server_jvm/README.md) starts Server configuration,
 which assembles one KernelPacerRuntime and the Matching catalog. Only one
 Server per Kernel Redis scope may enable the Pacer lifecycle; there is no
 distributed Pacer leader election. Profile selects assembly and policy preset;
-Redis scope selects the data boundary. Provider and lifecycle details belong
+Redis scope selects the data boundary. The executable owns all production
+application YAML; Server binds the values and owns resource lifecycle. Provider and lifecycle details belong
 to the Server and Pacer documents.
 
 The Server Runtime ZIP contains the Boot Server and compiled frontend and
@@ -131,7 +135,7 @@ requires external Redis and Java 21. Worker SDKs are published separately.
 Worker Simulator has an independent process lifecycle and one `--config` entry
 for Lab, SMS and Messages capabilities over shared inventory. Built-in Groups need
 only Group selection; optional configuration, including initialization templates,
-resolves to complete settings once. Its configuration examples ship in the install distribution and Product Preview;
+resolves to complete settings once. Its configuration examples ship in the install distribution and Scenario Preview;
 the production Runtime ZIP excludes it. Server never starts Worker processes. AgentForge consumes release artifacts
 and public APIs instead of copying source modules.
 

@@ -37,8 +37,10 @@ agents change the repository; it is not the canonical mechanism narrative.
 - `worker_matching_jvm/` owns Worker/Platform Properties, fixed Rule Handlers,
   Task bindings, materialized eligibility indexes and bounded query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
-- `distribution/server/` owns the sole production main and Boot JAR. It imports
-  Server and optional product configuration; it owns no business or resource logic.
+- `spring_server_jvm/` owns the sole production main, Boot JAR and explicit
+  platform/preview configuration. It owns no business or resource logic.
+- `distribution/server/` owns Runtime archive delivery, frontend builds and
+  diagnostic dictionaries; it consumes the executable artifact.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
 - Scenario, Android, integration and frontend modules are finite assembly,
@@ -276,9 +278,13 @@ kernel_jvm`.
 
 `server_jvm` is a Java library with importable `XaMassServerConfiguration`.
 Its Spring configuration owns client, Owner and platform lifecycle construction
-and destruction. Distribution alone owns `XaMassServerApplication` and Boot
-packaging. Server tests and OpenAPI export use platform configuration; product
-composition tests belong to distribution, with no reverse dependency.
+and destruction. Spring Server composition alone owns `XaMassServerApplication` and Boot packaging.
+Server production configuration contains no main or Boot application annotation.
+Server tests and OpenAPI export use a test-only platform Boot configuration;
+scenario composition tests belong to the executable, with no reverse dependency.
+All production application YAML belongs to the executable. Server tests use
+explicit test fixtures, never a copied or imported host configuration. Deployment
+profile and external-overlay tests follow the executable; binding tests stay here.
 
 `server_jvm/` controllers and services depend on `kernel_jvm` and
 `worker_matching_jvm` owner contracts; Spring assembly additionally depends
@@ -352,8 +358,9 @@ workerId address meaning. Direct Call passes `messageType` and opaque payload
 through without an event whitelist; future API Session authorization remains a
 separate owner.
 
-Profile contents and defaults belong to
-[Server assembly](server_jvm/README.md#worker-and-scenario-assembly).
+Deployment profile contents and coordinates belong to
+[Spring Server configuration](spring_server_jvm/README.md#pages-and-configuration).
+Server retains configuration interpretation, validation and resource lifecycle.
 
 ## Worker Delivery Contract
 
@@ -635,7 +642,8 @@ system.
   the selected Sim's gate before dedup; Messages checks the selected Sender and
   preserves the original Reporter. Capability discovery is replica-local. HTTP,
   console and CI share this path, without input queues or upstream ACK tracking.
-- Server owns profile coordinates and create-only advisory WorkerGroup seeds.
+- Spring Server owns deployment profile coordinates; Server owns applying
+  create-only advisory WorkerGroup seeds through its existing services.
 - Lab, SMS and Messages share the file inventory, SCENARIO_LAB batch Prepare,
   one immutable current Properties snapshot per record and common controls.
   Group `events` selects compiled business and verification capabilities; an
@@ -765,67 +773,65 @@ Adapter connectivity, Kernel state or schedulability.
   repository-local Worker Simulator, add a fallback runtime owner, add a
   second production mechanism or introduce scheduling behavior.
 
-## Product Composition
+## Business Scenario Composition
 
-[SMS Reception](products/sms-reception/README.md) owns its finite business workload
-and simulator contract. Products currently validate XA Mass through realistic
-business flows; the directory name does not establish a commercial product boundary.
+[SMS Reception](scenarios/sms-reception-jvm/README.md) and
+[Message Campaigns](scenarios/message-campaigns-jvm/README.md) own realistic business
+workloads that validate XA Mass. Controllers, business state, strategies and
+observations belong to these Spring configuration libraries. Independent product
+deployment follows concrete business or operational needs.
 
-- Keep business integration inexpensive. Prove the real execution path, increase
-  workload and investigate observed failures before stabilizing shared call
-  surfaces. Extract modules, deployment or product infrastructure when concrete
-  business or operational needs require them, not because the code is called a
-  Product. The existing same-process assembly is sufficient for this stage.
-- Simulated devices and inputs must traverse the real platform path. Preserve
-  business invariants and report failures and unconfirmed outcomes honestly;
-  never hide a platform defect behind product-side scheduling or delivery repair.
-  Carry discovered platform regressions back to their owning proof.
-- SMS and Messages are independent business libraries depending on `server_jvm`;
-  distribution imports their profile configurations into one context. Server has no product dependency. Product
-  code creates no Redis clients, Owners, Pacer, Matching consumer or Adapter.
-  Keep a single set of those resources and never start the simulator in Server.
-- Products consume only approved Server registration, bounded Task submission,
-  finite Task creation/append/approval and Result query services and their existing
-  TaskCreateRequest/TaskItemRequest/Result values. Keep validation in those
-  application services; never call Controllers, providers or scheduling policy.
-- Product enablement and its background work are profile-scoped. Stop product
-  callers before closing platform resources, using one bounded shutdown budget.
-  Failed product startup must also clean up the already-created platform.
-  Product shutdown never cleans the scope.
-- Product APIs and error handling stay in the product namespace. SMS pages live
-  in the unified frontend under `/sms`, sharing layout, navigation and theme;
-  Runtime and SMS retain independent data state and polling lifetimes. Distribution
-  owns the finite SMS page forwards; the product profile gates APIs, Groups and
-  jobs rather than shared static assets. Menu visibility uses bounded catalog
-  observation, never business activation. Public Mock Demo makes no product requests.
-  Do not invoke Controllers or use platform HTTP waiters or the Direct Call
-  registry from product code.
-- The simulator is the SMS scene of the independent `worker_simulator_jvm` SDK
-  Host, sharing its main and local control service with the Lab. Its HTML and raw SMS
-  controls must not become a product Result source or a platform control proxy.
-
-- [Message Campaigns](products/message-campaigns/README.md) owns finite campaign records,
-  request idempotency and receipt interpretation. Preserve complete business validation
-  before Task creation, append confirmation before approval and explicit uncertain
-  submission without automatic retry or recreation. Task scheduling finality does
-  not stop retained Item observation; instance Outcome names remain unchanged.
-- Distribution owns shared country Group/event declarations and Preview coordinates.
-  Products have no dependency on one another and must not independently construct
-  shared Group names. Both product profiles must retain one platform resource set.
-- The Host message channel creates records only through actual message.send execution.
-  Keep first-Reporter association, business identity dedup and local-fact-before-publish
-  ordering. Recipient hold/release accepts only already committed receipt IDs, never
-  arbitrary Reports. Stop clears Reporters before SDK stop; a new run cannot adopt old
-  messages. Preserve the finite capacities in the [Host Owner](worker_simulator_jvm/README.md#messages-and-shared-products).
-- [Product Preview](distribution/product-preview/README.md) is a finite delivery owner
-  for one Server and one Host, with the sole product Preview launcher, deployment
-  configuration and ZIP. Product selection uses that same entry; do not retain
-  product-local launchers, packaging tasks or aliases. Product acceptance oracles
-  stay external and load the packaged launcher for ZIP proof, without a checkout
-  fallback. It may package Host; the production Runtime ZIP may not.
-  Products share the existing unified frontend, independent catalog availability and
-  page lifecycles. Product Coexistence is a separate business witness, not a replacement
-  for platform Owner proofs; keep its fixed 1k workload explicit/manual.
+- Keep integration inexpensive. Prove actual execution, increase workload and
+  investigate observed failures before stabilizing shared call surfaces. Simulated
+  devices and inputs must traverse the real platform path. Never hide platform
+  defects through scenario-side scheduling or delivery repair, or count unconfirmed
+  outcomes as success. Return platform regressions to their owning proof.
+- Both scenarios depend only on approved `server_jvm` application services and
+  existing DTOs. Server has no scenario or executable dependency; scenarios have
+  no dependency on each other and create no Redis clients, Owners, Pacer or Adapter.
+  Never invoke Controllers, providers, scheduling policy, HTTP waiters or the
+  Direct Call registry from scenario code. Do not add a Runtime library, bridge,
+  mirrored DTO, generic scenario framework or speculative public SDK.
+- [Spring Server](spring_server_jvm/README.md) explicitly imports platform and
+  finite Console forwards. Its `preview` configuration imports both scenarios and
+  supplies one shared Group and complete event declaration. Scenario configuration
+  classes have no deployment profile of their own. Platform and preview are the
+  two business assembly states; the existing platform deployment presets remain.
+- Keep one platform resource set and a separate Worker Simulator process. Stop
+  scenario admission, submission and observation before platform resources, with
+  bounded waits. Failure of either scenario initialization cleans already-created
+  scenario and platform resources. Scenario shutdown never cleans the scope.
+- Approved calls comprise Group registration, bounded Task submission, finite Task
+  creation/append/approval and Result query with the existing Task/Result values.
+  Keep validation in those services. Business APIs and error handlers retain their
+  own namespace; no business-side fallback to platform HTTP is permitted.
+- The unified frontend serves `/sms` and `/messages` alongside Runtime. Keep data
+  and polling lifetimes independent. Preview gates APIs, registrations and jobs,
+  not shared assets. Catalog observation controls visibility without enabling
+  business; Public Mock Demo makes no scenario requests. Unknown API/asset paths
+  are not SPA routes.
+- Message Campaigns owns finite records, idempotency and receipt interpretation.
+  Validate complete input before Task creation, confirm every append before
+  approval, and expose uncertain submission without automatic recreation or retry.
+  Task scheduling finality does not stop retained Item observation. Preserve
+  complete snapshots and existing Outcome names.
+- The independent [Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products)
+  owns device inputs and first-Reporter association. Messages arise only through
+  actual `message.send`; committed local facts precede publication. Receipt hold/
+  release accepts existing receipt IDs, never arbitrary Reports. Stop clears
+  Reporters before SDK stop, and new runs cannot adopt old associations. Keep
+  existing finite capacities and the SMS matching/deduplication contract.
+- [Scenario Preview](distribution/scenario-preview/README.md) owns the sole source
+  and ZIP launcher for one Server and one Host with both scenarios. Keep business
+  acceptance oracles external and load the packaged launcher without a checkout
+  fallback. Preview may package Host; the production Runtime ZIP may not.
+  [Scenario Coexistence](integrations/scenario-coexistence/README.md) remains a
+  business witness, with the fixed 1k workload explicit/manual and unchanged Proof
+  Gate identifiers. It does not replace mechanical Owner proof.
+- Matching still owns the fixed scenario/proof Rule implementations today. Keep
+  their projection/query pairing and atomic facts/index updates unchanged in this
+  composition migration; a future ownership adjustment needs its own callers and
+  evidence, not merely a Scenario directory rename.
 
 ## Verification
 

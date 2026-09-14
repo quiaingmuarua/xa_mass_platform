@@ -1,18 +1,15 @@
 # XA Mass Server Runtime distribution
 
-This module owns the sole production main, Boot JAR and publishable Server
-runtime archive. `com.xa.mass.server.XaMassServerApplication` imports
-`XaMassServerConfiguration` and profile-scoped SMS/Messages configurations into one
-context. Server and both Backends are libraries; only distribution produces a Boot JAR.
-Distribution contains no application services or resource operations.
+This module owns Runtime ZIP delivery, frontend builds, diagnostic dictionaries
+and archive verification. It consumes the sole Boot JAR produced by
+[Spring Server composition](../../spring_server_jvm/README.md). It has no Java
+entrypoint, Spring composition, application services or resource operations.
 
-The JAR packages Server, its production dependencies and both business libraries.
-Preview deployment coordinates live in explicit distribution/launcher configuration;
-product profiles enable business without injecting a second Adapter. The archive packages the compiled unified console
-for Runtime, Reference, SMS and Messages pages; the JAR embeds no separate SMS frontend. It does not
-package the repository-local Worker Simulator. It also generates and
-packages the current-build Platform diagnostic code projection. Redis remains
-external.
+The JAR contains the complete Server library and both business Scenario libraries.
+The executable's `preview` profile enables both on one platform. The archive
+packages the unified Console for Runtime, Reference, SMS and Messages, plus the
+current-build diagnostic dictionary. It excludes the independent Worker Simulator.
+Redis remains external; the JAR embeds no separate business frontend.
 The compiled frontend also carries the committed, Server-verified OpenAPI
 snapshot at `frontend/dist/reference/openapi.json`; unlike the diagnostic
 dictionary, that snapshot is generated explicitly and tracked in source.
@@ -63,25 +60,22 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `agentforge` preset uses Server/Adapter ports 18182/18183, Redis scope
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
-`sms-reception` and `message-campaigns` independently enable their business APIs,
-Groups and jobs. `ProductWorkerConfiguration` supplies one mixed-country `demo-sim`
-Group for every product combination and the enabled products' complete extension
-event declarations. Each product consumes exactly that input via
-the existing idempotent Group registration service; distribution owns no registration
-workflow. One context retains one Pacer, Matching catalog and set of Redis Owners.
+`preview` enables both business scenarios on one mixed-country `demo-sim` Group.
+The executable supplies complete shared event declarations; scenarios consume
+them through existing Group registration. One context retains one Pacer, Matching
+catalog and set of Redis Owners.
 
-The [shared Preview](../product-preview/README.md) owns the common port/Redis/Adapter
-configuration, separate Host process and sole product Preview ZIP. Its `--products`
-selection covers SMS, Messages or both through the same deployment files. Products
-retain their business profiles and acceptance oracles; Preview coordinates are
-explicit external inputs, not embedded Boot defaults.
+The [Scenario Preview](../scenario-preview/README.md) owns the independent Host
+process and preview ZIP. It always enables SMS and Messages. The executable owns
+all four canonical application configurations. Delivery copies the preview profile
+without another maintained default. Archive verification requires the host resources
+and rejects deployment or test configuration in nested platform/Scenario libraries.
+Ordinary platform profiles enable neither business scenario.
 
-Distribution explicitly forwards the three SMS pages and Messages workspace,
-metrics and single-segment campaign detail routes, including trailing slashes, to
-one index in all four product combinations. Unknown APIs and assets are not
-forwarded. Independent catalog observations control navigation and unavailable
-states; the shared assets do not enable a product. Runtime and Reference remain
-independent. `productCompositionIntegrationTest` proves all four combinations.
+The executable owns finite Console page forwards in platform and preview instances.
+Unknown APIs/assets remain errors. Catalog observations control navigation and
+unavailable states; shared assets do not enable scenarios. Composition tests live
+in `spring_server_jvm`, while archive verification stays here.
 
 Endpoint overrides use `xa.mass.worker-endpoints`. Each configured transport
 type must name an explicit default in `defaults`; `endpoints` supplies the URI
@@ -91,7 +85,8 @@ may share a type. A changed default affects new Bindings only; existing Workers
 keep their actual Endpoint, and connecting to a different Adapter is rejected.
 Prepare request and response fields are unchanged.
 
-This Worker Binding cutover requires a stopped scope rebuild. There are no old
+This Scenario composition migration requires no data rebuild. Migration from
+incompatible historical Worker Binding storage requires a stopped scope rebuild. There are no old
 configuration aliases or runtime compatibility reads. Preserve configuration and
 source Properties, stop all users of the explicitly selected scope, clear only
 that scope with SCAN plus UNLINK, then register Groups, Workers and Tasks again.
@@ -104,7 +99,7 @@ its fixed Java Pacer preset; the archive contains no Pacer policy file and
 offers no per-field policy tuning. Server remains the sole Java Pacer lifecycle
 owner. The archive contains no Scenario Worker implementation, Python runtime,
 wheel or virtual environment. The independent Worker Simulator is available
-from its install distribution, the Product Preview, or the checkout through
+from its install distribution, the Scenario Preview, or the checkout through
 `run_local_runtime.py`. Direct Gradle launch is
 `:worker_simulator_jvm:runWorkerSimulator --args="--config worker_simulator_jvm/config/lab.json"`;
 all paths use the same Main and complete configuration.

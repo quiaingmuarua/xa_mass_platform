@@ -16,7 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @ActiveProfiles("test")
-@SpringBootTest(
+@SpringBootTest(classes = com.xa.mass.server.testsupport.ServerTestConfiguration.class,
         properties = {
                 "xa.mass.worker-delivery.adapter"
                         + ".remote-base-url=http://127.0.0.1:1",

@@ -12,44 +12,52 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
-The [SMS Reception business workload](products/sms-reception/README.md#检查与验收)
+Deployment configuration proof lives in `spring_server_jvm`: the default, Lab,
+AgentForge and preview classpath configurations, explicit overrides and deployment
+overlays. `server_jvm` tests and OpenAPI export use independent test resources;
+only named real-infrastructure tests enable Redis and Pacers. Archive verification
+checks the four host configurations, absence of application configuration in
+nested platform/Scenario libraries, and absence of test configuration. Moving
+configuration ownership retains the original proof-path selections.
+
+The [SMS Reception business workload](scenarios/sms-reception-jvm/README.md#检查与验收)
 owns its listening-order invariants and finite scenario acceptance. Business
 workloads expose interactions and failure patterns beyond the focused fixtures;
 discovered platform defects should gain regressions in the owning proof, while
 the workload retains the business-level witness. Its dedicated
-workflow runs product JVM and unified frontend checks, distribution-owned
+workflow runs product JVM and unified frontend checks, executable-owned
 `smsCompositionIntegrationTest` with platform Task/Result HTTP routes blocked,
 and the three-Worker real path through the composed Server and separate Host.
 The fixed 1,000-Worker product workload is an explicit local acceptance command;
 it does not replace or expand the platform proof lanes below.
 
-The SMS Preview workflow uses the shared Distribution launcher with `products=sms`.
-It compares the unified Product Preview archive against the current frontend build,
+The SMS Preview workflow uses the shared Distribution launcher with both scenarios enabled and only SMS workload submitted.
+It compares the unified Scenario Preview archive against the current frontend build,
 then runs the source SMS acceptance oracle against a fresh extraction's launcher
 and artifacts without a Node or Gradle build step. Launcher lifecycle and archive
-tests live in `distribution/product-preview`; SMS assertions remain in the product.
+tests live in `distribution/scenario-preview`; SMS assertions remain in the scenario.
 
 ```powershell
-python -m pip install -r distribution/product-preview/requirements.txt
-python products/sms-reception/run_acceptance.py --build --scenario functional
-python products/sms-reception/run_acceptance.py --scenario lifecycle
-python products/sms-reception/run_acceptance.py --scenario concurrency
+python -m pip install -r distribution/scenario-preview/requirements.txt
+python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario functional
+python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
+python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
 ```
 
-[Product Coexistence](integrations/product-coexistence/README.md) adds a selected
+[Scenario Coexistence](integrations/scenario-coexistence/README.md) adds a selected
 Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the
 same Worker, receipts after Task completion/closure, duplicates, ordering and
-Worker run isolation. Distribution's `productCompositionIntegrationTest` owns
-four profile combinations plus real partial submission and delayed execution
+Worker run isolation. The executable's `scenarioCompositionIntegrationTest` owns
+platform/preview assembly plus real partial submission and delayed execution
 evidence. The fixed 1k dual workload is explicit/manual, never part of ordinary CI:
 
 ```powershell
-python integrations/product-coexistence/run_proof.py --build --scenario functional
-python integrations/product-coexistence/run_proof.py --scenario lifecycle
-python integrations/product-coexistence/run_proof.py --scenario load-1k
+python integrations/scenario-coexistence/run_proof.py --build --scenario functional
+python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
+python integrations/scenario-coexistence/run_proof.py --scenario load-1k
 ```
 
-Install `distribution/product-preview/requirements.txt`; use `--root` with a fresh
+Install `distribution/scenario-preview/requirements.txt`; use `--root` with a fresh
 extracted Preview to exercise its packaged launcher. The dedicated
 `.github/workflows/product-coexistence.yml` also accepts `scenario=load-1k` through
 workflow_dispatch. CI uploads only safe summary/manifest evidence.
@@ -178,7 +186,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
-| Product Coexistence | `python integrations/product-coexistence/run_proof.py --build --scenario functional`, then `--scenario lifecycle` and fresh ZIP functional | Redis 7, Java 21, Python, Node for build |
+| Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario lifecycle` and fresh ZIP functional | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
 The exact JVM module build list and Android assembly commands are maintained in

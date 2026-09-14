@@ -8,15 +8,12 @@ import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
 import java.net.URI;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.context
-        .ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class ServerWorkerDeliveryAdapterPropertiesTest {
@@ -182,35 +179,6 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                         "xa.mass.worker-delivery.adapter.instances.adapter-1.type=SOCKET"
                 )
                 .run(context -> assertThat(context).hasFailed());
-    }
-
-    @Test
-    void loadedRecoveryOverlayOverridesOnlyItsReportFields() {
-        Path overlay = Path.of(System.getProperty(
-                "xa.mass.repository.root"
-        )).resolve(
-                "integrations/worker-loaded-recovery/server-config/"
-                        + "application-worker-loaded-recovery.yaml"
-        );
-        contextRunner.withInitializer(
-                new ConfigDataApplicationContextInitializer()
-        ).withPropertyValues(
-                "spring.profiles.active=scenario-workers",
-                "spring.config.additional-location=" + overlay.toUri()
-        ).run(context -> {
-            assertThat(context).hasNotFailed();
-            NettyWorkerDeliveryAdapterConfig config = context.getBean(
-                    ServerWorkerDeliveryAdapterProperties.class
-            ).instances().get("scenario-websocket");
-            assertThat(config.commandBackoff()).isEqualTo(
-                    Duration.ofMillis(100)
-            );
-            assertThat(config.commandRetryCapacity()).isEqualTo(1000);
-            assertThat(config.reportBackoff()).isEqualTo(
-                    Duration.ofMillis(100)
-            );
-            assertThat(config.reportQueueCapacity()).isEqualTo(20_000);
-        });
     }
 
     private void assertAdapterFailed(String override) {

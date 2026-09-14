@@ -107,7 +107,7 @@ def _build_artifacts() -> None:
             str(_gradle_wrapper()),
             "--daemon",
             "-Dorg.gradle.daemon.idletimeout=300000",
-            ":distribution:server:bootJar",
+            ":spring_server_jvm:bootJar",
             ":worker_simulator_jvm:installDist",
             f"{MODULE_TASK}:classes",
         ],
@@ -325,7 +325,7 @@ def _start_server(
 ) -> subprocess.Popen[str]:
     jars = sorted(
         path
-        for path in (REPOSITORY_ROOT / "distribution/server/build/libs").glob(
+        for path in (REPOSITORY_ROOT / "spring_server_jvm/build/libs").glob(
             "xa-mass-server-jvm-*.jar"
         )
         if not path.name.endswith("-plain.jar")

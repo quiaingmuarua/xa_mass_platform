@@ -101,8 +101,9 @@ jobs:
           :worker_simulator_jvm:build
           :worker_simulator_jvm:installDist
           :server_jvm:build
-          :products:sms-reception:backend:build
-          :products:message-campaigns:backend:build
+          :spring_server_jvm:build
+          :scenarios:sms-reception-jvm:build
+          :scenarios:message-campaigns-jvm:build
           :integrations:worker-correctness:build
           :integrations:worker-dynamic-matching:build
           :integrations:worker-convergence-health:build
@@ -546,7 +547,7 @@ jobs:
         run: >-
           ./gradlew --daemon
           -Dorg.gradle.daemon.idletimeout=300000
-          :distribution:server:bootJar
+          :spring_server_jvm:bootJar
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

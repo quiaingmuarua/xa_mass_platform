@@ -37,7 +37,7 @@ const referencePage = computed(() => route.meta.section === "Reference");
 const runtimePage = computed(() => route.meta.section === "Runtime");
 const sourceLabel = computed(() => {
   if (referencePage.value) return "Build reference";
-  if (route.meta.section === "Business")
+  if (route.meta.section === "Scenarios")
     return demo ? "Mock source" : `${String(route.meta.title)} API`;
   return demo ? "Mock source" : "API source";
 });

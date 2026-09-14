@@ -25,6 +25,9 @@ REQUIRED_DOCS = {
     "kernel_pacer_jvm/README.md": "Status: Kernel-owned",
     "worker_matching_jvm/README.md": "Status: current",
     "server_jvm/README.md": "Status: current",
+    "spring_server_jvm/README.md": "Status: current",
+    "scenarios/sms-reception-jvm/README.md": "Status: current",
+    "scenarios/message-campaigns-jvm/README.md": "Status: current",
     "transport/README.md": "Status: repository-local",
 }
 REQUIRED_ROOT_LINKS = {

@@ -66,7 +66,7 @@ def main() -> int:
     _run([
         str(_gradle()),
         "--no-daemon",
-        ":distribution:server:bootJar",
+        ":spring_server_jvm:bootJar",
         ":worker_simulator_jvm:installDist",
         f"{MODULE}:installDist",
     ], environment)
@@ -174,7 +174,7 @@ def _start_server(
     environment: dict[str, str],
 ) -> subprocess.Popen[str]:
     jars = [
-        path for path in (ROOT / "distribution/server/build/libs").glob(
+        path for path in (ROOT / "spring_server_jvm/build/libs").glob(
             "xa-mass-server-jvm-*.jar"
         ) if not path.name.endswith("-plain.jar")
     ]

@@ -10,9 +10,13 @@ public final class ServerIntegrationProfile {
             "/application-integration-test.properties";
     private static final Properties PROPERTIES = load();
 
-    public static final String REDIS_URL = value(
-            "xa.mass.redis.url"
-    );
+    public static final String REDIS_URL = redisUrl();
+
+    private static String redisUrl() {
+        String configured = System.getenv("XA_MASS_REDIS_URL");
+        return configured == null || configured.isBlank()
+                ? value("xa.mass.redis.url") : configured;
+    }
 
     private ServerIntegrationProfile() {
     }

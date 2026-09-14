@@ -249,7 +249,7 @@ successful samples. Missing success latency is not converted to a zero ratio.
 No detected regression is not a claim of speedup. Regression exits nonzero;
 the engineer withdraws the candidate rather than adding compensating tuning.
 
-The current Server JAR comes only from `distribution/server`. An explicitly
+The current Server JAR comes only from `spring_server_jvm`. An explicitly
 selected immutable comparison checkout is built from the Server entrypoint in
 that checkout; older baselines retain their original build layout and sources.
 

@@ -38,12 +38,12 @@ export const consoleRoutes: RouteRecordRaw[] = [
       ...["sms", "sms/listeners", "sms/metrics"].map((path) => ({
         path,
         component: smsPage,
-        meta: { section: "Business", title: "SMS" }
+        meta: { section: "Scenarios", title: "SMS" }
       })),
       ...["messages", "messages/campaigns/:id", "messages/metrics"].map((path) => ({
         path,
         component: messagesPage,
-        meta: { section: "Business", title: "Messages" }
+        meta: { section: "Scenarios", title: "Messages" }
       }))
     ]
   },

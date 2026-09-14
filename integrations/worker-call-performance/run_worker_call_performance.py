@@ -187,12 +187,14 @@ def wait_http(url, process, sampler, deadline):
 
 def server_distribution(root):
     main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
-    if (root / "distribution/server" / main).is_file():
-        return "distribution/server"
+    if (root / "spring_server_jvm" / main).is_file():
+        return "spring_server_jvm"
     # Explicit immutable A/B checkouts retain their own historical build layout.
     # This never redirects the current checkout to another JAR producer.
-    if root.resolve() != ROOT.resolve() and (root / "server_jvm" / main).is_file():
-        return "server_jvm"
+    if root.resolve() != ROOT.resolve():
+        for historical_module in ("distribution/server", "server_jvm"):
+            if (root / historical_module / main).is_file():
+                return historical_module
     raise RuntimeError("Server distribution entrypoint is missing from the checkout")
 
 
@@ -207,8 +209,18 @@ def build(root, harness=False):
 
 
 def fingerprint(root):
-    files = ("server_jvm/src/main/resources/application.yaml", "server_jvm/src/main/resources/application-scenario-workers.yaml")
-    return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in files}
+    names = ("application.yaml", "application-scenario-workers.yaml")
+    directories = ["spring_server_jvm/src/main/resources"]
+    if root.resolve() != ROOT.resolve():
+        # Only an explicit historical checkout may retain the former layout.
+        directories.append("server_jvm/src/main/resources")
+    for directory in directories:
+        files = tuple(f"{directory}/{name}" for name in names)
+        if all((root / path).is_file() for path in files):
+            return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in files}
+        if any((root / path).is_file() for path in files):
+            raise RuntimeError(f"Incomplete Server configuration group: {directory}")
+    raise RuntimeError("Server configuration group is missing")
 
 
 def configuration_sources(root):
