@@ -898,7 +898,7 @@
           <div class="split">
             <pre class="code-panel" aria-label="运行进程关系">
 运行环境
-├─ Server 进程（spring_server_jvm 启动）
+├─ Server 进程（server_boot_jvm 启动）
 │  ├─ server_jvm：平台 API + 应用服务
 │  ├─ SMS 与 Messages 场景 + 统一页面（preview 同时启用）
 │  ├─ Kernel：机械契约 + Pacer
@@ -927,8 +927,8 @@
               <span class="owner">SERVER RUNTIME</span>
               <h3>运行服务端</h3>
               <p>
-                发行包包含 Server、调度与匹配组件、Adapter 和编译后的前端。启动需要 Java
-                21 和外部 Redis。
+                Runtime 发行包包含 Server、调度与匹配组件、Adapter
+                和编译后的前端。启动需要 Java 21 和外部 Redis。
               </p>
             </article>
             <article class="card worker">
@@ -944,8 +944,9 @@
               <h3>在本地建立实验环境</h3>
               <p>
                 Worker Simulator 共用一套 Java Worker 管理与本地控制台，运行 Lab
-                实验、SMS 模拟号码和消息回执。Host 独立于 Server 启动，随 Scenario
-                预览包提供。
+                实验、SMS 模拟号码和消息回执。Preview 发行包额外携带独立的 Host。
+                源码启动统一使用
+                <code>python run_local_runtime.py --profile preview</code>。
               </p>
             </article>
           </div>

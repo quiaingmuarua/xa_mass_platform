@@ -19,7 +19,7 @@ import uuid
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "integrations"))
 from worker_proof_support.scenario_inventory import materialize_inventory, product_worker_world
-PREVIEW = REPO / "distribution" / "scenario-preview"
+PREVIEW = REPO / "distribution" / "server"
 spec = importlib.util.spec_from_file_location("product_preview", PREVIEW / "run_preview.py")
 preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)

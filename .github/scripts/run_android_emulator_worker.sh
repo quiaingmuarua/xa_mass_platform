@@ -163,7 +163,7 @@ start_server() {
     local server_jar
     server_jar=
     for candidate in \
-            "$workspace"/spring_server_jvm/build/libs/xa-mass-server-jvm-*.jar; do
+            "$workspace"/server_boot_jvm/build/libs/xa-mass-server-jvm-*.jar; do
         if [ ! -f "$candidate" ] || [[ $candidate == *-plain.jar ]]; then
             continue
         fi

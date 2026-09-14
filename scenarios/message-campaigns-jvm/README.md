@@ -11,7 +11,7 @@ Adapter 和真实 Worker 池；场景之间没有代码依赖。
 `message-campaigns-jvm -> server_jvm` 只消费 `WorkerGroupRegistrationService`、`TaskCreationService`、
 `TaskDataService`、`TaskLifecycleService` 及现有 Task 契约。产品不调用 Controller，不经过平台 HTTP
 等待器，不创建 Redis、Kernel Owner、Pacer 或 Adapter。本模块没有部署 profile，由宿主 `preview` 配置与 SMS 一起导入。
-[Spring 宿主](../../spring_server_jvm/README.md) 提供唯一混合 Group `demo-sim` 与完整业务/共享事件声明。
+[Spring 宿主](../../server_boot_jvm/README.md) 提供唯一混合 Group `demo-sim` 与完整业务/共享事件声明。
 统一 preview 使用 `demo-sim`；两个场景幂等消费同一 Group 声明。
 
 ```text
@@ -68,13 +68,13 @@ Backend 与 Host 各最多保留 50 批、50,000 条消息。Backend 用两个�
 
 统一前端在 `frontend/src/message-campaigns/`，页面为 `/messages`、`/messages/campaigns/{id}`、
 `/messages/metrics`。与 SMS 分别观察 catalog，标签保留输入，离开产品停止轮询并中止请求。
-源码与 ZIP 均使用 [Scenario Preview](../../distribution/scenario-preview/README.md) 的同一个启动入口，固定启用两个业务场景。
+源码与 ZIP 均使用 [Scenario Preview](../../distribution/server/PREVIEW.md) 的同一个启动入口，固定启用两个业务场景。
 
 ## 检查与验收
 
 ```powershell
 .\gradlew.bat :scenarios:message-campaigns-jvm:test :worker_simulator_jvm:test
-.\gradlew.bat :spring_server_jvm:scenarioCompositionIntegrationTest
+.\gradlew.bat :server_boot_jvm:scenarioCompositionIntegrationTest
 python integrations/scenario-coexistence/run_proof.py --build --scenario functional
 python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 python integrations/scenario-coexistence/run_proof.py --scenario load-1k

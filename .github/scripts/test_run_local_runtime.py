@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -19,19 +21,56 @@ SPEC.loader.exec_module(launcher)
 class LocalRuntimeLauncherTest(unittest.TestCase):
 
     def test_profile_defaults_to_scenario_and_rejects_unknown_values(self) -> None:
-        self.assertEqual(launcher.parse_profile([]), "scenario-workers")
+        self.assertEqual(launcher.parse_arguments([]).profile, "scenario-workers")
         self.assertEqual(
-            launcher.parse_profile(["--profile", "agentforge"]),
+            launcher.parse_arguments(["--profile", "agentforge"]).profile,
             "agentforge",
         )
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            launcher.parse_profile(["--profile", "unknown"])
+            launcher.parse_arguments(["--profile", "unknown"])
+
+    def test_preview_options_are_rejected_for_other_profiles(self) -> None:
+        for profile in ("scenario-workers", "agentforge"):
+            for option in ("count", "seed", "port", "sandbox-root"):
+                with self.subTest(profile=profile, option=option), redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit) as error, patch.object(launcher, "build_frontend") as build:
+                    launcher.main(["--profile", profile, "--" + option, "3"])
+                self.assertEqual(2, error.exception.code)
+                build.assert_not_called()
+
+    def test_preview_delegates_once_without_running_the_lab_build_or_processes(self) -> None:
+        preview = MagicMock()
+        preview.main.return_value = 0
+        with patch.object(launcher, "load_preview", return_value=preview), \
+                patch.object(launcher, "build_frontend") as frontend, \
+                patch.object(launcher, "build_runtime_processes") as runtime, \
+                patch.object(launcher, "start_server") as server:
+            self.assertEqual(0, launcher.main(["--profile", "preview", "--count", "3", "--seed", "712",
+                    "--port", "18600", "--sandbox-root", "existing/data/scenario-workers"]))
+            preview.main.assert_called_once_with(["--build", "--count", "3", "--seed", "712",
+                    "--port", "18600", "--sandbox-root", "existing/data/scenario-workers"])
+            frontend.assert_not_called()
+            runtime.assert_not_called()
+            server.assert_not_called()
+        preview.reset_mock()
+        with patch.object(launcher, "load_preview", return_value=preview):
+            self.assertEqual(0, launcher.main(["--profile", "preview"]))
+            preview.main.assert_called_once_with(["--build"])
+
+    def test_help_and_normal_profile_parsing_need_no_preview_dependencies(self) -> None:
+        result = subprocess.run([sys.executable, "-S", str(SCRIPT), "--help"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("preview", result.stdout)
+        with patch.object(launcher, "load_preview", side_effect=AssertionError("unexpected Preview import")):
+            self.assertEqual("scenario-workers", launcher.parse_arguments([]).profile)
+            self.assertEqual("agentforge", launcher.parse_arguments(["--profile", "agentforge"]).profile)
 
     def test_only_scenario_profile_builds_the_worker_host(self) -> None:
         self.assertEqual(
             launcher.gradle_tasks("scenario-workers"),
             [
-                ":spring_server_jvm:bootJar",
+                ":server_boot_jvm:bootJar",
                 ":worker_simulator_jvm:installDist",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
@@ -39,7 +78,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(
             launcher.gradle_tasks("agentforge"),
             [
-                ":spring_server_jvm:bootJar",
+                ":server_boot_jvm:bootJar",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
         )

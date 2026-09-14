@@ -93,7 +93,7 @@ The first such workload, [SMS Reception](scenarios/sms-reception-jvm/README.md),
 uses a separate business module and a page in the unified console, plus the SMS scene of the
 independently launched [Worker Simulator](worker_simulator_jvm/README.md#sms-scenario).
 Lab, SMS and Messages share its Java Worker management and local console. The
-[Spring Server composition](spring_server_jvm/README.md) imports platform and
+[Server Boot composition](server_boot_jvm/README.md) imports platform and
 both business scenarios into one Server; `preview` enables both APIs and jobs.
 SMS calls the
 existing Server services and shares their Owner instances.
@@ -101,7 +101,7 @@ It owns listening orders and SMS routing; Kernel retains assignment and scheduli
 
 [Message Campaigns](scenarios/message-campaigns-jvm/README.md) adds finite Rule-bound
 batches and later delivery, read and repeated reply observations. The
-[shared Preview](distribution/scenario-preview/README.md) runs both scenarios on the
+[shared Preview](distribution/server/PREVIEW.md) runs both scenarios on the
 same Server, Adapter and Worker pool. Scenarios remain independent libraries using
 Server application services; the [coexistence proof](integrations/scenario-coexistence/README.md)
 exercises their shared runtime and preserves each scenario's business semantics.
@@ -112,7 +112,7 @@ exercises their shared runtime and preserves each scenario's business semantics.
 | Kernel policy | [kernel_pacer_jvm](kernel_pacer_jvm/README.md): fixed Result/Dispatch Convergence behind one KernelPacerRuntime |
 | Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/bindings and bounded Rule index queries |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
-| Executable composition | [spring_server_jvm](spring_server_jvm/README.md): sole Boot entry and platform/preview composition |
+| Executable composition | [server_boot_jvm](server_boot_jvm/README.md): sole Boot entry and platform/preview composition |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
 | JVM simulation | [worker_simulator_jvm](worker_simulator_jvm/README.md): one independent Host for Lab fixtures, SMS numbers and message recipients |
 | Android | [xa-android](xa-android/README.md): capabilities, local Host controls and demo assembly |
@@ -122,7 +122,7 @@ exercises their shared runtime and preserves each scenario's business semantics.
 
 ## Runtime And Deployment
 
-The [Spring executable](spring_server_jvm/README.md) starts Server configuration,
+The [Boot executable](server_boot_jvm/README.md) starts Server configuration,
 which assembles one KernelPacerRuntime and the Matching catalog. Only one
 Server per Kernel Redis scope may enable the Pacer lifecycle; there is no
 distributed Pacer leader election. Profile selects assembly and policy preset;
@@ -141,7 +141,9 @@ and public APIs instead of copying source modules.
 
 For local work, `python run_local_runtime.py` builds the frontend and starts
 the Scenario Lab. `--profile agentforge` selects the clean Server/Adapter
-preset without Worker Simulator. Profile coordinates and commands are documented
+preset without Worker Simulator. `--profile preview` builds and starts both business
+scenarios and their shared Simulator through the [Preview launcher](distribution/server/PREVIEW.md).
+Profile coordinates and commands are documented
 by [Server](server_jvm/README.md#run) and [distribution](distribution/server/README.md).
 
 The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses Mock

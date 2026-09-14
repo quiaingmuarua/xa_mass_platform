@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 
 import argparse
 import os
@@ -22,11 +23,11 @@ ROOT = Path(__file__).resolve().parent
 FRONTEND = ROOT / "frontend"
 FRONTEND_DIST = FRONTEND / "dist"
 DEFAULT_PROFILE = "scenario-workers"
-SUPPORTED_PROFILES = (DEFAULT_PROFILE, "agentforge")
+SUPPORTED_PROFILES = (DEFAULT_PROFILE, "agentforge", "preview")
 SHUTDOWN_TIMEOUT_SECONDS = 15
 
 
-def parse_profile(arguments: Sequence[str] | None = None) -> str:
+def parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build and run one built-in XA Mass local Runtime profile."
     )
@@ -35,7 +36,30 @@ def parse_profile(arguments: Sequence[str] | None = None) -> str:
         choices=SUPPORTED_PROFILES,
         default=DEFAULT_PROFILE,
     )
-    return parser.parse_args(arguments).profile
+    for option in ("count", "seed", "port", "sandbox-root"):
+        parser.add_argument("--" + option, help="Preview only; uses the Preview default when omitted")
+    args = parser.parse_args(arguments)
+    if args.profile != "preview" and any(
+        getattr(args, name) is not None for name in ("count", "seed", "port", "sandbox_root")
+    ):
+        parser.error("--count, --seed, --port and --sandbox-root require --profile preview")
+    return args
+
+
+def load_preview():
+    path = ROOT / "distribution/server/run_preview.py"
+    spec = importlib.util.spec_from_file_location("xa_mass_local_preview", path)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except ModuleNotFoundError as error:
+        if error.name not in {"psutil", "redis"}:
+            raise
+        raise RuntimeError(
+            "Preview dependencies are missing; run python -m pip install -r "
+            "distribution/server/requirements-preview.txt"
+        ) from error
+    return module
 
 
 def package_manager() -> list[str]:
@@ -63,7 +87,7 @@ def build_frontend() -> None:
 
 
 def gradle_tasks(profile: str) -> list[str]:
-    tasks = [":spring_server_jvm:bootJar"]
+    tasks = [":server_boot_jvm:bootJar"]
     if profile == DEFAULT_PROFILE:
         tasks.append(":worker_simulator_jvm:installDist")
     tasks.append(":distribution:server:installLocalPlatformDiagnosticCodes")
@@ -85,7 +109,7 @@ def build_runtime_processes(profile: str) -> tuple[Path, list[Path]]:
         raise RuntimeError("Could not resolve the default Gradle project version")
     server_jar = (
         ROOT
-        / "spring_server_jvm"
+        / "server_boot_jvm"
         / "build"
         / "libs"
         / f"xa-mass-server-jvm-{version_match.group(1)}.jar"
@@ -242,7 +266,15 @@ def main(
     *,
     environ: Mapping[str, str] | None = None,
 ) -> int:
-    profile = parse_profile(arguments)
+    args = parse_arguments(arguments)
+    profile = args.profile
+    if profile == "preview":
+        forwarded = ["--build"]
+        for name in ("count", "seed", "port", "sandbox_root"):
+            value = getattr(args, name)
+            if value is not None:
+                forwarded.extend(["--" + name.replace("_", "-"), value])
+        return load_preview().main(forwarded)
     values = os.environ if environ is None else environ
     server: subprocess.Popen[bytes] | None = None
     worker_host: subprocess.Popen[bytes] | None = None

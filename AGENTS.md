@@ -37,10 +37,11 @@ agents change the repository; it is not the canonical mechanism narrative.
 - `worker_matching_jvm/` owns Worker/Platform Properties, fixed Rule Handlers,
   Task bindings, materialized eligibility indexes and bounded query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
-- `spring_server_jvm/` owns the sole production main, Boot JAR and explicit
+- `server_boot_jvm/` owns the sole production main, Boot JAR and explicit
   platform/preview configuration. It owns no business or resource logic.
-- `distribution/server/` owns Runtime archive delivery, frontend builds and
-  diagnostic dictionaries; it consumes the executable artifact.
+- `distribution/server/` owns Runtime and Scenario Preview delivery, frontend
+  builds, diagnostic dictionaries and the Preview process launcher; it consumes
+  the executable artifact.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
 - Scenario, Android, integration and frontend modules are finite assembly,
@@ -278,7 +279,7 @@ kernel_jvm`.
 
 `server_jvm` is a Java library with importable `XaMassServerConfiguration`.
 Its Spring configuration owns client, Owner and platform lifecycle construction
-and destruction. Spring Server composition alone owns `XaMassServerApplication` and Boot packaging.
+and destruction. Server Boot composition alone owns `XaMassServerApplication` and Boot packaging.
 Server production configuration contains no main or Boot application annotation.
 Server tests and OpenAPI export use a test-only platform Boot configuration;
 scenario composition tests belong to the executable, with no reverse dependency.
@@ -359,7 +360,7 @@ through without an event whitelist; future API Session authorization remains a
 separate owner.
 
 Deployment profile contents and coordinates belong to
-[Spring Server configuration](spring_server_jvm/README.md#pages-and-configuration).
+[Server Boot configuration](server_boot_jvm/README.md#pages-and-configuration).
 Server retains configuration interpretation, validation and resource lifecycle.
 
 ## Worker Delivery Contract
@@ -642,7 +643,7 @@ system.
   the selected Sim's gate before dedup; Messages checks the selected Sender and
   preserves the original Reporter. Capability discovery is replica-local. HTTP,
   console and CI share this path, without input queues or upstream ACK tracking.
-- Spring Server owns deployment profile coordinates; Server owns applying
+- Server Boot owns deployment profile coordinates; Server owns applying
   create-only advisory WorkerGroup seeds through its existing services.
 - Lab, SMS and Messages share the file inventory, SCENARIO_LAB batch Prepare,
   one immutable current Properties snapshot per record and common controls.
@@ -768,10 +769,11 @@ Adapter connectivity, Kernel state or schedulability.
   Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.
-- `distribution/server` is a packaging owner only. It assembles the current
-  Server, production Pacer, frontend and configuration. It must not package the
-  repository-local Worker Simulator, add a fallback runtime owner, add a
-  second production mechanism or introduce scheduling behavior.
+- `distribution/server` owns delivery and finite Preview process assembly. It
+  assembles the current Server, frontend and configuration. The Runtime ZIP
+  excludes the Worker Simulator; the Preview ZIP includes it. Neither variant
+  may add a fallback runtime owner, a second production mechanism or scheduling
+  behavior.
 
 ## Business Scenario Composition
 
@@ -792,7 +794,7 @@ deployment follows concrete business or operational needs.
   Never invoke Controllers, providers, scheduling policy, HTTP waiters or the
   Direct Call registry from scenario code. Do not add a Runtime library, bridge,
   mirrored DTO, generic scenario framework or speculative public SDK.
-- [Spring Server](spring_server_jvm/README.md) explicitly imports platform and
+- [Server Boot](server_boot_jvm/README.md) explicitly imports platform and
   finite Console forwards. Its `preview` configuration imports both scenarios and
   supplies one shared Group and complete event declaration. Scenario configuration
   classes have no deployment profile of their own. Platform and preview are the
@@ -821,8 +823,9 @@ deployment follows concrete business or operational needs.
   release accepts existing receipt IDs, never arbitrary Reports. Stop clears
   Reporters before SDK stop, and new runs cannot adopt old associations. Keep
   existing finite capacities and the SMS matching/deduplication contract.
-- [Scenario Preview](distribution/scenario-preview/README.md) owns the sole source
-  and ZIP launcher for one Server and one Host with both scenarios. Keep business
+- [Scenario Preview delivery](distribution/server/PREVIEW.md) owns the shared source
+  and ZIP launcher for one Server and one Host with both scenarios. The root local
+  entry delegates to that same implementation for `--profile preview`. Keep business
   acceptance oracles external and load the packaged launcher without a checkout
   fallback. Preview may package Host; the production Runtime ZIP may not.
   [Scenario Coexistence](integrations/scenario-coexistence/README.md) remains a

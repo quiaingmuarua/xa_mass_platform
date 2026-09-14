@@ -12,7 +12,7 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
-Deployment configuration proof lives in `spring_server_jvm`: the default, Lab,
+Deployment configuration proof lives in `server_boot_jvm`: the default, Lab,
 AgentForge and preview classpath configurations, explicit overrides and deployment
 overlays. `server_jvm` tests and OpenAPI export use independent test resources;
 only named real-infrastructure tests enable Redis and Pacers. Archive verification
@@ -35,10 +35,10 @@ The SMS Preview workflow uses the shared Distribution launcher with both scenari
 It compares the unified Scenario Preview archive against the current frontend build,
 then runs the source SMS acceptance oracle against a fresh extraction's launcher
 and artifacts without a Node or Gradle build step. Launcher lifecycle and archive
-tests live in `distribution/scenario-preview`; SMS assertions remain in the scenario.
+tests live in `distribution/server/src/test/python`; SMS assertions remain in the scenario.
 
 ```powershell
-python -m pip install -r distribution/scenario-preview/requirements.txt
+python -m pip install -r distribution/server/requirements-preview.txt
 python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario functional
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
@@ -57,7 +57,7 @@ python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 python integrations/scenario-coexistence/run_proof.py --scenario load-1k
 ```
 
-Install `distribution/scenario-preview/requirements.txt`; use `--root` with a fresh
+Install `distribution/server/requirements-preview.txt`; use `--root` with a fresh
 extracted Preview to exercise its packaged launcher. The dedicated
 `.github/workflows/product-coexistence.yml` also accepts `scenario=load-1k` through
 workflow_dispatch. CI uploads only safe summary/manifest evidence.

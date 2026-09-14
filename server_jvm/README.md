@@ -21,7 +21,7 @@ This is an ordinary Java library with importable `XaMassServerConfiguration`.
 It owns Group registration, Task submission and complete Task data services,
 as well as HTTP waiting, Prepare, Direct Call and every Worker Delivery route.
 Spring assembly creates and closes one set of clients, Owners and platform
-lifecycles. The [Spring Server composition](../spring_server_jvm/README.md) owns
+lifecycles. The [Server Boot composition](../server_boot_jvm/README.md) owns
 the only production `XaMassServerApplication` main and Boot JAR. This library uses
 ordinary Spring configuration without Boot application auto-configuration or a
 production main. Its platform-only test bootstrap supplies Boot infrastructure
@@ -720,7 +720,7 @@ Delivery rejection still uses the same
 
 The [SMS business module](../scenarios/sms-reception-jvm/README.md) depends on the
 approved Group registration, Task submission and Task data services here.
-Spring Server composition imports its configuration beside Server configuration in the same
+Server Boot composition imports its configuration beside Server configuration in the same
 context. Only `sms-reception` enables its API, jobs and Group registration.
 The unified console shares the Server origin; distribution owns its SMS page
 forwards while `/` keeps the Runtime entry. Frontend availability does not enable
@@ -966,12 +966,12 @@ Those responsibilities belong to the independently launched
 [`worker_simulator_jvm`](../worker_simulator_jvm/README.md) Host.
 
 Deployment profiles, Group declarations and startup commands are maintained by
-[Spring Server composition](../spring_server_jvm/README.md#run).
+[Server Boot composition](../server_boot_jvm/README.md#run).
 
 ## Configuration
 
 Default application limits; deployment coordinates are maintained by
-[the executable configuration](../spring_server_jvm/README.md#pages-and-configuration):
+[the executable configuration](../server_boot_jvm/README.md#pages-and-configuration):
 
 ```text
 Managed Task Call wait         30s default / 60s maximum
@@ -1034,7 +1034,7 @@ dedup cache, activation ACK or replay is installed.
 ## Run
 
 The Server library has no production main or Boot tasks. Use the
-[executable startup commands](../spring_server_jvm/README.md#run) or the
+[executable startup commands](../server_boot_jvm/README.md#run) or the
 [Runtime distribution](../distribution/server/README.md). Configuration binding,
 provider construction and bounded resource shutdown remain in this library.
 

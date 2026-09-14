@@ -143,7 +143,7 @@ profile; Java Server selects the checked `SCENARIO_LAB` preset and starts the
 four Java Kernel Pacer applications:
 
 ```powershell
-.\gradlew.bat :spring_server_jvm:bootRun `
+.\gradlew.bat :server_boot_jvm:bootRun `
   --args="--spring.profiles.active=scenario-workers"
 ```
 

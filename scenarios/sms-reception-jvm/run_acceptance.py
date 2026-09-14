@@ -18,7 +18,7 @@ import urllib.parse
 import uuid
 
 PRODUCT = Path(__file__).resolve().parent
-PREVIEW = PRODUCT.parents[1] / "distribution" / "scenario-preview"
+PREVIEW = PRODUCT.parents[1] / "distribution" / "server"
 sys.path.insert(0, str(PRODUCT.parents[1] / "integrations"))
 from worker_proof_support.scenario_inventory import materialize_inventory, product_worker_world
 

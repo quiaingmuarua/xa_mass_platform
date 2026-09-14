@@ -99,7 +99,7 @@ Runtime configuration errors do not prevent SMS or Reference pages from loading.
 Public Mock Demo hides SCENARIOS / SMS, makes no SMS requests, and explains that
 SMS is unsupported on direct visits. An ordinary Server without SMS serves the
 same console pages but their catalog check reports the feature as disabled.
-The Spring executable owns the finite page forwards, including trailing slashes; unknown
+The Boot executable owns the finite page forwards, including trailing slashes; unknown
 API and asset paths remain errors. Scenario APIs, Groups and jobs remain gated by
 `preview`, which enables SMS and Messages together. The shared assets do not enable those resources.
 
@@ -125,7 +125,7 @@ Runtime initialization stays in RuntimeProvider. Messages routes load lazily,
 retain forms across scenario tabs, abort pending work on exit and never replay an
 uncertain creation. A changed runId reloads catalog and discards old local selection.
 The same theme, mobile navigation, Vite proxy and unified production build apply.
-Use [Scenario Preview](../distribution/scenario-preview/README.md) for simultaneous
+Use [Scenario Preview](../distribution/server/PREVIEW.md) for simultaneous
 business development (`VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500`).
 
 ## API Reference

@@ -38,8 +38,8 @@ Task 和后续 Outcome 观察完成接码。只使用模拟短信，不连接真
 在仓库根目录运行：
 
 ```powershell
-python -m pip install -r distribution/scenario-preview/requirements.txt
-python distribution/scenario-preview/run_preview.py --build
+python -m pip install -r distribution/server/requirements-preview.txt
+python run_local_runtime.py --profile preview
 ```
 
 打开 `http://127.0.0.1:18500/sms`，模拟器页面为 `http://127.0.0.1:18504/lab`。默认共 60 个模拟号码，seed=0；
@@ -53,10 +53,10 @@ python distribution/scenario-preview/run_preview.py --build
 构建预览 ZIP：
 
 ```powershell
-.\gradlew.bat :distribution:scenario-preview:previewZip
+.\gradlew.bat :distribution:server:previewZip
 ```
 
-输出 `distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`。
+输出 `distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`。
 解压后在包目录运行以下命令，无需 Node 或 Gradle：
 
 ```powershell
@@ -71,7 +71,7 @@ Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验
 启动顺序是 Server 健康且 SMS、Messages 均完成初始化、Host 身份建立、实际 WebSocket 路由验证。
 默认端口为 Server 18500、Adapter 18503、Host 18504。
 启动器固定启用 `preview`，同时装配 SMS 和 Messages。宿主的
-`spring_server_jvm/src/main/resources/application-preview.yaml` 是配置的唯一来源，
+`server_boot_jvm/src/main/resources/application-preview.yaml` 是配置的唯一来源，
 发行任务将它复制到 `config/application-preview.yaml`。配置集中定义 Server、Redis、
 `products-websocket` Adapter 和 Endpoint，并为混合国家 Group `demo-sim` 启用现有场景索引。
 根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
@@ -86,8 +86,8 @@ Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验
 
 同一 Worker 同时安装 [Messages](../message-campaigns-jvm/README.md)、SMS 和共享字符串能力；
 SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages 模块依赖。
-[Scenario Preview](../../distribution/scenario-preview/README.md) 维护启动和打包；
-[Spring 宿主](../../spring_server_jvm/README.md) 维护 profile 装配与配置源。
+[Scenario Preview](../../distribution/server/PREVIEW.md) 维护启动和打包；
+[Spring 宿主](../../server_boot_jvm/README.md) 维护 profile 装配与配置源。
 本场景保留业务契约和专属验收；只施加 SMS workload 时，Messages 不产生业务记录。
 
 ## 模块和执行路径
@@ -98,7 +98,7 @@ SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages 模
 | [统一前端](../../frontend/README.md#sms-business-pages) | `src/sms/`：工作台、分页记录、业务指标；共享布局与主题，只调用同源 SMS API |
 | [Worker Simulator](../../worker_simulator_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
 
-[Spring 宿主](../../spring_server_jvm/README.md) 显式导入
+[Spring 宿主](../../server_boot_jvm/README.md) 显式导入
 [Server 配置](../../server_jvm/README.md) 和统一 preview 配置，创建一个 Spring 上下文。
 `sms-reception-jvm -> server_jvm` 为单向依赖，Server 不依赖场景；场景只允许引用批准的服务和 DTO。
 SMS 不创建 Redis 客户端、Owner、Pacer 或 Adapter，复用平台实例。
@@ -231,9 +231,9 @@ Backend 活跃数量只包含已观察到建立且尚无终态的监听；建立
 corepack pnpm@11.9.0 --dir frontend lint
 corepack pnpm@11.9.0 --dir frontend typecheck
 corepack pnpm@11.9.0 --dir frontend test
-.\gradlew.bat :spring_server_jvm:test :spring_server_jvm:smsCompositionIntegrationTest
+.\gradlew.bat :server_boot_jvm:test :server_boot_jvm:smsCompositionIntegrationTest
 python -m unittest discover -s scenarios/sms-reception-jvm -p 'test_*.py'
-python -m unittest discover -s distribution/scenario-preview -p 'test_*.py'
+python -m unittest discover -s distribution/server/src/test/python -p 'test_*preview*.py'
 python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario functional
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
@@ -288,8 +288,8 @@ app 索引、黑名单、可靠投递、租户隔离或业务订阅的重启恢�
 并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：
 
 ```powershell
-.\gradlew.bat :distribution:scenario-preview:previewZip
-python distribution/scenario-preview/verify_archive.py --archive distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist
+.\gradlew.bat :distribution:server:previewZip
+python distribution/server/src/test/python/verify_preview_archive.py --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --root <解压后的统一Preview目录>
 ```
 

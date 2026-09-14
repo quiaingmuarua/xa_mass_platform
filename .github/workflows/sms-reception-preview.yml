@@ -7,11 +7,10 @@ on:
       - 'scenarios/sms-reception-jvm/**'
       - 'worker_simulator_jvm/**'
       - 'frontend/**'
-      - 'distribution/server/build.gradle'
-      - 'distribution/server/src/**'
-      - 'spring_server_jvm/**'
+      - 'distribution/server/**'
+      - 'run_local_runtime.py'
+      - 'server_boot_jvm/**'
       - 'scenarios/message-campaigns-jvm/**'
-      - 'distribution/scenario-preview/**'
       - 'transport/**'
       - 'server_jvm/**'
       - 'kernel_jvm/**'
@@ -59,25 +58,25 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.9.0 --activate
           corepack pnpm@11.9.0 --dir frontend install --frozen-lockfile
-          python -m pip install -r distribution/scenario-preview/requirements.txt
+          python -m pip install -r distribution/server/requirements-preview.txt
       - name: Product contracts and frontend
         run: |
-          ./gradlew :worker_simulator_jvm:test :scenarios:sms-reception-jvm:test :spring_server_jvm:test :spring_server_jvm:smsCompositionIntegrationTest --console=plain
+          ./gradlew :worker_simulator_jvm:test :scenarios:sms-reception-jvm:test :server_boot_jvm:test :server_boot_jvm:smsCompositionIntegrationTest --console=plain
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test
           python -m unittest discover -s scenarios/sms-reception-jvm -p 'test_*.py'
-          python -m unittest discover -s distribution/scenario-preview -p 'test_*.py'
+          ./gradlew :distribution:server:previewLauncherTest --console=plain
       - name: Real product path
         run: python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario functional --port 18400 --output scenarios/sms-reception-jvm/build/ci-proof
       - name: Worker stop and new-run isolation
         run: python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle --port 18420 --output scenarios/sms-reception-jvm/build/ci-lifecycle
       - name: Verify and run the extracted unified Preview
         run: |
-          ./gradlew :distribution:scenario-preview:previewZip --console=plain
-          python distribution/scenario-preview/verify_archive.py --archive distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist --output scenarios/sms-reception-jvm/build/ci-archive.json
-          python -m zipfile -e distribution/scenario-preview/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip distribution/scenario-preview/build/ci-unpacked
-          python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --port 18440 --root distribution/scenario-preview/build/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output scenarios/sms-reception-jvm/build/ci-zip-proof
+          ./gradlew :distribution:server:previewZip --console=plain
+          python distribution/server/src/test/python/verify_preview_archive.py --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist --output scenarios/sms-reception-jvm/build/ci-archive.json
+          python -m zipfile -e distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip distribution/server/build/preview/ci-unpacked
+          python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --port 18440 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output scenarios/sms-reception-jvm/build/ci-zip-proof
       - name: Documentation and proof selection
         run: |
           python .github/scripts/check_docs.py

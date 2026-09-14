@@ -187,12 +187,12 @@ def wait_http(url, process, sampler, deadline):
 
 def server_distribution(root):
     main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
-    if (root / "spring_server_jvm" / main).is_file():
-        return "spring_server_jvm"
+    if (root / "server_boot_jvm" / main).is_file():
+        return "server_boot_jvm"
     # Explicit immutable A/B checkouts retain their own historical build layout.
     # This never redirects the current checkout to another JAR producer.
     if root.resolve() != ROOT.resolve():
-        for historical_module in ("distribution/server", "server_jvm"):
+        for historical_module in ("spring_server_jvm", "distribution/server", "server_jvm"):
             if (root / historical_module / main).is_file():
                 return historical_module
     raise RuntimeError("Server distribution entrypoint is missing from the checkout")
@@ -210,10 +210,10 @@ def build(root, harness=False):
 
 def fingerprint(root):
     names = ("application.yaml", "application-scenario-workers.yaml")
-    directories = ["spring_server_jvm/src/main/resources"]
+    directories = ["server_boot_jvm/src/main/resources"]
     if root.resolve() != ROOT.resolve():
         # Only an explicit historical checkout may retain the former layout.
-        directories.append("server_jvm/src/main/resources")
+        directories.extend(("spring_server_jvm/src/main/resources", "server_jvm/src/main/resources"))
     for directory in directories:
         files = tuple(f"{directory}/{name}" for name in names)
         if all((root / path).is_file() for path in files):

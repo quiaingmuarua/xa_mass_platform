@@ -61,7 +61,7 @@ class SmsProfileTest {
     @Test void productionUsesOnlyTheApprovedServerApplicationCapabilities() throws Exception {
         assertThat(Files.readString(Path.of("build.gradle")))
                 .contains("implementation project(':server_jvm')", "id 'java-library'")
-                .doesNotContain("id 'org.springframework.boot'", "project(':distribution:", "project(':spring_server_jvm')");
+                .doesNotContain("id 'org.springframework.boot'", "project(':distribution:", "project(':server_boot_jvm')");
         Set<String> allowed = Set.of("com.xa.mass.server.worker.group.WorkerGroupRegistrationService",
                 "com.xa.mass.server.task.call.TaskCallSubmissionService", "com.xa.mass.server.task.TaskDataService",
                 "com.xa.mass.server.api.v1.contract.task.TaskItemRequest",
