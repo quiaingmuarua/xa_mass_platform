@@ -232,9 +232,7 @@ final class WorkerStateConvergence {
             RuleWitness propertyWitness =
                     runtime.submitRuleWitness(
                             STRING_GROUP,
-                            Map.of(MATCH_PROPERTY, Map.of(
-                                    "op", "eq", "values", List.of(UNMATCHED_SLOT)
-                            )),
+                            Map.of(MATCH_PROPERTY, List.of(UNMATCHED_SLOT)),
                             propertyMessageId,
                             WorkerLabConvergenceSupport.STRING_EVENT,
                             Map.of("value", "property-slot-c")

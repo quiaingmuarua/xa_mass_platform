@@ -14,7 +14,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
 | `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
-| `assignment` | bounded Matching identity query port |
+| `assignment` | bounded Matching identity query port and immutable EligibilityQuery structure |
 | `delivery` | Worker Command and Task Evidence runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
@@ -23,6 +23,13 @@ Matching supplies bounded identities through the Kernel query port. Dispatch pol
 serviceability policy, Pacer loops and thread lifecycle belong to
 [`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers, Task-to-Rule bindings and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
+
+TaskItems carry the same quantity-free `EligibilityQuery` as Matching operations.
+Kernel checks only its bounded string-list structure and stores the direct Map;
+Rule normalization owns all field meanings, including Default Worker IDs. Pacer
+groups normalized queries and supplies Item counts separately. Old nested property
+conditions are unreadable without conversion or data cleanup; use a new scope
+for those Tasks. Matching's binding and index storage remain unchanged.
 
 The three Result event interfaces are stable semantic Mechanism ports rather
 than Pacer policy or new truth owners. Their default implementations may

@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,7 +68,7 @@ class AssignmentPacersTest {
                 explicit.messageId(), explicit,
                 anyWorker.messageId(), anyWorker
         ));
-        var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
+        var selectors = new LinkedHashMap<String, EligibilityQuery>();
         selectors.put(explicit.messageId(), explicit.workerSelector());
         selectors.put(anyWorker.messageId(), anyWorker.workerSelector());
         when(selection.takeCandidates(null,
@@ -121,7 +121,7 @@ class AssignmentPacersTest {
                         Map.of(),
                         0,
                         999L,
-                        TaskItemWorkerSelector.parse(Map.of())
+                        EligibilityQuery.parse(Map.of())
                 )
         ));
 
@@ -200,7 +200,7 @@ class AssignmentPacersTest {
                 Map.of(),
                 0,
                 null,
-                TaskItemWorkerSelector.parse(targetWorkerIds.isEmpty()
+                EligibilityQuery.parse(targetWorkerIds.isEmpty()
                         ? Map.of() : Map.of("workerId", targetWorkerIds))
         );
     }

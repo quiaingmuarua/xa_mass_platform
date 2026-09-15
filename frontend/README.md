@@ -199,9 +199,9 @@ WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
 debug composer
 accepts an advisory Event Name, a JSON Object Payload, and an Item-level
 `workerSelector` object: `{}` for ANY, `{"workerId":["worker-a"]}` for explicit
-IDs, or `{"worker.country":{"op":"eq","values":["CN"]}}` for a structured property query. The browser validates
-one binding and its 1..100 string parameters plus explicit-ID uniqueness; Matching
-owns supported bindings, parameter semantics and Group enablement. Calls go
+IDs, or `{"worker.country":["CN","US"]}` for a property query. The browser validates
+at most 100 fields, each with 1..100 non-blank strings; it preserves list order and
+duplicate values. Matching owns field semantics, normalization and Group enablement. Calls go
 through Kernel scheduling; the browser does not query the index or infer
 which Worker matched. Each Task retains at most 20 diagnostic exchanges in the
 current Pinia/browser memory. A `not_observed` response means submission was

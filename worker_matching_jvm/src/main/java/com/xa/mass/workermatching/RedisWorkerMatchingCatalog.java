@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.workermatching.rules.RedisRuleStorage;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
 import io.lettuce.core.KeyValue;
@@ -41,14 +41,14 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private static final String NO_INDEX_SCRIPT=FactsIndexStore.script(List.of());
     private record Scope(String workerGroupId,String ruleId) { }
     private final LongSupplier clock;
-    private final Map<String,Map<String,List<EligibilityQuery>>> defaultTargets;
+    private final Map<String,Map<String,List<RefillTarget>>> defaultTargets;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
     private final Map<Scope,Integer> queryCursors=new LinkedHashMap<>();
     private long lastDiagnosticMillis;
     private long requestedDeficit;
 
     public RedisWorkerMatchingCatalog(RedisRuleStorage storage,Map<String,RuleHandler> ruleHandlers,
-            Map<String,Set<String>> groupRules,Map<String,Map<String,List<EligibilityQuery>>> defaultTargets) {
+            Map<String,Set<String>> groupRules,Map<String,Map<String,List<RefillTarget>>> defaultTargets) {
         this.storage=Objects.requireNonNull(storage,"storage");
         this.clock=storage::now;
         this.handlers=Map.copyOf(ruleHandlers);
@@ -74,10 +74,10 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             scripts.put(group,FactsIndexStore.script(mutations));
         });
         rulesByGroup=Map.copyOf(groups); indexesByGroup=Map.copyOf(indexes); scriptsByGroup=Map.copyOf(scripts);
-        var defaults=new LinkedHashMap<String,Map<String,List<EligibilityQuery>>>();
+        var defaults=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
         defaultTargets.forEach((group,rules) -> {
             requireNonBlank(group,"WorkerGroup");
-            var targets=new LinkedHashMap<String,List<EligibilityQuery>>();
+            var targets=new LinkedHashMap<String,List<RefillTarget>>();
             rules.forEach((rule,queries) -> targets.put(rule,resolveTargets(group,rule,queries)));
             defaults.put(group,Map.copyOf(targets));
         });
@@ -140,17 +140,17 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         BindingView(TaskRuleBinding binding, RuleHandler eligibility) {
             this.binding=binding; this.eligibility=Objects.requireNonNull(eligibility);
         }
-        @Override public void validate(TaskItemWorkerSelector selector) {
-            eligibility.validateSelector(binding.workerGroupId(),selector);
+        @Override public EligibilityQuery normalize(EligibilityQuery query) {
+            return eligibility.normalizeQuery(binding.workerGroupId(),query);
         }
-        @Override public Map<TaskItemWorkerSelector,List<HeldCandidate>> take(Map<TaskItemWorkerSelector,Integer> limits) {
+        @Override public Map<EligibilityQuery,List<HeldCandidate>> take(Map<EligibilityQuery,Integer> limits) {
             return eligibility.take(binding.workerGroupId(),limits);
         }
     }
 
-    private Map<Scope,List<EligibilityQuery>> targets(Map<String,@Nullable TaskQuery> tasks) {
+    private Map<Scope,List<RefillTarget>> targets(Map<String,@Nullable TaskQuery> tasks) {
         if (tasks.size()>100) throw new IllegalArgumentException("at most 100 prepared Tasks");
-        var targets=new LinkedHashMap<Scope,LinkedHashMap<Map<String,List<String>>,Integer>>();
+        var targets=new LinkedHashMap<Scope,LinkedHashMap<EligibilityQuery,Integer>>();
         for (TaskQuery task:tasks.values()) {
             if (task==null) continue;
             if (!(task instanceof RedisWorkerMatchingCatalog.BindingView view)) throw new IllegalArgumentException("foreign Task query");
@@ -163,22 +163,22 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         var groups=new LinkedHashSet<String>();
         targets.keySet().forEach(scope->groups.add(scope.workerGroupId()));
         eligibilityCursors.keySet().retainAll(groups);
-        var result=new LinkedHashMap<Scope,List<EligibilityQuery>>();
+        var result=new LinkedHashMap<Scope,List<RefillTarget>>();
         targets.forEach((scope,queries)->result.put(scope,queries.entrySet().stream()
                 .sorted(java.util.Comparator.comparing(e->e.getKey().toString()))
-                .map(e->new EligibilityQuery(e.getKey(),e.getValue())).toList()));
+                .map(e->RefillTarget.of(e.getKey(),e.getValue())).toList()));
         return result;
     }
 
-    private record RefillPage(List<EligibilityQuery> queries,int nextCursor,int deficit) { }
+    private record RefillPage(List<RefillTarget> queries,int nextCursor,int deficit) { }
 
     /** Invocation-local target paging; Rule representations never cross this boundary. */
     private final class PreparedEligibility {
         final Scope scope;
         final RuleHandler index;
-        final List<EligibilityQuery> targets;
+        final List<RefillTarget> targets;
 
-        PreparedEligibility(Scope scope,List<EligibilityQuery> targets) {
+        PreparedEligibility(Scope scope,List<RefillTarget> targets) {
             this.scope=scope;
             this.index=Objects.requireNonNull(eligibility(scope.workerGroupId(),scope.ruleId()));
             this.targets=targets;
@@ -189,12 +189,12 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             if(room==0)return null;
             int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
             for(int offset=0;offset<targets.size();offset+=100) {
-                var selected=new ArrayList<EligibilityQuery>();
+                var selected=new ArrayList<RefillTarget>();
                 for(int i=offset;i<Math.min(offset+100,targets.size());i++) {
                     var target=targets.get((start+i)%targets.size());
                     selected.add(target);
                 }
-                int missing=index.deficits(scope.workerGroupId(),selected).values().stream().mapToInt(Integer::intValue).sum();
+                int missing=index.deficits(scope.workerGroupId(),targetCounts(selected)).values().stream().mapToInt(Integer::intValue).sum();
                 if(missing>0)return new RefillPage(List.copyOf(selected),
                         (start+offset+(targets.size()>100?selected.size():1))%targets.size(),Math.min(room,missing));
             }
@@ -262,7 +262,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             if(remaining.isEmpty())break;
             queryCursors.put(prepared.scope,page.nextCursor());
             // Each Rule commits its own admission. A later failure preserves earlier successes.
-            var accepted=prepared.index.refill(group,page.queries(),remaining.stream().map(held::get).toList(),room-added);
+            var accepted=prepared.index.refill(group,targetCounts(page.queries()),remaining.stream().map(held::get).toList(),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Rule returned invalid admitted identities");
             remaining.removeAll(accepted); added+=accepted.size();
@@ -270,14 +270,20 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return added;
     }
 
-    private List<EligibilityQuery> resolveTargets(String group,String rule,List<EligibilityQuery> targets) {
+    private static Map<EligibilityQuery, Integer> targetCounts(List<RefillTarget> targets) {
+        var result = new LinkedHashMap<EligibilityQuery, Integer>();
+        targets.forEach(target -> result.merge(target.query(), target.count(), Math::max));
+        return Collections.unmodifiableMap(result);
+    }
+
+    private List<RefillTarget> resolveTargets(String group,String rule,List<RefillTarget> targets) {
         var index=eligibility(group,rule);
         if (index==null) throw new IllegalArgumentException("unavailable Rule");
         if (targets.isEmpty() || targets.size()>100) throw new IllegalArgumentException("refillTargets requires 1..100 queries");
-        var merged=new LinkedHashMap<Map<String,List<String>>,Integer>();
-        targets.forEach(target -> { var normalized=index.normalizeTarget(group,target);
-            merged.merge(normalized.query(),normalized.count(),Math::max); });
-        return merged.entrySet().stream().map(e -> new EligibilityQuery(e.getKey(),e.getValue())).toList();
+        var merged=new LinkedHashMap<EligibilityQuery,Integer>();
+        targets.forEach(target -> { var normalized=index.normalizeQuery(group,target.query());
+            merged.merge(normalized,target.count(),Math::max); });
+        return merged.entrySet().stream().map(e -> RefillTarget.of(e.getKey(),e.getValue())).toList();
     }
 
     private List<Long> mutate(String group,String mode,List<String> input) {
@@ -315,15 +321,15 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
     }
 
-    @Override public MutationResult bindTaskRule(String taskId,String group,String ruleId,@Nullable List<EligibilityQuery> refillTargets) {
-        List<EligibilityQuery> targets;
+    @Override public MutationResult bindTaskRule(String taskId,String group,String ruleId,@Nullable List<RefillTarget> refillTargets) {
+        List<RefillTarget> targets;
         try {
             requireNonBlank(taskId,"taskId"); requireNonBlank(group,"workerGroupId"); requireNonBlank(ruleId,"ruleId");
             targets=resolveTargets(group,ruleId,refillTargets!=null ? refillTargets
-                    : defaultTargets.getOrDefault(group,Map.of()).getOrDefault(ruleId,List.of(new EligibilityQuery(Map.of(),100))));
+                    : defaultTargets.getOrDefault(group,Map.of()).getOrDefault(ruleId,List.of(new RefillTarget(Map.of(),100))));
         } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"unknown Rule or unavailable Group index"); }
         String binding=encodeObject(Map.of("workerGroupId",group,"ruleId",ruleId,"refillTargets",targets.stream()
-                .map(q -> Map.of("query",q.query(),"count",q.count())).toList()));
+                .map(q -> Map.of("query",q.query().query(),"count",q.count())).toList()));
         long effect=commands().eval(BIND,ScriptOutputType.INTEGER,new String[]{taskRulesKey()},taskId,binding);
         return effect<0 ? result(MutationStatus.CONFLICT,"Task binding conflicts with stored value")
                 : new MutationResult(effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
@@ -410,7 +416,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             requireExactFields(object, Set.of("ruleId", "workerGroupId", "refillTargets"));
             String rule=requireString(object.get("ruleId")), group=requireString(object.get("workerGroupId"));
             if (!(object.get("refillTargets") instanceof List<?> rows)) throw new IllegalArgumentException("invalid targets");
-            var targets=new ArrayList<EligibilityQuery>();
+            var targets=new ArrayList<RefillTarget>();
             for (Object row:rows) {
                 var target=requireObject(row);
                 requireExactFields(target,Set.of("query","count"));
@@ -420,7 +426,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
                     if (!(value instanceof List<?> values)) throw new IllegalArgumentException("invalid query");
                     query.put(key,values.stream().map(RedisWorkerMatchingCatalog::requireString).toList());
                 });
-                targets.add(new EligibilityQuery(query,count.intValue()));
+                targets.add(new RefillTarget(query,count.intValue()));
             }
             return new TaskRuleBinding(rule,group,resolveTargets(group,rule,targets));
         } catch (IllegalArgumentException error) {

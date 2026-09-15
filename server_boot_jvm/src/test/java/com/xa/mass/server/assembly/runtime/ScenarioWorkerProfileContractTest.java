@@ -1,5 +1,7 @@
 package com.xa.mass.server.assembly.runtime;
 
+import com.xa.mass.workermatching.RefillTarget;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -62,7 +64,7 @@ class ScenarioWorkerProfileContractTest {
                     .defaultRefillTargets();
             for (String group : List.of("scenario-string-utils-workers","scenario-phone-number-workers")) {
                 assertThat(defaults.get(group).get("worker.default")).containsExactly(
-                        new com.xa.mass.workermatching.EligibilityQuery(Map.of(),1000));
+                        new RefillTarget(Map.of(),1000));
             }
             assertThat(context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class

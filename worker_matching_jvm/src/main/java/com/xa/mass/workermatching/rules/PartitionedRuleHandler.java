@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching.rules;
 
-import com.xa.mass.workermatching.EligibilityQuery;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
 import java.util.function.BiPredicate;
 
@@ -10,10 +10,10 @@ abstract class PartitionedRuleHandler extends LocalCandidateRule<PartitionedZset
     PartitionedRuleHandler(RedisRuleStorage storage, String namespace) { super(storage); this.namespace = namespace; }
     abstract PartitionedZsetIndex.Criteria criteria(Map<String, List<String>> query);
 
-    @Override protected EligibilityQuery normalize(String group, Map<String, ?> expression, int count, boolean selector) {
+    @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
+        var expression = input.query();
         if (expression.containsKey("workerId")) throw new IllegalArgumentException("workerId query requires worker.default");
-        if (selector) RuleQueries.requireConditions(expression);
-        var query = RuleQueries.normalize(expression, count); criteria(query.query()); return query;
+        var query = RuleQueries.normalize(input); criteria(query.query()); return query;
     }
     @Override protected BiPredicate<String, PartitionedZsetIndex.Projection> predicate(String group, EligibilityQuery query) {
         var criteria = criteria(query.query());

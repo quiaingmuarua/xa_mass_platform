@@ -1,5 +1,9 @@
 package com.xa.mass.scenario.messages;
 
+import com.xa.mass.workermatching.RefillTarget;
+
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
@@ -95,20 +99,18 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     void submit(Campaign campaign) {
         try {
             requireRunning();
-            Map<String,Object> selector=new LinkedHashMap<>();
-            selector.put("worker.country",Map.of("op","eq","values",List.of(campaign.specification.country())));
-            if (campaign.specification.senderPhone()!=null) selector.put("worker.phone",Map.of("op","eq","values",List.of(campaign.specification.senderPhone())));
-            var refillQuery=new LinkedHashMap<String,List<String>>();
-            refillQuery.put("worker.country",List.of(campaign.specification.country()));
-            if (campaign.specification.senderPhone()!=null) refillQuery.put("worker.phone",List.of(campaign.specification.senderPhone()));
+            var fields=new LinkedHashMap<String,List<String>>();
+            fields.put("worker.country",List.of(campaign.specification.country()));
+            if (campaign.specification.senderPhone()!=null) fields.put("worker.phone",List.of(campaign.specification.senderPhone()));
+            var query=new EligibilityQuery(fields);
             campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3,
-                    List.of(new com.xa.mass.workermatching.EligibilityQuery(refillQuery,100)))).taskId();
+                    List.of(RefillTarget.of(query,100)))).taskId();
             for (int start = 0; start < campaign.messages.size(); start += 100) {
                 requireRunning();
                 var items = campaign.messages.subList(start, Math.min(start + 100, campaign.messages.size())).stream()
                         .map(message -> new TaskItemRequest(message.id, "extension.worker.message.send", Map.of(
                                 "campaignId", campaign.id, "messageId", message.id, "country", campaign.specification.country(),
-                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, selector)).toList();
+                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, query)).toList();
                 var appended = data.appendFiniteTaskItems(campaign.taskId, items);
                 if (appended.size() != items.size() || items.stream().anyMatch(item ->
                         appended.get(item.messageId()) == null || !"applied".equals(appended.get(item.messageId()).status().wireValue())))

@@ -6,7 +6,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 @Component
 public final class TaskItemMapper {
@@ -27,16 +27,16 @@ public final class TaskItemMapper {
 
     public TaskItem finiteItem(
             TaskItemRequest request,
-            long createdAtMillis
+            long createdAtMillis,
+            EligibilityQuery query
     ) {
-        return item(request, createdAtMillis, TaskItemWorkerSelector.parse(
-                request.workerSelector() == null ? Map.of() : request.workerSelector()));
+        return item(request, createdAtMillis, query);
     }
 
     public TaskItem callItem(
             TaskItemRequest request,
             long createdAtMillis,
-            TaskItemWorkerSelector selector
+            EligibilityQuery selector
     ) {
         if (request.workerSelector() == null) {
             throw new IllegalArgumentException(
@@ -49,7 +49,7 @@ public final class TaskItemMapper {
     private static TaskItem item(
             TaskItemRequest request,
             long createdAtMillis,
-            TaskItemWorkerSelector selector
+            EligibilityQuery selector
     ) {
         Objects.requireNonNull(request, "request");
         Long expireAtMillis = null;

@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -227,7 +227,7 @@ final class TaskDispatchPolicy {
             Map<String, TaskItem> items,
             Set<String> roundWorkerIds
     ) {
-        var selectors = new LinkedHashMap<String, TaskItemWorkerSelector>();
+        var selectors = new LinkedHashMap<String, EligibilityQuery>();
         for (String messageId : messageIds) {
             selectors.put(messageId, Objects.requireNonNull(
                     items.get(messageId), "claimable TaskItem").workerSelector());

@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching.rules;
 
-import com.xa.mass.workermatching.EligibilityQuery;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
 import java.util.function.BiPredicate;
 
@@ -13,20 +13,20 @@ public final class DefaultRuleHandler extends LocalCandidateRule<PartitionedZset
         groupRules.forEach((group, rules) -> { if (rules.contains("worker.country")) groups.add(group); });
         countryGroups = Set.copyOf(groups);
     }
-    @Override protected EligibilityQuery normalize(String group, Map<String, ?> expression, int count, boolean selector) {
+    @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
+        var expression = input.query();
         if (expression.containsKey("workerId") && expression.size() != 1)
             throw new IllegalArgumentException("workerId cannot be combined with property conditions");
-        if (selector && !expression.isEmpty() && !expression.containsKey("workerId")) RuleQueries.requireConditions(expression);
-        var query = RuleQueries.normalize(expression, count);
+        var query = RuleQueries.normalize(input);
         if (!query.query().isEmpty() && !query.query().containsKey("workerId")) {
             if (!countryGroups.contains(group)) throw new IllegalArgumentException("country index unavailable");
             PartitionedRuleHandler.countries(query.query(), Set.of("worker.country"), "");
         }
         return query;
     }
-    @Override protected int targetCount(EligibilityQuery target) {
+    @Override protected int targetCount(EligibilityQuery target, int count) {
         return target.query().containsKey("workerId")
-                ? Math.min(target.count(), new HashSet<>(target.query().get("workerId")).size()) : target.count();
+                ? Math.min(count, new HashSet<>(target.query().get("workerId")).size()) : count;
     }
     @Override protected BiPredicate<String, PartitionedZsetIndex.Projection> predicate(String group, EligibilityQuery query) {
         if (query.query().isEmpty()) return (id, value) -> true;

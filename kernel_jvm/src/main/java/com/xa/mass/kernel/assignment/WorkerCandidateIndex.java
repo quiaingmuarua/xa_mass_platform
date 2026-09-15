@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.assignment;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,9 +35,9 @@ public interface WorkerCandidateIndex {
     interface TaskQuery {
 
         /** Admission and dispatch use the same bound query semantics; performs no Redis read. */
-        void validate(TaskItemWorkerSelector selector);
+        EligibilityQuery normalize(EligibilityQuery query);
 
         /** Local destructive consumption: at most 100 queries and 100 unique candidates in total. */
-        Map<TaskItemWorkerSelector, List<HeldCandidate>> take(Map<TaskItemWorkerSelector, Integer> limits);
+        Map<EligibilityQuery, List<HeldCandidate>> take(Map<EligibilityQuery, Integer> limits);
     }
 }

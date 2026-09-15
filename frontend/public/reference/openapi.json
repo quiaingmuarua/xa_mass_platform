@@ -101,8 +101,22 @@
         "type" : "object"
       },
       "EligibilityQuery" : {
+        "additionalProperties" : {
+          "items" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "maxItems" : 100,
+          "minItems" : 1,
+          "type" : "array"
+        },
+        "description" : "Direct immutable string-list query. The bound Rule interprets fields; empty means no additional condition within that Rule. No quantity or operator objects.",
+        "maxProperties" : 100,
+        "type" : "object"
+      },
+      "RefillTarget" : {
         "additionalProperties" : false,
-        "description" : "Operator-free query interpreted by the bound Rule. Empty or omitted query means ANY; workerId lists select identities. Multiple values mean any of those values, not separate quotas.",
+        "description" : "Shared Eligibility stock target. Equal normalized queries merge by MAX; omitted query means ANY. Count is not part of query identity.",
         "properties" : {
           "count" : {
             "format" : "int32",
@@ -111,13 +125,7 @@
             "type" : "integer"
           },
           "query" : {
-            "additionalProperties" : {
-              "items" : {
-                "type" : "string"
-              },
-              "type" : "array"
-            },
-            "type" : "object"
+            "$ref" : "#/components/schemas/EligibilityQuery"
           }
         },
         "required" : [ "count" ],
@@ -140,7 +148,7 @@
           "refillTargets" : {
             "description" : "Optional shared Eligibility refill targets. Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default at binding creation, otherwise ANY 100. Only worker.default accepts workerId queries; their effective target is capped by unique ID count. Targets are not private Task quotas.",
             "items" : {
-              "$ref" : "#/components/schemas/EligibilityQuery"
+              "$ref" : "#/components/schemas/RefillTarget"
             },
             "maxItems" : 100,
             "minItems" : 1,
@@ -191,9 +199,8 @@
             "type" : "integer"
           },
           "workerSelector" : {
-            "additionalProperties" : { },
-            "description" : "{} selects within the bound Rule. Only worker.default accepts {workerId: [id, ...]}, scoped to its WorkerGroup. Other query parameters belong to the Handler. Existing country queries use {worker.country: {op: eq|in, values: [CN, ...]}}; eq requires one value and in accepts 1..100 strict [A-Z]{2} values. Named Rules reject workerId. Omission means ANY for finite append; managed Call requires a selector object.",
-            "type" : "object"
+            "$ref" : "#/components/schemas/EligibilityQuery",
+            "description" : "{} selects within the bound Rule. Only worker.default accepts {workerId: [id, ...]}, scoped to its WorkerGroup. Other query parameters belong to the Handler. Existing country queries use {worker.country: [CN, ...]}; country accepts 1..100 strict [A-Z]{2} values. Named Rules reject workerId. Omission means ANY for finite append; managed Call requires a selector object."
           }
         },
         "required" : [ "eventCode", "messageId", "payload" ],

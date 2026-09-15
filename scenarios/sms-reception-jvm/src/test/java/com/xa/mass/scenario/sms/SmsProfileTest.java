@@ -71,7 +71,7 @@ class SmsProfileTest {
         try (var paths = Files.walk(Path.of("src/main/java"))) {
             for (var path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                 String source = Files.readString(path);
-                assertThat(source).doesNotContain("java.net.http", "java.net.URL", "RestClient", "WebClient",
+                assertThat(source.replace("com.xa.mass.kernel.assignment.EligibilityQuery", "public-query-contract")).doesNotContain("java.net.http", "java.net.URL", "RestClient", "WebClient",
                         "com.xa.mass.kernel", "com.xa.mass.workermatching", "org.springframework.data.redis", "io.lettuce",
                         "SpringApplication", "public static void main(");
                 var matcher = pattern.matcher(source);

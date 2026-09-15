@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.task.redis;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -708,7 +708,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         payload.put("priority", record.priority());
         payload.put("createdAtMillis", record.createdAtMillis());
         payload.put("expireAtMillis", item.expireAtMillis());
-        payload.put("workerSelector", record.workerSelector().expression());
+        payload.put("workerSelector", record.workerSelector().query());
         return mapper.writeValueAsString(payload);
     }
 
@@ -753,7 +753,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     payloadMap,
                     priority.intValue(),
                     expireAt.longValue(),
-                    TaskItemWorkerSelector.parse(expression)
+                    EligibilityQuery.parse(expression)
             );
         } catch (JacksonException | IllegalArgumentException error) {
             return null;

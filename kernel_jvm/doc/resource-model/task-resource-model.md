@@ -58,7 +58,10 @@ accepting later monotonic observations, independently of Task closure.
 Descriptors use exactly workerGroupId, idleDisposition and configJson in their
 HASH. TaskItem JSON has the exact fields above; workerSelector is the Map itself,
 not an envelope. Old descriptor mode/capacity fields, missing/null selectors and
-old wrapper/array forms are rejected rather than interpreted as unrestricted.
+old wrapper/array forms and nested `{op,values}` property conditions are rejected
+rather than interpreted as unrestricted. The shared EligibilityQuery contains only
+string-list parameters; Rule normalization defines all meanings, including IDs.
+Existing ANY and ID Maps retain their shape and remain readable.
 
 This is a stop-and-rebuild cutover for an explicitly selected scope. No dual
 reader, automatic data migration or cleanup of unspecified scopes is added.

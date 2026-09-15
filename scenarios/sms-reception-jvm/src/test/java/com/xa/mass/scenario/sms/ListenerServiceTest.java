@@ -24,7 +24,7 @@ class ListenerServiceTest {
             verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
             for (String country : ListenerService.COUNTRIES) {
                 verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream()
-                        .anyMatch(item -> item.workerSelector().equals(Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))))));
+                        .anyMatch(item -> item.workerSelector().query().equals(Map.of("worker.country", List.of(country))))));
             }
         }
     }
@@ -99,7 +99,7 @@ class ListenerServiceTest {
             assertThat(service.metrics()).containsEntry("activeListenersObserved", 1);
             verify(client.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream().anyMatch(item ->
                     record.cancelId.equals(item.messageId()) && Map.of("workerId", List.of("real-worker"))
-                            .equals(item.workerSelector()) && "extension.worker.sms.listen.cancel".equals(item.eventCode()))));
+                            .equals(item.workerSelector().query()) && "extension.worker.sms.listen.cancel".equals(item.eventCode()))));
             assertThat(record.view()).containsEntry("status", "CANCELLING");
             service.accept(record, result(record, "CANCELLED", false));
             assertThat(record.view()).containsEntry("status", "CANCELLED");

@@ -10,7 +10,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -42,7 +42,7 @@ public final class TaskCallSubmissionService {
             throw invalid("taskId must be non-blank");
         }
         // Capture every input, including duplicates, before any Owner call.
-        List<TaskItemWorkerSelector> selectors = captureSelectors(items);
+        List<EligibilityQuery> selectors = captureSelectors(items);
         TaskDescriptor descriptor = requireCallableTask(taskId);
         com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery query;
         try {
@@ -55,8 +55,7 @@ public final class TaskCallSubmissionService {
         var latest = new LinkedHashMap<String, TaskItem>();
         try {
             for (int i = 0; i < items.size(); i++) {
-                TaskItemWorkerSelector selector = selectors.get(i);
-                query.validate(selector);
+                EligibilityQuery selector = query.normalize(selectors.get(i));
                 TaskItemRequest item = items.get(i);
                 latest.put(item.messageId(), taskItems.callItem(item, createdAtMillis, selector));
             }
@@ -129,7 +128,7 @@ public final class TaskCallSubmissionService {
         return descriptor;
     }
 
-    private static List<TaskItemWorkerSelector> captureSelectors(
+    private static List<EligibilityQuery> captureSelectors(
             List<TaskItemRequest> items
     ) {
         if (items == null || items.isEmpty() || items.size() > 100) {
@@ -140,7 +139,7 @@ public final class TaskCallSubmissionService {
                     null
             );
         }
-        var selectors = new ArrayList<TaskItemWorkerSelector>(items.size());
+        var selectors = new ArrayList<EligibilityQuery>(items.size());
         for (TaskItemRequest item : items) {
             if (item == null) {
                 throw new ServerException(
@@ -157,7 +156,8 @@ public final class TaskCallSubmissionService {
                 throw invalid("Invalid TaskItem fields");
             }
             try {
-                selectors.add(TaskItemWorkerSelector.parse(item.workerSelector()));
+                if (item.workerSelector() == null) throw new IllegalArgumentException("WorkerGroup Task Call requires workerSelector");
+                selectors.add(item.workerSelector());
             } catch (IllegalArgumentException error) {
                 throw invalid(error.getMessage());
             }

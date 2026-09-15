@@ -32,7 +32,7 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
 
     /** Binds a fixed named Handler; rejects unavailable Group indexes. */
     MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId,
-                                @Nullable List<EligibilityQuery> refillTargets);
+                                @Nullable List<RefillTarget> refillTargets);
 
     /** Resolves up to 100 unique Task IDs in one batch; unavailable Rules map to null. */
     Map<String, @Nullable TaskRuleBinding> loadTaskBindings(
@@ -75,7 +75,7 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
     record TaskRuleBinding(
             String ruleId,
             String workerGroupId,
-            List<EligibilityQuery> refillTargets
+            List<RefillTarget> refillTargets
     ) {
         public TaskRuleBinding {
             requireNonBlank(ruleId, "ruleId");

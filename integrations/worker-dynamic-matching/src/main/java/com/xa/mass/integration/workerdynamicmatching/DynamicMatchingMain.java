@@ -195,9 +195,9 @@ public final class DynamicMatchingMain {
 
     private Map<String, Object> rule(String pool, boolean target, boolean enabled) {
         var rule = new LinkedHashMap<String, Object>();
-        rule.put("worker.proofPool", Map.of("op","eq","values",List.of(pool==null ? "~" : pool)));
-        if (target) rule.put("worker.proofTarget", Map.of("op","eq","values",List.of("yes")));
-        if (enabled) rule.put("platform.proofEnabled", Map.of("op","eq","values",List.of("yes")));
+        rule.put("worker.proofPool", List.of(pool==null ? "~" : pool));
+        if (target) rule.put("worker.proofTarget", List.of("yes"));
+        if (enabled) rule.put("platform.proofEnabled", List.of("yes"));
         return rule;
     }
 
@@ -209,11 +209,9 @@ public final class DynamicMatchingMain {
 
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
-        var refillQuery=new LinkedHashMap<String,Object>();
-        rule.forEach((field,condition) -> refillQuery.put(field,object(condition).get("values")));
         var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group,
                 "ruleId", "proof.worker.facts", "priority", witness ? 10 : 50, "maxRetryTimes", 3,
-                "refillTargets",List.of(Map.of("query",refillQuery,"count",100))), false);
+                "refillTargets",List.of(Map.of("query",rule,"count",100))), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {

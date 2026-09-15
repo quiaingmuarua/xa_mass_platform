@@ -67,15 +67,14 @@ preparation do not maintain inventory.
 ## Unified Queries and Fixed Handlers
 
 The [RuleHandler interface](src/main/java/com/xa/mass/workermatching/RuleHandler.java)
-contains exactly five operations:
+contains exactly four operations:
 
 | Operation | Contract |
 | --- | --- |
-| `normalizeTarget(group, target)` | Validate/canonicalize a refill target without stock changes |
-| `validateSelector(group, selector)` | Local Item admission; no Redis read or inventory mutation |
+| `normalizeQuery(group, query)` | Idempotent validation/canonicalization shared by Item and target admission; no Redis read or stock mutation |
 | `deficits(group, targets)` | Immutable observed shortages, never reservations |
 | `refill(group, targets, offered, maxAccepted)` | Qualify and admit held candidates; return actual accepted Worker IDs |
-| `take(group, limits)` | Validate again and atomically remove matching candidates, returning original held fences |
+| `take(group, limits)` | Validate again and commit each still-current selected entry, returning original held fences |
 
 Rule ID is associated with the instance at assembly; these methods have no Task ID.
 Group is a semantic coordinate. Redis keys, source scores, qualification values and
@@ -83,25 +82,41 @@ local collections never cross this interface. Every result is an immutable snaps
 All operations are thread-safe and Group-isolated. A Rule can implement these
 operations using ZSETs, Maps or another bounded representation.
 
-A refill query is `{"query":{"worker.country":["US","CN"]},"count":1}`: one from
-either country. Separate entries express independent minima. Empty query means
-ANY. Each operation has at most 100 queries, with counts 1..1000; take additionally
-allows at most 100 selectors and totals at most 100 candidates. Refill accepts at
-most 100 unique held IDs and an acceptance limit in 0..100. Invalid inputs are
-rejected before stock changes. The DTO preserves value order and duplicates;
-semantic normalization belongs to the Rule.
+`EligibilityQuery` is the immutable `Map<String,List<String>>` contract in Kernel's
+assignment package. It carries no quantity or field semantics. HTTP and Redis
+store the direct Map; fields are non-blank and each has 1..100 non-blank strings,
+with at most 100 fields. Lists retain order and duplicates until the Rule normalizes
+them. Current Rules sort/deduplicate set-valued parameters, including Default IDs.
+Only Default accepts `workerId`, exclusively of other fields; Kernel does not
+interpret it. Country uses `{"worker.country":["CN","US"]}` and Messaging intersects
+its supported fields. Empty query means no additional condition within that Rule.
 
-Existing Rules sort/deduplicate set-valued parameters. HTTP property selectors
-retain `{op,values}`; list-valued refill targets retain their current JSON.
-Equivalent refill targets merge with MAX across Tasks. Consumption serves actual
-selector counts in request order; overlapping selectors cannot consume the same
-entry twice. Default identity targets retain the declared Binding count but use
-`min(count, unique ID count)` for shortages, without checking Worker existence.
+`RefillTarget` pairs that shared query with a count and retains the flat HTTP/YAML
+shape `{"query":{"worker.country":["US","CN"]},"count":100}`. Omitted or null target
+query means ANY, while count remains required. It is also the persisted Binding
+value. Catalog normalizes queries and merges equal targets using MAX; Rule deficits
+and refill receive ordered query-to-count Maps. Take receives the same query type
+with actual Item counts. Results remain keyed by the supplied queries even when
+normalization changes their value order. Task views normalize Items before storage
+and before Pacer grouping; Item queries still never create refill demand.
+
+Each operation permits at most 100 queries. Refill target counts are 1..1000;
+take counts and their sum are at most 100. Refill accepts at most 100 unique held
+IDs and an acceptance limit in 0..100. Invalid input is rejected before stock
+changes. Overlapping queries cannot consume the same candidate twice. Default
+identity targets retain the declared Binding count but use `min(count, unique ID
+count)` for shortages, without checking Worker existence.
+
+Old `{op,values}` conditions are rejected, including in retained TaskItem records;
+there is no compatibility reader or conversion to ANY. Recreate old property-query
+Tasks in a new scope. Existing records are never automatically migrated or cleared.
+Old ANY/ID Maps already have the current shape and remain readable. Task Binding,
+Facts, index keys and index encoding are unchanged by this query migration.
 
 | Rule | Source qualification | Queries |
 | --- | --- | --- |
 | `worker.default` | No facts needed for identity; optional country source | ANY, IDs, and country queries where enabled |
-| `worker.country` | Valid two-uppercase-letter country | ANY, country eq/in |
+| `worker.country` | Valid two-uppercase-letter country | ANY, country string list |
 | `worker.messaging.available` | Valid country and `messaging.enabled=true`; optional phone partition | Membership-constrained ANY; country AND optional one phone |
 | `proof.worker.facts` | Fixed pool/target/platform and slot partitions | Finite proof selectors on configured Groups |
 
@@ -114,7 +129,7 @@ Default's optional country capability remains for current SMS start/cancel flows
 Application assembly supplies the immutable Rule ID-to-instance Map.
 `RedisRuleStorage` supplies the current implementations' single Redis connection,
 key construction, trusted index-write descriptors, clock and shared capacity budget.
-It is storage assembly, separate from the five-method Eligibility contract.
+It is storage assembly, separate from the four-operation Eligibility contract.
 Unknown IDs, missing Default and duplicate storage namespaces fail construction.
 No Rule creates an independent connection pool or lifecycle loop.
 
@@ -125,10 +140,20 @@ values. Rules may reuse that implementation or implement the interface directly.
 Catalog Eligibility calls never receive predicates, projections, source keys or
 encoded index scores. Facts/index keys remain in the separate storage assembly.
 
-Local candidate operations evaluate reads and fallible matchers outside their gate.
-A bounded version check prevents an observed pool from being committed after a
-concurrent change; the operation re-observes local stock before committing.
-Take and expiry cannot return an old or duplicate consumed fence. Shared
+Local candidate operations observe stock and evaluate fallible matchers once outside
+their gate. There is no pool revision or optimistic retry. Take commits only the exact
+selected entry object while it is still current and unexpired; a consumed, expired or
+reinserted entry is skipped without selecting a replacement. Unaffected entries can
+still commit. Unrelated entries and Groups cannot restart matching in that call.
+
+Refill uses its observed shortfalls and checks each admission for a vacant Worker ID,
+the original deadline and current hard capacity. Concurrent refills may exceed a
+target watermark; concurrent consumption may leave it short. Targets are not
+reservations, and later rounds observe the changed stock. Per-call limits and the
+pool/process capacity limits remain hard bounds. Reads and all fallible matching
+still finish before any new entry is admitted by that Rule.
+
+Take and expiry cannot return an old or duplicate consumed entry. Shared
 `CandidateBudget` stores only counts and opaque pool tokens, with no Worker IDs,
 Rule projections or matching. Group pools remain in their Rule.
 

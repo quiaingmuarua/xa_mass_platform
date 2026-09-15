@@ -7,7 +7,7 @@ import type {
 import { taskCallDebugConfigurationError } from "./errors";
 import type {
   TaskCallDebugDraft,
-  TaskItemWorkerSelector,
+  EligibilityQuery,
   ValidatedTaskCallDebugDraft
 } from "./types";
 
@@ -99,39 +99,28 @@ function parseJsonObject(text: string, label: string): Record<string, JsonValue>
   return parsed as Record<string, JsonValue>;
 }
 
-function parseWorkerSelector(text: string): TaskItemWorkerSelector {
+function parseWorkerSelector(text: string): EligibilityQuery {
   const entries = Object.entries(parseJsonObject(text, "Worker Selector"));
-  if (entries.length === 0) return {};
-  if (entries.length !== 1) throw invalidWorkerSelector();
-  const [binding, parameters] = entries[0];
-  if (!isNonBlankString(binding)) throw invalidWorkerSelector();
-  if (binding === "workerId") {
+  if (entries.length > 100) throw invalidWorkerSelector();
+  const query: EligibilityQuery = {};
+  for (const [field, values] of entries) {
     if (
-      !Array.isArray(parameters) ||
-      parameters.length < 1 ||
-      parameters.length > 100 ||
-      !parameters.every(isNonBlankString) ||
-      new Set(parameters).size !== parameters.length
-    ) {
+      !isNonBlankString(field) ||
+      !Array.isArray(values) ||
+      values.length < 1 ||
+      values.length > 100 ||
+      !values.every(isNonBlankString)
+    )
       throw invalidWorkerSelector();
-    }
-    return { [binding]: [...parameters] };
+    Object.defineProperty(query, field, { value: [...values], enumerable: true });
   }
-  if (
-    parameters === null ||
-    Array.isArray(parameters) ||
-    typeof parameters !== "object" ||
-    Object.keys(parameters).length === 0
-  )
-    throw invalidWorkerSelector();
-  return { [binding]: parameters };
+  return query;
 }
 
 function invalidWorkerSelector(): Error {
   return taskCallDebugConfigurationError(
-    "Worker Selector 必须是 {}、Worker ID 列表或单个属性查询对象，" +
-      '例如 {"workerId":["id"]}、{"worker.country":{"op":"in","values":["CN"]}}。' +
-      "Worker ID 必须非空白且唯一；属性参数由 Matching 校验。"
+    'Worker Selector 必须是最多 100 个字段的字符串列表对象，例如 {}、{"workerId":["id"]}、' +
+      '{"worker.country":["CN","US"]}。每字段允许 1–100 个非空字符串；字段含义由 Matching Rule 校验。'
   );
 }
 

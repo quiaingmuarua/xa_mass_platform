@@ -179,7 +179,7 @@ class RuntimeApiClientTest {
             );
             assertThat(client.submitRuleWitness(
                     "group-1",
-                    Map.of("worker.convergenceSlot", Map.of("op", "eq", "values", List.of("C"))),
+                    Map.of("worker.convergenceSlot", List.of("C")),
                     "property-message",
                     "event.one",
                     Map.of("value", "property")
@@ -241,7 +241,7 @@ class RuntimeApiClientTest {
             });
             assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).endsWith("/rule-task-1/items");
-                assertThat(((Map<?, ?>) Jsons.parseArray(request.body()).getFirst()).get("workerSelector")).isEqualTo(Map.of("worker.convergenceSlot", Map.of("op", "eq", "values", List.of("C"))));
+                assertThat(((Map<?, ?>) Jsons.parseArray(request.body()).getFirst()).get("workerSelector")).isEqualTo(Map.of("worker.convergenceSlot", List.of("C")));
             });
             assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).isEqualTo("/api/v1/tasks");

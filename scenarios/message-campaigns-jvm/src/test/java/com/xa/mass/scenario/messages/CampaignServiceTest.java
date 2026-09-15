@@ -42,7 +42,7 @@ class CampaignServiceTest {
             var order = inOrder(creation, data, lifecycle);
             order.verify(creation).create(argThat(r -> r.workerGroupId().equals("demo-sim")
                     && r.ruleId().equals("worker.messaging.available")));
-            order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100 && items.stream().allMatch(i -> i.workerSelector().equals(Map.of("worker.country", Map.of("op", "eq", "values", List.of("CN")), "worker.phone", Map.of("op", "eq", "values", List.of("+86123")))))));
+            order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100 && items.stream().allMatch(i -> i.workerSelector().query().equals(Map.of("worker.country", List.of("CN"), "worker.phone", List.of("+86123"))))));
             order.verify(data).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 1));
             order.verify(lifecycle).approve("finite-task");
             assertThat(service.create(input(201)).get("id")).isEqualTo(created.get("id"));

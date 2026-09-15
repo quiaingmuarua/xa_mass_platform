@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.task;
 
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -270,7 +272,7 @@ class DefaultTaskCommandsTest {
                 Map.of("value", "abc"),
                 5,
                 10_000L,
-                TaskItemWorkerSelector.parse(Map.of())
+                EligibilityQuery.parse(Map.of())
         );
     }
 

@@ -26,8 +26,9 @@ POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
 一个收件人对应一个稳定 messageId 和 TaskItem；收件人地址与 Worker 身份无关。
 匹配规则始终包含 `worker.messaging.enabled = "true"`，可选的发送号码增加 `worker.phone` 等值条件。
 所有国家使用同一 Group。Task 绑定 `worker.messaging.available`：Handler 提前物化
-`messaging.enabled=true` 的 Worker；Item 使用 `worker.country` eq/in 与可选 `worker.phone` eq
-条件，结构为 `{op, values}`。phone 直接查询分区索引，产品不选 Worker，Task 不配置候选容量。
+`messaging.enabled=true` 的 Worker；Item 使用 `{"worker.country":["CN"]}`，指定发送号码时增加
+`"worker.phone":["号码"]`，两个字段由 Rule 取交集。同一个规范化查询用于 Item 和补货目标，
+补货数量独立于查询。phone 由 Matching 查询分区索引，场景不选 Worker，也不配置候选容量。
 
 ## API 与业务记录
 

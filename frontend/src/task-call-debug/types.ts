@@ -1,6 +1,6 @@
 import type { JsonValue } from "@/runtime-viewer/types";
 
-export type TaskItemWorkerSelector = Record<string, JsonValue>;
+export type EligibilityQuery = Record<string, string[]>;
 
 export interface TaskCallDebugDraft {
   taskId: string;
@@ -13,7 +13,7 @@ export interface TaskCallDebugDraft {
 
 export interface ValidatedTaskCallDebugDraft extends TaskCallDebugDraft {
   payload: Record<string, JsonValue>;
-  workerSelector: TaskItemWorkerSelector;
+  workerSelector: EligibilityQuery;
 }
 
 export interface TaskCallDebugClientRequest {
@@ -21,7 +21,7 @@ export interface TaskCallDebugClientRequest {
   messageId: string;
   eventName: string;
   payload: Record<string, JsonValue>;
-  workerSelector: TaskItemWorkerSelector;
+  workerSelector: EligibilityQuery;
   waitTimeoutMillis: number;
 }
 

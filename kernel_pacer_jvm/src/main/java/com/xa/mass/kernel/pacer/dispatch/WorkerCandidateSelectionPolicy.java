@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.ArrayList;
@@ -21,15 +21,15 @@ final class WorkerCandidateSelectionPolicy {
     }
 
     Map<String,HeldWorkerCandidate> takeCandidates(WorkerCandidateIndex.TaskQuery query, String workerGroupId,
-            Map<String,TaskItemWorkerSelector> selectors, Set<String> roundWorkerIds) {
+            Map<String,EligibilityQuery> selectors, Set<String> roundWorkerIds) {
         if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
         if (query==null || selectors.isEmpty()) return Map.of();
-        var items=new LinkedHashMap<TaskItemWorkerSelector,List<String>>();
+        var items=new LinkedHashMap<EligibilityQuery,List<String>>();
         selectors.forEach((id,selector) -> {
-            query.validate(selector);
-            items.computeIfAbsent(selector,ignored -> new ArrayList<>()).add(id);
+            var normalized = query.normalize(selector);
+            items.computeIfAbsent(normalized,ignored -> new ArrayList<>()).add(id);
         });
-        var limits=new LinkedHashMap<TaskItemWorkerSelector,Integer>();
+        var limits=new LinkedHashMap<EligibilityQuery,Integer>();
         items.forEach((selector,ids) -> limits.put(selector,ids.size()));
         var taken=query.take(limits);
         var selected=new LinkedHashMap<String,String>();

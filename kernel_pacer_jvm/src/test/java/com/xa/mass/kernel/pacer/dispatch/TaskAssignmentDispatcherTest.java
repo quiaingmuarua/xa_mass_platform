@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -251,7 +251,7 @@ class TaskAssignmentDispatcherTest {
                 Map.of("z", 2, "a", 1),
                 0,
                 null,
-                TaskItemWorkerSelector.parse(Map.of())
+                EligibilityQuery.parse(Map.of())
         );
     }
 

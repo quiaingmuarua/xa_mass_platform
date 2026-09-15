@@ -296,12 +296,12 @@ managed Task Call requires a Selector object, where `{}` means no Worker
 additional restriction within the bound Rule. Only `worker.default` accepts
 `{"workerId":["a","b"]}`; those IDs remain restricted to the bound WorkerGroup.
 Property maps may combine the Handler's supported conditions with AND. Country uses
-`{"worker.country":{"op":"eq","values":["CN"]}}` or in with 1..100 values.
-Values are strict uppercase ASCII pairs. Old country parameter lists are rejected;
+`{"worker.country":["CN","US"]}` with 1..100 values.
+Values are strict uppercase ASCII pairs. Old nested operator conditions are rejected;
 ANY and explicit-ID JSON are unchanged. Enable Groups with
 `xa.mass.worker-matching.rules.worker-groups.<group>` with explicit Handler IDs.
 For named Rules, ANY requires Rule membership and explicit ID queries are rejected.
-Each Handler defines its query syntax; existing property Rules keep HTTP eq/in.
+All queries use the same immutable string-list Map; each Handler interprets its fields.
 Submission validates the binding but does not take candidates. Finite invalid
 members retain per-member rejection; managed calls validate every original
 query, including overwritten duplicate IDs, before submission.
@@ -326,13 +326,12 @@ Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
-`workerSelector` to Kernel structural capture, then appends a TaskItem containing
-that same immutable expression. Server validates every original property condition
-with the prepared TaskQuery, including overwritten duplicates and identity selectors. It uses the same Catalog injected into Pacer;
+`workerSelector` through structural capture and the bound TaskQuery normalization,
+then appends the normalized immutable query. Server validates every original
+query, including overwritten duplicates and identity selectors. It uses the same Catalog injected into Pacer;
 it does not take candidates at submission. Catalog startup rebuilds configured
 derived indexes before the bean is exposed. Matching owns the country range and
-take time; Kernel retains eligibility, hold, post-hold membership recheck, confirm
-and claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
+take time; Kernel retains hold, exact clean confirmation and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,

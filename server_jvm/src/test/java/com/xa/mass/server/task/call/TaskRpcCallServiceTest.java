@@ -1,6 +1,6 @@
 package com.xa.mass.server.task.call;
 
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 
@@ -409,10 +409,10 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                Map.of(
+                                EligibilityQuery.parse(Map.of(
                                         "workerId",
                                         List.of("worker-b", "worker-a")
-                                )
+                                ))
                         )),
                         1_000L
                 )
@@ -424,7 +424,7 @@ class TaskRpcCallServiceTest {
         );
         verify(submission).submit(eq("task-1"), items.capture());
         assertThat(items.getValue()).singleElement().satisfies(item ->
-                assertThat(item.workerSelector().targetWorkerIds()).containsExactly(
+                assertThat(item.workerSelector().query().get("workerId")).containsExactly(
                         "worker-b",
                         "worker-a"
                 )
@@ -453,15 +453,11 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                Map.of("workerId", "worker")
+                                EligibilityQuery.parse(Map.of("workerId", "worker"))
                         )),
                         1_000L
                 )
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode()).isEqualTo(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST
-                )
-        );
+        )).isInstanceOf(IllegalArgumentException.class);
         verify(submission, never()).submit(anyString(), anyList());
         registry.shutdown();
     }
@@ -489,11 +485,12 @@ class TaskRpcCallServiceTest {
         TaskItemMapper taskItems = mock(TaskItemMapper.class);
         when(taskItems.nowMillis()).thenReturn(1_000L);
         when(taskItems.callItem(
-                any(TaskItemRequest.class), eq(1_000L), any(TaskItemWorkerSelector.class))).thenAnswer(invocation -> new TaskItemMapper().callItem(
+                any(TaskItemRequest.class), eq(1_000L), any(EligibilityQuery.class))).thenAnswer(invocation -> new TaskItemMapper().callItem(
                 invocation.getArgument(0),
                 invocation.getArgument(1), invocation.getArgument(2)));
         var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         var query=mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
+        when(query.normalize(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
         when(matching.prepareTaskQueries(org.mockito.ArgumentMatchers.anyMap())).thenAnswer(call -> {
             Map<String,String> coordinates=call.getArgument(0);
             var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
@@ -522,7 +519,7 @@ class TaskRpcCallServiceTest {
                 payload,
                 5,
                 1_000L,
-                Map.of()
+                EligibilityQuery.parse(Map.of())
         );
     }
 

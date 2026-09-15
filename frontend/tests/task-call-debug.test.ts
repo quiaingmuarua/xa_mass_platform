@@ -24,10 +24,12 @@ describe("Task Call Debug request model", () => {
   it("captures binding parameters without interpreting Matching semantics", () => {
     for (const selector of [
       {},
-      { "worker.country": { op: "eq", values: ["CN"] } },
-      { "worker.country": { op: "in", values: ["cn", "US"] } },
-      { "worker.test.region": { op: "in", values: ["east", "west"] } },
-      { "worker.future": { futureOperation: ["", "$eq", "", "value"] } },
+      { "worker.country": ["CN"] },
+      { "worker.country": ["cn", "US"] },
+      { "worker.test.region": ["east", "west"] },
+      { "worker.future": ["$eq", "value", "value"] },
+      { a: ["x"], b: ["y"] },
+      { workerId: ["id", "id"] },
       { workerId: ["worker-b", "worker-a"] }
     ]) {
       expect(
@@ -74,9 +76,8 @@ describe("Task Call Debug request model", () => {
       '["region","$eq","local"]',
       '["workerId","$eq","worker-a"]',
       '{"workerId":[]}',
-      '{"workerId":["worker-a","worker-a"]}',
       '{"workerId":[" "]}',
-      '{"a":["x"],"b":["y"]}',
+      '{"a":{"op":"eq","values":["x"]}}',
       '{" ":["x"]}',
       '{"a":"x"}',
       '{"a":[1]}',

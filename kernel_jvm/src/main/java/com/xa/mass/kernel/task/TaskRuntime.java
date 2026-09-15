@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.task;
 
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -97,7 +99,7 @@ public interface TaskRuntime {
             Map<String, Object> payload,
             int priority,
             @Nullable Long expireAtMillis,
-            TaskItemWorkerSelector workerSelector
+            EligibilityQuery workerSelector
     ) {
         public TaskItem {
             requireNonBlank(messageId, "messageId");

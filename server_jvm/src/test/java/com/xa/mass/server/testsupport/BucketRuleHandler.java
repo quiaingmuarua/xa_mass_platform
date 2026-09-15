@@ -1,6 +1,6 @@
 package com.xa.mass.server.testsupport;
 
-import com.xa.mass.workermatching.EligibilityQuery;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -42,12 +42,13 @@ public final class BucketRuleHandler extends LocalCandidateRule<String> {
     public static List<RedisRuleStorage.IndexMutation> indexes() {
         return List.of(new RedisRuleStorage.IndexMutation("test_buckets",PREPARE));
     }
-    @Override protected EligibilityQuery normalize(String group,Map<String,?> expression,int count,boolean selector) {
+    @Override protected EligibilityQuery normalize(String group,EligibilityQuery input) {
+            var expression = input.query();
         if(!Set.of("test.bucket").containsAll(expression.keySet()))throw new IllegalArgumentException("unsupported bucket parameter");
-        if(expression.isEmpty())return new EligibilityQuery(Map.of(),count);
+        if(expression.isEmpty())return new EligibilityQuery(Map.of());
         if(!(expression.get("test.bucket") instanceof List<?> values)
                 || values.stream().anyMatch(v->!(v instanceof String)))throw new IllegalArgumentException("bucket requires string parameters");
-        return new EligibilityQuery(Map.of("test.bucket",List.copyOf(new TreeSet<>(values.stream().map(String.class::cast).toList()))),count);
+        return new EligibilityQuery(Map.of("test.bucket",List.copyOf(new TreeSet<>(values.stream().map(String.class::cast).toList()))));
     }
     @Override protected BiPredicate<String,String> predicate(String group,EligibilityQuery query) {
         return (id,bucket)->bucket!=null && (query.query().isEmpty() || query.query().get("test.bucket").contains(bucket));

@@ -1,5 +1,9 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.workermatching.RefillTarget;
+
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyMap;
 
@@ -156,6 +160,7 @@ class RuntimeApiControllerTest {
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
         var preparedQuery=org.mockito.Mockito.mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
+        when(preparedQuery.normalize(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
         when(matchingCatalog.prepareTaskQueries(anyMap())).thenAnswer(call -> {
             Map<String,String> coordinates=call.getArgument(0);
             var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
@@ -552,10 +557,33 @@ class RuntimeApiControllerTest {
                  "refillTargets":[{"query":{"worker.country":["US","CN","US"]},"count":20}]}
                 """)).andExpect(status().isOk());
         verify(matchingCatalog).bindTaskRule(anyString(),eq("phone-tools"),eq("worker.country"),eq(List.of(
-                new com.xa.mass.workermatching.EligibilityQuery(Map.of("worker.country",List.of("US","CN","US")),20))));
+                new RefillTarget(Map.of("worker.country",List.of("US","CN","US")),20))));
         var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority","maxRetryTimes");
+    }
+
+    @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
+        var view=matchingCatalog.prepareTaskQueries(Map.of("task-1","phone-tools")).get("task-1");
+        var normalized=EligibilityQuery.parse(Map.of("worker.country",List.of("CN","US")));
+        when(view.normalize(any())).thenReturn(normalized);
+        mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
+                [{"messageId":"message-1","eventCode":"event","payload":{},
+                  "workerSelector":{"worker.country":["US","CN","CN"]}}]
+                """)).andExpect(status().isOk());
+        verify(taskRuntime).appendItems(eq("task-1"), org.mockito.ArgumentMatchers.argThat(items ->
+                items.size()==1 && normalized.equals(items.getFirst().workerSelector())));
+        verify(view,org.mockito.Mockito.never()).take(anyMap());
+    }
+
+    @Test void oldConditionsAndNonStringItemParametersFailBeforeOwners() throws Exception {
+        for (String selector : List.of("{\"worker.country\":{\"op\":\"in\",\"values\":[\"CN\"]}}",
+                "{\"worker.country\":[1]}", "{\"workerId\":[true]}", "{\"a\":[null]}", "{\"a\":\"x\"}")) {
+            mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON)
+                    .content("[{\"messageId\":\"m\",\"eventCode\":\"event\",\"payload\":{},\"workerSelector\":"+selector+"}]"))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(taskRuntime,org.mockito.Mockito.never()).appendItems(anyString(),anyList());
     }
 
     @Test void malformedRefillTargetsCannotSilentlyBecomeAny() throws Exception {

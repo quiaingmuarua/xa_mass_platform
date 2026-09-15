@@ -29,7 +29,8 @@ class ScenarioArchitectureTest {
             try (var paths = Files.walk(directory.resolve("src/main/java"))) {
                 for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                     String source = Files.readString(path);
-                    assertThat(source.replace("com.xa.mass.workermatching.EligibilityQuery", "public-refill-query-contract")).as(path.toString()).doesNotContain("SpringApplication", "@Profile",
+                    assertThat(source.replace("com.xa.mass.workermatching.RefillTarget", "public-refill-target-contract")
+                            .replace("com.xa.mass.kernel.assignment.EligibilityQuery", "public-query-contract")).as(path.toString()).doesNotContain("SpringApplication", "@Profile",
                             "public static void main(", "com.xa.mass.serverboot", "io.lettuce",
                             "org.springframework.data.redis", "com.xa.mass.kernel", "com.xa.mass.workermatching",
                             "java.net.http", "RestClient", "WebClient");

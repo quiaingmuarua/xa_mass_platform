@@ -68,14 +68,25 @@ public class OpenApiConfiguration {
     @Bean
     OpenApiCustomizer eligibilityQuerySchema() {
         return document -> {
-            // Matching's shared query validates itself without depending on HTTP schema annotations.
-            Schema<?> query = document.getComponents().getSchemas().get("EligibilityQuery");
-            query.setDescription("Operator-free query interpreted by the bound Rule. Empty or omitted query means ANY; "
-                    + "workerId lists select identities. Multiple values mean any of those values, not separate quotas.");
-            query.setRequired(List.of("count"));
-            query.setAdditionalProperties(false);
-            query.getProperties().get("count").setMinimum(java.math.BigDecimal.ONE);
-            query.getProperties().get("count").setMaximum(java.math.BigDecimal.valueOf(1000));
+            var values = new io.swagger.v3.oas.models.media.ArraySchema();
+            values.setItems(new io.swagger.v3.oas.models.media.StringSchema().minLength(1));
+            values.setMinItems(1); values.setMaxItems(100);
+            var query = new io.swagger.v3.oas.models.media.MapSchema();
+            query.setAdditionalProperties(values); query.setMaxProperties(100);
+            query.setDescription("Direct immutable string-list query. The bound Rule interprets fields; "
+                    + "empty means no additional condition within that Rule. No quantity or operator objects.");
+            document.getComponents().addSchemas("EligibilityQuery", query);
+            Schema<?> target = document.getComponents().getSchemas().get("RefillTarget");
+            target.setDescription("Shared Eligibility stock target. Equal normalized queries merge by MAX; "
+                    + "omitted query means ANY. Count is not part of query identity.");
+            target.setRequired(List.of("count")); target.setAdditionalProperties(false);
+            target.getProperties().put("query", new Schema<>().$ref("#/components/schemas/EligibilityQuery"));
+            target.getProperties().get("count").setMinimum(java.math.BigDecimal.ONE);
+            target.getProperties().get("count").setMaximum(java.math.BigDecimal.valueOf(1000));
+            Schema<?> item = document.getComponents().getSchemas().get("TaskItemRequest");
+            var selector = new Schema<>().$ref("#/components/schemas/EligibilityQuery");
+            selector.setDescription(item.getProperties().get("workerSelector").getDescription());
+            item.getProperties().put("workerSelector", selector);
         };
     }
 

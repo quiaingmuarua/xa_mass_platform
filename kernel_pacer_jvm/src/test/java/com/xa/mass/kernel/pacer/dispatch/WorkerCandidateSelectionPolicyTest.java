@@ -2,7 +2,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
-import com.xa.mass.kernel.task.TaskItemWorkerSelector;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -13,16 +13,30 @@ class WorkerCandidateSelectionPolicyTest {
     final WorkerResourceCatalog catalog=mock(WorkerResourceCatalog.class);
     final WorkerCandidateIndex.TaskQuery query=mock(WorkerCandidateIndex.TaskQuery.class);
     final WorkerCandidateSelectionPolicy policy=new WorkerCandidateSelectionPolicy(catalog);
-    final TaskItemWorkerSelector any=TaskItemWorkerSelector.parse(Map.of());
+    final EligibilityQuery any=EligibilityQuery.parse(Map.of());
+
+    @org.junit.jupiter.api.BeforeEach void normalizeQueries() {
+        when(query.normalize(any())).thenAnswer(call -> call.getArgument(0));
+    }
 
     @Test void emptyStockDoesNotReadAddressesOrObtainNewHolds() {
         assertTrue(policy.takeCandidates(query,"g",Map.of("m",any),new HashSet<>()).isEmpty());
         verify(query).take(Map.of(any,1));
         verifyNoInteractions(catalog);
     }
+    @Test void equivalentQueriesAggregateActualItemCountsAfterRuleNormalization() {
+        var first=EligibilityQuery.parse(Map.of("country",List.of("US","CN","US")));
+        var second=EligibilityQuery.parse(Map.of("country",List.of("CN","US")));
+        when(query.normalize(first)).thenReturn(second);
+        var items=new LinkedHashMap<String,EligibilityQuery>();
+        items.put("one",first); items.put("two",second); items.put("three",first);
+        assertTrue(policy.takeCandidates(query,"g",items,new HashSet<>()).isEmpty());
+        verify(query).take(Map.of(second,3));
+        verifyNoInteractions(catalog);
+    }
     @Test void everySelectorConsumesSharedHeldStockAndReadsAddressesInOneBatch() {
-        var ids=TaskItemWorkerSelector.parse(Map.of("workerId",List.of("target")));
-        var items=new LinkedHashMap<String,TaskItemWorkerSelector>();
+        var ids=EligibilityQuery.parse(Map.of("workerId",List.of("target")));
+        var items=new LinkedHashMap<String,EligibilityQuery>();
         items.put("a",any); items.put("b",ids); items.put("c",any);
         when(query.take(Map.of(any,2,ids,1))).thenReturn(Map.of(any,
                 List.of(new HeldCandidate("one",11,6000),new HeldCandidate("two",12,6000)),

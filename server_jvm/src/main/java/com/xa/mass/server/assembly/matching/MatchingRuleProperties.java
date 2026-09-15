@@ -2,7 +2,7 @@ package com.xa.mass.server.assembly.matching;
 
 import java.util.Map;
 import java.util.List;
-import com.xa.mass.workermatching.EligibilityQuery;
+import com.xa.mass.workermatching.RefillTarget;
 import java.util.Set;
 import java.util.LinkedHashMap;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /** Explicit Group-local projections. Default identity semantics require no index configuration. */
 @ConfigurationProperties(prefix = "xa.mass.worker-matching.rules", ignoreUnknownFields = false)
 public record MatchingRuleProperties(Map<String, Set<String>> workerGroups,
-        Map<String,Map<String,List<EligibilityQuery>>> defaultRefillTargets) {
+        Map<String,Map<String,List<RefillTarget>>> defaultRefillTargets) {
     public MatchingRuleProperties {
         var copy=new LinkedHashMap<String,Set<String>>();
         if (workerGroups!=null) workerGroups.forEach((group,rules) -> {
@@ -18,9 +18,9 @@ public record MatchingRuleProperties(Map<String, Set<String>> workerGroups,
             copy.put(group,Set.copyOf(rules));
         });
         workerGroups=Map.copyOf(copy);
-        var defaults=new LinkedHashMap<String,Map<String,List<EligibilityQuery>>>();
+        var defaults=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
         if (defaultRefillTargets!=null) defaultRefillTargets.forEach((group,rules) -> {
-            var queries=new LinkedHashMap<String,List<EligibilityQuery>>();
+            var queries=new LinkedHashMap<String,List<RefillTarget>>();
             rules.forEach((rule,targets) -> queries.put(rule,List.copyOf(targets)));
             defaults.put(group,Map.copyOf(queries));
         });

@@ -212,7 +212,7 @@ architectures.
 - Candidate identity query contracts remain bounded here;
   index storage belongs to Matching and loop code belongs to Pacer.
 - Task Owner stores only scheduling descriptors and Item execution data. It owns
-  generic immutable selector structure, ANY and explicit ID semantics. Matching
+  the shared immutable EligibilityQuery structure without quantity or field interpretation. Matching
   owns every Task binding, fixed Rule Handler and property/index interpretation.
   Kernel/Pacer sees Task IDs, never Rule IDs, matching modes or index coordinates.
   Main resolves NORMAL Tasks through one bounded `WorkerCandidateIndex.prepareTaskQueries`
@@ -223,12 +223,18 @@ architectures.
   qualification, deficits, refill, stock and take; Catalog Eligibility coordination
   must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
-  Rule instances own thread-safe Group-isolated Eligibility through normalizeTarget,
-  validateSelector, deficits, refill and take. Catalog owns bindings, target MAX merge,
-  bounded paging and exclusion of IDs actually accepted by earlier Rules. Shared
+  Rule instances own thread-safe Group-isolated Eligibility through normalizeQuery,
+  deficits, refill and take. Catalog owns bindings, target MAX merge,
+  bounded paging and exclusion of IDs actually accepted by earlier Rules. TaskItem and
+  refill queries use one string-list structure; Rules normalize all semantics, including
+  Default identity queries. Target quantities use MAX; consumption uses actual Item
+  counts. Do not restore operator objects or a separate Item selector protocol. Shared
   capacity coordination stores budgets only. Earlier Rule admissions survive a later
   Rule failure; the exception ends the remaining batch without rollback or replay.
   Each current Rule validates and reads before its own bounded local commit.
+  Candidate stock observations are not optimistic transactions: commit only current,
+  live entries and hard capacity; do not retry a whole selection on a pool revision.
+  Leave concurrent target/stock changes to later rounds rather than reserving deficits.
   Facts/index atomic writes remain a separate one-Lua storage assembly contract.
   Pacer alone discovers HOT IDs and issues
   closed batches of already acquired 1-second candidate leases. **Pacer acquires
@@ -834,7 +840,9 @@ deployment follows concrete business or operational needs.
   defects through scenario-side scheduling or delivery repair, or count unconfirmed
   outcomes as success. Return platform regressions to their owning proof.
 - Both scenarios depend only on approved `server_jvm` application services and
-  existing DTOs. Server has no scenario or executable dependency; scenarios have
+  existing DTOs, including the shared `EligibilityQuery` and `RefillTarget` value
+  contracts required by those APIs. These values grant no Kernel or Matching
+  operation access. Server has no scenario or executable dependency; scenarios have
   no dependency on each other and create no Redis clients, Owners, Pacer or Adapter.
   Never invoke Controllers, providers, scheduling policy, HTTP waiters or the
   Direct Call registry from scenario code. Do not add a Runtime library, bridge,

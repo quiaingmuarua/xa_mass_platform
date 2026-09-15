@@ -1,5 +1,7 @@
 package com.xa.mass.server.task;
 
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+
 import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -107,8 +109,10 @@ public final class TaskDataService {
             for (Map.Entry<String, TaskItemRequest> entry
                     : latest.entrySet()) {
                 try {
-                    TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis);
-                    query.validate(item.workerSelector());
+                    var supplied = entry.getValue().workerSelector();
+                    var normalized = query.normalize(supplied == null
+                            ? new EligibilityQuery(Map.of()) : supplied);
+                    TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
                     validItems.add(item);
                 } catch (IllegalArgumentException error) {
                     results.put(

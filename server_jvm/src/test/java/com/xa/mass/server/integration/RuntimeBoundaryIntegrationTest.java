@@ -526,7 +526,7 @@ class RuntimeBoundaryIntegrationTest {
                     var items=new ArrayList<Map<String,Object>>();
                     for(int i=0;i<100;i++) {
                         String id=UUID.randomUUID().toString();ids.add(id);
-                        Map<String,Object> selector=t<2?Map.of("worker.country",Map.of("op","eq","values",List.of("CN"))):Map.of();
+                        Map<String,Object> selector=t<2?Map.of("worker.country",List.of("CN")):Map.of();
                         items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),"workerSelector",selector));
                     }
                     var appended=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items));
@@ -605,7 +605,7 @@ class RuntimeBoundaryIntegrationTest {
         String messageId = UUID.randomUUID().toString();
         var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of(
                 "messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(),
-                "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))))));
+                "workerSelector", Map.of("worker.country", List.of(country))))));
         assertThat(appended.statusCode()).isEqualTo(200);
         assertThat(JSON.readTree(appended.body()).get(messageId).get("status").asText()).isEqualTo("applied");
         assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve", null).statusCode()).isEqualTo(200);
@@ -641,7 +641,7 @@ class RuntimeBoundaryIntegrationTest {
             String messageId = UUID.randomUUID().toString();
             expected.put(messageId, executor);
             items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
-                    "payload", Map.of(), "workerSelector", Map.of("worker.country", Map.of("op", "in", "values", List.of(country)))));
+                    "payload", Map.of(), "workerSelector", Map.of("worker.country", List.of(country))));
         });
         var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
                 "items", items, "waitTimeoutMillis", 10000)));
@@ -905,8 +905,8 @@ class RuntimeBoundaryIntegrationTest {
             ).statusCode()).isEqualTo(200);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
-            Map<String,Object> selector=Map.of("worker.proofPool",Map.of("op","eq","values",List.of("A")),
-                    "platform.proofEnabled",Map.of("op","eq","values",List.of("yes")));
+            Map<String,Object> selector=Map.of("worker.proofPool",List.of("A"),
+                    "platform.proofEnabled",List.of("yes"));
             String taskId=createTask(workerGroupId,"proof.worker.facts");
             String otherTaskId=createTask(workerGroupId,"proof.worker.facts");
             var sharedRules = matchingCatalog.loadTaskBindings(List.of(taskId, otherTaskId));

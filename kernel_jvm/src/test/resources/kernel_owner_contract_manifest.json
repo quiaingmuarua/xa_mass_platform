@@ -85,8 +85,8 @@
       "on_route_unavailable"
     ],
     "TaskQuery": [
-      "take",
-      "validate"
+      "normalize",
+      "take"
     ],
     "WorkerCandidateIndex": [
       "prepare_refill",
@@ -223,8 +223,8 @@
       "expire_at_millis",
       "worker_selector"
     ],
-    "TaskItemWorkerSelector": [
-      "expression"
+    "EligibilityQuery": [
+      "query"
     ],
     "TaskItemAppendResult": [
       "status",

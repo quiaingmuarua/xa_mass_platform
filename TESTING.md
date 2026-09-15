@@ -116,8 +116,12 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 Rule binding and index proof belongs to Redis Owner: concurrent create-only
 bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
-rebuild isolation. Matching tests prove the five-operation Rule interface, unsupported condition
-rejection, shared MAX targets, original fences and atomic destructive consumption.
+rebuild isolation. Matching tests prove the four-operation Rule interface, unsupported condition
+rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
+original fences and atomic destructive consumption. Kernel tests own immutable
+query capture and strict direct-Map JSON; Server tests own flat target configuration
+and HTTP admission. Redis Owner rejects old property conditions without rewriting
+records or substituting ANY.
 The separately assembled bucket SET/projection HASH Rule proves that a different
 index layout uses the public Handler contract without common-flow changes. Its
 Redis Owner cases cover batch costs, corrupt-index preflight and dirty invalidation;
@@ -136,6 +140,10 @@ including unmatched leases, partial acquisition, dirty invalidation and command
 order. A controlled clock proves that Matching cannot reset the candidate deadline.
 Matching unit tests own bounded target paging, incremental admission counts,
 concurrent refill/take, immutable results and local versus global expiry maintenance.
+Controlled races prove entry identity checks (including equal-value reinsertion),
+partial take after a lost entry, no restart after unrelated Group changes and hard
+capacity under concurrent refill. Observed target watermarks may be exceeded or
+left short; these tests do not require a pool-wide optimistic transaction.
 A later Rule failure must preserve earlier admissions; invalid input or a Rule-local
 read/matching failure must admit no candidates for that Rule. The separate Facts
 script still preflights all enabled index writes atomically. These are not cross-owner
