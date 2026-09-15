@@ -51,7 +51,7 @@ read-only Lua uses Redis TIME and ZRANGE BYSCORE LIMIT 0 limit WITHSCORES. Acqui
 moves successful candidates out of the due range before Matching, including those
 that will not match. Expiry retains their newer Score, so older unacquired Workers
 remain ahead. Observation alone does not advance the head. Group rotation remains
-Pacer policy, separate from Serviceability and Recovery scan cursors.
+Pacer policy. Serviceability independently reads bounded heads and advances next-check times.
 
 Limit is 1..100 raw rows. The immutable result omits corrupt scores without fetching
 replacements, repairing data or changing its order. A fully corrupt head returns

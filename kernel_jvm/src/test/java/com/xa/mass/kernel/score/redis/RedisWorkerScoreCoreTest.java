@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerRecheckTarget;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import io.lettuce.core.RedisClient;
@@ -41,14 +43,14 @@ class RedisWorkerScoreCoreTest {
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.holdObservedHotForServiceabilityProbes(
                             "group-1",
-                            Map.of("worker-1", 0L)
+                            Map.of("worker-1", new WorkerRecheckTarget(0L, 1_000L))
                     ).get("worker-1").status()
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.advanceObservedRecoveryRechecks(
                             "group-1",
-                            Map.of("worker-1", 200L)
+                            Map.of("worker-1", new WorkerRecheckTarget(200L, 1_000L))
                     ).get("worker-1").status()
             );
             assertEquals(
@@ -59,6 +61,37 @@ class RedisWorkerScoreCoreTest {
                             WorkerScorePolarity.HOT_ACQUIRE
                     ).get("worker-1").status()
             );
+        } finally {
+            redisClient.shutdown();
+        }
+    }
+
+    @Test
+    void recheckTargetsValidateDelayAndBatchBoundsBeforeRedisAccess() {
+        RedisClient redisClient = RedisClient.create("redis://127.0.0.1:1");
+        try (var scoreCore = new RedisWorkerScoreCore(redisClient,
+                new RedisKeyspace("test_worker_score_unit"))) {
+            for (long delay : new long[]{0, -1, Long.MAX_VALUE, WorkerScoreCore.PAUSE_TIME_MILLIS}) {
+                assertEquals(WorkerScoreTransitionStatus.INVALID,
+                        scoreCore.holdObservedHotForServiceabilityProbes("g",
+                                Map.of("w", new WorkerRecheckTarget(20_000L, delay)))
+                                .get("w").status());
+                assertEquals(WorkerScoreTransitionStatus.INVALID,
+                        scoreCore.advanceObservedRecoveryRechecks("g",
+                                Map.of("w", new WorkerRecheckTarget(-20_000L, delay)))
+                                .get("w").status());
+            }
+            assertEquals(WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.advanceObservedRecoveryRechecks("g",
+                            Map.of("cold", new WorkerRecheckTarget(-200L, 1_000)))
+                            .get("cold").status());
+            assertEquals(Map.of(), scoreCore.advanceObservedRecoveryRechecks("g", Map.of()));
+            var tooMany = new java.util.LinkedHashMap<String, WorkerRecheckTarget>();
+            for (int i = 0; i < 101; i++) tooMany.put("w" + i, new WorkerRecheckTarget(-20_000, 1_000));
+            assertThrows(IllegalArgumentException.class,
+                    () -> scoreCore.advanceObservedRecoveryRechecks("g", tooMany));
+            assertThrows(IllegalArgumentException.class,
+                    () -> scoreCore.holdObservedHotForServiceabilityProbes("g", null));
         } finally {
             redisClient.shutdown();
         }

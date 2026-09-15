@@ -114,8 +114,8 @@ class RuntimeBoundaryIntegrationTest {
     // Covers two complete 5-second lease recovery windows under CI load.
     private static final Duration RESULT_CONVERGENCE_TIMEOUT =
             Duration.ofSeconds(15);
-    // Covers a 10-second empty sweep cooldown, the next 1-second Producer
-    // round, and the Adapter/Result evidence handoff.
+    // Retains the existing boundary bound for normal Producer rounds and the
+    // Adapter/Result evidence handoff; an empty Worker read adds no cooldown.
     private static final Duration SERVICEABILITY_CONVERGENCE_TIMEOUT =
             Duration.ofSeconds(15);
     private static final String SERVICEABILITY_WORKER_GROUP_ID =
@@ -1361,8 +1361,8 @@ class RuntimeBoundaryIntegrationTest {
                 SERVICEABILITY_CONVERGENCE_TIMEOUT
         );
         // The explicit missing target cannot hold this Worker. A fresh RECOVERY
-        // coordinate may not be due at the first scan; a later eligible round
-        // must advance it before offering a probe.
+        // coordinate may still occupy the current slot at the first scan. The
+        // next eligible round schedules its next recheck before offering a probe.
         assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );

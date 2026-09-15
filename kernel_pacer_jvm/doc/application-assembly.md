@@ -244,6 +244,13 @@ Task API
 -> retained Worker reporter -> later Item observations + latest Result queries
 ```
 
+Serviceability retains the 1-second production Producer interval and 100-successful-
+hold round budget. It reads current HOT heads, falling back to RECOVERY only for an
+empty raw HOT result in that Group. Pacer supplies retry delays; Score Owner writes
+the next eligible recheck time using Redis time before the Probe offer. There are
+no per-Group scan cursors or empty-range restart timers. CONNECTED evidence keeps a
+future recheck coordinate, so restored HOT may still wait before admission.
+
 The Serviceability boundary proves that the Main Scheduler derives the ordered
 WorkerGroup input from the same due RUNNING Task source and that Adapter
 Evidence converges through the Result Application. Focused Pacer tests and

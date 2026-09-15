@@ -181,6 +181,10 @@
     ]
   },
   "dtos": {
+    "WorkerRecheckTarget": [
+      "observed_score",
+      "delay_millis"
+    ],
     "TaskItemOutcomeObservation": [
       "message_id",
       "tag",

@@ -225,8 +225,6 @@ public final class DispatchConvergenceRuntime {
                             hotEligibilityFloorMillis,
                             BOUNDARY_PROBE_RETRY_MILLIS,
                             WorkerServiceabilityDispatchConfig
-                                    .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
-                            WorkerServiceabilityDispatchConfig
                                     .DEFAULT_MAX_RECOVERY_ATTEMPTS,
                             WorkerServiceabilityDispatchConfig
                                     .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS

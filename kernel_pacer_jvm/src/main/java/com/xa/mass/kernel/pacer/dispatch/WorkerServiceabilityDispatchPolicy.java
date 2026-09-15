@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerRecheckTarget;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
@@ -27,8 +28,6 @@ final class WorkerServiceabilityDispatchPolicy {
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerServiceabilityRuntime serviceability;
     private final LongSupplier currentTimeMillis;
-    private final LinkedHashMap<String, GroupSweepState> groupSweeps =
-            new LinkedHashMap<>();
 
     WorkerServiceabilityDispatchPolicy(
             WorkerScoreCore workerScores,
@@ -95,7 +94,6 @@ final class WorkerServiceabilityDispatchPolicy {
                 config.hotEligibilityFloorMillis(),
                 config.probeRetryIntervalMillis()
         );
-        retainActiveGroupSweeps(workerGroupIds);
         Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
         );
@@ -105,21 +103,14 @@ final class WorkerServiceabilityDispatchPolicy {
             if (remainingProbeBudget == 0) {
                 break;
             }
-            GroupSweepState sweepState = sweepState(workerGroupId);
-            List<WorkerScoreObservation> hot = hotPage(
+            List<WorkerScoreObservation> hot = workerScores.acquireHotCandidatesBefore(
                     workerGroupId,
-                    sweepState.hot,
                     hotProbeCutoffMillis,
-                    nowMillis,
-                    config,
                     remainingProbeBudget
             );
             List<WorkerScoreObservation> candidates = hot.isEmpty()
-                    ? recoveryPage(
+                    ? workerScores.acquireRecoveryRecheckCandidates(
                             workerGroupId,
-                            sweepState.recovery,
-                            nowMillis,
-                            config,
                             remainingProbeBudget
                     )
                     : hot;
@@ -136,8 +127,8 @@ final class WorkerServiceabilityDispatchPolicy {
                     workerCatalog.getWorkerDescriptors(
                             workerIds
                     );
-            LinkedHashMap<String, Long> hotScores = new LinkedHashMap<>();
-            LinkedHashMap<String, Long> recoveryScores =
+            LinkedHashMap<String, WorkerRecheckTarget> hotTargets = new LinkedHashMap<>();
+            LinkedHashMap<String, WorkerRecheckTarget> recoveryTargets =
                     new LinkedHashMap<>();
             LinkedHashMap<String, WorkerDescriptor> probeDescriptors =
                     new LinkedHashMap<>();
@@ -152,12 +143,6 @@ final class WorkerServiceabilityDispatchPolicy {
                         || !workerGroupId.equals(descriptor.workerGroupId())
                         || !candidate.workerId().equals(
                                 descriptor.workerId()
-                        )
-                        || !eligible(
-                                state,
-                                nowMillis,
-                                hotProbeCutoffMillis,
-                                config.probeRetryIntervalMillis()
                         )) {
                     continue;
                 }
@@ -176,25 +161,28 @@ final class WorkerServiceabilityDispatchPolicy {
                     continue;
                 }
                 probeDescriptors.put(candidate.workerId(), descriptor);
-                Map<String, Long> target = state.polarity()
-                        == WorkerScorePolarity.HOT_ACQUIRE
-                        ? hotScores : recoveryScores;
-                target.put(candidate.workerId(), candidate.score());
+                boolean isHot = state.polarity() == WorkerScorePolarity.HOT_ACQUIRE;
+                long delayMillis = config.probeRetryIntervalMillis()
+                        * (isHot ? 1L : state.laneRank() + 2L);
+                Map<String, WorkerRecheckTarget> targets = isHot ? hotTargets : recoveryTargets;
+                targets.put(candidate.workerId(), new WorkerRecheckTarget(
+                        candidate.score(), delayMillis
+                ));
             }
 
             Map<String, WorkerScoreTransitionResult> hotResults =
                     workerScores.holdObservedHotForServiceabilityProbes(
                             workerGroupId,
-                            hotScores
+                            hotTargets
                     );
             Map<String, WorkerScoreTransitionResult> recoveryResults =
                     workerScores.advanceObservedRecoveryRechecks(
                             workerGroupId,
-                            recoveryScores
+                            recoveryTargets
                     );
             List<String> heldWorkerIds = new ArrayList<>();
             probeDescriptors.keySet().forEach(workerId -> {
-                WorkerScoreTransitionResult result = hotScores.containsKey(
+                WorkerScoreTransitionResult result = hotTargets.containsKey(
                         workerId
                 ) ? hotResults.get(workerId) : recoveryResults.get(workerId);
                 if (result != null && result.status()
@@ -211,103 +199,6 @@ final class WorkerServiceabilityDispatchPolicy {
             offered += offerProbes(heldWorkerIds, probeDescriptors);
         }
         return offered;
-    }
-
-    private GroupSweepState sweepState(String workerGroupId) {
-        return groupSweeps.computeIfAbsent(
-                workerGroupId,
-                ignored -> new GroupSweepState()
-        );
-    }
-
-    private void retainActiveGroupSweeps(List<String> workerGroupIds) {
-        Set<String> active = Set.copyOf(workerGroupIds);
-        groupSweeps.keySet().removeIf(id -> !active.contains(id));
-    }
-
-    private List<WorkerScoreObservation> hotPage(
-            String workerGroupId,
-            ProbeScoreSweep sweep,
-            long hotProbeCutoffMillis,
-            long nowMillis,
-            WorkerServiceabilityDispatchConfig config,
-            int limit
-    ) {
-        if (nowMillis < sweep.resumeAtMillis) {
-            return List.of();
-        }
-        List<WorkerScoreObservation> page =
-                workerScores.acquireHotCandidatesBefore(
-                        workerGroupId,
-                        hotProbeCutoffMillis,
-                        sweep.currentMaxWorkerScore,
-                        limit
-                );
-        advanceSweep(
-                sweep,
-                page,
-                nowMillis,
-                config.probeSweepRestartDelayMillis()
-        );
-        return page;
-    }
-
-    private List<WorkerScoreObservation> recoveryPage(
-            String workerGroupId,
-            ProbeScoreSweep sweep,
-            long nowMillis,
-            WorkerServiceabilityDispatchConfig config,
-            int limit
-    ) {
-        if (nowMillis < sweep.resumeAtMillis) {
-            return List.of();
-        }
-        List<WorkerScoreObservation> page =
-                workerScores.acquireRecoveryRecheckCandidates(
-                        workerGroupId,
-                        sweep.currentMaxWorkerScore,
-                        limit
-                );
-        advanceSweep(
-                sweep,
-                page,
-                nowMillis,
-                config.probeSweepRestartDelayMillis()
-        );
-        return page;
-    }
-
-    private static void advanceSweep(
-            ProbeScoreSweep sweep,
-            List<WorkerScoreObservation> page,
-            long nowMillis,
-            long restartDelayMillis
-    ) {
-        if (!page.isEmpty()) {
-            sweep.currentMaxWorkerScore = page.getLast().score();
-            sweep.resumeAtMillis = 0;
-            return;
-        }
-        sweep.currentMaxWorkerScore = 0;
-        sweep.resumeAtMillis = safeAdd(nowMillis, restartDelayMillis);
-    }
-
-    private static boolean eligible(
-            WorkerScoreState worker,
-            long nowMillis,
-            long hotProbeCutoffMillis,
-            long probeRetryIntervalMillis
-    ) {
-        if (worker.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            return worker.timeMillis() < hotProbeCutoffMillis;
-        }
-        long multiplier = worker.laneRank() + 1L;
-        if (probeRetryIntervalMillis > Long.MAX_VALUE / multiplier) {
-            return false;
-        }
-        long delay = multiplier * probeRetryIntervalMillis;
-        return delay <= nowMillis
-                && worker.timeMillis() <= nowMillis - delay;
     }
 
     private void coldPark(
@@ -364,13 +255,6 @@ final class WorkerServiceabilityDispatchPolicy {
         return offered;
     }
 
-    private static long safeAdd(long left, long right) {
-        if (left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
-
     private static long hotProbeCutoffMillis(
             long nowMillis,
             long hotEligibilityFloorMillis,
@@ -388,13 +272,4 @@ final class WorkerServiceabilityDispatchPolicy {
         );
     }
 
-    private static final class GroupSweepState {
-        private final ProbeScoreSweep hot = new ProbeScoreSweep();
-        private final ProbeScoreSweep recovery = new ProbeScoreSweep();
-    }
-
-    private static final class ProbeScoreSweep {
-        private long currentMaxWorkerScore;
-        private long resumeAtMillis;
-    }
 }

@@ -114,65 +114,73 @@ source failure, the ordinary interval applies again.
 
 One Serviceability round receives distinct WorkerGroups from the Main Scheduler
 and visits each Group in that order. The Policy cannot discover or add Groups.
-There is no process-local Group rotation cursor. HOT and RECOVERY each keep one
-process-local scalar exclusive score cursor for every Group in the bounded Task batch. A
-Group absent from the next Task batch is not scanned and its hint is discarded;
-if demand exposes it later, scanning restarts from the full range.
+There is no process-local Group rotation cursor or per-Group scan state. Every
+round reads the current bounded range head for the supplied Groups; a Group
+outside the current Task input is not scanned.
 
 The whole batch shares a budget of 100 successfully held Probe attempts. For
 each Group, the policy first reads at most the remaining budget from
 `[MIN_BASE, hotProbeCutoff)`, where the cutoff is the later of the process floor
 and the stale-HOT threshold above. RECOVERY is read only when that Group's raw
-HOT page is empty or its HOT range is in empty-range cooldown. A non-empty HOT
-page suppresses RECOVERY only for that Group; unused budget continues to later
-Groups. A successful exact Score hold consumes budget even when the subsequent
-HASH offer returns `ALREADY_REQUESTED` or `CAPACITY`, because that Score change
-is not rolled back. Processing stops when the budget is exhausted or every
-Group has been visited. The two ranges retain independent cursors and
-cooldowns; the former 80/20 split no longer exists.
+HOT result is empty. A non-empty HOT result suppresses RECOVERY only for that
+Group; unused budget continues to later Groups. A successful exact Score hold
+consumes budget even when the subsequent HASH offer returns `ALREADY_REQUESTED`
+or `CAPACITY`, because that Score change is not rolled back. Processing stops
+when the budget is exhausted or every Group has been visited.
 
-RECOVERY retry `laneRank=n` is due only after:
+**Core scheduling change: RECOVERY timeSlot is the next eligible recheck time.**
+The Owner reads Redis time and returns only coordinates in its existing recent
+window whose slot is strictly before the current slot. Current-slot, future,
+PAUSE and cold coordinates remain outside that range. Pacer does not add another
+rank-dependent wait to the observed time. Instead it supplies the next delay
+when advancing the exact Score. With `B = probeRetryIntervalMillis`:
 
-```text
-(n + 1) * probeRetryIntervalMillis
-```
+| Observed state | Exact transition before offer | Request |
+| --- | --- | --- |
+| eligible HOT | RECOVERY(rank=0, next time=Redis now+B) | initial Probe |
+| due RECOVERY(rank=n), n below maximum | RECOVERY(rank=n+1, next time=Redis now+(n+2)*B) | Recovery Probe |
+| due RECOVERY at maximum | cold park | none |
 
-The initial HOT Probe writes rank 0 and is not counted as a Recovery Probe.
-A due rank below `maxRecoveryAttempts` is advanced before the next request; a
-due rank already at the maximum is exact-cold-parked without another request.
+The initial HOT Probe is not counted as a Recovery Probe. The existing default
+1-second Producer interval, 60-second base delay and maximum rank 5 remain.
+Configuration rejects multiplication overflow for the maximum retry delay.
+Pacer decides the delay; the Score Owner encodes `floor((Redis now+delay)/100)`
+inside the exact batch Lua and preserves dirty. The strict previous-slot due
+boundary prevents an early retry even when the target is rounded down.
 
-The policy directly asks the Score and Resource Owners for bounded pages,
-current semantic states, and canonical Worker descriptors. It exact-cold-parks
-excluded endpoints through Score Owner operations. Before any request is
-offered, it asks that Owner to atomically hold exact HOT observations as
-`RECOVERY(redisNow, rank=0)` or advance exact RECOVERY observations to
-`RECOVERY(redisNow, rank+1)`. Only successfully transitioned Workers are
-grouped by `endpointManagerId` and offered through the bounded
-`WorkerServiceabilityRuntime.offerProbeRequests` Owner operation. An
-`ALREADY_REQUESTED` or `CAPACITY` result does not roll back the Score hold;
-later Recovery scanning supplies best-effort convergence.
+The policy directly asks the Score and Resource Owners for bounded observations,
+current semantic states, and canonical Worker descriptors. Only matching exact
+observations with valid Binding are handled. Excluded endpoints are parked in
+the cold range through exact Score Owner operations. The two batch hold operations receive
+`workerId -> WorkerRecheckTarget(observedScore, delayMillis)`; only `TRANSITIONED`
+Workers are grouped by `endpointManagerId` and offered through
+`WorkerServiceabilityRuntime.offerProbeRequests`. A failed or lost offer or
+Report leaves the next recheck time intact. No rollback, renewal or request
+registry is added.
 
-Each raw owner page is score-descending. Its last score becomes the next
-exclusive upper bound before state filtering or request offer, so a fixed
-ineligible head cannot pin later score coordinates. Equal-score entries beyond
-the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
-independently resets that cursor and cools only that range for
-`probeSweepRestartDelayMillis` (default 10 seconds); the Dispatch Main Scheduler
-keeps running and does not block for the cooldown. Cursor and
-cooldown are bounded scan hints, not fairness guarantees, Redis checkpoints or
-in-flight Probe tracking. The Task
-score page is never mutated or held by Serviceability. A Group outside the
-bounded due-Task page is intentionally ignored until Task demand exposes it in
-a later round.
+Both reads keep descending numeric score order. RECOVERY's negative scores
+therefore return the earliest eligible time first, starting at the current
+recheck floor. Each round uses `LIMIT 0 limit`, with no exclusive continuation
+score. Successful holds move members out of the due range; cold parking removes
+them from routine discovery. Subsequent reads can reach remaining equal-score
+members without skipping ties. Read-only observations, invalid Bindings and
+stale CAS outcomes do not themselves guarantee progress or authorize a repair
+scan. There is no retained range, cursor, empty-range cooldown or extra wakeup.
+An empty read is retried on the next normal Producer round. The Task score batch
+is never mutated or held by Serviceability.
 
 Runtime Boundary establishes its connected RECOVERY fixture with an exact Owner
-toggle before approving the Task that exposes the Group to periodic discovery.
-It must not overwrite an in-flight probe hold with an earlier Score. The proof
-allows 15 seconds for recovery: the 10-second empty-range cooldown, the next
-1-second Producer round, and the Adapter/Result handoff. A fresh coordinate can
-still enter the due range after an empty scan; the bound does not promise a probe
-within the cooldown itself. The controlled-clock Pacer proof checks this deferred
-discovery without changing production timing.
+toggle before approving the Task that exposes the Group. It must not overwrite
+an in-flight probe hold with an earlier Score. Its existing 15-second bound
+covers normal Producer scheduling and Adapter/Result handoff, with no scan
+cooldown. Focused Pacer tests prove next-round discovery and write-time backoff;
+Redis Owner tests prove time boundaries, equal-score head progress and exact CAS.
+
+Cutover uses one stopped old process followed by one new process in the same
+Redis scope. Existing RECOVERY coordinates within the valid recheck window are
+interpreted directly as next-check times, so the first bounded check can happen
+earlier than under the old rank-dependent reader. Subsequent writes use the new
+semantics. There is no data rewrite, compatibility reader or migration key.
 
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former
@@ -274,7 +282,10 @@ Unavailable Evidence changes only the Score sign. Available Evidence also
 advances an older past-slot coordinate to its Evidence slot, so a reconnect
 observed after Server startup crosses that process's HOT eligibility floor
 without depending on a separate Probe round. A current/future coordinate or PAUSE keeps its
-exact time coordinate and is never shortened by Evidence.
+exact time coordinate and is never shortened by Evidence. This includes a future
+Serviceability recheck: CONNECTED can restore HOT polarity while assignment still
+waits for that retained coordinate to become due. Score alone does not distinguish
+that wait from an execution lease, and evidence never releases either early.
 
 This accepts delayed observations within the current slot and does not establish
 strict network event ordering. Score time also represents leases and probe
@@ -285,7 +296,8 @@ are unchanged. No extra read, queue, replay or compensation scan is introduced.
 Retry rank, next-check time, and cold parking are Dispatch concerns performed
 before a Probe is offered or when a due Recovery observation is exhausted.
 The Result path does not calculate the process floor or advance Recovery retry
-state; it uses the accepted connection timestamp as the fresh HOT coordinate.
+state; it refreshes a past coordinate from the accepted connection timestamp
+and preserves a current/future coordinate.
 A newer past-slot Score still rejects older Evidence as `STALE`; reports that
 arrive after a lease's slot can therefore remain unapplied under best-effort
 semantics.

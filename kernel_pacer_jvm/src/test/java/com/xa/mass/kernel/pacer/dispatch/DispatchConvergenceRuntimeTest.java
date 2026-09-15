@@ -61,10 +61,6 @@ class DispatchConvergenceRuntimeTest {
                 expectedRecoveryInterval,
                 config.probeRetryIntervalMillis()
         );
-        assertEquals(
-                10_000,
-                config.probeSweepRestartDelayMillis()
-        );
         assertEquals(5, config.maxRecoveryAttempts());
         assertEquals(
                 List.of("system-polling"),

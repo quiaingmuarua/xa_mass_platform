@@ -97,7 +97,9 @@ Only worker.default accepts explicit ID queries. Pacer does not load Rules,
 Properties or interpret conditions.
 Package-private mechanisms protect exact Score fences and claim/Command ordering.
 Producers discover only resources under the Main Scheduler's root identities;
-Serviceability retains sweep hints only for Groups in that Task batch.
+Serviceability reads current HOT/RECOVERY heads for those Groups without scan state.
+It schedules each next recheck in Score before offering a Probe; the next normal
+Producer round observes newly due work without an empty-range cooldown.
 
 The production load model is intentionally a small bounded active Task set,
 many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The

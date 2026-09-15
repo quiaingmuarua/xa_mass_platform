@@ -136,7 +136,7 @@ HOT_ACQUIRE
   manual disable, maintenance hold
 
 RECOVERY_RECHECK
-  recovery validation coordinate interpreted through a recent lookback window
+  next eligible recheck time, selected through a recent lookback window
   examples: failed Adapter Route serviceability checks, stale endpoint validation,
   future retry delay, too-old recovery exhausted / cold parked
 ```
@@ -174,9 +174,9 @@ Platform facts changes; final assignment confirmation also sets dirty=1.
 HOT candidate acquisition is a bounded read-only range query. It returns
 `(workerId, observedScore)` pairs to Pacer. Production refill always uses the
 bounded Group range; explicit-ID queries do not initiate point acquisition.
-Pacer supplies read-only observations and Matching reads only those IDs for
-qualification. The accepted subset is exact-acquired afterwards for 1-second
-inventory, retaining the returned scores as opaque fences.
+Pacer exact-acquires those observations before Matching reads the successful
+held IDs for qualification. Matching retains their original 1-second deadlines
+and returned scores as opaque fences.
 Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
@@ -339,7 +339,6 @@ observe_due_hot_scores(
 acquire_hot_candidates_before(
   homeBucketId,
   hotCutoffMillis,
-  maximumScoreExclusive,
   limit
 )
   -> list[(workerId, observedScore)] descending by score
@@ -379,8 +378,8 @@ process-local HOT eligibility floor to both ordinary reads. The bounded
 Serviceability form returns only positive scores in
 `[MIN_BASE, base(hotCutoffTimeSlot,0,0))`. Its production caller supplies the
 later of that process floor and a stale-HOT compensation threshold.
-`maximumScoreExclusive=0` starts at the cutoff; otherwise the opaque score
-returned at the end of the previous page is the next exclusive upper bound.
+Every call starts at that range head with a bounded limit and no continuation
+score. Successful exact holds move Workers out of the range.
 Without periodic Serviceability, ordinary reads receive no floor and retain the original
 `MIN_BASE` range.
 
@@ -389,7 +388,6 @@ Recovery recheck acquisition:
 ```text
 acquire_recovery_recheck_candidates(
   homeBucketId,
-  maximumScoreExclusive,
   limit
 )
   -> list[(workerId, observedScore)]
@@ -416,11 +414,11 @@ ZREVRANGEBYSCORE key
   LIMIT 0 limit
 ```
 
-Both Serviceability reads return descending score pages. A zero maximum starts
-a new range sweep; the last returned score becomes the next exclusive maximum.
-If more than one Worker shares a truncated boundary score, the remaining tied
-Workers may be skipped until the next sweep. This is an explicit best-effort
-tradeoff rather than a second `(score, workerId)` cursor.
+Both Serviceability reads return bounded descending score heads with
+`LIMIT 0 limit`. They retain no continuation score. Successful holds schedule the next
+check outside the due range, allowing later reads to reach remaining equal-score
+members without a tie-skipping sweep. Read-only or rejected observations do not
+move the head and do not create an automatic bypass or data-repair guarantee.
 
 The reverse scan is intentional. RECOVERY_RECHECK scores are negative; within
 the recovery window, reverse numeric order returns the oldest window coordinate
@@ -441,8 +439,9 @@ The optional Worker Serviceability Pacer performs bounded recovery discovery
 only for WorkerGroups derived from the current bounded page of due
 `RUNNING_VISIBLE` Tasks. It does not globally discover Groups, mutate Task
 score, lease candidates, or infer serviceability from the score. It asks the
-owning Adapter for a route snapshot and only the later returned evidence may
-invoke a score transition. When the feature is disabled or evidence is lost,
+Score Owner to schedule the next recheck before offering an Adapter route snapshot.
+Later returned evidence may correct polarity while preserving a current/future
+time. When the feature is disabled or evidence is lost,
 RECOVERY_RECHECK has no wall-clock guarantee to move or park exactly when its
 coordinate becomes due.
 
@@ -753,23 +752,40 @@ fence.
 
 ### Worker Serviceability Probe Hold
 
-Serviceability Dispatch advances the check coordinate before publishing a
-best-effort Probe request. Both batch operations use one WorkerGroup Score key,
-one Redis `TIME`, and exact observed-score comparison:
+**Core scheduling change:** RECOVERY stores the next eligible recheck time;
+Pacer no longer filters it by adding rank-dependent backoff at read time.
+Serviceability Dispatch supplies at most 100
+`workerId -> WorkerRecheckTarget(observedScore, delayMillis)` entries. Both batch
+operations use one Group Score key and one Lua with Redis `TIME`, due validation
+and exact observed-score comparison:
 
 ```text
+nextSlot = floor((redisNowMillis + delayMillis) / SLOT_MILLIS)
+
 hold_observed_hot_for_serviceability_probes
-  exact HOT -> RECOVERY(redisNowSlot, laneRank=0, preserve dirty)
+  exact due HOT -> RECOVERY(nextSlot, laneRank=0, preserve dirty)
 
 advance_observed_recovery_rechecks
-  exact RECOVERY(rank=n)
-    -> RECOVERY(redisNowSlot, laneRank=n+1, preserve dirty)
+  exact due RECOVERY(rank=n) -> RECOVERY(nextSlot, laneRank=n+1, preserve dirty)
 ```
 
-Only `TRANSITIONED` Workers may be offered to the Adapter Probe HASH. A stale
-observation cannot advance a newer lease, hold, pause, or check. Probe offer
-loss is not rolled back: the updated RECOVERY coordinate becomes the source of
-the next bounded retry scan.
+Pacer owns retry cadence and maximum attempts; Kernel neither calculates a retry
+multiplier nor reads Pacer configuration. Due requires `storedSlot < redisNowSlot`.
+Nonpositive or out-of-range delays, invalid observed coordinates, cold recheck
+inputs, rank overflow and target coordinates at or beyond PAUSE are `INVALID`.
+Current/future holds and changed or missing exact fences are `STALE`; rejected
+members are not written. The delay starts at Redis execution, including when
+client submission is delayed. No extra client TIME read or companion key is used.
+
+Only `TRANSITIONED` Workers may be offered to the Adapter Probe HASH. Offer or
+Report loss is not rolled back: the retained next time becomes the source of the
+next bounded retry scan. CONNECTED evidence preserves a current/future recheck
+coordinate even when it restores HOT, so admission still waits until it is due.
+
+The storage encoding is unchanged. Stop the old scheduler before starting the
+new one in the same scope. Old last-check coordinates in the valid recent window
+are interpreted as due next-check times, allowing an earlier first bounded
+recheck; new writes then establish the new semantics without migration state.
 
 ### Worker Serviceability Evidence
 
@@ -804,9 +820,9 @@ become past may still be rejected by the existing freshness check.
 
 The Result path therefore owns no floor calculation, retry increment, cold
 park, or PAUSE exception. Dispatch owns check timing and retry progression.
-Connected Evidence supplies the fresh coordinate that makes a verified Route
-eligible above the immutable process floor; unavailable Evidence only removes
-that Worker from the HOT polarity.
+Connected Evidence refreshes a past coordinate above the process floor or keeps
+a current/future coordinate intact; it does not shorten a future recheck wait.
+Unavailable Evidence only removes that Worker from the HOT polarity.
 
 ### Recovery Exhausted / Cold Park
 
@@ -869,10 +885,10 @@ observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
   does not mutate score
 
 acquire_hot_candidates_before(
-  homeBucketId, hotCutoffMillis, maximumScoreExclusive, limit
+  homeBucketId, hotCutoffMillis, limit
 )
   reads positive HOT_ACQUIRE scores strictly below the supplied cutoff
-  returns a descending opaque-score page for a scalar best-effort sweep
+  returns a bounded descending opaque-score head without a continuation score
   belongs to Serviceability discovery, never ordinary Assignment
   does not mutate score
 
@@ -925,7 +941,7 @@ the facts-write/dirty failure windows and upgrade behavior.
 | HOT_ACQUIRE | accepted unavailable Adapter evidence | RECOVERY_RECHECK(sameTime, sameRank, dirty) | dedicated evidence-time fence; preserve the entire absolute coordinate |
 | RECOVERY_RECHECK | explicit owner-validated general polarity move | HOT_ACQUIRE(sameTime, 0, dirty) | exact observed-score CAS; distinct from Serviceability evidence |
 | either | accepted connected Adapter evidence | HOT_ACQUIRE(retained or refreshed time, sameRank, dirty) | dedicated evidence-time fence; advance an older past-slot coordinate, preserve current/future coordinates and PAUSE |
-| RECOVERY_RECHECK | due Serviceability probe round | RECOVERY_RECHECK(owner Redis time, retryCount + 1, dirty) | exact advance before probe offer; Dispatch policy owns retry cadence |
+| RECOVERY_RECHECK | due Serviceability probe round | RECOVERY_RECHECK(owner Redis time + supplied delay, retryCount + 1, dirty) | exact advance before probe offer; Dispatch policy owns retry cadence |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
 | RECOVERY_RECHECK | owner hold / disabled / drain / maintenance | RECOVERY_RECHECK(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold + owner evidence |
 

@@ -299,6 +299,11 @@ kernel_jvm`.
   compensation, periodic renewal or a pending lease registry. Do not add Item-triggered
   supply, per-Task stock or unavailable-Rule fallback.
 
+- Worker Serviceability reads the current bounded HOT/RECOVERY heads without
+  cross-round scan cursors or empty-range cooldowns. RECOVERY timeSlot is the next
+  eligible recheck time: Pacer supplies the delay and Score Owner uses Redis time
+  and exact CAS before any Probe offer. Connected evidence preserves future
+  coordinates; offer loss does not roll back a scheduled retry.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,

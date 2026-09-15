@@ -36,6 +36,10 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   100-Worker batches. Past-slot freshness and PAUSE protection remain separate
   oracles. Repeated head observations plus acquisition reach equal-score Workers
   without skipping the intervening batch; expired leases keep their newer positions.
+  Serviceability holds use Redis execution time plus caller-supplied delay;
+  both HOT and RECOVERY reach 250 equal-score members in 100/100/50 batches.
+  Due-slot/lookback boundaries, future-evidence preservation and concurrent exact
+  holds are Owner oracles; Pacer tests own retry arithmetic and next-round discovery.
   Corrupt scores are filtered within the raw read limit, without replacement reads
   or an automatic bypass guarantee through a fully corrupt head.
   Pacer acquisition precedes projection: supplied candidates are already held,

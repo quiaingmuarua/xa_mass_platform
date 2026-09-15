@@ -7,22 +7,19 @@ record WorkerServiceabilityDispatchConfig(
         long intervalMillis,
         long hotEligibilityFloorMillis,
         long probeRetryIntervalMillis,
-        long probeSweepRestartDelayMillis,
         int maxRecoveryAttempts,
         List<String> probeExcludedEndpointManagerIds
 ) {
 
     public static final long DEFAULT_INTERVAL_MILLIS = 1_000;
     public static final long DEFAULT_PROBE_RETRY_INTERVAL_MILLIS = 60_000;
-    public static final long DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS = 10_000;
     public static final int DEFAULT_MAX_RECOVERY_ATTEMPTS = 5;
     public static final List<String> DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS =
             List.of("system-polling");
 
     public WorkerServiceabilityDispatchConfig {
         if (intervalMillis < 1
-                || probeRetryIntervalMillis < 1
-                || probeSweepRestartDelayMillis < 1) {
+                || probeRetryIntervalMillis < 1) {
             throw new IllegalArgumentException(
                     "serviceability durations must be positive"
             );
@@ -33,6 +30,9 @@ record WorkerServiceabilityDispatchConfig(
             throw new IllegalArgumentException(
                     "maxRecoveryAttempts must be between 1 and 99"
             );
+        }
+        if (probeRetryIntervalMillis > Long.MAX_VALUE / (maxRecoveryAttempts + 1L)) {
+            throw new IllegalArgumentException("serviceability retry delay must not overflow");
         }
         if (probeExcludedEndpointManagerIds == null
                 || probeExcludedEndpointManagerIds.size() > 100) {
@@ -60,7 +60,6 @@ record WorkerServiceabilityDispatchConfig(
                 DEFAULT_INTERVAL_MILLIS,
                 hotEligibilityFloorMillis,
                 DEFAULT_PROBE_RETRY_INTERVAL_MILLIS,
-                DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
                 DEFAULT_MAX_RECOVERY_ATTEMPTS,
                 DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
         );

@@ -60,16 +60,16 @@ public interface WorkerScoreCore {
             long expectedLeaseUntilMillis
     );
 
+    /** Reads a bounded descending HOT head below the exclusive cutoff, without a cursor. */
     List<WorkerScoreObservation> acquireHotCandidatesBefore(
             String homeBucketId,
             long hotCutoffMillis,
-            long maximumScoreExclusive,
             int limit
     );
 
+    /** Reads the earliest due rechecks in the Owner's Redis-time window, without a cursor. */
     List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
             String homeBucketId,
-            long maximumScoreExclusive,
             int limit
     );
 
@@ -117,16 +117,18 @@ public interface WorkerScoreCore {
             long observedScore
     );
 
+    /** Exact-holds due HOT observations at RECOVERY rank 0 until Redis now plus the delay. */
     Map<String, WorkerScoreTransitionResult>
             holdObservedHotForServiceabilityProbes(
                     String homeBucketId,
-                    Map<String, Long> observedHotScores
+                    Map<String, WorkerRecheckTarget> targets
             );
 
+    /** Exact-advances due RECOVERY observations by one rank and schedules their next recheck. */
     Map<String, WorkerScoreTransitionResult>
             advanceObservedRecoveryRechecks(
                     String homeBucketId,
-                    Map<String, Long> observedRecoveryScores
+                    Map<String, WorkerRecheckTarget> targets
             );
 
     Map<String, WorkerScoreTransitionResult>
@@ -185,6 +187,10 @@ public interface WorkerScoreCore {
         public String wireValue() {
             return wireValue;
         }
+    }
+
+    /** Pairs an opaque exact fence with a caller-decided positive retry delay. */
+    record WorkerRecheckTarget(long observedScore, long delayMillis) {
     }
 
     record WorkerScoreState(
