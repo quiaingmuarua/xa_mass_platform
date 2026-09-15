@@ -2,7 +2,6 @@ package com.xa.mass.integration.workerlab;
 
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.CONVERGENCE_WORKERS;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.PHONE_GROUP;
-import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.PHONE_WORKERS;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.STRING_GROUP;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.STRING_WORKERS;
 import static com.xa.mass.integration.workerlab.WorkerLabConvergenceSupport.await;
@@ -174,11 +173,12 @@ final class WorkerTaskFaultConvergence {
         );
         RuntimeApiClient runtime = options.runtimeClient();
         try {
-            awaitAllUnavailable(options, runtime, state.workerIdsByCoordinate());
-            evidence.record("host-down", "worker-world-unavailable", Map.of(
+            awaitAllDisconnected(options, runtime, state.workerIdsByCoordinate());
+            evidence.record("host-down", "worker-world-disconnected", Map.of(
                     "workerCount", state.workerIdsByCoordinate().size(),
                     "targetWorkerId", state.targetWorkerId()
             ));
+            recordDownScheduling(runtime, state.workerIdsByCoordinate(), evidence);
         } catch (RuntimeException error) {
             writeFailure(evidence, "host-down", error);
             throw error;
@@ -426,7 +426,7 @@ final class WorkerTaskFaultConvergence {
         ));
     }
 
-    private static void awaitAllUnavailable(
+    private static void awaitAllDisconnected(
             WorkerLabHarnessOptions options,
             RuntimeApiClient runtime,
             Map<String, String> workerIdsByCoordinate
@@ -439,35 +439,35 @@ final class WorkerTaskFaultConvergence {
                 states -> states.size() == allIds.size()
                         && states.values().stream().allMatch("disconnected"::equals)
         );
-        awaitGroupUnavailable(options, runtime, PHONE_GROUP, PHONE_WORKERS,
-                workerIdsByCoordinate);
-        awaitGroupUnavailable(options, runtime, STRING_GROUP, STRING_WORKERS,
-                workerIdsByCoordinate);
     }
 
-    private static void awaitGroupUnavailable(
-            WorkerLabHarnessOptions options,
+    private static void recordDownScheduling(
             RuntimeApiClient runtime,
-            String groupId,
-            List<WorkerRef> workers,
-            Map<String, String> workerIdsByCoordinate
+            Map<String, String> workerIdsByCoordinate,
+            ConvergenceEvidence evidence
     ) {
-        List<String> workerIds = workers.stream()
-                .map(worker -> workerIdsByCoordinate.get(worker.coordinate()))
-                .toList();
-        await(
-                "host-down-scheduling-" + groupId,
-                options.maximumWait(),
-                () -> runtime.observeScheduling(groupId, workerIds),
-                states -> states.size() == workerIds.size()
-                        && states.values().stream().allMatch(
-                        WorkerLabConvergenceSupport::isUnavailableSchedulingState),
-                states -> WorkerLabConvergenceSupport.describeUnexpectedStates(
-                        workerIds,
-                        states,
-                        WorkerLabConvergenceSupport::isUnavailableSchedulingState
-                )
-        );
+        // Refill can keep unused offline candidates HOT. Sample once; recovery
+        // is proved by actual work after restart, not by a fleet-wide Score gate.
+        for (String groupId : List.of(PHONE_GROUP, STRING_GROUP)) {
+            List<String> workerIds = CONVERGENCE_WORKERS.stream()
+                    .filter(worker -> groupId.equals(worker.groupId()))
+                    .map(worker -> workerIdsByCoordinate.get(worker.coordinate()))
+                    .toList();
+            try {
+                Map<String, String> states = runtime.observeScheduling(groupId, workerIds);
+                Map<String, Integer> counts = new LinkedHashMap<>();
+                states.values().forEach(value -> counts.merge(value, 1, Integer::sum));
+                evidence.record("host-down", "scheduling-sample", Map.of(
+                        "workerGroupId", groupId, "stateCounts", counts,
+                        "statesByWorkerId", states
+                ));
+            } catch (RuntimeException failure) {
+                evidence.record("host-down", "scheduling-sample-unavailable", Map.of(
+                        "workerGroupId", groupId,
+                        "failureType", failure.getClass().getSimpleName()
+                ));
+            }
+        }
     }
 
     private static void awaitHot(

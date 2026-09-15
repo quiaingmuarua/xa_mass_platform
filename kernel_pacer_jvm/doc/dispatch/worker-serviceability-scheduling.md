@@ -95,6 +95,16 @@ through the ordinary retry scan. If Route evidence is lost before an ordinary
 HOT coordinate changes polarity, the unchanged coordinate eventually enters
 the stale-HOT compensation range.
 
+An unused candidate that is repeatedly refilled does not have an unchanged
+coordinate: each new lease advances its time. It can remain outside the old-HOT
+probe range without any actual Adapter delivery to generate fresh evidence.
+Refill alone therefore does not guarantee fleet-wide unavailability after an
+outage. Task-fault records these scheduling states as diagnostics and proves
+actual work recovery after reconnect. Runtime Boundary separately loses the first
+disconnect evidence and requires a real TASK delivery expiry to supply new
+evidence under DEFAULT, where no periodic probe can mask that path. Existing
+past-slot STALE checks and exact completed-HOT counterpart release still apply.
+
 ## Resource Producer
 
 `DispatchMainScheduler` receives one bounded descending score map, removes the

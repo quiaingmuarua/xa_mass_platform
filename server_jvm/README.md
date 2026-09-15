@@ -1124,5 +1124,12 @@ custom `extension.worker.*` event through a SERVER Command and the default
 probe/properties/events handlers, observes Adapter connection state, closes
 the current Channel, and proves transparent reconnect.
 
+An isolated DEFAULT-preset Runtime Boundary witness deliberately loses the first
+disconnect report after its real Redis handoff. A subsequent TASK must reach the
+Adapter, expire, and supply correlated rejection plus new network evidence that
+changes the Worker to RECOVERY. A real reconnect then completes the same Item.
+Periodic probes cannot satisfy this witness. Failure evidence contains bounded
+Command/evidence timing and Score transition traces, never opaque content.
+
 The canonical proof ownership, prerequisites and CI lane selection are in
 [`TESTING.md`](../TESTING.md).

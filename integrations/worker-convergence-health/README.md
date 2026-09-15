@@ -97,7 +97,8 @@ String Item in wave two is the only checkpoint execution promoted to an oracle.
    There is no `labSlot` condition or backup Properties mutation. With the
    backup unavailable, wait for the target Handler to enter the checkpoint.
 3. Kill Worker Simulator and require the entire 1,000-Worker world to become
-   disconnected and scheduling unavailable.
+   disconnected. Sample each Group's scheduling states once for diagnostics,
+   then proceed to recovery without waiting for every Score to leave HOT.
 4. Restart 999 Workers, including the backup, while excluding the original
    target. Require the 999 identities to reconnect unchanged and the explicitly
    targeted backup to become HOT before closing the original checkpoint
@@ -124,16 +125,35 @@ these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
 DSL or automatic compensation.
 
+**Acceptance change:** Host-down establishes the physical outage, not an all-Worker
+scheduling barrier. The wave-two String Items target only the checkpoint pair,
+while the Task's ANY refill target can retain other Workers. An unused offline
+candidate may repeatedly expire and be refilled without any actual Adapter
+delivery. Its refreshed Score also stays outside the old-HOT probe range.
+Neither that residual HOT state nor an unavailable diagnostic sample blocks the
+restart. The checkpoint, recovery work and retained Result witnesses remain
+mandatory; the 1,000-Worker topology, Item counts and existing time bounds remain.
+
+Runtime Boundary pairs this oracle change with a real WebSocket Worker and the
+production DEFAULT preset: deliberately lose the first disconnect evidence,
+require a real TASK Command to reach Adapter processing and expire, then observe
+its correlated rejection and new network evidence drive RECOVERY. Reconnecting
+the Worker must complete the same Item. DEFAULT has no periodic Probe that could
+substitute for this delivery path. Bounded failure traces identify Command
+handoff, evidence times, exact confirmation, evidence transitions and successful
+release, without recording payload content. This is a healthy subsequent handoff
+witness, not a guarantee under continuing evidence loss.
+
 The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
 current-slot evidence may correct polarity while preserving the confirmable
 lease coordinate, rank and dirty. It also checks past-slot rejection, PAUSE,
 arrival order, exact confirmation races and bounded command cost. This process
-proof retains its original 1,000-Worker outage oracle and five-minute bound;
-it does not force evidence into a particular slot or establish reliable replay.
+proof does not force evidence into a particular slot or establish reliable replay.
 
 Multi-Worker outage checks page Network and Scheduling observations at the
-public 100-ID boundary, then write the existing per-Worker timeline rows only
-after the whole requested set has converged. Runtime Worker preview remains a
+public 100-ID boundary. State-scenario convergence rows follow its established
+oracles; task-fault records physical disconnection and one diagnostic scheduling
+sample per Group, including residual identities and state counts. Runtime Worker preview remains a
 100-entry random sample per Group; it checks sampled canonical identity while
 the paged Network/Scheduling observations cover the exact fleet. A `wave-6`
 timeout additionally records a best-effort bounded

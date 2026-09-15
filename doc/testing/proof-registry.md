@@ -70,6 +70,10 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Group refill witnesses use actual Workers across two Groups and four Tasks,
   including shared and different Rules within one Group, to prove supplied-batch
   acquisition-before-qualification and successful finite execution. They do not measure throughput.
+  An isolated DEFAULT-preset witness loses the first disconnect evidence, then
+  requires actual Adapter TASK expiry, correlated rejection and consumed network
+  evidence to drive RECOVERY; reconnect completes the same Item. No Probe or
+  synthetic expiry Report substitutes for that path. Safe bounded traces accompany failures.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity, guaranteed activation after evidence loss, atomic registration,
   atomic Score/Result commits or observation replay.
@@ -103,11 +107,14 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 ## worker_convergence_health
 
 - **Primary owner:** `:integrations:worker-convergence-health`.
-- **Claim:** Adapter and Kernel scheduling converge within a bounded wait after
-  established Worker mutations, one Server restart and one execution-time Host
-  loss; named successful Results remain observable across a later Host loss.
+- **Claim:** Adapter and Kernel scheduling converge after established state
+  mutations and one Server restart. Execution-time Host loss establishes the
+  physical outage, followed by checkpoint/work recovery after reconnect and
+  retained named Results across a later Host loss. Host-down Score samples are
+  diagnostic, not a gate requiring all unused offline candidates to leave HOT.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
+  fleet-wide scheduling unavailability after one best-effort disconnect report,
   background fault Result status or execution count, TaskItem Score finality
   across the interruption window, executing Worker, random coverage,
   throughput and soak.
