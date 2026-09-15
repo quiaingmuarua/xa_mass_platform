@@ -178,9 +178,6 @@
       "rewrite_current_scores",
       "sample_registered_worker_ids",
       "toggle_current_polarity"
-    ],
-    "CandidateLease": [
-      "acquire"
     ]
   },
   "dtos": {

@@ -15,22 +15,23 @@ carries one TaskItem and one DeliveryCommand; business batching stays inside
 that Item's payload. Never release a fence after publication to simulate early
 slot reuse or assign independent Items behind the same Worker lease.
 
-## Core Mechanism Change: Match Before First Lease
+## Core Mechanism Change: Lease Before Matching
 
-**The pre-Matching handoff hold and inventory extension are removed.** Pacer
-supplies a read-only, closed batch of due HOT observations. Matching qualifies
-those IDs before Kernel acquires a 1-second inventory lease. Dispatch then
-confirms the execution fence. This changes lease timing and the facts race window;
-Kernel supply authority, Score encoding and exact execution confirmation remain.
-There is no 5-second candidate lease or second inventory renewal operation.
+**Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
+It supplies only the successful fences from a closed Group observation batch.
+Matching qualifies those IDs and retains their original fences and deadlines;
+processing and inventory waiting share the same second. Unmatched candidates also
+hold that short lease until expiry. Kernel supply authority, Score encoding and
+exact execution confirmation remain. There is no Matching acquisition callback,
+5-second inventory lease or inventory renewal operation.
 
 ## Acquisition And Handoff
 
 ```text
 NORMAL bindings -> local Group deficits
   -> Pacer read-only due HOT page, including dirty=0 and dirty=1
-  -> Matching supplied-ID current projection and acceptance plan
-  -> one Kernel exact first acquisition, 1 second, dirty=0 -> shared inventory
+  -> one Kernel exact acquisition, 1 second, dirty=0 -> supplied successful fences
+  -> Matching supplied-ID current projection and acceptance plan -> shared inventory
   -> local take -> exact Worker confirmation, execution fence, dirty=1
   -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
@@ -39,9 +40,10 @@ The Score Owner preserves rank and clears dirty when exact-acquiring a due HOT
 observation. Both observed dirty values are legal; the entire score must still
 match. Concurrent callers using the same observation have at most one winner.
 An occupied, paused, negative, missing or changed score cannot be acquired.
-The 1-second target starts at the acquisition callback, after Matching finishes.
-Matching submits only accepted IDs through a Pacer-issued, single-use,
-invocation-bound capability capturing the original Group and scores.
+Pacer computes the target as its current time plus 1 second immediately before
+that Group's acquisition call. Only TRANSITIONED results with new fences are
+offered. Matching cannot reset the deadline, renew the lease or acquire a substitute.
+It filters expired offers before projection and again before stock insertion.
 
 The optional HOT floor remains a Score Owner observation constraint. A read-only
 page uses one Lua with Redis TIME, range counts and bounded rank ZRANGE. Pacer
@@ -56,8 +58,8 @@ Targets must be later than nowSlot. The operations return individual results;
 Properties and other Owners remain independent commits.
 
 TaskItems only consume successfully acquired inventory. Counts and take read no
-Worker Score. No match or projection failure creates no hold. Ambiguous
-acquisition, failed insertion and unused inventory leave the acquired hold to
+Worker Score. No match or projection failure leaves the already acquired hold to
+expire. Ambiguous acquisition, failed insertion and unused inventory also leave holds to
 expire; there is no periodic renewal, compensation release or restart adoption.
 
 ## Confirmation Before Claim
@@ -116,13 +118,12 @@ coordinates; it is not restricted to active leases. Release preserves dirty and
 expiry does not rewrite it. Due scans therefore include dirty=1. Only a new exact
 initial HOT acquisition clears dirty; confirmation consumes clean eligibility.
 
-Matching reads current membership before acquisition. A facts change that moves
-a clean observed score to dirty invalidates that observation. If it was already
-dirty, another facts write can leave the score unchanged; acquisition may clear
-dirty while admitting the previously read projection. This explicit best-effort
-window has no post-acquisition projection read, Properties version or transaction.
-After acquisition, a successful dirty invalidation rejects the old candidate at
-confirmation. Default identity selectors need no facts. Never fetch a newer score
+Pacer acquisition clears dirty before Matching reads current membership. After
+acquisition, a successful dirty invalidation rejects that candidate at confirmation,
+even if it follows the projection read; admission performs no second acquisition
+that could clear it. Facts and dirty are still independent: a projection-to-facts
+race or failed invalidation is not repaired by a version or transaction. Default
+identity selectors need no facts. Never fetch a newer score
 to rescue a stale candidate or clear an active execution hold. There is no
 per-Task Candidate Cache to invalidate or repair.
 
@@ -150,8 +151,8 @@ TaskItem movement and cannot prove that all preceding Owner calls completed.
 
 | Stage | Failure | Existing behavior |
 | --- | --- | --- |
-| Qualification | no match or projection failure | No stock and no lease write |
-| First acquisition | CAS lost | Exclude the Worker from inventory |
+| First acquisition | CAS lost | Do not supply the Worker to Matching |
+| Qualification | no match or projection failure | No new stock; acquired leases expire naturally |
 | First acquisition | response loss or insertion failure | Only returned new fences enter stock; committed holds expire |
 | Confirmation | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
 | Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |

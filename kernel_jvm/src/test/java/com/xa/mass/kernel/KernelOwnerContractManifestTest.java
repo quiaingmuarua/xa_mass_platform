@@ -39,7 +39,6 @@ class KernelOwnerContractManifestTest {
             Map.entry("WorkerCandidateIndex", WorkerCandidateIndex.class),
             Map.entry("RefillBatch", WorkerCandidateIndex.RefillBatch.class),
             Map.entry("TaskQuery", WorkerCandidateIndex.TaskQuery.class),
-            Map.entry("CandidateLease", WorkerCandidateIndex.CandidateLease.class),
             Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),

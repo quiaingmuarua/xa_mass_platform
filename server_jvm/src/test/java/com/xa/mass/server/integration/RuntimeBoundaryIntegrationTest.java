@@ -44,7 +44,6 @@ import java.util.List;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.RefillBatch;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.CandidateLease;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -541,17 +540,17 @@ class RuntimeBoundaryIntegrationTest {
                 if(selected.stream().map(taskGroups::get).distinct().count()==2)multiGroupRoot.set(true);
                 return new RefillBatch() {
                     public Set<String> groupsNeedingRefill() { return batch.groupsNeedingRefill(); }
-                    public int refill(String group,Map<String,Long> offered,
-                            CandidateLease lease) {
-                        if(!Set.of(groupA,groupB).contains(group))return batch.refill(group,offered,lease);
+                    public int refill(String group,List<HeldCandidate> offered) {
+                        if(!Set.of(groupA,groupB).contains(group))return batch.refill(group,offered);
                         supplied.add(group);
-                        for(var workerId:offered.keySet())assertThat(identities.get(workerId)).containsEntry("group",group);
-                        var calls=new java.util.concurrent.atomic.AtomicInteger();
-                        return batch.refill(group,offered,ids->{
-                            assertThat(calls.incrementAndGet()).isEqualTo(1);
-                            assertThat(offered.keySet()).containsAll(ids);
-                            return lease.acquire(ids);
-                        });
+                        // Proof-only read: the production handoff performs no confirmation read.
+                        var states=workerScores.getScoreStates(group,offered.stream().map(HeldCandidate::workerId).toList());
+                        for(var held:offered) {
+                            assertThat(identities.get(held.workerId())).containsEntry("group",group);
+                            assertThat(states.get(held.workerId()).score()).isEqualTo(held.score());
+                            assertThat(states.get(held.workerId()).dirty()).isZero();
+                        }
+                        return batch.refill(group,offered);
                     }
                 };
             }).when(matchingCatalog).prepareRefill(anyMap());

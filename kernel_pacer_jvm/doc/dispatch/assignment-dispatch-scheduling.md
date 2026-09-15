@@ -15,7 +15,7 @@ Producers. It reads NORMAL Task bindings once and shares the prepared views.
 TaskItems only consume stock; they never generate refill demand or a matching job.
 
 The refill Producer calls `prepareRefill` once using those prepared views. Matching's
-invocation-local batch supplies a Group demand hint and accepts Group observation batches.
+invocation-local batch supplies a Group demand hint and accepts already leased Group batches.
 Pacer intersects the hint with Main's Group roots and retains its own rotation and
 supply budgets. Each Group batch serves multiple Tasks' Rule demands; no per-Task
 refill call or per-Worker Rule call is introduced. Server admission does not prepare
@@ -23,20 +23,20 @@ refill batches. Group hints are checked against current stock again at admission
 
 ## Core Mechanism Change
 
-**Pre-Matching acquisition and the subsequent inventory extension are removed.**
-Pacer alone reads HOT candidates and supplies their original opaque scores.
-Matching qualifies that closed batch, then Kernel acquires a 1-second inventory
-lease for the accepted subset. Execution confirmation remains a separate exact
-transition. Explicit-ID queries filter the supplied batch and stock, without
-point acquisition. Redis-time validation remains inside each lease CAS.
-The qualification-to-acquisition facts window is explicitly best-effort.
+**Pacer acquires a 1-second candidate lease before Matching reads projections.**
+Only successful new fences are supplied. Matching admits the qualified subset
+using those same fences and original deadlines; processing and stock waiting share
+the second. Unmatched leases expire naturally. Execution confirmation remains a
+separate exact transition. Explicit-ID queries filter the supplied batch and stock,
+without point acquisition. Redis-time validation remains inside each lease CAS.
+Matching has no acquisition callback or inventory renewal capability.
 
 ## Candidate Selection
 
 ```text
 NORMAL RUNNING Tasks -> one prepared Binding batch
   -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT page
-      -> Matching projection/acceptance -> Kernel exact 1-second lease -> inventory
+      -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
   -> dispatch: due Item queries -> local destructive take
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
@@ -55,23 +55,23 @@ Offsets are retained only for current roots (at most 100); removed Groups forget
 them. Observation failure invents no progress. Group rotation also advances on
 attempts. Pagination does not claim a stable view under concurrent Score changes.
 
-Matching reads only supplied IDs' current projections before any lease write.
-It rotates Eligibility/query acceptance, prioritizes constrained queries before
-ANY and plans each ID for at most one Eligibility. The accepted union is exact-
-acquired once, with a deadline computed as callback time plus 1 second. Full-score
-comparison accepts due dirty=0 or dirty=1 and clears dirty on success. Matching
-retains only returned TRANSITIONED fences; the observed score never enters stock.
+For each nonempty Group page Pacer computes now plus 1 second and calls the existing
+exact acquisition once. Full-score comparison accepts due dirty=0 or dirty=1 and
+clears dirty on success. Only TRANSITIONED new fences reach Matching; all-failed
+acquisition skips it. Owner response loss does not trigger a confirmation read.
 
-Pacer's invocation-local acquisition capability captures the Group and original scores.
-Only a unique subset of issued IDs is accepted, at most once, on the issuing thread,
-before refill returns. Invalid, duplicate, late or cross-batch uses cannot call the
-Score Owner. Rule Handlers never receive the capability. Plans remain local to the
-call; there is no pending lease registry or periodic renewal.
+Matching filters expired supplied IDs, then reads each participating Handler's
+projection once. It rotates Eligibility/query acceptance, prioritizes constrained
+queries before ANY and plans each ID for at most one Eligibility. All Group plans
+finish before insertion; Handler failure commits none of them. Insertion rechecks
+expiry and capacity, retaining original fences and deadlines. Rule Handlers receive
+no lease capability. Plans remain local to the call, without a pending registry.
 
-This restores scheduling authority while accepting potentially longer waits for
-rare predicates/explicit IDs. Matching cannot compensate by discovering better IDs
-from its indexes. Unmatched observations cause no lease write. Committed holds
-from ambiguous acquisition or failed insertion expire naturally.
+Rare predicates/explicit IDs can wait under bounded Group supply. Matching cannot
+discover substitute IDs from its indexes. Zero-match batches still write short
+leases, and partial matches can acquire more Workers than they admit: this is the
+accepted cost of pre-Matching acquisition. Unmatched leases, ambiguous acquisition,
+expired processing and failed insertion recover by natural expiry, without renewal.
 
 Main-selected INITIAL Tasks never prewarm. Closed, parked or disabled Tasks supply
 no subsequent targets. A Main observation is round evidence; stopping a Task does
@@ -115,7 +115,8 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 | --- | --- |
 | missing/unavailable Task binding | no assignment; failure/idle handling continues |
 | invalid selector | Server rejects before Item mutation; stored invalid input fails bounded acquisition |
-| HOT observation or projection failure | refill Producer backoff; no new hold |
+| HOT observation failure | refill Producer backoff; no acquisition |
+| projection failure | refill Producer backoff; no new Group stock; acquired holds expire |
 | acquisition failure or response loss | no stock from unconfirmed results; committed holds expire |
 | competing exact score or dirtying a held candidate | reject the stale acquisition or execution fence |
 | unused hold | expires naturally; no compensation |
@@ -124,12 +125,25 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 There is no Score/facts transaction, ACK, replay, repair scan or guarantee that
 lost Properties evidence eventually arrives. Rules never couple Task lifecycles.
 
-### Known Serviceability Regression
+### Serviceability And Verification Scope
 
-**The 1-second candidate lease has not passed the task-fault convergence proof.**
-A retained target can repeatedly reacquire unused, expired inventory and refresh
-its HOT Score time. The existing Serviceability loss-compensation scan requires
-an older HOT coordinate, so those Workers can remain outside its observation
-range after their routes disconnect. Lease acquisition is not network evidence.
-This interaction requires resolution before claiming fault-recovery acceptance;
-the Serviceability time contract and probe selection have not been changed here.
+The `d148ed516` baseline passed Proof CI run `34928709726`, including the original
+task-fault and state scenarios. Earlier local failures do not describe that baseline
+as currently failing, and its green result does not validate the new lease ordering.
+The pre-Matching change requires its own unchanged-fixture proof results.
+
+On 2026-09-15, the pre-Matching worktree over `d148ed516` passed Windows-native
+Owner/Runtime Boundary, Worker Correctness, Dynamic Matching (150400 Items) and
+Convergence Health state verification against loopback Redis 7.4.10. The unchanged
+task-fault run failed its 300-second host-down scheduling assertion: 28 String
+Workers remained held-hot, excluding the checkpoint target and backup, which were
+already RECOVERY. Refill/admission continued while consumption stayed fixed; the
+run stopped before the restart/recovery phase. The initial disconnect evidence's
+delivery/rejection reason was not captured. This is a local failed acceptance,
+not a same-environment attribution to the new ordering. Linux Task Call/mixed A/B
+against the baseline remains unexecuted; no performance acceptance is claimed.
+
+Lease acquisition is not network evidence. The existing current-slot evidence
+boundary, observation-age checks and Serviceability probe strategy are unchanged.
+Refill alone emits no Adapter delivery evidence and does not guarantee repair after
+a lost disconnect. Actual dispatch retains the existing delivery-evidence path.

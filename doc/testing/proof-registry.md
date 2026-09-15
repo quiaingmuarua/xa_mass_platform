@@ -34,9 +34,11 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   preserves Worker lease coordinates, rank and
   dirty, with both polarity orders, exact confirmation races and one-command
   100-Worker batches. Past-slot freshness and PAUSE protection remain separate
-  oracles. Read-only rank pages reach equal-score
-   Workers beyond an unmatched head without Score writes. Qualification precedes
-   the sole inventory acquisition; its facts window remains best-effort. TaskItem outcome proof covers
+  oracles. Read-only rank pages reach equal-score Workers beyond the first page.
+  Pacer acquisition precedes projection: supplied candidates are already held,
+  even if they do not match. Command-order assertions distinguish that path from
+  qualification-before-acquisition; original deadlines, natural expiry and later
+  dirty invalidation retain their independent oracles. TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
   promotion/state reads. Server state-query counting excludes Result reads.
@@ -60,7 +62,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   and subsequent Item execution witness the continuous observation boundary.
   Group refill witnesses use actual Workers across two Groups and four Tasks,
   including shared and different Rules within one Group, to prove supplied-batch
-  qualification and successful finite execution. They do not measure throughput.
+  acquisition-before-qualification and successful finite execution. They do not measure throughput.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity, guaranteed activation after evidence loss, atomic registration,
   atomic Score/Result commits or observation replay.

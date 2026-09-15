@@ -52,7 +52,7 @@ final class SharedEligibility {
 
     int room() { return inventory.room(scope); }
 
-    /** Unheld admission plan; the Catalog acquires all selected scopes in one Group call. */
+    /** Plans admission of Pacer-held identities; no stock is committed during Handler work. */
     List<RuleHandler.Member> select(Map<EligibilityQuery,RuleHandler.Query> queries,
             List<String> offered, int budget) {
         var missing=deficits(queries);

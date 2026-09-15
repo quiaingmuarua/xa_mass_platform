@@ -67,7 +67,7 @@ class SharedEligibilityTest {
         assertTrue(select(targets,offered(1,"US")).isEmpty());
         var query=pools(1,"CN","US");assertEquals(1,index.take(List.of(query)).get(query).size());assertEquals(0,rule.snapshots);
     }
-    @Test void overlappingQueriesShareOneProjectionAndOnlyAcquiredEntriesBecomeVisible() {
+    @Test void overlappingQueriesShareOneProjectionAndPlansStayInvisibleUntilAdmission() {
         var us=pools(10,"US");var either=pools(10,"US","CN");
         var selected=select(List.of(us,either),offered(10,"US"));
         assertEquals(10,selected.size());assertEquals(1,rule.snapshots);

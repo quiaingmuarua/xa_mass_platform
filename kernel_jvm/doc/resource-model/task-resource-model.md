@@ -37,9 +37,9 @@ Main resolves at most 100 NORMAL Task IDs/Groups through one `prepareTaskQueries
 call shared by refill and dispatch. Missing or unusable bindings block assignment.
 The refill Producer prepares one Matching `RefillBatch` from those views. It merges
 stored targets once by shared Group/Rule and normalized query, reuses visited queries,
-then qualifies only Pacer-issued read-only observations and requests one batch-bound
-Kernel first acquisition for a 1-second candidate lease before inventory
-admission. Task views reference shared stock without carrying Rule coordinates
+then qualifies only Pacer-issued, already leased candidates. Pacer acquires the
+1-second lease before Matching reads projections; stock retains that fence and
+original deadline without renewal. Task views reference shared stock without carrying Rule coordinates
 or targets into Kernel. The batch exposes only Group demand hints and supplied-ID
 admission; Kernel retains Group scheduling. All Item selectors consume that local inventory.
 

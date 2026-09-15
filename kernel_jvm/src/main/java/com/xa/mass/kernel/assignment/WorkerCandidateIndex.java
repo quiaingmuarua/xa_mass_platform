@@ -22,15 +22,10 @@ public interface WorkerCandidateIndex {
         Set<String> groupsNeedingRefill();
 
         /**
-         * Qualifies at most 100 read-only observations before requesting the first lease.
-         * Scores remain opaque; only returned HeldCandidates may enter consumable inventory.
+         * Qualifies at most 100 unique candidates already leased by Pacer for this Group.
+         * Admission preserves each opaque fence and its original cleanup deadline.
          */
-        int refill(String workerGroupId, Map<String, Long> observedScores, CandidateLease lease);
-    }
-
-    /** Valid only during one refill call; at most one nonempty subset of the issued batch. */
-    interface CandidateLease {
-        List<HeldCandidate> acquire(List<String> acceptedWorkerIds);
+        int refill(String workerGroupId, List<HeldCandidate> offeredCandidates);
     }
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */

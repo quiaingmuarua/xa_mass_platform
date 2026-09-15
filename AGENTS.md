@@ -225,12 +225,13 @@ architectures.
   index updates still prepare before writing in one bounded Lua operation.
   Matching owns paired projection and deficits/refill/take interpretation, shared Group/Rule
   inventory and Task-declared targets. Pacer alone discovers HOT IDs and issues
-  closed read-only observed-score batches. **Matching precedes the first lease:**
-  it qualifies only supplied IDs and requests one batch-bound exact acquisition
-  for 1-second inventory. Pre-Matching holds and inventory extension are removed;
-  Handlers have no acquisition or lease capability. Kernel retains all Score,
-  confirmation and claim authority. Qualification-to-acquisition facts races remain
-  explicitly best-effort; do not restore post-acquisition rechecks or property versions.
+  closed batches of already acquired 1-second candidate leases. **Pacer acquires
+  before Matching reads eligibility:** qualification and stock waiting share the
+  original deadline. Matching retains the supplied fences without an acquisition
+  callback or inventory extension; Handlers have no lease capability. Kernel retains
+  all Score, confirmation and claim authority. Acquisition clears dirty before the
+  projection read; later successful invalidation rejects that candidate at confirmation.
+  Facts and dirty remain separate best-effort commits, without property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
   Refill prepares one invocation-local Group/Rule demand batch from Main's Task
@@ -282,9 +283,10 @@ kernel_jvm`.
   dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
   count. Matching cannot discover IDs or initiate targeted acquisition. It checks
-  supplied projections, plans one Eligibility per ID and requests one union first
-  acquisition through the invocation-bound callback. Only new returned fences enter
-  stock. Read-only Group page offsets remain bounded to current Main roots and
+  supplied projections and plans one Eligibility per ID. Pacer exact-acquires the
+  observed Group batch before invoking Matching; only successful new fences are
+  offered. Matching admits them with their original 1-second deadline and never
+  renews them. Read-only Group page offsets remain bounded to current Main roots and
   advance on no-match rounds. Acquisition accepts due dirty=0/1 and clears dirty;
   execution confirmation requires clean active fences. Both check Redis time in CAS Lua.
   Kernel exact-confirms clean candidates

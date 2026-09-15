@@ -129,7 +129,11 @@ serving two Tasks from the same Eligibility and preserves independent Task closu
 Its Group-batch witness also uses six Workers in two Groups, four Tasks and 800
 Items: two Tasks share a Rule, another uses a different Rule in the same Group,
 and the second Group consumes default stock. Actual executors and the observed
-Pacer batches prove qualification, Group isolation and one merged first acquisition.
+Pacer batches prove qualification and Group isolation; the boundary witness checks
+that every supplied fence is already held before Matching starts. Redis Owner and
+Pacer tests distinguish acquisition-before-projection from the old reverse order,
+including unmatched leases, partial acquisition, dirty invalidation and command
+order. A controlled clock proves that Matching cannot reset the candidate deadline.
 Matching unit tests own once-per-batch query compilation, incremental admission
 counts and local versus global expiry maintenance. These are not cross-owner
 transactions, performance promises or loss-repair guarantees.

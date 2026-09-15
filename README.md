@@ -11,7 +11,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Owner | Responsibility |
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
-| Worker Matching | Worker/Platform Properties, fixed Rule Handlers, Task bindings, materialized eligibility indexes and take time |
+| Worker Matching | Worker/Platform Properties, fixed Rule Handlers, Task bindings, materialized eligibility indexes and shared inventory |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
@@ -26,7 +26,7 @@ scheduling eligibility.
 ```text
 TASK
 API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
-    -> Pacer supplies short-held batches; Matching qualifies and stocks exact-extended candidates
+    -> Pacer acquires 1-second candidate leases; Matching qualifies and stocks the same fences
     -> Item selectors consume held stock; Kernel checks exact clean fences
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
@@ -164,7 +164,8 @@ precedence over summaries and historical tags.
 
 All Tasks bind to a Matching Rule and resolved refill targets before Kernel
 creation. Main prepares NORMAL bindings once for independent refill and dispatch.
-Pacer issues closed short-held batches; Matching qualifies only those IDs and
-requests one extension before shared Group/Rule inventory admission,
-then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
+**Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
+Matching qualifies only the leased IDs and admits their original fences and deadlines
+to shared Group/Rule inventory. Matching time and stock waiting share that second;
+unmatched leases expire naturally. TaskItems only consume stock. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

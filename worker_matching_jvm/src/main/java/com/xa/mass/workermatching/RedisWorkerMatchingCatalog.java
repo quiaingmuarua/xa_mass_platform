@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -43,7 +44,8 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private final Map<String,List<RuleHandler.IndexMutation>> indexesByGroup;
     private final Map<String,String> scriptsByGroup;
     private static final String NO_INDEX_SCRIPT=FactsIndexStore.script(List.of());
-    private final SharedEligibilityInventory inventory = new SharedEligibilityInventory();
+    private final SharedEligibilityInventory inventory;
+    private final LongSupplier clock;
     private final Map<String,Map<String,List<EligibilityQuery>>> defaultTargets;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
     private final Map<SharedEligibilityInventory.Scope,Integer> queryCursors=new LinkedHashMap<>();
@@ -53,6 +55,13 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     public RedisWorkerMatchingCatalog(RedisClient client,RedisKeyspace keyspace,Map<String,RuleHandler> ruleHandlers,Map<String,Set<String>> groupRules,
                                       Map<String,Map<String,List<EligibilityQuery>>> defaultTargets) {
+        this(client,keyspace,ruleHandlers,groupRules,defaultTargets,System::currentTimeMillis);
+    }
+
+    RedisWorkerMatchingCatalog(RedisClient client,RedisKeyspace keyspace,Map<String,RuleHandler> ruleHandlers,Map<String,Set<String>> groupRules,
+                               Map<String,Map<String,List<EligibilityQuery>>> defaultTargets,LongSupplier clock) {
+        this.clock=Objects.requireNonNull(clock,"clock");
+        this.inventory=new SharedEligibilityInventory(clock);
         this.redisClient=Objects.requireNonNull(client,"redisClient"); this.keyspace=Objects.requireNonNull(keyspace,"keyspace");
         this.handlers=Map.copyOf(ruleHandlers);
         if(!handlers.containsKey(DEFAULT_RULE_ID))throw new IllegalArgumentException("worker.default Handler is required");
@@ -245,28 +254,35 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             requestedDeficit+=Math.min(deficit,SharedEligibilityInventory.PROCESS_CAPACITY);
         });
         var neededGroups=Collections.unmodifiableSet(needed);
+        long now=clock.getAsLong();
+        if (now-lastDiagnosticMillis>=60_000) {
+            System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,
+                    "Eligibility refill deficit="+requestedDeficit+" "+inventory.diagnostics());
+            lastDiagnosticMillis=now;
+        }
         return new RefillBatch() {
             @Override public Set<String> groupsNeedingRefill() { return neededGroups; }
 
-            @Override public int refill(String group,Map<String,Long> observed,CandidateLease lease) {
+            @Override public int refill(String group,List<HeldCandidate> offered) {
                 var scopes=groups.get(group);
                 if(scopes==null)throw new IllegalArgumentException("WorkerGroup is outside this refill batch");
-                return refillGroup(scopes,group,observed,lease);
+                return refillGroup(scopes,group,offered);
             }
         };
     }
 
     private int refillGroup(List<PreparedEligibility> scopes,String group,
-            Map<String,Long> observed,CandidateLease lease) {
+            List<HeldCandidate> offered) {
         requireNonBlank(group,"WorkerGroup");
-        Objects.requireNonNull(lease,"lease");
-        Objects.requireNonNull(observed,"observedScores");
-        if(observed.size()>100)throw new IllegalArgumentException("at most 100 observed Workers");
-        var remaining=new LinkedHashSet<String>();
-        observed.forEach((id,score)->{
-            requireNonBlank(id,"Worker ID"); Objects.requireNonNull(score,"observedScore"); remaining.add(id);
-        });
-        inventory.recordObserved(observed.size());
+        Objects.requireNonNull(offered,"offeredCandidates");
+        if(offered.size()>100)throw new IllegalArgumentException("at most 100 held Workers");
+        var held=new LinkedHashMap<String,HeldCandidate>();
+        for(var candidate:offered) {
+            Objects.requireNonNull(candidate,"heldCandidate"); requireNonBlank(candidate.workerId(),"Worker ID");
+            if(held.putIfAbsent(candidate.workerId(),candidate)!=null)throw new IllegalArgumentException("held Worker IDs must be unique");
+        }
+        var remaining=new LinkedHashSet<>(held.keySet());
+        inventory.recordOffered(held.size());
         if(scopes.isEmpty() || remaining.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
@@ -278,6 +294,11 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             var scope=prepared.scope;
             var page=prepared.page();
             if(page==null)continue;
+            long now=clock.getAsLong();
+            int before=remaining.size();
+            remaining.removeIf(id->held.get(id).expiresAtMillis()<=now);
+            inventory.recordExpiredBeforeAdmission(before-remaining.size());
+            if(remaining.isEmpty())break;
             // Advance before fallible Handler work, including batches matching no Worker.
             queryCursors.put(scope,page.nextCursor());
             var entries=prepared.index.select(page.queries(),List.copyOf(remaining),room-selected.size());
@@ -285,27 +306,14 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             entries.forEach(entry->{ selected.put(entry.workerId(),entry); remaining.remove(entry.workerId()); });
         }
         if(selected.isEmpty())return 0;
-        var acquired=new LinkedHashMap<String,HeldCandidate>();
-        for(var candidate:lease.acquire(List.copyOf(selected.keySet()))) {
-            var original=selected.get(candidate.workerId());
-            if(original==null || acquired.putIfAbsent(candidate.workerId(),candidate)!=null
-                    || candidate.score()==observed.get(candidate.workerId()))throw new IllegalStateException("acquisition must return new fences for a subset of the admission plan");
-        }
-        inventory.recordAcquisition(selected.size(),acquired.size());
+        inventory.recordMatched(selected.size());
         int added=0;
         for(var entry:planned.entrySet()) {
             var entries=new ArrayList<SharedEligibilityInventory.Entry>();
             for(var original:entry.getValue()) {
-                var candidate=acquired.get(original.workerId());
-                if(candidate!=null)entries.add(new SharedEligibilityInventory.Entry(candidate,original.projection()));
+                entries.add(new SharedEligibilityInventory.Entry(held.get(original.workerId()),original.projection()));
             }
             added+=inventory.add(entry.getKey(),entries);
-        }
-        long now=System.currentTimeMillis();
-        if (now-lastDiagnosticMillis>=60_000) {
-            System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,
-                    "Eligibility refill deficit="+requestedDeficit+" "+inventory.diagnostics());
-            lastDiagnosticMillis=now;
         }
         return added;
     }

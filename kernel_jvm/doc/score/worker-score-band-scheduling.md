@@ -356,9 +356,10 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form is a mechanical bounded read, not a production refill supply path.
-Pacer uses the Group range for every Rule and issues a closed observation batch.
-Matching qualifies only that batch and requests first acquisition for its accepted
-subset. Dispatch consumes the returned inventory fences and exact-confirms execution.
+Pacer uses the Group range for every Rule, exact-acquires a 1-second lease for the
+observed batch, and supplies only successful returned fences to Matching. Matching
+qualifies that closed held batch and retains its original deadlines. Dispatch
+consumes those inventory fences and exact-confirms execution.
 The Score Owner never interprets selectors; Matching cannot initiate observation.
 
 Group pagination is one read-only Lua: Redis TIME fixes the due upper bound,

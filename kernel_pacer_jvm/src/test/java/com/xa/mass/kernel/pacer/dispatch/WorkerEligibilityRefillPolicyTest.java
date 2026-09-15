@@ -1,13 +1,11 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.CandidateLease;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,53 +33,35 @@ class WorkerEligibilityRefillPolicyTest {
         when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L)).thenReturn(Map.of("w",changed(20L)));
     }
 
-    @Test void pacerObservesWithoutHoldingAndAcquiresOnlyAfterMatching() {
+    @Test void pacerAcquiresBeforeMatchingAndSuppliesOnlyTheNewOpaqueFence() {
         oneIssuedWorker();
-        when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-            assertEquals(Map.of("w",10L),call.getArgument(1));
-            verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
-            CandidateLease lease=call.getArgument(2);
-            assertEquals(List.of(new HeldCandidate("w",20L,2000L)),lease.acquire(List.of("w")));
+        when(batch.refill(eq("g"),anyList())).thenAnswer(call->{
+            List<HeldCandidate> offered=call.getArgument(1);
+            assertEquals(List.of(new HeldCandidate("w",20L,2000L)),offered);
+            verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+            assertThrows(UnsupportedOperationException.class,()->offered.clear());
             return 1;
         });
         assertEquals(1,policy.refill(List.of("g"),tasks));
-        verify(scores).observeDueHotScoreCandidates("g",500L,0,100); // Demand enables the full mechanical batch.
-        verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+        var order=inOrder(scores,batch);
+        order.verify(batch).groupsNeedingRefill();
+        order.verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        order.verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+        order.verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
         verifyNoMoreInteractions(scores);
         verifyNoInteractions(query);
         verify(index,times(1)).prepareRefill(tasks);
     }
 
-    @Test void batchRejectsOutsideIdentitiesDuplicatesRepeatedAndRetainedAcquisition() {
+    @Test void partialAcquisitionOffersOnlySuccessfullyLeasedSuppliedIdentities() {
         oneIssuedWorker();
-        var retained=new AtomicReference<CandidateLease>();
-        when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-            CandidateLease lease=call.getArgument(2); retained.set(lease);
-            assertThrows(IllegalArgumentException.class,()->lease.acquire(List.of("outside")));
-            assertThrows(IllegalArgumentException.class,()->lease.acquire(List.of("w","w")));
-            verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
-            lease.acquire(List.of("w"));
-            assertThrows(IllegalStateException.class,()->lease.acquire(List.of("w")));
-            return 1;
-        });
+        var observed=Map.of("w",10L,"lost",11L,"same",12L);
+        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenReturn(new WorkerScoreCore.WorkerScoreCandidatePage(observed,0));
+        when(scores.acquireObservedHotScoreLeases("g",observed,2000L)).thenReturn(Map.of(
+                "w",changed(20L),"lost",new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE,30L),
+                "same",changed(12L),"outside",changed(40L)));
         policy.refill(List.of("g"),tasks);
-        assertThrows(IllegalStateException.class,()->retained.get().acquire(List.of("w")));
-        verify(scores,times(1)).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
-    }
-
-    @Test void callbackCannotEscapeToAnotherThreadAndClosesOnFailure() {
-        oneIssuedWorker();
-        var retained=new AtomicReference<CandidateLease>();
-        when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-            CandidateLease lease=call.getArgument(2);retained.set(lease);
-            try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-                executor.submit(()->assertThrows(IllegalStateException.class,()->lease.acquire(List.of("w")))).get();
-            }
-            throw new IllegalStateException("projection failure");
-        });
-        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
-        assertThrows(IllegalStateException.class,()->retained.get().acquire(List.of("w")));
-        verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
+        verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
     }
 
     @Test void satisfiedInventoryAndForeignGroupDemandNeverAcquireWorkers() {
@@ -91,7 +71,7 @@ class WorkerEligibilityRefillPolicyTest {
         assertEquals(0,policy.refill(List.of("g"),tasks));
         assertEquals(0,policy.refill(List.of(),Map.of()));
         verifyNoInteractions(scores);
-        verify(batch,never()).refill(anyString(),anyMap(),any());
+        verify(batch,never()).refill(anyString(),anyList());
     }
 
     @Test void emptyRoundsRotateAcrossMoreGroupsThanTheGlobalBudget() {
@@ -107,54 +87,58 @@ class WorkerEligibilityRefillPolicyTest {
         assertEquals(groups.subList(10,15),attempted.subList(10,15));
         assertEquals(20,attempted.size());
         verify(index,times(2)).prepareRefill(tasks);
-        verify(batch,times(2)).groupsNeedingRefill();
         verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
     }
 
-    @Test void noMatchNeverAcquiresALease() {
+    @Test void noMatchKeepsTheSingleAcquisitionWithoutRenewalOrRelease() {
         oneIssuedWorker();
         assertEquals(0,policy.refill(List.of("g"),tasks));
-        verify(batch).refill(eq("g"),eq(Map.of("w",10L)),any());
-        verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
+        verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
+        verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+        verifyNoMoreInteractions(scores);
     }
 
-    @Test void onlySuccessfulAcquisitionReturnsAnInventoryFence() {
+    @Test void projectionFailureLeavesTheAcquiredLeaseToExpire() {
+        oneIssuedWorker();
+        when(batch.refill(eq("g"),anyList())).thenThrow(new IllegalStateException("projection"));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
+        verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+        verifyNoMoreInteractions(scores);
+    }
+
+    @Test void failedAcquisitionsNeverReachMatching() {
         oneIssuedWorker();
         for(var status:List.of(WorkerScoreTransitionStatus.NOOP,WorkerScoreTransitionStatus.STALE,WorkerScoreTransitionStatus.INVALID)) {
             when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L))
                     .thenReturn(Map.of("w",new WorkerScoreTransitionResult(status,20L)));
-            when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-                CandidateLease lease=call.getArgument(2);
-                assertTrue(lease.acquire(List.of("w")).isEmpty());
-                return 0;
-            });
             assertEquals(0,policy.refill(List.of("g"),tasks));
         }
+        verify(batch,never()).refill(anyString(),anyList());
     }
 
-    @Test void ambiguousAcquisitionCannotBeRetriedWithinOrAfterTheInvocation() {
+    @Test void ambiguousAcquisitionDoesNotReachMatchingOrRetryWithinTheRound() {
         oneIssuedWorker();
         when(scores.acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong())).thenThrow(new IllegalStateException("response lost"));
-        when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-            CandidateLease lease=call.getArgument(2);
-            assertThrows(IllegalStateException.class,()->lease.acquire(List.of("w")));
-            assertThrows(IllegalStateException.class,()->lease.acquire(List.of("w")));
-            return 0;
-        });
-        assertEquals(0,policy.refill(List.of("g"),tasks));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
+        verify(batch,never()).refill(anyString(),anyList());
         verify(scores,times(1)).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
     }
 
-    @Test void matchingTimeDoesNotConsumeCandidateLease() {
+    @Test void deadlineStartsAfterObservationAndMatchingCannotRestartIt() {
         oneIssuedWorker();
-        when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),7000L)).thenReturn(Map.of("w",changed(30L)));
-        when(batch.refill(eq("g"),anyMap(),any())).thenAnswer(call->{
-            clock.set(6000);
-            CandidateLease lease=call.getArgument(2);
-            assertEquals(7000L,lease.acquire(List.of("w")).getFirst().expiresAtMillis()); return 1;
+        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenAnswer(call->{
+            clock.set(2000);return new WorkerScoreCore.WorkerScoreCandidatePage(Map.of("w",10L),0);
         });
-        assertEquals(1,policy.refill(List.of("g"),tasks));
-        verify(scores,never()).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
+        when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),3000L)).thenReturn(Map.of("w",changed(30L)));
+        when(batch.refill(eq("g"),anyList())).thenAnswer(call->{
+            clock.set(6000);
+            assertEquals(List.of(new HeldCandidate("w",30L,3000L)),call.getArgument(1)); return 0;
+        });
+        assertEquals(0,policy.refill(List.of("g"),tasks));
+        verify(scores,times(1)).acquireObservedHotScoreLeases("g",Map.of("w",10L),3000L);
+        verify(scores,never()).acquireObservedHotScoreLeases("g",Map.of("w",10L),7000L);
     }
 
     @Test void noMatchAndProjectionFailureAdvancePagesAndRemovedGroupsForgetProgress() {
@@ -164,13 +148,13 @@ class WorkerEligibilityRefillPolicyTest {
             long offset=call.getArgument(2);offsets.add(offset);
             return new WorkerScoreCore.WorkerScoreCandidatePage(Map.of("w",11L),offset+100);
         });
-        when(batch.refill(eq("g"),anyMap(),any())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
+        when(scores.acquireObservedHotScoreLeases("g",Map.of("w",11L),2000L)).thenReturn(Map.of("w",changed(20L)));
+        when(batch.refill(eq("g"),anyList())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
         policy.refill(List.of("g"),tasks);
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
         policy.refill(List.of("g"),tasks);
         policy.refill(List.of(),Map.of());policy.refill(List.of("g"),tasks);
         assertEquals(List.of(0L,100L,200L,0L),offsets);
-        verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
     }
 
     @Test void observationFailureDoesNotInventPageProgress() {

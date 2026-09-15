@@ -26,14 +26,16 @@ final class SharedEligibilityInventory {
     private final Map<Scope, LinkedHashMap<String, Entry>> pools = new LinkedHashMap<>();
     private final LongSupplier clock;
     private int size;
-    private long observed, selected, acquired, expired, admitted, consumed, takeRequested, capacityLimited;
+    private long offered, matched, expiredBeforeAdmission, expired, admitted, consumed, takeRequested, capacityLimited;
 
     SharedEligibilityInventory() { this(System::currentTimeMillis); }
     SharedEligibilityInventory(LongSupplier clock) { this.clock = clock; }
 
-    synchronized void recordObserved(int count) { observed += count; }
+    synchronized void recordOffered(int count) { offered += count; }
 
-    synchronized void recordAcquisition(int planned,int confirmed) { selected+=planned; acquired+=confirmed; }
+    synchronized void recordMatched(int count) { matched += count; }
+
+    synchronized void recordExpiredBeforeAdmission(int count) { expiredBeforeAdmission += count; }
 
     synchronized void expireAll() {
         for(Scope scope:List.copyOf(pools.keySet()))expire(scope);
@@ -64,7 +66,7 @@ final class SharedEligibilityInventory {
         long now = clock.getAsLong();
         for (Entry entry : entries) {
             if (room == 0) break;
-            if (entry.held().expiresAtMillis() <= now) continue;
+            if (entry.held().expiresAtMillis() <= now) { expiredBeforeAdmission++; continue; }
             var pool = pools.computeIfAbsent(scope, ignored -> new LinkedHashMap<>());
             if (pool.putIfAbsent(entry.held().workerId(), entry) == null) {
                 size++; admitted++; added++; room--;
@@ -108,9 +110,8 @@ final class SharedEligibilityInventory {
     }
 
     synchronized String diagnostics() {
-        return "resident=" + size + " eligibilities=" + pools.size() + " observed=" + observed + " admitted=" + admitted
-                + " acquired=" + acquired + " unmatched=" + (observed-selected) + " acquisitionRejected=" + (selected-acquired)
-                + " acquiredNotAdmitted=" + (acquired-admitted)
+        return "resident=" + size + " eligibilities=" + pools.size() + " offered=" + offered
+                + " matched=" + matched + " admitted=" + admitted + " expiredBeforeAdmission=" + expiredBeforeAdmission
                 + " takeRequested=" + takeRequested + " consumed=" + consumed
                 + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
     }

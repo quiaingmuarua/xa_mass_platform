@@ -4,7 +4,6 @@ import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,7 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
-/** Fixed Pacer observation policy. Matching can acquire only this invocation's accepted subset. */
+/** Pacer leases a closed Group batch before Matching qualifies it; unused leases expire. */
 final class WorkerEligibilityRefillPolicy {
     static final long CANDIDATE_HOLD_MILLIS = 1_000;
     private static final int GROUP_BUDGET = 100;
@@ -59,9 +58,17 @@ final class WorkerEligibilityRefillPolicy {
             var observed = page.observedScores();
             DispatchStageEvent.batch(started, "REFILL_OBSERVATION", GROUP_BUDGET, observed.size(), false);
             if (observed.isEmpty()) continue;
-            try (var issued = new IssuedBatch(group, observed)) {
-                admitted += batch.refill(group, observed, issued);
+            long until = Math.addExact(clock.getAsLong(), CANDIDATE_HOLD_MILLIS);
+            long acquiredAt = DispatchStageEvent.start();
+            List<HeldCandidate> held = List.of();
+            boolean failed = true;
+            try {
+                held = transitioned(observed, scores.acquireObservedHotScoreLeases(group, observed, until), until);
+                failed = false;
+            } finally {
+                DispatchStageEvent.batch(acquiredAt, "INITIAL_HOLD", observed.size(), held.size(), failed);
             }
+            if (!held.isEmpty()) admitted += batch.refill(group, held);
         }
         return admitted;
     }
@@ -79,39 +86,4 @@ final class WorkerEligibilityRefillPolicy {
         return List.copyOf(held);
     }
 
-    /** Invocation-local capability; no reservation directory or cross-call lifetime. */
-    private final class IssuedBatch implements WorkerCandidateIndex.CandidateLease, AutoCloseable {
-        private final String group;
-        private final Map<String, Long> original;
-        private final Thread caller = Thread.currentThread();
-        private boolean open = true;
-        private boolean used;
-
-        IssuedBatch(String group, Map<String, Long> observed) {
-            this.group = group;
-            original = Collections.unmodifiableMap(new LinkedHashMap<>(observed));
-        }
-
-        @Override public List<HeldCandidate> acquire(List<String> ids) {
-            if (Thread.currentThread() != caller || !open || used) {
-                throw new IllegalStateException("acquisition is available once during its issuing refill call");
-            }
-            Objects.requireNonNull(ids, "acceptedWorkerIds");
-            if (ids.isEmpty()) return List.of();
-            var unique = new LinkedHashSet<>(ids);
-            if (unique.size() != ids.size() || !original.keySet().containsAll(unique)) {
-                throw new IllegalArgumentException("acquisition requires a unique subset of the issued batch");
-            }
-            used = true;
-            var expected = new LinkedHashMap<String, Long>();
-            ids.forEach(id -> expected.put(id, original.get(id)));
-            long until = Math.addExact(clock.getAsLong(), CANDIDATE_HOLD_MILLIS);
-            long started = DispatchStageEvent.start();
-            var held = transitioned(expected, scores.acquireObservedHotScoreLeases(group, expected, until), until);
-            DispatchStageEvent.batch(started, "INITIAL_HOLD", expected.size(), held.size(), false);
-            return held;
-        }
-
-        @Override public void close() { open = false; }
-    }
 }
