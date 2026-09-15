@@ -100,7 +100,7 @@ Build:
 
 All Tasks bind to a Matching Rule and resolved refill targets before Kernel
 creation. Main prepares NORMAL bindings once for independent refill and dispatch.
-Pacer issues closed short-held batches; Matching qualifies those IDs and requests
-one exact extension before shared Group/Rule inventory admission,
-then TaskItems only consume it. Kernel retains HOT, Score and exact confirmation/
+Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
+qualifies and admits only those identities with their original fence and deadline;
+it never requests an extension. TaskItems consume the Rule-owned Group inventory. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

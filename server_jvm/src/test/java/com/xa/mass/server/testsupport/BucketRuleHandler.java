@@ -1,14 +1,14 @@
 package com.xa.mass.server.testsupport;
 
 import com.xa.mass.workermatching.EligibilityQuery;
-import com.xa.mass.workermatching.RuleHandler;
+import com.xa.mass.workermatching.rules.*;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.*;
 import java.util.function.*;
 
-/** Extension proof using only the public Matching contract: bucket SETs plus a projection HASH. */
-public final class BucketRuleHandler implements RuleHandler {
+/** Non-ZSET Rule: bucket SETs and a HASH source, with Rule-owned local Eligibility. */
+public final class BucketRuleHandler extends LocalCandidateRule<String> {
     public static final String ID="proof.bucket";
     private static final String PREPARE="""
             local function projection(raw)
@@ -37,32 +37,27 @@ public final class BucketRuleHandler implements RuleHandler {
             end
             """;
     private final boolean failSnapshot;
-    public BucketRuleHandler() { this(false); }
-    public BucketRuleHandler(boolean failSnapshot) { this.failSnapshot=failSnapshot; }
-    @Override public List<IndexMutation> indexes() { return List.of(new IndexMutation("test_buckets",PREPARE)); }
-    @Override public Bound bind(Supplier<RedisCommands<String,String>> commands,String base,Set<String> enabled) {
-        String key=base+":test_buckets";
-        return new Bound() {
-            public EligibilityQuery normalize(Map<String,?> expression,int count) {
-                if(!Set.of("test.bucket").containsAll(expression.keySet()))throw new IllegalArgumentException("unsupported bucket parameter");
-                if(expression.isEmpty())return new EligibilityQuery(Map.of(),count);
-                if(!(expression.get("test.bucket") instanceof List<?> values)
-                        || values.stream().anyMatch(v->!(v instanceof String)))throw new IllegalArgumentException("bucket requires string parameters");
-                return new EligibilityQuery(Map.of("test.bucket",List.copyOf(new TreeSet<>(values.stream().map(String.class::cast).toList()))),count);
-            }
-            public Query compile(EligibilityQuery query) {
-                return member->member.projection() instanceof String bucket &&
-                        (query.query().isEmpty() || query.query().get("test.bucket").contains(bucket));
-            }
-            public Map<String,Member> snapshot(List<String> ids) {
-                if(failSnapshot)throw new IllegalStateException("injected bucket projection failure");
-                var result=new LinkedHashMap<String,Member>();
-                for(var row:commands.get().hmget(key,ids.toArray(String[]::new))) {
-                    if(row.hasValue())result.put(row.getKey(),new Member(row.getKey(),decode(row.getValue())));
-                }
-                return result;
-            }
-        };
+    public BucketRuleHandler(RedisRuleStorage storage) { this(storage,false); }
+    public BucketRuleHandler(RedisRuleStorage storage,boolean failSnapshot) { super(storage); this.failSnapshot=failSnapshot; }
+    public static List<RedisRuleStorage.IndexMutation> indexes() {
+        return List.of(new RedisRuleStorage.IndexMutation("test_buckets",PREPARE));
+    }
+    @Override protected EligibilityQuery normalize(String group,Map<String,?> expression,int count,boolean selector) {
+        if(!Set.of("test.bucket").containsAll(expression.keySet()))throw new IllegalArgumentException("unsupported bucket parameter");
+        if(expression.isEmpty())return new EligibilityQuery(Map.of(),count);
+        if(!(expression.get("test.bucket") instanceof List<?> values)
+                || values.stream().anyMatch(v->!(v instanceof String)))throw new IllegalArgumentException("bucket requires string parameters");
+        return new EligibilityQuery(Map.of("test.bucket",List.copyOf(new TreeSet<>(values.stream().map(String.class::cast).toList()))),count);
+    }
+    @Override protected BiPredicate<String,String> predicate(String group,EligibilityQuery query) {
+        return (id,bucket)->bucket!=null && (query.query().isEmpty() || query.query().get("test.bucket").contains(bucket));
+    }
+    @Override protected Map<String,String> readQualifications(String group,List<String> ids) {
+        if(failSnapshot)throw new IllegalStateException("injected bucket projection failure");
+        var result=new LinkedHashMap<String,String>();
+        for(var row:storage.commands().hmget(storage.indexKey(group,"test_buckets"),ids.toArray(String[]::new)))
+            if(row.hasValue())result.put(row.getKey(),decode(row.getValue()));
+        return result;
     }
     private static String decode(String raw) {
         var value=Jsons.parseObject(raw);

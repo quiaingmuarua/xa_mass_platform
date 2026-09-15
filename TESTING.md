@@ -116,8 +116,8 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 Rule binding and index proof belongs to Redis Owner: concurrent create-only
 bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
-rebuild isolation. Matching tests prove Handler/query pairing and unsupported
-condition rejection, shared MAX watermarks and atomic destructive consumption.
+rebuild isolation. Matching tests prove the five-operation Rule interface, unsupported condition
+rejection, shared MAX targets, original fences and atomic destructive consumption.
 The separately assembled bucket SET/projection HASH Rule proves that a different
 index layout uses the public Handler contract without common-flow changes. Its
 Redis Owner cases cover batch costs, corrupt-index preflight and dirty invalidation;
@@ -134,8 +134,11 @@ that every supplied fence is already held before Matching starts. Redis Owner an
 Pacer tests distinguish acquisition-before-projection from the old reverse order,
 including unmatched leases, partial acquisition, dirty invalidation and command
 order. A controlled clock proves that Matching cannot reset the candidate deadline.
-Matching unit tests own once-per-batch query compilation, incremental admission
-counts and local versus global expiry maintenance. These are not cross-owner
+Matching unit tests own bounded target paging, incremental admission counts,
+concurrent refill/take, immutable results and local versus global expiry maintenance.
+A later Rule failure must preserve earlier admissions; invalid input or a Rule-local
+read/matching failure must admit no candidates for that Rule. The separate Facts
+script still preflights all enabled index writes atomically. These are not cross-owner
 transactions, performance promises or loss-repair guarantees.
 
 Use the lowest-cost proof that owns the changed claim:
@@ -317,7 +320,7 @@ Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
-Redis Owner proves strict bindings, index rotation, sparse phone partitions,
+Redis Owner proves strict bindings, preserved source coordinates, sparse phone partitions,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
 one binding HMGET per at-most-100-Task round, six commands for named refill of
 100 identities even across 100 queries, and zero Redis access for local take or
@@ -356,26 +359,22 @@ throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
 remain protocol/Runtime Boundary claims; the convergence health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.
 
-### Read-Only Pacer Supply and Matching Before First Lease
+### Pacer Acquisition Before Rule Qualification
 
-Core mechanism proof: Pacer alone supplies candidates without pre-leasing them.
-The Matching Redis Owner proof issues A while a better B remains indexed and proves
-B cannot be acquired. No-match and projection-failure paths leave Score unchanged.
-Two Eligibilities share one Group first-acquisition batch. Pacer tests reject
-out-of-batch, duplicate, escaped and cross-thread acquisition capabilities.
-Worker Score proof traverses 250 equal-score Workers without writes, verifies wrap,
-floor, corrupt-row progress and one command per page. Acquisition accepts due dirty
-scores and clears dirty; competing acquisitions have one winner. Confirmation rejects
-stale, dirty, PAUSE and expired fences, including a pre-EVAL delay across the slot.
-Each 100-Worker acquisition and confirmation uses one client Lua command. Matching
-proof explicitly covers the accepted facts window for an already-dirty observation;
-there is no post-acquisition projection read. A delayed matcher starts its 1-second
-lease at acquisition, not observation.
-Runtime Boundary executes two Tasks using a test-only SET/HASH Rule and a real
-Worker, asserting that refill receives the Pacer-issued batch. Dynamic Matching
-and Convergence Health continue to own facts invalidation and scheduling progress.
-Call Performance measures selective observation, stock expiry and lease costs separately; these functional
-or command-count proofs do not claim improved throughput or latency.
+Pacer supplies only successfully acquired candidate leases. Redis Owner offers A
+while another B remains indexed and proves Rules cannot discover B. No-match and
+qualification failures leave the already acquired lease to expire. Multiple Rules
+share that closed Group batch; actual admitted IDs prevent cross-Rule duplicates.
+Earlier Rule admissions survive a later Rule failure.
+
+Worker Score proof checks bounded HOT-head observation and acquisition-driven
+progress, dirty clearing, competing acquisitions and exact confirmation. Stale,
+dirty, PAUSE and expired fences are rejected, including delay across a Redis slot.
+Matching's controlled clock proves that qualification and stock waiting consume
+the original deadline. Facts/index atomicity remains separate from dirty invalidation
+and from cross-Rule partial success. Runtime Boundary runs two sharing Tasks through
+a SET/HASH Rule and real Workers. Dynamic Matching and Scenario Coexistence retain
+their workload and business oracles; these checks do not claim capacity improvement.
 
 ### Network Evidence At The Current Lease Slot
 

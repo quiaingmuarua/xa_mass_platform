@@ -168,9 +168,12 @@ An optional `ruleId` names a fixed Matching Handler; omission binds explicitly t
 Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
 configuration enables those instances. Rule interpretation stays in Matching.
 Default retains its optional country queries for current SMS start/cancel flows.
-Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
-configuration enables those instances. Rule interpretation stays in Matching.
-Default retains its optional country queries for current SMS start/cancel flows.
+Matching storage assembly supplies the current Rules with one shared Redis connection
+and a capacity budget. Each Handler owns its Group-isolated Eligibility operations;
+Server receives no predicate, candidate projection, physical key or lease capability.
+Matching storage assembly supplies the current Rules with one shared Redis connection
+and a capacity budget. Each Handler owns its Group-isolated Eligibility operations;
+Server receives no predicate, candidate projection, physical key or lease capability.
 All finite Tasks use CLOSE_WHEN_IDLE. Unknown/blank Rules, unavailable Group
 indexes and unknown request fields are rejected. Priority defaults to 50 and
 retry budget to 3. Optional `refillTargets` stores 1..100 operator-free query/count targets in the

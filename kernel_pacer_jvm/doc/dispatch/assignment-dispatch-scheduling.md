@@ -63,12 +63,15 @@ exact acquisition once. Full-score comparison accepts due dirty=0 or dirty=1 and
 clears dirty on success. Only TRANSITIONED new fences reach Matching; all-failed
 acquisition skips it. Owner response loss does not trigger a confirmation read.
 
-Matching filters expired supplied IDs, then reads each participating Handler's
-projection once. It rotates Eligibility/query acceptance, prioritizes constrained
-queries before ANY and plans each ID for at most one Eligibility. All Group plans
-finish before insertion; Handler failure commits none of them. Insertion rechecks
-expiry and capacity, retaining original fences and deadlines. Rule Handlers receive
-no lease capability. Plans remain local to the call, without a pending registry.
+Matching calls each participating Rule synchronously with the remaining held IDs.
+Each Rule owns qualification, inventory, shortages and atomic take, and reads only
+its offered identities. Catalog rotates Rules/target pages and excludes IDs actually
+admitted by an earlier Rule. Current Rules prioritize constrained targets before ANY
+and recheck expiry/capacity at local commit, retaining original fences and deadlines.
+If a later Rule fails, earlier admissions remain consumable; the exception ends the
+remaining batch and reaches the existing Producer failure path. The next round
+re-observes shortages without rollback or replay. Rules have no lease capability,
+pending registry or separate Matching execution thread.
 
 Rare predicates/explicit IDs can wait under bounded Group supply. Matching cannot
 discover substitute IDs from its indexes. Zero-match batches still write short

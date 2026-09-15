@@ -15,17 +15,22 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(MatchingRuleProperties.class)
 public class WorkerMatchingConfiguration {
     @Bean
-    Map<String,RuleHandler> matchingRuleHandlers() {
-        return Map.of("worker.default",new DefaultRuleHandler(),
-                "worker.country",new CountryRuleHandler(),
-                "worker.messaging.available",new MessagingRuleHandler(),
-                "proof.worker.facts",new ProofFactsRuleHandler());
+    RedisRuleStorage matchingRuleStorage(RedisClient client,XaMassRedisProperties redis) {
+        return new RedisRuleStorage(client,redis.keyspace());
+    }
+
+    @Bean
+    Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules) {
+        return Map.of("worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),
+                "worker.country",new CountryRuleHandler(storage),
+                "worker.messaging.available",new MessagingRuleHandler(storage),
+                "proof.worker.facts",new ProofFactsRuleHandler(storage));
     }
 
     @Bean(destroyMethod="close")
-    RedisWorkerMatchingCatalog workerMatchingCatalog(RedisClient client,XaMassRedisProperties redis,MatchingRuleProperties rules,
+    RedisWorkerMatchingCatalog workerMatchingCatalog(RedisRuleStorage storage,MatchingRuleProperties rules,
             @Qualifier("matchingRuleHandlers") Map<String,RuleHandler> handlers) {
-        var catalog=new RedisWorkerMatchingCatalog(client,redis.keyspace(),handlers,rules.workerGroups(),rules.defaultRefillTargets());
+        var catalog=new RedisWorkerMatchingCatalog(storage,handlers,rules.workerGroups(),rules.defaultRefillTargets());
         try { catalog.rebuildIndexes(); return catalog; }
         catch (RuntimeException failure) { catalog.close(); throw failure; }
     }

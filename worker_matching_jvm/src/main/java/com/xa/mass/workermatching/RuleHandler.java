@@ -1,49 +1,29 @@
 package com.xa.mass.workermatching;
 
-import io.lettuce.core.api.sync.RedisCommands;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Supplier;
 
-/** Composition-time Rule policy. The Catalog owns connections, shared stock and lifecycle. */
+/**
+ * Eligibility owner for one composition-time Rule. All operations are thread-safe and Group-isolated.
+ * Results are immutable snapshots. Held scores are opaque Kernel fences, never index coordinates.
+ */
 public interface RuleHandler {
-    /** Bind lightweight functions to one Group; do not allocate connection or inventory owners. */
-    Bound bind(Supplier<RedisCommands<String, String>> commands, String indexBase, Set<String> enabledRules);
-
-    /** Exclusive index roots, including descendants, used by facts updates and startup rebuild. */
-    default List<IndexMutation> indexes() { return List.of(); }
-
+    /** Validates and normalizes a refill target without changing stock. */
+    EligibilityQuery normalizeTarget(String workerGroupId, EligibilityQuery target);
+    /** Validates an Item selector without Redis reads or stock changes. */
+    void validateSelector(String workerGroupId, TaskItemWorkerSelector selector);
+    /** Observed refill shortages, not reservations; at most 100 targets. Capacity may suppress refill. */
+    Map<EligibilityQuery, Integer> deficits(String workerGroupId, List<EligibilityQuery> targets);
     /**
-     * Trusted Lua source returns prepare(key, workerId, workerFacts, platformFacts). Prepare validates
-     * without writing and returns an apply() closure. The Owner prepares all indexes and Workers before
-     * any write. The program is application code, never an external query or persisted DSL.
+     * Qualifies at most 100 already-held identities and returns IDs actually admitted.
+     * Preserves original deadlines and fences. Validates before admitting new candidates.
+     * A later Rule's failure never rolls back this Rule's completed admission.
      */
-    record IndexMutation(String namespace, String prepareLua) {
-        public IndexMutation {
-            if (namespace == null || !namespace.matches("[A-Za-z0-9_-]+")
-                    || prepareLua == null || prepareLua.isBlank()) {
-                throw new IllegalArgumentException("Rule index requires a safe namespace and preparation program");
-            }
-        }
-    }
-
-    /** Immutable Rule-owned projection; null denotes missing membership. */
-    record Member(String workerId, Object projection) { }
-
-    interface Query {
-        boolean matches(Member member);
-        default int target(int requested) { return requested; }
-    }
-
-    /** Paired functions used by the same shared deficits/refill/take implementation. */
-    interface Bound {
-        EligibilityQuery normalize(Map<String, ?> expression, int count);
-        /** HTTP admission may retain a different wire syntax while compiling to the same query. */
-        default EligibilityQuery selector(Map<String, ?> expression, int count) { return normalize(expression,count); }
-        Query compile(EligibilityQuery query);
-
-        /** Only the supplied post-hold identities, in one batch. No discovery or lease operations. */
-        Map<String, Member> snapshot(List<String> workerIds);
-    }
+    List<String> refill(String workerGroupId, List<EligibilityQuery> targets,
+            List<HeldCandidate> offered, int maxAccepted);
+    /** Validates and atomically consumes at most 100 candidates across at most 100 selectors. */
+    Map<TaskItemWorkerSelector, List<HeldCandidate>> take(String workerGroupId,
+            Map<TaskItemWorkerSelector, Integer> limits);
 }

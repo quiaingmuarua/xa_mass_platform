@@ -220,11 +220,17 @@ architectures.
   only worker.default accepts explicit ID queries; named Rules constrain ANY and
   interpret their own business queries. Missing bindings never fall back. Matching
   uses fixed Rule ID-to-instance composition. Rule implementations own normalization,
-  index layout and paired projection/query functions; shared flow and inventory must
-  not depend on their business query types or index encoding. Facts and enabled
+  qualification, deficits, refill, stock and take; Catalog Eligibility coordination
+  must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
-  Matching owns paired projection and deficits/refill/take interpretation, shared Group/Rule
-  inventory and Task-declared targets. Pacer alone discovers HOT IDs and issues
+  Rule instances own thread-safe Group-isolated Eligibility through normalizeTarget,
+  validateSelector, deficits, refill and take. Catalog owns bindings, target MAX merge,
+  bounded paging and exclusion of IDs actually accepted by earlier Rules. Shared
+  capacity coordination stores budgets only. Earlier Rule admissions survive a later
+  Rule failure; the exception ends the remaining batch without rollback or replay.
+  Each current Rule validates and reads before its own bounded local commit.
+  Facts/index atomic writes remain a separate one-Lua storage assembly contract.
+  Pacer alone discovers HOT IDs and issues
   closed batches of already acquired 1-second candidate leases. **Pacer acquires
   before Matching reads eligibility:** qualification and stock waiting share the
   original deadline. Matching retains the supplied fences without an acquisition
@@ -235,8 +241,8 @@ architectures.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
   Refill prepares one invocation-local Group/Rule demand batch from Main's Task
-  views, reusing visited query compilation. Server admission must not prepare
-  refill or maintain stock. Group demand is a hint, not a reservation; stock and
+  views, passing only visited bounded target pages to Rules. Server admission must
+  not prepare refill or maintain stock. Group demand is a hint, not a reservation; stock and
   exact fences still decide admission and execution. Global expired-stock cleanup
   occurs at refill preparation; scope access retains local expiry and atomic bounds.
 
@@ -283,7 +289,8 @@ kernel_jvm`.
   dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
   count. Matching cannot discover IDs or initiate targeted acquisition. It checks
-  supplied projections and plans one Eligibility per ID. Pacer exact-acquires the
+  supplied identities through Rule-owned operations and admits at most one Eligibility
+  per offered ID in that Group batch. Pacer exact-acquires the
   observed Group batch before invoking Matching; only successful new fences are
   offered. Matching admits them with their original 1-second deadline and never
   renews them. **Refill observes the due head from the HOT floor each round; it

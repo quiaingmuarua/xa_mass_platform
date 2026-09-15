@@ -1,48 +1,44 @@
 package com.xa.mass.workermatching.rules;
 
-import com.xa.mass.workermatching.*;
-import io.lettuce.core.api.sync.RedisCommands;
+import com.xa.mass.workermatching.EligibilityQuery;
 import java.util.*;
-import java.util.function.*;
+import java.util.function.BiPredicate;
 
-/** Group identity eligibility, retaining the existing explicitly enabled country query capability. */
-public final class DefaultRuleHandler implements RuleHandler {
-    @Override public Bound bind(Supplier<RedisCommands<String,String>> commands,String base,Set<String> enabled) {
-        var countryHandler=new CountryRuleHandler();
-        var country=enabled.contains("worker.country")?countryHandler.bind(commands,base,enabled):null;
-        return new Bound() {
-            @Override public EligibilityQuery normalize(Map<String,?> expression,int count) {
-                if(expression.containsKey("workerId") && expression.size()!=1)
-                    throw new IllegalArgumentException("workerId cannot be combined with property conditions");
-                var query=RuleQueries.normalize(expression,count);
-                if(!identity(query)) {
-                    if(country==null)throw new IllegalArgumentException("country index unavailable");
-                    return country.normalize(expression,count);
-                }
-                return query;
-            }
-            @Override public EligibilityQuery selector(Map<String,?> expression,int count) {
-                if(!expression.isEmpty() && !expression.containsKey("workerId"))RuleQueries.requireConditions(expression);
-                return normalize(expression,count);
-            }
-            @Override public Query compile(EligibilityQuery query) {
-                if(query.query().isEmpty())return member -> true;
-                if(query.query().containsKey("workerId")) {
-                    var ids=Set.copyOf(query.query().get("workerId"));
-                    return new Query() {
-                        public boolean matches(Member member) { return ids.contains(member.workerId()); }
-                        public int target(int requested) { return Math.min(requested,ids.size()); }
-                    };
-                }
-                if(country==null)throw new IllegalArgumentException("country index unavailable");
-                return country.compile(query);
-            }
-            @Override public Map<String,Member> snapshot(List<String> ids) {
-                return country==null?Map.of():country.snapshot(ids);
-            }
-        };
+/** Identity Eligibility without facts, with country queries only where that index is enabled. */
+public final class DefaultRuleHandler extends LocalCandidateRule<PartitionedZsetIndex.Projection> {
+    private final Set<String> countryGroups;
+    public DefaultRuleHandler(RedisRuleStorage storage, Map<String, Set<String>> groupRules) {
+        super(storage);
+        var groups = new HashSet<String>();
+        groupRules.forEach((group, rules) -> { if (rules.contains("worker.country")) groups.add(group); });
+        countryGroups = Set.copyOf(groups);
     }
-    private static boolean identity(EligibilityQuery query) {
-        return query.query().isEmpty() || query.query().keySet().equals(Set.of("workerId"));
+    @Override protected EligibilityQuery normalize(String group, Map<String, ?> expression, int count, boolean selector) {
+        if (expression.containsKey("workerId") && expression.size() != 1)
+            throw new IllegalArgumentException("workerId cannot be combined with property conditions");
+        if (selector && !expression.isEmpty() && !expression.containsKey("workerId")) RuleQueries.requireConditions(expression);
+        var query = RuleQueries.normalize(expression, count);
+        if (!query.query().isEmpty() && !query.query().containsKey("workerId")) {
+            if (!countryGroups.contains(group)) throw new IllegalArgumentException("country index unavailable");
+            PartitionedRuleHandler.countries(query.query(), Set.of("worker.country"), "");
+        }
+        return query;
+    }
+    @Override protected int targetCount(EligibilityQuery target) {
+        return target.query().containsKey("workerId")
+                ? Math.min(target.count(), new HashSet<>(target.query().get("workerId")).size()) : target.count();
+    }
+    @Override protected BiPredicate<String, PartitionedZsetIndex.Projection> predicate(String group, EligibilityQuery query) {
+        if (query.query().isEmpty()) return (id, value) -> true;
+        if (query.query().containsKey("workerId")) {
+            var ids = Set.copyOf(query.query().get("workerId"));
+            return (id, value) -> ids.contains(id);
+        }
+        var criteria = PartitionedRuleHandler.countries(query.query(), Set.of("worker.country"), "");
+        return (id, value) -> value != null && value.matches(id, criteria);
+    }
+    @Override protected Map<String, PartitionedZsetIndex.Projection> readQualifications(String group, List<String> ids) {
+        return countryGroups.contains(group)
+                ? new PartitionedZsetIndex(storage::commands, storage.indexKey(group, "country")).snapshot(ids) : Map.of();
     }
 }

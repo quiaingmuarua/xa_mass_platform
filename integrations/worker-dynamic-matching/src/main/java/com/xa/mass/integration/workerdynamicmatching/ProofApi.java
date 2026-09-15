@@ -26,7 +26,7 @@ final class ProofApi implements AutoCloseable {
         try { response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)); }
         catch (IOException error) {
             if (observation) throw new TemporaryRead();
-            throw new ProofFailure("mutation-result-unknown");
+            throw new ProofFailure("mutation-result-unknown", error.getClass().getSimpleName());
         }
         if (observation && Set.of(429, 502, 503, 504).contains(response.statusCode())) throw new TemporaryRead();
         require(response.statusCode() == 200, "http-status-" + response.statusCode());
@@ -52,6 +52,8 @@ final class ProofApi implements AutoCloseable {
     static final class ProofFailure extends IllegalStateException {
         final String code;
         ProofFailure(String code) { super(code); this.code = code; }
+        // Preserve the failure code while distinguishing timeout/connection failure without bodies.
+        ProofFailure(String code, String failureType) { super(code + " [" + failureType + "]"); this.code = code; }
     }
     static final class TemporaryRead extends Exception { }
 }

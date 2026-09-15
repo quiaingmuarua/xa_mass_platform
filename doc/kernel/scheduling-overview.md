@@ -31,7 +31,7 @@ Kernel Main Scheduler
 Task dispatch
   -> one bounded Task binding read -> prepared Task queries
   -> due Items; TTL/exhaustion settlement
-  -> eligible IDs -> HOT -> initial hold -> membership recheck
+  -> Rule-owned stock of previously acquired candidates
   -> exact Worker confirmation -> exact Item claim -> Command
   -> ACTIVE recheck before exact Task close or idle park
 ```
@@ -42,9 +42,10 @@ skip that snapshot; they do not accumulate a pending source queue. Assembly and
 lifecycle are defined in
 [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md).
 
-Matching owns paired facts projection and bounded query functions. Indexes are
-shared derived eligibility, not Task jobs or scheduling truth. Kernel holds and
-rechecks identities; exact confirmation rejects dirty/stale fences. Unselected
+Each Matching Rule owns qualification, deficits, admission and atomic consumption
+for its Group inventory; Catalog coordinates bindings and bounded batches.
+Pacer acquires candidate leases before Rule qualification. Kernel confirms the
+original fences, rejecting dirty/stale evidence. Unselected
 or rejected holds expire naturally. Kernel never reads Rule IDs, facts or index
 coordinates. See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
 

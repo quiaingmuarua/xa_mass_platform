@@ -13,7 +13,10 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.RuleHandler;
 import com.xa.mass.workermatching.rules.*;
 import com.xa.mass.server.testsupport.BucketRuleHandler;
-import org.springframework.test.context.bean.override.convention.TestBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import com.xa.mass.server.assembly.matching.MatchingRuleProperties;
+import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -79,7 +82,7 @@ import static org.mockito.Mockito.verify;
 import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles({"test", "integration-test"})
-@SpringBootTest(classes = com.xa.mass.server.testsupport.ServerTestConfiguration.class, webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@SpringBootTest(classes = {com.xa.mass.server.testsupport.ServerTestConfiguration.class, RuntimeBoundaryIntegrationTest.MatchingTestAssembly.class}, properties="spring.main.allow-bean-definition-overriding=true", webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @ContextConfiguration(
         initializers = RuntimeBoundaryIntegrationTest
                 .DedicatedRedisInitializer.class
@@ -88,12 +91,16 @@ import tools.jackson.databind.json.JsonMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RuntimeBoundaryIntegrationTest {
 
-    @TestBean(name="matchingRuleHandlers",methodName="testRuleHandlers")
-    Map<String,RuleHandler> ruleHandlers;
-    static Map<String,RuleHandler> testRuleHandlers() {
-        return Map.of("worker.default",new DefaultRuleHandler(),"worker.country",new CountryRuleHandler(),
-                "worker.messaging.available",new MessagingRuleHandler(),"proof.worker.facts",new ProofFactsRuleHandler(),
-                BucketRuleHandler.ID,new BucketRuleHandler());
+    @TestConfiguration(proxyBeanMethods=false)
+    static class MatchingTestAssembly {
+        @Bean RedisRuleStorage matchingRuleStorage(RedisClient client,XaMassRedisProperties redis) {
+            return new RedisRuleStorage(client,redis.keyspace(),Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
+        }
+        @Bean Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules) {
+            return Map.of("worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),"worker.country",new CountryRuleHandler(storage),
+                    "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage),
+                    BucketRuleHandler.ID,new BucketRuleHandler(storage));
+        }
     }
 
     private static final int SERVER_PORT = availablePort();

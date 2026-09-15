@@ -51,7 +51,7 @@ final class FactsIndexStore {
             end
             """;
 
-    static String script(List<RuleHandler.IndexMutation> indexes) {
+    static String script(List<com.xa.mass.workermatching.rules.RedisRuleStorage.IndexMutation> indexes) {
         var source=new StringBuilder(HELPERS);
         for (int i=0;i<indexes.size();i++) source.append("local prepare_").append(i)
                 .append("=(function()\n").append(indexes.get(i).prepareLua()).append("\nend)()\n");

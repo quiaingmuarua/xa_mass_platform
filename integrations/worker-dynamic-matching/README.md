@@ -79,7 +79,9 @@ and SDK publication path. Platform Properties still use their independent Server
 Each Worker update changes correlated sequence/mirror values and adds a unique delta
 key. Adapter and Runtime readers run independently during mutations. Every read
 must equal a complete submitted snapshot whose local mutation succeeds; failed
-or ambiguous mutation responses fail the entire proof. A burst must overlap
+or ambiguous mutation responses fail the entire proof. Mutation I/O failures retain
+the same failure code and log only the exception type, without request/response
+bodies; diagnostics neither retry mutations nor change the two-second timeout. A burst must overlap
 valid reads at both surfaces and new background successful Results. Checkpoints
 require all final deltas and exact replacements, unchanged control Properties
 and Platform maps, exact live Lab identity/run state and all 1,000 connections.

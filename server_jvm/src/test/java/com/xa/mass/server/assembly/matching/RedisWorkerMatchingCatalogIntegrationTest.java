@@ -37,11 +37,11 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     private RedisWorkerScoreCore scores;
     private final List<String> commandTypes=new CopyOnWriteArrayList<>();
     private final List<String> refillStages=new ArrayList<>();
-    private java.util.function.Consumer<List<String>> beforeProjection=ids->{};
-    private java.util.function.Consumer<List<String>> afterProjection=ids->{};
-    private static Map<String,RuleHandler> handlers() {
-        return Map.of("worker.default",new DefaultRuleHandler(),"worker.country",new CountryRuleHandler(),
-                "worker.messaging.available",new MessagingRuleHandler(),"proof.worker.facts",new ProofFactsRuleHandler());
+    private java.util.function.Consumer<List<String>> beforeQualification=ids->{};
+    private java.util.function.Consumer<List<String>> afterAdmission=ids->{};
+    private static Map<String,RuleHandler> handlers(RedisRuleStorage storage,Map<String,Set<String>> groups) {
+        return Map.of("worker.default",new DefaultRuleHandler(storage,groups),"worker.country",new CountryRuleHandler(storage),
+                "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage));
     }
     private static final TaskItemWorkerSelector ANY=TaskItemWorkerSelector.parse(Map.of());
     private static final TaskItemWorkerSelector CN=country("CN");
@@ -54,23 +54,26 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         });
         connection=redisClient.connect(); redis=connection.sync();
         scores=new RedisWorkerScoreCore(redisClient,keyspace);
-        var traced=new LinkedHashMap<>(handlers());traced.replaceAll((id,handler)->trace(handler));
-        catalog=new RedisWorkerMatchingCatalog(redisClient,keyspace,traced,Map.of("g",Set.of("worker.country","worker.messaging.available","proof.worker.facts")), Map.of());
+        catalog=createCatalog(Map.of("g",Set.of("worker.country","worker.messaging.available","proof.worker.facts")),Map.of());
+    }
+    private RedisWorkerMatchingCatalog createCatalog(Map<String,Set<String>> groups,
+            Map<String,Map<String,List<EligibilityQuery>>> defaults) {
+        var storage=new RedisRuleStorage(redisClient,keyspace);
+        var traced=new LinkedHashMap<>(handlers(storage,groups)); traced.replaceAll((id,handler)->trace(handler));
+        return new RedisWorkerMatchingCatalog(storage,traced,groups,defaults);
     }
     private RuleHandler trace(RuleHandler handler) {
         return new RuleHandler() {
-            public List<IndexMutation> indexes() { return handler.indexes(); }
-            public Bound bind(java.util.function.Supplier<RedisCommands<String,String>> commands,String base,Set<String> enabled) {
-                var bound=handler.bind(commands,base,enabled);
-                return new Bound() {
-                    public EligibilityQuery normalize(Map<String,?> expression,int count) { return bound.normalize(expression,count); }
-                    public EligibilityQuery selector(Map<String,?> expression,int count) { return bound.selector(expression,count); }
-                    public Query compile(EligibilityQuery query) { return bound.compile(query); }
-                    public Map<String,Member> snapshot(List<String> ids) {
-                        refillStages.add("projection");beforeProjection.accept(ids);
-                        var result=bound.snapshot(ids);afterProjection.accept(ids);return result;
-                    }
-                };
+            public EligibilityQuery normalizeTarget(String group,EligibilityQuery target) { return handler.normalizeTarget(group,target); }
+            public void validateSelector(String group,TaskItemWorkerSelector selector) { handler.validateSelector(group,selector); }
+            public Map<EligibilityQuery,Integer> deficits(String group,List<EligibilityQuery> targets) { return handler.deficits(group,targets); }
+            public List<String> refill(String group,List<EligibilityQuery> targets,List<HeldCandidate> offered,int maxAccepted) {
+                var ids=offered.stream().map(HeldCandidate::workerId).toList();
+                refillStages.add("qualification"); beforeQualification.accept(ids);
+                var result=handler.refill(group,targets,offered,maxAccepted); afterAdmission.accept(ids); return result;
+            }
+            public Map<TaskItemWorkerSelector,List<HeldCandidate>> take(String group,Map<TaskItemWorkerSelector,Integer> limits) {
+                return handler.take(group,limits);
             }
         };
     }
@@ -95,9 +98,10 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     private String indexKey() { return keyspace.base()+":matching:worker:index:Zw:country"; }
     private void useBucketRule(boolean failSnapshot) {
         catalog.close();
-        var rules=new LinkedHashMap<>(handlers()); rules.put(BucketRuleHandler.ID,new BucketRuleHandler(failSnapshot));
-        catalog=new RedisWorkerMatchingCatalog(redisClient,keyspace,rules,
-                Map.of("g",Set.of("worker.country",BucketRuleHandler.ID)),Map.of());
+        var groups=Map.of("g",Set.of("worker.country",BucketRuleHandler.ID));
+        var storage=new RedisRuleStorage(redisClient,keyspace,Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
+        var rules=new LinkedHashMap<>(handlers(storage,groups)); rules.put(BucketRuleHandler.ID,new BucketRuleHandler(storage,failSnapshot));
+        catalog=new RedisWorkerMatchingCatalog(storage,rules,groups,Map.of());
     }
     @Test void independentBucketLayoutSharesStockAndRetainsBatchCommandBudgets() {
         useBucketRule(false);
@@ -167,8 +171,10 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         redis.hset(root,"stale","{}"); redis.sadd(root+":orphan","stale");
         redis.set(root+"_neighbor","kept"); redis.zadd(indexKey(),1,"other-rule-member");
         catalog.close();
-        var rules=new LinkedHashMap<>(handlers()); rules.put(BucketRuleHandler.ID,new BucketRuleHandler());
-        catalog=new RedisWorkerMatchingCatalog(redisClient,keyspace,rules,Map.of("g",Set.of(BucketRuleHandler.ID)),Map.of());
+        var groups=Map.of("g",Set.of(BucketRuleHandler.ID));
+        var storage=new RedisRuleStorage(redisClient,keyspace,Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
+        var rules=new LinkedHashMap<>(handlers(storage,groups)); rules.put(BucketRuleHandler.ID,new BucketRuleHandler(storage));
+        catalog=new RedisWorkerMatchingCatalog(storage,rules,groups,Map.of());
         catalog.rebuildIndexes();
         assertThat(redis.hkeys(root)).containsExactly("w");
         assertThat(redis.exists(root+":orphan")).isZero();
@@ -259,7 +265,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         Map<String, String> other = Map.of("a", "other", "b", "other");
         catalog.upsertWorkerFactsBatch("g", Map.of("w", live));
         CountDownLatch start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerMatchingCatalog(redisClient, keyspace,handlers(), Map.of("g",Set.of("worker.country","worker.messaging.available","proof.worker.facts")), Map.of());
+        try (var competing = createCatalog( Map.of("g",Set.of("worker.country","worker.messaging.available","proof.worker.facts")), Map.of());
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
                 start.await();
@@ -431,7 +437,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refillPrepared(prepared)).isEqualTo(100);
         // Observation and first acquisition both precede the supplied-ID projection.
         assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
-        assertThat(refillStages).containsExactly("observe","acquire","projection");
+        assertThat(refillStages).containsExactly("observe","acquire","qualification");
         commandTypes.clear();
         assertThat(prepared.get("task").take(Map.of(CN,100)).get(CN)).hasSize(100);
         assertThat(commandTypes).isEmpty();
@@ -487,7 +493,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
         var prepared=prepare("task");
         var held=acquire("g",offer("g",100));
-        beforeProjection=ids->{
+        beforeQualification=ids->{
             assertThat(ids).containsExactly("w");
             var state=scores.getScoreStates("g",ids).get("w");
             assertThat(state.score()).isEqualTo(held.getFirst().score());
@@ -516,7 +522,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var original=new HashMap<String,HeldCandidate>();offered.forEach(held->original.put(held.workerId(),held));
         assertThat(catalog.prepareRefill(prepared).refill("g",offered)).isEqualTo(2);
         assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
-        assertThat(refillStages).containsExactly("acquire","projection","projection");
+        assertThat(refillStages).containsExactly("acquire","qualification","qualification");
         var delivered=new HashSet<String>();
         prepared.values().forEach(view->view.take(Map.of(ANY,100)).get(ANY).forEach(held->{
             assertThat(delivered.add(held.workerId())).isTrue();
@@ -573,7 +579,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
         var prepared=prepare("task");
         var held=acquire("g",offer("g",100));
-        beforeProjection=ids->{
+        beforeQualification=ids->{
             assertThat(scores.getScoreStates("g",ids).get("w").dirty()).isZero();
             catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
             assertThat(scores.markCurrentLeasesDirty("g",ids).get("w").status())
@@ -583,14 +589,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(prepared.get("task").take(Map.of(CN,1)).get(CN)).isEmpty();
     }
 
-    @Test void invalidationAfterProjectionIsNotClearedAgainDuringAdmission() {
+    @Test void invalidationAfterAdmissionRejectsTheOriginalCandidateFence() {
         hot("g",List.of("w"));
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","CN")));
         scores.markCurrentLeasesDirty("g",List.of("w"));
         catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
         var prepared=prepare("task");
         var offered=acquire("g",offer("g",100));
-        afterProjection=ids->{
+        afterAdmission=ids->{
             catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
             assertThat(scores.markCurrentLeasesDirty("g",ids).get("w").status())
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
@@ -632,7 +638,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     @Test void freshCatalogCannotConsumePreviousProcessStockOrClaimItsHold() {
         hot("g",List.of("w")); bound("task",WorkerMatchingCatalog.DEFAULT_RULE_ID); refill("task");
-        try(var restarted=new RedisWorkerMatchingCatalog(redisClient,keyspace,handlers(),Map.of(),Map.of())) {
+        try(var restarted=createCatalog(Map.of(),Map.of())) {
             var views=restarted.prepareTaskQueries(Map.of("task","g"));
             assertThat(views.get("task").take(Map.of(ANY,1)).get(ANY)).isEmpty();
             assertThat(refillPrepared(restarted,"g",views,100)).isZero();
@@ -663,7 +669,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
 
     @Test void defaultTargetsAreResolvedIntoCreateOnlyBindings() {
-        try(var configured=new RedisWorkerMatchingCatalog(redisClient,keyspace,handlers(),Map.of("g",Set.of("worker.country")),
+        try(var configured=createCatalog(Map.of("g",Set.of("worker.country")),
                 Map.of("g",Map.of("worker.default",List.of(target(10,"US")))))) {
             assertThat(configured.bindTaskRule("configured","g","worker.default",null).status()).isEqualTo(MutationStatus.APPLIED);
         }
@@ -717,9 +723,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     @Test void rebuildingAGroupWithGlobAndSeparatorCharactersDoesNotClearAnotherGroup() {
         String special = "g:*[x]";
-        try (var selected = new RedisWorkerMatchingCatalog(redisClient, keyspace,handlers(),
+        try (var selected = createCatalog(
                 Map.of(special, Set.of("worker.country")), Map.of());
-             var neighbor = new RedisWorkerMatchingCatalog(redisClient, keyspace,handlers(),
+             var neighbor = createCatalog(
                 Map.of(special + ":other", Set.of("worker.country")), Map.of())) {
             selected.upsertWorkerFactsBatch(special, Map.of("a", Map.of("country", "CN")));
             neighbor.upsertWorkerFactsBatch(special + ":other", Map.of("b", Map.of("country", "US")));

@@ -717,7 +717,7 @@
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/SharedEligibility.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/LocalCandidateRule.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -729,7 +729,7 @@
         "worker_dynamic_matching",
         "product_coexistence"
       ],
-      "reason": "Closed Pacer supply, merged renewal and destructive local take require Owner fence/command proofs plus real Worker, dynamic facts and convergence proofs."
+      "reason": "Rule-owned qualification, original Pacer fences and destructive local take require Owner fence/command proofs plus real Worker, dynamic facts and convergence proofs."
     },
     {
       "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerEligibilityRefillPolicy.java",

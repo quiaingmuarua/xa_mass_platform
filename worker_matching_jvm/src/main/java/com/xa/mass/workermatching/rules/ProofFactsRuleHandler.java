@@ -4,7 +4,9 @@ import java.util.*;
 
 /** Installed only in explicitly configured proof Groups. */
 public final class ProofFactsRuleHandler extends PartitionedRuleHandler {
-    public ProofFactsRuleHandler() { super("proof", """
+    public ProofFactsRuleHandler(RedisRuleStorage storage) { super(storage,"proof"); }
+    static RedisRuleStorage.IndexMutation index() {
+        return new RedisRuleStorage.IndexMutation("proof",ZsetProjection.prepare( """
             local pool=type(w.proofPool)=='string' and w.proofPool or '~'
             local target=w.proofTarget=='yes' and 'yes' or 'no'
             local enabled=p.proofEnabled=='yes' and 'yes' or 'no'
@@ -17,7 +19,8 @@ public final class ProofFactsRuleHandler extends PartitionedRuleHandler {
             end
             parts[#parts+1]='slot:'..slot
             return 0,parts
-            """); }
+            """));
+    }
     @Override PartitionedZsetIndex.Criteria criteria(Map<String,List<String>> query) {
         if(query.isEmpty())return new PartitionedZsetIndex.Criteria("","any",List.of());
         if(query.keySet().equals(Set.of("worker.convergenceSlot")))
