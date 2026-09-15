@@ -82,11 +82,21 @@ Temporary HTTP connection, read and request-timeout failures from observation
 reads may be observed again until the phase deadline. Mutation requests are
 issued once and an ambiguous transport failure fails the phase. Invalid JSON,
 unexpected HTTP status, invalid state or identity drift fails immediately.
-Defaults are 120 seconds for the whole phase and 5 seconds for one request,
-with `requestTimeout <= maximumWait`. The phase budget intentionally spans the
-default 60-second Serviceability retry plus the final workload witness; it is
-not reset for each observation. A phase can exit at most one in-progress
+Defaults are 180 seconds for the whole phase and 5 seconds for one request,
+with `requestTimeout <= maximumWait`. A due rank-0 RECOVERY probe schedules its
+next coordinate at `Redis now + 2 * 60 seconds`. Connected evidence restores HOT
+polarity while preserving this future coordinate. The phase budget covers that
+120-second hold, the final DELAY witness (up to 30 seconds), and the bounded
+setup and observation work. It is not reset for each observation and does not
+change production retry timing. See the
+[Serviceability retry contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).
+A phase can exit at most one in-progress
 request timeout after its maximum wait budget.
+
+The active phase records the accepted DELAY identity, Handler checkpoint and
+confirmed close mutation as they occur, so a later timeout retains the evidence
+needed to locate the same Item. Success still requires its observed Result,
+stable Worker identity, connected Route and HOT scheduling polarity.
 
 ## Three-application isolation
 

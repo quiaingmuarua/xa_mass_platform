@@ -9,7 +9,9 @@ import java.util.Set;
 
 final class AndroidWorkerProofOptions {
 
-    private static final long DEFAULT_MAXIMUM_WAIT_MILLIS = 120_000L;
+    // A due rank-0 RECOVERY probe reserves 2 * 60s before the final
+    // DELAY witness (up to 30s); connected evidence preserves that deadline.
+    private static final long DEFAULT_MAXIMUM_WAIT_MILLIS = 180_000L;
 
     private static final Set<String> ALLOWED = Set.of(
             "phase",

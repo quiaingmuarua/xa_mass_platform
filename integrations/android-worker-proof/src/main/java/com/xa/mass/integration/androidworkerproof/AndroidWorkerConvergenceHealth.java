@@ -137,6 +137,7 @@ final class AndroidWorkerConvergenceHealth {
                     "Long DELAY completed before the in-flight checkpoint"
             );
         }
+        evidence.check("longDelayMessageId", delayed.messageId());
         ProofWait.until(
                 maximumWait,
                 device::snapshot,
@@ -145,6 +146,7 @@ final class AndroidWorkerConvergenceHealth {
                 "Android DELAY did not enter the Handler",
                 workerId
         );
+        evidence.check("activeDelayObserved", true);
         String closeOutcome = runtime.closeCurrentConnection(
                 options.endpointManagerId(),
                 workerId
@@ -155,6 +157,7 @@ final class AndroidWorkerConvergenceHealth {
                     "Adapter did not establish the physical close mutation"
             );
         }
+        evidence.check("closeCurrentOutcome", closeOutcome);
         AndroidWorkerProofAssertions.awaitSucceededResult(
                 runtime,
                 delayed.messageId(),
@@ -172,9 +175,6 @@ final class AndroidWorkerConvergenceHealth {
                 maximumWait
         );
         AndroidWorkerProofAssertions.awaitHot(runtime, workerId, maximumWait);
-        evidence.check("longDelayMessageId", delayed.messageId());
-        evidence.check("activeDelayObserved", true);
-        evidence.check("closeCurrentOutcome", closeOutcome);
         evidence.check("longDelayResultObserved", true);
         evidence.check("postMutationConnected", true);
     }
