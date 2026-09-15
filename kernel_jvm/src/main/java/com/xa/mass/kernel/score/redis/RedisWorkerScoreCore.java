@@ -124,24 +124,14 @@ public final class RedisWorkerScoreCore
     private static final String CAS_UPDATE_SCRIPT = CAS_FUNCTION + """
             return update(KEYS[1],ARGV[1],tonumber(ARGV[2]),tonumber(ARGV[3]))
             """;
-    private static final String DUE_HOT_PAGE_SCRIPT = """
-            local minimum,offset,limit=tonumber(ARGV[1]),tonumber(ARGV[2]),tonumber(ARGV[3])
-            local millis,factor=tonumber(ARGV[4]),tonumber(ARGV[5])
+    private static final String DUE_HOT_HEAD_SCRIPT = """
+            local minimum,limit=tonumber(ARGV[1]),tonumber(ARGV[2])
+            local millis,factor=tonumber(ARGV[3]),tonumber(ARGV[4])
             local clock=redis.call('TIME')
             local now=math.floor((tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000))/millis)
             local maximum=(now-1)*factor+factor-1
-            if maximum<minimum then return {'0'} end
-            local count=redis.call('ZCOUNT',KEYS[1],minimum,maximum)
-            if count==0 then return {'0'} end
-            if offset>=count then offset=0 end
-            local before=redis.call('ZCOUNT',KEYS[1],'-inf','('..ARGV[1])
-            local size=math.min(limit,count-offset)
-            local rows=redis.call('ZRANGE',KEYS[1],before+offset,before+offset+size-1,'WITHSCORES')
-            local next_offset=offset+size
-            if next_offset>=count then next_offset=0 end
-            local result={tostring(next_offset)}
-            for i=1,#rows do result[#result+1]=rows[i] end
-            return result
+            if maximum<minimum then return {} end
+            return redis.call('ZRANGE',KEYS[1],minimum,maximum,'BYSCORE','LIMIT',0,limit,'WITHSCORES')
             """;
     private static final String HOT_LEASE_BATCH_SCRIPT = """
             if #ARGV>206 or (#ARGV-6)%2~=0 then return redis.error_reply('HOT leases require at most 100 identities') end
@@ -377,21 +367,20 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public WorkerScoreCandidatePage observeDueHotScoreCandidates(
-            String homeBucketId,
+    public Map<String, Long> observeDueHotScoreCandidates(
+            String workerGroupId,
             Long hotEligibilityFloorMillis,
-            long offset,
             int limit
     ) {
-        requireNonBlank(homeBucketId, "homeBucketId");
-        if (offset < 0 || limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("candidate observation requires a nonnegative offset and limit 1..100");
+        requireNonBlank(workerGroupId, "workerGroupId");
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("candidate observation requires limit 1..100");
         }
         long minimumScore;
         if (hotEligibilityFloorMillis == null) {
             minimumScore = MIN_BASE;
         } else if (!validTimeMillis(hotEligibilityFloorMillis)) {
-            return new WorkerScoreCandidatePage(Map.of(), 0);
+            return Map.of();
         } else {
             minimumScore = Math.max(
                     MIN_BASE,
@@ -402,19 +391,19 @@ public final class RedisWorkerScoreCore
                     )
             );
         }
-        List<String> rows = commands().eval(DUE_HOT_PAGE_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{scoreKey(homeBucketId)}, Long.toString(minimumScore), Long.toString(offset),
+        List<String> rows = commands().eval(DUE_HOT_HEAD_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey(workerGroupId)}, Long.toString(minimumScore),
                 Integer.toString(limit), Long.toString(SLOT_MILLIS), Integer.toString(SLOT_FACTOR));
         LinkedHashMap<String, Long> candidates = new LinkedHashMap<>();
-        for (int i = 1; i < rows.size(); i += 2) {
+        for (int i = 0; i < rows.size(); i += 2) {
             try {
                 var state = decodeState(rows.get(i), Double.parseDouble(rows.get(i + 1)));
                 candidates.put(state.workerId(), state.score());
             } catch (IllegalStateException | NumberFormatException corrupt) {
-                // Progress includes corrupt rows, so a bad head cannot trap observation.
+                // The raw-row budget includes corrupt scores; observation does not repair or skip ahead.
             }
         }
-        return new WorkerScoreCandidatePage(candidates, Long.parseLong(rows.getFirst()));
+        return java.util.Collections.unmodifiableMap(candidates);
     }
 
     @Override

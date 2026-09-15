@@ -308,10 +308,6 @@
       "worker_id",
       "score",
       "expires_at_millis"
-    ],
-    "WorkerScoreCandidatePage": [
-      "observed_scores",
-      "next_offset"
     ]
   },
   "enums": {

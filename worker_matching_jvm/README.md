@@ -9,7 +9,7 @@ persisted DSL, dynamic registry or per-Task candidate cache.
 ## Owner Boundary
 
 **Core mechanism change: Pacer acquires a 1-second candidate lease before Matching.**
-Pacer observes a Group HOT page, exact-acquires the observed scores, and supplies
+Pacer observes the Group HOT head, exact-acquires the observed scores, and supplies
 only successful new fences. Matching then reads eligibility and admits candidates
 using those same fences and deadlines. Matching processing and stock waiting share
 the original second; unmatched leases expire naturally. Candidate supply and every
@@ -18,7 +18,7 @@ or inventory extension.
 
 | Stage | Authority and fence |
 | --- | --- |
-| Supply | Pacer reads a bounded Group HOT page, then exact-acquires 1-second leases, clearing dirty |
+| Supply | Pacer reads a bounded Group HOT head, then exact-acquires 1-second leases, clearing dirty |
 | Qualification | Matching reads only supplied-ID projections and plans accepted IDs across Rules |
 | Admission | Matching stores the supplied fences and original deadlines after planning the Group |
 | Execution | Kernel exact-confirms a clean inventory fence, setting dirty=1, then exact-claims the Item |
@@ -26,7 +26,7 @@ or inventory extension.
 ```text
 Worker / Platform facts -> enabled Rule projections -> Redis eligibility indexes
 NORMAL Tasks -> bindings -> shared query targets MAX -> local Group deficits
-  -> Pacer Group HOT page -> Kernel exact 1-second lease -> offered held IDs
+  -> Pacer Group HOT head -> Kernel exact 1-second lease -> offered held IDs
   -> Matching current projection -> acceptance plan using original fences
   -> process-local shared Eligibility inventory
 TaskItems -> normalized queries SUM -> local take -> current address
@@ -203,7 +203,7 @@ released by another scope expiring during a round may be reclaimed at the next
 normal refill preparation. This can conservatively underfill, never overfill or
 authorize an expired candidate. Cleanup remains lazy, without a background thread.
 
-Pacer reads a page and acquires the observed batch before handing successful leases
+Pacer reads the due head and acquires the observed batch before handing successful leases
 to Matching. The 1-second deadline is computed immediately before the Group's
 acquisition call. Matching first collects all acceptance plans across that Group;
 a Handler failure commits none of those plans. Insertion rechecks expiry and capacity,
@@ -225,12 +225,13 @@ or adoption across restart. Due acquisition accepts either dirty value and clear
 it; final confirmation requires exact clean active non-PAUSE fences. Both check
 Redis time inside their Lua. Capacity exhaustion has no wait queue.
 
-Pacer advances read-only per-Group rank pages even when none of the offered Workers
-match. End-of-range wraps and removal from the current Group roots drops its offset.
-Equal-score Workers beyond the first page remain discoverable. Acquired Workers
-leave the due range until expiry; unmatched ones share that cost. The live range
-can change concurrently, including through these acquisitions; no stable page
-snapshot or fixed selective-query latency is promised.
+**Core scheduling change: Pacer starts each Group read at the due head from the
+HOT floor, without a within-Group offset.** Acquisition moves successfully held
+Workers out of that range before Matching, including unmatched ones. Expiry retains
+the newer Score, so older unacquired Workers stay ahead. Group rotation is separate.
+The Score Owner filters corrupt scores within the raw-row budget without replacement
+reads; a fully corrupt head has no automatic bypass guarantee. There is no stable
+snapshot or fixed selective-query latency promise.
 
 ## Persistent Catalog
 
@@ -293,8 +294,8 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Refill preparation: zero Redis commands; one target aggregation and global expiry
   sweep per round, with compilation reused only for visited queries in that batch.
 - Normalized stock counts and take: zero Redis commands or facts reads.
-- Each nonempty eligible Group page: one read-only HOT page Lua (TIME, ZCOUNT,
-  rank ZRANGE inside), then one candidate-acquisition Lua, followed by at most one
+- Each nonempty eligible Group batch: one read-only HOT head Lua (TIME and
+  ZRANGE BYSCORE LIMIT 0 limit inside), then one candidate-acquisition Lua, followed by at most one
   projection read per participating Handler. No successful acquisitions means no
   Matching call. One named Handler uses three client commands for up to 100 IDs.
   Zero-match batches also acquire leases; full stock skips observation and acquisition.
@@ -320,7 +321,7 @@ ACK, replay or a repair scan.
 
 Focused tests cover interpretation, overlapping stock, bounded predicate evaluation,
 Group batch/compilation reuse, local expiry and concurrency. Redis
-Owner proves read-only pagination, closed supplied batches, acquisition before
+Owner proves head observation and acquisition-driven progress, closed supplied batches, acquisition before
 projection (including unmatched candidates), shared target MAX, dirty clearing,
 execution fence invalidation, commit-time expiry and command order/counts. Controlled
 Matching clocks prove that processing time consumes the original lease deadline.

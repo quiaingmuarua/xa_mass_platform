@@ -1132,7 +1132,7 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(initial.timeMillis()).isEqualTo(100);
         assertThat(initial.laneRank()).isZero();
         assertThat(initial.dirty()).isZero();
-        assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 0, 100).observedScores()).isEmpty();
+        assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
 
         RunningWorker first = startWorker(
                 workerGroupId,

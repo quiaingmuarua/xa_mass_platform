@@ -192,7 +192,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             assertThat(result.status()).isEqualTo(RegistrationStatus.NOOP);
             assertThat(result.endpointManagerId()).isEqualTo("endpoint-1");
         });
-        assertThat(scoreCore.observeDueHotScoreCandidates("group-1", null, 0, 100).observedScores()).isEmpty();
+        assertThat(scoreCore.observeDueHotScoreCandidates("group-1", null, 100)).isEmpty();
         assertThat(scoreCore.acquireHotCandidatesBefore("group-1", redisTimeMillis(), Long.MAX_VALUE, 100)).isEmpty();
         assertThat(scoreCore.acquireRecoveryRecheckCandidates("group-1", 0, 100)).isEmpty();
     }
@@ -709,7 +709,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void readOnlyPagesReachEqualScoreWorkersBeyondAnUnmatchedHeadAndWrap() {
+    void readOnlyHeadRetainsScoreAndMemberOrderWithinOneCommand() {
         long due = workerScore(1, redisTimeMillis() / 100 - 100, 7, 1);
         var ids = java.util.stream.IntStream.range(0, 250)
                 .mapToObj(i -> "worker-%03d".formatted(i)).toList();
@@ -723,50 +723,70 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         };
         redisClient.addListener(listener);
         try {
-            long offset = 0;
-            var observed = new java.util.ArrayList<String>();
-            for (int page = 0; page < 3; page++) {
+            scoreCore.observeDueHotScoreCandidates("g", null, 100); // Warm the observed Owner connection.
+            for (int round = 0; round < 3; round++) {
                 commands.clear();
-                var result = scoreCore.observeDueHotScoreCandidates("g", null, offset, 100);
+                var observed = scoreCore.observeDueHotScoreCandidates("g", null, 100);
                 assertThat(commands).containsExactly("EVAL");
-                observed.addAll(result.observedScores().keySet());
-                assertThat(result.observedScores().values()).containsOnly(due);
-                offset = result.nextOffset();
-                assertThat(offset).isEqualTo(page == 2 ? 0 : (page + 1) * 100);
+                assertThat(observed.keySet()).containsExactlyElementsOf(ids.subList(0, 100));
+                assertThat(observed.values()).containsOnly(due);
+                assertThatThrownBy(observed::clear).isInstanceOf(UnsupportedOperationException.class);
             }
-            assertThat(observed).containsExactlyElementsOf(ids);
-            assertThat(scoreCore.observeDueHotScoreCandidates("g", null, offset, 100).observedScores().keySet())
-                    .containsExactlyElementsOf(ids.subList(0, 100));
-            assertThat(scoreCore.observeDueHotScoreCandidates("g", null, Long.MAX_VALUE, 100).observedScores().keySet())
-                    .containsExactlyElementsOf(ids.subList(0, 100));
             assertThat(redis.zrangeWithScores(scoreKey("g"), 0, -1)).isEqualTo(before);
         } finally { redisClient.removeListener(listener); }
     }
 
     @Test
-    void observationPagesHonorHotFloorAndCorruptRowsCannotTrapProgress() {
+    void observationFiltersCorruptRowsWithinTheRawLimitWithoutReplacementReads() {
         long slot = redisTimeMillis() / 100;
         long eligible = workerScore(1, slot - 10, 7, 0);
+        redis.zadd(scoreKey("g"), eligible, "clean");
         redis.zadd(scoreKey("g"), eligible + 0.25, "corrupt");
         redis.zadd(scoreKey("g"), eligible + 1, "dirty");
-        redis.zadd(scoreKey("g"), workerScore(1, slot - 20, 7, 0), "below-floor");
-        redis.zadd(scoreKey("g"), -eligible, "recovery");
-        redis.zadd(scoreKey("g"), workerScore(1, slot + 100, 7, 0), "occupied");
-        redis.zadd(scoreKey("g"), workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 7, 0), "pause");
-        var corrupt = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * 100, 0, 1);
-        assertThat(corrupt.observedScores()).isEmpty();
-        assertThat(corrupt.nextOffset()).isEqualTo(1);
-        var valid = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * 100, corrupt.nextOffset(), 1);
-        assertThat(valid.observedScores()).containsExactly(Map.entry("dirty", eligible + 1));
-        assertThat(valid.nextOffset()).isZero();
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", null, 2))
+                .containsExactly(Map.entry("clean", eligible));
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", null, 3))
+                .containsExactly(Map.entry("clean", eligible), Map.entry("dirty", eligible + 1));
         assertThat(redis.zscore(scoreKey("g"), "corrupt")).isEqualTo(eligible + 0.25);
-        assertThat(scoreCore.observeDueHotScoreCandidates("absent", null, 100, 100).nextOffset()).isZero();
-        assertThatThrownBy(() -> scoreCore.observeDueHotScoreCandidates("g", null, -1, 100))
-                .isInstanceOf(IllegalArgumentException.class);
+
+        for (int index = 0; index < 100; index++) {
+            redis.zadd(scoreKey("bad-head"), eligible + 0.25, "corrupt-" + index);
+        }
+        redis.zadd(scoreKey("bad-head"), eligible + 1, "valid-tail");
+        for (int round = 0; round < 2; round++) {
+            assertThat(scoreCore.observeDueHotScoreCandidates("bad-head", null, 100)).isEmpty();
+        }
+        assertThat(redis.zcard(scoreKey("bad-head"))).isEqualTo(101);
+        assertThat(redis.zscore(scoreKey("bad-head"), "valid-tail")).isEqualTo((double) eligible + 1);
+        assertThat(scoreCore.observeDueHotScoreCandidates("absent", null, 100)).isEmpty();
         for (int limit : new int[]{0, 101}) {
-            assertThatThrownBy(() -> scoreCore.observeDueHotScoreCandidates("g", null, 0, limit))
+            assertThatThrownBy(() -> scoreCore.observeDueHotScoreCandidates("g", null, limit))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", -1L, 100)).isEmpty();
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", WorkerScoreCore.MAX_TIME_MILLIS + 1, 100)).isEmpty();
+    }
+
+    @Test
+    void observationHonorsFloorAndExcludesTheCurrentSlotFuturePauseAndRecovery() {
+        scoreCore.observeDueHotScoreCandidates("g", null, 100);
+        for (int attempt = 0; attempt < 8; attempt++) {
+            long slot = redisTimeMillis() / 100;
+            long eligible = workerScore(1, slot - 10, 7, 0);
+            redis.zadd(scoreKey("g"), eligible, "clean");
+            redis.zadd(scoreKey("g"), eligible + 1, "dirty");
+            redis.zadd(scoreKey("g"), workerScore(1, slot - 20, 7, 0), "below-floor");
+            redis.zadd(scoreKey("g"), -eligible, "recovery");
+            redis.zadd(scoreKey("g"), workerScore(1, slot, 0, 0), "current");
+            redis.zadd(scoreKey("g"), workerScore(1, slot + 100, 7, 0), "occupied");
+            redis.zadd(scoreKey("g"), workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 7, 0), "pause");
+            var observed = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * 100, 100);
+            if (redisTimeMillis() / 100 != slot) continue; // Resample only a missed time window.
+            assertThat(observed).containsExactly(Map.entry("clean", eligible), Map.entry("dirty", eligible + 1));
+            assertThat(scoreCore.observeDueHotScoreCandidates("g", (slot + 1000) * 100, 100)).isEmpty();
+            return;
+        }
+        throw new AssertionError("Could not observe the current Redis slot within eight attempts");
     }
 
     @Test
@@ -790,9 +810,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
         Map<String, Long> first = scoreCore.observeDueHotScoreCandidates(
                 groupId,
-                null, 0,
+                null,
                 100
-        ).observedScores();
+        );
         assertThat(first.keySet()).containsExactlyElementsOf(
                 workerIds.subList(0, 100)
         );
@@ -805,9 +825,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
         Map<String, Long> second = scoreCore.observeDueHotScoreCandidates(
                 groupId,
-                null, 0,
+                null,
                 100
-        ).observedScores();
+        );
         assertThat(second.keySet()).containsExactlyElementsOf(
                 workerIds.subList(100, 200)
         );
@@ -820,9 +840,27 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
         assertThat(scoreCore.observeDueHotScoreCandidates(
                 groupId,
-                null, 0,
+                null,
                 100
-        ).observedScores().keySet()).containsExactlyElementsOf(workerIds.subList(200, 250));
+        ).keySet()).containsExactlyElementsOf(workerIds.subList(200, 250));
+    }
+
+    @Test
+    void expiredCandidateLeaseRetainsItsNewPositionBehindOlderUnacquiredWorkers() throws Exception {
+        long slot = redisTimeMillis() / 100;
+        long first = workerScore(1, slot - 20, 7, 1);
+        long olderUnacquired = workerScore(1, slot - 10, 7, 0);
+        redis.zadd(scoreKey("g"), first, "first");
+        redis.zadd(scoreKey("g"), olderUnacquired, "waiting");
+        var observed = scoreCore.observeDueHotScoreCandidates("g", null, 1);
+        assertThat(observed).containsExactly(Map.entry("first", first));
+        long until = redisTimeMillis() + 1000;
+        var acquired = scoreCore.acquireObservedHotScoreLeases("g", observed, until).get("first");
+        assertThat(acquired.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+        awaitRedisTime((until / 100 + 1) * 100);
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", null, 2))
+                .containsExactly(Map.entry("waiting", olderUnacquired), Map.entry("first", acquired.score()));
+        assertThat(redis.zscore(scoreKey("g"), "first")).isEqualTo(acquired.score().doubleValue());
     }
 
     @Test
@@ -1497,7 +1535,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(released.score() % 2).isEqualTo(1);
         org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(3)).until(() ->
                 !scoreCore.observeDueHotScores("g", List.of("w"), null).isEmpty());
-        assertThat(scoreCore.observeDueHotScoreCandidates("g", null, 0, 10).observedScores()).containsKey("w");
+        assertThat(scoreCore.observeDueHotScoreCandidates("g", null, 10)).containsKey("w");
         var reacquired = scoreCore.acquireObservedHotScoreLeases("g", Map.of("w", released.score()),
                 redisTimeMillis() + 30_000).get("w");
         assertThat(reacquired.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);

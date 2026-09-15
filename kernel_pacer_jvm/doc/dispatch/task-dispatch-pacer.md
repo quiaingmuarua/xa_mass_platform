@@ -39,7 +39,7 @@ recheck and exact close or private idle park.
 Main supplies the once-prepared NORMAL Task binding batch to both refill and
 dispatch. Each Task's view references shared Eligibility stock. All selectors,
 including ANY and explicit IDs, use local destructive take. Only the separate
-refill Producer reads Group HOT pages and exact-acquires a 1-second lease before
+refill Producer reads Group HOT heads and exact-acquires a 1-second lease before
 Matching reads the successful IDs' projections. Inventory retains the supplied
 fence and deadline; Matching time consumes that same second. A take miss
 leaves the Item due without immediate supply. See [Candidate Selection](assignment-dispatch-scheduling.md#candidate-selection)

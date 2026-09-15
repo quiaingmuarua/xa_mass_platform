@@ -35,7 +35,7 @@ Matching has no acquisition callback or inventory renewal capability.
 
 ```text
 NORMAL RUNNING Tasks -> one prepared Binding batch
-  -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT page
+  -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT head
       -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
   -> dispatch: due Item queries -> local destructive take
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
@@ -48,14 +48,17 @@ inventory; a miss leaves the Item due without a source query or fresh hold.
 
 Refill runs at a 50ms completion-relative interval. Pacer rotates positive-deficit
 Groups and tries at most 100 IDs per Group, 1000 per round, independent of the
-business deficit count. It alone observes due HOT with the preset floor through
-one read-only page operation. Per-Group rank offsets advance after observation,
-including no-match and projection-failure rounds, and wrap at the range end.
-Offsets are retained only for current roots (at most 100); removed Groups forget
-them. Observation failure invents no progress. Group rotation also advances on
-attempts. Pagination does not claim a stable view under concurrent Score changes.
+business deficit count. **Each observation starts at the due head from the preset
+HOT floor, in ascending Score/member order; no within-Group offset is retained.**
+Successful acquisition moves the head forward before Matching, including no-match
+and projection-failure batches. Expired leases retain their newer time coordinates.
+Group rotation still advances on attempts, including empty observations and failures.
+Observation returns at most 100 raw rows, filtering corrupt scores without a
+replacement scan or automatic progress through a fully corrupt head. Score changes
+between observation and acquisition are handled by exact CAS, without a same-round
+rescan or a stable-snapshot promise.
 
-For each nonempty Group page Pacer computes now plus 1 second and calls the existing
+For each nonempty Group batch Pacer computes now plus 1 second and calls the existing
 exact acquisition once. Full-score comparison accepts due dirty=0 or dirty=1 and
 clears dirty on success. Only TRANSITIONED new fences reach Matching; all-failed
 acquisition skips it. Owner response loss does not trigger a confirmation read.

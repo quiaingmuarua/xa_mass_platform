@@ -286,8 +286,12 @@ kernel_jvm`.
   supplied projections and plans one Eligibility per ID. Pacer exact-acquires the
   observed Group batch before invoking Matching; only successful new fences are
   offered. Matching admits them with their original 1-second deadline and never
-  renews them. Read-only Group page offsets remain bounded to current Main roots and
-  advance on no-match rounds. Acquisition accepts due dirty=0/1 and clears dirty;
+  renews them. **Refill observes the due head from the HOT floor each round; it
+  retains no within-Group offset.** Acquisition advances that head even for
+  unmatched Workers; expiry retains the newer Score. Group rotation is separate.
+  The raw read is bounded to 100 rows; corrupt scores are filtered without replacement
+  scans, repair or an automatic-progress promise through a fully corrupt head.
+  Acquisition accepts due dirty=0/1 and clears dirty;
   execution confirmation requires clean active fences. Both check Redis time in CAS Lua.
   Kernel exact-confirms clean candidates
   and carries the returned execution fence into ResultContext. Properties writes

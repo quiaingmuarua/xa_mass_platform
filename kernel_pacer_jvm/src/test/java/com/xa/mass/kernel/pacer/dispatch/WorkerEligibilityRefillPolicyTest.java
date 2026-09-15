@@ -29,7 +29,7 @@ class WorkerEligibilityRefillPolicyTest {
     }
     void oneIssuedWorker() {
         when(batch.groupsNeedingRefill()).thenReturn(Set.of("g"));
-        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenReturn(new WorkerScoreCore.WorkerScoreCandidatePage(Map.of("w",10L),0));
+        when(scores.observeDueHotScoreCandidates("g",500L,100)).thenReturn(Map.of("w",10L));
         when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L)).thenReturn(Map.of("w",changed(20L)));
     }
 
@@ -45,7 +45,7 @@ class WorkerEligibilityRefillPolicyTest {
         assertEquals(1,policy.refill(List.of("g"),tasks));
         var order=inOrder(scores,batch);
         order.verify(batch).groupsNeedingRefill();
-        order.verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        order.verify(scores).observeDueHotScoreCandidates("g",500L,100);
         order.verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
         order.verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
         verifyNoMoreInteractions(scores);
@@ -56,12 +56,15 @@ class WorkerEligibilityRefillPolicyTest {
     @Test void partialAcquisitionOffersOnlySuccessfullyLeasedSuppliedIdentities() {
         oneIssuedWorker();
         var observed=Map.of("w",10L,"lost",11L,"same",12L);
-        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenReturn(new WorkerScoreCore.WorkerScoreCandidatePage(observed,0));
+        when(scores.observeDueHotScoreCandidates("g",500L,100)).thenReturn(observed);
         when(scores.acquireObservedHotScoreLeases("g",observed,2000L)).thenReturn(Map.of(
                 "w",changed(20L),"lost",new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE,30L),
                 "same",changed(12L),"outside",changed(40L)));
         policy.refill(List.of("g"),tasks);
         verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
+        verify(scores,times(1)).observeDueHotScoreCandidates("g",500L,100);
+        verify(scores,times(1)).acquireObservedHotScoreLeases("g",observed,2000L);
+        verifyNoMoreInteractions(scores);
     }
 
     @Test void satisfiedInventoryAndForeignGroupDemandNeverAcquireWorkers() {
@@ -78,8 +81,8 @@ class WorkerEligibilityRefillPolicyTest {
         var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
         when(batch.groupsNeedingRefill()).thenReturn(new LinkedHashSet<>(groups));
         var attempted=new ArrayList<String>();
-        when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
-            attempted.add(call.getArgument(0));return new WorkerScoreCore.WorkerScoreCandidatePage(Map.of(),0);
+        when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(100))).thenAnswer(call->{
+            attempted.add(call.getArgument(0));return Map.of();
         });
         policy.refill(groups,tasks);
         assertEquals(groups.subList(0,10),attempted);
@@ -94,7 +97,7 @@ class WorkerEligibilityRefillPolicyTest {
         oneIssuedWorker();
         assertEquals(0,policy.refill(List.of("g"),tasks));
         verify(batch).refill("g",List.of(new HeldCandidate("w",20L,2000L)));
-        verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        verify(scores).observeDueHotScoreCandidates("g",500L,100);
         verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
         verifyNoMoreInteractions(scores);
     }
@@ -103,7 +106,7 @@ class WorkerEligibilityRefillPolicyTest {
         oneIssuedWorker();
         when(batch.refill(eq("g"),anyList())).thenThrow(new IllegalStateException("projection"));
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
-        verify(scores).observeDueHotScoreCandidates("g",500L,0,100);
+        verify(scores).observeDueHotScoreCandidates("g",500L,100);
         verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
         verifyNoMoreInteractions(scores);
     }
@@ -128,8 +131,8 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void deadlineStartsAfterObservationAndMatchingCannotRestartIt() {
         oneIssuedWorker();
-        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenAnswer(call->{
-            clock.set(2000);return new WorkerScoreCore.WorkerScoreCandidatePage(Map.of("w",10L),0);
+        when(scores.observeDueHotScoreCandidates("g",500L,100)).thenAnswer(call->{
+            clock.set(2000);return Map.of("w",10L);
         });
         when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),3000L)).thenReturn(Map.of("w",changed(30L)));
         when(batch.refill(eq("g"),anyList())).thenAnswer(call->{
@@ -141,28 +144,47 @@ class WorkerEligibilityRefillPolicyTest {
         verify(scores,never()).acquireObservedHotScoreLeases("g",Map.of("w",10L),7000L);
     }
 
-    @Test void noMatchAndProjectionFailureAdvancePagesAndRemovedGroupsForgetProgress() {
+    @Test void noMatchAndProjectionFailureDoNotRescanWithinTheRound() {
         when(batch.groupsNeedingRefill()).thenReturn(Set.of("g"));
-        var offsets=new ArrayList<Long>();
-        when(scores.observeDueHotScoreCandidates(eq("g"),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
-            long offset=call.getArgument(2);offsets.add(offset);
-            return new WorkerScoreCore.WorkerScoreCandidatePage(Map.of("w",11L),offset+100);
+        when(scores.observeDueHotScoreCandidates("g",500L,100))
+                .thenReturn(Map.of("a",11L),Map.of("b",12L),Map.of("c",13L));
+        when(scores.acquireObservedHotScoreLeases(eq("g"),anyMap(),eq(2000L))).thenAnswer(call->{
+            Map<String,Long> observed=call.getArgument(1);
+            return Map.of(observed.keySet().iterator().next(),changed(20L));
         });
-        when(scores.acquireObservedHotScoreLeases("g",Map.of("w",11L),2000L)).thenReturn(Map.of("w",changed(20L)));
         when(batch.refill(eq("g"),anyList())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
         policy.refill(List.of("g"),tasks);
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
         policy.refill(List.of("g"),tasks);
-        policy.refill(List.of(),Map.of());policy.refill(List.of("g"),tasks);
-        assertEquals(List.of(0L,100L,200L,0L),offsets);
+        verify(scores,times(3)).observeDueHotScoreCandidates("g",500L,100);
+        for(String id:List.of("a","b","c")) {
+            verify(batch).refill("g",List.of(new HeldCandidate(id,20L,2000L)));
+        }
+        verify(scores,times(3)).acquireObservedHotScoreLeases(eq("g"),anyMap(),eq(2000L));
+        verifyNoMoreInteractions(scores);
     }
 
-    @Test void observationFailureDoesNotInventPageProgress() {
+    @Test void observationFailureStillRotatesToTheNextGroup() {
+        var groups=List.of("a","b");
+        when(batch.groupsNeedingRefill()).thenReturn(Set.copyOf(groups));
+        var attempted=new ArrayList<String>();
+        when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(100))).thenAnswer(call->{
+            String group=call.getArgument(0);attempted.add(group);
+            if(attempted.size()==1)throw new IllegalStateException("read");
+            return Map.of();
+        });
+        assertThrows(IllegalStateException.class,()->policy.refill(groups,tasks));
+        policy.refill(groups,tasks);
+        assertEquals(List.of("a","b","a"),attempted);
+        verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
+    }
+
+    @Test void observationFailureDoesNotAcquireOrRescan() {
         oneIssuedWorker();
-        when(scores.observeDueHotScoreCandidates("g",500L,0,100)).thenThrow(new IllegalStateException("read"))
-                .thenReturn(new WorkerScoreCore.WorkerScoreCandidatePage(Map.of(),0));
+        when(scores.observeDueHotScoreCandidates("g",500L,100)).thenThrow(new IllegalStateException("read"))
+                .thenReturn(Map.of());
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
         assertEquals(0,policy.refill(List.of("g"),tasks));
-        verify(scores,times(2)).observeDueHotScoreCandidates("g",500L,0,100);
+        verify(scores,times(2)).observeDueHotScoreCandidates("g",500L,100);
     }
 }

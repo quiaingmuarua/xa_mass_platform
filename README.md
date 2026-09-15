@@ -16,6 +16,9 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
 
+Refill reads the due Worker head from the HOT floor each round. Its pre-Matching
+lease acquisition advances that head without a within-Group pagination cursor.
+
 Only Kernel decides whether an assignment should exist. Server routes an
 already-owned command or result; Transport delivers it and invokes a local
 handler. Neither Server nor Transport selects replacement Workers or decides

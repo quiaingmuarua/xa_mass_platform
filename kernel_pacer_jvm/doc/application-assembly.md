@@ -153,7 +153,7 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | one RefillBatch preparation, Pacer Group pages and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
+| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | one RefillBatch preparation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
 | TASK_DISPATCH | NORMAL RUNNING and the same prepared bindings | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 

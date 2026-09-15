@@ -29,7 +29,7 @@ exact execution confirmation remain. There is no Matching acquisition callback,
 
 ```text
 NORMAL bindings -> local Group deficits
-  -> Pacer read-only due HOT page, including dirty=0 and dirty=1
+  -> Pacer read-only due HOT head, including dirty=0 and dirty=1
   -> one Kernel exact acquisition, 1 second, dirty=0 -> supplied successful fences
   -> Matching supplied-ID current projection and acceptance plan -> shared inventory
   -> local take -> exact Worker confirmation, execution fence, dirty=1
@@ -45,10 +45,18 @@ that Group's acquisition call. Only TRANSITIONED results with new fences are
 offered. Matching cannot reset the deadline, renew the lease or acquire a substitute.
 It filters expired offers before projection and again before stock insertion.
 
-The optional HOT floor remains a Score Owner observation constraint. A read-only
-page uses one Lua with Redis TIME, range counts and bounded rank ZRANGE. Pacer
-keeps a bounded per-Group offset and wraps, so unchanged unmatched head Workers
-cannot trap discovery. This is live best-effort pagination, not a stable snapshot.
+**Core scheduling change: refill always observes the due head from the optional
+HOT floor, in ascending Score/member order, without a within-Group offset.** One
+read-only Lua uses Redis TIME and ZRANGE BYSCORE LIMIT 0 limit WITHSCORES. Acquisition
+moves successful candidates out of the due range before Matching, including those
+that will not match. Expiry retains their newer Score, so older unacquired Workers
+remain ahead. Observation alone does not advance the head. Group rotation remains
+Pacer policy, separate from Serviceability and Recovery scan cursors.
+
+Limit is 1..100 raw rows. The immutable result omits corrupt scores without fetching
+replacements, repairing data or changing its order. A fully corrupt head returns
+empty; no cross-round bypass of those rows is promised. Concurrent Score changes
+remain subject to exact acquisition, without a same-round rescan or stable snapshot.
 
 Acquisition and confirmation each check Redis TIME inside the same bounded Lua
 as exact comparison and write, once per at most 100 identities on a Group key.

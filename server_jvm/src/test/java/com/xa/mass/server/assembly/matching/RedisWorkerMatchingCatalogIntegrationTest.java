@@ -343,7 +343,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     // The fixture supplies a closed Kernel-issued batch. Matching cannot choose identities.
     private Map<String,Long> offer(String group,int limit) {
         refillStages.add("observe");
-        return scores.observeDueHotScoreCandidates(group,null,0,limit).observedScores();
+        return scores.observeDueHotScoreCandidates(group,null,limit);
     }
     private List<HeldCandidate> acquire(String group,Map<String,Long> offered) {
         refillStages.add("acquire");
@@ -526,7 +526,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(delivered).containsExactlyInAnyOrder("cn","us");
     }
 
-    @Test void boundedPagesReachARareMatchWhileUnmatchedWorkersKeepTheirShortLease() {
+    @Test void headAcquisitionReachesARareMatchWithoutSkippingUnmatchedWorkers() {
         var ids=IntStream.range(0,250).mapToObj(i->"w-%03d".formatted(i)).toList();
         long observed=(System.currentTimeMillis()/100-100)*WorkerScoreCore.SLOT_FACTOR+1;
         for(int start=0;start<ids.size();start+=100) {
@@ -539,14 +539,15 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         }
         catalog.bindTaskRule("rare","g","worker.country",List.of(target(1,"CN")));
         var prepared=prepare("rare");
-        long offset=0;int added=0;
+        int added=0;var visited=new ArrayList<String>();
         for(int round=0;round<3 && added==0;round++) {
             var batch=catalog.prepareRefill(prepared);
-            var page=scores.observeDueHotScoreCandidates("g",null,offset,100);
-            offset=page.nextOffset();
-            var held=acquire("g",page.observedScores());
+            var observedBatch=scores.observeDueHotScoreCandidates("g",null,100);
+            visited.addAll(observedBatch.keySet());
+            var held=acquire("g",observedBatch);
             added+=batch.refill("g",held);
         }
+        assertThat(visited).containsExactlyElementsOf(ids);
         assertThat(added).isEqualTo(1);
         assertThat(prepared.get("rare").take(Map.of(CN,1)).get(CN))
                 .extracting(HeldCandidate::workerId).containsExactly("w-249");

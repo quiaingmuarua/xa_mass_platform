@@ -323,12 +323,11 @@ Due HOT candidate observation:
 
 ```text
 observe_due_hot_score_candidates(
-  homeBucketId,
+  workerGroupId,
   hotEligibilityFloorMillis?,
-  offset,
   limit
 )
-  -> WorkerScoreCandidatePage(observedScores, nextOffset)
+  -> immutable map[dueHotWorkerId, observedScore], ascending by score/member
 
 observe_due_hot_scores(
   homeBucketId,
@@ -362,14 +361,18 @@ qualifies that closed held batch and retains its original deadlines. Dispatch
 consumes those inventory fences and exact-confirms execution.
 The Score Owner never interprets selectors; Matching cannot initiate observation.
 
-Group pagination is one read-only Lua: Redis TIME fixes the due upper bound,
-ZCOUNT measures the due range and preceding members, then rank ZRANGE WITHSCORES
-reads at most 100 rows. It does not use a deep score-range LIMIT offset. Offset is
-nonnegative and limit is 1..100. End or out-of-range offsets wrap to zero; empty
-ranges return an empty page and zero. Corrupt rows are omitted but count towards
-page progress. Equal-score identities remain discoverable. Pacer retains offsets
-only for the current bounded Group roots, advancing even when no Worker matches.
-Concurrent range changes make this a live hint, with no stable snapshot guarantee.
+**Core scheduling change: each Group observation starts at the due range head;
+Pacer no longer carries a within-Group rank offset.** One read-only Lua uses Redis
+TIME for the due upper bound and one ZRANGE BYSCORE LIMIT 0 limit WITHSCORES. There
+are no range counts or wrap calculations. Limit is 1..100 raw rows; the returned
+Map is immutable and ordered by Score, then Redis member order for equal scores.
+
+Successful acquisition advances each candidate to a future time before Matching,
+so even unmatched candidates leave the due head. On expiry they retain their newer
+Score, behind older unacquired Workers. Read-only observations alone do not progress.
+Corrupt rows are filtered within the raw budget, with no replacement read or write.
+A fully corrupt head returns empty and has no automatic bypass guarantee. Concurrent
+changes remain subject to exact acquisition; no stable snapshot is promised.
 
 When optional periodic Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
@@ -853,11 +856,11 @@ mark_current_leases_dirty(homeBucketId, workerIds)
   marks due/active/recovery scores alike; not restricted to currently leased Workers
   no TIME, client pre-read or confirmation read
 
-observe_due_hot_score_candidates(homeBucketId, hotEligibilityFloorMillis?, offset, limit)
-  reads positive due HOT_ACQUIRE scores at or above the optional floor
-  returns WorkerScoreCandidatePage(observedScores, nextOffset), at most 100 rows
-  one Redis-time Lua, two bounded range counts and rank ZRANGE
-  corrupt rows are filtered without resetting page progress
+observe_due_hot_score_candidates(workerGroupId, hotEligibilityFloorMillis?, limit)
+  reads the smallest positive due HOT_ACQUIRE scores at or above the optional floor
+  returns an immutable ascending Score/member Map within a 1..100 raw-row limit
+  one Lua: Redis TIME and ZRANGE BYSCORE LIMIT 0 limit WITHSCORES
+  corrupt rows are filtered without replacement reads or cross-round bypass
   no score mutation, stable-snapshot or business-priority guarantee
 
 observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)

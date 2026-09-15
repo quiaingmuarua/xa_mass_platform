@@ -34,7 +34,10 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   preserves Worker lease coordinates, rank and
   dirty, with both polarity orders, exact confirmation races and one-command
   100-Worker batches. Past-slot freshness and PAUSE protection remain separate
-  oracles. Read-only rank pages reach equal-score Workers beyond the first page.
+  oracles. Repeated head observations plus acquisition reach equal-score Workers
+  without skipping the intervening batch; expired leases keep their newer positions.
+  Corrupt scores are filtered within the raw read limit, without replacement reads
+  or an automatic bypass guarantee through a fully corrupt head.
   Pacer acquisition precedes projection: supplied candidates are already held,
   even if they do not match. Command-order assertions distinguish that path from
   qualification-before-acquisition; original deadlines, natural expiry and later

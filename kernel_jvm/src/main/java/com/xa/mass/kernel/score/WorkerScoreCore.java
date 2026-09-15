@@ -37,25 +37,16 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Read-only rank page within the current due HOT range, including either dirty value.
-     * Offset must be nonnegative and limit 1..100. End-of-range wraps to zero;
-     * corrupt rows advance the page without becoming candidates. Live progress is best-effort.
+     * Reads the head of the current due HOT range, including either dirty value.
+     * Returns an immutable map in ascending score/member order. Limit is 1..100 raw rows;
+     * corrupt rows are omitted without scanning replacements or changing stored scores.
+     * Successful acquisition moves candidates out of this range; observation alone does not.
      */
-    WorkerScoreCandidatePage observeDueHotScoreCandidates(
-            String homeBucketId,
+    Map<String, Long> observeDueHotScoreCandidates(
+            String workerGroupId,
             @Nullable Long hotEligibilityFloorMillis,
-            long offset,
             int limit
     );
-
-    record WorkerScoreCandidatePage(Map<String, Long> observedScores, long nextOffset) {
-        public WorkerScoreCandidatePage {
-            observedScores = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(observedScores));
-            if (observedScores.size() > 100 || nextOffset < 0) {
-                throw new IllegalArgumentException("candidate page exceeds its bounds");
-            }
-        }
-    }
 
     Map<String, Long> observeDueHotScores(
             String homeBucketId,

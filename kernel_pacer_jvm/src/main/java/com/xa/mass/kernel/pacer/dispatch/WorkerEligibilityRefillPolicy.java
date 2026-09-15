@@ -4,7 +4,6 @@ import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,6 @@ final class WorkerEligibilityRefillPolicy {
     private final WorkerCandidateIndex index;
     private final Long hotFloorMillis;
     private final LongSupplier clock;
-    private final Map<String, Long> groupOffsets = new LinkedHashMap<>();
     private String lastAttemptedGroup;
 
     WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerCandidateIndex index, Long hotFloorMillis) {
@@ -39,7 +37,6 @@ final class WorkerEligibilityRefillPolicy {
     int refill(List<String> rootGroups, Map<String, WorkerCandidateIndex.TaskQuery> tasks) {
         if (rootGroups.size() > 100 || tasks.size() > 100) throw new IllegalArgumentException("at most 100 root coordinates");
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
-        groupOffsets.keySet().retainAll(groups);
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
         int start = lastAttemptedGroup == null ? 0 : (groups.indexOf(lastAttemptedGroup) + 1) % groups.size();
         var batch = index.prepareRefill(tasks);
@@ -52,10 +49,8 @@ final class WorkerEligibilityRefillPolicy {
             lastAttemptedGroup = group;
             budget -= GROUP_BUDGET;
             long started = DispatchStageEvent.start();
-            var page = scores.observeDueHotScoreCandidates(group, hotFloorMillis,
-                    groupOffsets.getOrDefault(group, 0L), GROUP_BUDGET);
-            groupOffsets.put(group, page.nextOffset());
-            var observed = page.observedScores();
+            // Acquisition advances the due head, including candidates Matching will reject.
+            var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, GROUP_BUDGET);
             DispatchStageEvent.batch(started, "REFILL_OBSERVATION", GROUP_BUDGET, observed.size(), false);
             if (observed.isEmpty()) continue;
             long until = Math.addExact(clock.getAsLong(), CANDIDATE_HOLD_MILLIS);
