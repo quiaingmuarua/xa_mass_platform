@@ -41,7 +41,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.RefillBatch;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerCandidateIndex.CandidateLease;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -173,6 +178,8 @@ class RuntimeBoundaryIntegrationTest {
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[shared-eligibility-boundary][0]", () -> BucketRuleHandler.ID);
+        registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][1]", () -> "worker.messaging.available");
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[property-tools-boundary][0]", () -> "proof.worker.facts");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
@@ -464,12 +471,120 @@ class RuntimeBoundaryIntegrationTest {
                     assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor",workerId);
                 }
             }
-            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).refill(org.mockito.ArgumentMatchers.argThat(
-                    prepared -> prepared!=null && prepared.keySet().containsAll(tasks.keySet())),eq(group),org.mockito.ArgumentMatchers.argThat(
-                            offered -> offered.size()==1 && offered.getFirst().workerId().equals(workerId)),any());
+            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).prepareRefill(org.mockito.ArgumentMatchers.argThat(
+                    prepared -> prepared!=null && prepared.keySet().containsAll(tasks.keySet())));
             assertThat(matchingCatalog.loadTaskBindings(List.copyOf(tasks.keySet())).values())
                     .allSatisfy(binding -> assertThat(binding.ruleId()).isEqualTo(BucketRuleHandler.ID));
             verify(preparationService,times(1)).prepareAll(eq(group),any(),any(),anyList());
+        }
+    }
+
+    @Test
+    void groupBatchesServeMultipleRulesAndSharedTasksThroughActualWorkers() throws Exception {
+        String groupA="group-refill-a",groupB="group-refill-b",event="extension.worker.group.refill";
+        for(String group:List.of(groupA,groupB))assertThat(send("POST","/api/v1/worker-groups/"+group+":register",
+                Jsons.toJson(Map.of("eventCodes",List.of(event)))).statusCode()).isEqualTo(200);
+        var workers=new ArrayList<JavaWorker>();
+        var identities=new LinkedHashMap<String,Map<String,String>>();
+        try {
+            for(int i=0;i<6;i++) {
+                String group=i<4?groupA:groupB;
+                Map<String,String> facts=Map.of("country",i<2?"CN":"US","messaging.enabled",i%2==0?"true":"false",
+                        "phone","+1202555000"+i);
+                var host=new AtomicReference<JavaWorker>();
+                var handler=WorkerEventDefinition.extension("group.refill",WorkerEventParameterResolvers.jsonMap(),
+                        ignored->Jsons.toJson(Map.of("executor",host.get().snapshot().workerId())));
+                var worker=JavaWorker.create(URI.create("http://127.0.0.1:"+port),group,"group-refill-host-"+i,
+                        WorkerTransportType.WEBSOCKET,()->facts,List.of(handler),
+                        WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()));
+                workers.add(worker);host.set(worker);worker.start();
+                awaitCondition(()->worker.snapshot().workerId()!=null);
+                String workerId=worker.snapshot().workerId();
+                awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,facts);
+                var identity=new LinkedHashMap<>(facts);identity.put("group",group);identities.put(workerId,Map.copyOf(identity));
+            }
+            var tasks=new LinkedHashMap<String,List<String>>();
+            var taskRules=new LinkedHashMap<String,String>();
+            var taskGroups=new LinkedHashMap<String,String>();
+            for(int t=0;t<4;t++) {
+                String group=t==3?groupB:groupA;
+                String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.default";
+                Map<String,Object> query=t<2?Map.of("worker.country",List.of("CN")):Map.of();
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"ruleId",rule,
+                        "refillTargets",List.of(Map.of("query",query,"count",t<2?t+1:2)))));
+                assertThat(response.statusCode()).isEqualTo(200);
+                String task=JSON.readTree(response.body()).get("taskId").asText();
+                taskGroups.put(task,group);taskRules.put(task,rule);
+                var ids=new ArrayList<String>();
+                for(int page=0;page<2;page++) {
+                    var items=new ArrayList<Map<String,Object>>();
+                    for(int i=0;i<100;i++) {
+                        String id=UUID.randomUUID().toString();ids.add(id);
+                        Map<String,Object> selector=t<2?Map.of("worker.country",Map.of("op","eq","values",List.of("CN"))):Map.of();
+                        items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),"workerSelector",selector));
+                    }
+                    var appended=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items));
+                    assertThat(appended.statusCode()).isEqualTo(200);
+                    var effects=JSON.readTree(appended.body());
+                    for(var item:items)assertThat(effects.get((String)item.get("messageId")).get("status").asText()).isEqualTo("applied");
+                }
+                tasks.put(task,List.copyOf(ids));
+            }
+            var multiRuleRoot=new java.util.concurrent.atomic.AtomicBoolean();
+            var multiGroupRoot=new java.util.concurrent.atomic.AtomicBoolean();
+            var supplied=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();
+            doAnswer(call->{
+                Map<String,TaskQuery> prepared=call.getArgument(0);
+                var batch=(RefillBatch)call.callRealMethod();
+                var selected=prepared.keySet().stream().filter(taskGroups::containsKey).toList();
+                if(selected.stream().filter(id->groupA.equals(taskGroups.get(id))).count()==3)multiRuleRoot.set(true);
+                if(selected.stream().map(taskGroups::get).distinct().count()==2)multiGroupRoot.set(true);
+                return new RefillBatch() {
+                    public Set<String> groupsNeedingRefill() { return batch.groupsNeedingRefill(); }
+                    public int refill(String group,Map<String,Long> offered,
+                            CandidateLease lease) {
+                        if(!Set.of(groupA,groupB).contains(group))return batch.refill(group,offered,lease);
+                        supplied.add(group);
+                        for(var workerId:offered.keySet())assertThat(identities.get(workerId)).containsEntry("group",group);
+                        var calls=new java.util.concurrent.atomic.AtomicInteger();
+                        return batch.refill(group,offered,ids->{
+                            assertThat(calls.incrementAndGet()).isEqualTo(1);
+                            assertThat(offered.keySet()).containsAll(ids);
+                            return lease.acquire(ids);
+                        });
+                    }
+                };
+            }).when(matchingCatalog).prepareRefill(anyMap());
+            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+            var pending=new LinkedHashMap<String,List<String>>();tasks.forEach((task,ids)->pending.put(task,new ArrayList<>(ids)));
+            long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
+            while(!pending.isEmpty() && System.nanoTime()<deadline) {
+                for(String task:List.copyOf(pending.keySet())) {
+                    var ids=List.copyOf(pending.get(task).subList(0,Math.min(100,pending.get(task).size())));
+                    var response=send("POST","/api/v1/tasks/"+task+"/results:load",Jsons.toJson(ids));
+                    assertThat(response.statusCode()).isEqualTo(200);
+                    var results=JSON.readTree(response.body());
+                    for(String id:ids) {
+                        var result=results.get(id);
+                        if("not_observed".equals(result.get("status").asText()))continue;
+                        assertThat(result.get("status").asText()).isEqualTo("succeeded");
+                        var identity=identities.get(Jsons.parseObject(result.get("opaqueResultPayload").asText()).get("executor"));
+                        assertThat(identity).containsEntry("group",taskGroups.get(task));
+                        if("worker.country".equals(taskRules.get(task)))assertThat(identity).containsEntry("country","CN");
+                        if("worker.messaging.available".equals(taskRules.get(task)))assertThat(identity).containsEntry("messaging.enabled","true");
+                        pending.get(task).remove(id);
+                    }
+                    if(pending.get(task).isEmpty())pending.remove(task);
+                }
+                if(!pending.isEmpty())Thread.sleep(50);
+            }
+            assertThat(pending).as("all 800 Items close with qualified actual executors").isEmpty();
+            assertThat(multiRuleRoot.get()).isTrue();assertThat(multiGroupRoot.get()).isTrue();
+            assertThat(supplied).containsExactlyInAnyOrder(groupA,groupB);
+            for(String task:tasks.keySet())awaitTaskExport(task);
+        } finally {
+            doCallRealMethod().when(matchingCatalog).prepareRefill(anyMap());
+            for(var worker:workers)worker.close();
         }
     }
 
@@ -1018,7 +1133,7 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(initial.timeMillis()).isEqualTo(100);
         assertThat(initial.laneRank()).isZero();
         assertThat(initial.dirty()).isZero();
-        assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
+        assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 0, 100).observedScores()).isEmpty();
 
         RunningWorker first = startWorker(
                 workerGroupId,

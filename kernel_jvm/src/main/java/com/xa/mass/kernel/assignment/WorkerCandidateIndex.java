@@ -3,6 +3,7 @@ package com.xa.mass.kernel.assignment;
 import com.xa.mass.kernel.task.TaskItemWorkerSelector;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -12,16 +13,24 @@ public interface WorkerCandidateIndex {
     /** One bounded read for at most 100 Task/Group coordinates. Unusable bindings map to null. */
     Map<String, @Nullable TaskQuery> prepareTaskQueries(Map<String, String> taskGroups);
 
-    /** Local, capacity-bounded demand by Group from at most 100 prepared NORMAL Tasks. */
-    Map<String, Integer> deficits(Map<String, @Nullable TaskQuery> tasks);
+    /** Local preparation once per refill Producer round, using at most 100 prepared NORMAL Tasks. */
+    RefillBatch prepareRefill(Map<String, @Nullable TaskQuery> preparedTasks);
 
-    /** Admits only this Group's supplied batch (at most 100 unique held Workers). No discovery. */
-    int refill(Map<String, @Nullable TaskQuery> tasks, String workerGroupId,
-            List<HeldCandidate> offeredCandidates, CandidateRenewal renewal);
+    /** Invocation-local demand and query reuse; contains no held candidates or reservations. */
+    interface RefillBatch {
+        /** Capacity-bounded demand observed at preparation, not a guarantee of current shortfall. */
+        Set<String> groupsNeedingRefill();
+
+        /**
+         * Qualifies at most 100 read-only observations before requesting the first lease.
+         * Scores remain opaque; only returned HeldCandidates may enter consumable inventory.
+         */
+        int refill(String workerGroupId, Map<String, Long> observedScores, CandidateLease lease);
+    }
 
     /** Valid only during one refill call; at most one nonempty subset of the issued batch. */
-    interface CandidateRenewal {
-        List<HeldCandidate> renew(List<String> acceptedWorkerIds);
+    interface CandidateLease {
+        List<HeldCandidate> acquire(List<String> acceptedWorkerIds);
     }
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */

@@ -15,47 +15,66 @@ carries one TaskItem and one DeliveryCommand; business batching stays inside
 that Item's payload. Never release a fence after publication to simulate early
 slot reuse or assign independent Items behind the same Worker lease.
 
-## Core Mechanism Change: Three Fences
+## Core Mechanism Change: Match Before First Lease
 
-Pacer now supplies a closed batch independently of Matching indexes. A 1-second
-handoff hold S0 is followed by one exact extension to 5-second inventory S1, then
-execution confirmation S2. Matching cannot acquire IDs or choose Group/Score/time.
-This changes supply authority and lease timing; Score encoding remains unchanged.
+**The pre-Matching handoff hold and inventory extension are removed.** Pacer
+supplies a read-only, closed batch of due HOT observations. Matching qualifies
+those IDs before Kernel acquires a 1-second inventory lease. Dispatch then
+confirms the execution fence. This changes lease timing and the facts race window;
+Kernel supply authority, Score encoding and exact execution confirmation remain.
+There is no 5-second candidate lease or second inventory renewal operation.
 
 ## Acquisition And Handoff
 
 ```text
 NORMAL bindings -> local Group deficits
-  -> Pacer due HOT observation -> exact short S0, dirty=0
+  -> Pacer read-only due HOT page, including dirty=0 and dirty=1
   -> Matching supplied-ID current projection and acceptance plan
-  -> one Kernel exact extension S0 -> S1, dirty=0 -> shared inventory
-  -> local take -> exact Worker confirmation S1 -> S2, dirty=1
+  -> one Kernel exact first acquisition, 1 second, dirty=0 -> shared inventory
+  -> local take -> exact Worker confirmation, execution fence, dirty=1
   -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
 
-The Score Owner preserves rank when acquiring the due HOT observation and clears
-dirty. Concurrent callers using the same observation have at most one winner.
-The optional HOT floor remains a Score Owner observation constraint. Matching
-batch-reads projections only after S0 and may request extension only for accepted
-IDs through a Pacer-issued, single-use, invocation-bound capability.
+The Score Owner preserves rank and clears dirty when exact-acquiring a due HOT
+observation. Both observed dirty values are legal; the entire score must still
+match. Concurrent callers using the same observation have at most one winner.
+An occupied, paused, negative, missing or changed score cannot be acquired.
+The 1-second target starts at the acquisition callback, after Matching finishes.
+Matching submits only accepted IDs through a Pacer-issued, single-use,
+invocation-bound capability capturing the original Group and scores.
 
-Extension requires exact, HOT, clean, active and non-PAUSE S0. Its future target
-must be strictly later than the current deadline slot; otherwise it returns NOOP
-and cannot admit inventory. A TRANSITIONED S1 invalidates S0. It preserves rank
-and dirty=0, never rescues expired or changed observations and never clears dirty.
+The optional HOT floor remains a Score Owner observation constraint. A read-only
+page uses one Lua with Redis TIME, range counts and bounded rank ZRANGE. Pacer
+keeps a bounded per-Group offset and wraps, so unchanged unmatched head Workers
+cannot trap discovery. This is live best-effort pagination, not a stable snapshot.
 
-Acquisition, extension and confirmation each check Redis TIME inside the same
-bounded Lua as exact comparison and write, once per at most 100 identities on a
-Group key. No preceding time confirmation read is used. Existing 100ms semantics
-apply: acquisition requires slot < nowSlot, while active extension/confirmation
-allow slot == nowSlot. Targets must be later than nowSlot. The operations return
-individual results; Properties and other Owners remain independent commits.
+Acquisition and confirmation each check Redis TIME inside the same bounded Lua
+as exact comparison and write, once per at most 100 identities on a Group key.
+No preceding time confirmation read is used. Existing 100ms semantics apply:
+acquisition requires slot < nowSlot, while active confirmation allows equality.
+Targets must be later than nowSlot. The operations return individual results;
+Properties and other Owners remain independent commits.
 
-TaskItems only consume S1 inventory. Counts and take read no Worker Score.
-No-match S0, ambiguous renewal, failed insertion and unused S1 expire naturally;
-there is no periodic renewal, compensation release or restart adoption.
+TaskItems only consume successfully acquired inventory. Counts and take read no
+Worker Score. No match or projection failure creates no hold. Ambiguous
+acquisition, failed insertion and unused inventory leave the acquired hold to
+expire; there is no periodic renewal, compensation release or restart adoption.
 
 ## Confirmation Before Claim
+
+**Core evidence boundary change:** a Score in the current 100ms slot, as well as
+a future slot, accepts validated network evidence to correct its polarity.
+This matches the current-slot lease confirmation boundary. Evidence preserves
+the time coordinate, rank and dirty; it cannot release a lease or undo PAUSE.
+A disconnect committed before confirmation makes the original HOT fence stale
+unless subsequent available evidence changes the polarity again. If confirmation
+wins first, a later disconnect preserves its execution fence's magnitude and
+dirty bit; the existing exact result disposition still applies.
+
+This is best-effort observation, not strict network ordering. An older valid
+report may change polarity within the current slot, including a RECOVERY check
+coordinate. Once the stored slot is in the past, its existing evidence freshness
+check still applies. No evidence replay or broader probe scan is introduced.
 
 Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
 closure confirms supplied clean, active, non-PAUSE HOT fences. One CAS requires
@@ -92,10 +111,19 @@ keeps the successful facts response and emits an aggregate diagnostic, with no
 replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
 scores remain bounded by their existing deadlines.
 
-Due scans include dirty=1. Only a new exact initial HOT hold clears dirty;
-Matching obtains current indexed membership and query projection after hold, before shared inventory admission.
-Default identity selectors need no index membership. Do not fetch a newer score
-to rescue a stale candidate or clear an existing execution hold. There is no
+Dirty invalidation marks every existing valid score, including due and recovery
+coordinates; it is not restricted to active leases. Release preserves dirty and
+expiry does not rewrite it. Due scans therefore include dirty=1. Only a new exact
+initial HOT acquisition clears dirty; confirmation consumes clean eligibility.
+
+Matching reads current membership before acquisition. A facts change that moves
+a clean observed score to dirty invalidates that observation. If it was already
+dirty, another facts write can leave the score unchanged; acquisition may clear
+dirty while admitting the previously read projection. This explicit best-effort
+window has no post-acquisition projection read, Properties version or transaction.
+After acquisition, a successful dirty invalidation rejects the old candidate at
+confirmation. Default identity selectors need no facts. Never fetch a newer score
+to rescue a stale candidate or clear an active execution hold. There is no
 per-Task Candidate Cache to invalidate or repair.
 
 ## Result Disposition
@@ -122,9 +150,9 @@ TaskItem movement and cannot prove that all preceding Owner calls completed.
 
 | Stage | Failure | Existing behavior |
 | --- | --- | --- |
-| Initial hold | CAS lost | Exclude the Worker from that held pool |
-| Match handoff S0 | no match or projection failure | No stock; short holds expire |
-| Inventory extension S1 | rejection, response loss or insertion failure | Only confirmed new fences enter stock; other holds expire |
+| Qualification | no match or projection failure | No stock and no lease write |
+| First acquisition | CAS lost | Exclude the Worker from inventory |
+| First acquisition | response loss or insertion failure | Only returned new fences enter stock; committed holds expire |
 | Confirmation | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
 | Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
 | Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |

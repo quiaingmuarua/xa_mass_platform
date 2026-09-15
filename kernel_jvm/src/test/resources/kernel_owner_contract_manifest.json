@@ -89,8 +89,11 @@
       "validate"
     ],
     "WorkerCandidateIndex": [
-      "deficits",
-      "prepare_task_queries",
+      "prepare_refill",
+      "prepare_task_queries"
+    ],
+    "RefillBatch": [
+      "groups_needing_refill",
       "refill"
     ],
     "TaskEvidenceRuntime": [
@@ -163,7 +166,6 @@
       "apply_serviceability_evidence",
       "confirm_active_hot_score_leases",
       "exhaust_recovery_recheck",
-      "extend_active_hot_score_leases",
       "get_score_states",
       "hold_observed_hot_for_serviceability_probes",
       "initialize_registered_scores",
@@ -177,8 +179,8 @@
       "sample_registered_worker_ids",
       "toggle_current_polarity"
     ],
-    "CandidateRenewal": [
-      "renew"
+    "CandidateLease": [
+      "acquire"
     ]
   },
   "dtos": {
@@ -309,6 +311,10 @@
       "worker_id",
       "score",
       "expires_at_millis"
+    ],
+    "WorkerScoreCandidatePage": [
+      "observed_scores",
+      "next_offset"
     ]
   },
   "enums": {

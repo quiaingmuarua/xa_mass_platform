@@ -8,31 +8,34 @@ persisted DSL, dynamic registry or per-Task candidate cache.
 
 ## Owner Boundary
 
-**Core mechanism change: candidate supply belongs exclusively to Pacer.** Matching no
-longer discovers IDs from an index or invokes an initial-acquisition port. It may
-qualify and adopt only the closed batch Pacer already holds.
+**Core mechanism change: Matching runs before the first Worker lease.** Pacer
+supplies a read-only closed batch of due HOT identities and opaque observed scores.
+Matching qualifies this batch; Kernel then exact-acquires only accepted IDs for
+1-second inventory. The pre-Matching hold and 5-second extension are removed.
+Candidate supply and every Score transition still belong exclusively to Kernel/Pacer.
 
 | Stage | Authority and fence |
 | --- | --- |
-| Supply | Pacer observes Group HOT and exact-acquires a 1-second handoff hold S0 |
-| Admission | Matching reads supplied-ID projections; one batch-bound callback exact-extends accepted IDs to a 5-second inventory hold S1 |
-| Execution | Kernel confirms S1 to S2, setting dirty=1, then exact-claims the Item |
+| Supply | Pacer reads a bounded Group HOT page without changing Score |
+| Qualification | Matching reads only supplied-ID projections and plans accepted IDs across Rules |
+| Admission | One batch-bound callback exact-acquires accepted IDs for 1 second, clearing dirty |
+| Execution | Kernel exact-confirms a clean inventory fence, setting dirty=1, then exact-claims the Item |
 
 ```text
 Worker / Platform facts -> enabled Rule projections -> Redis eligibility indexes
 NORMAL Tasks -> bindings -> shared query targets MAX -> local Group deficits
-  -> Pacer Group HOT observation -> short hold S0 -> offered IDs
-  -> Matching current projection -> acceptance plan -> one Kernel extension S1
+  -> Pacer read-only Group HOT page -> offered IDs and observed scores
+  -> Matching current projection -> acceptance plan -> one Kernel first lease
   -> process-local shared Eligibility inventory
 TaskItems -> normalized queries SUM -> local take -> current address
-  -> Kernel exact clean confirmation S2 -> exact Item claim -> Command
+  -> Kernel exact clean execution confirmation -> exact Item claim -> Command
 ```
 
 Inventory is shared by `workerGroupId + ruleId`. Matching owns its entries,
 projection and cleanup deadline and retains opaque Kernel fences. Only Pacer
-chooses supply identities, Group budgets and lease deadlines. The renewal callback
+chooses supply identities, Group budgets and lease deadlines. The acquisition callback
 accepts only a unique subset of its issued IDs, once during the issuing call and on
-the calling thread. It captures Group and S0 fences; Matching cannot supply scores
+the calling thread. It captures Group and original observed scores; Matching cannot supply scores
 or deadlines. Rule Handlers receive no lease capability. Kernel/Pacer receives
 Task IDs and bounded held identities, never Rule IDs, targets or index coordinates.
 
@@ -52,14 +55,29 @@ Main shares that prepared map between refill and dispatch. A Task query is a
 view of shared inventory; it owns no candidate copy or lifecycle. Admission uses
 the same local Handler interpretation without reading facts or taking candidates.
 
+Only the refill Producer calls `prepareRefill(preparedTasks)`, once per round.
+Its invocation-local `RefillBatch` merges targets by Group/Rule and canonical query
+once. Each Group reuses that demand and its bound Handler instead of re-reading
+Bindings or reconstructing all Tasks' targets. Query pages compile on first use
+and reuse their pure matchers within the batch; unvisited pages do not compile.
+Server admission and Main preparation perform none of this inventory maintenance.
+
 ## Unified Queries and Fixed Handlers
 
 The three paired Eligibility operations are:
 
-- `deficits(preparedTasks)`: aggregate local query shortfalls and capacity into Group deficits.
-- `refill(preparedTasks, group, offeredCandidates, renewal)`: read current projections
-  for at most 100 supplied IDs, plan acceptance, renew the union once and admit only S1.
+- `RefillBatch.groupsNeedingRefill()`: expose the local capacity/shortfall hint from
+  batch preparation; Pacer retains Group ordering and the fixed supply budget.
+- `RefillBatch.refill(group, observedScores, lease)`: recheck current local
+  shortfalls and read current projections
+  for at most 100 supplied IDs, plan acceptance, acquire the union once and admit
+  only returned successful lease fences.
 - `take(requests)`: atomically remove matching local entries and return opaque fences.
+
+The prepared Group set is not a reservation or a current-deficit guarantee. A Group
+outside the prepared batch is rejected before projection or acquisition. Only the
+single-flight refill path owns batch compilation and acceptance cursors; dispatch
+continues to use its independent Task views against the same shared stock.
 
 Their operator-free query is `{"query":{"worker.country":["US","CN"]},"count":1}`:
 choose one from either country. Independent minima use separate entries, such as
@@ -113,8 +131,8 @@ pairs the functions behind the shared `deficits/refill/take` loop:
   to that same Q. Existing property Rules keep HTTP eq/in; a new Rule may use list parameters.
 - `compile` returns a pure matcher over immutable Rule-owned projections and an effective
   target bound where needed. It performs no Redis read.
-- `snapshot` reads only the supplied IDs in one bounded projection batch after S0.
-  Shared refill matches that evidence, then requests the single S1 extension. A Handler
+- `snapshot` reads only the supplied IDs in one bounded projection batch before acquisition.
+  Shared refill matches that evidence, then requests the single first lease. A Handler
   cannot discover other IDs, acquire leases or rotate a source index during refill.
 - `indexes` declares exclusive namespace roots and fixed Lua preparation programs.
   Each program returns a read/validate `prepare` function that returns an `apply` closure.
@@ -171,24 +189,44 @@ Matching rotates Eligibility acceptance and bounded query pages, including empty
 attempts. Constrained queries precede ANY within each Eligibility. One candidate
 can enter only one Eligibility; overlapping queries share its physical entry.
 
-Pacer exact-acquires S0 before any projection read. Matching collects acceptance
-plans across that Group, then invokes one renewal for their union. Only successful
-S1 transitions enter stock. Default identity membership needs no facts; enabled
+Each Group's observed Workers are matched against the selected Tasks' Rule demands
+together. The existing batch preparation and incremental counting are retained. Admission counts update every matching target when a Worker
+is selected; the batch never rescans previously selected Workers to recount them.
+Each offered projection/query pair is evaluated at most once per participating page.
+
+Global expired-stock reclamation runs once at refill preparation. Capacity reads,
+scope admission and diagnostics do not sweep every other Eligibility. Scope reads,
+take and admission still expire their own entries; insertion atomically rechecks
+capacity and take still removes only the exact observed resident objects. Capacity
+released by another scope expiring during a round may be reclaimed at the next
+normal refill preparation. This can conservatively underfill, never overfill or
+authorize an expired candidate. Cleanup remains lazy, without a background thread.
+
+Pacer reads a page without acquiring any Worker. Matching collects acceptance
+plans across that Group, then invokes one first acquisition for their union. The
+1-second deadline starts when Pacer executes the callback, after qualification.
+Only successful returned fences enter stock. Default identity membership needs no facts; enabled
 country projections support its existing property selectors. Explicit IDs only
 filter this batch and stock: they never initiate a targeted HOT read. Rare queries
 and IDs may wait longer under this bounded Group supply policy.
 
 The plans live only in the current stack. Inventory snapshot/add/take are local
-atomic operations; Handler, Redis and renewal calls run outside the monitor.
+atomic operations; Handler, Redis and acquisition calls run outside the monitor.
 Satisfied watermarks or exhausted capacity skip supply. Counts are hints, not
 live execution truth: unobserved dirty changes may temporarily overcount stock.
 
-Consumption and expiry remove entries. S0 failures expire after the short hold;
-ambiguous renewal or failed insertion leaves S1 to expire. There is no periodic
-renewal, compensation release, candidate reinsertion or adoption across restart.
-Only the initial due acquisition may clear dirty. Extension and final confirmation
-require exact clean active non-PAUSE fences and check Redis time inside their Lua.
-Capacity exhaustion produces a shortfall with no wait queue.
+Consumption and expiry remove entries. Neither a no-match result nor projection failure changes
+Worker Score. Ambiguous acquisition or failed insertion leaves the committed hold
+to expire. There is no periodic renewal, compensation release, candidate reinsertion
+or adoption across restart. Due acquisition accepts either dirty value and clears
+it; final confirmation requires exact clean active non-PAUSE fences. Both check
+Redis time inside their Lua. Capacity exhaustion has no wait queue.
+
+Pacer advances read-only per-Group rank pages even when none of the offered Workers
+match. End-of-range wraps and removal from the current Group roots drops its offset.
+Equal-score Workers beyond the first page remain discoverable without leasing or
+rotating rejected Workers. The live range can change concurrently; no stable page
+snapshot or fixed selective-query latency is promised.
 
 ## Persistent Catalog
 
@@ -229,9 +267,14 @@ Unexpected/corrupt stored data fails; it is not converted to empty eligible fact
 
 Server separately asks Worker Score Owner to invalidate candidate eligibility
 after APPLIED facts writes. Facts/index and dirty are different Owner commits;
-there is no cross-owner transaction, guaranteed retry or repair. Post-hold
-projection recheck and Kernel exact dirty confirmation fence inventory admission and execution. Already
-confirmed execution is not revoked by a later facts observation.
+there is no cross-owner transaction, guaranteed retry or repair. Matching reads
+projections before acquisition. Dirty is not a facts version: a second facts update
+to an already-dirty due Worker may leave its observed score unchanged, allowing
+acquisition to clear dirty and admit the earlier projection. This best-effort window
+has no post-acquisition projection check. A successful dirty update after acquisition
+invalidates that candidate's exact execution fence. Already confirmed execution is
+not revoked by later facts observations. The dirty operation continues marking all
+existing valid scores, including due and recovery scores; it is not lease-only.
 
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
@@ -243,19 +286,22 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 ## Cost, Failure and Proof
 
 - Binding preparation: one HMGET per bounded Main batch.
+- Refill preparation: zero Redis commands; one target aggregation and global expiry
+  sweep per round, with compilation reused only for visited queries in that batch.
 - Normalized stock counts and take: zero Redis commands or facts reads.
-- Each eligible Group: existing HOT observation (TIME + bounded range), one S0 Lua,
-  at most one projection read per participating Handler, zero or one merged S1 Lua.
-  One named Handler with accepted stock uses five client commands for up to 100 IDs.
+- Each eligible Group: one read-only HOT page Lua (TIME, ZCOUNT, rank ZRANGE inside),
+  at most one projection read per participating Handler, zero or one first-lease Lua.
+  One named Handler with accepted stock uses three client commands for up to 100 IDs.
+  Unmatched Workers cause no Score writes; full stock skips observation too.
 - Default without a configured projection needs no projection read; it uses the same
   Pacer Group supply, never an explicit-ID observation path.
 - Final confirmation: one bounded Lua, with its Redis TIME inside the operation.
   Address, Item claim, publication and Result paths retain their separate costs.
 
 These are client command counts, not throughput promises. Matching logs aggregate
-shortfall, offered/renewed/admitted stock, short unaccepted holds, renewal rejection,
-renewed-but-not-inserted holds, consumption, unused expiry and capacity limits. Existing
-Pacer stage evidence separates refill, initial hold, inventory extension, confirmation rejection and
+shortfall, observed/acquired/admitted stock, unmatched observations, acquisition rejection,
+acquired-but-not-inserted holds, consumption, unused expiry and capacity limits. Existing
+Pacer stage evidence separates refill observation, first acquisition, confirmation rejection and
 dispatch. No management API or diagnostics thread is added.
 
 Binding failure blocks candidates while Item expiry/exhaustion/idle settlement
@@ -264,9 +310,13 @@ holds expire. Take misses never query a source or acquire a new hold. Restart
 loses local inventory and rebuilds it through ordinary refill without adoption,
 ACK, replay or a repair scan.
 
-Focused tests cover interpretation, overlapping stock and concurrency. Redis
-Owner proves closed supplied batches, one merged renewal, shared target MAX,
-post-hold projection, S0/S1/S2 fence invalidation, commit-time expiry and command counts. Runtime Boundary and
+Focused tests cover interpretation, overlapping stock, bounded predicate evaluation,
+Group batch/compilation reuse, local expiry and concurrency. Redis
+Owner proves read-only pagination, closed supplied batches, one merged first lease,
+shared target MAX, qualification before acquisition, dirty clearing, execution fence
+invalidation, commit-time expiry, the accepted facts window and command counts.
+Runtime Boundary adds six actual Workers in two Groups serving four Tasks and 800
+Items, including shared and different Rules within one Group. Runtime Boundary and
 Dynamic Matching witness real Worker execution; Call Performance separately
 measures mixed-workload behavior. See [TESTING](../TESTING.md).
 

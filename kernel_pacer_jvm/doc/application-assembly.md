@@ -64,7 +64,10 @@ WorkerServiceabilityRuntime
 ```
 
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
-Serviceability Groups. Source indexes project facts independently; held inventory
+Serviceability Groups. Refill alone prepares one invocation-local `RefillBatch`,
+then Pacer supplies each needed root Group to that same batch; no Group rebuilds
+the whole Task demand. Dispatch keeps the original Task query views.
+Source indexes project facts independently; held inventory
 is replenished from Task-declared targets without inspecting Items.
 
 The module direction remains:
@@ -139,7 +142,7 @@ Producer, latest-due Item ordering and completion-relative backoff are unchanged
 this is additional checking headroom, not Item fairness or an all-load SLA.
 
 Default-off `xa.mass.TaskDispatch` and `xa.mass.TaskResult` JFR events observe
-existing refill/initial-hold/inventory-hold/round/check/candidate/confirmation-rejection/claim/publish
+existing refill/refill-observation/initial-hold/round/check/candidate/confirmation-rejection/claim/publish
 and Result consume/process/release
 calls. Counts describe attempts or batches, not unique completed Items. Owner-local
 events add no registry, queue, Redis operation or Score interpretation; sampled
@@ -150,7 +153,7 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | local Group deficits, Pacer S0 supply, Matching acceptance and one S1 extension; no Item read |
+| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | one RefillBatch preparation, Pacer read-only Group pages, Matching acceptance and one 1-second first acquisition; no Item read |
 | TASK_DISPATCH | NORMAL RUNNING and the same prepared bindings | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 

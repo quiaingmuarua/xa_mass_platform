@@ -12,10 +12,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
-/** Fixed Pacer supply policy. Matching can renew only the batch issued by this invocation. */
+/** Fixed Pacer observation policy. Matching can acquire only this invocation's accepted subset. */
 final class WorkerEligibilityRefillPolicy {
-    static final long HANDOFF_HOLD_MILLIS = 1_000;
-    static final long INVENTORY_HOLD_MILLIS = 5_000;
+    static final long CANDIDATE_HOLD_MILLIS = 1_000;
     private static final int GROUP_BUDGET = 100;
     private static final int ROUND_BUDGET = 1_000;
 
@@ -23,6 +22,7 @@ final class WorkerEligibilityRefillPolicy {
     private final WorkerCandidateIndex index;
     private final Long hotFloorMillis;
     private final LongSupplier clock;
+    private final Map<String, Long> groupOffsets = new LinkedHashMap<>();
     private String lastAttemptedGroup;
 
     WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerCandidateIndex index, Long hotFloorMillis) {
@@ -40,26 +40,27 @@ final class WorkerEligibilityRefillPolicy {
     int refill(List<String> rootGroups, Map<String, WorkerCandidateIndex.TaskQuery> tasks) {
         if (rootGroups.size() > 100 || tasks.size() > 100) throw new IllegalArgumentException("at most 100 root coordinates");
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
+        groupOffsets.keySet().retainAll(groups);
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
         int start = lastAttemptedGroup == null ? 0 : (groups.indexOf(lastAttemptedGroup) + 1) % groups.size();
-        Map<String, Integer> deficits = index.deficits(tasks);
+        var batch = index.prepareRefill(tasks);
+        var neededGroups = batch.groupsNeedingRefill();
         int budget = ROUND_BUDGET, admitted = 0;
         for (int n = 0; n < groups.size() && budget > 0; n++) {
             String group = groups.get((start + n) % groups.size());
-            if (deficits.getOrDefault(group, 0) <= 0) continue;
+            if (!neededGroups.contains(group)) continue;
             // Advance on attempts, including empty observations and infrastructure failure.
             lastAttemptedGroup = group;
             budget -= GROUP_BUDGET;
-            var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, GROUP_BUDGET);
-            if (observed.isEmpty()) continue;
-            if (observed.size() > GROUP_BUDGET) throw new IllegalStateException("HOT observation exceeded its budget");
-            long until = Math.addExact(clock.getAsLong(), HANDOFF_HOLD_MILLIS);
             long started = DispatchStageEvent.start();
-            var held = transitioned(observed, scores.acquireObservedHotScoreLeases(group, observed, until), until);
-            DispatchStageEvent.batch(started, "INITIAL_HOLD", observed.size(), held.size(), false);
-            if (held.isEmpty()) continue;
-            try (var issued = new IssuedBatch(group, held)) {
-                admitted += index.refill(tasks, group, held, issued);
+            var page = scores.observeDueHotScoreCandidates(group, hotFloorMillis,
+                    groupOffsets.getOrDefault(group, 0L), GROUP_BUDGET);
+            groupOffsets.put(group, page.nextOffset());
+            var observed = page.observedScores();
+            DispatchStageEvent.batch(started, "REFILL_OBSERVATION", GROUP_BUDGET, observed.size(), false);
+            if (observed.isEmpty()) continue;
+            try (var issued = new IssuedBatch(group, observed)) {
+                admitted += batch.refill(group, observed, issued);
             }
         }
         return admitted;
@@ -79,38 +80,36 @@ final class WorkerEligibilityRefillPolicy {
     }
 
     /** Invocation-local capability; no reservation directory or cross-call lifetime. */
-    private final class IssuedBatch implements WorkerCandidateIndex.CandidateRenewal, AutoCloseable {
+    private final class IssuedBatch implements WorkerCandidateIndex.CandidateLease, AutoCloseable {
         private final String group;
         private final Map<String, Long> original;
         private final Thread caller = Thread.currentThread();
         private boolean open = true;
         private boolean used;
 
-        IssuedBatch(String group, List<HeldCandidate> offered) {
+        IssuedBatch(String group, Map<String, Long> observed) {
             this.group = group;
-            var fences = new LinkedHashMap<String, Long>();
-            offered.forEach(candidate -> fences.put(candidate.workerId(), candidate.score()));
-            original = Collections.unmodifiableMap(fences);
+            original = Collections.unmodifiableMap(new LinkedHashMap<>(observed));
         }
 
-        @Override public List<HeldCandidate> renew(List<String> ids) {
+        @Override public List<HeldCandidate> acquire(List<String> ids) {
             if (Thread.currentThread() != caller || !open || used) {
-                throw new IllegalStateException("renewal is available once during its issuing refill call");
+                throw new IllegalStateException("acquisition is available once during its issuing refill call");
             }
             Objects.requireNonNull(ids, "acceptedWorkerIds");
             if (ids.isEmpty()) return List.of();
             var unique = new LinkedHashSet<>(ids);
             if (unique.size() != ids.size() || !original.keySet().containsAll(unique)) {
-                throw new IllegalArgumentException("renewal requires a unique subset of the issued batch");
+                throw new IllegalArgumentException("acquisition requires a unique subset of the issued batch");
             }
             used = true;
             var expected = new LinkedHashMap<String, Long>();
             ids.forEach(id -> expected.put(id, original.get(id)));
-            long until = Math.addExact(clock.getAsLong(), INVENTORY_HOLD_MILLIS);
+            long until = Math.addExact(clock.getAsLong(), CANDIDATE_HOLD_MILLIS);
             long started = DispatchStageEvent.start();
-            var renewed = transitioned(expected, scores.extendActiveHotScoreLeases(group, expected, until), until);
-            DispatchStageEvent.batch(started, "INVENTORY_HOLD", expected.size(), renewed.size(), false);
-            return renewed;
+            var held = transitioned(expected, scores.acquireObservedHotScoreLeases(group, expected, until), until);
+            DispatchStageEvent.batch(started, "INITIAL_HOLD", expected.size(), held.size(), false);
+            return held;
         }
 
         @Override public void close() { open = false; }

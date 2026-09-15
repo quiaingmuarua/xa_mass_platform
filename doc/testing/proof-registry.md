@@ -30,7 +30,13 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
   client-command cost oracles. Candidate invalidation proves one-command dirty
   batches, single-use exact confirmation, preserved execution release fences
-  and dirty-clearing reacquisition after expiry. TaskItem outcome proof covers
+  and dirty-clearing reacquisition after expiry. Current-slot network evidence
+  preserves Worker lease coordinates, rank and
+  dirty, with both polarity orders, exact confirmation races and one-command
+  100-Worker batches. Past-slot freshness and PAUSE protection remain separate
+  oracles. Read-only rank pages reach equal-score
+   Workers beyond an unmatched head without Score writes. Qualification precedes
+   the sole inventory acquisition; its facts window remains best-effort. TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
   promotion/state reads. Server state-query counting excludes Result reads.
@@ -52,6 +58,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Actual Handlers return send success before reporting delivered/read/replied
   through all three transports; state queries, repeatable latest-reply reads
   and subsequent Item execution witness the continuous observation boundary.
+  Group refill witnesses use actual Workers across two Groups and four Tasks,
+  including shared and different Rules within one Group, to prove supplied-batch
+  qualification and successful finite execution. They do not measure throughput.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity, guaranteed activation after evidence loss, atomic registration,
   atomic Score/Result commits or observation replay.

@@ -125,7 +125,14 @@ Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
 finite-ID target saturation and named-Rule identity rejection have focused proofs.
 Pacer tests prove refill without Item reads, independently scheduled consumption,
 round exclusions and opaque exact fences. Runtime Boundary runs actual Workers
-serving two Tasks from the same Eligibility and preserves independent Task closure. These are not cross-owner transactions or loss-repair guarantees.
+serving two Tasks from the same Eligibility and preserves independent Task closure.
+Its Group-batch witness also uses six Workers in two Groups, four Tasks and 800
+Items: two Tasks share a Rule, another uses a different Rule in the same Group,
+and the second Group consumes default stock. Actual executors and the observed
+Pacer batches prove qualification, Group isolation and one merged first acquisition.
+Matching unit tests own once-per-batch query compilation, incremental admission
+counts and local versus global expiry maintenance. These are not cross-owner
+transactions, performance promises or loss-repair guarantees.
 
 Use the lowest-cost proof that owns the changed claim:
 
@@ -345,17 +352,33 @@ throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
 remain protocol/Runtime Boundary claims; the convergence health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.
 
-### Closed Pacer Supply and Three Hold Stages
+### Read-Only Pacer Supply and Matching Before First Lease
 
-Core mechanism proof: Pacer is the only candidate supplier. The Matching Redis
-Owner proof issues A while a better B remains indexed, verifies B cannot be taken
-or renewed, and verifies two Eligibilities share one Group renewal. Pacer tests
-reject out-of-batch, duplicate, escaped and cross-thread renewal capabilities.
-The Worker Score Redis proof checks S0/S1/S2 invalidation, competing extensions,
-dirty/PAUSE/expiry rejection and a deliberate pre-EVAL delay across the time slot.
-Each 100-Worker acquisition, extension and confirmation uses one client Lua command.
+Core mechanism proof: Pacer alone supplies candidates without pre-leasing them.
+The Matching Redis Owner proof issues A while a better B remains indexed and proves
+B cannot be acquired. No-match and projection-failure paths leave Score unchanged.
+Two Eligibilities share one Group first-acquisition batch. Pacer tests reject
+out-of-batch, duplicate, escaped and cross-thread acquisition capabilities.
+Worker Score proof traverses 250 equal-score Workers without writes, verifies wrap,
+floor, corrupt-row progress and one command per page. Acquisition accepts due dirty
+scores and clears dirty; competing acquisitions have one winner. Confirmation rejects
+stale, dirty, PAUSE and expired fences, including a pre-EVAL delay across the slot.
+Each 100-Worker acquisition and confirmation uses one client Lua command. Matching
+proof explicitly covers the accepted facts window for an already-dirty observation;
+there is no post-acquisition projection read. A delayed matcher starts its 1-second
+lease at acquisition, not observation.
 Runtime Boundary executes two Tasks using a test-only SET/HASH Rule and a real
 Worker, asserting that refill receives the Pacer-issued batch. Dynamic Matching
 and Convergence Health continue to own facts invalidation and scheduling progress.
-Call Performance measures selective short-hold costs separately; these functional
+Call Performance measures selective observation, stock expiry and lease costs separately; these functional
 or command-count proofs do not claim improved throughput or latency.
+
+### Network Evidence At The Current Lease Slot
+
+Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
+while preserving time, rank and dirty, consistent with exact lease confirmation.
+Redis-timed cases cover both evidence/confirmation orders, concurrent CAS,
+100-Worker command cost, PAUSE and unchanged past-slot freshness rejection.
+Only a missed timing window may be resampled; a wrong in-window result fails.
+Worker Convergence Health retains its original outage fixture and timeout;
+these checks do not promise strict network ordering or evidence replay.

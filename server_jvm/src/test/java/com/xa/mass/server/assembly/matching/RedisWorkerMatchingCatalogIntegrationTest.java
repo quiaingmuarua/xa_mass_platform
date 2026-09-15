@@ -88,7 +88,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         for(String task:List.of("a","b"))assertThat(catalog.bindTaskRule(task,"g",BucketRuleHandler.ID,List.of(target)).status()).isEqualTo(MutationStatus.APPLIED);
         commandTypes.clear();var prepared=catalog.prepareTaskQueries(Map.of("a","g","b","g"));assertThat(commandTypes).containsExactly("HMGET");
         commandTypes.clear();assertThat(refillPrepared(prepared)).isEqualTo(100);
-        assertThat(commandTypes).containsExactly("TIME","ZRANGEBYSCORE","EVAL","HMGET","EVAL");
+        assertThat(commandTypes).containsExactly("EVAL","HMGET","EVAL");
         commandTypes.clear();assertThat(refillPrepared(prepared)).isZero();
         var selector=TaskItemWorkerSelector.parse(Map.of("test.bucket",List.of("red","blue")));
         var first=prepared.get("a").take(Map.of(selector,40)).get(selector);
@@ -128,12 +128,13 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThatThrownBy(()->catalog.patchWorkerPlatformProperties("g","w",Map.of("testEnabled","no"))).isInstanceOf(RuntimeException.class);
         assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").platformProperties()).isEmpty();
     }
-    @Test void bucketProjectionFailureLeavesHoldToExpireWithoutStockOrRecoveryRead() {
+    @Test void bucketProjectionFailureLeavesScoreUnchangedWithoutStockOrRecoveryRead() {
         useBucketRule(true);catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red")));hot("g",List.of("w"));
         var query=bound("bucket",BucketRuleHandler.ID);
+        var before=scores.getScoreStates("g",List.of("w"));
         assertThatThrownBy(()->refill("bucket")).isInstanceOf(IllegalStateException.class);
         commandTypes.clear();assertThat(query.take(Map.of(ANY,1)).get(ANY)).isEmpty();assertThat(commandTypes).isEmpty();
-        assertThat(scores.getScoreStates("g",List.of("w")).get("w")).isNotNull();
+        assertThat(scores.getScoreStates("g",List.of("w"))).isEqualTo(before);
     }
     @Test void rebuildUsesOnlyTheEnabledHandlersDeclaredRootAndDescendants() {
         useBucketRule(false);
@@ -316,26 +317,22 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         scores.applyServiceabilityEvidence(group,evidence,WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE);
     }
     // The fixture supplies a closed Kernel-issued batch. Matching cannot choose identities.
-    private List<HeldCandidate> offer(String group,int limit) {
-        var observed=scores.observeDueHotScoreCandidates(group,null,limit);
-        if(observed.isEmpty())return List.of();
+    private Map<String,Long> offer(String group,int limit) {
+        return scores.observeDueHotScoreCandidates(group,null,0,limit).observedScores();
+    }
+    private List<HeldCandidate> acquire(String group,Map<String,Long> offered,List<String> accepted) {
+        var observed=new LinkedHashMap<String,Long>();
+        for(String id:accepted)observed.put(id,java.util.Objects.requireNonNull(offered.get(id)));
         long until=System.currentTimeMillis()+1000;
         return scores.acquireObservedHotScoreLeases(group,observed,until).entrySet().stream()
                 .filter(e -> e.getValue().status()==WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED)
                 .map(e -> new HeldCandidate(e.getKey(),e.getValue().score(),until)).toList();
     }
-    private List<HeldCandidate> renew(String group,List<HeldCandidate> offered,List<String> accepted) {
-        var observed=new LinkedHashMap<String,Long>();
-        for(String id:accepted)observed.put(id,offered.stream().filter(h->h.workerId().equals(id)).findFirst().orElseThrow().score());
-        long until=System.currentTimeMillis()+5000;
-        return scores.extendActiveHotScoreLeases(group,observed,until).entrySet().stream()
-                .filter(e -> e.getValue().status()==WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED)
-                .map(e -> new HeldCandidate(e.getKey(),e.getValue().score(),until)).toList();
-    }
     private int refillPrepared(RedisWorkerMatchingCatalog owner,String group,Map<String,TaskQuery> tasks,int limit) {
-        if(owner.deficits(tasks).getOrDefault(group,0)==0)return 0;
+        var batch=owner.prepareRefill(tasks);
+        if(!batch.groupsNeedingRefill().contains(group))return 0;
         var offered=offer(group,limit);
-        return offered.isEmpty()?0:owner.refill(tasks,group,offered,ids->renew(group,offered,ids));
+        return offered.isEmpty()?0:batch.refill(group,offered,ids->acquire(group,offered,ids));
     }
     private int refillPrepared(Map<String,TaskQuery> tasks) { return refillPrepared(catalog,"g",tasks,100); }
     private static EligibilityQuery target(int count,String country) {
@@ -407,13 +404,13 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         hot("g",List.copyOf(facts.keySet()));
         var prepared=prepare("task"); commandTypes.clear();
         assertThat(refillPrepared(prepared)).isEqualTo(100);
-        // Pacer HOT observation, initial S0, supplied-ID projection, one S1 renewal.
-        assertThat(commandTypes).containsExactly("TIME","ZRANGEBYSCORE","EVAL","EVAL","EVAL");
+        // Read-only Pacer observation, supplied-ID projection, one first acquisition.
+        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
         commandTypes.clear();
         assertThat(prepared.get("task").take(Map.of(CN,100)).get(CN)).hasSize(100);
         assertThat(commandTypes).isEmpty();
     }
-    @Test void hundredDistinctTargetsStillUseOneSupplyAndOnePostHoldProjectionBatch() {
+    @Test void hundredDistinctTargetsUseOneObservationProjectionAndAcquisitionBatch() {
         var facts=new LinkedHashMap<String,Map<String,String>>();
         var targets=new ArrayList<EligibilityQuery>();
         for(int i=0;i<100;i++) {
@@ -424,13 +421,13 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.bindTaskRule("task","g","worker.country",targets);
         var prepared=prepare("task"); commandTypes.clear();
         assertThat(refillPrepared(prepared)).isEqualTo(100);
-        assertThat(commandTypes).containsExactly("TIME","ZRANGEBYSCORE","EVAL","EVAL","EVAL");
+        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
         commandTypes.clear();
         assertThat(prepared.get("task").take(Map.of(ANY,100)).get(ANY)).hasSize(100);
         assertThat(commandTypes).isEmpty();
     }
 
-    @Test void sparsePhoneTargetsAreExplicitAndPostHoldProjectionUsesCurrentFacts() {
+    @Test void sparsePhoneTargetsReadCurrentFactsBeforeAnyLease() {
         catalog.upsertWorkerFactsBatch("g",Map.of("target",messageFacts("CN","rare")));
         hot("g",List.of("target"));
         var q=new EligibilityQuery(Map.of("worker.country",List.of("CN"),"worker.phone",List.of("rare")),1);
@@ -438,9 +435,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var prepared=prepare("messages");
         var offered=offer("g",100);
         catalog.upsertWorkerFactsBatch("g",Map.of("target",messageFacts("US","new-phone")));
-        assertThat(catalog.refill(prepared,"g",offered,ids->{throw new AssertionError("ineligible S0 must not renew");})).isZero();
+        assertThat(catalog.prepareRefill(prepared).refill("g",offered,ids->{throw new AssertionError("ineligible observation must not acquire a lease");})).isZero();
         assertThat(prepared.get("messages").take(Map.of(ANY,1)).get(ANY)).isEmpty();
-        assertThat(scores.observeDueHotScores("g",List.of("target"),null)).isEmpty();
+        assertThat(scores.observeDueHotScores("g",List.of("target"),null)).isEqualTo(offered);
     }
     @Test void offeredBatchIsClosedEvenWhenTheIndexContainsBetterWorkers() {
         catalog.upsertWorkerFactsBatch("g",Map.of("a",Map.of("country","US"),"b",Map.of("country","CN")));
@@ -448,14 +445,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
         var prepared=prepare("task");
         var offered=offer("g",1); // Equal HOT scores are ordered by Worker ID.
-        assertThat(offered).extracting(HeldCandidate::workerId).containsExactly("a");
+        assertThat(offered.keySet()).containsExactly("a");
         commandTypes.clear();
-        assertThat(catalog.refill(prepared,"g",offered,ids->{throw new AssertionError("a is not eligible");})).isZero();
+        assertThat(catalog.prepareRefill(prepared).refill("g",offered,ids->{throw new AssertionError("a is not eligible");})).isZero();
         assertThat(commandTypes).containsExactly("EVAL"); // Only the offered-ID projection, no discovery/lease calls.
         assertThat(prepared.get("task").take(Map.of(ANY,1)).get(ANY)).isEmpty();
         assertThat(scores.observeDueHotScores("g",List.of("b"),null)).containsKey("b");
     }
-    @Test void eligibilitiesPlanTogetherAndUseOneRenewalWithOnlyNewFencesInStock() {
+    @Test void eligibilitiesPlanTogetherAndUseOneAcquisitionWithOnlyNewFencesInStock() {
         catalog.upsertWorkerFactsBatch("g",Map.of("cn",Map.of("country","CN"),"us",Map.of("country","US")));
         hot("g",List.of("cn","us"));
         catalog.bindTaskRule("country","g","worker.country",List.of(target(1,"CN")));
@@ -463,31 +460,97 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var prepared=prepare("country","default");var offered=offer("g",100);
         var calls=new java.util.concurrent.atomic.AtomicInteger();
         commandTypes.clear();
-        assertThat(catalog.refill(prepared,"g",offered,ids->{
+        assertThat(catalog.prepareRefill(prepared).refill("g",offered,ids->{
             assertThat(calls.incrementAndGet()).isEqualTo(1);
             assertThat(ids).containsExactlyInAnyOrder("cn","us");
             prepared.values().forEach(view->assertThat(view.take(Map.of(ANY,100)).get(ANY)).isEmpty());
-            return renew("g",offered,ids);
+            return acquire("g",offered,ids);
         })).isEqualTo(2);
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL"); // Two projections, one renewal.
+        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL"); // Two projections, one acquisition.
         var delivered=new HashSet<String>();
         prepared.values().forEach(view->view.take(Map.of(ANY,100)).get(ANY).forEach(held->{
             assertThat(delivered.add(held.workerId())).isTrue();
-            assertThat(held.score()).isNotEqualTo(offered.stream().filter(h->h.workerId().equals(held.workerId())).findFirst().orElseThrow().score());
+            assertThat(held.score()).isNotEqualTo(offered.get(held.workerId()));
         }));
         assertThat(delivered).containsExactlyInAnyOrder("cn","us");
     }
-    @Test void lostRenewalResponseLeavesNoConsumableStockAndDoesNotRescueTheFence() {
+    @Test void readOnlyPagesFindARareMatchWithoutLeasingTheUnmatchedHead() {
+        var ids=IntStream.range(0,250).mapToObj(i->"w-%03d".formatted(i)).toList();
+        long observed=(System.currentTimeMillis()/100-100)*WorkerScoreCore.SLOT_FACTOR+1;
+        for(int start=0;start<ids.size();start+=100) {
+            var facts=new LinkedHashMap<String,Map<String,String>>();
+            for(String id:ids.subList(start,Math.min(start+100,ids.size()))) {
+                facts.put(id,Map.of("country",id.equals("w-249")?"CN":"US"));
+                redis.zadd(keyspace.base()+":worker:score:g",observed,id);
+            }
+            catalog.upsertWorkerFactsBatch("g",facts);
+        }
+        catalog.bindTaskRule("rare","g","worker.country",List.of(target(1,"CN")));
+        var prepared=prepare("rare");
+        long offset=0;
+        var acquisitions=new java.util.concurrent.atomic.AtomicInteger();
+        for(int round=0;round<3;round++) {
+            var batch=catalog.prepareRefill(prepared);
+            var page=scores.observeDueHotScoreCandidates("g",null,offset,100);
+            offset=page.nextOffset();
+            assertThat(batch.refill("g",page.observedScores(),accepted->{
+                acquisitions.incrementAndGet();
+                assertThat(accepted).containsExactly("w-249");
+                return acquire("g",page.observedScores(),accepted);
+            })).isEqualTo(round==2?1:0);
+        }
+        assertThat(acquisitions.get()).isEqualTo(1);
+        assertThat(prepared.get("rare").take(Map.of(CN,1)).get(CN))
+                .extracting(HeldCandidate::workerId).containsExactly("w-249");
+        assertThat(redis.zmscore(keyspace.base()+":worker:score:g",ids.subList(0,249).toArray(String[]::new)))
+                .containsOnly((double)observed);
+    }
+    @Test void lostAcquisitionResponseLeavesNoConsumableStockAndDoesNotRescueTheFence() {
         hot("g",List.of("w"));bound("task","worker.default");
         var prepared=prepare("task");var offered=offer("g",100);
-        assertThatThrownBy(()->catalog.refill(prepared,"g",offered,ids->{
-            renew("g",offered,ids);throw new IllegalStateException("lost response after commit");
+        assertThatThrownBy(()->catalog.prepareRefill(prepared).refill("g",offered,ids->{
+            acquire("g",offered,ids);throw new IllegalStateException("lost response after commit");
         })).isInstanceOf(IllegalStateException.class);
         commandTypes.clear();assertThat(prepared.get("task").take(Map.of(ANY,1)).get(ANY)).isEmpty();
         assertThat(commandTypes).isEmpty();
-        assertThat(scores.confirmActiveHotScoreLeases("g",Map.of("w",offered.getFirst().score()),System.currentTimeMillis()+5000).get("w").status())
+        assertThat(scores.confirmActiveHotScoreLeases("g",Map.of("w",offered.get("w")),System.currentTimeMillis()+5000).get("w").status())
                 .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
         assertThat(refillPrepared(prepared)).isZero();
+    }
+
+    @Test void factsBetweenMatchingAndAcquisitionRetainTheExplicitBestEffortWindow() {
+        hot("g",List.of("w"));
+        catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","CN")));
+        scores.markCurrentLeasesDirty("g",List.of("w"));
+        catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
+        var prepared=prepare("task");
+        var offered=offer("g",100);
+        assertThat(catalog.prepareRefill(prepared).refill("g",offered,ids->{
+            // Matching has read CN. An already-dirty due score does not version another facts write.
+            catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
+            assertThat(scores.markCurrentLeasesDirty("g",ids).get("w").status())
+                    .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.NOOP);
+            commandTypes.clear();
+            return acquire("g",offered,ids);
+        })).isEqualTo(1);
+        assertThat(commandTypes).containsExactly("EVAL"); // No post-acquisition projection or confirmation read.
+        var held=prepared.get("task").take(Map.of(CN,1)).get(CN).getFirst();
+        assertThat(scores.confirmActiveHotScoreLeases("g",Map.of("w",held.score()),System.currentTimeMillis()+5000)
+                .get("w").status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
+    }
+
+    @Test void factsDirtyingACleanObservationPreventFirstAcquisition() {
+        hot("g",List.of("w"));
+        catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","CN")));
+        catalog.bindTaskRule("task","g","worker.country",List.of(target(1,"CN")));
+        var prepared=prepare("task");
+        var offered=offer("g",100);
+        assertThat(catalog.prepareRefill(prepared).refill("g",offered,ids->{
+            catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
+            scores.markCurrentLeasesDirty("g",ids);
+            return acquire("g",offered,ids);
+        })).isZero();
+        assertThat(prepared.get("task").take(Map.of(CN,1)).get(CN)).isEmpty();
     }
 
     @Test void dirtyStockCannotConfirmAndAnInitialFenceConfirmsOnlyOnce() throws Exception {

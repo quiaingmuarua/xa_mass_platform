@@ -124,6 +124,25 @@ public final class RedisWorkerScoreCore
     private static final String CAS_UPDATE_SCRIPT = CAS_FUNCTION + """
             return update(KEYS[1],ARGV[1],tonumber(ARGV[2]),tonumber(ARGV[3]))
             """;
+    private static final String DUE_HOT_PAGE_SCRIPT = """
+            local minimum,offset,limit=tonumber(ARGV[1]),tonumber(ARGV[2]),tonumber(ARGV[3])
+            local millis,factor=tonumber(ARGV[4]),tonumber(ARGV[5])
+            local clock=redis.call('TIME')
+            local now=math.floor((tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000))/millis)
+            local maximum=(now-1)*factor+factor-1
+            if maximum<minimum then return {'0'} end
+            local count=redis.call('ZCOUNT',KEYS[1],minimum,maximum)
+            if count==0 then return {'0'} end
+            if offset>=count then offset=0 end
+            local before=redis.call('ZCOUNT',KEYS[1],'-inf','('..ARGV[1])
+            local size=math.min(limit,count-offset)
+            local rows=redis.call('ZRANGE',KEYS[1],before+offset,before+offset+size-1,'WITHSCORES')
+            local next_offset=offset+size
+            if next_offset>=count then next_offset=0 end
+            local result={tostring(next_offset)}
+            for i=1,#rows do result[#result+1]=rows[i] end
+            return result
+            """;
     private static final String HOT_LEASE_BATCH_SCRIPT = """
             if #ARGV>206 or (#ARGV-6)%2~=0 then return redis.error_reply('HOT leases require at most 100 identities') end
             local mode,target=ARGV[1],tonumber(ARGV[2])
@@ -143,7 +162,6 @@ public final class RedisWorkerScoreCore
               elseif dirty~=0 or slot<now or slot==pause then
                 return {'stale',score}
               end
-              if mode=='extend' and target<=slot then return {'noop',score} end
               local next_slot=mode=='confirm' and math.max(target,slot) or target
               local next_score=next_slot*factor+observed%factor-dirty+(mode=='confirm' and 1 or 0)
               redis.call('ZADD',KEYS[1],next_score,id)
@@ -242,11 +260,12 @@ public final class RedisWorkerScoreCore
                     or evidence_time_slot < 0
                     or evidence_time_slot > max_time_slot then
                   status = "invalid"
-                elseif stored_time_slot > now_time_slot
+                -- Current-slot leases remain confirmable; evidence may correct their polarity too.
+                elseif stored_time_slot >= now_time_slot
                     or stored_time_slot <= evidence_time_slot then
                   local target_abs_score = stored_abs_score
                   if target_sign == 1
-                      and stored_time_slot <= now_time_slot
+                      and stored_time_slot < now_time_slot
                       and stored_time_slot < evidence_time_slot then
                     local low_bits = stored_abs_score % slot_factor
                     target_abs_score = evidence_time_slot * slot_factor
@@ -358,20 +377,21 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public Map<String, Long> observeDueHotScoreCandidates(
+    public WorkerScoreCandidatePage observeDueHotScoreCandidates(
             String homeBucketId,
             Long hotEligibilityFloorMillis,
+            long offset,
             int limit
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
-        if (limit <= 0) {
-            return Map.of();
+        if (offset < 0 || limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("candidate observation requires a nonnegative offset and limit 1..100");
         }
         long minimumScore;
         if (hotEligibilityFloorMillis == null) {
             minimumScore = MIN_BASE;
         } else if (!validTimeMillis(hotEligibilityFloorMillis)) {
-            return Map.of();
+            return new WorkerScoreCandidatePage(Map.of(), 0);
         } else {
             minimumScore = Math.max(
                     MIN_BASE,
@@ -382,27 +402,19 @@ public final class RedisWorkerScoreCore
                     )
             );
         }
-        long dueTimeSlot = redisTimeMillis() / SLOT_MILLIS - 1;
-        if (dueTimeSlot < MIN_TIME_SLOT) {
-            return Map.of();
-        }
-        List<ScoredValue<String>> rows = commands().zrangebyscoreWithScores(
-                scoreKey(homeBucketId),
-                minimumScore,
-                absoluteScore(
-                        dueTimeSlot,
-                        MAX_LANE_RANK,
-                        MAX_DIRTY
-                ),
-                0,
-                limit
-        );
+        List<String> rows = commands().eval(DUE_HOT_PAGE_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey(homeBucketId)}, Long.toString(minimumScore), Long.toString(offset),
+                Integer.toString(limit), Long.toString(SLOT_MILLIS), Integer.toString(SLOT_FACTOR));
         LinkedHashMap<String, Long> candidates = new LinkedHashMap<>();
-        rows.forEach(row -> candidates.put(
-                row.getValue(),
-                scoreToLong(row.getScore())
-        ));
-        return candidates;
+        for (int i = 1; i < rows.size(); i += 2) {
+            try {
+                var state = decodeState(rows.get(i), Double.parseDouble(rows.get(i + 1)));
+                candidates.put(state.workerId(), state.score());
+            } catch (IllegalStateException | NumberFormatException corrupt) {
+                // Progress includes corrupt rows, so a bad head cannot trap observation.
+            }
+        }
+        return new WorkerScoreCandidatePage(candidates, Long.parseLong(rows.getFirst()));
     }
 
     @Override
@@ -722,16 +734,6 @@ public final class RedisWorkerScoreCore
                 targetTimeMillis,
                 "confirm"
         );
-    }
-
-    @Override
-    public Map<String, WorkerScoreTransitionResult> extendActiveHotScoreLeases(
-            String homeBucketId, Map<String, Long> observedScores, long targetTimeMillis
-    ) {
-        if (observedScores == null || observedScores.size() > 100) {
-            throw new IllegalArgumentException("extension requires at most 100 observed scores");
-        }
-        return updateObservedHotLeases(homeBucketId, observedScores, targetTimeMillis, "extend");
     }
 
     private Map<String, WorkerScoreTransitionResult> updateObservedHotLeases(

@@ -35,11 +35,13 @@ multi-field AND queries. Kernel does not interpret operators or facts.
 
 Main resolves at most 100 NORMAL Task IDs/Groups through one `prepareTaskQueries`
 call shared by refill and dispatch. Missing or unusable bindings block assignment.
-Matching merges stored refill targets by shared Group/Rule and normalized query,
-then qualifies only Pacer-issued short-held IDs and requests one batch-bound
-Kernel extension before inventory
+The refill Producer prepares one Matching `RefillBatch` from those views. It merges
+stored targets once by shared Group/Rule and normalized query, reuses visited queries,
+then qualifies only Pacer-issued read-only observations and requests one batch-bound
+Kernel first acquisition for a 1-second candidate lease before inventory
 admission. Task views reference shared stock without carrying Rule coordinates
-or targets into Kernel. All Item selectors consume that local inventory.
+or targets into Kernel. The batch exposes only Group demand hints and supplied-ID
+admission; Kernel retains Group scheduling. All Item selectors consume that local inventory.
 
 Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution
 confirmation, Item claim and Command construction. Properties invalidate old

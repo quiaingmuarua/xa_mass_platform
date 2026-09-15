@@ -15,7 +15,7 @@ observe due Item scores
   -> pace, close, or park the Task
 ```
 
-Kernel owns scheduling and finality. Matching returns bounded opaque S1 inventory
+Kernel owns scheduling and finality. Matching returns bounded opaque candidate-lease inventory
 entries through local take; every entry originated in a Pacer-issued batch.
 
 ## Common Item Flow
@@ -39,8 +39,8 @@ recheck and exact close or private idle park.
 Main supplies the once-prepared NORMAL Task binding batch to both refill and
 dispatch. Each Task's view references shared Eligibility stock. All selectors,
 including ANY and explicit IDs, use local destructive take. Only the separate
-refill Producer observes Group HOT and issues short-held IDs. Matching reads only
-their projections and requests one exact inventory extension. A take miss
+refill Producer reads Group HOT pages without a lease. Matching reads only those
+IDs' projections and requests one exact first acquisition for 1-second inventory. A take miss
 leaves the Item due without immediate supply. See [Candidate Selection](assignment-dispatch-scheduling.md#candidate-selection)
 for shared-target aggregation, bounded refill and exact assignment fences.
 

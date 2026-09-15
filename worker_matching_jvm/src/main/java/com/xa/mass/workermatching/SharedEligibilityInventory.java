@@ -26,17 +26,20 @@ final class SharedEligibilityInventory {
     private final Map<Scope, LinkedHashMap<String, Entry>> pools = new LinkedHashMap<>();
     private final LongSupplier clock;
     private int size;
-    private long held, selected, renewed, expired, admitted, consumed, takeRequested, capacityLimited;
+    private long observed, selected, acquired, expired, admitted, consumed, takeRequested, capacityLimited;
 
     SharedEligibilityInventory() { this(System::currentTimeMillis); }
     SharedEligibilityInventory(LongSupplier clock) { this.clock = clock; }
 
-    synchronized void recordHeld(int count) { held += count; }
+    synchronized void recordObserved(int count) { observed += count; }
 
-    synchronized void recordRenewal(int planned,int confirmed) { selected+=planned; renewed+=confirmed; }
+    synchronized void recordAcquisition(int planned,int confirmed) { selected+=planned; acquired+=confirmed; }
+
+    synchronized void expireAll() {
+        for(Scope scope:List.copyOf(pools.keySet()))expire(scope);
+    }
 
     synchronized int availableCapacity() {
-        for(Scope scope:List.copyOf(pools.keySet()))expire(scope);
         return PROCESS_CAPACITY-size;
     }
 
@@ -47,8 +50,8 @@ final class SharedEligibilityInventory {
     }
 
     synchronized int room(Scope scope) {
-        // Only deadline cleanup, never invalidation or renewal of another Eligibility's fence.
-        for (Scope resident : List.copyOf(pools.keySet())) expire(resident);
+        // Other scopes reclaim expired capacity at the next refill preparation.
+        expire(scope);
         var pool = pools.get(scope);
         int room = pool == null && pools.size() == ELIGIBILITY_CAPACITY ? 0
                 : Math.min(PROCESS_CAPACITY - size, PER_ELIGIBILITY_CAPACITY - (pool == null ? 0 : pool.size()));
@@ -105,10 +108,9 @@ final class SharedEligibilityInventory {
     }
 
     synchronized String diagnostics() {
-        for (Scope resident : List.copyOf(pools.keySet())) expire(resident);
-        return "resident=" + size + " eligibilities=" + pools.size() + " offered=" + held + " admitted=" + admitted
-                + " renewed=" + renewed + " shortUnaccepted=" + (held-renewed) + " renewalRejected=" + (selected-renewed)
-                + " renewedNotAdmitted=" + (renewed-admitted)
+        return "resident=" + size + " eligibilities=" + pools.size() + " observed=" + observed + " admitted=" + admitted
+                + " acquired=" + acquired + " unmatched=" + (observed-selected) + " acquisitionRejected=" + (selected-acquired)
+                + " acquiredNotAdmitted=" + (acquired-admitted)
                 + " takeRequested=" + takeRequested + " consumed=" + consumed
                 + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
     }

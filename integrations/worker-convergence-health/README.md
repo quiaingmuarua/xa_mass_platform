@@ -124,6 +124,13 @@ these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
 DSL or automatic compensation.
 
+The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
+current-slot evidence may correct polarity while preserving the confirmable
+lease coordinate, rank and dirty. It also checks past-slot rejection, PAUSE,
+arrival order, exact confirmation races and bounded command cost. This process
+proof retains its original 1,000-Worker outage oracle and five-minute bound;
+it does not force evidence into a particular slot or establish reliable replay.
+
 Multi-Worker outage checks page Network and Scheduling observations at the
 public 100-ID boundary, then write the existing per-Worker timeline rows only
 after the whole requested set has converged. Runtime Worker preview remains a

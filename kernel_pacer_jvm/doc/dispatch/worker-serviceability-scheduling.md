@@ -264,20 +264,36 @@ CONNECTED or valid Polling observation          -> HOT
 DISCONNECTED / delivery expired / Probe miss  -> RECOVERY
 ```
 
-For each Worker, Evidence is accepted when its 100ms slot is at least the
-stored non-future slot, or when the stored Score is a future lease/hold. The
-same slot is accepted. Valid Evidence always preserves `laneRank` and dirty.
+**Core evidence boundary change:** a stored Score in the current 100ms slot
+accepts validated Evidence just as a future coordinate does. This aligns with
+active lease confirmation, which still permits that current slot. Only past
+stored coordinates require Evidence from the same or a later slot. The rule
+applies to HOT and RECOVERY, including a current-slot probe coordinate.
+Valid Evidence always preserves `laneRank` and dirty.
 Unavailable Evidence changes only the Score sign. Available Evidence also
-advances an older non-future coordinate to its Evidence slot, so a reconnect
+advances an older past-slot coordinate to its Evidence slot, so a reconnect
 observed after Server startup crosses that process's HOT eligibility floor
-without depending on a separate Probe round. A future lease or PAUSE keeps its
+without depending on a separate Probe round. A current/future coordinate or PAUSE keeps its
 exact time coordinate and is never shortened by Evidence.
+
+This accepts delayed observations within the current slot and does not establish
+strict network event ordering. Score time also represents leases and probe
+checks; it is not an independent network timestamp. Source/Binding validation,
+the default 30-second evidence age limit, lane capacity and probe scheduling
+are unchanged. No extra read, queue, replay or compensation scan is introduced.
 
 Retry rank, next-check time, and cold parking are Dispatch concerns performed
 before a Probe is offered or when a due Recovery observation is exhausted.
 The Result path does not calculate the process floor or advance Recovery retry
 state; it uses the accepted connection timestamp as the fresh HOT coordinate.
-A newer non-future Score rejects older Evidence as `STALE`.
+A newer past-slot Score still rejects older Evidence as `STALE`; reports that
+arrive after a lease's slot can therefore remain unapplied under best-effort
+semantics.
+Repeated acquisition of unused Matching stock may keep advancing that HOT
+coordinate after a rejected report, keeping it outside the stale-HOT Probe
+range. Stock that is never consumed receives no Command and therefore need not
+produce delivery-expiry Evidence. The current-slot repair does not establish
+eventual unavailability for this combination.
 
 ## Server And Adapter Boundary
 

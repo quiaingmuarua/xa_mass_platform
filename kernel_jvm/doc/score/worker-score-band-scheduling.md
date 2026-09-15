@@ -174,8 +174,9 @@ Platform facts changes; final assignment confirmation also sets dirty=1.
 HOT candidate acquisition is a bounded read-only range query. It returns
 `(workerId, observedScore)` pairs to Pacer. Production refill always uses the
 bounded Group range; explicit-ID queries do not initiate point acquisition.
-Pacer exact-holds the observations as S0 and Matching reads only those IDs
-for qualification, retaining their scores as opaque fences.
+Pacer supplies read-only observations and Matching reads only those IDs for
+qualification. The accepted subset is exact-acquired afterwards for 1-second
+inventory, retaining the returned scores as opaque fences.
 Concurrent rounds may observe the same due
 Worker, but only one exact compare-and-write succeeds.
 
@@ -218,7 +219,7 @@ timeSlot >= nowSlot
 
 timeSlot == nowSlot
   current-slot occupied boundary; no due acquisition
-  exact clean active holds may still extend or confirm in this slot
+  exact clean active holds may still confirm in this slot
 
 timeSlot > nowSlot
   future-held / occupied / temporarily unavailable for hot acquisition
@@ -324,9 +325,10 @@ Due HOT candidate observation:
 observe_due_hot_score_candidates(
   homeBucketId,
   hotEligibilityFloorMillis?,
+  offset,
   limit
 )
-  -> map[workerId, observedScore]
+  -> WorkerScoreCandidatePage(observedScores, nextOffset)
 
 observe_due_hot_scores(
   homeBucketId,
@@ -354,10 +356,19 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form is a mechanical bounded read, not a production refill supply path.
-Pacer uses the Group range for every Rule, acquires S0 and issues a closed batch.
-Matching qualifies only that batch and requests one exact extension to inventory
-S1. Dispatch consumes S1 and exact-confirms S2. The Score Owner never interprets
-selectors, and Matching cannot initiate either observation form.
+Pacer uses the Group range for every Rule and issues a closed observation batch.
+Matching qualifies only that batch and requests first acquisition for its accepted
+subset. Dispatch consumes the returned inventory fences and exact-confirms execution.
+The Score Owner never interprets selectors; Matching cannot initiate observation.
+
+Group pagination is one read-only Lua: Redis TIME fixes the due upper bound,
+ZCOUNT measures the due range and preceding members, then rank ZRANGE WITHSCORES
+reads at most 100 rows. It does not use a deep score-range LIMIT offset. Offset is
+nonnegative and limit is 1..100. End or out-of-range offsets wrap to zero; empty
+ranges return an empty page and zero. Corrupt rows are omitted but count towards
+page progress. Equal-score identities remain discoverable. Pacer retains offsets
+only for the current bounded Group roots, advancing even when no Worker matches.
+Concurrent range changes make this a live hint, with no stable snapshot guarantee.
 
 When optional periodic Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The bounded
@@ -526,8 +537,8 @@ The general `toggle_current_polarity` operation preserves `timeSlot` and dirty
 while resetting the target lane to `laneRank=0`. Worker Serviceability Result
 does not use that general primitive. Its dedicated Evidence operation preserves
 `laneRank` and dirty; unavailable Evidence changes only the sign, while accepted
-connected Evidence advances a non-future older coordinate to the Evidence slot.
-Future leases and PAUSE keep their exact coordinate. The two operations remain
+connected Evidence advances an older past-slot coordinate to the Evidence slot.
+Current/future coordinates and PAUSE keep their exact coordinate. The two operations remain
 distinct because an explicit lane transition and a serviceability correction
 own different time and low-bit semantics. Dirty score
 primitives invalidate candidate eligibility after APPLIED facts writes and
@@ -763,19 +774,29 @@ each Worker, with all times reduced to the 100ms score slot, Evidence is valid
 only when:
 
 ```text
-storedTimeSlot > redisNowSlot
+storedTimeSlot >= redisNowSlot
 OR storedTimeSlot <= evidenceTimeSlot
 ```
 
-The first branch permits an observed Route fact to correct the polarity of a
-future lease, hold, or pause without lowering that coordinate. The second is
-the normal non-future freshness fence and deliberately accepts the same slot.
+**Core mechanism change:** the first branch includes the current slot, matching
+the inclusive active-lease confirmation boundary. It permits an observed Route
+fact to correct HOT or RECOVERY polarity without changing a current/future
+coordinate or PAUSE. The second branch is the past-slot freshness fence and
+deliberately accepts evidence from the same slot as that past coordinate.
 Valid unavailable Evidence changes only the sign. Valid connected Evidence
-also replaces an older non-future `timeSlot` with `evidenceTimeSlot`; it keeps
-the stored time when the score is a future lease or pause. Both paths preserve
+also replaces an older past-slot `timeSlot` with `evidenceTimeSlot`; it keeps
+the stored time for current/future coordinates and PAUSE. Both paths preserve
 `laneRank` and dirty. A score already at the target polarity is `NOOP` only when
-its time coordinate also remains unchanged. A newer non-future coordinate
+its time coordinate also remains unchanged. A newer past-slot coordinate
 makes older Evidence `STALE`.
+
+Score time may come from a lease, network observation or RECOVERY probe. It is
+not a separate network-observation version. Valid delayed reports may therefore
+change polarity in the current slot; across batches this remains best-effort
+arrival-order behavior. Binding/source and bounded evidence age checks remain
+upstream. The operation does not replay rejected evidence, clear dirty, shorten
+leases or broaden probe coverage. Evidence arriving after the stored slot has
+become past may still be rejected by the existing freshness check.
 
 The Result path therefore owns no floor calculation, retry increment, cold
 park, or PAUSE exception. Dispatch owns check timing and retry progression.
@@ -828,13 +849,15 @@ mark_current_leases_dirty(homeBucketId, workerIds)
   only sets dirty=1, preserving polarity, timeSlot and laneRank
   clean -> TRANSITIONED; already dirty -> NOOP; missing -> STALE
   invalid stored score -> INVALID without mutation; never creates a member
+  marks due/active/recovery scores alike; not restricted to currently leased Workers
   no TIME, client pre-read or confirmation read
 
-observe_due_hot_score_candidates(homeBucketId, hotEligibilityFloorMillis?, limit)
+observe_due_hot_score_candidates(homeBucketId, hotEligibilityFloorMillis?, offset, limit)
   reads positive due HOT_ACQUIRE scores at or above the optional floor
-  returns at most limit workerId -> observedScore entries
-  does not expose score order as a caller contract
-  does not mutate score
+  returns WorkerScoreCandidatePage(observedScores, nextOffset), at most 100 rows
+  one Redis-time Lua, two bounded range counts and rank ZRANGE
+  corrupt rows are filtered without resetting page progress
+  no score mutation, stable-snapshot or business-priority guarantee
 
 observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
   reads only the supplied bounded Worker ids
@@ -857,13 +880,6 @@ acquire_observed_hot_score_leases(
   independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   each generic CAS requires storedScore == observedScore
 
-extend_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
-  at most 100 identities; exact HOT, clean, active and non-PAUSE fences only
-  target slot must be future; same/earlier existing deadline returns NOOP
-  writes a strictly later HOT deadline, preserving rank and dirty=0
-  returns the new inventory fence; only TRANSITIONED may enter stock
-  never reacquires an expired hold or clears dirty
-
 confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   each observedScore must decode to HOT_ACQUIRE
   each storedScore must equal its observedScore
@@ -877,7 +893,7 @@ confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
 
 ```
 
-Initial acquisition, inventory extension and confirmation use one bounded Lua per
+First acquisition after Matching and execution confirmation use one bounded Lua per
 100 identities on one WorkerGroup/ZSET. The same Lua reads Redis TIME before
 checking deadlines and exact fences, then returns per-Worker results. There is no
 separate time confirmation read or per-Worker command. Dirty invalidation is also
@@ -904,7 +920,7 @@ the facts-write/dirty failure windows and upgrade behavior.
 | HOT_ACQUIRE | Adapter rejection result | exact lease release, polarity preserved | complete observed-score CAS |
 | HOT_ACQUIRE | accepted unavailable Adapter evidence | RECOVERY_RECHECK(sameTime, sameRank, dirty) | dedicated evidence-time fence; preserve the entire absolute coordinate |
 | RECOVERY_RECHECK | explicit owner-validated general polarity move | HOT_ACQUIRE(sameTime, 0, dirty) | exact observed-score CAS; distinct from Serviceability evidence |
-| either | accepted connected Adapter evidence | HOT_ACQUIRE(retained or refreshed time, sameRank, dirty) | dedicated evidence-time fence; advance an older non-future coordinate, preserve future lease/PAUSE |
+| either | accepted connected Adapter evidence | HOT_ACQUIRE(retained or refreshed time, sameRank, dirty) | dedicated evidence-time fence; advance an older past-slot coordinate, preserve current/future coordinates and PAUSE |
 | RECOVERY_RECHECK | due Serviceability probe round | RECOVERY_RECHECK(owner Redis time, retryCount + 1, dirty) | exact advance before probe offer; Dispatch policy owns retry cadence |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
 | RECOVERY_RECHECK | owner hold / disabled / drain / maintenance | RECOVERY_RECHECK(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold + owner evidence |
@@ -934,12 +950,11 @@ Serviceability policy and evidence classification are defined in
 | manual enable / release | yes | exact observed-score same-polarity release |
 | Worker Matching Properties change | no | Matching facts only; later supplied-ID projection sees the new snapshot |
 | Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
-| assignment owner leases HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` checks Redis time and exact-CAS writes a short clean S0 in one bounded Lua |
-| Pacer extends accepted clean HOT_ACQUIRE handoff holds | yes | `extend_active_hot_score_leases` exact-extends S0 to S1 in one Group Lua; Matching can submit only batch-issued IDs |
+| assignment owner leases matched HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` checks Redis time and exact-CAS writes a 1-second clean inventory lease after Matching; either due dirty value is allowed |
 | assignment owner consumes active clean HOT_ACQUIRE holds | yes | `confirm_active_hot_score_leases` exact-CAS sets dirty=1 and returns the execution fence; dirty entries return STALE |
 | Server after APPLIED Worker or Platform facts writes | best-effort | `mark_current_leases_dirty` preserves coordinates; failure does not undo the facts response |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
-| bounded-age Adapter Route evidence | yes | dedicated same-key evidence operation checks stored time against evidence time, with the future-coordinate exception described in Serviceability Evidence; this is not a total cross-batch ordering guarantee |
+| bounded-age Adapter Route evidence | yes | dedicated same-key evidence operation checks past stored time against evidence time, accepting current/future coordinates as described in Serviceability Evidence; this is not a total cross-batch ordering guarantee |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |
@@ -965,9 +980,9 @@ manual disable / drain / maintenance:
 
 trusted serviceability evidence:
   stored score time must not be newer than Adapter observed time unless it is a
-  future lease or PAUSE
-  connected evidence advances an older non-future coordinate to its evidence slot
-  unavailable evidence and future coordinates preserve the stored time
+  current/future coordinate or PAUSE
+  connected evidence advances an older past-slot coordinate to its evidence slot
+  unavailable evidence and current/future coordinates preserve the stored time
 
 validated recovery:
   validated owner facts and RECOVERY_RECHECK -> HOT_ACQUIRE polarity move
@@ -1031,7 +1046,7 @@ owner-validated serviceability evidence boundary preserving laneRank and dirty
 RECOVERY_RECHECK lookback-window acquisition
 RECOVERY_RECHECK cold-too-old exhausted coordinate
 home bucket score key
-only normalized connected Adapter evidence may refresh a non-future HOT coordinate
+only normalized connected Adapter evidence may refresh a past-slot HOT coordinate
 ```
 
 Production policy is defined in the [Pacer documents](../../../kernel_pacer_jvm/README.md).

@@ -225,11 +225,19 @@ architectures.
   index updates still prepare before writing in one bounded Lua operation.
   Matching owns paired projection and deficits/refill/take interpretation, shared Group/Rule
   inventory and Task-declared targets. Pacer alone discovers HOT IDs and issues
-  closed 1-second S0 batches. Matching only qualifies those IDs and requests one
-  batch-bound exact extension to 5-second S1; Handlers have no acquisition or lease
-  capability. Kernel retains all Score, confirmation and claim authority.
+  closed read-only observed-score batches. **Matching precedes the first lease:**
+  it qualifies only supplied IDs and requests one batch-bound exact acquisition
+  for 1-second inventory. Pre-Matching holds and inventory extension are removed;
+  Handlers have no acquisition or lease capability. Kernel retains all Score,
+  confirmation and claim authority. Qualification-to-acquisition facts races remain
+  explicitly best-effort; do not restore post-acquisition rechecks or property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
+  Refill prepares one invocation-local Group/Rule demand batch from Main's Task
+  views, reusing visited query compilation. Server admission must not prepare
+  refill or maintain stock. Group demand is a hint, not a reservation; stock and
+  exact fences still decide admission and execution. Global expired-stock cleanup
+  occurs at refill preparation; scope access retains local expiry and atomic bounds.
 
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
@@ -274,9 +282,11 @@ kernel_jvm`.
   dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
   count. Matching cannot discover IDs or initiate targeted acquisition. It checks
-  supplied projections, plans one Eligibility per ID and requests one union renewal
-  through the invocation-bound callback. Only returned S1 fences enter stock.
-  Acquisition, extension and confirmation check Redis time within their CAS Lua.
+  supplied projections, plans one Eligibility per ID and requests one union first
+  acquisition through the invocation-bound callback. Only new returned fences enter
+  stock. Read-only Group page offsets remain bounded to current Main roots and
+  advance on no-match rounds. Acquisition accepts due dirty=0/1 and clears dirty;
+  execution confirmation requires clean active fences. Both check Redis time in CAS Lua.
   Kernel exact-confirms clean candidates
   and carries the returned execution fence into ResultContext. Properties writes
   invalidate through Score Owner. Unused/rejected holds expire without release

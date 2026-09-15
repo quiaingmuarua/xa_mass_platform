@@ -87,8 +87,8 @@ A busy Producer skips the current source snapshot without storing a pending
 hint.
 
 Main resolves one bounded NORMAL Task binding batch through Matching. The fixed
-refill Producer alone observes Group HOT and supplies closed 1-second S0 batches;
-Matching checks only supplied projections and requests one extension to 5-second S1.
+refill Producer alone reads Group HOT pages and supplies closed observed-score batches;
+Matching qualifies those IDs before requesting one exact 1-second inventory lease.
 Dispatch consumes shared stock
 for every accepted selector, then exact-confirms, claims the Item and delivers.
 Only worker.default accepts explicit ID queries. Pacer does not load Rules,

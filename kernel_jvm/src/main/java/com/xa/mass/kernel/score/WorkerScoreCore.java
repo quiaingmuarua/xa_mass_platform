@@ -36,11 +36,26 @@ public interface WorkerScoreCore {
             List<String> workerIds
     );
 
-    Map<String, Long> observeDueHotScoreCandidates(
+    /**
+     * Read-only rank page within the current due HOT range, including either dirty value.
+     * Offset must be nonnegative and limit 1..100. End-of-range wraps to zero;
+     * corrupt rows advance the page without becoming candidates. Live progress is best-effort.
+     */
+    WorkerScoreCandidatePage observeDueHotScoreCandidates(
             String homeBucketId,
             @Nullable Long hotEligibilityFloorMillis,
+            long offset,
             int limit
     );
+
+    record WorkerScoreCandidatePage(Map<String, Long> observedScores, long nextOffset) {
+        public WorkerScoreCandidatePage {
+            observedScores = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(observedScores));
+            if (observedScores.size() > 100 || nextOffset < 0) {
+                throw new IllegalArgumentException("candidate page exceeds its bounds");
+            }
+        }
+    }
 
     Map<String, Long> observeDueHotScores(
             String homeBucketId,
@@ -87,13 +102,6 @@ public interface WorkerScoreCore {
     );
 
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
-            String homeBucketId,
-            Map<String, Long> observedScores,
-            long targetTimeMillis
-    );
-
-    /** Extends at most 100 exact, clean active HOT holds, preserving rank and dirty=0. */
-    Map<String, WorkerScoreTransitionResult> extendActiveHotScoreLeases(
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis

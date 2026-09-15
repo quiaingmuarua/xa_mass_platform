@@ -193,85 +193,115 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return result;
     }
 
-    private record RefillPage(List<EligibilityQuery> queries,int nextCursor,int deficit) { }
+    private record RefillPage(Map<EligibilityQuery,RuleHandler.Query> queries,int nextCursor,int deficit) { }
 
-    private @Nullable RefillPage page(SharedEligibilityInventory.Scope scope,SharedEligibility index,List<EligibilityQuery> queries) {
-        int room=index.room();
-        if(room==0)return null;
-        int start=Math.floorMod(queryCursors.getOrDefault(scope,0),queries.size());
-        for(int offset=0;offset<queries.size();offset+=100) {
-            var selected=new ArrayList<EligibilityQuery>();
-            for(int i=offset;i<Math.min(offset+100,queries.size());i++)selected.add(queries.get((start+i)%queries.size()));
-            int missing=index.deficits(selected).values().stream().mapToInt(Integer::intValue).sum();
-            if(missing>0)return new RefillPage(List.copyOf(selected),
-                    (start+offset+(queries.size()>100?selected.size():1))%queries.size(),Math.min(room,missing));
+    /** Query compilation belongs to this refill invocation, never to stock or HTTP admission. */
+    private final class PreparedEligibility {
+        final SharedEligibilityInventory.Scope scope;
+        final SharedEligibility index;
+        final List<EligibilityQuery> targets;
+        final Map<EligibilityQuery,RuleHandler.Query> compiled=new LinkedHashMap<>();
+
+        PreparedEligibility(SharedEligibilityInventory.Scope scope,List<EligibilityQuery> targets) {
+            this.scope=scope;
+            this.index=Objects.requireNonNull(eligibility(scope.workerGroupId(),scope.ruleId()));
+            this.targets=targets;
         }
-        return null;
+
+        @Nullable RefillPage page() {
+            int room=index.room();
+            if(room==0)return null;
+            int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
+            for(int offset=0;offset<targets.size();offset+=100) {
+                var selected=new LinkedHashMap<EligibilityQuery,RuleHandler.Query>();
+                for(int i=offset;i<Math.min(offset+100,targets.size());i++) {
+                    var target=targets.get((start+i)%targets.size());
+                    selected.put(target,compiled.computeIfAbsent(target,index::compile));
+                }
+                int missing=index.deficits(selected).values().stream().mapToInt(Integer::intValue).sum();
+                if(missing>0)return new RefillPage(Collections.unmodifiableMap(selected),
+                        (start+offset+(targets.size()>100?selected.size():1))%targets.size(),Math.min(room,missing));
+            }
+            return null;
+        }
     }
 
-    @Override public Map<String,Integer> deficits(Map<String,@Nullable TaskQuery> tasks) {
-        var result=new LinkedHashMap<String,Integer>();
-        targets(tasks).forEach((scope,queries)->{
-            var page=page(scope,eligibility(scope.workerGroupId(),scope.ruleId()),queries);
-            if(page!=null)result.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
-        });
-        result.replaceAll((group,count)->Math.min(count,SharedEligibilityInventory.PROCESS_CAPACITY));
-        requestedDeficit+=result.values().stream().mapToInt(Integer::intValue).sum();
-        return Collections.unmodifiableMap(result);
-    }
-
-    @Override public int refill(Map<String,@Nullable TaskQuery> tasks,String group,
-            List<HeldCandidate> offered,CandidateRenewal renewal) {
-        requireNonBlank(group,"WorkerGroup");
-        Objects.requireNonNull(renewal,"renewal");
-        if(offered.size()>100)throw new IllegalArgumentException("at most 100 offered Workers");
-        var remaining=new LinkedHashMap<String,HeldCandidate>();
-        var unique=new LinkedHashSet<String>();
-        long now=System.currentTimeMillis();
-        for(var candidate:offered) {
-            requireNonBlank(candidate.workerId(),"Worker ID");
-            if(!unique.add(candidate.workerId()))throw new IllegalArgumentException("offered Workers must be unique");
-            if(candidate.expiresAtMillis()>now)remaining.put(candidate.workerId(),candidate);
-        }
-        inventory.recordHeld(offered.size());
+    @Override public RefillBatch prepareRefill(Map<String,@Nullable TaskQuery> tasks) {
+        Objects.requireNonNull(tasks,"preparedTasks");
         var targets=targets(tasks);
-        var scopes=targets.keySet().stream().filter(scope->scope.workerGroupId().equals(group))
-                .sorted(java.util.Comparator.comparing(SharedEligibilityInventory.Scope::ruleId)).toList();
+        inventory.expireAll();
+        var groups=new LinkedHashMap<String,List<PreparedEligibility>>();
+        targets.forEach((scope,queries)->groups.computeIfAbsent(scope.workerGroupId(),ignored->new ArrayList<>())
+                .add(new PreparedEligibility(scope,queries)));
+        var needed=new LinkedHashSet<String>();
+        groups.forEach((group,scopes)->{
+            scopes.sort(java.util.Comparator.comparing(entry->entry.scope.ruleId()));
+            int deficit=0;
+            for(var scope:scopes) {
+                var page=scope.page();
+                if(page!=null)deficit+=page.deficit();
+            }
+            if(deficit>0)needed.add(group);
+            requestedDeficit+=Math.min(deficit,SharedEligibilityInventory.PROCESS_CAPACITY);
+        });
+        var neededGroups=Collections.unmodifiableSet(needed);
+        return new RefillBatch() {
+            @Override public Set<String> groupsNeedingRefill() { return neededGroups; }
+
+            @Override public int refill(String group,Map<String,Long> observed,CandidateLease lease) {
+                var scopes=groups.get(group);
+                if(scopes==null)throw new IllegalArgumentException("WorkerGroup is outside this refill batch");
+                return refillGroup(scopes,group,observed,lease);
+            }
+        };
+    }
+
+    private int refillGroup(List<PreparedEligibility> scopes,String group,
+            Map<String,Long> observed,CandidateLease lease) {
+        requireNonBlank(group,"WorkerGroup");
+        Objects.requireNonNull(lease,"lease");
+        Objects.requireNonNull(observed,"observedScores");
+        if(observed.size()>100)throw new IllegalArgumentException("at most 100 observed Workers");
+        var remaining=new LinkedHashSet<String>();
+        observed.forEach((id,score)->{
+            requireNonBlank(id,"Worker ID"); Objects.requireNonNull(score,"observedScore"); remaining.add(id);
+        });
+        inventory.recordObserved(observed.size());
         if(scopes.isEmpty() || remaining.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
         int room=inventory.availableCapacity();
-        var planned=new LinkedHashMap<SharedEligibilityInventory.Scope,List<SharedEligibilityInventory.Entry>>();
-        var selected=new LinkedHashMap<String,SharedEligibilityInventory.Entry>();
+        var planned=new LinkedHashMap<SharedEligibilityInventory.Scope,List<RuleHandler.Member>>();
+        var selected=new LinkedHashMap<String,RuleHandler.Member>();
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && selected.size()<room;n++) {
-            var scope=scopes.get((start+n)%scopes.size());
-            var index=eligibility(group,scope.ruleId());
-            var page=page(scope,index,targets.get(scope));
+            var prepared=scopes.get((start+n)%scopes.size());
+            var scope=prepared.scope;
+            var page=prepared.page();
             if(page==null)continue;
             // Advance before fallible Handler work, including batches matching no Worker.
             queryCursors.put(scope,page.nextCursor());
-            var entries=index.select(page.queries(),List.copyOf(remaining.values()),room-selected.size());
+            var entries=prepared.index.select(page.queries(),List.copyOf(remaining),room-selected.size());
             planned.put(scope,entries);
-            entries.forEach(entry->{ selected.put(entry.held().workerId(),entry); remaining.remove(entry.held().workerId()); });
+            entries.forEach(entry->{ selected.put(entry.workerId(),entry); remaining.remove(entry.workerId()); });
         }
         if(selected.isEmpty())return 0;
-        var renewed=new LinkedHashMap<String,HeldCandidate>();
-        for(var candidate:renewal.renew(List.copyOf(selected.keySet()))) {
+        var acquired=new LinkedHashMap<String,HeldCandidate>();
+        for(var candidate:lease.acquire(List.copyOf(selected.keySet()))) {
             var original=selected.get(candidate.workerId());
-            if(original==null || renewed.putIfAbsent(candidate.workerId(),candidate)!=null
-                    || candidate.score()==original.held().score())throw new IllegalStateException("renewal must return new fences for a subset of the admission plan");
+            if(original==null || acquired.putIfAbsent(candidate.workerId(),candidate)!=null
+                    || candidate.score()==observed.get(candidate.workerId()))throw new IllegalStateException("acquisition must return new fences for a subset of the admission plan");
         }
-        inventory.recordRenewal(selected.size(),renewed.size());
+        inventory.recordAcquisition(selected.size(),acquired.size());
         int added=0;
         for(var entry:planned.entrySet()) {
             var entries=new ArrayList<SharedEligibilityInventory.Entry>();
             for(var original:entry.getValue()) {
-                var candidate=renewed.get(original.held().workerId());
-                if(candidate!=null)entries.add(new SharedEligibilityInventory.Entry(candidate,original.member().projection()));
+                var candidate=acquired.get(original.workerId());
+                if(candidate!=null)entries.add(new SharedEligibilityInventory.Entry(candidate,original.projection()));
             }
             added+=inventory.add(entry.getKey(),entries);
         }
-        now=System.currentTimeMillis();
+        long now=System.currentTimeMillis();
         if (now-lastDiagnosticMillis>=60_000) {
             System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,
                     "Eligibility refill deficit="+requestedDeficit+" "+inventory.diagnostics());

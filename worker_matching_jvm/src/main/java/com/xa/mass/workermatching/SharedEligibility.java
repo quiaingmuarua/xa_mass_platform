@@ -31,14 +31,18 @@ final class SharedEligibility {
         return normalized;
     }
 
-    private Map<EligibilityQuery,RuleHandler.Query> prepare(List<EligibilityQuery> queries) {
+    RuleHandler.Query compile(EligibilityQuery query) {
+        return handler.compile(normalize(query.query(),query.count()));
+    }
+
+    Map<EligibilityQuery,RuleHandler.Query> compile(List<EligibilityQuery> queries) {
         if(queries.size()>100)throw new IllegalArgumentException("at most 100 queries");
         var result=new LinkedHashMap<EligibilityQuery,RuleHandler.Query>();
-        queries.forEach(q->result.put(q,handler.compile(normalize(q.query(),q.count()))));
+        queries.forEach(q->result.put(q,compile(q)));
         return result;
     }
 
-    private Map<EligibilityQuery,Integer> missing(Map<EligibilityQuery,RuleHandler.Query> queries) {
+    Map<EligibilityQuery,Integer> deficits(Map<EligibilityQuery,RuleHandler.Query> queries) {
         var stock=inventory.snapshot(scope);
         var result=new LinkedHashMap<EligibilityQuery,Integer>();
         queries.forEach((query,compiled)->result.put(query,Math.max(0,compiled.target(query.count())
@@ -46,54 +50,61 @@ final class SharedEligibility {
         return result;
     }
 
-    Map<EligibilityQuery,Integer> deficits(List<EligibilityQuery> targets) {
-        return missing(prepare(targets));
-    }
-
     int room() { return inventory.room(scope); }
 
-    /** Invocation-local admission plan; the Catalog renews all selected scopes in one Group call. */
-    List<SharedEligibilityInventory.Entry> select(List<EligibilityQuery> targets,
-            List<HeldCandidate> offered, int budget) {
-        var queries=prepare(targets);
-        var missing=missing(queries);
+    /** Unheld admission plan; the Catalog acquires all selected scopes in one Group call. */
+    List<RuleHandler.Member> select(Map<EligibilityQuery,RuleHandler.Query> queries,
+            List<String> offered, int budget) {
+        var missing=deficits(queries);
         if(missing.values().stream().noneMatch(count->count>0))return List.of();
         budget=Math.min(budget,inventory.room(scope));
         if(budget<=0 || offered.isEmpty())return List.of();
-        var ids=offered.stream().map(HeldCandidate::workerId).toList();
-        var projections=handler.snapshot(ids);
-        if(!new HashSet<>(ids).containsAll(projections.keySet()))throw new IllegalStateException("Rule returned an unoffered identity");
-        var selected=new LinkedHashMap<String,RuleHandler.Member>();
-        var accepted=new ArrayList<SharedEligibilityInventory.Entry>();
+        var projections=handler.snapshot(offered);
+        if(!new HashSet<>(offered).containsAll(projections.keySet()))throw new IllegalStateException("Rule returned an unoffered identity");
+        var ordered=List.copyOf(queries.entrySet());
+        var selected=new HashSet<String>();
+        var selectedCounts=new int[ordered.size()];
+        var matches=new HashMap<String,boolean[]>();
+        var accepted=new ArrayList<RuleHandler.Member>();
         for(boolean any:List.of(false,true)) {
-            var active=new LinkedHashMap<EligibilityQuery,RuleHandler.Query>();
-            queries.forEach((q,compiled)->{ if(q.query().isEmpty()==any)active.put(q,compiled); });
+            int outstanding=0;
+            for(int i=0;i<ordered.size();i++) {
+                var target=ordered.get(i).getKey();
+                if(target.query().isEmpty()==any && selectedCounts[i]<missing.get(target))outstanding++;
+            }
+            if(outstanding==0)continue;
             for(var candidate:offered) {
-                if(accepted.size()==budget)break;
-                var member=projections.getOrDefault(candidate.workerId(),new RuleHandler.Member(candidate.workerId(),null));
-                if(!candidate.workerId().equals(member.workerId()))throw new IllegalStateException("Rule projection identity mismatch");
-                if(needed(member,active,missing,selected))accepted.add(new SharedEligibilityInventory.Entry(candidate,member.projection()));
+                if(accepted.size()==budget || outstanding==0)break;
+                if(selected.contains(candidate))continue;
+                var member=projections.getOrDefault(candidate,new RuleHandler.Member(candidate,null));
+                if(!candidate.equals(member.workerId()))throw new IllegalStateException("Rule projection identity mismatch");
+                var matching=matches.computeIfAbsent(member.workerId(),ignored->{
+                    var result=new boolean[ordered.size()];
+                    for(int i=0;i<ordered.size();i++)result[i]=ordered.get(i).getValue().matches(member);
+                    return result;
+                });
+                for(int i=0;i<ordered.size();i++) {
+                    var target=ordered.get(i).getKey();
+                    if(target.query().isEmpty()==any && matching[i] && selectedCounts[i]<missing.get(target)) {
+                        selected.add(member.workerId());
+                        accepted.add(member);
+                        for(int j=0;j<matching.length;j++)if(matching[j]) {
+                            selectedCounts[j]++;
+                            var matchedTarget=ordered.get(j).getKey();
+                            if(matchedTarget.query().isEmpty()==any && selectedCounts[j]==missing.get(matchedTarget))outstanding--;
+                        }
+                        break;
+                    }
+                }
             }
         }
         return List.copyOf(accepted);
     }
 
-    private static boolean needed(RuleHandler.Member member,Map<EligibilityQuery,RuleHandler.Query> queries,
-            Map<EligibilityQuery,Integer> missing,Map<String,RuleHandler.Member> selected) {
-        if(selected.containsKey(member.workerId()))return false;
-        for(var entry:queries.entrySet()) {
-            var query=entry.getValue();
-            if(query.matches(member) && selected.values().stream().filter(query::matches).count()<missing.get(entry.getKey())) {
-                selected.put(member.workerId(),member); return true;
-            }
-        }
-        return false;
-    }
-
     Map<EligibilityQuery,List<HeldCandidate>> take(List<EligibilityQuery> requests) {
         if(requests.stream().mapToInt(EligibilityQuery::count).sum()>100)
             throw new IllegalArgumentException("at most 100 candidates per take");
-        var queries=prepare(requests);
+        var queries=compile(requests);
         var stock=inventory.snapshot(scope);
         var selected=new LinkedHashMap<EligibilityQuery,List<SharedEligibilityInventory.Entry>>();
         var seen=new HashSet<String>();
