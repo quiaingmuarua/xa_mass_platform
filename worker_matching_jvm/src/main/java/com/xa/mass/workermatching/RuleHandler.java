@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +26,7 @@ public interface RuleHandler {
             List<HeldCandidate> offered, int maxAccepted);
     /**
      * Validates and consumes at most 100 candidates across at most 100 queries.
+     * No Worker may occur in more than one returned list, including overlapping queries.
      * Each consumed entry must still be current and live at commit. Concurrent changes can leave
      * a short result; they do not require retrying selection within this call.
      */

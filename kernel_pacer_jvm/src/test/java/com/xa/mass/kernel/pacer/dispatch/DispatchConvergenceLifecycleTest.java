@@ -13,7 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;

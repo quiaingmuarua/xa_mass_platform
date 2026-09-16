@@ -84,9 +84,8 @@
       "on_probe_unavailable",
       "on_route_unavailable"
     ],
-    "WorkerCandidateIndex": [
+    "WorkerMatching": [
       "groups_needing_refill",
-      "normalize_query",
       "refill",
       "take"
     ],

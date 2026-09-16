@@ -118,7 +118,11 @@ descriptors, concurrent configuration integrity and strict corruption rejection,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
 rebuild isolation. Matching tests prove the four-operation Rule interface, unsupported condition
 rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
-original fences and atomic destructive consumption. Kernel tests own immutable
+original fences and atomic destructive consumption. Catalog tests own messageId
+correlation, equivalent/interleaved queries, shortages, immutable input-ordered
+results, whole-batch admission before consumption and independent reuse of IDs
+across calls. Redis Owner proves the Country path adds no Redis access during take.
+Kernel tests own immutable
 query capture and strict direct-Map JSON; Server tests own flat target configuration
 and HTTP admission. Redis Owner rejects old property conditions without rewriting
 records or substituting ANY.
@@ -128,7 +132,9 @@ Redis Owner cases cover batch costs, corrupt-index preflight and dirty invalidat
 Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
 finite-ID target saturation and named-Rule identity rejection have focused proofs.
 Pacer tests prove refill without Item reads, independently scheduled consumption,
-round exclusions and opaque exact fences. Runtime Boundary runs actual Workers
+round exclusions and opaque exact fences. Pacer tests also prove one unchanged
+messageId-to-query submission and no reassignment or replacement take after address
+or round-exclusion filtering. Runtime Boundary runs actual Workers
 serving two Tasks from the same Eligibility and preserves independent Task closure.
 Its Group-batch witness also uses six Workers in two Groups, four Tasks and 800
 Items: two Tasks share a Rule, another uses a different Rule in the same Group,

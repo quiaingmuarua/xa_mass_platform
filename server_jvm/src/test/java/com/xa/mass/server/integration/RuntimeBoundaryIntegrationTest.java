@@ -46,7 +46,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Map;
 import java.util.Set;

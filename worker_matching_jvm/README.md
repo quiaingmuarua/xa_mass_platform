@@ -35,13 +35,15 @@ Worker / Platform facts -> one Lua -> enabled Rule indexes
 NORMAL Task descriptors -> Group/Rule target MAX -> Rule deficits
   -> Pacer HOT head -> Kernel exact 1-second lease -> offered held IDs
   -> Rule qualification and admission -> Rule-owned local stock
-Item selectors -> Rule.take -> current address
+messageId -> Item selector -> Catalog normalization/grouping -> Rule.take
+  -> messageId -> held candidate -> current address
   -> Kernel exact clean confirmation -> exact Item claim -> Command
 ```
 
 Rules receive opaque held fences, never a lease acquisition capability. They cannot
 discover replacement IDs, renew holds, decode Kernel scores or claim Items.
-Pacer carries Rule names, Group coordinates and immutable query data. It does not
+Pacer carries Rule names, Group coordinates, correlation IDs and immutable query data
+through `WorkerMatching`. It does not normalize or semantically group queries,
 interpret business fields, depend on Handler implementations or construct index coordinates.
 
 ## Named Rule Admission
@@ -73,10 +75,26 @@ validates and works without a prior hint or Task registration. Both operations m
 bounded local target normalization; they retain no shared execution plan, Handler
 view or inventory transaction. Server admission and Main do not maintain stock.
 
-Server and dispatch use `normalizeQuery(group, ruleId, query)`; consumption calls
-`take(group, ruleId, limits)`. Missing Rule names or unavailable Group indexes are
-rejected with no fallback. Group enablement still controls index maintenance.
+Server admission uses `WorkerMatchingCatalog.normalizeQuery(group, ruleId, query)`.
+The Pacer port exposes only shortage observation, refill and
+`take(group, ruleId, queriesByMessageId)`. Missing Rule names or unavailable Group
+indexes are rejected with no fallback. Group enablement still controls index maintenance.
 All returned collections are immutable. These named operations do not receive Task IDs.
+
+Take accepts at most 100 nonblank message IDs with non-null queries. Catalog captures
+input order and normalizes the entire batch before any stock consumption. Equal
+normalized queries are grouped in first-appearance order; each group's count is its
+actual number of requests. Catalog invokes `RuleHandler.take` once and associates
+each group's candidates with its message IDs in input order. The final Map follows
+the original input order, omits unfulfilled IDs and contains no repeated Worker.
+A valid empty batch returns without accessing stock; a late invalid query consumes
+nothing. Fences and deadlines are returned unchanged. Current Rules take locally
+without Redis access. The query-to-count Map remains internal to Matching.
+
+Message IDs are call-local correlation keys. Matching neither stores them nor reads
+Items, deduplicates requests across calls or owns their lifecycle. Filtering an
+association or failing address lookup, confirmation or claim does not transfer its
+candidate to another message ID, restore stock, trigger another take or renew a lease.
 
 ## Unified Queries and Fixed Handlers
 
@@ -107,18 +125,18 @@ its supported fields. Empty query means no additional condition within that Rule
 
 `RefillTarget` pairs that shared query with a count and retains the flat HTTP/YAML
 shape `{"query":{"worker.country":["US","CN"]},"count":100}`. Omitted or null target
-query means ANY, while count remains required. It is also the persisted Binding
-value. Catalog normalizes queries and merges equal targets using MAX; Rule deficits
-and refill receive ordered query-to-count Maps. Take receives the same query type
-with actual Item counts. Results remain keyed by the supplied queries even when
-normalization changes their value order. Named Matching calls normalize Items before
-storage and before Pacer grouping; Item queries still never create refill demand.
+query means ANY, while count remains required. Targets are persisted in Task
+descriptors. Catalog normalizes queries and merges equal targets using MAX; Rule
+deficits and refill receive ordered query-to-count Maps. The internal Rule take
+receives normalized queries with actual Item counts; its results retain the supplied
+query keys. Server normalizes Items before storage, while Catalog normalizes and
+groups them again at consumption. Item queries still never create refill demand.
 
 Each operation permits at most 100 queries. Refill target counts are 1..1000;
 take counts and their sum are at most 100. Refill accepts at most 100 unique held
 IDs and an acceptance limit in 0..100. Invalid input is rejected before stock
 changes. Overlapping queries cannot consume the same candidate twice. Default
-identity targets retain the declared Binding count but use `min(count, unique ID
+identity targets retain the declared target count but use `min(count, unique ID
 count)` for shortages, without checking Worker existence.
 
 Old `{op,values}` conditions are rejected, including in retained TaskItem records;

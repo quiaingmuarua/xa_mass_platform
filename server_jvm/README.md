@@ -331,8 +331,11 @@ later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
 `workerSelector` through structural capture and named Matching normalization using the Task descriptor Group and Rule ID,
 then appends the normalized immutable query. Server validates every original
-query, including overwritten duplicates and identity selectors. It uses the same Catalog injected into Pacer;
-it does not take candidates at submission. Catalog startup rebuilds configured
+query, including overwritten duplicates and identity selectors. It uses the same Catalog
+instance exposed to Pacer only through `WorkerMatching`. The Catalog's Server admission
+method is not part of that Pacer port. Submission does not take candidates; dispatch
+passes messageId-to-query Maps for Matching to normalize, group and correlate.
+Catalog startup rebuilds configured
 derived indexes before the bean is exposed. Matching owns the country range and
 take time; Kernel retains hold, exact clean confirmation and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 

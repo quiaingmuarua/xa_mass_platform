@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 
 class WorkerEligibilityRefillPolicyTest {
     final WorkerScoreCore scores=mock(WorkerScoreCore.class);
-    final WorkerCandidateIndex index=mock(WorkerCandidateIndex.class);
+    final WorkerMatching index=mock(WorkerMatching.class);
     final List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks=tasks(List.of("g"));
     static List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks(List<String> groups) {
         return groups.stream().map(group -> new com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor(

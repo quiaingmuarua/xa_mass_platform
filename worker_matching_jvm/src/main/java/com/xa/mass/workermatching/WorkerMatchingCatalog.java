@@ -1,6 +1,7 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,10 +10,13 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /** Worker facts, named Rule admission and bounded eligibility index queries. */
-public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerCandidateIndex {
+public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerMatching {
 
     int MAX_BATCH_SIZE = 100;
     String DEFAULT_RULE_ID = "worker.default";
+
+    /** Idempotent Server admission, without Redis reads or stock changes. */
+    EligibilityQuery normalizeQuery(String workerGroupId, String ruleId, EligibilityQuery query);
 
     /** Creates or replaces complete string Properties for 1..100 Workers in one Group. */
     Map<String, MutationResult> upsertWorkerFactsBatch(

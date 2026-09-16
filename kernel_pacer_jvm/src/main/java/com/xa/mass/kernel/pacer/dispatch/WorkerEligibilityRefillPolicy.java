@@ -1,11 +1,11 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -21,16 +21,16 @@ final class WorkerEligibilityRefillPolicy {
     private static final int ROUND_BUDGET = 1_000;
 
     private final WorkerScoreCore scores;
-    private final WorkerCandidateIndex index;
+    private final WorkerMatching index;
     private final Long hotFloorMillis;
     private final LongSupplier clock;
     private String lastAttemptedGroup;
 
-    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerCandidateIndex index, Long hotFloorMillis) {
+    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index, Long hotFloorMillis) {
         this(scores, index, hotFloorMillis, System::currentTimeMillis);
     }
 
-    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerCandidateIndex index,
+    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index,
             Long hotFloorMillis, LongSupplier clock) {
         this.scores = Objects.requireNonNull(scores);
         this.index = Objects.requireNonNull(index);

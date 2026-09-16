@@ -2,7 +2,7 @@ package com.xa.mass.kernel;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
 class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
-            Map.entry("WorkerCandidateIndex", WorkerCandidateIndex.class),
+            Map.entry("WorkerMatching", WorkerMatching.class),
             Map.entry("TaskItemResultEvents", TaskItemResultEvents.class),
             Map.entry("WorkerServiceabilityEvents", WorkerServiceabilityEvents.class),
             Map.entry("TaskRuntime", TaskRuntime.class),
@@ -64,7 +64,7 @@ class KernelOwnerContractManifestTest {
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
             Map.entry("WorkerRecheckTarget", WorkerScoreCore.WorkerRecheckTarget.class),
-            Map.entry("HeldCandidate", WorkerCandidateIndex.HeldCandidate.class),
+            Map.entry("HeldCandidate", WorkerMatching.HeldCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
             Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
             Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),

@@ -4,7 +4,7 @@ import com.xa.mass.kernel.assignment.RefillTarget;
 
 import com.xa.mass.workermatching.*;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import io.lettuce.core.RedisClient;
 import java.util.*;

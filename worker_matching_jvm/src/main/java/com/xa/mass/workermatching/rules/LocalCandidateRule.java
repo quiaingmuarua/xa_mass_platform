@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching.rules;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.RuleHandler;
 import java.util.*;

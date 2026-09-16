@@ -171,5 +171,7 @@ shares complete NORMAL descriptors for independent refill and dispatch.
 **Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
 Matching qualifies only the leased IDs and admits their original fences and deadlines
 to shared Group/Rule inventory. Matching time and stock waiting share that second;
-unmatched leases expire naturally. TaskItems only consume stock. Kernel retains HOT, Score and exact confirmation/
+unmatched leases expire naturally. TaskItems only consume stock: Pacer passes
+message IDs and queries through `WorkerMatching`; Matching normalizes, groups and
+returns the candidate for each fulfilled request. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

@@ -128,9 +128,36 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return requireEligibility(group,ruleId).normalizeQuery(group,Objects.requireNonNull(query,"query"));
     }
 
-    @Override public Map<EligibilityQuery,List<HeldCandidate>> take(String group,String ruleId,
-            Map<EligibilityQuery,Integer> limits) {
-        return requireEligibility(group,ruleId).take(group,limits);
+    @Override public Map<String,HeldCandidate> take(String group,String ruleId,
+            Map<String,EligibilityQuery> queriesByMessageId) {
+        var handler=requireEligibility(group,ruleId);
+        Objects.requireNonNull(queriesByMessageId,"queriesByMessageId");
+        if(queriesByMessageId.size()>100)throw new IllegalArgumentException("at most 100 Item queries");
+        var captured=new LinkedHashMap<String,EligibilityQuery>();
+        queriesByMessageId.forEach((id,query)->{
+            requireNonBlank(id,"messageId");
+            captured.put(id,Objects.requireNonNull(query,"query"));
+        });
+        if(captured.isEmpty())return Map.of();
+
+        // All admission must finish before the single destructive Rule operation.
+        var groups=new LinkedHashMap<EligibilityQuery,List<String>>();
+        captured.forEach((id,query)->groups.computeIfAbsent(handler.normalizeQuery(group,query),
+                ignored->new ArrayList<>()).add(id));
+        var limits=new LinkedHashMap<EligibilityQuery,Integer>();
+        groups.forEach((query,ids)->limits.put(query,ids.size()));
+        var taken=handler.take(group,limits);
+        var assigned=new LinkedHashMap<String,HeldCandidate>();
+        groups.forEach((query,ids)->{
+            var candidates=taken.getOrDefault(query,List.of());
+            for(int i=0;i<Math.min(ids.size(),candidates.size());i++)assigned.put(ids.get(i),candidates.get(i));
+        });
+        var result=new LinkedHashMap<String,HeldCandidate>();
+        captured.keySet().forEach(id->{
+            var candidate=assigned.get(id);
+            if(candidate!=null)result.put(id,candidate);
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     /** Capture and validate the bounded declarations before observing or changing inventory. */

@@ -1,10 +1,9 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,34 +14,24 @@ import java.util.Set;
 /** Dispatch consumes Matching inventory and resolves current addresses; it never obtains initial holds. */
 final class WorkerCandidateSelectionPolicy {
     private final WorkerResourceCatalog workerCatalog;
-    private final WorkerCandidateIndex index;
+    private final WorkerMatching matching;
 
-    WorkerCandidateSelectionPolicy(WorkerResourceCatalog workerCatalog, WorkerCandidateIndex index) {
+    WorkerCandidateSelectionPolicy(WorkerResourceCatalog workerCatalog, WorkerMatching matching) {
         this.workerCatalog=Objects.requireNonNull(workerCatalog,"workerCatalog");
-        this.index=Objects.requireNonNull(index,"index");
+        this.matching=Objects.requireNonNull(matching,"matching");
     }
 
     Map<String,HeldWorkerCandidate> takeCandidates(String ruleId, String workerGroupId,
             Map<String,EligibilityQuery> selectors, Set<String> roundWorkerIds) {
         if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
         if (selectors.isEmpty()) return Map.of();
-        var items=new LinkedHashMap<EligibilityQuery,List<String>>();
-        selectors.forEach((id,selector) -> {
-            var normalized = index.normalizeQuery(workerGroupId,ruleId,selector);
-            items.computeIfAbsent(normalized,ignored -> new ArrayList<>()).add(id);
-        });
-        var limits=new LinkedHashMap<EligibilityQuery,Integer>();
-        items.forEach((selector,ids) -> limits.put(selector,ids.size()));
-        var taken=index.take(workerGroupId,ruleId,limits);
+        var taken=matching.take(workerGroupId,ruleId,selectors);
         var selected=new LinkedHashMap<String,String>();
         var scores=new LinkedHashMap<String,Long>();
-        items.forEach((selector,ids) -> {
-            int i=0;
-            for (var held:taken.getOrDefault(selector,List.of())) {
-                if (i==ids.size()) break;
-                if (roundWorkerIds.add(held.workerId())) {
-                    selected.put(ids.get(i++),held.workerId()); scores.put(held.workerId(),held.score());
-                }
+        selectors.keySet().forEach(id -> {
+            var held=taken.get(id);
+            if (held!=null && roundWorkerIds.add(held.workerId())) {
+                selected.put(id,held.workerId()); scores.put(held.workerId(),held.score());
             }
         });
         var described=describeById(workerGroupId,scores);

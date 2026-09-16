@@ -774,6 +774,19 @@
         "product_coexistence"
       ],
       "reason": "Moved Matching data contract preserves the original Matching production proof selection."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerMatching.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_dynamic_matching"
+      ],
+      "reason": "The renamed bounded Matching port preserves the previous assignment-contract selection; message correlation moves into Matching without new proof lanes."
     }
   ]
 }

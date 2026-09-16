@@ -5,7 +5,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -19,7 +19,7 @@ class DispatchBudgetTest {
     @Test void mainSharesCompleteDescriptorsAndRefillCanRunBeforeDispatch() {
         var scores=mock(TaskScoreBandCore.class);
         var catalog=mock(TaskResourceCatalog.class);
-        var index=mock(WorkerCandidateIndex.class);
+        var index=mock(WorkerMatching.class);
         var hold=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L,"initial",100L));

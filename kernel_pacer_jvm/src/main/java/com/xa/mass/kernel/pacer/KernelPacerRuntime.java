@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
@@ -100,7 +100,7 @@ public final class KernelPacerRuntime {
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerCandidateIndex candidateIndex
+            WorkerMatching workerMatching
     ) {
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
@@ -137,7 +137,7 @@ public final class KernelPacerRuntime {
                         workerCommands,
                         serviceability,
                         new ResultContextCodec(),
-                        candidateIndex
+                        workerMatching
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,

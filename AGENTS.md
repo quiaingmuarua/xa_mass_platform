@@ -215,8 +215,11 @@ architectures.
   the shared immutable EligibilityQuery structure without quantity or field interpretation. Matching
   owns fixed Rule Handlers and property/index interpretation. Task descriptors own
   the Rule name and resolved refill targets as immutable configuration.
-  Pacer may read and forward Rule names and immutable parameters; it must not depend
-  on Matching implementations, interpret business conditions or construct index coordinates.
+  Pacer depends only on WorkerMatching for Matching operations. It may forward
+  Group, Rule names, message IDs and immutable queries, but must not normalize or
+  semantically aggregate queries, depend on Matching implementations, interpret
+  business conditions or construct index coordinates. Matching may associate this
+  call's requests with candidates; it must not retain message IDs or own Item state.
   Main shares its already-read NORMAL Task descriptors with refill and dispatch.
   Matching contracts/storage must not accept Task IDs or retain Task configuration.
   Default identity selectors need no facts;
@@ -228,10 +231,13 @@ architectures.
   index updates still prepare before writing in one bounded Lua operation.
   Rule instances own thread-safe Group-isolated Eligibility through normalizeQuery,
   deficits, refill and take. Catalog owns target MAX merge,
-  bounded paging and exclusion of IDs actually accepted by earlier Rules. TaskItem and
+  bounded paging, messageId-to-candidate correlation and exclusion of IDs actually
+  accepted by earlier Rules. TaskItem and
   refill queries use one string-list structure; Rules normalize all semantics, including
   Default identity queries. Target quantities use MAX; consumption uses actual Item
-  counts. Do not restore operator objects or a separate Item selector protocol. Shared
+  counts inside Matching. Pacer submits one query per message ID and receives at most
+  one held candidate for it. Dropping an association must not transfer its candidate,
+  restore stock or trigger a replacement take. Do not restore operator objects or a separate Item selector protocol. Shared
   capacity coordination stores budgets only. Earlier Rule admissions survive a later
   Rule failure; the exception ends the remaining batch without rollback or replay.
   Each current Rule validates and reads before its own bounded local commit.

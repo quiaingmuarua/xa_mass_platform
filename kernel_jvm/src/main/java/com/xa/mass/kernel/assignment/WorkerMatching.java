@@ -4,11 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Matching-owned shared inventory. Pacer carries names and data; Kernel owns execution leases. */
-public interface WorkerCandidateIndex {
-    /** Idempotent Rule admission, without Redis reads or stock changes. */
-    EligibilityQuery normalizeQuery(String workerGroupId, String ruleId, EligibilityQuery query);
-
+/** Bounded Matching operations for Pacer. Kernel retains execution-lease authority. */
+public interface WorkerMatching {
     /**
      * Capacity-bounded hints, not reservations. At most 100 Group/Rule coordinates and 10,000
      * target declarations. Performs global lazy expiry and inactive refill-cursor cleanup.
@@ -23,9 +20,16 @@ public interface WorkerCandidateIndex {
     int refill(String workerGroupId, Map<String, List<RefillTarget>> targetsByRule,
             List<HeldCandidate> offeredCandidates);
 
-    /** Local destructive consumption: at most 100 queries and 100 unique candidates in total. */
-    Map<EligibilityQuery, List<HeldCandidate>> take(String workerGroupId, String ruleId,
-            Map<EligibilityQuery, Integer> limits);
+    /**
+     * Local destructive consumption for at most 100 nonblank message IDs, one candidate per ID.
+     * Matching validates and normalizes the entire batch before consuming stock. Equivalent
+     * queries share an allocation group in first-appearance order; IDs within it retain their
+     * input order. Results retain input order, omit unfulfilled IDs and never repeat a Worker.
+     * IDs are invocation-local correlation only. Returned fences and deadlines are unchanged.
+     * A valid empty batch does not access stock. Returns an immutable snapshot.
+     */
+    Map<String, HeldCandidate> take(String workerGroupId, String ruleId,
+            Map<String, EligibilityQuery> queriesByMessageId);
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */
     record HeldCandidate(String workerId, long score, long expiresAtMillis) { }

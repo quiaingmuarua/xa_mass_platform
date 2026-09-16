@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
@@ -41,6 +41,97 @@ class NamedPoolOperationsTest {
     }
     @AfterEach void close() { catalog.close(); }
 
+    @Test void equivalentAndInterleavedQueriesAreGroupedOnceThenCorrelatedInInputOrder() {
+        var handler=mock(RuleHandler.class);
+        var raw=pool(1,"US","CN","US").query();
+        var normalized=pool(1,"CN","US").query();
+        var narrow=pool(1,"CN").query();
+        when(handler.normalizeQuery("g1",raw)).thenReturn(normalized);
+        when(handler.normalizeQuery("g1",normalized)).thenReturn(normalized);
+        when(handler.normalizeQuery("g1",narrow)).thenReturn(narrow);
+        var supplied=offer("first","second","third");
+        when(handler.take(eq("g1"),anyMap())).thenAnswer(call->{
+            Map<EligibilityQuery,Integer> limits=call.getArgument(1);
+            assertEquals(List.of(normalized,narrow),List.copyOf(limits.keySet()));
+            assertEquals(Map.of(normalized,3,narrow,1),limits);
+            return Map.of(normalized,List.of(supplied.get(0),supplied.get(1)),narrow,List.of(supplied.get(2)));
+        });
+        try(var matching=new RedisWorkerMatchingCatalog(storage,Map.of("worker.default",handler),Map.of(),Map.of())) {
+            var requests=new LinkedHashMap<String,EligibilityQuery>();
+            requests.put("a",raw); requests.put("b",narrow); requests.put("c",normalized); requests.put("d",raw);
+            var result=matching.take("g1","worker.default",requests);
+            assertEquals(List.of("a","b","c"),List.copyOf(result.keySet()));
+            assertSame(supplied.get(0),result.get("a"));
+            assertSame(supplied.get(2),result.get("b"));
+            assertSame(supplied.get(1),result.get("c"));
+            assertThrows(UnsupportedOperationException.class,result::clear);
+            requests.clear();
+            assertEquals(3,result.size());
+            verify(handler,times(1)).take(eq("g1"),anyMap());
+            verifyNoInteractions(redis);
+        }
+    }
+
+    @Test void invalidWholeBatchLeavesStockUntouchedAndEmptyDoesNotTouchRule() {
+        rule.facts.put("worker","US");
+        assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(1,"US"))),offer("worker")));
+        int before=rule.normalizations;
+        assertTrue(catalog.take("g1","test.pool",Map.of()).isEmpty());
+        assertEquals(before,rule.normalizations);
+        assertThrows(IllegalArgumentException.class,()->catalog.take(" ","test.pool",Map.of()));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1"," ",Map.of()));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","missing",Map.of()));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("other","test.pool",Map.of()));
+        assertThrows(NullPointerException.class,()->catalog.take("g1","test.pool",null));
+        var requests=new LinkedHashMap<String,EligibilityQuery>();
+        requests.put("valid",ANY);
+        requests.put("late",EligibilityQuery.parse(Map.of("unsupported",List.of("x"))));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
+        requests.put("late",null);
+        assertThrows(NullPointerException.class,()->catalog.take("g1","test.pool",requests));
+        requests.remove("late"); requests.put(" ",ANY);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
+        requests.remove(" "); requests.put(null,ANY);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
+        requests.remove(null);
+        for(int i=0;i<100;i++)requests.put("m"+i,ANY);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
+        var remaining=catalog.take("g1","test.pool",Map.of("valid",ANY));
+        assertEquals("worker",remaining.get("valid").workerId());
+        verifyNoInteractions(redis);
+    }
+
+    @Test void overlappingQueriesShortagesAndRepeatedMessageIdsHaveOnlyCallLocalMeaning() {
+        var targets=Map.of("worker.default",List.of(new RefillTarget(Map.of(),3)));
+        var held=offer("one","two","three");
+        assertEquals(3,catalog.refill("g1",targets,held));
+        var identity=EligibilityQuery.parse(Map.of("workerId",List.of("one")));
+        var requests=new LinkedHashMap<String,EligibilityQuery>();
+        requests.put("id-first",identity); requests.put("any-first",ANY);
+        requests.put("id-again",identity); requests.put("any-next",ANY); requests.put("unfilled",ANY);
+        var result=catalog.take("g1","worker.default",requests);
+        assertEquals(List.of("id-first","any-first","any-next"),List.copyOf(result.keySet()));
+        assertEquals(held,List.copyOf(result.values()));
+        assertTrue(catalog.take("g1","worker.default",requests).isEmpty());
+        assertEquals(1,catalog.refill("g1",targets,offer("four")));
+        assertEquals("four",catalog.take("g1","worker.default",Map.of("id-first",ANY)).get("id-first").workerId());
+        verifyNoInteractions(redis);
+    }
+
+    @Test void oneHundredMessagesCanShareOneNormalizedQuery() {
+        var held=new ArrayList<HeldCandidate>();
+        var requests=new LinkedHashMap<String,EligibilityQuery>();
+        for(int i=0;i<100;i++) {
+            held.add(new HeldCandidate("worker"+i,20+i,2000));
+            requests.put("message"+i,ANY);
+        }
+        assertEquals(100,catalog.refill("g1",Map.of("worker.default",List.of(new RefillTarget(Map.of(),100))),held));
+        var result=catalog.take("g1","worker.default",requests);
+        assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
+        assertEquals(held,List.copyOf(result.values()));
+        verifyNoInteractions(redis);
+    }
+
     @Test void resolvesTargetsWithoutTaskIdentityRedisOrInventoryChanges() {
         var expected = pool(8,"US");
         var resolved = catalog.resolveRefillTargets("g1", "test.pool",
@@ -52,7 +143,7 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","unknown",null));
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("other","test.pool",null));
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","test.pool",Collections.nCopies(101,expected)));
-        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
         verifyNoInteractions(redis);
     }
 
@@ -74,9 +165,9 @@ class NamedPoolOperationsTest {
         assertThrows(UnsupportedOperationException.class,needed::clear);
         assertEquals(2,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
         assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
-        assertEquals(List.of("w1","w2"),catalog.take("g1","test.pool",Map.of(ANY,2)).get(ANY)
+        assertEquals(List.of("w1","w2"),takeItems(catalog,"g1","test.pool",ANY,2)
                 .stream().map(HeldCandidate::workerId).toList());
-        assertEquals(List.of("w4"),catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY)
+        assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",ANY,1)
                 .stream().map(HeldCandidate::workerId).toList());
         verifyNoInteractions(redis);
     }
@@ -85,10 +176,10 @@ class NamedPoolOperationsTest {
         rule.facts.putAll(Map.of("a","US","b","US"));
         var targets=Map.of("test.pool",List.of(pool(1,"US")));
         assertEquals(1,catalog.refill("g1",targets,offer("a")));
-        assertTrue(catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertTrue(takeItems(catalog,"g2","test.pool",ANY,1).isEmpty());
         assertEquals(1,catalog.refill("g2",targets,offer("b")));
-        assertEquals("a",catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
-        assertEquals("b",catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","test.pool",ANY,1).getFirst().workerId());
+        assertEquals("b",takeItems(catalog,"g2","test.pool",ANY,1).getFirst().workerId());
         verifyNoInteractions(redis);
     }
 
@@ -101,7 +192,7 @@ class NamedPoolOperationsTest {
         assertEquals(0,catalog.refill("g1",targets,offer("second")));
         assertEquals(reads,rule.snapshots.size());
         assertTrue(catalog.groupsNeedingRefill(Map.of("g1",targets)).isEmpty());
-        catalog.take("g1","test.pool",Map.of(ANY,1));
+        catalog.take("g1","test.pool",Map.of("m",ANY));
         assertEquals(1,catalog.refill("g1",targets,offer("second")));
     }
 
@@ -126,7 +217,7 @@ class NamedPoolOperationsTest {
                 java.util.stream.IntStream.range(0,101).mapToObj(i->new HeldCandidate("w"+i,20,2000)).toList()));
         assertThrows(NullPointerException.class,()->catalog.refill("g1",targets,Arrays.asList((HeldCandidate)null)));
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",Map.of("missing",List.of(pool(1,"US"))),offer("w")));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g2","zz.fail",Map.of(ANY,1)));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g2","zz.fail",Map.of("m",ANY)));
         assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g1","missing",ANY));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",List.of()))));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",Collections.nCopies(10_001,pool(1,"US"))))));
@@ -138,7 +229,7 @@ class NamedPoolOperationsTest {
                 "test.pool",List.of(pool(1,"US"))));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(tooMany));
         assertTrue(rule.snapshots.isEmpty());
-        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
         verifyNoInteractions(redis);
     }
 
@@ -157,7 +248,7 @@ class NamedPoolOperationsTest {
         assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(2,"US"))),
                 List.of(new HeldCandidate("old",20,1000),live)));
         assertEquals(List.of(List.of("live")),rule.snapshots);
-        assertSame(live,catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst());
+        assertSame(live,takeItems(catalog,"g1","test.pool",ANY,1).getFirst());
     }
 
     @Test void qualificationConsumesOriginalDeadline() {
@@ -165,7 +256,7 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")));
         assertEquals(0,catalog.refill("g1",targets,offer("w")));
         assertEquals(List.of(List.of("w")),rule.snapshots);
-        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
         assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",targets)));
     }
 
@@ -175,8 +266,8 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"CN")));
         assertThrows(IllegalStateException.class,()->catalog.refill("g1",targets,offer("us","cn")));
         assertEquals(List.of(List.of("us","cn")),rule.snapshots);
-        assertEquals(List.of("us"),catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).stream().map(HeldCandidate::workerId).toList());
-        assertTrue(catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertEquals(List.of("us"),takeItems(catalog,"g1","test.pool",ANY,1).stream().map(HeldCandidate::workerId).toList());
+        assertTrue(takeItems(catalog,"g1","zz.fail",ANY,1).isEmpty());
     }
 
     @Test void acceptedIdsAreExcludedFromLaterRulesAndRuleAttemptsRotate() {
@@ -185,10 +276,10 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"US")));
         assertEquals(2,catalog.refill("g1",targets,offer("a","b")));
         assertEquals(List.of(List.of("b")),failingRule.snapshots);
-        assertEquals("a",catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
-        assertEquals("b",catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","test.pool",ANY,1).getFirst().workerId());
+        assertEquals("b",takeItems(catalog,"g1","zz.fail",ANY,1).getFirst().workerId());
         assertEquals(1,catalog.refill("g1",targets,offer("a")));
-        assertEquals("a",catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","zz.fail",ANY,1).getFirst().workerId());
     }
 
     @Test void catalogWorksWithIndependentMapRuleWithoutBindingsOrRedis() {
@@ -201,7 +292,7 @@ class NamedPoolOperationsTest {
             assertEquals(Set.of("g1"),other.groupsNeedingRefill(Map.of("g1",targets)));
             var held=offer("first","second");
             assertEquals(2,other.refill("g1",targets,held));
-            assertEquals(held,other.take("g1","map",Map.of(ANY,2)).get(ANY));
+            assertEquals(held,takeItems(other,"g1","map",ANY,2));
             verifyNoInteractions(redis);
         }
     }
@@ -272,5 +363,13 @@ class NamedPoolOperationsTest {
             ids.forEach(id->{if(facts.containsKey(id))result.put(id,facts.get(id));});
             return result;
         }
+    }
+
+    /** Fixture for stock-volume proofs: submit distinct Items through the public correlation port. */
+    private static List<HeldCandidate> takeItems(com.xa.mass.kernel.assignment.WorkerMatching matching,
+            String group,String rule,EligibilityQuery query,int count) {
+        var requests=new LinkedHashMap<String,EligibilityQuery>();
+        for(int i=0;i<count;i++)requests.put("message-"+i,query);
+        return List.copyOf(matching.take(group,rule,requests).values());
     }
 }

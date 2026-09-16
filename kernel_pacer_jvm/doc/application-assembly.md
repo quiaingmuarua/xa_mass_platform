@@ -58,7 +58,7 @@ WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
 TaskInitializationPolicy
 TaskAssignmentDispatcher / TaskIdleSettlement
-WorkerCandidateIndex
+WorkerMatching
 WorkerCommandRuntime / TaskEvidenceRuntime
 WorkerServiceabilityRuntime
 ```
@@ -67,7 +67,9 @@ Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
 Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
 Group/Rule targets with each acquired Group batch. Dispatch calls Matching by the
-Task's Group and Rule name. No executable view or refill closure crosses the port.
+Task's Group and Rule name, passing messageId-to-query Maps and receiving
+messageId-to-held-candidate Maps. Only Matching normalizes and groups queries;
+Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
 Source indexes project facts independently; held inventory
 is replenished from Task-declared targets without inspecting Items.
 

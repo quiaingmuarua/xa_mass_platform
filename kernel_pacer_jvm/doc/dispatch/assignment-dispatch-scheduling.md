@@ -40,12 +40,14 @@ Matching has no acquisition callback or inventory renewal capability.
 NORMAL RUNNING Tasks -> complete immutable Task descriptors
   -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT head
       -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
-  -> dispatch: due Item queries -> local destructive take
+  -> dispatch: messageId -> due Item query -> Matching local destructive take
+      -> messageId -> held candidate
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
 
-Matching owns query semantics and shared stock per Group/Rule. Pacer forwards Group/Rule coordinates
-and opaque held identities without interpreting Rule fields. No Task-private candidate cache or quota exists.
+Matching owns query semantics and shared stock per Group/Rule. Pacer forwards Group/Rule coordinates,
+message IDs and Item queries through `WorkerMatching`, without normalization or
+semantic aggregation. No Task-private candidate cache or quota exists.
 Refill takes no Item input. All selectors, including ANY and explicit IDs, consume
 inventory; a miss leaves the Item due without a source query or fresh hold.
 
@@ -87,11 +89,15 @@ no subsequent targets. A Main observation is round evidence; stopping a Task doe
 not retroactively cancel an in-flight refill. Old stock expires without renewal.
 
 Dispatch preserves its 100-Item per-Task budget and actual-publication ordering
-hint: unserved Tasks first, then least recently served. Within a Task, normalized
-query demand sums actual requests; results pair with the existing Item order.
+hint: unserved Tasks first, then least recently served. Within a Task, Pacer submits
+one complete messageId-to-query Map. Matching validates and normalizes the entire
+batch, groups equivalent queries and assigns candidates in each group's Item order.
+The result follows original request order and omits requests without candidates.
 Each take returns at most 100 unique candidates and removes them before address
-lookup, confirmation and claim. Failure never restores the candidate or refreshes
-its fence. No Item request bypasses inventory or relaxes missing Rule evidence.
+lookup, confirmation and claim. Pacer filters round-duplicate Workers and missing
+or wrong-Group addresses for their associated message ID only; it never redistributes
+another Item's candidate. Failure never restores stock, takes a replacement or
+refreshes a fence. No Item request bypasses inventory or relaxes missing Rule evidence.
 
 The [Matching Owner](../../../worker_matching_jvm/README.md#cost-failure-and-proof)
 records supply/refill command costs. Counts and take are local. Endpoint HMGET,

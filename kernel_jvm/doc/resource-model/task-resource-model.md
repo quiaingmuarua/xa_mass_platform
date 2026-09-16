@@ -50,7 +50,9 @@ The refill Producer concatenates Task targets by Group/Rule. Matching observes
 shortages and admits candidates through separate named calls, normalizing targets
 with MAX and preserving bounded paging. Pacer acquires the 1-second lease before
 Matching reads eligibility; stock retains that fence and deadline without renewal.
-Dispatch calls Matching with the explicit Group, Rule name and Item demand. No
+Dispatch calls `WorkerMatching` with the explicit Group, Rule name and
+messageId-to-query Map. Matching normalizes and groups queries, then returns the
+held candidate for each fulfilled message ID. No
 executable binding view or refill callback crosses the module boundary.
 
 Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution

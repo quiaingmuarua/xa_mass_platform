@@ -37,7 +37,10 @@ recheck and exact close or private idle park.
 ## Named Rule Query
 
 Main supplies complete immutable NORMAL Task descriptors to refill and
-dispatch. Dispatch passes the explicit Group and Rule name to Matching. All selectors,
+dispatch. Dispatch passes the explicit Group, Rule name and messageId-to-query Map
+through `WorkerMatching`. Matching owns normalization, equivalent-query counts and
+candidate correlation; Pacer keeps each returned candidate with its message ID.
+All selectors,
 including ANY and explicit IDs, use local destructive take. Only the separate
 refill Producer reads Group HOT heads and exact-acquires a 1-second lease before
 Matching reads the successful IDs' projections. Inventory retains the supplied

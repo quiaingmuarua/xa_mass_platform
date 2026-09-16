@@ -135,6 +135,8 @@ class KernelPacerModuleBoundaryTest {
             assertTrue(files.filter(path -> path.toString().endsWith(".java"))
                     .map(KernelPacerModuleBoundaryTest::read)
                     .noneMatch(source -> source.contains("org.springframework")
+                            || source.contains("com.xa.mass.workermatching")
+                            || source.contains("normalizeQuery")
                             || source.contains("io.lettuce")
                             || source.contains("RedisClient")
                             || source.contains("RedisKeyspace")));

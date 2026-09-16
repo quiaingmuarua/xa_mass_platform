@@ -19,7 +19,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
 
-Matching supplies bounded identities through the Kernel query port. Dispatch policy, result disposition,
+Matching supplies bounded identities through the `WorkerMatching` port. Dispatch policy, result disposition,
 serviceability policy, Pacer loops and thread lifecycle belong to
 [`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
@@ -27,7 +27,9 @@ serviceability policy, Pacer loops and thread lifecycle belong to
 TaskItems carry the same quantity-free `EligibilityQuery` as Matching operations.
 Kernel checks only its bounded string-list structure and stores the direct Map;
 Rule normalization owns all field meanings, including Default Worker IDs. Pacer
-groups normalized queries and supplies Item counts separately. Old nested property
+passes messageId-to-query Maps; Matching normalizes, groups equivalent queries and
+returns at most one original held candidate per message ID. Pacer retains only
+request correlation and subsequent mechanical checks. Old nested property
 conditions are unreadable without conversion or data cleanup; use a new scope
 for those Tasks. Task Rule configuration is stored in the Task descriptor; recreate old Tasks in
 a new scope. Matching facts and index formats are unchanged.

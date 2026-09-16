@@ -1,6 +1,6 @@
 package com.xa.mass.server.assembly.pacer;
 
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -25,8 +25,8 @@ class KernelPacerPropertiesTest {
     private final ApplicationContextRunner baseContextRunner =
             new ApplicationContextRunner()
                     .withUserConfiguration(KernelPacerConfiguration.class)
-                    .withBean(WorkerCandidateIndex.class,
-                            () -> mock(WorkerCandidateIndex.class))
+                    .withBean(WorkerMatching.class,
+                            () -> mock(WorkerMatching.class))
 
 
                     .withBean(
