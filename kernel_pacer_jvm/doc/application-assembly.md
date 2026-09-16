@@ -64,9 +64,10 @@ WorkerServiceabilityRuntime
 ```
 
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
-Serviceability Groups. Refill alone prepares one invocation-local `RefillBatch`,
-then Pacer supplies each needed root Group to that same batch; no Group rebuilds
-the whole Task demand. Dispatch keeps the original Task query views.
+Serviceability Groups. Main shares ordinary immutable binding data. Refill groups
+those declarations, asks Matching for Group shortage hints, and passes explicit
+Group/Rule targets with each acquired Group batch. Dispatch calls Matching by the
+Task's Group and Rule name. No executable view or refill closure crosses the port.
 Source indexes project facts independently; held inventory
 is replenished from Task-declared targets without inspecting Items.
 
@@ -153,8 +154,8 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | prepared NORMAL Task bindings | one RefillBatch preparation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
-| TASK_DISPATCH | NORMAL RUNNING and the same prepared bindings | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
+| ELIGIBILITY_REFILL | NORMAL Task binding data | Group shortage observation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
+| TASK_DISPATCH | NORMAL RUNNING and the same binding data | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
 Main resolves at most 100 NORMAL Task bindings once whenever refill or dispatch

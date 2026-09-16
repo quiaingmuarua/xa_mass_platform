@@ -7,7 +7,7 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -91,9 +91,9 @@ final class TaskDispatchPolicy {
         );
     }
 
-    int dispatchTasks(List<ObservedTask> tasks, Map<String,TaskQuery> queries) {
+    int dispatchTasks(List<ObservedTask> tasks, Map<String,TaskRuleBinding> bindings) {
         Objects.requireNonNull(tasks, "tasks");
-        Objects.requireNonNull(queries, "queries");
+        Objects.requireNonNull(bindings, "bindings");
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
                 dispatchTimeMillis,
@@ -161,7 +161,7 @@ final class TaskDispatchPolicy {
                 Map<String, HeldWorkerCandidate> assignments =
                         assignments(
                                 task,
-                                queries.get(task.taskId()),
+                                bindings.get(task.taskId()),
                                 claimableIds,
                                 items,
                                 roundWorkerIds
@@ -222,7 +222,7 @@ final class TaskDispatchPolicy {
 
     private Map<String, HeldWorkerCandidate> assignments(
             ObservedTask task,
-            TaskQuery query,
+            TaskRuleBinding binding,
             List<String> messageIds,
             Map<String, TaskItem> items,
             Set<String> roundWorkerIds
@@ -233,7 +233,7 @@ final class TaskDispatchPolicy {
                     items.get(messageId), "claimable TaskItem").workerSelector());
         }
         return candidateSelection.takeCandidates(
-                query,
+                binding!=null && task.descriptor().workerGroupId().equals(binding.workerGroupId()) ? binding.ruleId() : null,
                 task.descriptor().workerGroupId(),
                 selectors,
                 roundWorkerIds

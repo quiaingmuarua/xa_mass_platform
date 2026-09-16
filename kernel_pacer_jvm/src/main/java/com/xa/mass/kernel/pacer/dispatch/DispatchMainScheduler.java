@@ -2,6 +2,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import java.util.ArrayList;
@@ -237,29 +238,35 @@ final class DispatchMainScheduler {
             ));
             List<String> workerGroupIds = List.copyOf(groupIds);
 
-            Map<String,WorkerCandidateIndex.TaskQuery> prepared=Map.of();
+            Map<String,TaskRuleBinding> taskBindings=Map.of();
             if (!normalTasks.isEmpty() && (eligible.contains(DispatchProducerId.ELIGIBILITY_REFILL)
                     || eligible.contains(DispatchProducerId.TASK_DISPATCH))) {
                 var coordinates=new LinkedHashMap<String,String>();
                 normalTasks.forEach(task -> coordinates.put(task.taskId(),task.descriptor().workerGroupId()));
                 try {
-                    prepared=Collections.unmodifiableMap(new LinkedHashMap<>(candidateIndex.prepareTaskQueries(coordinates)));
+                    var loaded=candidateIndex.loadTaskBindings(List.copyOf(coordinates.keySet()));
+                    var bindings=new LinkedHashMap<String,TaskRuleBinding>();
+                    coordinates.forEach((task,group)->{
+                        var binding=loaded.get(task);
+                        bindings.put(task,binding!=null && group.equals(binding.workerGroupId()) ? binding : null);
+                    });
+                    taskBindings=Collections.unmodifiableMap(bindings);
                 } catch (RuntimeException failure) {
                     // Item expiry, exhaustion and idle settlement remain available without Matching evidence.
                     logFailure("bindingPreparation",null,normalTasks.size(),failure);
                 }
             }
-            final Map<String,WorkerCandidateIndex.TaskQuery> queries=prepared;
+            final Map<String,TaskRuleBinding> bindings=taskBindings;
             if (eligible.contains(DispatchProducerId.ELIGIBILITY_REFILL)) {
                 startProducer(DispatchProducerId.ELIGIBILITY_REFILL, normalTasks.size(), () -> {
                     long started=DispatchStageEvent.start();
                     int added=0;
                     boolean failed=true;
                     try {
-                        added=refill.refill(workerGroupIds,queries);
+                        added=refill.refill(workerGroupIds,bindings);
                         failed=false;
                     } finally {
-                        DispatchStageEvent.batch(started,"REFILL_ROUND",queries.size(),added,failed);
+                        DispatchStageEvent.batch(started,"REFILL_ROUND",bindings.size(),added,failed);
                     }
                 });
             }
@@ -272,7 +279,7 @@ final class DispatchMainScheduler {
                             int published = 0;
                             boolean failed = true;
                             try {
-                                published = dispatch.dispatchTasks(normalTasks,queries);
+                                published = dispatch.dispatchTasks(normalTasks,bindings);
                                 failed = false;
                             } finally {
                                 DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), published, failed);

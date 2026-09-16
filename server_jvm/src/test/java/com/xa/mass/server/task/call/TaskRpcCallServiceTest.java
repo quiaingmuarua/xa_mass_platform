@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
@@ -489,12 +491,13 @@ class TaskRpcCallServiceTest {
                 invocation.getArgument(0),
                 invocation.getArgument(1), invocation.getArgument(2)));
         var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        var query=mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
-        when(query.normalize(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
-        when(matching.prepareTaskQueries(org.mockito.ArgumentMatchers.anyMap())).thenAnswer(call -> {
-            Map<String,String> coordinates=call.getArgument(0);
-            var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
-            coordinates.keySet().forEach(task -> result.put(task,query)); return result;
+        when(matching.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
+        when(matching.loadTaskBindings(anyList())).thenAnswer(call -> {
+            List<String> ids=call.getArgument(0);
+            var result=new LinkedHashMap<String,TaskRuleBinding>();
+            ids.forEach(task -> result.put(task,new TaskRuleBinding(
+                    "worker.default","group-1",List.of(new RefillTarget(Map.of(),100)))));
+            return result;
         });
         return new TaskRpcCallService(
                 new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching),

@@ -1,6 +1,6 @@
 package com.xa.mass.server.assembly.runtime;
 
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.RefillTarget;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;

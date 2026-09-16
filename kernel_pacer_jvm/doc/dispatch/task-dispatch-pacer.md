@@ -10,7 +10,7 @@ Status: active Kernel Task dispatch contract.
 observe due Item scores
   -> load minimal TaskItems
   -> settle expired or exhausted Items
-  -> obtain held Worker candidates through the prepared Rule query
+  -> obtain held candidates through named Matching take
   -> exact-confirm Worker, claim Item, and publish Command
   -> pace, close, or park the Task
 ```
@@ -27,17 +27,17 @@ For each Task, the policy:
 3. stores the fixed failed Result before promoting exhausted or expired Items
    to `TERMINAL(tag=5)`;
 4. identifies claimable Items in observation order;
-5. obtains Worker candidates through its prepared query;
+5. obtains Worker candidates using the binding Group, Rule name and Item queries;
 6. delegates exact Worker confirmation, Item claim, and Command publication;
 7. rewrites ordinary Task pacing in a `finally` boundary.
 
 If no claimable Item remains, `TaskIdleSettlement` performs the complete ACTIVE
 recheck and exact close or private idle park.
 
-## Prepared Rule Query
+## Named Rule Query
 
-Main supplies the once-prepared NORMAL Task binding batch to both refill and
-dispatch. Each Task's view references shared Eligibility stock. All selectors,
+Main supplies one immutable NORMAL Task binding data batch to refill and
+dispatch. Dispatch passes the explicit Group and Rule name to Matching. All selectors,
 including ANY and explicit IDs, use local destructive take. Only the separate
 refill Producer reads Group HOT heads and exact-acquires a 1-second lease before
 Matching reads the successful IDs' projections. Inventory retains the supplied

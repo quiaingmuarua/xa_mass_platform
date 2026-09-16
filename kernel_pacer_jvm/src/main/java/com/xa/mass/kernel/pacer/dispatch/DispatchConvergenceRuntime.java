@@ -68,7 +68,7 @@ public final class DispatchConvergenceRuntime {
                 ? null
                 : serviceabilityConfig.hotEligibilityFloorMillis();
         WorkerCandidateSelectionPolicy candidateSelection =
-                new WorkerCandidateSelectionPolicy(workerCatalog);
+                new WorkerCandidateSelectionPolicy(workerCatalog, candidateIndex);
         WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores,candidateIndex,assignmentHotFloor);
         TaskInitializationPolicy initialization =
                 new TaskInitializationPolicy(

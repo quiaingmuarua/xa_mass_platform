@@ -4,7 +4,8 @@ Status: current facts, Rule binding, source index and Eligibility Owner.
 
 A Rule is a stable semantic ID mapped to one thread-safe Handler instance in fixed
 application composition. It owns qualification, shortfalls, admission, inventory
-and consumption for that Rule. Tasks sharing its WorkerGroup share the same stock.
+and consumption for that Rule. Tasks using the same Rule and WorkerGroup share the same stock. One Rule instance
+serves multiple Groups; Group is an explicit resource scope on every operation.
 There is no persisted DSL, dynamic registry, per-Task cache or Matching execution thread.
 
 ## Owner Boundary
@@ -40,7 +41,8 @@ Item selectors -> Rule.take -> current address
 
 Rules receive opaque held fences, never a lease acquisition capability. They cannot
 discover replacement IDs, renew holds, decode Kernel scores or claim Items.
-Kernel/Pacer sees Task IDs and held identities, never Rule IDs or index coordinates.
+Pacer carries Rule names, Group coordinates and immutable query data. It does not
+interpret business fields, depend on Handler implementations or construct index coordinates.
 
 ## Shared Rule Binding
 
@@ -52,17 +54,31 @@ corrupt bindings conflict. Configuration changes do not rewrite existing binding
 Unknown/unavailable Rules and unsupported targets are rejected. Failed Kernel
 creation may leave an inert binding; it does not roll back Matching.
 
-`prepareTaskQueries(taskId -> workerGroupId)` resolves at most 100 Tasks with one
-HMGET. Missing/corrupt bindings, wrong Groups and unavailable Rules yield null.
-Main shares this map between refill and dispatch. A Task view delegates validation
-and take to its Rule with the Group; it holds no private candidate copy.
+`loadTaskBindings(taskIds)` resolves at most 100 unique Tasks with one HMGET.
+Missing/corrupt bindings and unavailable Rules yield null. Main and Server admission
+check the returned Group against the Kernel Task descriptor. Main shares immutable
+configuration data between refill and dispatch. There are no executable Task views.
+`TaskRuleBinding` and `RefillTarget` live with `WorkerCandidateIndex` in Kernel's
+assignment contract package; Matching still owns their interpretation and persistence.
 
-Only the refill Producer calls `prepareRefill(preparedTasks)`. Its invocation-local
-batch merges targets by Group/Rule and canonical query using MAX. It pages at most
-100 targets per Rule operation and rotates visited target pages. Unvisited pages
-never enter Rule operations. Group calls retain the closed demand batch without
-re-reading bindings or reconstructing Task targets. Server admission and Main
-preparation do not maintain inventory.
+The refill Producer groups and concatenates declarations by Group/Rule without
+interpreting or merging queries. It calls `groupsNeedingRefill(targetsByGroup)`
+once, then `refill(group, targetsByRule, heldCandidates)` for each acquired Group
+batch. Matching normalizes equal targets using MAX and resolves each Rule by name.
+The input is bounded to 100 Group/Rule coordinates and 10,000 declarations; each
+Rule operation receives at most 100 queries through the existing rotating pages.
+Shortage observation does not advance the target cursor; a refill attempt does.
+
+Global expired-stock and inactive-cursor cleanup belongs to `groupsNeedingRefill`.
+The hint and later admission may observe different stock. Refill independently
+validates and works without a prior hint or binding read. Both operations may redo
+bounded local target normalization; they retain no shared execution plan, Handler
+view or inventory transaction. Server admission and Main do not maintain stock.
+
+Server and dispatch use `normalizeQuery(group, ruleId, query)`; consumption calls
+`take(group, ruleId, limits)`. Missing Rule names or unavailable Group indexes are
+rejected with no fallback. Group enablement still controls index maintenance.
+All returned collections are immutable. These named operations do not receive Task IDs.
 
 ## Unified Queries and Fixed Handlers
 
@@ -97,8 +113,8 @@ query means ANY, while count remains required. It is also the persisted Binding
 value. Catalog normalizes queries and merges equal targets using MAX; Rule deficits
 and refill receive ordered query-to-count Maps. Take receives the same query type
 with actual Item counts. Results remain keyed by the supplied queries even when
-normalization changes their value order. Task views normalize Items before storage
-and before Pacer grouping; Item queries still never create refill demand.
+normalization changes their value order. Named Matching calls normalize Items before
+storage and before Pacer grouping; Item queries still never create refill demand.
 
 Each operation permits at most 100 queries. Refill target counts are 1..1000;
 take counts and their sum are at most 100. Refill accepts at most 100 unique held
@@ -206,10 +222,11 @@ counts for each admitted candidate. Each offered candidate/query pair is evaluat
 once per participating page before admission. Each Group batch passes only remaining
 IDs to later Rules; an actual acceptance, not a count estimate, removes an offer.
 
-Global lazy expiry runs once at refill preparation by invoking current Rule-owned
+Global lazy expiry runs once at Group shortage observation by invoking current Rule-owned
 pool cleanup. It does not store a second inventory. Group access expires only its
 own pool; diagnostics and capacity reads do not sweep unrelated pools. Admission
-rechecks original deadlines, current shortages and shared capacity at commit.
+uses observed shortages and rechecks each entry's original deadline and shared
+hard capacity at commit, without revalidating the whole inventory.
 Other expiry may release capacity after the round's budget was observed, so a
 round may conservatively underfill. A Rule with no available capacity reports zero
 refill deficit, preserving the existing full-stock supply suppression. No operation
@@ -284,9 +301,10 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 
 ## Cost, Failure and Proof
 
-- Binding preparation: one HMGET per bounded Main batch.
-- Refill preparation: zero Redis commands; one target aggregation and global expiry
-  sweep per round; only visited bounded target pages reach Rule operations.
+- Binding read: one HMGET per bounded Main batch.
+- Group shortage observation: zero Redis commands; local target aggregation and
+  one global expiry sweep per round. Named refill independently repeats bounded
+  target normalization; only visited target pages reach Rule inventory operations.
 - Normalized stock counts and take: zero Redis commands or facts reads.
 - Each nonempty eligible Group batch: one read-only HOT head Lua (TIME and
   ZRANGE BYSCORE LIMIT 0 limit inside), then one candidate-acquisition Lua, followed by at most one

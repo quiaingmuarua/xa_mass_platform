@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
+import com.xa.mass.kernel.assignment.RefillTarget;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.inOrder;
@@ -135,8 +136,8 @@ class RuntimeViewControllerTest {
         when(taskCatalog.loadTaskAllocationDescriptors(taskIds))
                 .thenReturn(tasks);
         when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
-            List<String> ids=call.getArgument(0); var bindings=new LinkedHashMap<String,WorkerMatchingCatalog.TaskRuleBinding>();
-            ids.forEach(id -> bindings.put(id,new WorkerMatchingCatalog.TaskRuleBinding("worker.default",tasks.get(id).workerGroupId(), List.of(new RefillTarget(Map.of(),100)))));
+            List<String> ids=call.getArgument(0); var bindings=new LinkedHashMap<String,TaskRuleBinding>();
+            ids.forEach(id -> bindings.put(id,new TaskRuleBinding("worker.default",tasks.get(id).workerGroupId(), List.of(new RefillTarget(Map.of(),100)))));
             return bindings;
         });
 
@@ -726,7 +727,7 @@ class RuntimeViewControllerTest {
             List<String> batch = invocation.getArgument(0);
             org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
             return batch.stream().collect(Collectors.toMap(id -> id,
-                    id -> new WorkerMatchingCatalog.TaskRuleBinding("rule-shared", "group-a", List.of(new RefillTarget(Map.of(),100)))));
+                    id -> new TaskRuleBinding("rule-shared", "group-a", List.of(new RefillTarget(Map.of(),100)))));
         });
         mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1000"))

@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
+import com.xa.mass.kernel.assignment.RefillTarget;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
@@ -159,12 +160,13 @@ class RuntimeApiControllerTest {
         });
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
-        var preparedQuery=org.mockito.Mockito.mock(com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery.class);
-        when(preparedQuery.normalize(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
-        when(matchingCatalog.prepareTaskQueries(anyMap())).thenAnswer(call -> {
-            Map<String,String> coordinates=call.getArgument(0);
-            var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery>();
-            coordinates.keySet().forEach(task -> result.put(task,preparedQuery)); return result;
+        when(matchingCatalog.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
+        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
+            List<String> ids=call.getArgument(0);
+            var result=new LinkedHashMap<String,TaskRuleBinding>();
+            ids.forEach(task -> result.put(task,new TaskRuleBinding(
+                    "worker.default","phone-tools",List.of(new RefillTarget(Map.of(),100)))));
+            return result;
         });
         when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
@@ -564,16 +566,15 @@ class RuntimeApiControllerTest {
     }
 
     @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
-        var view=matchingCatalog.prepareTaskQueries(Map.of("task-1","phone-tools")).get("task-1");
         var normalized=EligibilityQuery.parse(Map.of("worker.country",List.of("CN","US")));
-        when(view.normalize(any())).thenReturn(normalized);
+        when(matchingCatalog.normalizeQuery(anyString(),anyString(),any())).thenReturn(normalized);
         mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
                 [{"messageId":"message-1","eventCode":"event","payload":{},
                   "workerSelector":{"worker.country":["US","CN","CN"]}}]
                 """)).andExpect(status().isOk());
         verify(taskRuntime).appendItems(eq("task-1"), org.mockito.ArgumentMatchers.argThat(items ->
                 items.size()==1 && normalized.equals(items.getFirst().workerSelector())));
-        verify(view,org.mockito.Mockito.never()).take(anyMap());
+        verify(matchingCatalog,org.mockito.Mockito.never()).take(anyString(),anyString(),anyMap());
     }
 
     @Test void oldConditionsAndNonStringItemParametersFailBeforeOwners() throws Exception {

@@ -11,15 +11,18 @@ and [Delivery](../../../doc/kernel/worker-delivery-dispatch.md).
 
 One Main Scheduler supplies complete bounded input to fixed single-flight
 initialization, Eligibility refill, Task dispatch and optional Serviceability
-Producers. It reads NORMAL Task bindings once and shares the prepared views.
-TaskItems only consume stock; they never generate refill demand or a matching job.
+Producers. It reads NORMAL Task binding data once, checks Groups against Task
+descriptors, and shares the immutable values. TaskItems only consume stock;
+they never generate refill demand or a matching job.
 
-The refill Producer calls `prepareRefill` once using those prepared views. Matching's
-invocation-local batch supplies a Group demand hint and accepts already leased Group batches.
-Pacer intersects the hint with Main's Group roots and retains its own rotation and
-supply budgets. Each Group batch serves multiple Tasks' Rule demands; no per-Task
-refill call or per-Worker Rule call is introduced. Server admission does not prepare
-refill batches. Group hints are checked against current stock again at admission.
+The refill Producer concatenates targets by Group/Rule and calls Matching's
+`groupsNeedingRefill` before acquiring held candidates. Pacer intersects the hint
+with Main's Group roots and retains its rotation and supply budgets. It then calls
+`refill(group, targetsByRule, held)` directly. Matching resolves names on each call,
+merges targets using MAX and preserves target paging and Rule rotation. Hint reads
+do not advance query cursors; actual refill attempts do. No inventory snapshot or
+executable preparation is required between those calls. Server admission does not
+observe shortages or maintain inventory.
 
 ## Core Mechanism Change
 
@@ -34,15 +37,15 @@ Matching has no acquisition callback or inventory renewal capability.
 ## Candidate Selection
 
 ```text
-NORMAL RUNNING Tasks -> one prepared Binding batch
+NORMAL RUNNING Tasks -> one immutable Binding data batch
   -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT head
       -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
   -> dispatch: due Item queries -> local destructive take
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
 
-Matching owns query semantics and shared stock per Group/Rule. Kernel sees Task IDs
-and opaque held identities. No Task-private candidate cache or quota exists.
+Matching owns query semantics and shared stock per Group/Rule. Pacer forwards Group/Rule coordinates
+and opaque held identities without interpreting Rule fields. No Task-private candidate cache or quota exists.
 Refill takes no Item input. All selectors, including ANY and explicit IDs, consume
 inventory; a miss leaves the Item due without a source query or fresh hold.
 

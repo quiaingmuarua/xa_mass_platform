@@ -1,5 +1,6 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,11 +35,6 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
     MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId,
                                 @Nullable List<RefillTarget> refillTargets);
 
-    /** Resolves up to 100 unique Task IDs in one batch; unavailable Rules map to null. */
-    Map<String, @Nullable TaskRuleBinding> loadTaskBindings(
-            List<String> taskIds
-    );
-
     enum MutationStatus {
         APPLIED,
         UNCHANGED,
@@ -68,22 +64,6 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
             requireNonBlank(workerGroupId, "workerGroupId");
             workerProperties = immutableMap(workerProperties);
             platformProperties = immutableMap(platformProperties);
-        }
-    }
-
-    /** A Task binding snapshot, not a persisted Rule definition or lifecycle. */
-    record TaskRuleBinding(
-            String ruleId,
-            String workerGroupId,
-            List<RefillTarget> refillTargets
-    ) {
-        public TaskRuleBinding {
-            requireNonBlank(ruleId, "ruleId");
-            requireNonBlank(workerGroupId, "workerGroupId");
-            refillTargets = List.copyOf(refillTargets);
-            if (refillTargets.isEmpty() || refillTargets.size() > 100) {
-                throw new IllegalArgumentException("refillTargets must contain 1..100 queries");
-            }
         }
     }
 

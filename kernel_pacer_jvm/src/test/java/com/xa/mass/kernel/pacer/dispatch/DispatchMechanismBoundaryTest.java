@@ -79,7 +79,7 @@ class DispatchMechanismBoundaryTest {
     void taskSchedulingNoLongerContainsMatchingModesOrAllocationLifecycle() throws IOException {
         for (String name : List.of("TaskDispatchPolicy.java","DispatchMainScheduler.java","WorkerCandidateSelectionPolicy.java")) {
             String source=Files.readString(ROOT.resolve(name));
-            for (String token:List.of("WorkerAllocationMechanism","ruleId","CandidateWorkerCache","WorkerMatchQueue")) {
+            for (String token:List.of("WorkerAllocationMechanism","com.xa.mass.workermatching","CandidateWorkerCache","WorkerMatchQueue")) {
                 assertFalse(source.contains(token),name+" must not own "+token);
             }
         }
@@ -168,7 +168,7 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("releaseCompletedHotScoreHolds("));
         assertFalse(selection.contains("observeDueHot"));
         assertFalse(selection.contains("acquireObservedHotScoreLeases"));
-        assertTrue(selection.contains("query.take(limits)"));
+        assertTrue(selection.contains("index.take(workerGroupId,ruleId,limits)"));
         String refill=Files.readString(ROOT.resolve("WorkerEligibilityRefillPolicy.java"));
         assertTrue(refill.contains("observeDueHotScoreCandidates"));
         assertTrue(refill.contains("acquireObservedHotScoreLeases"));

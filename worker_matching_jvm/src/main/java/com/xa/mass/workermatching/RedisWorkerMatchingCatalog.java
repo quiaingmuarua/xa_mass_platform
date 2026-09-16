@@ -1,5 +1,7 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.workermatching.rules.RedisRuleStorage;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import io.lettuce.core.ScanArgs;
@@ -115,132 +117,102 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         }
     }
 
-    @Override public Map<String,@Nullable TaskQuery> prepareTaskQueries(Map<String,String> taskGroups) {
-        Objects.requireNonNull(taskGroups,"taskGroups");
-        if (taskGroups.size()>MAX_BATCH_SIZE) throw new IllegalArgumentException("at most 100 Tasks");
-        taskGroups.forEach((id,group) -> { requireNonBlank(id,"taskId"); requireNonBlank(group,"workerGroupId"); });
-        var bindings=loadTaskBindings(List.copyOf(taskGroups.keySet()));
-        Map<String,TaskQuery> result=new LinkedHashMap<>();
-        taskGroups.forEach((task,group) -> {
-            var binding=bindings.get(task);
-            result.put(task,binding!=null && group.equals(binding.workerGroupId()) ? new BindingView(binding, eligibility(group,binding.ruleId())) : null);
-        });
-        return immutableNullableMap(result);
-    }
-
     private @Nullable RuleHandler eligibility(String group,String id) {
         var handler=handlers.get(id);
         var enabled=rulesByGroup.getOrDefault(group,Set.of());
         return handler==null || !DEFAULT_RULE_ID.equals(id) && !enabled.contains(id) ? null : handler;
     }
 
-    private final class BindingView implements TaskQuery {
-        final TaskRuleBinding binding;
-        final RuleHandler eligibility;
-        BindingView(TaskRuleBinding binding, RuleHandler eligibility) {
-            this.binding=binding; this.eligibility=Objects.requireNonNull(eligibility);
-        }
-        @Override public EligibilityQuery normalize(EligibilityQuery query) {
-            return eligibility.normalizeQuery(binding.workerGroupId(),query);
-        }
-        @Override public Map<EligibilityQuery,List<HeldCandidate>> take(Map<EligibilityQuery,Integer> limits) {
-            return eligibility.take(binding.workerGroupId(),limits);
-        }
+    private RuleHandler requireEligibility(String group,String ruleId) {
+        requireNonBlank(group,"workerGroupId"); requireNonBlank(ruleId,"ruleId");
+        var handler=eligibility(group,ruleId);
+        if(handler==null)throw new IllegalArgumentException("unavailable Rule");
+        return handler;
     }
 
-    private Map<Scope,List<RefillTarget>> targets(Map<String,@Nullable TaskQuery> tasks) {
-        if (tasks.size()>100) throw new IllegalArgumentException("at most 100 prepared Tasks");
-        var targets=new LinkedHashMap<Scope,LinkedHashMap<EligibilityQuery,Integer>>();
-        for (TaskQuery task:tasks.values()) {
-            if (task==null) continue;
-            if (!(task instanceof RedisWorkerMatchingCatalog.BindingView view)) throw new IllegalArgumentException("foreign Task query");
-            var binding=view.binding;
-            var scope=new Scope(binding.workerGroupId(),binding.ruleId());
-            var merged=targets.computeIfAbsent(scope,ignored -> new LinkedHashMap<>());
-            binding.refillTargets().forEach(q -> merged.merge(q.query(),q.count(),Math::max));
+    @Override public EligibilityQuery normalizeQuery(String group,String ruleId,EligibilityQuery query) {
+        return requireEligibility(group,ruleId).normalizeQuery(group,Objects.requireNonNull(query,"query"));
+    }
+
+    @Override public Map<EligibilityQuery,List<HeldCandidate>> take(String group,String ruleId,
+            Map<EligibilityQuery,Integer> limits) {
+        return requireEligibility(group,ruleId).take(group,limits);
+    }
+
+    /** Capture and validate the bounded declarations before observing or changing inventory. */
+    private Map<Scope,List<RefillTarget>> targets(Map<String,Map<String,List<RefillTarget>>> supplied) {
+        Objects.requireNonNull(supplied,"targetsByGroup");
+        if(supplied.size()>100)throw new IllegalArgumentException("at most 100 Group/Rule coordinates");
+        var captured=new LinkedHashMap<Scope,List<RefillTarget>>();
+        int declarations=0;
+        for(var group:supplied.entrySet()) {
+            requireNonBlank(group.getKey(),"workerGroupId");
+            var rules=Objects.requireNonNull(group.getValue(),"targetsByRule");
+            if(rules.isEmpty() || rules.size()>100-captured.size())
+                throw new IllegalArgumentException("requires 1..100 Group/Rule coordinates");
+            for(var rule:rules.entrySet()) {
+                requireEligibility(group.getKey(),rule.getKey());
+                var rows=Objects.requireNonNull(rule.getValue(),"refillTargets");
+                if(rows.isEmpty() || rows.size()>10_000-declarations)
+                    throw new IllegalArgumentException("requires nonempty targets and at most 10,000 declarations");
+                declarations+=rows.size();
+                captured.put(new Scope(group.getKey(),rule.getKey()),List.copyOf(rows));
+            }
         }
-        queryCursors.keySet().retainAll(targets.keySet());
-        var groups=new LinkedHashSet<String>();
-        targets.keySet().forEach(scope->groups.add(scope.workerGroupId()));
-        eligibilityCursors.keySet().retainAll(groups);
         var result=new LinkedHashMap<Scope,List<RefillTarget>>();
-        targets.forEach((scope,queries)->result.put(scope,queries.entrySet().stream()
-                .sorted(java.util.Comparator.comparing(e->e.getKey().toString()))
-                .map(e->RefillTarget.of(e.getKey(),e.getValue())).toList()));
-        return result;
+        captured.forEach((scope,rows)->{
+            var merged=new LinkedHashMap<EligibilityQuery,Integer>();
+            var handler=requireEligibility(scope.workerGroupId(),scope.ruleId());
+            rows.forEach(target->merged.merge(handler.normalizeQuery(scope.workerGroupId(),target.query()),
+                    target.count(),Math::max));
+            result.put(scope,merged.entrySet().stream()
+                    .sorted(java.util.Comparator.comparing(e->e.getKey().toString()))
+                    .map(e->RefillTarget.of(e.getKey(),e.getValue())).toList());
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     private record RefillPage(List<RefillTarget> queries,int nextCursor,int deficit) { }
 
-    /** Invocation-local target paging; Rule representations never cross this boundary. */
-    private final class PreparedEligibility {
-        final Scope scope;
-        final RuleHandler index;
-        final List<RefillTarget> targets;
-
-        PreparedEligibility(Scope scope,List<RefillTarget> targets) {
-            this.scope=scope;
-            this.index=Objects.requireNonNull(eligibility(scope.workerGroupId(),scope.ruleId()));
-            this.targets=targets;
+    private @Nullable RefillPage page(Scope scope,List<RefillTarget> targets,RuleHandler handler) {
+        int room=storage.availableCapacity();
+        if(room==0)return null;
+        int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
+        for(int offset=0;offset<targets.size();offset+=100) {
+            var selected=new ArrayList<RefillTarget>();
+            for(int i=offset;i<Math.min(offset+100,targets.size());i++)
+                selected.add(targets.get((start+i)%targets.size()));
+            int missing=handler.deficits(scope.workerGroupId(),targetCounts(selected)).values()
+                    .stream().mapToInt(Integer::intValue).sum();
+            if(missing>0)return new RefillPage(List.copyOf(selected),
+                    (start+offset+(targets.size()>100?selected.size():1))%targets.size(),Math.min(room,missing));
         }
-
-        @Nullable RefillPage page() {
-            int room=storage.availableCapacity();
-            if(room==0)return null;
-            int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
-            for(int offset=0;offset<targets.size();offset+=100) {
-                var selected=new ArrayList<RefillTarget>();
-                for(int i=offset;i<Math.min(offset+100,targets.size());i++) {
-                    var target=targets.get((start+i)%targets.size());
-                    selected.add(target);
-                }
-                int missing=index.deficits(scope.workerGroupId(),targetCounts(selected)).values().stream().mapToInt(Integer::intValue).sum();
-                if(missing>0)return new RefillPage(List.copyOf(selected),
-                        (start+offset+(targets.size()>100?selected.size():1))%targets.size(),Math.min(room,missing));
-            }
-            return null;
-        }
+        return null;
     }
 
-    @Override public RefillBatch prepareRefill(Map<String,@Nullable TaskQuery> tasks) {
-        Objects.requireNonNull(tasks,"preparedTasks");
-        var targets=targets(tasks);
+    @Override public Set<String> groupsNeedingRefill(Map<String,Map<String,List<RefillTarget>>> supplied) {
+        var targets=targets(supplied);
         storage.expireCandidates();
-        var groups=new LinkedHashMap<String,List<PreparedEligibility>>();
-        targets.forEach((scope,queries)->groups.computeIfAbsent(scope.workerGroupId(),ignored->new ArrayList<>())
-                .add(new PreparedEligibility(scope,queries)));
-        var needed=new LinkedHashSet<String>();
-        groups.forEach((group,scopes)->{
-            scopes.sort(java.util.Comparator.comparing(entry->entry.scope.ruleId()));
-            int deficit=0;
-            for(var scope:scopes) {
-                var page=scope.page();
-                if(page!=null)deficit+=page.deficit();
-            }
-            if(deficit>0)needed.add(group);
-            requestedDeficit+=Math.min(deficit,10_000);
+        queryCursors.keySet().retainAll(targets.keySet());
+        eligibilityCursors.keySet().retainAll(supplied.keySet());
+        var deficits=new LinkedHashMap<String,Integer>();
+        targets.forEach((scope,rows)->{
+            var page=page(scope,rows,requireEligibility(scope.workerGroupId(),scope.ruleId()));
+            if(page!=null)deficits.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
         });
-        var neededGroups=Collections.unmodifiableSet(needed);
+        deficits.values().forEach(deficit->requestedDeficit+=Math.min(deficit,10_000));
         long now=clock.getAsLong();
-        if (now-lastDiagnosticMillis>=60_000) {
+        if(now-lastDiagnosticMillis>=60_000) {
             System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,
                     "Eligibility refill deficit="+requestedDeficit+" "+storage.diagnostics());
             lastDiagnosticMillis=now;
         }
-        return new RefillBatch() {
-            @Override public Set<String> groupsNeedingRefill() { return neededGroups; }
-
-            @Override public int refill(String group,List<HeldCandidate> offered) {
-                var scopes=groups.get(group);
-                if(scopes==null)throw new IllegalArgumentException("WorkerGroup is outside this refill batch");
-                return refillGroup(scopes,group,offered);
-            }
-        };
+        return Collections.unmodifiableSet(new LinkedHashSet<>(deficits.keySet()));
     }
 
-    private int refillGroup(List<PreparedEligibility> scopes,String group,
+    @Override public int refill(String group,Map<String,List<RefillTarget>> targetsByRule,
             List<HeldCandidate> offered) {
-        requireNonBlank(group,"WorkerGroup");
+        requireNonBlank(group,"workerGroupId");
         Objects.requireNonNull(offered,"offeredCandidates");
         if(offered.size()>100)throw new IllegalArgumentException("at most 100 held Workers");
         var held=new LinkedHashMap<String,HeldCandidate>();
@@ -248,21 +220,26 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             Objects.requireNonNull(candidate,"heldCandidate"); requireNonBlank(candidate.workerId(),"Worker ID");
             if(held.putIfAbsent(candidate.workerId(),candidate)!=null)throw new IllegalArgumentException("held Worker IDs must be unique");
         }
+        var scopes=targets(Map.of(group,targetsByRule)).entrySet().stream()
+                .sorted(java.util.Comparator.comparing(entry->entry.getKey().ruleId())).toList();
         var remaining=new LinkedHashSet<>(held.keySet());
-        if(scopes.isEmpty() || remaining.isEmpty())return 0;
+        if(remaining.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
         int room=Math.min(100,storage.availableCapacity()), added=0;
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<room;n++) {
-            var prepared=scopes.get((start+n)%scopes.size());
-            var page=prepared.page();
+            var entry=scopes.get((start+n)%scopes.size());
+            var scope=entry.getKey();
+            var handler=requireEligibility(group,scope.ruleId());
+            var page=page(scope,entry.getValue(),handler);
             if(page==null)continue;
             long now=clock.getAsLong();
             remaining.removeIf(id->held.get(id).expiresAtMillis()<=now);
             if(remaining.isEmpty())break;
-            queryCursors.put(prepared.scope,page.nextCursor());
+            queryCursors.put(scope,page.nextCursor());
             // Each Rule commits its own admission. A later failure preserves earlier successes.
-            var accepted=prepared.index.refill(group,targetCounts(page.queries()),remaining.stream().map(held::get).toList(),room-added);
+            var accepted=handler.refill(group,targetCounts(page.queries()),
+                    remaining.stream().map(held::get).toList(),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Rule returned invalid admitted identities");
             remaining.removeAll(accepted); added+=accepted.size();

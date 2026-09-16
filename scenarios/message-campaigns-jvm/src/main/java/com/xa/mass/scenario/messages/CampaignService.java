@@ -1,6 +1,6 @@
 package com.xa.mass.scenario.messages;
 
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.RefillTarget;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 

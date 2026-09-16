@@ -214,9 +214,10 @@ architectures.
 - Task Owner stores only scheduling descriptors and Item execution data. It owns
   the shared immutable EligibilityQuery structure without quantity or field interpretation. Matching
   owns every Task binding, fixed Rule Handler and property/index interpretation.
-  Kernel/Pacer sees Task IDs, never Rule IDs, matching modes or index coordinates.
-  Main resolves NORMAL Tasks through one bounded `WorkerCandidateIndex.prepareTaskQueries`
-  call shared by refill and dispatch. Default identity selectors need no facts;
+  Pacer may read and forward Rule names and immutable parameters; it must not depend
+  on Matching implementations, interpret business conditions or construct index coordinates.
+  Main reads NORMAL Task configuration through one bounded `WorkerCandidateIndex.loadTaskBindings`
+  call shared by refill and dispatch, checking each binding against the Task Group. Default identity selectors need no facts;
   only worker.default accepts explicit ID queries; named Rules constrain ANY and
   interpret their own business queries. Missing bindings never fall back. Matching
   uses fixed Rule ID-to-instance composition. Rule implementations own normalization,
@@ -246,11 +247,11 @@ architectures.
   Facts and dirty remain separate best-effort commits, without property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
-  Refill prepares one invocation-local Group/Rule demand batch from Main's Task
-  views, passing only visited bounded target pages to Rules. Server admission must
-  not prepare refill or maintain stock. Group demand is a hint, not a reservation; stock and
+  Refill groups Main's ordinary binding data and calls Matching by Group and Rule name.
+  Matching merges targets and passes only visited bounded pages to Rules. Do not restore
+  executable Task views or refill closures. Server admission must not observe refill or maintain stock. Group demand is a hint, not a reservation; stock and
   exact fences still decide admission and execution. Global expired-stock cleanup
-  occurs at refill preparation; scope access retains local expiry and atomic bounds.
+  occurs at Group shortage observation; scope access retains local expiry and atomic bounds.
 
 - TaskRuntime owns the self-describing Result projection and its
   [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
@@ -290,8 +291,8 @@ kernel_jvm`.
   `TERMINAL(tag=6)`; destructive consumption and the separate Owner calls do not
   provide unconditional eventual convergence.
 - [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-  separates the fixed refill Producer from Task Dispatch. Main shares one prepared
-  NORMAL binding batch. Refill uses Task-declared shared targets and no Item reads;
+  separates the fixed refill Producer from Task Dispatch. Main shares one immutable
+  NORMAL binding data batch. Refill uses Task-declared shared targets and no Item reads;
   dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
   count. Matching cannot discover IDs or initiate targeted acquisition. It checks

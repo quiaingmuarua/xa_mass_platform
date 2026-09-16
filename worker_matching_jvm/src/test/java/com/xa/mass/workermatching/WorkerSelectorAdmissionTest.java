@@ -1,5 +1,6 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
@@ -17,7 +18,7 @@ class WorkerSelectorAdmissionTest {
         assertEquals(0,RuleHandler.class.getDeclaredClasses().length);
         for(var method:RuleHandler.class.getDeclaredMethods())for(var type:method.getParameterTypes())
             assertFalse(type.getName().contains("Redis") || type.getName().contains("Lease")
-                    || type.getName().contains("TaskQuery"));
+                    || type.getName().contains("TaskRuleBinding"));
     }
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);

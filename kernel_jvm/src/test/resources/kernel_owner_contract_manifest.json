@@ -84,17 +84,12 @@
       "on_probe_unavailable",
       "on_route_unavailable"
     ],
-    "TaskQuery": [
-      "normalize",
-      "take"
-    ],
     "WorkerCandidateIndex": [
-      "prepare_refill",
-      "prepare_task_queries"
-    ],
-    "RefillBatch": [
       "groups_needing_refill",
-      "refill"
+      "load_task_bindings",
+      "normalize_query",
+      "refill",
+      "take"
     ],
     "TaskEvidenceRuntime": [
       "append_task_evidence",
@@ -312,6 +307,11 @@
       "worker_id",
       "score",
       "expires_at_millis"
+    ],
+    "TaskRuleBinding": [
+      "rule_id",
+      "worker_group_id",
+      "refill_targets"
     ]
   },
   "enums": {

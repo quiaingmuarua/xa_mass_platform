@@ -14,7 +14,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
 | `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
-| `assignment` | bounded Matching identity query port and immutable EligibilityQuery structure |
+| `assignment` | named Matching operations and immutable query, refill-target and Task-binding data |
 | `delivery` | Worker Command and Task Evidence runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
@@ -106,7 +106,7 @@ Build:
 ```
 
 All Tasks bind to a Matching Rule and resolved refill targets before Kernel
-creation. Main prepares NORMAL bindings once for independent refill and dispatch.
+creation. Main reads ordinary NORMAL binding data once for independent refill and dispatch.
 Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
 qualifies and admits only those identities with their original fence and deadline;
 it never requests an extension. TaskItems consume the Rule-owned Group inventory. Kernel retains HOT, Score and exact confirmation/

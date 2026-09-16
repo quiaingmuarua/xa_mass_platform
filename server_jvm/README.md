@@ -326,7 +326,7 @@ Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
-`workerSelector` through structural capture and the bound TaskQuery normalization,
+`workerSelector` through structural capture and named Matching normalization using the Task binding Group and Rule ID,
 then appends the normalized immutable query. Server validates every original
 query, including overwritten duplicates and identity selectors. It uses the same Catalog injected into Pacer;
 it does not take candidates at submission. Catalog startup rebuilds configured

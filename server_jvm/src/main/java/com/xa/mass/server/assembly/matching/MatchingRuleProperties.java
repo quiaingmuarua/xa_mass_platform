@@ -2,7 +2,7 @@ package com.xa.mass.server.assembly.matching;
 
 import java.util.Map;
 import java.util.List;
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Set;
 import java.util.LinkedHashMap;
 import org.springframework.boot.context.properties.ConfigurationProperties;

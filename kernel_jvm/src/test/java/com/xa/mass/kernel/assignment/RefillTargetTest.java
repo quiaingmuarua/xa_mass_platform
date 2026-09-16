@@ -1,6 +1,5 @@
-package com.xa.mass.workermatching;
+package com.xa.mass.kernel.assignment;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

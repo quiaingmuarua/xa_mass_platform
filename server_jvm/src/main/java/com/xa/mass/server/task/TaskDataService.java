@@ -95,8 +95,8 @@ public final class TaskDataService {
                 );
             }
 
-            var query = matchingCatalog.prepareTaskQueries(Map.of(taskId, descriptor.workerGroupId())).get(taskId);
-            if (query == null) {
+            var binding = matchingCatalog.loadTaskBindings(List.of(taskId)).get(taskId);
+            if (binding == null || !descriptor.workerGroupId().equals(binding.workerGroupId())) {
                 throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.appendItems",
                         "Task Rule binding is unavailable", null);
             }
@@ -110,7 +110,7 @@ public final class TaskDataService {
                     : latest.entrySet()) {
                 try {
                     var supplied = entry.getValue().workerSelector();
-                    var normalized = query.normalize(supplied == null
+                    var normalized = matchingCatalog.normalizeQuery(binding.workerGroupId(), binding.ruleId(), supplied == null
                             ? new EligibilityQuery(Map.of()) : supplied);
                     TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
                     validItems.add(item);

@@ -86,7 +86,9 @@ Score point recheck; exact downstream transitions reject stale observations.
 A busy Producer skips the current source snapshot without storing a pending
 hint.
 
-Main resolves one bounded NORMAL Task binding batch through Matching. The fixed
+Main reads one bounded NORMAL Task binding data batch through Matching, checking
+Groups against Task descriptors. Pacer forwards names and parameters through
+named Matching operations without interpreting business conditions. The fixed
 refill Producer alone reads the due Group HOT head from the floor and exact-acquires
 1-second candidate leases before supplying successful fences to Matching. Acquisition
 advances the head without a within-Group offset; Group rotation remains independent.

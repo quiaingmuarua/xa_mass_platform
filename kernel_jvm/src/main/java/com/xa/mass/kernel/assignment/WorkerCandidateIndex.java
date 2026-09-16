@@ -1,43 +1,36 @@
 package com.xa.mass.kernel.assignment;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/**
- * Matching-owned shared inventory. Kernel retains scheduling and execution lease authority.
- */
+/** Matching-owned shared inventory. Pacer carries names and data; Kernel owns execution leases. */
 public interface WorkerCandidateIndex {
-    /** One bounded read for at most 100 Task/Group coordinates. Unusable bindings map to null. */
-    Map<String, @Nullable TaskQuery> prepareTaskQueries(Map<String, String> taskGroups);
+    /** One bounded read for at most 100 unique Task IDs. Unusable bindings map to null. */
+    Map<String, @Nullable TaskRuleBinding> loadTaskBindings(List<String> taskIds);
 
-    /** Local preparation once per refill Producer round, using at most 100 prepared NORMAL Tasks. */
-    RefillBatch prepareRefill(Map<String, @Nullable TaskQuery> preparedTasks);
+    /** Idempotent Rule admission, without Redis reads or stock changes. */
+    EligibilityQuery normalizeQuery(String workerGroupId, String ruleId, EligibilityQuery query);
 
-    /** Invocation-local demand and query reuse; contains no held candidates or reservations. */
-    interface RefillBatch {
-        /** Capacity-bounded demand observed at preparation, not a guarantee of current shortfall. */
-        Set<String> groupsNeedingRefill();
+    /**
+     * Capacity-bounded hints, not reservations. At most 100 Group/Rule coordinates and 10,000
+     * target declarations. Performs global lazy expiry and inactive refill-cursor cleanup.
+     */
+    Set<String> groupsNeedingRefill(Map<String, Map<String, List<RefillTarget>>> targetsByGroup);
 
-        /**
-         * Qualifies at most 100 unique candidates already leased by Pacer for this Group.
-         * Admission preserves each opaque fence and its original cleanup deadline.
-         */
-        int refill(String workerGroupId, List<HeldCandidate> offeredCandidates);
-    }
+    /**
+     * Qualifies at most 100 unique candidates already leased by Pacer for this Group.
+     * Does not require an earlier shortage observation. Preserves opaque fences and deadlines;
+     * later Rule failure does not undo earlier admissions. Target bounds match the observation.
+     */
+    int refill(String workerGroupId, Map<String, List<RefillTarget>> targetsByRule,
+            List<HeldCandidate> offeredCandidates);
+
+    /** Local destructive consumption: at most 100 queries and 100 unique candidates in total. */
+    Map<EligibilityQuery, List<HeldCandidate>> take(String workerGroupId, String ruleId,
+            Map<EligibilityQuery, Integer> limits);
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */
     record HeldCandidate(String workerId, long score, long expiresAtMillis) { }
-
-    /** A binding view referencing shared inventory, with no Task-private candidate state. */
-    interface TaskQuery {
-
-        /** Admission and dispatch use the same bound query semantics; performs no Redis read. */
-        EligibilityQuery normalize(EligibilityQuery query);
-
-        /** Local destructive consumption: at most 100 queries and 100 unique candidates in total. */
-        Map<EligibilityQuery, List<HeldCandidate>> take(Map<EligibilityQuery, Integer> limits);
-    }
 }

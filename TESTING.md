@@ -330,13 +330,15 @@ Worker proof.
 
 Redis Owner proves strict bindings, preserved source coordinates, sparse phone partitions,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
-one binding HMGET per at-most-100-Task round, six commands for named refill of
+one binding HMGET per at-most-100-Task round, direct Group/Rule operations without
+executable binding views or refill callbacks, six commands for named refill of
 100 identities even across 100 queries, and zero Redis access for local take or
 satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
 batches. Properties dirtying invalidates old fences; a fresh hold after natural
 expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.
 
-Focused tests cover MAX targets across Tasks, overlapping query stock, bounded
+Focused tests cover direct named refill/take without Task registration or prior
+shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
 capacities, concurrent take, constrained-target budget sharing and source failure
 after hold. Pacer tests keep refill independent of Item observation and dispatch
 independent of source reads/acquisition. Runtime Boundary uses actual WebSocket,

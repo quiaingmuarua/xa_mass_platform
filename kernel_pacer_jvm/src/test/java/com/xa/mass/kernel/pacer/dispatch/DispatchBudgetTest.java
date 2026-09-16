@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.*;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
+import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import java.util.*;
@@ -15,29 +17,62 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class DispatchBudgetTest {
-    @Test void mainPreparesOnceAndRefillCanRunWhileDispatchHasNotRun() {
+    @Test void mainLoadsBindingsOnceAndRefillCanRunWhileDispatchHasNotRun() {
         var scores=mock(TaskScoreBandCore.class);
         var catalog=mock(TaskResourceCatalog.class);
         var index=mock(WorkerCandidateIndex.class);
         var hold=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
-        var query=mock(WorkerCandidateIndex.TaskQuery.class);
+        var binding=new TaskRuleBinding("worker.default","group",List.of(new RefillTarget(Map.of(),100)));
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L,"initial",100L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of("initial",100L));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
-        when(index.prepareTaskQueries(Map.of("task","group"))).thenReturn(Map.of("task",query));
+        when(index.loadTaskBindings(List.of("task"))).thenReturn(Map.of("task",binding));
         var initialization=mock(TaskInitializationPolicy.class);
         var scheduler=new DispatchMainScheduler(scores,catalog,initialization,dispatch,index,hold,null,AssignmentDispatchConfig.defaults(),null);
         var executor=new ManualExecutor(); var run=scheduler.new SchedulerRun(executor,() -> 0);
         run.step();
         assertEquals(3,executor.pending.size());
         executor.pending.remove(1).run(); // Refill only; initialization and dispatch are still queued.
-        verify(hold).refill(List.of("group"),Map.of("task",query));
-        verifyNoInteractions(initialization,dispatch,query);
+        verify(hold).refill(List.of("group"),Map.of("task",binding));
+        verifyNoInteractions(initialization,dispatch);
         executor.pending.removeLast().run();
-        verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)),Map.of("task",query));
-        verify(index,times(1)).prepareTaskQueries(Map.of("task","group"));
+        verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)),Map.of("task",binding));
+        verify(index,times(1)).loadTaskBindings(List.of("task"));
         verifyNoMoreInteractions(index);
+    }
+
+    @Test void unavailableOrMismatchedBindingsStillAllowTaskSettlementWithoutAssignmentEvidence() {
+        for (String condition : List.of("missing", "other-group", "read-failure")) {
+            var scores = mock(TaskScoreBandCore.class);
+            var catalog = mock(TaskResourceCatalog.class);
+            var index = mock(WorkerCandidateIndex.class);
+            var refill = mock(WorkerEligibilityRefillPolicy.class);
+            var dispatch = mock(TaskDispatchPolicy.class);
+            when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
+            when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+            when(catalog.loadTaskAllocationDescriptors(List.of("task")))
+                    .thenReturn(Map.of("task", descriptor()));
+            switch (condition) {
+                case "missing" -> when(index.loadTaskBindings(List.of("task"))).thenReturn(Map.of());
+                case "other-group" -> when(index.loadTaskBindings(List.of("task"))).thenReturn(Map.of(
+                        "task", new TaskRuleBinding("worker.default", "other-group",
+                                List.of(new RefillTarget(Map.of(), 100)))));
+                case "read-failure" -> when(index.loadTaskBindings(List.of("task")))
+                        .thenThrow(new IllegalStateException("unavailable"));
+                default -> throw new AssertionError(condition);
+            }
+            var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
+                    dispatch, index, refill, null, AssignmentDispatchConfig.defaults(), null);
+            var executor = new ManualExecutor();
+            scheduler.new SchedulerRun(executor, () -> 0).step();
+            while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
+            verify(dispatch).dispatchTasks(eq(List.of(new ObservedTask(descriptor(), 123L))),
+                    argThat(bindings -> bindings.get("task") == null));
+            verify(refill).refill(eq(List.of("group")), argThat(bindings -> bindings.get("task") == null));
+            verify(index).loadTaskBindings(List.of("task"));
+            verifyNoMoreInteractions(index);
+        }
     }
 
     private static TaskRuntime.TaskDescriptor descriptor() {

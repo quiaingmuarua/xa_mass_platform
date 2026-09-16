@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-class RefillBatchTest {
+class NamedPoolOperationsTest {
     final RedisClient client=mock(RedisClient.class);
     @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
     @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
@@ -39,7 +39,7 @@ class RefillBatchTest {
             return Arrays.stream(ids).map(id->bindings.containsKey(id)
                     ?KeyValue.just(id,bindings.get(id)):KeyValue.<String,String>empty(id)).toList();
         });
-        storage=new RedisRuleStorage(client,new RedisKeyspace("test_refill_batch"),Map.of(),clock::get);
+        storage=new RedisRuleStorage(client,new RedisKeyspace("test_named_pool"),Map.of(),clock::get);
         rule=new CountingRule(storage); failingRule=new CountingRule(storage);
         catalog=new RedisWorkerMatchingCatalog(storage,
                 Map.of("worker.default",new DefaultRuleHandler(storage,Map.of()),"test.pool",rule,"zz.fail",failingRule),
@@ -57,129 +57,156 @@ class RefillBatchTest {
         return Arrays.stream(ids).map(id->new HeldCandidate(id,20,2000)).toList();
     }
 
-    @Test void oneBatchMergesTaskTargetsAndRetainsItsClosedInput() {
+    Map<String,Map<String,List<RefillTarget>>> targets(String... taskIds) {
+        var result=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
+        catalog.loadTaskBindings(List.of(taskIds)).values().forEach(binding->{
+            if(binding!=null)result.computeIfAbsent(binding.workerGroupId(),k->new LinkedHashMap<>())
+                    .computeIfAbsent(binding.ruleId(),k->new ArrayList<>()).addAll(binding.refillTargets());
+        });
+        return result;
+    }
+
+    @Test void namedOperationsMergeSharedTaskTargetsWithoutBindingReads() {
         bind("a","g1",List.of(pool(1,"US")));
         bind("b","g1",List.of(pool(2,"US","US")));
         bind("c","g2",List.of(pool(1,"CN")));
         rule.facts.putAll(Map.of("w1","US","w2","US","w3","US","w4","CN"));
-        var tasks=new LinkedHashMap<>(catalog.prepareTaskQueries(Map.of("a","g1","b","g1","c","g2")));
-        assertTrue(rule.observedTargets.isEmpty(),"admission must not inspect eligibility");
-        var batch=catalog.prepareRefill(tasks);
-        assertEquals(Set.of("g1","g2"),batch.groupsNeedingRefill());
-        assertEquals(2,rule.observedTargets.size());
-        assertTrue(rule.observedTargets.contains(pool(2,"US").query()),"duplicate targets must merge using MAX");
-        int preparedNormalizations=rule.normalizations;
+        var targets=targets("a","b","c");
+        assertTrue(rule.observedTargets.isEmpty());
         clearInvocations(redis);
-        tasks.clear(); // No later Group may reconstruct its inputs from the caller's Map.
-        assertEquals(2,batch.refill("g1",offer("w1","w2","w3")));
-        assertEquals(1,batch.refill("g2",offer("w4")));
-        assertEquals(2,rule.observedTargets.size());
-        assertTrue(rule.normalizations>=preparedNormalizations);
-        assertEquals(List.of(List.of("w1","w2","w3"),List.of("w4")),rule.snapshots);
+        var needed=catalog.groupsNeedingRefill(targets);
+        assertEquals(Set.of("g1","g2"),needed);
+        assertThrows(UnsupportedOperationException.class,needed::clear);
+        assertEquals(2,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
+        assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
+        assertEquals(List.of("w1","w2"),catalog.take("g1","test.pool",Map.of(ANY,2)).get(ANY)
+                .stream().map(HeldCandidate::workerId).toList());
+        assertEquals(List.of("w4"),catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY)
+                .stream().map(HeldCandidate::workerId).toList());
         verifyNoInteractions(redis);
     }
 
-    @Test void preparationHintIsNotAReservationAndAdmissionUsesCurrentStockAndProjection() {
-        bind("a","g1",List.of(pool(1,"US")));
+    @Test void namedRefillAndTakeNeedNeitherTaskBindingNorPreparation() {
+        rule.facts.putAll(Map.of("a","US","b","US"));
+        var targets=Map.of("test.pool",List.of(pool(1,"US")));
+        assertEquals(1,catalog.refill("g1",targets,offer("a")));
+        assertTrue(catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertEquals(1,catalog.refill("g2",targets,offer("b")));
+        assertEquals("a",catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals("b",catalog.take("g2","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        verifyNoInteractions(redis);
+    }
+
+    @Test void observationIsNotAReservationAndAdmissionUsesCurrentStock() {
         rule.facts.putAll(Map.of("first","US","second","US"));
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1"));
-        var stale=catalog.prepareRefill(tasks);
-        var winner=catalog.prepareRefill(tasks);
-        assertEquals(1,winner.refill("g1",offer("first")));
-        int snapshots=rule.snapshots.size();
-        assertEquals(0,stale.refill("g1",offer("second")));
-        assertEquals(snapshots,rule.snapshots.size());
-        assertEquals(1,tasks.get("a").take(Map.of(ANY,1)).get(ANY).size());
-        var full=catalog.prepareRefill(tasks);
-        assertEquals(Set.of("g1"),full.groupsNeedingRefill());
-        rule.facts.put("second","CN");
-        assertEquals(0,full.refill("g1",offer("second")));
-        assertTrue(tasks.get("a").take(Map.of(ANY,1)).get(ANY).isEmpty());
+        var targets=Map.of("test.pool",List.of(pool(1,"US")));
+        assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",targets)));
+        assertEquals(1,catalog.refill("g1",targets,offer("first")));
+        int reads=rule.snapshots.size();
+        assertEquals(0,catalog.refill("g1",targets,offer("second")));
+        assertEquals(reads,rule.snapshots.size());
+        assertTrue(catalog.groupsNeedingRefill(Map.of("g1",targets)).isEmpty());
+        catalog.take("g1","test.pool",Map.of(ANY,1));
+        assertEquals(1,catalog.refill("g1",targets,offer("second")));
     }
 
-    @Test void foreignGroupsAreRejectedBeforeProjection() {
-        bind("a","g1",List.of(pool(1,"US")));
-        var batch=catalog.prepareRefill(catalog.prepareTaskQueries(Map.of("a","g1")));
-        assertThrows(IllegalArgumentException.class,()->batch.refill("g2",offer("w")));
-        assertTrue(rule.snapshots.isEmpty());
-        assertThrows(UnsupportedOperationException.class,()->batch.groupsNeedingRefill().clear());
-    }
-
-    @Test void onlyVisitedTargetPagesReachRulesAndNextRoundAdvances() {
-        var first=new ArrayList<RefillTarget>();var second=new ArrayList<RefillTarget>();
-        for(int i=0;i<200;i++)(i<100?first:second).add(pool(1,String.format("p%03d",i)));
-        bind("a","g1",first);bind("b","g1",second);
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1","b","g1"));
-        var batch=catalog.prepareRefill(tasks);
+    @Test void observationDoesNotAdvancePagesAndActualRefillAttemptsDo() {
+        var targets=new ArrayList<RefillTarget>();
+        for(int i=0;i<200;i++)targets.add(pool(1,String.format("p%03d",i)));
+        var rules=Map.of("test.pool",List.copyOf(targets));
+        catalog.groupsNeedingRefill(Map.of("g1",rules));
+        catalog.groupsNeedingRefill(Map.of("g1",rules));
         assertEquals(100,rule.observedTargets.size());
-        assertEquals(0,batch.refill("g1",offer("missing")));
-        assertEquals(100,rule.observedTargets.size(),"the first refill uses the same bounded target page");
-        catalog.prepareRefill(tasks);
-        assertEquals(200,rule.observedTargets.size(),"the next round reaches the next bounded target page");
+        assertEquals(0,catalog.refill("g1",rules,offer("missing")));
+        assertEquals(100,rule.observedTargets.size());
+        catalog.groupsNeedingRefill(Map.of("g1",rules));
+        assertEquals(200,rule.observedTargets.size());
     }
 
-    @Test void invalidBatchIsRejectedBeforeProjectionAndStockChanges() {
-        bind("a","g1",List.of(pool(1,"US")));
-        rule.facts.put("w","US");
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1"));
-        var batch=catalog.prepareRefill(tasks);
-        assertThrows(IllegalArgumentException.class,()->batch.refill("g1",offer("w","w")));
-        assertThrows(IllegalArgumentException.class,()->batch.refill("g1",offer("")));
-        assertThrows(IllegalArgumentException.class,()->batch.refill("g1",java.util.stream.IntStream.range(0,101)
-                .mapToObj(i->new HeldCandidate("w"+i,20,2000)).toList()));
-        assertThrows(NullPointerException.class,()->batch.refill("g1",Arrays.asList((HeldCandidate)null)));
+    @Test void invalidCoordinatesAndBatchBoundsFailBeforeQualification() {
+        var targets=Map.of("test.pool",List.of(pool(1,"US")));
+        assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,offer("w","w")));
+        assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,offer("")));
+        assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,
+                java.util.stream.IntStream.range(0,101).mapToObj(i->new HeldCandidate("w"+i,20,2000)).toList()));
+        assertThrows(NullPointerException.class,()->catalog.refill("g1",targets,Arrays.asList((HeldCandidate)null)));
+        assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",Map.of("missing",List.of(pool(1,"US"))),offer("w")));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g2","zz.fail",Map.of(ANY,1)));
+        assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g1","missing",ANY));
+        assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",List.of()))));
+        assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",Collections.nCopies(10_001,pool(1,"US"))))));
+        var tooMany=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
+        for(int i=0;i<101;i++)tooMany.put("g"+i,Map.of("worker.default",List.of(new RefillTarget(Map.of(),1))));
+        assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(tooMany));
+        tooMany.remove("g100");
+        tooMany.put("g1",Map.of("worker.default",List.of(new RefillTarget(Map.of(),1)),
+                "test.pool",List.of(pool(1,"US"))));
+        assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(tooMany));
         assertTrue(rule.snapshots.isEmpty());
-        assertTrue(tasks.get("a").take(Map.of(ANY,1)).get(ANY).isEmpty());
+        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        verifyNoInteractions(redis);
     }
 
-    @Test void expiredOffersAreExcludedAndTheOriginalFenceAndDeadlineSurviveAdmission() {
-        bind("a","g1",List.of(pool(2,"US")));
+    @Test void declarationCeilingsAreAcceptedAndEquivalentTargetsUseMax() {
+        var rules=Map.of("worker.default",Collections.nCopies(10_000,new RefillTarget(Map.of(),1)));
+        assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",rules)));
+        assertEquals(1,catalog.refill("g1",rules,offer("first","second")));
+        var groups=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
+        for(int i=0;i<100;i++)groups.put("group"+i,Map.of("worker.default",List.of(new RefillTarget(Map.of(),1))));
+        assertEquals(100,catalog.groupsNeedingRefill(groups).size());
+    }
+
+    @Test void expiredOffersAreExcludedAndOriginalFenceSurvives() {
         rule.facts.putAll(Map.of("old","US","live","US"));
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1"));
         var live=new HeldCandidate("live",21,2000);
-        assertEquals(1,catalog.prepareRefill(tasks).refill("g1",List.of(new HeldCandidate("old",20,1000),live)));
+        assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(2,"US"))),
+                List.of(new HeldCandidate("old",20,1000),live)));
         assertEquals(List.of(List.of("live")),rule.snapshots);
-        assertSame(live,tasks.get("a").take(Map.of(ANY,1)).get(ANY).getFirst());
+        assertSame(live,catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst());
     }
 
-    @Test void matchingTimeConsumesTheLeaseAndCannotRestartItsDeadline() {
-        bind("a","g1",List.of(pool(1,"US")));
-        rule.facts.put("w","US");
-        rule.beforeSnapshot=()->clock.set(2000);
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1"));
-        assertEquals(0,catalog.prepareRefill(tasks).refill("g1",offer("w")));
+    @Test void qualificationConsumesOriginalDeadline() {
+        rule.facts.put("w","US"); rule.beforeSnapshot=()->clock.set(2000);
+        var targets=Map.of("test.pool",List.of(pool(1,"US")));
+        assertEquals(0,catalog.refill("g1",targets,offer("w")));
         assertEquals(List.of(List.of("w")),rule.snapshots);
-        assertTrue(tasks.get("a").take(Map.of(ANY,1)).get(ANY).isEmpty());
-        assertEquals(Set.of("g1"),catalog.prepareRefill(tasks).groupsNeedingRefill());
+        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",targets)));
     }
 
-    @Test void laterHandlerFailurePreservesEarlierAdmission() {
-        bind("a","g1",List.of(pool(1,"US")));
-        bindings.put("b",json.writeValueAsString(Map.of("workerGroupId","g1","ruleId","zz.fail",
-                "refillTargets",List.of(pool(1,"CN")))));
+    @Test void laterRuleFailurePreservesEarlierAdmission() {
         rule.facts.put("us","US");
         failingRule.beforeSnapshot=()->{throw new IllegalStateException("projection failed");};
-        var tasks=catalog.prepareTaskQueries(Map.of("a","g1","b","g1"));
-        assertThrows(IllegalStateException.class,()->catalog.prepareRefill(tasks).refill("g1",offer("us","cn")));
+        var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"CN")));
+        assertThrows(IllegalStateException.class,()->catalog.refill("g1",targets,offer("us","cn")));
         assertEquals(List.of(List.of("us","cn")),rule.snapshots);
-        assertEquals(List.of("us"),tasks.get("a").take(Map.of(ANY,1)).get(ANY).stream().map(HeldCandidate::workerId).toList());
-        assertTrue(tasks.get("b").take(Map.of(ANY,1)).get(ANY).isEmpty());
+        assertEquals(List.of("us"),catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).stream().map(HeldCandidate::workerId).toList());
+        assertTrue(catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).isEmpty());
     }
 
-    @Test void catalogWorksWithAnIndependentMapRuleWithoutRedisOrProjectionProtocols() {
+    @Test void acceptedIdsAreExcludedFromLaterRulesAndRuleAttemptsRotate() {
+        rule.facts.putAll(Map.of("a","US","b","US"));
+        failingRule.facts.putAll(rule.facts);
+        var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"US")));
+        assertEquals(2,catalog.refill("g1",targets,offer("a","b")));
+        assertEquals(List.of(List.of("b")),failingRule.snapshots);
+        assertEquals("a",catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals("b",catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+        assertEquals(1,catalog.refill("g1",targets,offer("a")));
+        assertEquals("a",catalog.take("g1","zz.fail",Map.of(ANY,1)).get(ANY).getFirst().workerId());
+    }
+
+    @Test void catalogWorksWithIndependentMapRuleWithoutBindingsOrRedis() {
         RuleHandler mapRule=new MapRule();
-        var target=new RefillTarget(Map.of(),2);
-        bindings.put("map",json.writeValueAsString(Map.of("workerGroupId","g1","ruleId","map",
-                "refillTargets",List.of(target))));
         try(var other=new RedisWorkerMatchingCatalog(storage,
                 Map.of("worker.default",new DefaultRuleHandler(storage,Map.of()),"map",mapRule),
                 Map.of("g1",Set.of("map")),Map.of())) {
-            var tasks=other.prepareTaskQueries(Map.of("map","g1"));
-            tasks.get("map").normalize(ANY); clearInvocations(redis);
-            assertEquals(Set.of("g1"),other.prepareRefill(tasks).groupsNeedingRefill());
+            var targets=Map.of("map",List.of(new RefillTarget(Map.of(),2)));
+            assertEquals(ANY,other.normalizeQuery("g1","map",ANY));
+            assertEquals(Set.of("g1"),other.groupsNeedingRefill(Map.of("g1",targets)));
             var held=offer("first","second");
-            assertEquals(2,other.prepareRefill(tasks).refill("g1",held));
-            assertEquals(held,tasks.get("map").take(Map.of(ANY,2)).get(ANY));
+            assertEquals(2,other.refill("g1",targets,held));
+            assertEquals(held,other.take("g1","map",Map.of(ANY,2)).get(ANY));
             verifyNoInteractions(redis);
         }
     }

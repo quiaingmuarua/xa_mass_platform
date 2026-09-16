@@ -85,6 +85,8 @@ runtime_boundary:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 worker_correctness:
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/TaskRuleBinding.java'
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
   - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
@@ -239,6 +241,8 @@ android_host:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 android_emulator:
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/TaskRuleBinding.java'
   - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'

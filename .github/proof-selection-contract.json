@@ -744,6 +744,36 @@
         "product_coexistence"
       ],
       "reason": "Refill acquisition preserves opaque HOT and exact fence authority across Pacer and real Worker proofs."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/TaskRuleBinding.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Moved Matching data contract preserves the original Matching production proof selection."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Moved Matching data contract preserves the original Matching production proof selection."
     }
   ]
 }

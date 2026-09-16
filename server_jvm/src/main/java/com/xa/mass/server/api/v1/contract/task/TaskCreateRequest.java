@@ -3,7 +3,7 @@ package com.xa.mass.server.api.v1.contract.task;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import com.xa.mass.workermatching.RefillTarget;
+import com.xa.mass.kernel.assignment.RefillTarget;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 

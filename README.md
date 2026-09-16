@@ -30,7 +30,8 @@ scheduling eligibility.
 TASK
 API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
     -> Pacer acquires 1-second candidate leases; Matching qualifies and stocks the same fences
-    -> Item selectors consume held stock; Kernel checks exact clean fences
+    -> Pacer calls Matching with Group, Rule name and Item demand to consume held stock
+    -> Kernel checks exact clean fences
     -> Kernel confirms the Worker hold, claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence

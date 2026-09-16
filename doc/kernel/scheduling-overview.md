@@ -26,12 +26,12 @@ Server creation
 
 Kernel Main Scheduler
   -> bounded due RUNNING observation -> INITIAL initialization
-  -> NORMAL descriptors -> Task dispatch and optional Serviceability
+  -> NORMAL descriptors -> one bounded immutable Task binding data read
+  -> refill, Task dispatch and optional Serviceability
 
 Task dispatch
-  -> one bounded Task binding read -> prepared Task queries
   -> due Items; TTL/exhaustion settlement
-  -> Rule-owned stock of previously acquired candidates
+  -> explicit Group + Rule name + query -> Rule-owned candidate stock
   -> exact Worker confirmation -> exact Item claim -> Command
   -> ACTIVE recheck before exact Task close or idle park
 ```
@@ -46,8 +46,9 @@ Each Matching Rule owns qualification, deficits, admission and atomic consumptio
 for its Group inventory; Catalog coordinates bindings and bounded batches.
 Pacer acquires candidate leases before Rule qualification. Kernel confirms the
 original fences, rejecting dirty/stale evidence. Unselected
-or rejected holds expire naturally. Kernel never reads Rule IDs, facts or index
-coordinates. See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
+or rejected holds expire naturally. Pacer carries Rule names and ordinary data;
+it does not interpret business queries, read facts or construct index coordinates.
+See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
 
 ## Results And Recovery
 

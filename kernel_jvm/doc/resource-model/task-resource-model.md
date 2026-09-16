@@ -5,8 +5,9 @@ Status: active Java Kernel Task scheduling metadata contract.
 ## Owner Boundary
 
 Kernel owns scheduling, claim, retry and finality. Matching owns Task-to-Rule
-bindings, facts and Rule semantics. Kernel never stores a Rule ID, matching mode,
-index key or per-Task candidate capacity.
+bindings, facts and Rule semantics. The Kernel Task Owner never persists a Rule
+ID, matching mode, index key or per-Task candidate capacity. Shared assignment
+types carry Matching configuration data without moving its storage ownership.
 
 ```text
 TaskDescriptor = taskId, workerGroupId, idleDisposition, config
@@ -26,22 +27,23 @@ idempotent; rebinding conflicts. A failed descriptor write may leave an inert
 binding. These writes are not transactional and Matching has no Task lifecycle.
 
 Before Item append or managed Call, Server captures the selector with Kernel's
-bounded parser and validates it with the prepared Matching query. Kernel stores
+bounded parser and validates it through Matching using the binding Group and Rule name. Kernel stores
 the immutable Map unchanged. ANY is `{}`; explicit IDs use the sole key
 `workerId`; other maps are Handler-owned property conditions, including bounded
 multi-field AND queries. Kernel does not interpret operators or facts.
 
 ## Scheduling Handoff
 
-Main resolves at most 100 NORMAL Task IDs/Groups through one `prepareTaskQueries`
-call shared by refill and dispatch. Missing or unusable bindings block assignment.
-The refill Producer prepares one Matching `RefillBatch` from those views. It merges
-stored targets once by shared Group/Rule and normalized query, reuses visited queries,
-then qualifies only Pacer-issued, already leased candidates. Pacer acquires the
-1-second lease before Matching reads projections; stock retains that fence and
-original deadline without renewal. Task views reference shared stock without carrying Rule coordinates
-or targets into Kernel. The batch exposes only Group demand hints and supplied-ID
-admission; Kernel retains Group scheduling. All Item selectors consume that local inventory.
+Main reads at most 100 NORMAL Task bindings through one `loadTaskBindings`
+HMGET shared by refill and dispatch. These are ordinary immutable data; callers
+check their Group against the Task descriptor. Missing or unusable bindings block
+assignment. Pacer carries Rule names without interpreting query fields.
+The refill Producer concatenates Task targets by Group/Rule. Matching observes
+shortages and admits candidates through separate named calls, normalizing targets
+with MAX and preserving bounded paging. Pacer acquires the 1-second lease before
+Matching reads eligibility; stock retains that fence and deadline without renewal.
+Dispatch calls Matching with the explicit Group, Rule name and Item demand. No
+executable binding view or refill callback crosses the module boundary.
 
 Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution
 confirmation, Item claim and Command construction. Properties invalidate old

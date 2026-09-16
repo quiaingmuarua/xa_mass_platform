@@ -1,5 +1,6 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
@@ -269,7 +270,7 @@ class RuleEligibilityTest {
         assertEquals(0,storage.availableCapacity());
         assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).isEmpty());
         clock.set(6000);
-        assertEquals(0,storage.availableCapacity(),"unrelated expiry is reclaimed only at preparation");
+        assertEquals(0,storage.availableCapacity(),"unrelated expiry requires global shortage-observation cleanup");
         storage.expireCandidates(); assertEquals(10_000,storage.availableCapacity());
         for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).size());
         assertTrue(defaults.refill("other",targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).isEmpty());

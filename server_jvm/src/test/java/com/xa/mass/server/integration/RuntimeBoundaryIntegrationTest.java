@@ -1,5 +1,7 @@
 package com.xa.mass.server.integration;
 
+import static org.mockito.ArgumentMatchers.anyString;
+
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,9 +46,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.RefillBatch;
-import com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
+import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -417,8 +418,8 @@ class RuntimeBoundaryIntegrationTest {
                         "CN", Map.of("executor", secondId, "host", "second"),
                         "US", Map.of("executor", firstId, "host", "first")));
                 assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
-                verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).prepareTaskQueries(org.mockito.ArgumentMatchers.argThat(
-                        tasks -> tasks!=null && (group.equals(tasks.get(indexedFirst)) || group.equals(tasks.get(indexedSecond)))));
+                verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).loadTaskBindings(org.mockito.ArgumentMatchers.argThat(
+                        tasks -> tasks!=null && (tasks.contains(indexedFirst) || tasks.contains(indexedSecond))));
                 assertThat(matchingCatalog.loadTaskBindings(List.of(indexedFirst, indexedSecond)).values())
                         .allSatisfy(rule -> assertThat(rule.ruleId()).isEqualTo("worker.country"));
                 assertThat(first.snapshot().workerId()).isEqualTo(firstId);
@@ -477,8 +478,8 @@ class RuntimeBoundaryIntegrationTest {
                     assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor",workerId);
                 }
             }
-            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).prepareRefill(org.mockito.ArgumentMatchers.argThat(
-                    prepared -> prepared!=null && prepared.keySet().containsAll(tasks.keySet())));
+            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).loadTaskBindings(org.mockito.ArgumentMatchers.argThat(
+                    ids -> ids!=null && ids.containsAll(tasks.keySet())));
             assertThat(matchingCatalog.loadTaskBindings(List.copyOf(tasks.keySet())).values())
                     .allSatisfy(binding -> assertThat(binding.ruleId()).isEqualTo(BucketRuleHandler.ID));
             verify(preparationService,times(1)).prepareAll(eq(group),any(),any(),anyList());
@@ -540,27 +541,28 @@ class RuntimeBoundaryIntegrationTest {
             var multiGroupRoot=new java.util.concurrent.atomic.AtomicBoolean();
             var supplied=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();
             doAnswer(call->{
-                Map<String,TaskQuery> prepared=call.getArgument(0);
-                var batch=(RefillBatch)call.callRealMethod();
-                var selected=prepared.keySet().stream().filter(taskGroups::containsKey).toList();
-                if(selected.stream().filter(id->groupA.equals(taskGroups.get(id))).count()==3)multiRuleRoot.set(true);
-                if(selected.stream().map(taskGroups::get).distinct().count()==2)multiGroupRoot.set(true);
-                return new RefillBatch() {
-                    public Set<String> groupsNeedingRefill() { return batch.groupsNeedingRefill(); }
-                    public int refill(String group,List<HeldCandidate> offered) {
-                        if(!Set.of(groupA,groupB).contains(group))return batch.refill(group,offered);
-                        supplied.add(group);
-                        // Proof-only read: the production handoff performs no confirmation read.
-                        var states=workerScores.getScoreStates(group,offered.stream().map(HeldCandidate::workerId).toList());
-                        for(var held:offered) {
-                            assertThat(identities.get(held.workerId())).containsEntry("group",group);
-                            assertThat(states.get(held.workerId()).score()).isEqualTo(held.score());
-                            assertThat(states.get(held.workerId()).dirty()).isZero();
-                        }
-                        return batch.refill(group,offered);
+                Map<String,Map<String,List<RefillTarget>>> targets=call.getArgument(0);
+                var rules=targets.get(groupA);
+                if(rules!=null && rules.containsKey("worker.messaging.available")
+                        && rules.getOrDefault("worker.country",List.of()).size()==2)multiRuleRoot.set(true);
+                if(targets.containsKey(groupA) && targets.containsKey(groupB))multiGroupRoot.set(true);
+                return call.callRealMethod();
+            }).when(matchingCatalog).groupsNeedingRefill(anyMap());
+            doAnswer(call->{
+                String group=call.getArgument(0);
+                List<HeldCandidate> offered=call.getArgument(2);
+                if(Set.of(groupA,groupB).contains(group)) {
+                    supplied.add(group);
+                    // Proof-only read: production still carries the fence without reading it back.
+                    var states=workerScores.getScoreStates(group,offered.stream().map(HeldCandidate::workerId).toList());
+                    for(var held:offered) {
+                        assertThat(identities.get(held.workerId())).containsEntry("group",group);
+                        assertThat(states.get(held.workerId()).score()).isEqualTo(held.score());
+                        assertThat(states.get(held.workerId()).dirty()).isZero();
                     }
-                };
-            }).when(matchingCatalog).prepareRefill(anyMap());
+                }
+                return call.callRealMethod();
+            }).when(matchingCatalog).refill(anyString(),anyMap(),anyList());
             for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
             var pending=new LinkedHashMap<String,List<String>>();tasks.forEach((task,ids)->pending.put(task,new ArrayList<>(ids)));
             long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
@@ -589,7 +591,8 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(supplied).containsExactlyInAnyOrder(groupA,groupB);
             for(String task:tasks.keySet())awaitTaskExport(task);
         } finally {
-            doCallRealMethod().when(matchingCatalog).prepareRefill(anyMap());
+            doCallRealMethod().when(matchingCatalog).groupsNeedingRefill(anyMap());
+            doCallRealMethod().when(matchingCatalog).refill(anyString(),anyMap(),anyList());
             for(var worker:workers)worker.close();
         }
     }

@@ -25,3 +25,6 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// RefillTarget uses standard constructor binding in the Server configuration.
+tasks.withType(JavaCompile).configureEach { options.compilerArgs.add('-parameters') }

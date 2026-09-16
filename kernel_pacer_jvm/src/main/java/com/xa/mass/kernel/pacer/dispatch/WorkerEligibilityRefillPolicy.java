@@ -1,6 +1,10 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex;
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
+import com.xa.mass.kernel.assignment.RefillTarget;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import com.xa.mass.kernel.assignment.WorkerCandidateIndex.HeldCandidate;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.ArrayList;
@@ -34,13 +38,25 @@ final class WorkerEligibilityRefillPolicy {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    int refill(List<String> rootGroups, Map<String, WorkerCandidateIndex.TaskQuery> tasks) {
+    int refill(List<String> rootGroups, Map<String, TaskRuleBinding> tasks) {
         if (rootGroups.size() > 100 || tasks.size() > 100) throw new IllegalArgumentException("at most 100 root coordinates");
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
         int start = lastAttemptedGroup == null ? 0 : (groups.indexOf(lastAttemptedGroup) + 1) % groups.size();
-        var batch = index.prepareRefill(tasks);
-        var neededGroups = batch.groupsNeedingRefill();
+        var collected = new LinkedHashMap<String, Map<String, List<RefillTarget>>>();
+        tasks.values().forEach(binding -> {
+            if (binding == null) return;
+            if (!groups.contains(binding.workerGroupId())) throw new IllegalArgumentException("binding Group outside root input");
+            collected.computeIfAbsent(binding.workerGroupId(), ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent(binding.ruleId(), ignored -> new ArrayList<>()).addAll(binding.refillTargets());
+        });
+        var targets = new LinkedHashMap<String, Map<String, List<RefillTarget>>>();
+        collected.forEach((group, rules) -> {
+            var captured = new LinkedHashMap<String, List<RefillTarget>>();
+            rules.forEach((rule, rows) -> captured.put(rule, List.copyOf(rows)));
+            targets.put(group, Collections.unmodifiableMap(captured));
+        });
+        var neededGroups = index.groupsNeedingRefill(Collections.unmodifiableMap(targets));
         int budget = ROUND_BUDGET, admitted = 0;
         for (int n = 0; n < groups.size() && budget > 0; n++) {
             String group = groups.get((start + n) % groups.size());
@@ -63,7 +79,7 @@ final class WorkerEligibilityRefillPolicy {
             } finally {
                 DispatchStageEvent.batch(acquiredAt, "INITIAL_HOLD", observed.size(), held.size(), failed);
             }
-            if (!held.isEmpty()) admitted += batch.refill(group, held);
+            if (!held.isEmpty()) admitted += index.refill(group, targets.get(group), held);
         }
         return admitted;
     }

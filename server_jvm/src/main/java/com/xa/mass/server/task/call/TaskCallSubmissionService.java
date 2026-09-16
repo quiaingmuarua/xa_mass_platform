@@ -1,5 +1,6 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
@@ -44,10 +45,10 @@ public final class TaskCallSubmissionService {
         // Capture every input, including duplicates, before any Owner call.
         List<EligibilityQuery> selectors = captureSelectors(items);
         TaskDescriptor descriptor = requireCallableTask(taskId);
-        com.xa.mass.kernel.assignment.WorkerCandidateIndex.TaskQuery query;
+        TaskRuleBinding binding;
         try {
-            query = matching.prepareTaskQueries(java.util.Map.of(taskId, descriptor.workerGroupId())).get(taskId);
-            if (query == null) throw new IllegalStateException("Task Rule binding unavailable");
+            binding = matching.loadTaskBindings(List.of(taskId)).get(taskId);
+            if (binding == null || !descriptor.workerGroupId().equals(binding.workerGroupId())) throw new IllegalStateException("Task Rule binding unavailable");
         } catch (RuntimeException error) {
             throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE,"taskRpc.prepareQuery",null,error);
         }
@@ -55,7 +56,7 @@ public final class TaskCallSubmissionService {
         var latest = new LinkedHashMap<String, TaskItem>();
         try {
             for (int i = 0; i < items.size(); i++) {
-                EligibilityQuery selector = query.normalize(selectors.get(i));
+                EligibilityQuery selector = matching.normalizeQuery(binding.workerGroupId(), binding.ruleId(), selectors.get(i));
                 TaskItemRequest item = items.get(i);
                 latest.put(item.messageId(), taskItems.callItem(item, createdAtMillis, selector));
             }
