@@ -52,21 +52,18 @@
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
       "HOT_ACQUIRE_POLARITY": 1,
-      "LANE_RANK_FACTOR": 100,
       "MAX_DIRTY": 1,
-      "MAX_LANE_RANK": 99,
       "MAX_SCORE_BATCH_SIZE": 100,
       "MAX_TIME_MILLIS": 9999999999900,
       "MAX_TIME_SLOT": 99999999999,
       "MIN_BASE": 1,
       "MIN_DIRTY": 0,
-      "MIN_LANE_RANK": 0,
       "MIN_TIME_MILLIS": 0,
       "MIN_TIME_SLOT": 0,
       "PAUSE_TIME_MILLIS": 9999999999900,
       "PAUSE_TIME_SLOT": 99999999999,
       "RECOVERY_RECHECK_POLARITY": -1,
-      "SLOT_FACTOR": 200,
+      "SLOT_FACTOR": 2,
       "SLOT_MILLIS": 100,
       "TIME_SCALE": 10,
       "ZERO_SCORE": 0,
@@ -173,8 +170,7 @@
   "dtos": {
     "WorkerScoreDelayTarget": [
       "observed_score",
-      "delay_millis",
-      "target_lane_rank"
+      "delay_millis"
     ],
     "TaskItemOutcomeObservation": [
       "message_id",
@@ -280,7 +276,6 @@
       "score",
       "polarity",
       "time_millis",
-      "lane_rank",
       "dirty"
     ],
     "WorkerScoreTransitionResult": [

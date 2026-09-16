@@ -72,8 +72,7 @@ public final class WorkerSchedulingService {
                     workerScores.rewriteCurrentScores(
                             workerGroupId,
                             List.of(workerId),
-                            WorkerScoreCore.PAUSE_TIME_MILLIS,
-                            null
+                            WorkerScoreCore.PAUSE_TIME_MILLIS
                     ),
                     workerId
             );

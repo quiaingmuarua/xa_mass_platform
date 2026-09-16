@@ -49,10 +49,11 @@ implemented. Score membership is registration existence, not online evidence.
 Every Pacer preset consumes network observations for best-effort activation.
 
 Worker Score uses package-private encoding arithmetic and fixed atomic Redis
-operations inside its existing provider. Pacer supplies recheck delay/rank; Worker
+operations inside its existing provider. Pacer supplies recheck delay; Worker
 event Mechanisms select polarity and exact-release semantics. The
 [Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
-defines composition, command budgets and unchanged persisted coordinates.
+defines composition and command budgets. Worker Score encodes only polarity,
+time and dirty. The new format has no old-layout compatibility or migration.
 
 ## Production Call Closure
 
@@ -69,8 +70,8 @@ API and the fixed production Pacers, including:
 - Serviceability probe request offer/consume and evidence append/consume.
 
 Worker Binding uses the new single-HASH layout and requires an exact-scope
-rebuild, with no compatibility reads. Score encoding and other owner keys remain
-unchanged; cold registration uses no Redis TIME or Score readback. Redis-sensitive
+rebuild, with no compatibility reads. Other owner keys remain unchanged. Worker Score uses its new time/dirty encoding;
+cold registration uses no Redis TIME or Score readback. Redis-sensitive
 claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
 Operations outside the production caller closure remain explicit gaps.
 

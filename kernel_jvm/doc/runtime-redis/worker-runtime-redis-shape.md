@@ -67,7 +67,7 @@ xa_mass:<scope>:worker:score:<workerGroupId>
 Only `WorkerScoreCore` interprets or mutates Score. `initializeRegisteredScores`
 accepts 1..100 unique IDs and uses one Lua call with ZADD NX, returning just the
 newly created ID set. The internal fixed cold coordinate is RECOVERY_RECHECK,
-timeSlot=1, laneRank=0, dirty=0 (currently -200). It uses no TIME, ZSCORE,
+timeSlot=1, dirty=0 (score -2). It uses no TIME, ZSCORE,
 ZMSCORE or confirmation read. Every existing Score value is preserved.
 
 Membership is registration existence, not availability. `sampleRegisteredWorkerIds`

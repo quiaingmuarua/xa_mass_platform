@@ -88,7 +88,7 @@ throughput or latency guarantees.
 ## Network Activation
 
 Every Worker starts cold, including Polling. The Score Owner uses
-RECOVERY_RECHECK / timeSlot=1 / laneRank=0 / dirty=0 (currently -200), outside
+RECOVERY_RECHECK / timeSlot=1 / dirty=0 (score -2), outside
 ordinary allocation, stale-HOT and recovery-recheck scan ranges.
 
 All Pacer presets consume network evidence. Verified Adapter connections and

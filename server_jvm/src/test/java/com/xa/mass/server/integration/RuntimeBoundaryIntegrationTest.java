@@ -263,7 +263,7 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(send("PATCH", "/api/v1/worker-groups/" + groupId + "/workers/" + firstId
                     + "/platform-properties", "{\"pool\":\"a\"}").statusCode()).isEqualTo(400);
             for (long time : List.of(System.currentTimeMillis() + 60_000, WorkerScoreCore.PAUSE_TIME_MILLIS)) {
-                workerScores.rewriteCurrentScores(groupId, ids, time, 17);
+                workerScores.rewriteCurrentScores(groupId, ids, time);
                 var before = workerScores.getScoreStates(groupId, ids);
                 assertThat(send("POST", route + "-batch", JSON.writeValueAsString(requests)).body())
                         .isEqualTo(batch.body());
@@ -1140,7 +1140,7 @@ class RuntimeBoundaryIntegrationTest {
                 WorkerScorePolarity.RECOVERY_RECHECK
         );
         assertThat(initial.timeMillis()).isEqualTo(100);
-        assertThat(initial.laneRank()).isZero();
+
         assertThat(initial.dirty()).isZero();
         assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
 
@@ -1175,8 +1175,7 @@ class RuntimeBoundaryIntegrationTest {
             );
             assertThat(disconnected.timeMillis())
                     .isGreaterThanOrEqualTo(connected.timeMillis());
-            assertThat(disconnected.laneRank())
-                    .isEqualTo(connected.laneRank());
+
 
             long reconnectEvidenceFloor = System.currentTimeMillis()
                     / WorkerScoreCore.SLOT_MILLIS
@@ -1200,8 +1199,7 @@ class RuntimeBoundaryIntegrationTest {
                             disconnected.timeMillis(),
                             reconnectEvidenceFloor
                     ));
-            assertThat(restored.laneRank())
-                    .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
+
 
             demandTaskId=createTask(workerGroupId,"worker.default");
             demandTaskCreated = true;
@@ -1376,7 +1374,7 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );
-        assertThat(after.laneRank()).isEqualTo(1);
+
     }
 
     private void awaitConnectionState(String workerId, String expectedState)

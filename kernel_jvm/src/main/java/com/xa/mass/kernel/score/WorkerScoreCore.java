@@ -20,13 +20,10 @@ public interface WorkerScoreCore {
     long MIN_TIME_MILLIS = 0;
     long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
     long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
-    int MIN_LANE_RANK = 0;
-    int MAX_LANE_RANK = 99;
-    int LANE_RANK_FACTOR = 100;
     int MIN_DIRTY = 0;
     int MAX_DIRTY = 1;
     int DIRTY_FACTOR = 2;
-    int SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR;
+    int SLOT_FACTOR = DIRTY_FACTOR;
     int MAX_SCORE_BATCH_SIZE = 100;
     int MAX_REGISTRATION_BATCH_SIZE = 100;
     int MAX_REGISTERED_WORKER_SAMPLE_LIMIT = 1000;
@@ -55,7 +52,7 @@ public interface WorkerScoreCore {
             int limit
     );
 
-    /** Reads the earliest due rechecks in the Owner's Redis-time window, without a cursor. */
+    /** Reads the earliest due rechecks after the cold slot, without an age limit or cursor. */
     List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
             String homeBucketId,
             int limit
@@ -76,8 +73,7 @@ public interface WorkerScoreCore {
     Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
             String homeBucketId,
             List<String> workerIds,
-            long targetTimeMillis,
-            @Nullable Integer targetLaneRank
+            long targetTimeMillis
     );
 
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
@@ -105,7 +101,7 @@ public interface WorkerScoreCore {
             long observedScore
     );
 
-    /** Defers an exact due coordinate to RECOVERY using a caller-supplied rank and delay. */
+    /** Sets the next eligible RECOVERY time from Redis time and a caller-supplied delay. */
     Map<String, WorkerScoreTransitionResult> deferObservedToRecovery(
             String homeBucketId, Map<String, WorkerScoreDelayTarget> targets
     );
@@ -113,7 +109,7 @@ public interface WorkerScoreCore {
     /**
      * Corrects current polarity when the stored slot is current/future or no later than
      * the supplied slot. Optional refresh advances only a strictly older past slot;
-     * rank and dirty are always retained.
+     * dirty is always retained.
      */
     Map<String, WorkerScoreTransitionResult>
             rewriteCurrentPolarityWithinTimeFence(
@@ -123,12 +119,11 @@ public interface WorkerScoreCore {
                     boolean refreshPastTime
             );
 
-    /** Exact-replaces a RECOVERY observation at the fixed cold slot with target rank 1..99. */
+    /** Exact-replaces a RECOVERY observation at the fixed cold slot, preserving dirty. */
     WorkerScoreTransitionResult parkObservedRecoveryScore(
             String homeBucketId,
             String workerId,
-            long observedScore,
-            int targetLaneRank
+            long observedScore
     );
 
     Map<String, WorkerScoreTransitionResult> releaseScoreHolds(
@@ -176,8 +171,8 @@ public interface WorkerScoreCore {
         }
     }
 
-    /** Carries an opaque fence, delay and target rank; the Owner validates numeric inputs. */
-    record WorkerScoreDelayTarget(long observedScore, long delayMillis, int targetLaneRank) {
+    /** Carries an opaque fence and eligibility delay; the Owner validates numeric inputs. */
+    record WorkerScoreDelayTarget(long observedScore, long delayMillis) {
     }
 
     record WorkerScoreState(
@@ -185,7 +180,6 @@ public interface WorkerScoreCore {
             long score,
             WorkerScorePolarity polarity,
             long timeMillis,
-            int laneRank,
             int dirty
     ) {
         public WorkerScoreState {

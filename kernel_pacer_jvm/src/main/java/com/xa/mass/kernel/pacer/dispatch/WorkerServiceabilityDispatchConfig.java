@@ -6,34 +6,26 @@ import java.util.List;
 record WorkerServiceabilityDispatchConfig(
         long intervalMillis,
         long hotEligibilityFloorMillis,
-        long probeRetryIntervalMillis,
-        int maxRecoveryAttempts,
+        long recheckDelayMillis,
+        long hotProbeStaleAfterMillis,
         List<String> probeExcludedEndpointManagerIds
 ) {
 
     public static final long DEFAULT_INTERVAL_MILLIS = 1_000;
-    public static final long DEFAULT_PROBE_RETRY_INTERVAL_MILLIS = 60_000;
-    public static final int DEFAULT_MAX_RECOVERY_ATTEMPTS = 5;
+    public static final long DEFAULT_RECHECK_DELAY_MILLIS = 15_000;
+    public static final long DEFAULT_HOT_PROBE_STALE_AFTER_MILLIS = 60_000;
     public static final List<String> DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS =
             List.of("system-polling");
 
     public WorkerServiceabilityDispatchConfig {
         if (intervalMillis < 1
-                || probeRetryIntervalMillis < 1) {
+                || recheckDelayMillis < 1
+                || hotProbeStaleAfterMillis < 1) {
             throw new IllegalArgumentException(
                     "serviceability durations must be positive"
             );
         }
         requireFloor(hotEligibilityFloorMillis);
-        if (maxRecoveryAttempts < 1
-                || maxRecoveryAttempts > WorkerScoreCore.MAX_LANE_RANK) {
-            throw new IllegalArgumentException(
-                    "maxRecoveryAttempts must be between 1 and 99"
-            );
-        }
-        if (probeRetryIntervalMillis > Long.MAX_VALUE / (maxRecoveryAttempts + 1L)) {
-            throw new IllegalArgumentException("serviceability retry delay must not overflow");
-        }
         if (probeExcludedEndpointManagerIds == null
                 || probeExcludedEndpointManagerIds.size() > 100) {
             throw new IllegalArgumentException(
@@ -59,8 +51,8 @@ record WorkerServiceabilityDispatchConfig(
         return new WorkerServiceabilityDispatchConfig(
                 DEFAULT_INTERVAL_MILLIS,
                 hotEligibilityFloorMillis,
-                DEFAULT_PROBE_RETRY_INTERVAL_MILLIS,
-                DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                DEFAULT_RECHECK_DELAY_MILLIS,
+                DEFAULT_HOT_PROBE_STALE_AFTER_MILLIS,
                 DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
         );
     }

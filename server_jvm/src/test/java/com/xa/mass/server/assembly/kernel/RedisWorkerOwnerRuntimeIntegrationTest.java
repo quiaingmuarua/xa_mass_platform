@@ -188,7 +188,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(redis.hget(bindingsKey(), "worker-0"))
                 .isEqualTo("{\"endpointManagerId\":\"endpoint-1\",\"workerGroupId\":\"group-1\"}");
         assertThat(redis.zmscore(scoreKey("group-1"), ids.toArray(String[]::new)))
-                .containsOnly(-200.0);
+                .containsOnly(-2.0);
         assertThat(catalog.registerWorkers("group-1", ids, "new-default").values()).allSatisfy(result -> {
             assertThat(result.status()).isEqualTo(RegistrationStatus.NOOP);
             assertThat(result.endpointManagerId()).isEqualTo("endpoint-1");
@@ -266,15 +266,15 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     .isSameAs(failure);
         }
         assertThat(catalog.getWorkerDescriptors(List.of("w"))).containsEntry("w", worker("w", "g", "endpoint"));
-        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(committed ? -200.0 : null);
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(committed ? -2.0 : null);
         var retry = catalog.registerWorkers("g", List.of("w"), "different-default").get("w");
         assertThat(retry.status()).isEqualTo(committed ? RegistrationStatus.NOOP : RegistrationStatus.OK);
         assertThat(retry.endpointManagerId()).isEqualTo("endpoint");
-        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-200.0);
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-2.0);
         redis.hdel(bindingsKey(), "w");
         assertThat(catalog.registerWorkers("g", List.of("w"), "endpoint").get("w").status())
                 .isEqualTo(RegistrationStatus.OK);
-        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-200.0);
+        assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(-2.0);
     }
 
     @Test
@@ -282,11 +282,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
         long now = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
         long[] shapes = {0, -200, -201, 1, -1,
-                workerScore(1, now, 5, 0), workerScore(1, now, 5, 1),
-                workerScore(-1, now, 5, 0), workerScore(-1, now, 5, 1),
-                workerScore(1, now + 600, 9, 1), workerScore(-1, now + 600, 9, 1),
-                workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0, 0),
-                workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 99, 1)};
+                workerScore(1, now, 0), workerScore(1, now, 1),
+                workerScore(-1, now, 0), workerScore(-1, now, 1),
+                workerScore(1, now + 600, 1), workerScore(-1, now + 600, 1),
+                workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0),
+                workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 1)};
         for (long shape : shapes) {
             redis.zadd(scoreKey("g"), shape, "w");
             catalog.registerWorkers("g", List.of("w"), "endpoint");
@@ -360,21 +360,21 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         catalog.registerWorkers("g", List.of("cold", "lease", "pause", "binding-only"), endpoint);
         redis.zrem(scoreKey("g"), "binding-only");
         long now = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
-        long lease = workerScore(-1, now + 600, 5, 1);
-        long pause = workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 9, 1);
+        long lease = workerScore(-1, now + 600, 1);
+        long pause = workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 1);
         redis.zadd(scoreKey("g"), lease, "lease");
         redis.zadd(scoreKey("g"), pause, "pause");
         var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(catalog, scoreCore);
         var wrong = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation("wrong", now * 100);
         events.onAvailable(Map.of("cold", wrong, "lease", wrong, "pause", wrong));
-        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo(-200.0);
+        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo(-2.0);
         assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) lease);
 
         // No retained first observation exists. A later actual observation alone activates.
         var valid = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation(endpoint, now * 100);
         events.onAvailable(Map.of("cold", valid, "lease", valid, "pause", valid,
                 "binding-only", valid, "missing", valid));
-        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0, 0));
+        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0));
         assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) -lease);
         assertThat(redis.zscore(scoreKey("g"), "pause")).isEqualTo((double) -pause);
         assertThat(redis.zscore(scoreKey("g"), "binding-only")).isNull();
@@ -387,13 +387,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long hotScore = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 currentSlot,
-                7,
                 1
         );
         long recoveryScore = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 currentSlot,
-                43,
                 0
         );
         redis.zadd(scoreKey("group-1"), hotScore, "hot-worker");
@@ -406,8 +404,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         var paused = scoreCore.rewriteCurrentScores(
                 "group-1",
                 List.of("hot-worker", "recovery-worker", "missing-worker"),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         );
 
         assertThat(paused.keySet()).containsExactly(
@@ -431,22 +428,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 pausedStates.get("hot-worker"),
                 WorkerScorePolarity.HOT_ACQUIRE,
                 WorkerScoreCore.PAUSE_TIME_MILLIS,
-                7,
                 1
         );
         assertScoreShape(
                 pausedStates.get("recovery-worker"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 WorkerScoreCore.PAUSE_TIME_MILLIS,
-                43,
                 0
         );
 
         var repeatedPause = scoreCore.rewriteCurrentScores(
                 "group-1",
                 List.of("hot-worker", "recovery-worker"),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         );
         assertThat(repeatedPause.values()).allSatisfy(result -> {
             assertThat(result.status())
@@ -482,14 +476,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 releasedStates.get("hot-worker"),
                 WorkerScorePolarity.HOT_ACQUIRE,
                 releasedTimeMillis,
-                7,
                 1
         );
         assertScoreShape(
                 releasedStates.get("recovery-worker"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 releasedTimeMillis,
-                43,
                 0
         );
     }
@@ -499,19 +491,16 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long firstObserved = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 WorkerScoreCore.PAUSE_TIME_SLOT,
-                3,
                 0
         );
         long secondObserved = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 WorkerScoreCore.PAUSE_TIME_SLOT,
-                4,
                 0
         );
         long secondCurrent = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 WorkerScoreCore.PAUSE_TIME_SLOT,
-                4,
                 1
         );
         redis.zadd(scoreKey("group-1"), firstObserved, "first-worker");
@@ -519,7 +508,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long ordinaryObserved = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS,
-                1,
                 0
         );
         long releaseTimeMillis = redisTimeMillis()
@@ -579,7 +567,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                         workerScore(
                                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                                 WorkerScoreCore.PAUSE_TIME_SLOT,
-                                WorkerScoreCore.MIN_LANE_RANK,
                                 WorkerScoreCore.MIN_DIRTY
                         )
                 ),
@@ -597,7 +584,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long observedHot = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 leaseSlot,
-                7,
                 1
         );
         long recoveryCounterpart = -observedHot;
@@ -641,18 +627,18 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(states.get("positive-worker").polarity()).isEqualTo(
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        assertThat(states.get("positive-worker").laneRank()).isEqualTo(7);
+
         assertThat(states.get("recovery-worker").polarity()).isEqualTo(
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        assertThat(states.get("recovery-worker").laneRank()).isEqualTo(7);
+
         assertThat(states.get("recovery-worker").dirty()).isEqualTo(1);
     }
 
     @Test
     void activeConfirmationAcceptsOnlyExactCleanHotFences() {
         long slot = redisTimeMillis() / 100 + 100;
-        long active = workerScore(1, slot, 7, 0);
+        long active = workerScore(1, slot, 0);
         String group = "group-lease-confirm";
         redis.zadd(scoreKey(group), active, "active");
         redis.zadd(scoreKey(group), active + 1, "dirty");
@@ -678,7 +664,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void readOnlyHeadRetainsScoreAndMemberOrderWithinOneCommand() {
-        long due = workerScore(1, redisTimeMillis() / 100 - 100, 7, 1);
+        long due = workerScore(1, redisTimeMillis() / 100 - 100, 1);
         var ids = java.util.stream.IntStream.range(0, 250)
                 .mapToObj(i -> "worker-%03d".formatted(i)).toList();
         ids.forEach(id -> redis.zadd(scoreKey("g"), due, id));
@@ -707,7 +693,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void observationFiltersCorruptRowsWithinTheRawLimitWithoutReplacementReads() {
         long slot = redisTimeMillis() / 100;
-        long eligible = workerScore(1, slot - 10, 7, 0);
+        long eligible = workerScore(1, slot - 10, 0);
         redis.zadd(scoreKey("g"), eligible, "clean");
         redis.zadd(scoreKey("g"), eligible + 0.25, "corrupt");
         redis.zadd(scoreKey("g"), eligible + 1, "dirty");
@@ -740,14 +726,14 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         scoreCore.observeDueHotScoreCandidates("g", null, 100);
         for (int attempt = 0; attempt < 8; attempt++) {
             long slot = redisTimeMillis() / 100;
-            long eligible = workerScore(1, slot - 10, 7, 0);
+            long eligible = workerScore(1, slot - 10, 0);
             redis.zadd(scoreKey("g"), eligible, "clean");
             redis.zadd(scoreKey("g"), eligible + 1, "dirty");
-            redis.zadd(scoreKey("g"), workerScore(1, slot - 20, 7, 0), "below-floor");
+            redis.zadd(scoreKey("g"), workerScore(1, slot - 20, 0), "below-floor");
             redis.zadd(scoreKey("g"), -eligible, "recovery");
-            redis.zadd(scoreKey("g"), workerScore(1, slot, 0, 0), "current");
-            redis.zadd(scoreKey("g"), workerScore(1, slot + 100, 7, 0), "occupied");
-            redis.zadd(scoreKey("g"), workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 7, 0), "pause");
+            redis.zadd(scoreKey("g"), workerScore(1, slot, 0), "current");
+            redis.zadd(scoreKey("g"), workerScore(1, slot + 100, 0), "occupied");
+            redis.zadd(scoreKey("g"), workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0), "pause");
             var observed = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * 100, 100);
             if (redisTimeMillis() / 100 != slot) continue; // Resample only a missed time window.
             assertThat(observed).containsExactly(Map.entry("clean", eligible), Map.entry("dirty", eligible + 1));
@@ -764,7 +750,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long dueScore = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 dueSlot,
-                WorkerScoreCore.MIN_LANE_RANK,
                 WorkerScoreCore.MIN_DIRTY
         );
         List<String> workerIds = java.util.stream.IntStream.range(0, 250)
@@ -816,8 +801,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void expiredCandidateLeaseRetainsItsNewPositionBehindOlderUnacquiredWorkers() throws Exception {
         long slot = redisTimeMillis() / 100;
-        long first = workerScore(1, slot - 20, 7, 1);
-        long olderUnacquired = workerScore(1, slot - 10, 7, 0);
+        long first = workerScore(1, slot - 20, 1);
+        long olderUnacquired = workerScore(1, slot - 10, 0);
         redis.zadd(scoreKey("g"), first, "first");
         redis.zadd(scoreKey("g"), olderUnacquired, "waiting");
         var observed = scoreCore.observeDueHotScoreCandidates("g", null, 1);
@@ -837,19 +822,16 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long hot = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 beforeSlot - 20,
-                7,
                 1
         );
         long recovery = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 beforeSlot - 20,
-                2,
                 1
         );
-        long exhausted = workerScore(
+        long invalidDelay = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 beforeSlot - 20,
-                WorkerScoreCore.MAX_LANE_RANK,
                 0
         );
         redis.zadd(scoreKey("group-serviceability"), hot, "hot");
@@ -860,23 +842,23 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         );
         redis.zadd(
                 scoreKey("group-serviceability"),
-                exhausted,
-                "exhausted"
+                invalidDelay,
+                "invalidDelay"
         );
 
         var hotResults = scoreCore
                 .deferObservedToRecovery(
                         "group-serviceability",
                         Map.of(
-                                "hot", new WorkerScoreDelayTarget(hot, 60_000, 0),
-                                "stale", new WorkerScoreDelayTarget(hot, 60_000, 0)
+                                "hot", new WorkerScoreDelayTarget(hot, 60_000),
+                                "stale", new WorkerScoreDelayTarget(hot, 60_000)
                         )
                 );
         var recoveryResults = scoreCore.deferObservedToRecovery(
                 "group-serviceability",
                 Map.of(
-                        "recovery", new WorkerScoreDelayTarget(recovery, 240_000, 3),
-                        "exhausted", new WorkerScoreDelayTarget(exhausted, 240_000, 100)
+                        "recovery", new WorkerScoreDelayTarget(recovery, 240_000),
+                        "invalidDelay", new WorkerScoreDelayTarget(invalidDelay, 0)
                 )
         );
 
@@ -889,13 +871,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(recoveryResults.get("recovery").status()).isEqualTo(
                 WorkerScoreTransitionStatus.TRANSITIONED
         );
-        assertThat(recoveryResults.get("exhausted").status()).isEqualTo(
+        assertThat(recoveryResults.get("invalidDelay").status()).isEqualTo(
                 WorkerScoreTransitionStatus.INVALID
         );
 
         Map<String, WorkerScoreState> held = scoreCore.getScoreStates(
                 "group-serviceability",
-                List.of("hot", "recovery", "exhausted")
+                List.of("hot", "recovery", "invalidDelay")
         );
         long afterSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
         assertThat(held.get("hot").timeMillis()
@@ -912,41 +894,35 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 held.get("hot"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 held.get("hot").timeMillis(),
-                0,
                 1
         );
         assertScoreShape(
                 held.get("recovery"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 held.get("recovery").timeMillis(),
-                3,
                 1
         );
-        assertThat(held.get("exhausted").score()).isEqualTo(exhausted);
+        assertThat(held.get("invalidDelay").score()).isEqualTo(invalidDelay);
 
         long currentSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
         long newer = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 currentSlot - 1,
-                4,
                 1
         );
         long future = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 currentSlot + 100,
-                5,
                 1
         );
         long pause = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 WorkerScoreCore.PAUSE_TIME_SLOT,
-                6,
                 1
         );
         long oldHot = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 currentSlot - 100,
-                8,
                 1
         );
         redis.zadd(scoreKey("group-serviceability"), newer, "newer");
@@ -1020,28 +996,24 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 finalStates.get("hot"),
                 WorkerScorePolarity.HOT_ACQUIRE,
                 held.get("hot").timeMillis(),
-                0,
                 1
         );
         assertScoreShape(
                 finalStates.get("future"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 (currentSlot + 100) * WorkerScoreCore.SLOT_MILLIS,
-                5,
                 1
         );
         assertScoreShape(
                 finalStates.get("pause"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 WorkerScoreCore.PAUSE_TIME_MILLIS,
-                6,
                 1
         );
         assertScoreShape(
                 finalStates.get("old-hot"),
                 WorkerScorePolarity.HOT_ACQUIRE,
                 currentSlot * WorkerScoreCore.SLOT_MILLIS,
-                8,
                 1
         );
     }
@@ -1051,7 +1023,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         for (int attempt = 0; attempt < 8; attempt++) {
             long now = redisTimeMillis();
             long target = (now / 100 + 10) * 100;
-            long due = workerScore(1, now / 100 - 2, 7, 0);
+            long due = workerScore(1, now / 100 - 2, 0);
             var observed = Map.of("early", due, "boundary", due, "confirm", due);
             observed.forEach((id, score) -> redis.zadd(scoreKey("g"), score, id));
             var held = scoreCore.acquireObservedHotScoreLeases("g", observed, target);
@@ -1088,7 +1060,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             var released = scoreCore.releaseObservedHotScoreHolds("g", Map.of("confirm", execution),
                     target + 500).get("confirm");
             assertThat(released.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-            assertThat(released.score()).isEqualTo(workerScore(1, target / 100 + 5, 7, 1));
+            assertThat(released.score()).isEqualTo(workerScore(1, target / 100 + 5, 1));
             return;
         }
         throw new AssertionError("Could not observe the lease boundary within eight Redis-timed attempts");
@@ -1112,7 +1084,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 var evidence = new LinkedHashMap<String, Long>();
                 for (int index = 0; index < 100; index++) {
                     String id = "worker-" + index;
-                    long score = workerScore(-target.value(), slot, index, index % 2);
+                    long score = workerScore(-target.value(), slot, index % 2);
                     original.put(id, score);
                     evidence.put(id, (slot - 1) * 100);
                     redis.zadd(scoreKey("g"), score, id);
@@ -1160,8 +1132,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void serviceabilityPastCoordinatesKeepFreshnessChecksAndPauseProtection(WorkerScorePolarity target) {
         long nowSlot = redisTimeMillis() / 100;
         long pastSlot = nowSlot - 20;
-        long past = workerScore(-target.value(), pastSlot, 9, 1);
-        long pause = workerScore(-target.value(), WorkerScoreCore.PAUSE_TIME_SLOT, 9, 1);
+        long past = workerScore(-target.value(), pastSlot, 1);
+        long pause = workerScore(-target.value(), WorkerScoreCore.PAUSE_TIME_SLOT, 1);
         for (String id : List.of("older", "same", "newer")) redis.zadd(scoreKey("g"), past, id);
         redis.zadd(scoreKey("g"), pause, "pause");
         var result = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", Map.of(
@@ -1177,7 +1149,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(result.get("same").score()).isEqualTo(-past);
         assertThat(result.get("newer").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         assertThat(result.get("newer").score()).isEqualTo(workerScore(target.value(),
-                target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot + 1 : pastSlot, 9, 1));
+                target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot + 1 : pastSlot, 1));
         assertThat(result.get("pause").score()).isEqualTo(-pause);
         assertThat(result.get("missing").status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
         assertThat(redis.zscore(scoreKey("g"), "missing")).isNull();
@@ -1190,7 +1162,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             competing.getScoreStates("g", List.of("w"));
             for (int attempt = 0; attempt < 8; attempt++) {
                 long slot = redisTimeMillis() / 100 + 10;
-                long held = workerScore(1, slot, 7, 0);
+                long held = workerScore(1, slot, 0);
                 redis.zadd(scoreKey("g"), held, "w");
                 var start = new CountDownLatch(1);
                 var confirmation = executor.submit(() -> {
@@ -1243,13 +1215,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long hotHigher = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 hotCutoffSlot - 1,
-                0,
                 0
         );
         long hotLower = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 hotCutoffSlot - 2,
-                0,
                 0
         );
         redis.zadd(scoreKey("group-range"), hotHigher, "hot-higher");
@@ -1257,7 +1227,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.zadd(scoreKey("group-range"), workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 hotCutoffSlot,
-                0,
                 0
         ), "hot-at-floor");
 
@@ -1267,7 +1236,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(scoreCore.acquireHotCandidatesBefore("group-range", hotCutoffMillis, 1))
                 .isEqualTo(firstHot);
         assertThat(scoreCore.deferObservedToRecovery("group-range",
-                Map.of("hot-higher", new WorkerScoreDelayTarget(hotHigher, 60_000, 0)))
+                Map.of("hot-higher", new WorkerScoreDelayTarget(hotHigher, 60_000)))
                 .get("hot-higher").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         var secondHot = scoreCore.acquireHotCandidatesBefore("group-range", hotCutoffMillis, 2);
         assertThat(firstHot).extracting(
@@ -1280,13 +1249,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long recoveryOlder = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 nowSlot - 100,
-                0,
                 0
         );
         long recoveryNewer = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 nowSlot - 50,
-                0,
                 0
         );
         redis.zadd(
@@ -1302,7 +1269,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.zadd(scoreKey("group-range"), workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 1,
-                5,
                 0
         ), "cold");
 
@@ -1312,7 +1278,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(scoreCore.acquireRecoveryRecheckCandidates("group-range", 1))
                 .isEqualTo(firstRecovery);
         assertThat(scoreCore.deferObservedToRecovery("group-range",
-                Map.of("recovery-older", new WorkerScoreDelayTarget(recoveryOlder, 60_000, 1)))
+                Map.of("recovery-older", new WorkerScoreDelayTarget(recoveryOlder, 60_000)))
                 .get("recovery-older").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         var secondRecovery = scoreCore.acquireRecoveryRecheckCandidates("group-range", 2);
         assertThat(firstRecovery).extracting(
@@ -1327,7 +1293,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
     void serviceabilityAdvancesAllEqualScoreWorkersFromTheSameHead(int polarity) {
         long nowSlot = redisTimeMillis() / 100;
-        long observed = workerScore(polarity, nowSlot - 100, 2, 1);
+        long observed = workerScore(polarity, nowSlot - 100, 1);
         var remaining = new java.util.HashSet<String>();
         for (int i = 0; i < 250; i++) {
             String id = "worker-" + i;
@@ -1343,7 +1309,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             head.forEach(row -> {
                 assertThat(remaining.remove(row.workerId())).isTrue();
                 assertThat(row.score()).isEqualTo(observed);
-                targets.put(row.workerId(), new WorkerScoreDelayTarget(row.score(), 60_000, polarity == 1 ? 0 : 3));
+                targets.put(row.workerId(), new WorkerScoreDelayTarget(row.score(), 60_000));
             });
             var results = scoreCore.deferObservedToRecovery("group-recheck-head", targets);
             assertThat(results).hasSize(expectedSize);
@@ -1356,7 +1322,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void recoveryReadAndAdvanceRespectTheCurrentSlotAndLookbackFloor() throws Exception {
+    void recoveryReadIncludesOldCoordinatesAndRespectsCurrentSlotAndColdFloor() throws Exception {
         for (int attempt = 0; attempt < 8; attempt++) {
             awaitRedisTime((redisTimeMillis() / 100 + 1) * 100);
             long now = redisTimeMillis();
@@ -1364,28 +1330,30 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             String group = "recheck-boundary-" + attempt;
             long floor = slot - 864_000;
             var scores = Map.of(
-                    "before-floor", workerScore(-1, floor - 1, 0, 0),
-                    "at-floor", workerScore(-1, floor, 0, 0),
-                    "due-high-rank", workerScore(-1, slot - 1, 4, 1),
-                    "current", workerScore(-1, slot, 0, 0),
-                    "future", workerScore(-1, slot + 100, 0, 0),
-                    "pause", workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 0, 0),
-                    "cold", workerScore(-1, 1, 5, 0));
+                    "older-than-day", workerScore(-1, floor - 1, 0),
+                    "one-day", workerScore(-1, floor, 0),
+                    "due-dirty", workerScore(-1, slot - 1, 1),
+                    "current", workerScore(-1, slot, 0),
+                    "future", workerScore(-1, slot + 100, 0),
+                    "pause", workerScore(-1, WorkerScoreCore.PAUSE_TIME_SLOT, 0),
+                    "cold", workerScore(-1, 1, 0),
+                    "cold-dirty", workerScore(-1, 1, 1),
+                    "first-valid", workerScore(-1, 2, 0));
             scores.forEach((id, score) -> redis.zadd(scoreKey(group), score, id));
             var head = scoreCore.acquireRecoveryRecheckCandidates(group, 100);
             var rejected = scoreCore.deferObservedToRecovery(group, Map.of(
-                    "current", new WorkerScoreDelayTarget(scores.get("current"), 1_000, 1),
-                    "future", new WorkerScoreDelayTarget(scores.get("future"), 1_000, 1),
-                    "pause", new WorkerScoreDelayTarget(scores.get("pause"), 1_000, 1),
-                    "due-high-rank", new WorkerScoreDelayTarget(scores.get("due-high-rank"),
-                            WorkerScoreCore.PAUSE_TIME_MILLIS - now + 100, 5)));
+                    "current", new WorkerScoreDelayTarget(scores.get("current"), 1_000),
+                    "future", new WorkerScoreDelayTarget(scores.get("future"), 1_000),
+                    "pause", new WorkerScoreDelayTarget(scores.get("pause"), 1_000),
+                    "due-dirty", new WorkerScoreDelayTarget(scores.get("due-dirty"),
+                            WorkerScoreCore.PAUSE_TIME_MILLIS - now + 100)));
             if (redisTimeMillis() / 100 != slot) continue;
             assertThat(head).extracting(WorkerScoreCore.WorkerScoreObservation::workerId)
-                    .containsExactly("at-floor", "due-high-rank");
+                    .containsExactly("first-valid", "older-than-day", "one-day", "due-dirty");
             for (String id : List.of("current", "future", "pause")) {
                 assertThat(rejected.get(id).status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
             }
-            assertThat(rejected.get("due-high-rank").status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
+            assertThat(rejected.get("due-dirty").status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
             scores.forEach((id, score) -> assertThat(redis.zscore(scoreKey(group), id)).isEqualTo(score.doubleValue()));
             // No sweep restart is required: the unchanged current-slot member becomes visible once due.
             awaitRedisTime((slot + 1) * 100);
@@ -1400,9 +1368,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
     void concurrentServiceabilityHoldsHaveOneWinnerAndCannotAdvanceAgainBeforeDue(int polarity)
             throws Exception {
-        long observed = workerScore(polarity, redisTimeMillis() / 100 - 10, 2, 1);
+        long observed = workerScore(polarity, redisTimeMillis() / 100 - 10, 1);
         redis.zadd(scoreKey("recheck-race"), observed, "w");
-        var target = Map.of("w", new WorkerScoreDelayTarget(observed, 60_000, polarity == 1 ? 0 : 3));
+        var target = Map.of("w", new WorkerScoreDelayTarget(observed, 60_000));
         var start = new CountDownLatch(1);
         try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -1421,21 +1389,21 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         }
         long held = scoreCore.getScoreStates("recheck-race", List.of("w")).get("w").score();
         assertThat(scoreCore.deferObservedToRecovery("recheck-race",
-                Map.of("w", new WorkerScoreDelayTarget(held, 60_000, 1))).get("w").status())
+                Map.of("w", new WorkerScoreDelayTarget(held, 60_000))).get("w").status())
                 .isEqualTo(WorkerScoreTransitionStatus.STALE);
         assertThat(redis.zscore(scoreKey("recheck-race"), "w")).isEqualTo((double) held);
         scoreCore.rewriteCurrentPolarityWithinTimeFence("recheck-race", Map.of("w", redisTimeMillis()),
                 WorkerScorePolarity.HOT_ACQUIRE, true);
         assertThat(scoreCore.observeDueHotScoreCandidates("recheck-race", null, 100)).isEmpty();
         assertThat(scoreCore.deferObservedToRecovery("recheck-race",
-                Map.of("w", new WorkerScoreDelayTarget(-held, 60_000, 0))).get("w").status())
+                Map.of("w", new WorkerScoreDelayTarget(-held, 60_000))).get("w").status())
                 .isEqualTo(WorkerScoreTransitionStatus.STALE);
     }
 
     @Test
     void recheckDelayStartsAtRedisExecutionEvenWhenSubmissionIsDelayed() {
         long before = redisTimeMillis();
-        long oldRecovery = workerScore(-1, before / 100 - 10, 0, 1);
+        long oldRecovery = workerScore(-1, before / 100 - 10, 1);
         redis.zadd(scoreKey("recheck-time"), oldRecovery, "w");
         var commands = new java.util.concurrent.CopyOnWriteArrayList<String>();
         var measuring = new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -1452,7 +1420,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redisClient.addListener(listener);
         try {
             assertThat(scoreCore.deferObservedToRecovery("recheck-time",
-                    Map.of("w", new WorkerScoreDelayTarget(oldRecovery, 60_000, 1))).get("w").status())
+                    Map.of("w", new WorkerScoreDelayTarget(oldRecovery, 60_000))).get("w").status())
                     .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         } finally {
             measuring.set(false);
@@ -1463,7 +1431,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(commands).containsExactly("EVAL");
         assertThat(held.timeMillis()).isBetween((before + 300 + 60_000) / 100 * 100,
                 (after + 60_000) / 100 * 100);
-        assertThat(held.laneRank()).isEqualTo(1);
+
         assertThat(held.dirty()).isEqualTo(1);
     }
 
@@ -1473,13 +1441,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long hot = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
                 timeSlot,
-                7,
                 1
         );
         long recovery = workerScore(
                 WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
                 timeSlot,
-                3,
                 1
         );
         redis.zadd(scoreKey("group-1"), hot, "toggle-worker");
@@ -1500,7 +1466,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 ).get("toggle-worker"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 timeSlot * WorkerScoreCore.SLOT_MILLIS,
-                0,
                 1
         );
         assertThat(scoreCore.toggleCurrentPolarity(
@@ -1509,13 +1474,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 hot
         ).status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
 
-        var exhausted = scoreCore.parkObservedRecoveryScore(
+        var parked = scoreCore.parkObservedRecoveryScore(
                 "group-1",
                 "cold-worker",
-                recovery,
-                5
+                recovery
         );
-        assertThat(exhausted.status()).isEqualTo(
+        assertThat(parked.status()).isEqualTo(
                 WorkerScoreTransitionStatus.TRANSITIONED
         );
         assertScoreShape(
@@ -1525,15 +1489,17 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 ).get("cold-worker"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 WorkerScoreCore.SLOT_MILLIS,
-                5,
                 1
         );
         assertThat(scoreCore.parkObservedRecoveryScore(
                 "group-1",
                 "toggle-worker",
-                toggled.score(),
-                0
+                hot
         ).status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
+        assertThat(scoreCore.parkObservedRecoveryScore("group-1", "cold-worker", recovery).status())
+                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThat(scoreCore.parkObservedRecoveryScore("group-1", "cold-worker", parked.score()).status())
+                .isEqualTo(WorkerScoreTransitionStatus.NOOP);
     }
 
     @Test
@@ -1566,13 +1532,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             commands.clear();
             assertThat(scoreCore.markCurrentLeasesDirty("g", ids).values()).allSatisfy(result -> {
                 assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-                assertThat(result.score()).isEqualTo(-201L);
+                assertThat(result.score()).isEqualTo(-3L);
             });
             assertThat(commands).containsExactly("EVAL");
             commands.clear();
             assertThat(scoreCore.markCurrentLeasesDirty("g", ids).values()).allSatisfy(result -> {
                 assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.NOOP);
-                assertThat(result.score()).isEqualTo(-201L);
+                assertThat(result.score()).isEqualTo(-3L);
             });
             assertThat(commands).containsExactly("EVAL");
         } finally {
@@ -1589,18 +1555,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         for (int sign : List.of(-1, 1)) {
             for (long slot : List.of(0L, 1L, now - 1, now + 100, WorkerScoreCore.PAUSE_TIME_SLOT)) {
                 for (int dirty : List.of(0, 1)) {
-                    long original = workerScore(sign, slot, 43, dirty);
+                    long original = workerScore(sign, slot, dirty);
+                    if (original == 0) continue; // Slot zero with clean dirty has no legal polarity.
                     redis.zadd(scoreKey("g"), original, "w");
                     var result = scoreCore.markCurrentLeasesDirty("g", List.of("w")).get("w");
                     assertThat(result.status()).isEqualTo(dirty == 0
                             ? WorkerScoreTransitionStatus.TRANSITIONED : WorkerScoreTransitionStatus.NOOP);
-                    assertThat(result.score()).isEqualTo(workerScore(sign, slot, 43, 1));
+                    assertThat(result.score()).isEqualTo(workerScore(sign, slot, 1));
                     assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(result.score().doubleValue());
                 }
             }
         }
         for (double invalid : List.of(0.0, 200.5, -200.5, Double.POSITIVE_INFINITY,
-                Double.NEGATIVE_INFINITY, (double) workerScore(1, WorkerScoreCore.MAX_TIME_SLOT + 1, 0, 0))) {
+                Double.NEGATIVE_INFINITY, (double) workerScore(1, WorkerScoreCore.MAX_TIME_SLOT + 1, 0))) {
             redis.zadd(scoreKey("g"), invalid, "bad");
             redis.zadd(scoreKey("g"), 200, "valid");
             var results = scoreCore.markCurrentLeasesDirty("g", List.of("bad", "valid"));
@@ -1613,7 +1580,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void invalidationBeforeConfirmationRejectsBothCachedAndLateMatchingFences() {
         long now = redisTimeMillis();
-        long due = workerScore(1, now / WorkerScoreCore.SLOT_MILLIS - 1, 7, 1);
+        long due = workerScore(1, now / WorkerScoreCore.SLOT_MILLIS - 1, 1);
         redis.zadd(scoreKey("g"), due, "w");
         var held = scoreCore.acquireObservedHotScoreLeases("g", Map.of("w", due), now + 30_000).get("w");
         assertThat(held.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
@@ -1632,11 +1599,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void confirmationConsumesEligibilityEvenWhenDeadlineAlreadyCoversClaim(boolean extend) {
         long now = redisTimeMillis();
-        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 7, 0);
+        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 0);
         long target = now + (extend ? 40_000 : 20_000);
         redis.zadd(scoreKey("g"), held, "w");
         var result = scoreCore.confirmActiveHotScoreLeases("g", Map.of("w", held), target).get("w");
-        long execution = workerScore(1, (extend ? target : now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 7, 1);
+        long execution = workerScore(1, (extend ? target : now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 1);
         assertThat(result).isEqualTo(new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, execution));
         assertThat(scoreCore.confirmActiveHotScoreLeases("g", Map.of("w", held), target).get("w").status())
                 .isEqualTo(WorkerScoreTransitionStatus.STALE);
@@ -1661,7 +1628,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void executionFencePreservesExistingFailureAndSignFlippedSuccessReleaseRules() {
         long now = redisTimeMillis();
-        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 7, 0);
+        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 0);
         redis.zadd(scoreKey("g"), held, "w");
         long execution = scoreCore.confirmActiveHotScoreLeases("g", Map.of("w", held), now + 20_000).get("w").score();
         redis.zadd(scoreKey("g"), -execution, "w");
@@ -1681,7 +1648,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void concurrentConfirmationsHaveOneWinnerAndCannotConfirmPauseOrExpiredHolds() throws Exception {
         long now = redisTimeMillis();
-        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 0, 0);
+        long held = workerScore(1, (now + 30_000) / WorkerScoreCore.SLOT_MILLIS, 0);
         redis.zadd(scoreKey("g"), held, "w");
         CountDownLatch start = new CountDownLatch(1);
         try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
@@ -1694,8 +1661,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             assertThat(List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(WorkerScoreTransitionStatus.TRANSITIONED, WorkerScoreTransitionStatus.STALE);
         }
-        long pause = workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0, 0);
-        long expired = workerScore(1, now / WorkerScoreCore.SLOT_MILLIS - 1, 0, 0);
+        long pause = workerScore(1, WorkerScoreCore.PAUSE_TIME_SLOT, 0);
+        long expired = workerScore(1, now / WorkerScoreCore.SLOT_MILLIS - 1, 0);
         redis.zadd(scoreKey("g"), pause, "paused");
         redis.zadd(scoreKey("g"), expired, "expired");
         assertThat(scoreCore.confirmActiveHotScoreLeases("g", Map.of("paused", pause, "expired", expired), now + 20_000)
@@ -1708,7 +1675,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long now=redisTimeMillis();
         var due=new LinkedHashMap<String,Long>();
         for(int i=0;i<100;i++) {
-            long value=workerScore(1,now/100-10,i%100,i%2);
+            long value=workerScore(1,now/100-10,i%2);
             due.put("w"+i,value);redis.zadd(scoreKey("g"),value,"w"+i);
         }
         var commands=new java.util.concurrent.CopyOnWriteArrayList<String>();
@@ -1725,7 +1692,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             assertThat(execution).hasSize(100);assertThat(commands).containsExactly("EVAL");
             for(String id:due.keySet()) {
                 assertThat(candidate.get(id)%2).isZero();
-                assertThat(candidate.get(id)%200).isEqualTo(due.get(id)%200-due.get(id)%2);
+                assertThat(candidate.get(id)).isEqualTo(workerScore(1, (now + 5000) / 100, 0));
                 assertThat(execution.get(id)).isEqualTo(candidate.get(id)+1);
             }
             assertThat(scoreCore.acquireObservedHotScoreLeases("g",due,now+6000).values())
@@ -1749,12 +1716,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void firstAcquisitionAcceptsDueDirtyScoresButRejectsOccupiedPausedOrChangedObservations() {
         long now=redisTimeMillis(),slot=now/100;
         var observed=new LinkedHashMap<String,Long>();
-        observed.put("clean",workerScore(1,slot-10,17,0));
-        observed.put("dirty",workerScore(1,slot-10,17,1));
-        observed.put("pause",workerScore(1,WorkerScoreCore.PAUSE_TIME_SLOT,17,0));
-        observed.put("occupied",workerScore(1,slot+100,17,0));
-        observed.put("recovery",workerScore(-1,slot-10,17,0));
-        observed.put("changed",workerScore(1,slot-10,17,0));
+        observed.put("clean",workerScore(1,slot-10,0));
+        observed.put("dirty",workerScore(1,slot-10,1));
+        observed.put("pause",workerScore(1,WorkerScoreCore.PAUSE_TIME_SLOT,0));
+        observed.put("occupied",workerScore(1,slot+100,0));
+        observed.put("recovery",workerScore(-1,slot-10,0));
+        observed.put("changed",workerScore(1,slot-10,0));
         observed.forEach((id,score)->redis.zadd(scoreKey("g"),score,id));
         redis.zadd(scoreKey("g"),observed.get("changed")+1,"changed");
         observed.put("missing",observed.get("clean"));
@@ -1767,7 +1734,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void concurrentFirstAcquisitionsOfOneObservationHaveOneWinner() throws Exception {
-        long now=redisTimeMillis(),observed=workerScore(1,(now-1000)/100,7,1);
+        long now=redisTimeMillis(),observed=workerScore(1,(now-1000)/100,1);
         redis.zadd(scoreKey("g"),observed,"w");
         var start=new CountDownLatch(1);
         try(var competing=new RedisWorkerScoreCore(redisClient,keyspace);var executor=Executors.newVirtualThreadPerTaskExecutor()) {
@@ -1783,7 +1750,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(strings={"acquire","confirm"})
     void leaseTimeIsCheckedAtLuaSubmissionAfterTheCallerCrossesTheSlot(String mode) {
         long now=redisTimeMillis(),deadline=now+300;
-        long fence=workerScore(1,(mode.equals("acquire")?now-1000:deadline)/100,7,0);
+        long fence=workerScore(1,(mode.equals("acquire")?now-1000:deadline)/100,0);
         redis.zadd(scoreKey("g"),fence,"w");
         var listener=new io.lettuce.core.event.command.CommandListener() {
             @Override public void commandStarted(io.lettuce.core.event.command.CommandStartedEvent event) {
@@ -1807,11 +1774,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void existingRawScoreEchoesStillExposeCorruptFractionalMembersWithoutWriting() {
         long slot = redisTimeMillis() / 100;
-        long observation = workerScore(1, slot - 10, 7, 0);
+        long observation = workerScore(1, slot - 10, 0);
         double corrupt = observation + 0.5;
         redis.zadd(scoreKey("corrupt-echo"), corrupt, "w");
         assertThatThrownBy(() -> scoreCore.deferObservedToRecovery("corrupt-echo",
-                Map.of("w", new WorkerScoreDelayTarget(observation, 1_000, 0))))
+                Map.of("w", new WorkerScoreDelayTarget(observation, 1_000))))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Worker score must be an integer");
         assertThatThrownBy(() -> scoreCore.rewriteCurrentPolarityWithinTimeFence("corrupt-echo",
                 Map.of("w", (slot - 5) * 100), WorkerScorePolarity.HOT_ACQUIRE, false))
@@ -1833,13 +1800,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         var target = polarity == 1 ? WorkerScorePolarity.HOT_ACQUIRE : WorkerScorePolarity.RECOVERY_RECHECK;
         for (boolean refresh : new boolean[]{false, true}) {
             String id = "refresh-" + refresh;
-            long observed = workerScore(-polarity, slot - 10, 99, 1);
+            long observed = workerScore(-polarity, slot - 10, 1);
             redis.zadd(scoreKey("mechanical-polarity"), observed, id);
             var times = Map.of(id, (slot - 5) * 100);
             var result = scoreCore.rewriteCurrentPolarityWithinTimeFence(
                     "mechanical-polarity", times, target, refresh).get(id);
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-            assertThat(result.score()).isEqualTo(workerScore(polarity, slot - (refresh ? 5 : 10), 99, 1));
+            assertThat(result.score()).isEqualTo(workerScore(polarity, slot - (refresh ? 5 : 10), 1));
             assertThat(scoreCore.rewriteCurrentPolarityWithinTimeFence(
                     "mechanical-polarity", times, target, refresh).get(id).status())
                     .isEqualTo(WorkerScoreTransitionStatus.NOOP);
@@ -1850,7 +1817,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void confirmationRejectsExpiredRequestedTargetEvenWhenObservedDeadlineIsLater() {
         long now = redisTimeMillis();
         long request = now + 300;
-        long observed = workerScore(1, (now + 60_000) / 100, 99, 0);
+        long observed = workerScore(1, (now + 60_000) / 100, 0);
         redis.zadd(scoreKey("requested-target"), observed, "w");
         var listener = new io.lettuce.core.event.command.CommandListener() {
             @Override public void commandStarted(io.lettuce.core.event.command.CommandStartedEvent event) {
@@ -1874,8 +1841,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void exactReplacementRejectsEveryChangedFieldAndCompletionMapsAcceptedNoop() {
         long slot = redisTimeMillis() / 100 + 600;
-        long observed = workerScore(1, slot, 42, 1);
-        var changed = Map.of("time", observed + 200, "rank", observed + 2,
+        long observed = workerScore(1, slot, 1);
+        var changed = Map.of("time", observed + 2,
                 "dirty", observed - 1, "polarity", -observed);
         changed.forEach((id, value) -> redis.zadd(scoreKey("exact-fields"), value, id));
         for (String id : changed.keySet()) {
@@ -1887,7 +1854,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         changed.keySet().forEach(id -> observations.put(id, observed));
         var completion = scoreCore.releaseObservedHotScoreHolds("exact-fields", observations, slot * 100);
         assertThat(completion.get("polarity").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-        for (String id : List.of("time", "rank", "dirty")) {
+        for (String id : List.of("time", "dirty")) {
             assertThat(completion.get(id).status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
             assertThat(redis.zscore(scoreKey("exact-fields"), id)).isEqualTo(changed.get(id).doubleValue());
         }
@@ -1899,19 +1866,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void subSlotDelayAddsBeforeRoundingAndKeepsCallerSuppliedRank() throws Exception {
+    void subSlotDelayAddsBeforeRoundingAndPreservesDirty() throws Exception {
         for (int attempt = 0; attempt < 8; attempt++) {
             awaitRedisTime((redisTimeMillis() / 100 + 1) * 100 + 75);
             long before = redisTimeMillis();
-            long observed = workerScore(1, before / 100 - 10, 7, 1);
+            long observed = workerScore(1, before / 100 - 10, 1);
             String group = "relative-rounding-" + attempt;
             redis.zadd(scoreKey(group), observed, "w");
             var result = scoreCore.deferObservedToRecovery(group,
-                    Map.of("w", new WorkerScoreDelayTarget(observed, 37, 99))).get("w");
+                    Map.of("w", new WorkerScoreDelayTarget(observed, 37))).get("w");
             long after = redisTimeMillis();
             if (before / 100 != after / 100 || before % 100 < 75) continue;
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-            assertThat(result.score()).isEqualTo(workerScore(-1, before / 100 + 1, 99, 1));
+            assertThat(result.score()).isEqualTo(workerScore(-1, before / 100 + 1, 1));
             return;
         }
         throw new AssertionError("Could not check sub-slot delay within one Redis slot in eight attempts");
@@ -1962,11 +1929,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     private static long workerScore(
             int polarity,
             long timeSlot,
-            int laneRank,
             int dirty
     ) {
         long absoluteScore = timeSlot * WorkerScoreCore.SLOT_FACTOR
-                + (long) laneRank * WorkerScoreCore.DIRTY_FACTOR
                 + dirty;
         return polarity * absoluteScore;
     }
@@ -1975,13 +1940,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             WorkerScoreState state,
             WorkerScorePolarity polarity,
             long timeMillis,
-            int laneRank,
             int dirty
     ) {
         assertThat(state).isNotNull();
         assertThat(state.polarity()).isEqualTo(polarity);
         assertThat(state.timeMillis()).isEqualTo(timeMillis);
-        assertThat(state.laneRank()).isEqualTo(laneRank);
         assertThat(state.dirty()).isEqualTo(dirty);
     }
 }

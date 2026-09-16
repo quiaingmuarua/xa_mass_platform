@@ -23,7 +23,8 @@ import java.util.Objects;
 public final class DispatchConvergenceRuntime {
 
     private static final long LAB_INTERVAL_MILLIS = 20;
-    private static final long BOUNDARY_PROBE_RETRY_MILLIS = 10;
+    private static final long BOUNDARY_RECHECK_DELAY_MILLIS = 10;
+    private static final long BOUNDARY_HOT_PROBE_STALE_AFTER_MILLIS = 10;
 
     private final DispatchMainScheduler mainScheduler;
     private Thread schedulerThread;
@@ -222,9 +223,8 @@ public final class DispatchConvergenceRuntime {
                             WorkerServiceabilityDispatchConfig
                                     .DEFAULT_INTERVAL_MILLIS,
                             hotEligibilityFloorMillis,
-                            BOUNDARY_PROBE_RETRY_MILLIS,
-                            WorkerServiceabilityDispatchConfig
-                                    .DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                            BOUNDARY_RECHECK_DELAY_MILLIS,
+                            BOUNDARY_HOT_PROBE_STALE_AFTER_MILLIS,
                             WorkerServiceabilityDispatchConfig
                                     .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
                     );

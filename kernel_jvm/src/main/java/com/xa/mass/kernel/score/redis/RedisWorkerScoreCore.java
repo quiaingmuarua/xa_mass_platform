@@ -22,7 +22,6 @@ import java.util.Set;
 public final class RedisWorkerScoreCore
         implements WorkerScoreCore, AutoCloseable {
 
-    private static final long RECOVERY_LOOKBACK_MILLIS = 86_400_000;
     private static final String EXACT_FUNCTIONS = """
             local function read_exact(key, id, expected, counterpart)
               local stored = redis.call('ZSCORE', key, id)
@@ -54,17 +53,14 @@ public final class RedisWorkerScoreCore
             return created
             """;
     private static final String CURRENT_REWRITE_SCRIPT = EXACT_FUNCTIONS + """
-            local target_base, rank_bits = tonumber(ARGV[2]), tonumber(ARGV[3])
-            local factor, dirty_factor = tonumber(ARGV[4]), tonumber(ARGV[5])
+            local target_base, factor = tonumber(ARGV[2]), tonumber(ARGV[3])
             local stored = redis.call('ZSCORE', KEYS[1], ARGV[1])
             if not stored then return {'stale'} end
             local current = tonumber(stored)
             local absolute = math.abs(current)
             if absolute <= 0 then return {'invalid', current} end
             if absolute >= target_base then return {'stale', current} end
-            local low_bits = absolute % factor
-            if rank_bits >= 0 then low_bits = rank_bits + absolute % dirty_factor end
-            local target = target_base + low_bits
+            local target = target_base + absolute % factor
             if target <= 0 then return {'invalid', current} end
             return write_changed(KEYS[1], ARGV[1], current, current / absolute * target)
             """;
@@ -143,13 +139,13 @@ public final class RedisWorkerScoreCore
             local clock = redis.call('TIME')
             local now_millis = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
             local now = math.floor(now_millis / millis)
-            local function defer(id, observed, low_bits, delay)
+            local function defer(id, observed, dirty, delay)
               local current, rejected, stored = read_exact(KEYS[1], id, observed)
               if rejected then rejected[2] = stored; return rejected end
               local target_slot = math.floor((now_millis + delay) / millis)
-              local target_absolute = target_slot * factor + low_bits
+              local target_absolute = target_slot * factor + dirty
               if now < 0 or now >= pause or delay <= 0 or target_slot >= pause
-                  or low_bits < 0 or low_bits >= factor or target_absolute <= 0 then
+                  or dirty < 0 or dirty >= factor or target_absolute <= 0 then
                 return {'invalid', stored}
               end
               if math.floor(math.abs(current) / factor) >= now then return {'stale', stored} end
@@ -261,7 +257,6 @@ public final class RedisWorkerScoreCore
                     MIN_BASE,
                     absoluteScore(
                             hotEligibilityFloorMillis / SLOT_MILLIS,
-                            MIN_LANE_RANK,
                             MIN_DIRTY
                     )
             );
@@ -291,7 +286,6 @@ public final class RedisWorkerScoreCore
         }
         long cutoffScore = absoluteScore(
                 hotCutoffMillis / SLOT_MILLIS,
-                MIN_LANE_RANK,
                 MIN_DIRTY
         );
         if (cutoffScore <= MIN_BASE) {
@@ -319,22 +313,16 @@ public final class RedisWorkerScoreCore
         if (dueTimeSlot < MIN_TIME_SLOT) {
             return List.of();
         }
-        long recoveryLookbackSlots = RECOVERY_LOOKBACK_MILLIS / SLOT_MILLIS;
-        long windowStart = Math.max(
-                COLD_PARK_TIME_SLOT + 1,
-                currentTimeSlot - recoveryLookbackSlots
-        );
+        long windowStart = COLD_PARK_TIME_SLOT + 1;
         if (dueTimeSlot < windowStart) {
             return List.of();
         }
         long maximumScore = -absoluteScore(
                 windowStart,
-                MIN_LANE_RANK,
                 MIN_DIRTY
         );
         long minimumScore = -absoluteScore(
                 dueTimeSlot,
-                MAX_LANE_RANK,
                 MAX_DIRTY
         );
         return rangeWorkerCandidates(
@@ -353,7 +341,7 @@ public final class RedisWorkerScoreCore
             throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
         }
         workerIds.forEach(id -> requireNonBlank(id, "workerId"));
-        long coldScore = -absoluteScore(COLD_PARK_TIME_SLOT, MIN_LANE_RANK, MIN_DIRTY);
+        long coldScore = -absoluteScore(COLD_PARK_TIME_SLOT, MIN_DIRTY);
         return initializeAbsent(homeBucketId, workerIds, coldScore);
     }
 
@@ -371,8 +359,7 @@ public final class RedisWorkerScoreCore
     public Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
             String homeBucketId,
             List<String> workerIds,
-            long targetTimeMillis,
-            Integer targetLaneRank
+            long targetTimeMillis
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (workerIds == null) {
@@ -388,9 +375,7 @@ public final class RedisWorkerScoreCore
         if (uniqueWorkerIds.isEmpty()) {
             return Map.of();
         }
-        if (!validTimeMillis(targetTimeMillis)
-                || targetLaneRank != null
-                && !validLaneRank(targetLaneRank)) {
+        if (!validTimeMillis(targetTimeMillis)) {
             return uniformResults(
                     uniqueWorkerIds,
                     WorkerScoreTransitionStatus.INVALID
@@ -400,10 +385,9 @@ public final class RedisWorkerScoreCore
         long targetTimeSlot = targetTimeMillis / SLOT_MILLIS;
         long targetMinAbsoluteScore = absoluteScore(
                 targetTimeSlot,
-                MIN_LANE_RANK,
                 MIN_DIRTY
         );
-        return advanceCurrentTime(homeBucketId, uniqueWorkerIds, targetMinAbsoluteScore, targetLaneRank);
+        return advanceCurrentTime(homeBucketId, uniqueWorkerIds, targetMinAbsoluteScore);
     }
 
     @Override
@@ -530,7 +514,7 @@ public final class RedisWorkerScoreCore
         }
         workerIds.forEach(id -> requireNonBlank(id, "workerId"));
         List<String> arguments = new ArrayList<>(workerIds.size() + 2);
-        arguments.add(Long.toString(absoluteScore(MAX_TIME_SLOT, MAX_LANE_RANK, MAX_DIRTY)));
+        arguments.add(Long.toString(absoluteScore(MAX_TIME_SLOT, MAX_DIRTY)));
         arguments.add(Integer.toString(DIRTY_FACTOR));
         arguments.addAll(workerIds);
         return executeBatch(homeBucketId, workerIds, MARK_CURRENT_DIRTY_SCRIPT,
@@ -551,11 +535,7 @@ public final class RedisWorkerScoreCore
         } catch (IllegalStateException error) {
             return transition(WorkerScoreTransitionStatus.INVALID);
         }
-        long nextScore = -replaceRank(observed.score(), MIN_LANE_RANK);
-        if (nextScore == ZERO_SCORE) {
-            return transition(WorkerScoreTransitionStatus.INVALID);
-        }
-        return compareAndSet(homeBucketId, workerId, observedScore, nextScore);
+        return compareAndSet(homeBucketId, workerId, observedScore, -observed.score());
     }
 
     @Override
@@ -596,18 +576,9 @@ public final class RedisWorkerScoreCore
                 );
                 return;
             }
-            int targetLaneRank = target.targetLaneRank();
-            if (!validLaneRank(targetLaneRank)) {
-                immediate.put(
-                        workerId,
-                        transition(WorkerScoreTransitionStatus.INVALID)
-                );
-                return;
-            }
-            long targetLowBits = absoluteScore(MIN_TIME_SLOT, targetLaneRank, state.dirty());
             pending.put(
                     workerId,
-                    new long[]{observedScore, targetLowBits, target.delayMillis()}
+                    new long[]{observedScore, state.dirty(), target.delayMillis()}
             );
         });
 
@@ -693,15 +664,10 @@ public final class RedisWorkerScoreCore
     public WorkerScoreTransitionResult parkObservedRecoveryScore(
             String homeBucketId,
             String workerId,
-            long observedScore,
-            int targetLaneRank
+            long observedScore
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         requireNonBlank(workerId, "workerId");
-        if (targetLaneRank <= MIN_LANE_RANK
-                || targetLaneRank > MAX_LANE_RANK) {
-            return transition(WorkerScoreTransitionStatus.INVALID);
-        }
         WorkerScoreState observed;
         try {
             observed = decodeState(workerId, (double) observedScore);
@@ -714,7 +680,6 @@ public final class RedisWorkerScoreCore
         }
         long nextScore = -absoluteScore(
                 COLD_PARK_TIME_SLOT,
-                targetLaneRank,
                 observed.dirty()
         );
         return compareAndSet(homeBucketId, workerId, observedScore, nextScore);
@@ -763,7 +728,7 @@ public final class RedisWorkerScoreCore
             return uniformResults(ordered.keySet(), WorkerScoreTransitionStatus.INVALID);
         }
         long releaseSlot = releaseTimeMillis / SLOT_MILLIS;
-        long releaseBase = absoluteScore(releaseSlot, MIN_LANE_RANK, MIN_DIRTY);
+        long releaseBase = absoluteScore(releaseSlot, MIN_DIRTY);
         LinkedHashMap<String, WorkerScoreTransitionResult> immediate = new LinkedHashMap<>();
         LinkedHashMap<String, long[]> targets = new LinkedHashMap<>();
         ordered.forEach((id, observed) -> {
@@ -793,7 +758,7 @@ public final class RedisWorkerScoreCore
 
     // Fixed Redis operations; public entry points above only prepare and combine inputs/results.
     private Map<String, WorkerScoreTransitionResult> advanceCurrentTime(
-            String homeBucketId, Set<String> uniqueWorkerIds, long targetMinAbsoluteScore, Integer targetLaneRank
+            String homeBucketId, Set<String> uniqueWorkerIds, long targetMinAbsoluteScore
     ) {
         RedisAsyncCommands<String, String> async = connection().async();
         List<RedisFuture<Object>> futures = new ArrayList<>(
@@ -807,11 +772,7 @@ public final class RedisWorkerScoreCore
                     new String[]{key},
                     workerId,
                     Long.toString(targetMinAbsoluteScore),
-                    Integer.toString(
-                            targetLaneRank == null ? -1 : targetLaneRank * DIRTY_FACTOR
-                    ),
-                    Integer.toString(SLOT_FACTOR),
-                    Integer.toString(DIRTY_FACTOR)
+                    Integer.toString(SLOT_FACTOR)
             ));
         }
         return collectScriptResults(uniqueWorkerIds, futures);

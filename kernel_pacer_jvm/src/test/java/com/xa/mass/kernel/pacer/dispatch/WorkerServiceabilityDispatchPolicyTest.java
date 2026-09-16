@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 class WorkerServiceabilityDispatchPolicyTest {
@@ -50,12 +49,11 @@ class WorkerServiceabilityDispatchPolicyTest {
                         opaqueScore,
                         WorkerScorePolarity.HOT_ACQUIRE,
                         9_000L,
-                        0,
                         0
                 )));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L, 0))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         )).thenReturn(Map.of("worker-1", transitioned(-123L)));
         when(runtime.offerProbeRequests(
                 "adapter-1", List.of("worker-1")
@@ -68,14 +66,14 @@ class WorkerServiceabilityDispatchPolicyTest {
 
         assertEquals(1, offered);
         verify(scores).deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L, 0))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         );
         verify(scores, never()).acquireRecoveryRecheckCandidates(
                 "group-1", 100
         );
         var order = inOrder(scores, runtime);
         order.verify(scores).deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L, 0))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         );
         order.verify(runtime).offerProbeRequests("adapter-1", List.of("worker-1"));
     }
@@ -102,12 +100,11 @@ class WorkerServiceabilityDispatchPolicyTest {
                         opaqueScore,
                         WorkerScorePolarity.RECOVERY_RECHECK,
                         9_900L,
-                        1,
                         0
                 )));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 3_000L, 2))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         )).thenReturn(Map.of("worker-1", transitioned(-321L)));
         when(runtime.offerProbeRequests(
                 "adapter-1", List.of("worker-1")
@@ -118,7 +115,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 config()
         ));
         verify(scores).deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 3_000L, 2))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         );
     }
 
@@ -134,10 +131,10 @@ class WorkerServiceabilityDispatchPolicyTest {
         when(scores.getScoreStates("group-1", List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", new WorkerScoreState(
                         "worker-1", opaqueScore, WorkerScorePolarity.RECOVERY_RECHECK,
-                        10_000L, 0, 0)));
+                        10_000L, 0)));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
-        when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 2_000L, 1))))
+        when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))))
                 .thenReturn(Map.of("worker-1", transitioned(-321L)));
         when(runtime.offerProbeRequests("adapter-1", List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", ProbeRequestOfferStatus.OFFERED));
@@ -148,7 +145,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         now.set(11_000L);
         assertEquals(1, policy.dispatchProbes(List.of("group-1"), config()));
         verify(scores, times(2)).acquireRecoveryRecheckCandidates("group-1", 100);
-        verify(scores).deferObservedToRecovery("group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 2_000L, 1)));
+        verify(scores).deferObservedToRecovery("group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L)));
         verify(runtime).offerProbeRequests("adapter-1", List.of("worker-1"));
     }
 
@@ -171,7 +168,6 @@ class WorkerServiceabilityDispatchPolicyTest {
                         opaqueScore,
                         WorkerScorePolarity.HOT_ACQUIRE,
                         9_000L,
-                        0,
                         0
                 )));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of(
@@ -182,7 +178,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 "group-1", "worker-1", opaqueScore
         )).thenReturn(transitioned(-opaqueScore));
         when(scores.parkObservedRecoveryScore(
-                "group-1", "worker-1", -opaqueScore, 5
+                "group-1", "worker-1", -opaqueScore
         )).thenReturn(transitioned(-1L));
 
         assertEquals(0, policy(scores, catalog, runtime).dispatchProbes(
@@ -193,7 +189,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 "group-1", "worker-1", opaqueScore
         );
         verify(scores).parkObservedRecoveryScore(
-                "group-1", "worker-1", -opaqueScore, 5
+                "group-1", "worker-1", -opaqueScore
         );
         verify(runtime, never()).offerProbeRequests(
                 "system-polling", List.of("worker-1")
@@ -246,12 +242,11 @@ class WorkerServiceabilityDispatchPolicyTest {
                         opaqueScore,
                         WorkerScorePolarity.HOT_ACQUIRE,
                         18_000L,
-                        0,
                         0
                 )));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery(
-                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L, 0))
+                "group-1", Map.of("worker-1", new WorkerScoreDelayTarget(opaqueScore, 1_000L))
         )).thenReturn(Map.of("worker-1", transitioned(-123L)));
         when(runtime.offerProbeRequests(
                 "adapter-1", List.of("worker-1")
@@ -267,49 +262,38 @@ class WorkerServiceabilityDispatchPolicyTest {
         assertEquals(1, offered);
     }
 
-    @ParameterizedTest
-    @CsvSource({"0,2000", "4,6000"})
-    void dueRecoveryRankOnlyDeterminesTheNextDelay(int rank, long expectedDelay) {
+    @Test
+    void recoveryKeepsTheSameDelayAcrossManyLateSchedulingRounds() {
         var scores = mock(WorkerScoreCore.class);
         var catalog = mock(WorkerResourceCatalog.class);
         var runtime = mock(WorkerServiceabilityRuntime.class);
-        long fence = -7654321L;
-        when(scores.acquireRecoveryRecheckCandidates("group-1", 100))
-                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
-        // Already due according to the Owner, even though the old rank-based wait has not elapsed.
-        when(scores.getScoreStates("group-1", List.of("worker-1")))
-                .thenReturn(Map.of("worker-1", new WorkerScoreState(
-                        "worker-1", fence, WorkerScorePolarity.RECOVERY_RECHECK, 9_900, rank, 1)));
+        var now = new AtomicLong(200_000);
+        var policy = new WorkerServiceabilityDispatchPolicy(scores, catalog, runtime, now::get);
+        var config = WorkerServiceabilityDispatchConfig.defaults(10_000);
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
-        var targets = Map.of("worker-1", new WorkerScoreDelayTarget(fence, expectedDelay, rank + 1));
-        when(scores.deferObservedToRecovery("group-1", targets))
-                .thenReturn(Map.of("worker-1", transitioned(-123L)));
         when(runtime.offerProbeRequests("adapter-1", List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", ProbeRequestOfferStatus.OFFERED));
-
-        assertEquals(1, policy(scores, catalog, runtime).dispatchProbes(List.of("group-1"), config()));
-        verify(scores).deferObservedToRecovery("group-1", targets);
-    }
-
-    @Test
-    void exhaustedDueRecoveryIsColdParkedWithoutAnotherProbe() {
-        var scores = mock(WorkerScoreCore.class);
-        var catalog = mock(WorkerResourceCatalog.class);
-        var runtime = mock(WorkerServiceabilityRuntime.class);
-        long fence = -7654321L;
-        when(scores.acquireRecoveryRecheckCandidates("group-1", 100))
-                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
-        when(scores.getScoreStates("group-1", List.of("worker-1")))
-                .thenReturn(Map.of("worker-1", new WorkerScoreState(
-                        "worker-1", fence, WorkerScorePolarity.RECOVERY_RECHECK, 9_900, 5, 1)));
-        when(catalog.getWorkerDescriptors(List.of("worker-1")))
-                .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
-
-        assertEquals(0, policy(scores, catalog, runtime).dispatchProbes(List.of("group-1"), config()));
-        verify(scores).parkObservedRecoveryScore("group-1", "worker-1", fence, 5);
-        verify(scores).deferObservedToRecovery("group-1", Map.of());
-        org.mockito.Mockito.verifyNoInteractions(runtime);
+        for (int round = 0; round < 8; round++) {
+            long fence = -7_000L - round;
+            when(scores.acquireRecoveryRecheckCandidates("group-1", 100))
+                    .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+            when(scores.getScoreStates("group-1", List.of("worker-1")))
+                    .thenReturn(Map.of("worker-1", new WorkerScoreState(
+                            "worker-1", fence, WorkerScorePolarity.RECOVERY_RECHECK, now.get() - 30_000, 1)));
+            var targets = Map.of("worker-1", new WorkerScoreDelayTarget(fence, 15_000));
+            when(scores.deferObservedToRecovery("group-1", targets))
+                    .thenReturn(Map.of("worker-1", transitioned(-8_000L - round)));
+            assertEquals(1, policy.dispatchProbes(List.of("group-1"), config));
+            verify(scores).deferObservedToRecovery("group-1", targets);
+            // Eligibility is not a deadline: the next Producer invocation can be much later.
+            now.addAndGet(60_000);
+        }
+        verify(scores).acquireHotCandidatesBefore("group-1", 140_000, 100);
+        verify(scores, never()).parkObservedRecoveryScore(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong());
+        verify(runtime, times(8)).offerProbeRequests("adapter-1", List.of("worker-1"));
     }
 
     @ParameterizedTest
@@ -328,9 +312,9 @@ class WorkerServiceabilityDispatchPolicyTest {
         var held = new LinkedHashMap<String, WorkerScoreTransitionResult>();
         var offers = new LinkedHashMap<String, ProbeRequestOfferStatus>();
         ids.forEach(id -> {
-            states.put(id, new WorkerScoreState(id, fence, WorkerScorePolarity.HOT_ACQUIRE, 9_000, 0, 0));
+            states.put(id, new WorkerScoreState(id, fence, WorkerScorePolarity.HOT_ACQUIRE, 9_000, 0));
             descriptors.put(id, worker(id, "adapter-1"));
-            targets.put(id, new WorkerScoreDelayTarget(fence, 1_000, 0));
+            targets.put(id, new WorkerScoreDelayTarget(fence, 1_000));
             held.put(id, transitioned(-987654L));
             offers.put(id, status);
         });
@@ -348,11 +332,66 @@ class WorkerServiceabilityDispatchPolicyTest {
     }
 
     @Test
-    void retryDelayOverflowIsRejectedAtConfigurationTime() {
+    void recheckDelayAndHotThresholdAreIndependentPositiveDurations() {
+        var defaults = WorkerServiceabilityDispatchConfig.defaults(10_000);
+        assertEquals(15_000, defaults.recheckDelayMillis());
+        assertEquals(60_000, defaults.hotProbeStaleAfterMillis());
+        assertEquals(1_000, defaults.intervalMillis());
         assertThrows(IllegalArgumentException.class, () -> new WorkerServiceabilityDispatchConfig(
-                1_000, 10_000, Long.MAX_VALUE / 6 + 1, 5, List.of()));
-        assertEquals(Long.MAX_VALUE / 6, new WorkerServiceabilityDispatchConfig(
-                1_000, 10_000, Long.MAX_VALUE / 6, 5, List.of()).probeRetryIntervalMillis());
+                1_000, 10_000, 0, 60_000, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerServiceabilityDispatchConfig(
+                1_000, 10_000, 15_000, 0, List.of()));
+    }
+
+    @Test
+    void probeSubmissionExceptionDoesNotUndoTheSuccessfulDeferral() {
+        var scores = mock(WorkerScoreCore.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var runtime = mock(WorkerServiceabilityRuntime.class);
+        long fence = -777L;
+        when(scores.acquireRecoveryRecheckCandidates("group-1", 100))
+                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+        when(scores.getScoreStates("group-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", new WorkerScoreState(
+                        "worker-1", fence, WorkerScorePolarity.RECOVERY_RECHECK, 9_000, 1)));
+        when(catalog.getWorkerDescriptors(List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        var targets = Map.of("worker-1", new WorkerScoreDelayTarget(fence, 15_000));
+        when(scores.deferObservedToRecovery("group-1", targets))
+                .thenReturn(Map.of("worker-1", transitioned(-999L)));
+        when(runtime.offerProbeRequests("adapter-1", List.of("worker-1")))
+                .thenThrow(new IllegalStateException("offer unavailable"));
+
+        assertThrows(IllegalStateException.class, () -> policy(scores, catalog, runtime)
+                .dispatchProbes(List.of("group-1"), WorkerServiceabilityDispatchConfig.defaults(10_000)));
+        var order = inOrder(scores, runtime);
+        order.verify(scores).acquireHotCandidatesBefore("group-1", 10_000, 100);
+        order.verify(scores).acquireRecoveryRecheckCandidates("group-1", 100);
+        order.verify(scores).getScoreStates("group-1", List.of("worker-1"));
+        order.verify(scores).deferObservedToRecovery("group-1", targets);
+        order.verify(runtime).offerProbeRequests("adapter-1", List.of("worker-1"));
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void excludedRecoveryIsParkedDirectlyWithoutOfferingOrChangingPolarity() {
+        var scores = mock(WorkerScoreCore.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var runtime = mock(WorkerServiceabilityRuntime.class);
+        long fence = -777L;
+        when(scores.acquireRecoveryRecheckCandidates("group-1", 100))
+                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+        when(scores.getScoreStates("group-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", new WorkerScoreState(
+                        "worker-1", fence, WorkerScorePolarity.RECOVERY_RECHECK, 9_000, 1)));
+        when(catalog.getWorkerDescriptors(List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", worker("worker-1", "system-polling")));
+
+        assertEquals(0, policy(scores, catalog, runtime).dispatchProbes(List.of("group-1"), config()));
+        verify(scores).parkObservedRecoveryScore("group-1", "worker-1", fence);
+        verify(scores, never()).toggleCurrentPolarity("group-1", "worker-1", fence);
+        verify(scores).deferObservedToRecovery("group-1", Map.of());
+        org.mockito.Mockito.verifyNoInteractions(runtime);
     }
 
     private static WorkerServiceabilityDispatchPolicy policy(
@@ -382,7 +421,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 1_000L,
                 10_000L,
                 1_000L,
-                5,
+                1_000L,
                 List.of("system-polling")
         );
     }

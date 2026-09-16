@@ -35,21 +35,21 @@ class RedisWorkerScoreCoreTest {
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.parkObservedRecoveryScore(
-                            "group-1", "worker-1", -200L, 0
+                            "group-1", "worker-1", 2L
                     ).status()
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.deferObservedToRecovery(
                             "group-1",
-                            Map.of("worker-1", new WorkerScoreDelayTarget(0L, 1_000L, 0))
+                            Map.of("worker-1", new WorkerScoreDelayTarget(0L, 1_000L))
                     ).get("worker-1").status()
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.deferObservedToRecovery(
                             "group-1",
-                            Map.of("worker-1", new WorkerScoreDelayTarget(200L, 1_000L, 100))
+                            Map.of("worker-1", new WorkerScoreDelayTarget(2L, 0L))
                     ).get("worker-1").status()
             );
             assertEquals(
@@ -73,20 +73,20 @@ class RedisWorkerScoreCoreTest {
             for (long delay : new long[]{0, -1, Long.MAX_VALUE, WorkerScoreCore.PAUSE_TIME_MILLIS}) {
                 assertEquals(WorkerScoreTransitionStatus.INVALID,
                         scoreCore.deferObservedToRecovery("g",
-                                Map.of("w", new WorkerScoreDelayTarget(20_000L, delay, 0)))
+                                Map.of("w", new WorkerScoreDelayTarget(20_000L, delay)))
                                 .get("w").status());
                 assertEquals(WorkerScoreTransitionStatus.INVALID,
                         scoreCore.deferObservedToRecovery("g",
-                                Map.of("w", new WorkerScoreDelayTarget(-20_000L, delay, 1)))
+                                Map.of("w", new WorkerScoreDelayTarget(-20_000L, delay)))
                                 .get("w").status());
             }
             assertEquals(WorkerScoreTransitionStatus.INVALID,
                     scoreCore.deferObservedToRecovery("g",
-                            Map.of("cold", new WorkerScoreDelayTarget(-200L, 1_000, 1)))
+                            Map.of("cold", new WorkerScoreDelayTarget(-2L, 1_000)))
                             .get("cold").status());
             assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of()));
             var tooMany = new java.util.LinkedHashMap<String, WorkerScoreDelayTarget>();
-            for (int i = 0; i < 101; i++) tooMany.put("w" + i, new WorkerScoreDelayTarget(-20_000, 1_000, 1));
+            for (int i = 0; i < 101; i++) tooMany.put("w" + i, new WorkerScoreDelayTarget(-20_000, 1_000));
             assertThrows(IllegalArgumentException.class,
                     () -> scoreCore.deferObservedToRecovery("g", tooMany));
             assertThrows(IllegalArgumentException.class,
@@ -132,11 +132,7 @@ class RedisWorkerScoreCoreTest {
                     () -> scores.confirmActiveHotScoreLeases("g", Map.of(" ", 200L), 1_000));
             assertThrows(IllegalArgumentException.class,
                     () -> scores.confirmActiveHotScoreLeases("g", null, 1_000));
-            for (int rank : new int[]{-1, 100}) {
-                assertEquals(WorkerScoreTransitionStatus.INVALID,
-                        scores.deferObservedToRecovery("g", Map.of("w",
-                                new WorkerScoreDelayTarget(20_000, 1_000, rank))).get("w").status());
-            }
+
         } finally {
             client.shutdown();
         }

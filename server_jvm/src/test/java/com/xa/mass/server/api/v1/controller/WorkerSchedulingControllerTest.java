@@ -56,8 +56,7 @@ class WorkerSchedulingControllerTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.TRANSITIONED, 123L)
@@ -75,8 +74,7 @@ class WorkerSchedulingControllerTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.STALE, 123L)
@@ -93,8 +91,7 @@ class WorkerSchedulingControllerTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.STALE, null)
@@ -109,8 +106,7 @@ class WorkerSchedulingControllerTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.INVALID, null)
@@ -135,7 +131,6 @@ class WorkerSchedulingControllerTest {
                         123L,
                         WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE,
                         1_000L,
-                        2,
                         0
                 )
         ));
@@ -152,8 +147,7 @@ class WorkerSchedulingControllerTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenThrow(new IllegalStateException("Redis unavailable"));
 
         mockMvc.perform(post(PAUSE_PATH))

@@ -24,9 +24,9 @@ class DispatchConvergenceRuntimeTest {
                 0
         ));
 
-        assertServiceability(PolicyPreset.SERVICEABILITY_DEFAULT, 60_000);
-        assertServiceability(PolicyPreset.SCENARIO_LAB, 60_000);
-        assertServiceability(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 10);
+        assertServiceability(PolicyPreset.SERVICEABILITY_DEFAULT, 15_000, 60_000);
+        assertServiceability(PolicyPreset.SCENARIO_LAB, 15_000, 60_000);
+        assertServiceability(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 10, 10);
     }
 
     private static void assertAssignment(
@@ -48,7 +48,8 @@ class DispatchConvergenceRuntimeTest {
 
     private static void assertServiceability(
             PolicyPreset preset,
-            long expectedRecoveryInterval
+            long expectedRecheckDelay,
+            long expectedHotStaleAfter
     ) {
         WorkerServiceabilityDispatchConfig config =
                 DispatchConvergenceRuntime.serviceabilityConfigForPreset(
@@ -58,10 +59,10 @@ class DispatchConvergenceRuntimeTest {
         assertEquals(12_300, config.hotEligibilityFloorMillis());
         assertEquals(1_000, config.intervalMillis());
         assertEquals(
-                expectedRecoveryInterval,
-                config.probeRetryIntervalMillis()
+                expectedRecheckDelay,
+                config.recheckDelayMillis()
         );
-        assertEquals(5, config.maxRecoveryAttempts());
+        assertEquals(expectedHotStaleAfter, config.hotProbeStaleAfterMillis());
         assertEquals(
                 List.of("system-polling"),
                 config.probeExcludedEndpointManagerIds()

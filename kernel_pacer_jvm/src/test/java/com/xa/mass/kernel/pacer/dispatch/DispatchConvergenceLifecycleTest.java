@@ -214,9 +214,9 @@ class DispatchConvergenceLifecycleTest {
                 5,
                 1_000,
                 WorkerServiceabilityDispatchConfig
-                        .DEFAULT_PROBE_RETRY_INTERVAL_MILLIS,
+                        .DEFAULT_RECHECK_DELAY_MILLIS,
                 WorkerServiceabilityDispatchConfig
-                        .DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                        .DEFAULT_HOT_PROBE_STALE_AFTER_MILLIS,
                 WorkerServiceabilityDispatchConfig
                         .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
         );

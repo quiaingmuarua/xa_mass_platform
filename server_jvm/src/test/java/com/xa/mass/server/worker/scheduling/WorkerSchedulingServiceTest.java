@@ -58,8 +58,7 @@ class WorkerSchedulingServiceTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.TRANSITIONED, null)
@@ -74,8 +73,7 @@ class WorkerSchedulingServiceTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.STALE, 123L)
@@ -90,8 +88,7 @@ class WorkerSchedulingServiceTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.STALE, null)
@@ -105,8 +102,7 @@ class WorkerSchedulingServiceTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenReturn(Map.of(
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.INVALID, null)
@@ -131,7 +127,6 @@ class WorkerSchedulingServiceTest {
                         pausedScore,
                         WorkerScorePolarity.HOT_ACQUIRE,
                         WorkerScoreCore.PAUSE_TIME_MILLIS,
-                        2,
                         0
                 )
         ));
@@ -183,7 +178,6 @@ class WorkerSchedulingServiceTest {
                         pausedScore,
                         WorkerScorePolarity.HOT_ACQUIRE,
                         WorkerScoreCore.PAUSE_TIME_MILLIS,
-                        2,
                         0
                 )
         ));
@@ -225,7 +219,6 @@ class WorkerSchedulingServiceTest {
                         123L,
                         WorkerScorePolarity.RECOVERY_RECHECK,
                         1_000L,
-                        2,
                         1
                 )
         ));
@@ -338,8 +331,7 @@ class WorkerSchedulingServiceTest {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS,
-                null
+                WorkerScoreCore.PAUSE_TIME_MILLIS
         )).thenThrow(new IllegalStateException("Redis unavailable"));
 
         assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
@@ -369,7 +361,6 @@ class WorkerSchedulingServiceTest {
                 polarity.value() * timeMillis * WorkerScoreCore.TIME_SCALE,
                 polarity,
                 timeMillis,
-                WorkerScoreCore.MIN_LANE_RANK,
                 WorkerScoreCore.MIN_DIRTY
         );
     }

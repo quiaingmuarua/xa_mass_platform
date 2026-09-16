@@ -36,7 +36,7 @@ NORMAL Task descriptors -> local Group deficits
   -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
 
-The Score Owner preserves rank and clears dirty when exact-acquiring a due HOT
+The Score Owner preserves polarity and clears dirty when exact-acquiring a due HOT
 observation. Both observed dirty values are legal; the entire score must still
 match. Concurrent callers using the same observation have at most one winner.
 An occupied, paused, negative, missing or changed score cannot be acquired.
@@ -78,7 +78,7 @@ expire; there is no periodic renewal, compensation release or restart adoption.
 **Core evidence boundary change:** a Score in the current 100ms slot, as well as
 a future slot, accepts validated network evidence to correct its polarity.
 This matches the current-slot lease confirmation boundary. Evidence preserves
-the time coordinate, rank and dirty; it cannot release a lease or undo PAUSE.
+the time coordinate and dirty; it cannot release a lease or undo PAUSE.
 A disconnect committed before confirmation makes the original HOT fence stale
 unless subsequent available evidence changes the polarity again. If confirmation
 wins first, a later disconnect preserves its execution fence's magnitude and
@@ -114,7 +114,7 @@ dirty=1 means it has been invalidated or consumed. Dirty is not a Properties
 version, network state, scheduling polarity or attribute write lock.
 
 Server requests one bounded dirty operation per Group after APPLIED Worker or
-Platform facts writes. The operation preserves sign, deadline and rank and does
+Platform facts writes. The operation preserves sign and deadline and does
 not create missing members. An already confirmed execution fence is dirty=1,
 so subsequent Properties invalidation is a NOOP and preserves result release.
 
@@ -185,11 +185,12 @@ HOT and RECOVERY are Kernel scheduling eligibility, not physical connection
 state. The [Serviceability Policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 interprets Adapter evidence and probe results through its dedicated time-fenced
 operation. It must not be collapsed into Task result lease disposition.
-Cadence, recovery ranking and cold parking belong to that policy; no generic
+Recheck timing and excluded-Endpoint cold parking belong to that policy; no generic
 Session, Attempt or Worker reservation owner is introduced here.
 
 ## Deployment
 
-No HTTP, Binding, Redis key or Score encoding migration is required. Restart the
-existing Server/Pacer process; local inventory is discarded and previous holds
-expire. No data cleanup, historical rewrite or upgrade repair process is needed.
+HTTP, Binding and Redis key shapes are unchanged. Worker Score now uses
+polarity * (timeSlot * 2 + dirty); previous Score layouts and correlated fences
+cannot be mixed with it. This change supplies no compatibility reader, migration
+or automatic cleanup. Local inventory is discarded on process restart.

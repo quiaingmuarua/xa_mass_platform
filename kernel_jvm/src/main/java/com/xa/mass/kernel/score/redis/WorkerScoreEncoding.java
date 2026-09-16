@@ -13,12 +13,6 @@ final class WorkerScoreEncoding {
         return Long.signum(score) * (targetSlot * SLOT_FACTOR + Math.abs(score) % SLOT_FACTOR);
     }
 
-    static long replaceRank(long score, int targetRank) {
-        long absolute = Math.abs(score);
-        return Long.signum(score) * (absolute - absolute % SLOT_FACTOR
-                + (long) targetRank * DIRTY_FACTOR + absolute % DIRTY_FACTOR);
-    }
-
     static long replaceDirty(long score, int targetDirty) {
         long absolute = Math.abs(score);
         return Long.signum(score) * (absolute - absolute % DIRTY_FACTOR + targetDirty);
@@ -30,22 +24,14 @@ final class WorkerScoreEncoding {
 
     static long absoluteScore(
             long timeSlot,
-            int laneRank,
             int dirty
     ) {
-        return timeSlot * SLOT_FACTOR
-                + (long) laneRank * DIRTY_FACTOR
-                + dirty;
+        return timeSlot * SLOT_FACTOR + dirty;
     }
 
     static boolean validTimeMillis(long timeMillis) {
         return timeMillis >= MIN_TIME_MILLIS
                 && timeMillis <= MAX_TIME_MILLIS;
-    }
-
-    static boolean validLaneRank(int laneRank) {
-        return laneRank >= MIN_LANE_RANK
-                && laneRank <= MAX_LANE_RANK;
     }
 
     static WorkerScoreState decodeState(
@@ -58,15 +44,9 @@ final class WorkerScoreEncoding {
         }
         long absolute = Math.abs(score);
         long timeSlot = absolute / SLOT_FACTOR;
-        long slotRemainder = absolute % SLOT_FACTOR;
-        int laneRank = Math.toIntExact(
-                slotRemainder / DIRTY_FACTOR
-        );
-        int dirty = Math.toIntExact(slotRemainder % DIRTY_FACTOR);
+        int dirty = Math.toIntExact(absolute % DIRTY_FACTOR);
         if (timeSlot < MIN_TIME_SLOT
                 || timeSlot > MAX_TIME_SLOT
-                || laneRank < MIN_LANE_RANK
-                || laneRank > MAX_LANE_RANK
                 || dirty < MIN_DIRTY
                 || dirty > MAX_DIRTY) {
             throw new IllegalStateException("Worker score is invalid");
@@ -78,7 +58,6 @@ final class WorkerScoreEncoding {
                         ? WorkerScorePolarity.HOT_ACQUIRE
                         : WorkerScorePolarity.RECOVERY_RECHECK,
                 timeSlot * SLOT_MILLIS,
-                laneRank,
                 dirty
         );
     }

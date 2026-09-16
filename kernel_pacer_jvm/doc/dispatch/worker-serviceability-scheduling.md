@@ -2,7 +2,7 @@
 
 Status: active Java Kernel network-evidence policy with optional periodic probes. Result and Dispatch Pacers are
 production Java mechanisms.
-Transport evidence is stable; score thresholds and retry policy remain
+Transport evidence is stable; score thresholds and recheck timing remain
 tunable.
 
 ## Purpose
@@ -58,7 +58,7 @@ assumes one active Kernel scheduling application per Redis scope.
 Serviceability also computes one call-local, slot-aligned HOT Probe cutoff:
 
 ```text
-max(hotEligibilityFloorMillis, now - probeRetryIntervalMillis)
+max(hotEligibilityFloorMillis, now - hotProbeStaleAfterMillis)
 ```
 
 It may observe ordinary due HOT coordinates older than that cutoff as
@@ -138,31 +138,34 @@ consumes budget even when the subsequent HASH offer returns `ALREADY_REQUESTED`
 or `CAPACITY`, because that Score change is not rolled back. Processing stops
 when the budget is exhausted or every Group has been visited.
 
-**Core scheduling change: RECOVERY timeSlot is the next eligible recheck time.**
-The Owner reads Redis time and returns only coordinates in its existing recent
-window whose slot is strictly before the current slot. Current-slot, future,
-PAUSE and cold coordinates remain outside that range. Pacer does not add another
-rank-dependent wait to the observed time. Instead it supplies the next delay
-when advancing the exact Score. With `B = probeRetryIntervalMillis`:
+**RECOVERY timeSlot is the next eligible recheck time for a long-lived resource.**
+The Owner reads every due coordinate after the fixed cold slot, without a
+24-hour lookback cutoff. Current-slot, future, PAUSE and cold coordinates remain
+outside that range. There is no attempt count, attempt limit or exhaustion.
 
 | Observed state | Exact transition before offer | Request |
 | --- | --- | --- |
-| eligible HOT | RECOVERY(rank=0, next time=Redis now+B) | initial Probe |
-| due RECOVERY(rank=n), n below maximum | RECOVERY(rank=n+1, next time=Redis now+(n+2)*B) | Recovery Probe |
-| due RECOVERY at maximum | cold park | none |
+| eligible HOT | RECOVERY(next time=Redis now+delay) | Probe |
+| due RECOVERY | RECOVERY(next time=Redis now+delay) | Probe |
 
-The initial HOT Probe is not counted as a Recovery Probe. The existing default
-1-second Producer interval, 60-second base delay and maximum rank 5 remain.
-Configuration rejects multiplication overflow for the maximum retry delay.
-Pacer decides the delay and target rank; the Score Owner encodes `floor((Redis now+delay)/100)`
-inside the exact batch Lua and preserves dirty. The strict previous-slot due
-boundary prevents an early retry even when the target is rounded down.
+The Producer interval remains 1 second. recheckDelayMillis defaults to 15 seconds;
+hotProbeStaleAfterMillis independently remains 60 seconds for the HOT cutoff.
+The Runtime Boundary preset retains separate 10ms values for both checks.
+Pacer supplies the fixed delay. Score Owner encodes floor((Redis now+delay)/100)
+inside the exact batch Lua and preserves dirty. Only storedSlot < redisNowSlot
+is due, so rounding down cannot permit an early check.
+
+**15 seconds is eligibility delay, not a promised Probe time or periodic schedule.**
+Main's Group input, Producer scheduling, HOT-first ordering and the 100-successful-
+hold budget determine actual progress. A delayed round starts the next delay
+from its Redis execution time. An eligible Recovery member is not cold-parked
+because of its age or how often it has been checked.
 
 The policy directly asks the Score and Resource Owners for bounded observations,
 current semantic states, and canonical Worker descriptors. Only matching exact
 observations with valid Binding are handled. Excluded endpoints are parked in
 the cold range through exact Score Owner operations. One `deferObservedToRecovery`
-batch receives `workerId -> WorkerScoreDelayTarget(observedScore, delayMillis, targetLaneRank)`;
+batch receives `workerId -> WorkerScoreDelayTarget(observedScore, delayMillis)`;
 only `TRANSITIONED`
 Workers are grouped by `endpointManagerId` and offered through
 `WorkerServiceabilityRuntime.offerProbeRequests`. A failed or lost offer or
@@ -184,20 +187,21 @@ Runtime Boundary establishes its connected RECOVERY fixture with an exact Owner
 toggle before approving the Task that exposes the Group. It must not overwrite
 an in-flight probe hold with an earlier Score. Its existing 15-second bound
 covers normal Producer scheduling and Adapter/Result handoff, with no scan
-cooldown. Focused Pacer tests prove next-round discovery and write-time backoff;
+cooldown. Focused Pacer tests prove next-round discovery and fixed eligibility delay;
 Redis Owner tests prove time boundaries, equal-score head progress and exact CAS.
 
-Cutover uses one stopped old process followed by one new process in the same
-Redis scope. Existing RECOVERY coordinates within the valid recheck window are
-interpreted directly as next-check times, so the first bounded check can happen
-earlier than under the old rank-dependent reader. Subsequent writes use the new
-semantics. There is no data rewrite, compatibility reader or migration key.
+Worker Score now stores only polarity, time and dirty. Old Score layouts and
+related fences cannot be resumed with this encoding. No compatibility reader,
+migration tool or data cleanup is included; proofs use fresh test scopes.
+This change does not add a reconciler or janitor. Future offline cleanup requires
+separate network evidence; nextRecheckAt advances on checks and cannot measure
+offline age.
 
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former
 hard-coded Polling branch. An excluded HOT score is exact-toggled to RECOVERY;
 an excluded RECOVERY score is used as observed. The exact negative score is
-then cold-parked with `laneRank=maxRecoveryAttempts`. PAUSE remains unchanged.
+then cold-parked at slot 1 with dirty preserved. PAUSE remains unchanged.
 No probe request is written. A later valid Polling observation can restore HOT
 availability for a Polling Worker; other excluded endpoints require fresh valid
 network evidence.
@@ -265,8 +269,8 @@ The per-poll publication cost is intentional in this cut.
 
 Every initial registration, including Polling, is cold. Lost first connection
 or poll evidence leaves it cold until fresh valid evidence arrives. No ACK,
-replay or cold-member scan promises activation. Existing recovery exhaustion
-continues to use its cold parking coordinate. Network events do not initialize
+replay or cold-member scan promises activation. Excluded Endpoints use the same
+cold coordinate. Network events do not initialize
 missing Scores, release leases, clear dirty or undo PAUSE.
 
 ## Score Convergence
@@ -289,7 +293,7 @@ accepts validated Evidence just as a future coordinate does. This aligns with
 active lease confirmation, which still permits that current slot. Only past
 stored coordinates require Evidence from the same or a later slot. The rule
 applies to HOT and RECOVERY, including a current-slot probe coordinate.
-Valid Evidence always preserves `laneRank` and dirty.
+Valid Evidence always preserves dirty.
 Unavailable Evidence changes only the Score sign. Available Evidence also
 advances an older past-slot coordinate to its Evidence slot, so a reconnect
 observed after Server startup crosses that process's HOT eligibility floor
@@ -305,10 +309,8 @@ checks; it is not an independent network timestamp. Source/Binding validation,
 the default 30-second evidence age limit, lane capacity and probe scheduling
 are unchanged. No extra read, queue, replay or compensation scan is introduced.
 
-Retry rank, next-check time, and cold parking are Dispatch concerns performed
-before a Probe is offered or when a due Recovery observation is exhausted.
-The Result path does not calculate the process floor or advance Recovery retry
-state; it refreshes a past coordinate from the accepted connection timestamp
+Next-check time and excluded-Endpoint cold parking are Dispatch concerns.
+The Result path does not calculate the process floor or schedule rechecks; it refreshes a past coordinate from the accepted connection timestamp
 and preserves a current/future coordinate.
 A newer past-slot Score still rejects older Evidence as `STALE`; reports that
 arrive after a lease's slot can therefore remain unapplied under best-effort

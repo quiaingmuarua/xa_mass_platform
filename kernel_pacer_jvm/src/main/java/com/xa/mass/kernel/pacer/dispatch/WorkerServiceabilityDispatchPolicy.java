@@ -92,7 +92,7 @@ final class WorkerServiceabilityDispatchPolicy {
         long hotProbeCutoffMillis = hotProbeCutoffMillis(
                 nowMillis,
                 config.hotEligibilityFloorMillis(),
-                config.probeRetryIntervalMillis()
+                config.hotProbeStaleAfterMillis()
         );
         Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
@@ -146,24 +146,16 @@ final class WorkerServiceabilityDispatchPolicy {
                 }
                 if (excludedEndpoints.contains(
                         descriptor.endpointManagerId()
-                )
-                        || state.polarity()
-                        == WorkerScorePolarity.RECOVERY_RECHECK
-                        && state.laneRank()
-                        >= config.maxRecoveryAttempts()) {
+                )) {
                     coldPark(
                             workerGroupId,
-                            state,
-                            config.maxRecoveryAttempts()
+                            state
                     );
                     continue;
                 }
                 probeDescriptors.put(candidate.workerId(), descriptor);
-                boolean isHot = state.polarity() == WorkerScorePolarity.HOT_ACQUIRE;
-                long delayMillis = config.probeRetryIntervalMillis()
-                        * (isHot ? 1L : state.laneRank() + 2L);
                 targets.put(candidate.workerId(), new WorkerScoreDelayTarget(
-                        candidate.score(), delayMillis, isHot ? 0 : state.laneRank() + 1
+                        candidate.score(), config.recheckDelayMillis()
                 ));
             }
 
@@ -190,8 +182,7 @@ final class WorkerServiceabilityDispatchPolicy {
 
     private void coldPark(
             String workerGroupId,
-            WorkerScoreState worker,
-            int maxRecoveryAttempts
+            WorkerScoreState worker
     ) {
         if (worker.timeMillis() == WorkerScoreCore.PAUSE_TIME_MILLIS) {
             return;
@@ -213,8 +204,7 @@ final class WorkerServiceabilityDispatchPolicy {
         workerScores.parkObservedRecoveryScore(
                 workerGroupId,
                 worker.workerId(),
-                recoveryScore,
-                maxRecoveryAttempts
+                recoveryScore
         );
     }
 
@@ -245,11 +235,11 @@ final class WorkerServiceabilityDispatchPolicy {
     private static long hotProbeCutoffMillis(
             long nowMillis,
             long hotEligibilityFloorMillis,
-            long probeRetryIntervalMillis
+            long hotProbeStaleAfterMillis
     ) {
-        long staleBeforeMillis = nowMillis <= probeRetryIntervalMillis
+        long staleBeforeMillis = nowMillis <= hotProbeStaleAfterMillis
                 ? 0
-                : nowMillis - probeRetryIntervalMillis;
+                : nowMillis - hotProbeStaleAfterMillis;
         long alignedStaleBeforeMillis = staleBeforeMillis
                 / WorkerScoreCore.SLOT_MILLIS
                 * WorkerScoreCore.SLOT_MILLIS;

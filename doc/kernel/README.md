@@ -44,7 +44,7 @@ Mechanical Owner documents:
 - [Worker Resource Model](../../kernel_jvm/doc/resource-model/worker-resource-model.md)
 - [Task Score](../../kernel_jvm/doc/score/task-score-band-scheduling.md)
 - [TaskItem Score](../../kernel_jvm/doc/score/task-item-score-band-scheduling.md)
-- [Worker Score](../../kernel_jvm/doc/score/worker-score-band-scheduling.md): compact encoding, Java composition and fixed atomic operations
+- [Worker Score](../../kernel_jvm/doc/score/worker-score-band-scheduling.md): polarity/time/dirty encoding, Java composition and fixed atomic operations
 - [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 - [Redis Keyspace](../../kernel_jvm/doc/runtime-redis/redis-keyspace.md)
 - [Task Evidence And Result Redis Shape](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
@@ -59,7 +59,7 @@ Policy and lifecycle documents:
 - [Task Initialization](../../kernel_pacer_jvm/doc/dispatch/task-initialization-policy.md)
 - [Candidate Selection](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 - [Task Dispatch](../../kernel_pacer_jvm/doc/dispatch/task-dispatch-pacer.md)
-- [Worker Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+- [Worker Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md): long-lived Recovery with a 15-second eligibility delay
 - [Result Convergence](../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
 
 Cross-module documents:

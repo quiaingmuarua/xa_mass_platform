@@ -249,9 +249,12 @@ Task API
 
 Serviceability retains the 1-second production Producer interval and 100-successful-
 hold round budget. It reads current HOT heads, falling back to RECOVERY only for an
-empty raw HOT result in that Group. Pacer supplies retry delays and target ranks through `deferObservedToRecovery`; Score Owner writes
+empty raw HOT result in that Group. Pacer supplies a fixed eligibility delay through `deferObservedToRecovery`; Score Owner writes
 the next eligible recheck time using Redis time before the Probe offer. There are
-no per-Group scan cursors or empty-range restart timers. CONNECTED evidence keeps a
+no per-Group scan cursors or empty-range restart timers. Recheck delay defaults to
+15 seconds, independently of the 60-second HOT stale threshold. This delay does
+not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff; cold
+parking is reserved for excluded Endpoints. No cleanup thread is installed. CONNECTED evidence keeps a
 future recheck coordinate, so restored HOT may still wait before admission.
 The event Mechanism chooses target polarity and past-time refresh for the mechanical
 Score operation. Provider construction and close ownership stay unchanged; the
