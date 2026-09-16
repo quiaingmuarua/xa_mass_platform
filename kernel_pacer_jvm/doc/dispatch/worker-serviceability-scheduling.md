@@ -155,7 +155,7 @@ The Producer interval remains 1 second. recheckDelayMillis defaults to 15 second
 hotProbeStaleAfterMillis independently remains 60 seconds for the HOT cutoff.
 The Runtime Boundary preset retains separate 10ms values for both checks.
 Pacer supplies the fixed delay. Score Owner encodes floor((Redis now+delay)/100)
-inside the exact batch Lua and preserves dirty. Only storedSlot < redisNowSlot
+inside the exact batch Lua and preserves mark. Only storedSlot < redisNowSlot
 is due, so rounding down cannot permit an early check.
 
 **15 seconds is eligibility delay, not a promised Probe time or periodic schedule.**
@@ -169,7 +169,7 @@ The policy reads `observeHotCandidatesBefore`, falling back to
 canonical Worker descriptors for Binding checks. It does not point-read Score
 states. The selected observation entry supplies the lane; Pacer passes the
 original opaque fences to `deferObservedToRecovery(group, observedScores, delayMillis)`
-with one shared delay. The final exact CAS rejects deletion, time/dirty/polarity
+with one shared delay. The final exact CAS rejects deletion, time/mark/polarity
 changes and intervening PAUSE. A non-empty HOT result never falls through to
 RECOVERY because its Bindings or writes failed. Only `TRANSITIONED`
 Workers are grouped by `endpointManagerId` and offered through
@@ -202,9 +202,9 @@ covers normal Producer scheduling and Adapter/Result handoff, with no scan
 cooldown. Focused Pacer tests prove next-round discovery and fixed eligibility delay;
 Redis Owner tests prove time boundaries, equal-score head progress and exact CAS.
 
-Worker Score now stores only polarity, time and dirty. Old Score layouts and
-related fences cannot be resumed with this encoding. No compatibility reader,
-migration tool or data cleanup is included; proofs use fresh test scopes.
+Worker Score stores only polarity, time and mark. The soft/sealed migration
+retains this numeric layout and treats existing MAX,0 as soft. No compatibility
+reader, migration tool or data cleanup is included; proofs use fresh test scopes.
 This change does not add a reconciler or janitor. Future offline cleanup requires
 separate network evidence; nextRecheckAt advances on checks and cannot measure
 offline age.
@@ -214,7 +214,7 @@ offline age.
 hard-coded Polling branch. An excluded HOT score is exact-toggled to RECOVERY;
 an excluded RECOVERY score is used as observed. HOT cold parking uses the new
 fence returned by the successful toggle; a failed toggle stops the sequence.
-The exact negative score is then cold-parked at slot 1 with dirty preserved.
+The exact negative score is then cold-parked at slot 1 with mark preserved.
 PAUSE is excluded by observation ranges, and a later PAUSE change fails the
 exact fence at either write.
 No probe request is written. A later valid Polling observation can restore HOT
@@ -286,7 +286,7 @@ Every initial registration, including Polling, is cold. Lost first connection
 or poll evidence leaves it cold until fresh valid evidence arrives. No ACK,
 replay or cold-member scan promises activation. Excluded Endpoints use the same
 cold coordinate. Network events do not initialize
-missing Scores, release leases, clear dirty or undo PAUSE.
+missing Scores, release leases, clear mark or undo PAUSE.
 
 ## Score Convergence
 
@@ -308,7 +308,7 @@ accepts validated Evidence just as a future coordinate does. This aligns with
 active lease confirmation, which still permits that current slot. Only past
 stored coordinates require Evidence from the same or a later slot. The rule
 applies to HOT and RECOVERY, including a current-slot probe coordinate.
-Valid Evidence always preserves dirty.
+Valid Evidence always preserves mark.
 Unavailable Evidence changes only the Score sign. Available Evidence also
 advances an older past-slot coordinate to its Evidence slot, so a reconnect
 observed after Server startup crosses that process's HOT eligibility floor

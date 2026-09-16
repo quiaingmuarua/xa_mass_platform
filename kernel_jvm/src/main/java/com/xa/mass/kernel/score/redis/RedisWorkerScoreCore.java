@@ -59,18 +59,20 @@ public final class RedisWorkerScoreCore
             end
             return created
             """;
-    private static final String CURRENT_REWRITE_SCRIPT = EXACT_FUNCTIONS + """
+    private static final String ADVANCE_AND_SEAL_SCRIPT = EXACT_FUNCTIONS + """
             local target_base, factor = tonumber(ARGV[2]), tonumber(ARGV[3])
             local stored = redis.call('ZSCORE', KEYS[1], ARGV[1])
             if not stored then return {'stale'} end
             local current = tonumber(stored)
             local absolute = math.abs(current)
             if absolute <= 0 then return {'invalid', current} end
-            if absolute >= target_base then return {'stale', current} end
-            local target = target_base + absolute % factor
+            if absolute > target_base then return {'stale', current} end
+            local mark = absolute % factor
+            -- Legal marks become 1; retain the existing corrupt fractional suffix behavior.
+            local target = target_base + (mark == 0 and 1 or mark)
             return write_changed(KEYS[1], ARGV[1], current, current / absolute * target)
             """;
-    private static final String MARK_CURRENT_DIRTY_SCRIPT = EXACT_FUNCTIONS + """
+    private static final String SEAL_CURRENT_SCRIPT = EXACT_FUNCTIONS + """
             local maximum, factor = tonumber(ARGV[1]), tonumber(ARGV[2])
             local function mark(id)
               local stored = redis.call('ZSCORE', KEYS[1], id)
@@ -120,36 +122,35 @@ public final class RedisWorkerScoreCore
             end
             return results
             """;
-    private static final String CONFIRM_ACTIVE_SCRIPT = LEASE_CLOCK + """
-            local pause_base = tonumber(ARGV[4])
-            local function confirm(id, observed, target)
+    private static final String TRANSFER_ACTIVE_SCRIPT = LEASE_CLOCK + """
+            local function transfer(id, observed, target)
               if requested_base <= now_base then return {'invalid'} end
               local current, rejected = read_exact(KEYS[1], id, observed)
               if rejected then return rejected end
-              if current % factor ~= 0 or current < now_base or current >= pause_base then
+              if current % factor ~= 0 or current < now_base then
                 return {'stale', current}
               end
               return write_changed(KEYS[1], id, current, target)
             end
             local results = {}
-            for i = 5, #ARGV, 3 do
-              append_result(results, ARGV[i], confirm(ARGV[i], tonumber(ARGV[i+1]), tonumber(ARGV[i+2])))
+            for i = 4, #ARGV, 3 do
+              append_result(results, ARGV[i], transfer(ARGV[i], tonumber(ARGV[i+1]), tonumber(ARGV[i+2])))
             end
             return results
             """;
     private static final String DEFER_DUE_SCRIPT = EXACT_FUNCTIONS + REDIS_TIME_FUNCTION + """
-            local millis, factor, pause = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3])
+            local millis, factor, maximum = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3])
             local delay = tonumber(ARGV[4])
             local now_millis = redis_now_millis()
             local now = math.floor(now_millis / millis)
             local now_base = now * factor
             local target_slot = math.floor((now_millis + delay) / millis)
             local target_base = target_slot * factor
-            local function defer(id, observed, dirty)
+            local function defer(id, observed, mark)
               local current, rejected, stored = read_exact(KEYS[1], id, observed)
               if rejected then rejected[2] = stored; return rejected end
-              local target_absolute = target_base + dirty
-              if now < 0 or now >= pause or target_slot >= pause or target_absolute <= 0 then
+              local target_absolute = target_base + mark
+              if now < 0 or now > maximum or target_slot > maximum or target_absolute <= 0 then
                 return {'invalid', stored}
               end
               if math.abs(current) >= now_base then return {'stale', stored} end
@@ -242,7 +243,7 @@ public final class RedisWorkerScoreCore
     public WorkerSchedulingChangeStatus pauseScheduling(String homeBucketId, String workerId) {
         requireNonBlank(homeBucketId, "homeBucketId");
         requireNonBlank(workerId, "workerId");
-        var result = rewriteCurrentScores(homeBucketId, List.of(workerId), PAUSE_TIME_MILLIS).get(workerId);
+        var result = advanceCurrentScoresAndSeal(homeBucketId, List.of(workerId), PAUSE_TIME_MILLIS).get(workerId);
         return switch (result.status()) {
             case TRANSITIONED -> WorkerSchedulingChangeStatus.APPLIED;
             case NOOP -> WorkerSchedulingChangeStatus.UNCHANGED;
@@ -303,7 +304,7 @@ public final class RedisWorkerScoreCore
                     MIN_BASE,
                     absoluteScore(
                             hotEligibilityFloorMillis / SLOT_MILLIS,
-                            MIN_DIRTY
+                            SOFT_MARK
                     )
             );
         }
@@ -332,7 +333,7 @@ public final class RedisWorkerScoreCore
         }
         long cutoffScore = absoluteScore(
                 hotCutoffMillis / SLOT_MILLIS,
-                MIN_DIRTY
+                SOFT_MARK
         );
         if (cutoffScore <= MIN_BASE) {
             return Map.of();
@@ -365,11 +366,11 @@ public final class RedisWorkerScoreCore
         }
         long maximumScore = -absoluteScore(
                 windowStart,
-                MIN_DIRTY
+                SOFT_MARK
         );
         long minimumScore = -absoluteScore(
                 dueTimeSlot,
-                MAX_DIRTY
+                SEALED_MARK
         );
         return rangeWorkerCandidates(
                 homeBucketId,
@@ -387,7 +388,7 @@ public final class RedisWorkerScoreCore
             throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
         }
         workerIds.forEach(id -> requireNonBlank(id, "workerId"));
-        long coldScore = -absoluteScore(COLD_PARK_TIME_SLOT, MIN_DIRTY);
+        long coldScore = -absoluteScore(COLD_PARK_TIME_SLOT, SOFT_MARK);
         return initializeAbsent(homeBucketId, workerIds, coldScore);
     }
 
@@ -401,7 +402,7 @@ public final class RedisWorkerScoreCore
         return sampleMembers(homeBucketId, limit);
     }
 
-    private Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
+    private Map<String, WorkerScoreTransitionResult> advanceCurrentScoresAndSeal(
             String homeBucketId,
             List<String> workerIds,
             long targetTimeMillis
@@ -430,9 +431,9 @@ public final class RedisWorkerScoreCore
         long targetTimeSlot = targetTimeMillis / SLOT_MILLIS;
         long targetMinAbsoluteScore = absoluteScore(
                 targetTimeSlot,
-                MIN_DIRTY
+                SOFT_MARK
         );
-        return advanceCurrentTime(homeBucketId, uniqueWorkerIds, targetMinAbsoluteScore);
+        return advanceCurrentTimeAndSeal(homeBucketId, uniqueWorkerIds, targetMinAbsoluteScore);
     }
 
     @Override
@@ -446,22 +447,25 @@ public final class RedisWorkerScoreCore
                 homeBucketId,
                 observedScores,
                 targetTimeMillis,
+                false,
                 false
         );
     }
 
     @Override
     public Map<String, WorkerScoreTransitionResult>
-            confirmActiveHotScoreLeases(
+            transferObservedHotScoreLeases(
                     String homeBucketId,
                     Map<String, Long> observedScores,
-                    long targetTimeMillis
+                    long targetTimeMillis,
+                    boolean seal
             ) {
         return updateObservedHotLeases(
                 homeBucketId,
                 observedScores,
                 targetTimeMillis,
-                true
+                true,
+                seal
         );
     }
 
@@ -469,7 +473,8 @@ public final class RedisWorkerScoreCore
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis,
-            boolean confirm
+            boolean transfer,
+            boolean seal
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (observedScores == null) {
@@ -524,32 +529,29 @@ public final class RedisWorkerScoreCore
 
         LinkedHashMap<String, WorkerScoreTransitionResult> transitioned = new LinkedHashMap<>();
         List<String> ids = new ArrayList<>(pending.keySet());
-        long requestedBase = absoluteScore(targetTimeSlot, MIN_DIRTY);
+        long requestedBase = absoluteScore(targetTimeSlot, SOFT_MARK);
         for (int offset = 0; offset < ids.size(); offset += MAX_SCORE_BATCH_SIZE) {
             List<String> batch = ids.subList(offset, Math.min(offset + MAX_SCORE_BATCH_SIZE, ids.size()));
-            List<String> arguments = new ArrayList<>((confirm ? 4 : 3) + batch.size() * (confirm ? 3 : 2));
+            List<String> arguments = new ArrayList<>(3 + batch.size() * (transfer ? 3 : 2));
             arguments.addAll(List.of(Long.toString(requestedBase), Long.toString(SLOT_MILLIS),
                     Integer.toString(SLOT_FACTOR)));
-            if (confirm) {
-                arguments.add(Long.toString(absoluteScore(PAUSE_TIME_SLOT, MIN_DIRTY)));
-            }
             batch.forEach(id -> {
                 long observed = pending.get(id);
                 arguments.add(id);
                 arguments.add(Long.toString(observed));
-                if (confirm) {
+                if (transfer) {
                     arguments.add(Long.toString(absoluteScore(
-                            Math.max(targetTimeSlot, observed / SLOT_FACTOR), MAX_DIRTY)));
+                            Math.max(targetTimeSlot, observed / SLOT_FACTOR), seal ? SEALED_MARK : SOFT_MARK)));
                 }
             });
             transitioned.putAll(executeBatch(homeBucketId, batch,
-                    confirm ? CONFIRM_ACTIVE_SCRIPT : ACQUIRE_DUE_SCRIPT, arguments, "exact_hot_leases"));
+                    transfer ? TRANSFER_ACTIVE_SCRIPT : ACQUIRE_DUE_SCRIPT, arguments, "exact_hot_leases"));
         }
         return mergeOrderedResults(ordered.keySet(), immediate, transitioned);
     }
 
     @Override
-    public Map<String, WorkerScoreTransitionResult> markCurrentLeasesDirty(
+    public Map<String, WorkerScoreTransitionResult> sealCurrentScoreHolds(
             String homeBucketId,
             List<String> workerIds
     ) {
@@ -560,11 +562,11 @@ public final class RedisWorkerScoreCore
         }
         workerIds.forEach(id -> requireNonBlank(id, "workerId"));
         List<String> arguments = new ArrayList<>(workerIds.size() + 2);
-        arguments.add(Long.toString(absoluteScore(MAX_TIME_SLOT, MAX_DIRTY)));
+        arguments.add(Long.toString(absoluteScore(MAX_TIME_SLOT, SEALED_MARK)));
         arguments.add(Integer.toString(SLOT_FACTOR));
         arguments.addAll(workerIds);
-        return executeBatch(homeBucketId, workerIds, MARK_CURRENT_DIRTY_SCRIPT,
-                arguments, "mark_current_leases_dirty");
+        return executeBatch(homeBucketId, workerIds, SEAL_CURRENT_SCRIPT,
+                arguments, "seal_current_score_holds");
     }
 
     @Override
@@ -596,7 +598,7 @@ public final class RedisWorkerScoreCore
         if (ordered.isEmpty()) {
             return Map.of();
         }
-        if (delayMillis <= 0 || delayMillis >= PAUSE_TIME_MILLIS) {
+        if (delayMillis <= 0 || delayMillis >= MAX_TIME_MILLIS) {
             return uniformResults(ordered.keySet(), WorkerScoreTransitionStatus.INVALID);
         }
 
@@ -636,7 +638,7 @@ public final class RedisWorkerScoreCore
             pending.forEach((workerId, state) -> {
                 arguments.add(workerId);
                 arguments.add(Long.toString(state.score()));
-                arguments.add(Integer.toString(state.dirty()));
+                arguments.add(Integer.toString(state.mark()));
             });
             transitioned.putAll(executeBatch(homeBucketId, pending.keySet(),
                     DEFER_DUE_SCRIPT, arguments, "Worker score defer"));
@@ -723,7 +725,7 @@ public final class RedisWorkerScoreCore
         }
         long nextScore = -absoluteScore(
                 COLD_PARK_TIME_SLOT,
-                observed.dirty()
+                observed.mark()
         );
         return compareAndSet(homeBucketId, workerId, observedScore, nextScore);
     }
@@ -771,7 +773,7 @@ public final class RedisWorkerScoreCore
             return uniformResults(ordered.keySet(), WorkerScoreTransitionStatus.INVALID);
         }
         long releaseSlot = releaseTimeMillis / SLOT_MILLIS;
-        long releaseBase = absoluteScore(releaseSlot, MIN_DIRTY);
+        long releaseBase = absoluteScore(releaseSlot, SOFT_MARK);
         LinkedHashMap<String, WorkerScoreTransitionResult> immediate = new LinkedHashMap<>();
         LinkedHashMap<String, long[]> targets = new LinkedHashMap<>();
         ordered.forEach((id, observed) -> {
@@ -800,7 +802,7 @@ public final class RedisWorkerScoreCore
     }
 
     // Fixed Redis operations; public entry points above only prepare and combine inputs/results.
-    private Map<String, WorkerScoreTransitionResult> advanceCurrentTime(
+    private Map<String, WorkerScoreTransitionResult> advanceCurrentTimeAndSeal(
             String homeBucketId, Set<String> uniqueWorkerIds, long targetMinAbsoluteScore
     ) {
         RedisAsyncCommands<String, String> async = connection().async();
@@ -810,7 +812,7 @@ public final class RedisWorkerScoreCore
         String key = scoreKey(homeBucketId);
         for (String workerId : uniqueWorkerIds) {
             futures.add(async.eval(
-                    CURRENT_REWRITE_SCRIPT,
+                    ADVANCE_AND_SEAL_SCRIPT,
                     ScriptOutputType.MULTI,
                     new String[]{key},
                     workerId,

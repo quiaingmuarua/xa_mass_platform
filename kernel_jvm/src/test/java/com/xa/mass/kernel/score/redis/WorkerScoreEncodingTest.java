@@ -10,19 +10,19 @@ class WorkerScoreEncodingTest {
     @Test
     void compactCoordinatesAndTimeReplacementPreserveOtherFields() {
         for (int sign : new int[]{-1, 1}) {
-            for (int dirty : new int[]{0, 1}) {
-                long score = sign * (246L + dirty);
+            for (int mark : new int[]{0, 1}) {
+                long score = sign * (246L + mark);
                 var state = decodeState("w", score);
                 assertEquals(12300, state.timeMillis());
-                assertEquals(dirty, state.dirty());
+                assertEquals(mark, state.mark());
                 assertEquals(sign, polarityValue(state.polarity()));
-                assertEquals(sign * (248L + dirty), replaceTime(score, 124));
+                assertEquals(sign * (248L + mark), replaceTime(score, 124));
             }
         }
     }
 
     @Test
-    void coldPauseAndSlotBoundariesUseOnlyTimeAndDirty() {
+    void coldPauseAndSlotBoundariesUseOnlyTimeAndMark() {
         assertEquals(-2, -absoluteScore(COLD_PARK_TIME_SLOT, 0));
         assertEquals(0, decodeState("w", 1).timeMillis());
         assertEquals(100, decodeState("w", 2).timeMillis());
@@ -31,7 +31,7 @@ class WorkerScoreEncodingTest {
         for (int sign : new int[]{-1, 1}) {
             var pause = decodeState("w", sign * 199_999_999_999L);
             assertEquals(PAUSE_TIME_MILLIS, pause.timeMillis());
-            assertEquals(1, pause.dirty());
+            assertEquals(1, pause.mark());
         }
         assertTrue(validTimeMillis(0));
         assertTrue(validTimeMillis(PAUSE_TIME_MILLIS));

@@ -53,7 +53,11 @@ operations inside its existing provider. Pacer supplies recheck delay; Worker
 event Mechanisms select polarity and exact-release semantics. The
 [Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
 defines composition and command budgets. Worker Score encodes only polarity,
-time and dirty. The new format has no old-layout compatibility or migration.
+time and mark. Active HOT mark=0 is a transferable soft hold; mark=1 is sealed.
+The Owner accepts opaque exact fences and a mechanical seal choice, without
+recording seal reasons. Transfer keeps or extends the deadline, while pause
+atomically writes MAX,1. The numeric layout stays unchanged and no compatibility
+reader or migration is added; existing MAX,0 follows ordinary soft rules.
 
 ## Production Call Closure
 
@@ -70,7 +74,7 @@ API and the fixed production Pacers, including:
 - Serviceability probe request offer/consume and evidence append/consume.
 
 Worker Binding uses the new single-HASH layout and requires an exact-scope
-rebuild, with no compatibility reads. Other owner keys remain unchanged. Worker Score uses its new time/dirty encoding;
+rebuild, with no compatibility reads. Other owner keys remain unchanged. Worker Score uses time/mark encoding;
 cold registration uses no Redis TIME or Score readback. Redis-sensitive
 claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
 Operations outside the production caller closure remain explicit gaps.

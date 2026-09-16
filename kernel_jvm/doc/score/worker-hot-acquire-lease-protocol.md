@@ -29,15 +29,15 @@ exact execution confirmation remain. There is no Matching acquisition callback,
 
 ```text
 NORMAL Task descriptors -> local Group deficits
-  -> Pacer read-only due HOT head, including dirty=0 and dirty=1
-  -> one Kernel exact acquisition, 1 second, dirty=0 -> supplied successful fences
+  -> Pacer read-only due HOT head, including mark=0 and mark=1
+  -> one Kernel exact acquisition, 1 second, soft mark=0 -> supplied successful fences
   -> Matching supplied-ID current projection and acceptance plan -> shared inventory
-  -> local take -> exact Worker confirmation, execution fence, dirty=1
+  -> local take -> exact Worker transfer(seal=true), execution fence, mark=1
   -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
 
-The Score Owner preserves polarity and clears dirty when exact-acquiring a due HOT
-observation. Both observed dirty values are legal; the entire score must still
+The Score Owner establishes a soft hold when exact-acquiring a due HOT
+observation. Both observed mark values are legal; the entire score must still
 match. Concurrent callers using the same observation have at most one winner.
 An occupied, paused, negative, missing or changed score cannot be acquired.
 Pacer computes the target as its current time plus 1 second immediately before
@@ -58,17 +58,17 @@ replacements, repairing data or changing its order. A fully corrupt head returns
 empty; no cross-round bypass of those rows is promised. Concurrent Score changes
 remain subject to exact acquisition, without a same-round rescan or stable snapshot.
 
-Acquisition and confirmation each check Redis TIME inside the same bounded Lua
+Acquisition and transfer each check Redis TIME inside the same bounded Lua
 as exact comparison and write, once per at most 100 identities on a Group key.
 No preceding time confirmation read is used. Existing 100ms semantics apply:
-acquisition requires slot < nowSlot, while active confirmation allows equality.
+acquisition requires slot < nowSlot, while active transfer allows equality.
 The requested target slot must be later than nowSlot, even if the observed
 lease already has a later deadline. Java prepares requestedSlot * 2 once per
-acquisition batch, or max(observedSlot, requestedSlot) * 2 + 1 per confirmation
+acquisition batch, or max(observedSlot, requestedSlot) * 2 + (seal ? 1 : 0) per transfer
 member. Lua receives the requested time base and compares against the Redis
 current time base, rejecting an expired request before exact comparison.
-Confirmation also receives the PAUSE time base and retains its clean/active
-checks. Fixed entries share exact comparison and writing. The operations return
+Transfer checks soft/active state without a PAUSE parameter or special rejection.
+Fixed entries share exact comparison and writing. The operations return
 individual results; Properties and other Owners remain independent commits.
 
 TaskItems only consume successfully acquired inventory. Counts and take read no
@@ -81,11 +81,11 @@ expire; there is no periodic renewal, compensation release or restart adoption.
 **Core evidence boundary change:** a Score in the current 100ms slot, as well as
 a future slot, accepts validated network evidence to correct its polarity.
 This matches the current-slot lease confirmation boundary. Evidence preserves
-the time coordinate and dirty; it cannot release a lease or undo PAUSE.
+the time coordinate and mark; it cannot release a lease or undo PAUSE.
 A disconnect committed before confirmation makes the original HOT fence stale
 unless subsequent available evidence changes the polarity again. If confirmation
 wins first, a later disconnect preserves its execution fence's magnitude and
-dirty bit; the existing exact result disposition still applies.
+mark bit; the existing exact result disposition still applies.
 
 This is best-effort observation, not strict network ordering. An older valid
 report may change polarity within the current slot, including a RECOVERY check
@@ -93,10 +93,11 @@ coordinate. Once the stored slot is in the past, its existing evidence freshness
 check still applies. No evidence replay or broader probe scan is introduced.
 
 Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
-closure confirms supplied clean, active, non-PAUSE HOT fences. One CAS requires
-the entire original score, retains or extends its deadline, and sets dirty=1.
+closure calls transferObservedHotScoreLeases with seal=true for supplied soft,
+active HOT fences. One CAS requires the entire original score, retains or extends
+its deadline, and sets mark=1.
 Even a hold that already covers the requested deadline must transition: there
-is no successful NOOP. Dirty, expired, negative or stale observations cannot
+is no successful NOOP. Sealed, expired, negative or stale observations cannot
 proceed to Item claim. One inventory fence can be consumed only once.
 
 Only a TRANSITIONED confirmation with a returned score participates in the Item
@@ -110,15 +111,32 @@ must not decode or calculate it. Primitive preconditions and status results
 are maintained once in the
 [Score primitive contract](worker-score-band-scheduling.md#score-primitives).
 
-## Dirty Fence
+## Soft Transfer And Sealing
 
-Dirty=0 means the current initial hold's candidate eligibility is available;
-dirty=1 means it has been invalidated or consumed. Dirty is not a Properties
-version, network state, scheduling polarity or attribute write lock.
+For current/future HOT, mark=0 means a speculative soft hold that another
+caller with its exact score may transfer; mark=1 means a sealed hold that cannot
+transfer. Kernel stores no seal reason. A future sealed hold can be an execution
+commit, a Properties invalidation or pause: observing it does not prove execution
+or authorize a caller to claim an Item.
 
-Server requests one bounded dirty operation per Group after APPLIED Worker or
+transferObservedHotScoreLeases(..., seal=false) retains soft status and uses the
+later of the observed and requested deadlines. If time is unchanged, Redis still
+checks exact, active and request-time conditions before returning NOOP; no new
+fence or successful transfer is implied. seal=true changes mark to 1 even at an
+unchanged deadline. Actual transfer invalidates the previous fence, including a
+copy still resident in Matching stock. That old copy cannot later commit execution
+or release the new hold. Matching need not repair or remove it synchronously.
+The interface is available for future callers; this change adds no allocator,
+cache scan, preemption policy or scheduling loop.
+
+Pause atomically writes MAX,1 while preserving polarity. MAX,0 follows ordinary
+soft rules: soft transfer is NOOP; sealing transfer changes it to MAX,1. MAX,1
+rejects transfer because sealed. PAUSED remains an observation name only. Explicit
+exact release/resume may shorten time; transfer may never shorten it.
+
+Server requests sealCurrentScoreHolds once per bounded Group after APPLIED Worker or
 Platform facts writes. The operation preserves sign and deadline and does
-not create missing members. An already confirmed execution fence is dirty=1,
+not create missing members. An already confirmed execution fence is mark=1,
 so subsequent Properties invalidation is a NOOP and preserves result release.
 
 Facts and Score commit independently. Confirmation may win between the facts
@@ -127,16 +145,17 @@ keeps the successful facts response and emits an aggregate diagnostic, with no
 replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
 scores remain bounded by their existing deadlines.
 
-Dirty invalidation marks every existing valid score, including due and recovery
-coordinates; it is not restricted to active leases. Release preserves dirty and
-expiry does not rewrite it. Due scans therefore include dirty=1. Only a new exact
-initial HOT acquisition clears dirty; confirmation consumes clean eligibility.
+Seal invalidation marks every existing valid score, including due and recovery
+coordinates; it is not restricted to active leases. Release preserves mark and
+expiry does not rewrite it. Due scans therefore include both marks. New exact
+initial HOT acquisition establishes soft mark=0 regardless of the expired mark.
 
-Pacer acquisition clears dirty before Matching reads current membership. After
-acquisition, a successful dirty invalidation rejects that candidate at confirmation,
+Pacer establishes the soft hold before Matching reads current membership. After
+acquisition, successful sealing rejects that candidate at execution transfer,
 even if it follows the projection read; admission performs no second acquisition
-that could clear it. Facts and dirty are still independent: a projection-to-facts
-race or failed invalidation is not repaired by a version or transaction. Default
+that could clear it. Facts and sealing are still independent: a projection-to-facts
+race or failed invalidation is not repaired by a version or transaction. Mark is
+not a Properties version, connection fact or write lock. Default
 identity selectors need no facts. Never fetch a newer score
 to rescue a stale candidate or clear an active execution hold. There is no
 per-Task Candidate Cache to invalidate or repair.
@@ -170,7 +189,7 @@ TaskItem movement and cannot prove that all preceding Owner calls completed.
 | First acquisition | CAS lost | Do not supply the Worker to Matching |
 | Qualification | no match or projection failure | No new stock; acquired leases expire naturally |
 | First acquisition | response loss or insertion failure | Only returned new fences enter stock; committed holds expire |
-| Confirmation | dirty, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
+| Execution transfer | sealed, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
 | Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
 | Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |
 | Result | missing or malformed context | No guessed mutation; expiry restores eligibility only |
@@ -193,19 +212,21 @@ Session, Attempt or Worker reservation owner is introduced here.
 
 ## Deployment
 
-HTTP, Binding and Redis key shapes are unchanged. Worker Score now uses
-polarity * (timeSlot * 2 + dirty); previous Score layouts and correlated fences
-cannot be mixed with it. This change supplies no compatibility reader, migration
-or automatic cleanup. Local inventory is discarded on process restart.
+HTTP, Binding, Redis keys and the numeric Score layout are unchanged. The low bit
+now expresses soft/sealed semantics. This change supplies no compatibility
+reader, migration or automatic cleanup. Old MAX,0 has no extra pause protection;
+new pause always writes MAX,1. Local inventory is discarded on process restart.
 
 ## Caller Observation Boundary
 
 Candidate Maps and transition results carry opaque Score fences. Decoded time,
-dirty, polarity values and slot arithmetic stay inside the Score Owner. Pacer
+mark, polarity values and slot arithmetic stay inside the Score Owner. Pacer
 supplies raw millisecond floors/deadlines; Owner alignment preserves the existing
 ranges and execution-time lease checks. Matching retains the original supplied
 Score and deadline without interpreting either as a new coordinate.
 
 Operator pause/resume and the six-state scheduling observation also belong to
 WorkerScoreCore. Their Server surface maps semantic results only; it cannot use
-HELD_HOT as evidence that a particular candidate is clean or confirmable.
+HELD_HOT or PAUSED as evidence that a particular caller successfully transferred
+a fence. CONNECTED preserves current/future time and mark: restored soft HOT can
+transfer; restored sealed HOT cannot.

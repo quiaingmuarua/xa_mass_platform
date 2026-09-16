@@ -43,7 +43,7 @@ public final class WorkerSchedulingService {
         requireWorkerIds(workerIds);
         try {
             Map<String, WorkerScoreTransitionResult> results =
-                    workerScores.markCurrentLeasesDirty(workerGroupId, workerIds);
+                    workerScores.sealCurrentScoreHolds(workerGroupId, workerIds);
             long invalid = workerIds.stream().filter(workerId -> {
                 WorkerScoreTransitionResult result = results == null ? null : results.get(workerId);
                 return result == null || result.status() == WorkerScoreCore.WorkerScoreTransitionStatus.INVALID;

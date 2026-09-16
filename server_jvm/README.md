@@ -337,7 +337,7 @@ method is not part of that Pacer port. Submission does not take candidates; disp
 passes messageId-to-query Maps for Matching to normalize, group and correlate.
 Catalog startup rebuilds configured
 derived indexes before the bean is exposed. Matching owns the country range and
-take time; Kernel retains hold, exact clean confirmation and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
+take time; Kernel retains hold, exact soft-to-sealed transfer and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
@@ -591,7 +591,8 @@ or state classification. This projection is independent of Adapter connection,
 Binding and Task execution evidence.
 
 Pause and resume call the Kernel pauseScheduling/resumeScheduling operations.
-Kernel owns the PAUSE sentinel, exact resume fence and time sampling. Server maps
+Kernel owns the maximum-time PAUSED projection, atomic MAX,1 pause, exact resume
+fence and time sampling. Server maps
 APPLIED/UNCHANGED to ActionOutcome and MISSING/CONFLICT to the existing errors;
 provider failures retain the scheduling-unavailable response. Properties mutation
 still owns APPLIED-only best-effort invalidation, independently of these controls.
@@ -947,18 +948,20 @@ An APPLIED Platform patch requests the same Score invalidation with one Worker.
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
 identity, Binding and Worker records remain intact. Subsequent refill rounds read
-the new facts. Invalidation sets dirty on the current score, preserving its
-polarity, rank and deadline; missing scores are not created. Existing Candidate
+the new facts. Invalidation calls sealCurrentScoreHolds, preserving current
+polarity and deadline while setting mark=1; missing scores are not created. Existing Candidate
 entries remain until consumption or expiry, but their old fences cannot pass
-final confirmation after invalidation. Scheduling is not explicitly awakened.
+execution transfer after invalidation. Scheduling is not explicitly awakened.
 
 Facts commit before Score invalidation. A confirmation can win in between;
 already confirmed assignments continue. Invalidation failure keeps the
 successful facts response and produces one aggregate diagnostic per Group
 batch. A retry returning UNCHANGED does not replay invalidation. Existing hold
 and Cache expiry bound stale candidates; no ACK, outbox, retry or background
-repair is added. Final confirmation already consumes eligibility with dirty=1,
+repair is added. Execution transfer already seals the hold with mark=1,
 so later Properties writes preserve the execution fence used for result release.
+Kernel does not record why a hold is sealed; neither Server nor Matching infers
+an execution commit from a sealed score. Dispatch requires its own TRANSITIONED result.
 See the [HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 for exact transitions and coordinated upgrade behavior.
 

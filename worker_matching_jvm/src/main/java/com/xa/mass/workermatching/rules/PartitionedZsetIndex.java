@@ -69,7 +69,7 @@ final class PartitionedZsetIndex {
         this.commands=commands; this.key=key;
     }
 
-    /** Recheck membership and obtain the entire query projection after the initial hold cleared dirty. */
+    /** Recheck membership and obtain the entire query projection after acquisition established the initial soft hold. */
     Map<String,Projection> snapshot(List<String> ids) {
         if (ids.isEmpty()) return Map.of();
         if (ids.size()>100) throw new IllegalArgumentException("at most 100 identities");

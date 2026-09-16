@@ -18,10 +18,10 @@ expire naturally. Kernel/Pacer retains all Score, confirmation and claim authori
 
 | Stage | Authority and fence |
 | --- | --- |
-| Supply | Pacer reads a bounded Group HOT head and exact-acquires leases, clearing dirty |
+| Supply | Pacer reads a bounded Group HOT head and exact-acquires soft leases |
 | Qualification and admission | Each Rule reads only offered IDs and retains admitted candidates with the original fences and deadlines |
 | Coordination | Catalog excludes IDs actually accepted by an earlier Rule from later Rules in that Group batch |
-| Execution | Kernel exact-confirms a clean inventory fence, sets dirty=1, then exact-claims the Item |
+| Execution | Kernel exact-transfers a soft inventory fence with seal=true, then exact-claims the Item |
 
 **Cross-Rule failure contract:** Rule A's successful refill remains committed if
 Rule B subsequently fails. The exception ends the remaining batch and reaches the
@@ -37,7 +37,7 @@ NORMAL Task descriptors -> Group/Rule target MAX -> Rule deficits
   -> Rule qualification and admission -> Rule-owned local stock
 messageId -> Item selector -> Catalog normalization/grouping -> Rule.take
   -> messageId -> held candidate -> current address
-  -> Kernel exact clean confirmation -> exact Item claim -> Command
+  -> Kernel exact transfer(seal=true) -> exact Item claim -> Command
 ```
 
 Rules receive opaque held fences, never a lease acquisition capability. They cannot
@@ -198,7 +198,7 @@ implementation assembly, never through sequential public Rule property writes.
 The test-only [Bucket Rule](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketRuleHandler.java)
 uses SETs and a HASH source, with its own Eligibility through the same public
 operations. Redis Owner proves its atomic index writes, independent facts,
-command budgets and dirty rejection. Runtime Boundary runs two Tasks through
+command budgets and mark rejection. Runtime Boundary runs two Tasks through
 it with an actual Worker. Pure in-memory rules also exercise Catalog routing.
 
 ```yaml
@@ -255,10 +255,13 @@ may wait longer under the fixed Group supply policy.
 
 Consumption is destructive. Misses, read failures, ambiguous acquisition and failed
 admission leave any held Kernel lease to expire; there is no compensation release,
-renewal, reinsertion, replay or pending registry. Unobserved dirty changes may
-temporarily overcount stock; final execution confirmation still requires the exact
-clean active non-PAUSE fence and Redis time. Already-held candidates are not a
-readiness assertion.
+renewal, reinsertion, replay or pending registry. Unobserved mark changes may
+temporarily overcount stock; final execution transfer still requires the exact
+soft active HOT fence and Redis time. Another caller may transfer a cached soft
+fence before its original deadline. Matching keeps its original fence and expiry;
+it neither renews nor repairs that entry. Subsequent execution transfer rejects
+the stale fence. No allocator or cache scan is added here. Already-held candidates
+are not a readiness assertion, and a sealed score does not prove execution.
 
 ## Persistent Catalog
 
@@ -297,14 +300,14 @@ lose each other's independent changes. Missing eligibility removes memberships.
 Unexpected/corrupt stored data fails; it is not converted to empty eligible facts.
 
 Server separately asks Worker Score Owner to invalidate candidate eligibility
-after APPLIED facts writes. Facts/index and dirty are different Owner commits;
-there is no cross-owner transaction, guaranteed retry or repair. Acquisition clears
-dirty before Matching reads current projections. Matching never clears it again:
-a successful dirty update after acquisition invalidates the candidate's exact
-execution fence, including when it follows the projection read. Facts may still
-change between projection and invalidation/confirmation; dirty is not a facts
-version and does not make the independent commits atomic. Already confirmed execution is
-not revoked by later facts observations. The dirty operation continues marking all
+after APPLIED facts writes. Facts/index and sealing are different Owner commits;
+there is no cross-owner transaction, guaranteed retry or repair. Acquisition creates
+the soft hold before Matching reads current projections. Matching never unseals it:
+successful sealing after acquisition invalidates that candidate's fence,
+including when it follows the projection read. Facts may still change between
+projection and invalidation/transfer; mark is not a facts version and does not
+make the independent commits atomic. Already committed execution is
+not revoked by later facts observations. The seal operation continues marking all
 existing valid scores, including due and recovery scores; it is not lease-only.
 
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
@@ -347,7 +350,7 @@ ACK, replay or a repair scan.
 Focused tests cover interpretation, overlapping stock, bounded predicate evaluation,
 Group target paging, cross-Rule partial success, local expiry and concurrency. Redis
 Owner proves head observation and acquisition-driven progress, closed supplied batches, acquisition before
-projection (including unmatched candidates), shared target MAX, dirty clearing,
+projection (including unmatched candidates), shared target MAX, soft acquisition,
 execution fence invalidation, commit-time expiry and command order/counts. Controlled
 Matching clocks prove that processing time consumes the original lease deadline.
 Runtime Boundary adds six actual Workers in two Groups serving four Tasks and 800

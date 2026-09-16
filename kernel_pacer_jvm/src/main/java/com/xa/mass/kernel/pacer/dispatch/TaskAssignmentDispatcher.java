@@ -108,10 +108,10 @@ final class TaskAssignmentDispatcher {
 
         long confirmedAt = DispatchStageEvent.start();
         Map<String, WorkerScoreTransitionResult> verified =
-                workerScores.confirmActiveHotScoreLeases(
+                workerScores.transferObservedHotScoreLeases(
                         task.descriptor().workerGroupId(),
                         observedWorkers,
-                        claimUntilMillis
+                        claimUntilMillis, true
                 );
         LinkedHashMap<String, Long> verifiedScores = new LinkedHashMap<>();
         verified.forEach((workerId, result) -> {

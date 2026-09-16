@@ -282,7 +282,7 @@ Worker register and Endpoint bind
 pause-scheduling and resume-scheduling
 DIRECT_CALL /direct-calls
 Adapter Command consume and Result append
-Worker score lease, dirty, recovery, and Result Routing transitions
+Worker score lease, mark, recovery, and Result Routing transitions
 ```
 
 They must not be added to Handler maps merely to make this catalog appear

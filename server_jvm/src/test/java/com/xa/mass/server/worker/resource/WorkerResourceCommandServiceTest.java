@@ -92,16 +92,16 @@ class WorkerResourceCommandServiceTest {
     }
 
     @Test
-    void appliedPlatformPatchSurvivesDirtyFailure() {
+    void appliedPlatformPatchSurvivesSealFailure() {
         var scores = mock(com.xa.mass.kernel.score.WorkerScoreCore.class);
         service = new WorkerResourceCommandService(matchingCatalog, new WorkerSchedulingService(scores));
         when(matchingCatalog.patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
                 .thenReturn(result(MutationStatus.APPLIED));
-        when(scores.markCurrentLeasesDirty("group-1", List.of("worker-1")))
+        when(scores.sealCurrentScoreHolds("group-1", List.of("worker-1")))
                 .thenThrow(new IllegalStateException("unavailable"));
         assertThat(service.patchPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
                 .isEqualTo(ActionOutcome.applied());
-        verify(scores).markCurrentLeasesDirty("group-1", List.of("worker-1"));
+        verify(scores).sealCurrentScoreHolds("group-1", List.of("worker-1"));
     }
 
     private void assertBusinessError(

@@ -20,12 +20,13 @@ public interface WorkerScoreCore {
             List<String> workerIds
     );
 
+    /** Atomically advances to the maximum time and seals, retaining polarity. */
     WorkerSchedulingChangeStatus pauseScheduling(String homeBucketId, String workerId);
 
     WorkerSchedulingChangeStatus resumeScheduling(String homeBucketId, String workerId);
 
     /**
-     * Reads the head of the current due HOT range, including either dirty value.
+     * Reads the head of the current due HOT range, including either mark value.
      * Returns an immutable map in ascending score/member order. Limit is 1..100 raw rows;
      * corrupt rows are omitted without scanning replacements or changing stored scores.
      * Successful acquisition moves candidates out of this range; observation alone does not.
@@ -61,21 +62,27 @@ public interface WorkerScoreCore {
             int limit
     );
 
+    /** Exact-acquires due HOT with either mark and establishes a new soft hold. */
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis
     );
 
-    /** Consumes each exact, clean active hold once and returns its execution fence. */
-    Map<String, WorkerScoreTransitionResult> confirmActiveHotScoreLeases(
+    /**
+     * Transfers exact, active soft HOT holds, retaining or extending their deadlines.
+     * Seal makes the resulting hold non-transferable. An unchanged soft target is NOOP
+     * after Redis exact/time validation; only TRANSITIONED supplies a new fence.
+     */
+    Map<String, WorkerScoreTransitionResult> transferObservedHotScoreLeases(
             String homeBucketId,
             Map<String, Long> observedScores,
-            long targetTimeMillis
+            long targetTimeMillis,
+            boolean seal
     );
 
-    /** Invalidates candidate eligibility for 1..100 unique IDs without changing deadlines. */
-    Map<String, WorkerScoreTransitionResult> markCurrentLeasesDirty(
+    /** Seals current coordinates for 1..100 unique IDs without changing time or polarity. */
+    Map<String, WorkerScoreTransitionResult> sealCurrentScoreHolds(
             String homeBucketId,
             List<String> workerIds
     );
@@ -98,7 +105,7 @@ public interface WorkerScoreCore {
     /**
      * Corrects current polarity when the stored slot is current/future or no later than
      * the supplied slot. Optional refresh advances only a strictly older past slot;
-     * dirty is always retained.
+     * mark is always retained.
      */
     Map<String, WorkerScoreTransitionResult>
             rewriteCurrentPolarityWithinTimeFence(
@@ -108,7 +115,7 @@ public interface WorkerScoreCore {
                     boolean refreshPastTime
             );
 
-    /** Exact-replaces a RECOVERY observation at the fixed cold slot, preserving dirty. */
+    /** Exact-replaces a RECOVERY observation at the fixed cold slot, preserving mark. */
     WorkerScoreTransitionResult parkObservedRecoveryScore(
             String homeBucketId,
             String workerId,

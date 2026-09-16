@@ -28,12 +28,16 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** atomic owner operations preserve scores, resources, identities,
   bindings and result transitions against real Redis. Worker registration adds
   cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
-  client-command cost oracles. Candidate invalidation proves one-command dirty
-  batches, single-use exact confirmation, preserved execution release fences
-  and dirty-clearing reacquisition after expiry. Current-slot network evidence
+  client-command cost oracles. Candidate invalidation proves one-command seal
+  batches, exact execution transfer, preserved execution release fences
+  and soft reacquisition after expiry. Current-slot network evidence
   preserves Worker lease coordinates and
-  dirty, with both polarity orders, exact confirmation races and one-command
-  100-Worker batches. Past-slot freshness and PAUSE protection remain separate
+  mark, with both polarity orders, exact confirmation races and one-command
+  100-Worker batches. Soft transfer preserves or extends the deadline and validates
+  NOOP in Redis; sealed holds reject transfer. A cached original fence cannot
+  commit execution or release another caller's transferred hold. MAX,0 follows
+  ordinary soft rules and pause atomically writes MAX,1. Relative targets may
+  equal MAX but never exceed it. Past-slot freshness and evidence preservation remain separate
   oracles. Repeated head observations plus acquisition reach equal-score Workers
   without skipping the intervening batch; expired leases keep their newer positions.
   Serviceability holds use Redis execution time plus caller-supplied delay;
@@ -46,7 +50,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Pacer acquisition precedes projection: supplied candidates are already held,
   even if they do not match. Command-order assertions distinguish that path from
   qualification-before-acquisition; original deadlines, natural expiry and later
-  dirty invalidation retain their independent oracles. TaskItem outcome proof covers
+  sealing invalidation retain their independent oracles. TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
   promotion/state reads. Server state-query counting excludes Result reads.
@@ -100,7 +104,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   witnesses stay unexecuted, eligible witnesses execute on actual target
   replicas, and all submitted Results close with completed execution witnesses
   without new Prepare or process/Worker restart.
-- **Deliberate nonclaims:** atomic facts/Score cutover, exact dirty-confirmation
+- **Deliberate nonclaims:** atomic facts/Score cutover, exact seal/transfer
   ordering, cancellation of confirmed work, exactly-once execution, reliable
   SYSTEM replay, fault recovery, Task fairness, throughput, latency SLA or soak.
 - **Contract:** [Complete scenario](../../integrations/worker-dynamic-matching/README.md).

@@ -169,7 +169,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 Object result = call.callRealMethod();
                 record("EXACT_CONFIRM input=" + observed, result);
                 return result;
-            }).when(scores).confirmActiveHotScoreLeases(eq(GROUP), anyMap(), anyLong());
+            }).when(scores).transferObservedHotScoreLeases(eq(GROUP), anyMap(), anyLong(), org.mockito.ArgumentMatchers.eq(true));
             doAnswer(call -> {
                 Map<String, WorkerScoreTransitionResult> result =
                         (Map<String, WorkerScoreTransitionResult>) call.callRealMethod();
@@ -209,8 +209,8 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             assertThat(delivered).isNotEmpty();
             assertThat(invoked).hasValue(0);
             assertThat(scores.observeDueHotScoreCandidates(GROUP, null, 100)).isEmpty();
-            assertThat(scores.confirmActiveHotScoreLeases(GROUP, Map.of(workerId, candidateFence.get()),
-                    System.currentTimeMillis() + 1_000).get(workerId).status()).isEqualTo(STALE);
+            assertThat(scores.transferObservedHotScoreLeases(GROUP, Map.of(workerId, candidateFence.get()),
+                    System.currentTimeMillis() + 1_000, true).get(workerId).status()).isEqualTo(STALE);
             verify(serviceability, never()).offerProbeRequests(anyString(), anyList());
 
             worker.start();

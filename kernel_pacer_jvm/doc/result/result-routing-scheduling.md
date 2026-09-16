@@ -179,7 +179,7 @@ The current Worker event implementation uses
 
 The same-key Lua operation may restore that exact counterpart to HOT and then
 release it while preserving the lease's low bits. A newer lease, pause, cold
-coordinate, dirty drift, retry advance, or unrelated RECOVERY score returns
+coordinate, mark drift, recheck advance, or unrelated RECOVERY score returns
 `STALE` or `INVALID`. This is a cheap,
 opportunistic use of successful execution evidence, not a general
 RECOVERY-to-HOT or connection-state API.
@@ -286,10 +286,11 @@ or Health state.
 - Do not add cross-lane precedence, winner aggregation or reliable queue state
   without a separately named invariant and Owner.
 
-Worker ResultContext carries the execution score returned by final confirmation,
-which has already consumed candidate eligibility. Subsequent Properties dirty
+Worker ResultContext carries the execution score returned by a successful
+transfer with seal=true. Subsequent Properties seal
 invalidation is a NOOP for that fence. Result routing and execution events do
-not reconstruct the initial Candidate score or clear dirty; after release, only
-new initial HOT acquisition restores candidate eligibility. The
+not reconstruct the initial Candidate score or unseal it; a due HOT coordinate
+may be acquired again with either mark. A stale cached fence cannot release a
+newer transfer. The
 [HOT lease protocol](../../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 owns confirmation, invalidation races and upgrade limits.

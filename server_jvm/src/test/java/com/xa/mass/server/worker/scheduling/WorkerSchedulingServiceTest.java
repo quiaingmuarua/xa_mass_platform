@@ -38,7 +38,7 @@ class WorkerSchedulingServiceTest {
     @Test
     void candidateInvalidationAcceptsMissingMembersAndKeepsFailuresBestEffort() {
         List<String> ids = List.of("a", "b", "c", "d");
-        when(workerScores.markCurrentLeasesDirty(GROUP_ID, ids)).thenReturn(Map.of(
+        when(workerScores.sealCurrentScoreHolds(GROUP_ID, ids)).thenReturn(Map.of(
                 "a", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 201L),
                 "b", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.NOOP, 201L),
                 "c", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE, null),
@@ -47,7 +47,7 @@ class WorkerSchedulingServiceTest {
         for (int i = 0; i < 3; i++) {
             org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.invalidateCandidates(GROUP_ID, ids));
         }
-        verify(workerScores, org.mockito.Mockito.times(3)).markCurrentLeasesDirty(GROUP_ID, ids);
+        verify(workerScores, org.mockito.Mockito.times(3)).sealCurrentScoreHolds(GROUP_ID, ids);
         org.mockito.Mockito.verifyNoMoreInteractions(workerScores);
     }
 

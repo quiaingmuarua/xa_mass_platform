@@ -13,8 +13,8 @@ final class WorkerScoreEncoding {
     static final long MIN_TIME_MILLIS = 0;
     static final long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
     static final long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
-    static final int MIN_DIRTY = 0;
-    static final int MAX_DIRTY = 1;
+    static final int SOFT_MARK = 0;
+    static final int SEALED_MARK = 1;
     static final int SLOT_FACTOR = 2;
     static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
 
@@ -22,7 +22,7 @@ final class WorkerScoreEncoding {
     }
 
     record WorkerScoreState(String workerId, long score, WorkerScorePolarity polarity,
-                            long timeMillis, int dirty) {}
+                            long timeMillis, int mark) {}
 
     static int polarityValue(WorkerScorePolarity polarity) {
         return switch (polarity) {
@@ -49,9 +49,9 @@ final class WorkerScoreEncoding {
 
     static long absoluteScore(
             long timeSlot,
-            int dirty
+            int mark
     ) {
-        return timeSlot * SLOT_FACTOR + dirty;
+        return timeSlot * SLOT_FACTOR + mark;
     }
 
     static boolean validTimeMillis(long timeMillis) {
@@ -69,7 +69,7 @@ final class WorkerScoreEncoding {
         }
         long absolute = Math.abs(score);
         long timeSlot = absolute / SLOT_FACTOR;
-        int dirty = Math.toIntExact(absolute % SLOT_FACTOR);
+        int mark = Math.toIntExact(absolute % SLOT_FACTOR);
         if (timeSlot > MAX_TIME_SLOT) {
             throw new IllegalStateException("Worker score is invalid");
         }
@@ -80,7 +80,7 @@ final class WorkerScoreEncoding {
                         ? WorkerScorePolarity.HOT_ACQUIRE
                         : WorkerScorePolarity.RECOVERY_RECHECK,
                 timeSlot * SLOT_MILLIS,
-                dirty
+                mark
         );
     }
 

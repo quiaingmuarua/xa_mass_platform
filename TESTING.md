@@ -91,9 +91,9 @@ for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
 cold Prepare followed by verified connection or Polling activation. These proofs
 do not promise activation after lost evidence or atomic Binding/Score commits.
 
-Properties/Candidate invalidation is a Redis Owner claim: one bounded dirty
-command, exact one-time confirmation, both invalidation/confirmation orders,
-execution-fence release and subsequent dirty-clearing acquisition. Server tests
+Properties/Candidate invalidation is a Redis Owner claim: one bounded seal
+command, exact execution transfer, both invalidation/transfer orders,
+execution-fence release and subsequent soft acquisition. Server tests
 own APPLIED-only ordering and best-effort response preservation. Runtime Boundary
 and Worker lanes remain downstream witnesses, not a facts/Score transaction or
 loss-repair guarantee.
@@ -128,7 +128,7 @@ and HTTP admission. Redis Owner rejects old property conditions without rewritin
 records or substituting ANY.
 The separately assembled bucket SET/projection HASH Rule proves that a different
 index layout uses the public Handler contract without common-flow changes. Its
-Redis Owner cases cover batch costs, corrupt-index preflight and dirty invalidation;
+Redis Owner cases cover batch costs, corrupt-index preflight and sealing invalidation;
 Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
 finite-ID target saturation and named-Rule identity rejection have focused proofs.
 Pacer tests prove refill without Item reads, independently scheduled consumption,
@@ -142,7 +142,7 @@ and the second Group consumes default stock. Actual executors and the observed
 Pacer batches prove qualification and Group isolation; the boundary witness checks
 that every supplied fence is already held before Matching starts. Redis Owner and
 Pacer tests distinguish acquisition-before-projection from the old reverse order,
-including unmatched leases, partial acquisition, dirty invalidation and command
+including unmatched leases, partial acquisition, sealing invalidation and command
 order. A controlled clock proves that Matching cannot reset the candidate deadline.
 Matching unit tests own bounded target paging, incremental admission counts,
 concurrent refill/take, immutable results and local versus global expiry maintenance.
@@ -169,7 +169,7 @@ Use the lowest-cost proof that owns the changed claim:
    downstream witness.
 5. Worker/Platform Properties, Matching, Candidate invalidation, assignment or
    per-replica Handler assembly changes: run Worker Dynamic Matching. It owns
-   loaded execution witnesses; Redis Owner still owns exact dirty/confirmation
+   loaded execution witnesses; Redis Owner still owns exact seal/transfer
    ordering and the separate facts/Score commit boundary.
 6. Java Worker connection resource ownership changes: run focused Java Worker
    tests; Worker Loaded Capacity + Recovery Stability remains nightly/manual
@@ -340,7 +340,7 @@ no Matching Task configuration access, local target resolution and direct Group/
 executable binding views or refill callbacks, bounded named refill command counts
 from the Matching Owner contract, and zero Redis access for local take or
 satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
-batches. Properties dirtying invalidates old fences; a fresh hold after natural
+batches. Properties sealing invalidates old fences; a fresh hold after natural
 expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.
 
 Focused tests cover direct named refill/take without Task registration or prior
@@ -384,10 +384,16 @@ share that closed Group batch; actual admitted IDs prevent cross-Rule duplicates
 Earlier Rule admissions survive a later Rule failure.
 
 Worker Score proof checks bounded HOT-head observation and acquisition-driven
-progress, dirty clearing, competing acquisitions and exact confirmation. Stale,
-dirty, PAUSE and expired fences are rejected, including delay across a Redis slot.
+progress, soft acquisition, competing transfers and sealed rejection. It proves
+non-shortening soft transfer, fully validated NOOP, sealing without extension,
+request expiry before exact, and one actual transfer winner. MAX,0 follows soft
+rules; pause atomically writes MAX,1, which rejects transfer because sealed.
+Relative deferral accepts MAX and rejects larger targets. A cached original
+Matching fence survives another caller's transfer but cannot execute or release
+the replacement hold. Pacer proves only its own TRANSITIONED result can claim.
+Stale, sealed and expired fences are rejected, including delayed submission.
 Matching's controlled clock proves that qualification and stock waiting consume
-the original deadline. Facts/index atomicity remains separate from dirty invalidation
+the original deadline. Facts/index atomicity remains separate from sealing invalidation
 and from cross-Rule partial success. Runtime Boundary runs two sharing Tasks through
 a SET/HASH Rule and real Workers. Dynamic Matching and Scenario Coexistence retain
 their workload and business oracles; these checks do not claim capacity improvement.
@@ -395,7 +401,7 @@ their workload and business oracles; these checks do not claim capacity improvem
 ### Network Evidence At The Current Lease Slot
 
 Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
-while preserving time, rank and dirty, consistent with exact lease confirmation.
+while preserving time and mark, consistent with exact lease transfer.
 Redis-timed cases cover both evidence/confirmation orders, concurrent CAS,
 100-Worker command cost, PAUSE and unchanged past-slot freshness rejection.
 Only a missed timing window may be resampled; a wrong in-window result fails.

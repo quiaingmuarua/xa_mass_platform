@@ -31,8 +31,8 @@ TASK
 API -> Server resolves Rule targets locally, then writes complete Kernel Task/Items
     -> Pacer acquires 1-second candidate leases; Matching qualifies and stocks the same fences
     -> Pacer calls Matching with Group, Rule name and Item demand to consume held stock
-    -> Kernel checks exact clean fences
-    -> Kernel confirms the Worker hold, claims the Item and publishes a Command
+    -> Kernel exact-transfers soft Worker fences into sealed execution holds
+    -> Kernel claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
 
@@ -79,7 +79,7 @@ indexed eligibility. Polling currently has no Properties reporting path and uses
 default identity selection for new Workers. Live facts update indexes without
 re-Prepare. Reporting is lossy.
 After actual Worker or Platform facts changes, Server requests best-effort
-candidate invalidation through the Score Owner. Final exact confirmation rejects invalidated holds without cache cleanup. Confirmed
+candidate sealing through the Score Owner. Final exact transfer rejects invalidated holds without cache cleanup. Committed
 work continues; the [HOT lease protocol](kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 owns the separate commits and expiry limits.
 WorkerGroup event declarations likewise do not prove that handlers are loaded;

@@ -94,7 +94,7 @@ Properties.
 - Empty or stale candidate observations leave Items due.
 - A changed Worker score prevents exact hold or confirmation and therefore dispatch.
 - Matching query failure leaves work for later due rounds without a fallback.
-- Properties changes request best-effort dirty invalidation after facts commit;
+- Properties changes request best-effort sealing invalidation after facts commit;
   final confirmation rejects invalidated fences; unused holds expire naturally.
 
 ## Guardrails

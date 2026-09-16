@@ -202,7 +202,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var scores = mock(WorkerScoreCore.class);
         var catalog = mock(WorkerResourceCatalog.class);
         var runtime = mock(WorkerServiceabilityRuntime.class);
-        var ids = List.of("deleted", "time-changed", "dirty-changed", "polarity-changed", "paused", "unchanged");
+        var ids = List.of("deleted", "time-changed", "mark-changed", "polarity-changed", "paused", "unchanged");
         long fence = hot ? 777L : -888L;
         var observations = observations(ids, fence);
         if (hot) {

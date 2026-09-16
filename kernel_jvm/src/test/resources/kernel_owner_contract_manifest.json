@@ -134,10 +134,8 @@
     ],
     "WorkerScoreCore": [
       "acquire_observed_hot_score_leases",
-      "confirm_active_hot_score_leases",
       "defer_observed_to_recovery",
       "initialize_registered_scores",
-      "mark_current_leases_dirty",
       "observe_due_hot_score_candidates",
       "observe_hot_candidates_before",
       "observe_recovery_recheck_candidates",
@@ -149,7 +147,9 @@
       "resume_scheduling",
       "rewrite_current_polarity_within_time_fence",
       "sample_registered_worker_ids",
-      "toggle_current_polarity"
+      "seal_current_score_holds",
+      "toggle_current_polarity",
+      "transfer_observed_hot_score_leases"
     ]
   },
   "dtos": {

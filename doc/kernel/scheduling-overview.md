@@ -45,7 +45,7 @@ lifecycle are defined in
 Each Matching Rule owns qualification, deficits, admission and atomic consumption
 for its Group inventory; Catalog coordinates target merging and bounded batches.
 Pacer acquires candidate leases before Rule qualification. Kernel confirms the
-original fences, rejecting dirty/stale evidence. Unselected
+original fences, rejecting sealed or stale evidence. Unselected
 or rejected holds expire naturally. Pacer carries Rule names and ordinary data;
 it does not interpret business queries, read facts or construct index coordinates.
 See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).

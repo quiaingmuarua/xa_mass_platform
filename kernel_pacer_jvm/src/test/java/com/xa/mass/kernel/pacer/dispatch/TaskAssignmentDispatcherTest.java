@@ -34,10 +34,10 @@ class TaskAssignmentDispatcherTest {
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
-        when(workerScores.confirmActiveHotScoreLeases(
+        when(workerScores.transferObservedHotScoreLeases(
                 "group-1",
                 Map.of("worker-1", 111_111_111L),
-                5_000L
+                5_000L, true
         )).thenReturn(Map.of(
                 "worker-1",
                 new WorkerScoreTransitionResult(
@@ -98,19 +98,19 @@ class TaskAssignmentDispatcherTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = WorkerScoreTransitionStatus.class, names = {"STALE", "INVALID", "NOOP"})
-    void unconfirmedWorkerDoesNotClaimOrPublish(WorkerScoreTransitionStatus status) {
+    void unsuccessfulTransferDoesNotClaimOrPublishEvenWithReturnedCurrentFence(WorkerScoreTransitionStatus status) {
         TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
         WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
-        when(workerScores.confirmActiveHotScoreLeases(
+        when(workerScores.transferObservedHotScoreLeases(
                 "group-1",
                 Map.of("worker-1", 111L),
-                5_000L
+                5_000L, true
         )).thenReturn(Map.of(
                 "worker-1",
                 new WorkerScoreTransitionResult(
                         status,
-                        111L
+                        555_555_555L
                 )
         ));
 

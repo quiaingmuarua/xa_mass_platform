@@ -88,7 +88,7 @@ throughput or latency guarantees.
 ## Network Activation
 
 Every Worker starts cold, including Polling. The Score Owner uses
-RECOVERY_RECHECK / timeSlot=1 / dirty=0 (score -2), outside
+RECOVERY_RECHECK / timeSlot=1 / mark=0 (score -2), outside
 ordinary allocation, stale-HOT and recovery-recheck scan ranges.
 
 All Pacer presets consume network evidence. Verified Adapter connections and
@@ -96,7 +96,7 @@ valid Server Polling observations request HOT through `WorkerServiceabilityEvent
 Its `NetworkObservation` carries Endpoint and observation time. The mechanism
 loads Binding once, verifies the Endpoint and obtains Group, then calls Score
 Owner. It does not create missing Workers or shorten leases/PAUSE; the existing
-timestamp, polarity and dirty rules remain in Score Owner.
+timestamp, polarity and mark rules remain in Score Owner.
 
 Activation is best-effort. Lost evidence leaves a Worker cold until new valid
 evidence arrives. There is no activation ACK, replay or cold-member scan.

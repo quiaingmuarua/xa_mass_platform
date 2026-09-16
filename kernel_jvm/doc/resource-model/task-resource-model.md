@@ -57,7 +57,7 @@ executable binding view or refill callback crosses the module boundary.
 
 Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution
 confirmation, Item claim and Command construction. Properties invalidate old
-fences through dirty; stock can overcount until consumed or expired. No per-Task
+fences through mark; stock can overcount until consumed or expired. No per-Task
 invalidation or compensation release is required.
 
 Task lifecycle is independent: finite Tasks use CLOSE_WHEN_IDLE and managed

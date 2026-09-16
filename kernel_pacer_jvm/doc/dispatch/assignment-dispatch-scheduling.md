@@ -64,8 +64,8 @@ between observation and acquisition are handled by exact CAS, without a same-rou
 rescan or a stable-snapshot promise.
 
 For each nonempty Group batch Pacer computes now plus 1 second and calls the existing
-exact acquisition once. Full-score comparison accepts due dirty=0 or dirty=1 and
-clears dirty on success. Only TRANSITIONED new fences reach Matching; all-failed
+exact acquisition once. Full-score comparison accepts due mark=0 or mark=1 and
+establishes a soft hold on success. Only TRANSITIONED new fences reach Matching; all-failed
 acquisition skips it. Owner response loss does not trigger a confirmation read.
 
 Matching calls each participating Rule synchronously with the remaining held IDs.
@@ -109,16 +109,24 @@ They are measured independently from refill, not asserted as a latency promise.
 Only the package-private `TaskAssignmentDispatcher` constructs claimed Commands:
 
 ```text
-exact Worker confirmation (clean original score -> execution fence with dirty=1)
+exact Worker transfer(seal=true) (soft original fence -> sealed execution fence)
   -> exact ACTIVE Item claim
   -> ResultContext carrying the returned execution fence
   -> Adapter-partitioned Worker mailbox
 ```
 
 Pacer treats scores as opaque evidence. It cannot decode, construct or calculate
-coordinates. An exact-fence failure publishes no Command. A confirmed execution
+coordinates. Only TRANSITIONED with a returned new fence proceeds to Item claim;
+NOOP, STALE and INVALID never authorize it, even if a result echoes a sealed
+current score. An exact-fence failure publishes no Command. A committed execution
 is not revoked by later facts updates. Unused and publication-failed leases
 recover through existing expiry semantics.
+
+WorkerScore also offers transfer with seal=false for a future bounded caller.
+It can only preserve or extend a soft deadline; unchanged time is NOOP. This
+Pacer adds no allocator, cached-candidate discovery or preemption loop. Matching
+may retain a fence after another caller transfers it; Dispatch's exact transfer
+rejects that old fence without refreshing it or taking a replacement.
 
 Task Dispatch independently stores failed Result before requesting terminal tag
 5 for exhausted/expired Items, and owns pacing/idle close or park. Result routing
@@ -133,7 +141,7 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 | HOT observation failure | refill Producer backoff; no acquisition |
 | projection failure | refill Producer backoff; no new Group stock; acquired holds expire |
 | acquisition failure or response loss | no stock from unconfirmed results; committed holds expire |
-| competing exact score or dirtying a held candidate | reject the stale acquisition or execution fence |
+| competing exact score or sealing a held candidate | reject the stale acquisition or execution fence |
 | unused hold | expires naturally; no compensation |
 | restart | local stock is lost; facts and Task descriptors persist and normal refill acquires new holds |
 

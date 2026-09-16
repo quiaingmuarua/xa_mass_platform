@@ -22,7 +22,7 @@ class DispatchMechanismBoundaryTest {
                 ROOT.resolve("TaskAssignmentDispatcher.java")
         );
         assertTrue(source.contains("worker.heldWorkerLeaseScore()"));
-        assertTrue(source.contains("confirmActiveHotScoreLeases("));
+        assertTrue(source.contains("transferObservedHotScoreLeases("));
         for (String parallelInput : List.of(
                 "itemsByMessageId",
                 "observedItemScores",

@@ -259,7 +259,9 @@ no per-Group scan cursors or empty-range restart timers. Recheck delay defaults 
 15 seconds, independently of the 60-second HOT stale threshold. This delay does
 not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff; cold
 parking is reserved for excluded Endpoints. No cleanup thread is installed. CONNECTED evidence keeps a
-future recheck coordinate, so restored HOT may still wait before admission.
+future recheck coordinate and mark. Restored soft HOT may transfer; sealed HOT
+cannot. Current Refill still reads only due HOT, so this does not add a supply
+path or an allocator.
 The event Mechanism chooses target polarity and past-time refresh for the mechanical
 Score operation. Provider construction and close ownership stay unchanged; the
 package-private encoding helper has no separate lifecycle or assembly.

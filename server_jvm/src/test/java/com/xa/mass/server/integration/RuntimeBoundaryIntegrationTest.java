@@ -342,7 +342,7 @@ class RuntimeBoundaryIntegrationTest {
                 host.set(Map.of("network.type", "cellular", "ssid", "lab"));
                 assertThat(worker.reportProperties(Map.of("network.type", "cellular"))).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
-                assertThat(dirty(readWorkerFences(groupId,List.of(workerId)).get(workerId))).isEqualTo(1);
+                assertThat(mark(readWorkerFences(groupId,List.of(workerId)).get(workerId))).isEqualTo(1);
 
                 // Re-Prepare cannot replace the observed baseline with stale startup input.
                 var scoreBeforePrepare = readWorkerFences(groupId, List.of(workerId));
@@ -573,7 +573,7 @@ class RuntimeBoundaryIntegrationTest {
                     for(var held:offered) {
                         assertThat(identities.get(held.workerId())).containsEntry("group",group);
                         assertThat(states.get(held.workerId())).isEqualTo(held.score());
-                        assertThat(dirty(states.get(held.workerId()))).isZero();
+                        assertThat(mark(states.get(held.workerId()))).isZero();
                     }
                 }
                 return call.callRealMethod();
@@ -1158,7 +1158,7 @@ class RuntimeBoundaryIntegrationTest {
         );
         assertThat(timeMillis(initial)).isEqualTo(100);
 
-        assertThat(dirty(initial)).isZero();
+        assertThat(mark(initial)).isZero();
         assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
 
         RunningWorker first = startWorker(

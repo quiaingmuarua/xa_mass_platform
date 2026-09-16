@@ -25,8 +25,8 @@ public final class WorkerScoreRedisFixture {
         return WorkerScoreEncoding.decodeState("fixture", score).timeMillis();
     }
 
-    public static int dirty(long score) {
-        return WorkerScoreEncoding.decodeState("fixture", score).dirty();
+    public static int mark(long score) {
+        return WorkerScoreEncoding.decodeState("fixture", score).mark();
     }
 
     public static boolean hasPolarity(long score,
@@ -38,7 +38,7 @@ public final class WorkerScoreRedisFixture {
         return millis / WorkerScoreEncoding.SLOT_MILLIS * WorkerScoreEncoding.SLOT_MILLIS;
     }
 
-    public static long dueDirtyScore(long millis) {
+    public static long dueMarkedScore(long millis) {
         return WorkerScoreEncoding.absoluteScore(millis / WorkerScoreEncoding.SLOT_MILLIS - 100, 1);
     }
 }

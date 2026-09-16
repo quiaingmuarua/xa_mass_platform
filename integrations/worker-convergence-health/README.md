@@ -146,7 +146,7 @@ witness, not a guarantee under continuing evidence loss.
 
 The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
 current-slot evidence may correct polarity while preserving the confirmable
-lease coordinate and dirty. It also checks past-slot rejection, PAUSE,
+lease coordinate and mark. It also checks past-slot rejection, PAUSE,
 arrival order, exact confirmation races and bounded command cost. This process
 proof does not force evidence into a particular slot or establish reliable replay.
 Owner/Pacer proofs also cover Recovery beyond the former attempt and 24-hour limits;

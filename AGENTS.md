@@ -250,9 +250,9 @@ architectures.
   before Matching reads eligibility:** qualification and stock waiting share the
   original deadline. Matching retains the supplied fences without an acquisition
   callback or inventory extension; Handlers have no lease capability. Kernel retains
-  all Score, confirmation and claim authority. Acquisition clears dirty before the
+  all Score, confirmation and claim authority. Acquisition establishes a soft hold before the
   projection read; later successful invalidation rejects that candidate at confirmation.
-  Facts and dirty remain separate best-effort commits, without property versions.
+  Facts and sealing remain separate best-effort commits, without property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
   Refill groups Main's ordinary descriptor data and calls Matching by Group and Rule name.
@@ -313,9 +313,9 @@ kernel_jvm`.
   unmatched Workers; expiry retains the newer Score. Group rotation is separate.
   The raw read is bounded to 100 rows; corrupt scores are filtered without replacement
   scans, repair or an automatic-progress promise through a fully corrupt head.
-  Acquisition accepts due dirty=0/1 and clears dirty;
-  execution confirmation requires clean active fences. Both check Redis time in CAS Lua.
-  Kernel exact-confirms clean candidates
+  Acquisition accepts due mark=0/1 and establishes soft mark=0;
+  execution transfer requires exact soft active HOT fences and sets mark=1. Both check Redis time in CAS Lua.
+  Kernel exact-transfers soft candidates with seal=true
   and carries the returned execution fence into ResultContext. Properties writes
   invalidate through Score Owner. Unused/rejected holds expire without release
   compensation, periodic renewal or a pending lease registry. Do not add Item-triggered
@@ -821,7 +821,7 @@ Adapter connectivity, Kernel state or schedulability.
   Keep its finite paginated journal explicit on overflow and outside artifacts.
   Harness assertions use Lab and public Runtime APIs; runner audits establish
   unchanged processes, control files and no new Prepare. Existing Owner proofs
-  retain dirty/confirmation races, separate commits and fault-delivery limits.
+  retain seal/transfer races, separate commits and fault-delivery limits.
 - Frontend is read only for Runtime truth. Its finite Task file flow may create,
   append, approve, and export only through public Task APIs and must not infer
   scheduling state from elapsed time.

@@ -100,7 +100,7 @@ Actual executors of witness Items must be among the 100 targets. Stable A/B
 Workers cannot execute the opposite background rule, and no execution crosses
 Groups. Previously confirmed background executions on mutable Workers may
 continue through a change. Runtime Properties do not define an atomic scheduling
-cutover. Dirty/confirmation ordering remains a Redis Owner proof.
+cutover. Seal/transfer ordering remains a Redis Owner proof.
 
 Property checkpoints allow five seconds from the last mutation send to both
 observations. Each HTTP request is bounded by two seconds and Adapter Direct
