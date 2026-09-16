@@ -82,7 +82,7 @@ public final class DefaultWorkerServiceabilityEvents
             }
         }
 
-        int limit = WorkerScoreCore.MAX_SERVICEABILITY_BATCH_SIZE;
+        int limit = WorkerScoreCore.MAX_SCORE_BATCH_SIZE;
         evidenceByGroup.forEach((workerGroupId, groupEvidence) -> {
             List<Map.Entry<String, Long>> entries = new ArrayList<>(
                     groupEvidence.entrySet()
@@ -96,10 +96,10 @@ public final class DefaultWorkerServiceabilityEvents
                         entry.getKey(),
                         entry.getValue()
                 ));
-                workerScores.applyServiceabilityEvidence(
+                workerScores.rewriteCurrentPolarityWithinTimeFence(
                         workerGroupId,
                         chunk,
-                        targetPolarity
+                        targetPolarity, targetPolarity == WorkerScorePolarity.HOT_ACQUIRE
                 );
             }
         });

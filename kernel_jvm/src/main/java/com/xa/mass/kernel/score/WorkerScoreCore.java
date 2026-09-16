@@ -27,7 +27,7 @@ public interface WorkerScoreCore {
     int MAX_DIRTY = 1;
     int DIRTY_FACTOR = 2;
     int SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR;
-    int MAX_SERVICEABILITY_BATCH_SIZE = 100;
+    int MAX_SCORE_BATCH_SIZE = 100;
     int MAX_REGISTRATION_BATCH_SIZE = 100;
     int MAX_REGISTERED_WORKER_SAMPLE_LIMIT = 1000;
 
@@ -46,18 +46,6 @@ public interface WorkerScoreCore {
             String workerGroupId,
             @Nullable Long hotEligibilityFloorMillis,
             int limit
-    );
-
-    Map<String, Long> observeDueHotScores(
-            String homeBucketId,
-            List<String> workerIds,
-            @Nullable Long hotEligibilityFloorMillis
-    );
-
-    Map<String, Long> observeActiveHotScoreLeases(
-            String homeBucketId,
-            List<String> workerIds,
-            long expectedLeaseUntilMillis
     );
 
     /** Reads a bounded descending HOT head below the exclusive cutoff, without a cursor. */
@@ -117,32 +105,30 @@ public interface WorkerScoreCore {
             long observedScore
     );
 
-    /** Exact-holds due HOT observations at RECOVERY rank 0 until Redis now plus the delay. */
+    /** Defers an exact due coordinate to RECOVERY using a caller-supplied rank and delay. */
+    Map<String, WorkerScoreTransitionResult> deferObservedToRecovery(
+            String homeBucketId, Map<String, WorkerScoreDelayTarget> targets
+    );
+
+    /**
+     * Corrects current polarity when the stored slot is current/future or no later than
+     * the supplied slot. Optional refresh advances only a strictly older past slot;
+     * rank and dirty are always retained.
+     */
     Map<String, WorkerScoreTransitionResult>
-            holdObservedHotForServiceabilityProbes(
+            rewriteCurrentPolarityWithinTimeFence(
                     String homeBucketId,
-                    Map<String, WorkerRecheckTarget> targets
+                    Map<String, Long> suppliedTimeMillisByWorkerId,
+                    WorkerScorePolarity targetPolarity,
+                    boolean refreshPastTime
             );
 
-    /** Exact-advances due RECOVERY observations by one rank and schedules their next recheck. */
-    Map<String, WorkerScoreTransitionResult>
-            advanceObservedRecoveryRechecks(
-                    String homeBucketId,
-                    Map<String, WorkerRecheckTarget> targets
-            );
-
-    Map<String, WorkerScoreTransitionResult>
-            applyServiceabilityEvidence(
-                    String homeBucketId,
-                    Map<String, Long> evidenceTimeMillisByWorkerId,
-                    WorkerScorePolarity targetPolarity
-            );
-
-    WorkerScoreTransitionResult exhaustRecoveryRecheck(
+    /** Exact-replaces a RECOVERY observation at the fixed cold slot with target rank 1..99. */
+    WorkerScoreTransitionResult parkObservedRecoveryScore(
             String homeBucketId,
             String workerId,
             long observedScore,
-            int maxRecoveryAttempts
+            int targetLaneRank
     );
 
     Map<String, WorkerScoreTransitionResult> releaseScoreHolds(
@@ -151,7 +137,8 @@ public interface WorkerScoreCore {
             long releaseTimeMillis
     );
 
-    Map<String, WorkerScoreTransitionResult> releaseCompletedHotScoreHolds(
+    /** Releases only the supplied HOT fence or its exact negative counterpart. */
+    Map<String, WorkerScoreTransitionResult> releaseObservedHotScoreHolds(
             String homeBucketId,
             Map<String, Long> observedHotScores,
             long releaseTimeMillis
@@ -189,8 +176,8 @@ public interface WorkerScoreCore {
         }
     }
 
-    /** Pairs an opaque exact fence with a caller-decided positive retry delay. */
-    record WorkerRecheckTarget(long observedScore, long delayMillis) {
+    /** Carries an opaque fence, delay and target rank; the Owner validates numeric inputs. */
+    record WorkerScoreDelayTarget(long observedScore, long delayMillis, int targetLaneRank) {
     }
 
     record WorkerScoreState(

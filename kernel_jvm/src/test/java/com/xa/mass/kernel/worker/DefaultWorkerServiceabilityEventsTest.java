@@ -115,7 +115,7 @@ class DefaultWorkerServiceabilityEventsTest {
                 new Class<?>[]{WorkerScoreCore.class},
                 (_proxy, method, args) -> {
                     if (!method.getName().equals(
-                            "applyServiceabilityEvidence"
+                            "rewriteCurrentPolarityWithinTimeFence"
                     )) {
                         throw new AssertionError(
                                 "Unexpected score call: " + method.getName()
@@ -125,6 +125,7 @@ class DefaultWorkerServiceabilityEventsTest {
                             (Map<String, Long>) args[1];
                     WorkerScorePolarity target =
                             (WorkerScorePolarity) args[2];
+                    assertEquals(target == WorkerScorePolarity.HOT_ACQUIRE, args[3]);
                     if (chunkSizes != null) {
                         chunkSizes.add(evidence.size());
                     }

@@ -170,12 +170,12 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 record("NETWORK_SCORE target=" + call.getArgument(2) + " observed=" + call.getArgument(1), result);
                 if (call.getArgument(2) == RECOVERY_RECHECK) applied.set(result.get(workerId));
                 return result;
-            }).when(scores).applyServiceabilityEvidence(eq(GROUP), anyMap(), any());
+            }).when(scores).rewriteCurrentPolarityWithinTimeFence(eq(GROUP), anyMap(), any(), org.mockito.ArgumentMatchers.anyBoolean());
             doAnswer(call -> {
                 Object result = call.callRealMethod();
                 record("SUCCESS_RELEASE input=" + call.getArgument(1), result);
                 return result;
-            }).when(scores).releaseCompletedHotScoreHolds(eq(GROUP), anyMap(), anyLong());
+            }).when(scores).releaseObservedHotScoreHolds(eq(GROUP), anyMap(), anyLong());
             doAnswer(call -> {
                 List<DeliveryReport> reports = call.getArgument(1);
                 for (DeliveryReport report : reports) {

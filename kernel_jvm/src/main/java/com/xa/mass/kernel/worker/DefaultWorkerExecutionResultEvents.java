@@ -30,7 +30,7 @@ public final class DefaultWorkerExecutionResultEvents
                 observedAtMillis
         );
         if (!scores.isEmpty()) {
-            workerScores.releaseCompletedHotScoreHolds(
+            workerScores.releaseObservedHotScoreHolds(
                     workerGroupId,
                     scores,
                     observedAtMillis

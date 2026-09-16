@@ -63,7 +63,7 @@ class KernelOwnerContractManifestTest {
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
-            Map.entry("WorkerRecheckTarget", WorkerScoreCore.WorkerRecheckTarget.class),
+            Map.entry("WorkerScoreDelayTarget", WorkerScoreCore.WorkerScoreDelayTarget.class),
             Map.entry("HeldCandidate", WorkerMatching.HeldCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
             Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),

@@ -48,6 +48,12 @@ same-Group bindings win over changed defaults; Endpoint migration is not
 implemented. Score membership is registration existence, not online evidence.
 Every Pacer preset consumes network observations for best-effort activation.
 
+Worker Score uses package-private encoding arithmetic and fixed atomic Redis
+operations inside its existing provider. Pacer supplies recheck delay/rank; Worker
+event Mechanisms select polarity and exact-release semantics. The
+[Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
+defines composition, command budgets and unchanged persisted coordinates.
+
 ## Production Call Closure
 
 The Java providers implement the operations currently called by the Runtime

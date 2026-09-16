@@ -103,7 +103,7 @@ laneRank = slotRemainder / DIRTY_FACTOR
 dirty = slotRemainder % DIRTY_FACTOR
 ```
 
-First-slice constants:
+Encoding constants:
 
 ```text
 TIME_SCALE = 10
@@ -329,13 +329,6 @@ observe_due_hot_score_candidates(
 )
   -> immutable map[dueHotWorkerId, observedScore], ascending by score/member
 
-observe_due_hot_scores(
-  homeBucketId,
-  workerIds,
-  hotEligibilityFloorMillis?
-)
-  -> map[dueHotWorkerId, observedScore]
-
 acquire_hot_candidates_before(
   homeBucketId,
   hotCutoffMillis,
@@ -352,9 +345,8 @@ lower = floor is absent ? MIN_BASE : base(floorTimeSlot, 0, 0)
 lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 ```
 
-Only positive due scores are returned and neither query modifies them. The
-point form is a mechanical bounded read, not a production refill supply path.
-Pacer uses the Group range for every Rule, exact-acquires a 1-second lease for the
+Only positive due scores are returned by the due-head operation. Both reads
+leave scores unchanged. Pacer uses the Group range for every Rule, exact-acquires a 1-second lease for the
 observed batch, and supplies only successful returned fences to Matching. Matching
 qualifies that closed held batch and retains its original deadlines. Dispatch
 consumes those inventory fences and exact-confirms execution.
@@ -596,6 +588,59 @@ recovery scan ranges, dirty transitions, and sign/base encoding. Expose those
 only after a real owner object or caller workflow proves why the caller can own
 the value.
 
+## Java Composition and Fixed Atomic Operations
+
+The convergence implementation retains `RedisWorkerScoreCore` as the connection,
+Key and lifecycle owner. Package-private `WorkerScoreEncoding` centralizes
+validation, decoding, range arithmetic and field replacement. Pacer, Matching and
+Server cannot construct Score coordinates through it. No Store layer or generic
+rule/patch language is involved.
+
+For absolute score `a` and sign `p`, Java reuses these field operations:
+
+```text
+replace time:     p * (targetSlot * 200 + a % 200)
+replace rank:     p * (a - a % 200 + targetRank * 2 + a % 2)
+replace dirty:    p * (a - a % 2 + targetDirty)
+replace polarity: targetPolarity * a
+```
+
+Public methods validate inputs and compose private Redis operations. Known
+observations produce complete targets in Java. Only reads of the current member,
+execution-time checks, relative time and current-value field changes remain in Lua.
+
+| Fixed operation | Atomic work |
+| --- | --- |
+| Initialize absent | NX with one Java-prepared cold Score; return actual new IDs |
+| Exact replace | Read once; accept the original or the Java-supplied exact counterpart; write a complete target |
+| Due exact replace | Reject expired requested target, exact-compare and require due before writing |
+| Active exact replace | Reject expired requested target, exact-compare, require clean/current-or-future/non-PAUSE |
+| Due relative deferral | Exact-compare, validate execution-time target and due, write Redis now plus delay with supplied low bits |
+| Current time advance | Advance only an earlier absolute coordinate; preserve sign and dirty, optionally replace rank |
+| Current dirty | Set dirty=1 atomically; preserve all other fields and never create |
+| Current polarity correction | Apply the fixed supplied-time fence and optional past-time refresh |
+
+The fixed scripts share exact read/compare, write-if-changed and batch-result
+functions. They have no business-operation mode or runtime-generated conditions.
+The fixed entries retain their original result conventions, including raw Score
+text echoes for deferral rejection and unchanged polarity correction; corrupt
+fractional echoes still fail integer parsing instead of silently truncating.
+Ordinary exact replacement returns NOOP for an accepted equal target. The observed
+HOT release maps that accepted NOOP to TRANSITIONED in Java, preserving its existing
+completion semantics. It allows only the supplied original and exact negative,
+never a general list of alternatives.
+
+Read primitives retain each path's original range, ordering and raw-row budget.
+Batch writes remain at most 100 same-Group identities per script; lease operations
+still split larger inputs, while release and current-time advance retain their
+per-member pipeline. Release still samples TIME once before preparing targets.
+No pre-read, per-member TIME, retry, cursor, new key or changed input capacity is added.
+
+`WorkerScoreEncodingTest`, `WorkerScoreRedisBoundaryTest` and the real-Redis
+`RedisWorkerOwnerRuntimeIntegrationTest` cover arithmetic, private I/O boundaries,
+atomic statuses, races and command budgets. Existing Pacer, Matching and Runtime
+proofs retain ownership of policy, original deadlines, correlation and delivery.
+
 ## Score Primitives
 
 Worker-score primitives are intentionally small.
@@ -639,13 +684,12 @@ slot contention / cooldown -> HOT_ACQUIRE with future timeSlot
 admission hold -> HOT_ACQUIRE with future timeSlot
 manual disable / drain observed as HOT_ACQUIRE -> HOT_ACQUIRE(PAUSE_TIME_SLOT)
 manual disable / drain observed as RECOVERY_RECHECK -> RECOVERY_RECHECK(PAUSE_TIME_SLOT)
-future recovery retry -> RECOVERY_RECHECK with later time and retryCount + 1
 ```
 
 This primitive cannot change HOT_ACQUIRE to RECOVERY_RECHECK or
-RECOVERY_RECHECK to HOT_ACQUIRE. The default Worker Serviceability event Mechanism
-uses it only after an exact polarity transition or while advancing one observed
-RECOVERY retry; it does not turn rewrite into a cross-polarity operation.
+RECOVERY_RECHECK to HOT_ACQUIRE. Server pause uses this current-value operation.
+Serviceability uses the separate exact relative deferral or current polarity
+correction; it does not compose a Probe hold from two score writes.
 
 ### Release
 
@@ -654,7 +698,7 @@ It must use exact observed-score protection:
 
 ```text
 release_score_holds(homeBucketId, observedScores, releaseTimeMillis)
-release_completed_hot_score_holds(
+release_observed_hot_score_holds(
   homeBucketId,
   observedHotScores,
   releaseTimeMillis
@@ -750,52 +794,50 @@ operation is stale and must not toggle again. The target preserves timeSlot and
 dirty, resets laneRank to zero, and uses `observedScore` only as the stale
 fence.
 
-### Worker Serviceability Probe Hold
+### Exact Due Coordinate Deferral
 
-**Core scheduling change:** RECOVERY stores the next eligible recheck time;
-Pacer no longer filters it by adding rank-dependent backoff at read time.
-Serviceability Dispatch supplies at most 100
-`workerId -> WorkerRecheckTarget(observedScore, delayMillis)` entries. Both batch
-operations use one Group Score key and one Lua with Redis `TIME`, due validation
-and exact observed-score comparison:
+`deferObservedToRecovery` accepts at most 100
+`workerId -> WorkerScoreDelayTarget(observedScore, delayMillis, targetLaneRank)`
+entries on one Group key. The DTO carries data without validating numbers;
+invalid coordinates, delays and ranks return `INVALID` from the Owner.
+
+Java validates the observation and prepares `targetLaneRank * 2 + observedDirty`.
+The fixed relative-delay Lua reads Redis TIME once and exact-compares each member:
 
 ```text
 nextSlot = floor((redisNowMillis + delayMillis) / SLOT_MILLIS)
-
-hold_observed_hot_for_serviceability_probes
-  exact due HOT -> RECOVERY(nextSlot, laneRank=0, preserve dirty)
-
-advance_observed_recovery_rechecks
-  exact due RECOVERY(rank=n) -> RECOVERY(nextSlot, laneRank=n+1, preserve dirty)
+exact due HOT or RECOVERY -> RECOVERY(nextSlot, supplied targetLaneRank, preserved dirty)
 ```
 
-Pacer owns retry cadence and maximum attempts; Kernel neither calculates a retry
-multiplier nor reads Pacer configuration. Due requires `storedSlot < redisNowSlot`.
-Nonpositive or out-of-range delays, invalid observed coordinates, cold recheck
-inputs, rank overflow and target coordinates at or beyond PAUSE are `INVALID`.
-Current/future holds and changed or missing exact fences are `STALE`; rejected
-members are not written. The delay starts at Redis execution, including when
-client submission is delayed. No extra client TIME read or companion key is used.
+Pacer chooses rank 0 for the first HOT Probe and rank n+1 for a Recovery Probe.
+It also owns backoff multiplication, attempt limits and whether to offer a Probe.
+The Score Owner does not increment rank or interpret Probe outcomes.
+Due requires `storedSlot < redisNowSlot`. Nonpositive or out-of-range delays,
+invalid observations, cold RECOVERY inputs, out-of-range target ranks, and targets
+at or beyond PAUSE are `INVALID`. Missing or changed exact fences and current/future
+observations are `STALE`. Each rejected member remains unchanged. Exact comparison
+precedes the execution-time target and due checks; results retain the current Score
+where the existing contract requires it.
 
-Only `TRANSITIONED` Workers may be offered to the Adapter Probe HASH. Offer or
-Report loss is not rolled back: the retained next time becomes the source of the
-next bounded retry scan. CONNECTED evidence preserves a current/future recheck
-coordinate even when it restores HOT, so admission still waits until it is due.
+The delay starts at Redis execution, including delayed submission, with addition
+before 100ms rounding. There is no preceding TIME or Score read. Only successful
+Score transitions may be offered as Probes; offer failure or evidence loss retains
+the next time. CONNECTED retains a current/future time even when restoring HOT.
+RECOVERY continues to mean the next permitted recheck; this refactor changes
+neither stored coordinates nor deployment configuration.
 
-The storage encoding is unchanged. Stop the old scheduler before starting the
-new one in the same scope. Old last-check coordinates in the valid recent window
-are interpreted as due next-check times, allowing an earlier first bounded
-recheck; new writes then establish the new semantics without migration state.
+### Current Polarity Within a Time Fence
 
-### Worker Serviceability Evidence
-
-Adapter Evidence applies one target polarity through a same-key batch Lua. For
-each Worker, with all times reduced to the 100ms score slot, Evidence is valid
-only when:
+`rewriteCurrentPolarityWithinTimeFence(group, suppliedTimes, targetPolarity,
+refreshPastTime)` applies one caller-selected polarity through a same-key batch
+Lua. The Serviceability event Mechanism selects HOT with `refreshPastTime=true`
+for available evidence, or RECOVERY with `refreshPastTime=false` for unavailable
+evidence. Score Owner accepts no event names. All times are reduced to 100ms slots.
+A current value can be modified only when:
 
 ```text
 storedTimeSlot >= redisNowSlot
-OR storedTimeSlot <= evidenceTimeSlot
+OR storedTimeSlot <= suppliedTimeSlot
 ```
 
 **Core mechanism change:** the first branch includes the current slot, matching
@@ -803,9 +845,10 @@ the inclusive active-lease confirmation boundary. It permits an observed Route
 fact to correct HOT or RECOVERY polarity without changing a current/future
 coordinate or PAUSE. The second branch is the past-slot freshness fence and
 deliberately accepts evidence from the same slot as that past coordinate.
-Valid unavailable Evidence changes only the sign. Valid connected Evidence
-also replaces an older past-slot `timeSlot` with `evidenceTimeSlot`; it keeps
-the stored time for current/future coordinates and PAUSE. Both paths preserve
+When `refreshPastTime=false`, the operation changes only the sign. When true,
+it replaces time with `suppliedTimeSlot` only if `storedTimeSlot < redisNowSlot`
+and `storedTimeSlot < suppliedTimeSlot`. Current/future coordinates and PAUSE
+retain their time. Both paths preserve
 `laneRank` and dirty. A score already at the target polarity is `NOOP` only when
 its time coordinate also remains unchanged. A newer past-slot coordinate
 makes older Evidence `STALE`.
@@ -830,11 +873,11 @@ Recovery exhausted is a RECOVERY_RECHECK same-polarity operation that writes a
 too-old coordinate, not a far-future hold:
 
 ```text
-exhaust_recovery_recheck(
+park_observed_recovery_score(
   homeBucketId,
   workerId,
   observedScore,
-  maxRecoveryAttempts
+  targetLaneRank
 )
 ```
 
@@ -845,7 +888,7 @@ storedScore must equal observedScore
 stored polarity must be RECOVERY_RECHECK
 coldParkTimeSlot is the fixed owner-internal near-zero valid time coordinate
 routine recovery ranges always start above coldParkTimeSlot
-targetLaneRank = maxRecoveryAttempts
+targetLaneRank is supplied by the caller and must be in 1..99
 targetDirty = stored dirty
 write RECOVERY_RECHECK(coldParkTimeSlot, targetLaneRank, targetDirty)
 ```
@@ -879,11 +922,6 @@ observe_due_hot_score_candidates(workerGroupId, hotEligibilityFloorMillis?, limi
   corrupt rows are filtered without replacement reads or cross-round bypass
   no score mutation, stable-snapshot or business-priority guarantee
 
-observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
-  reads only the supplied bounded Worker ids
-  returns only currently due HOT_ACQUIRE scores at or above the optional floor
-  does not mutate score
-
 acquire_hot_candidates_before(
   homeBucketId, hotCutoffMillis, limit
 )
@@ -913,8 +951,8 @@ confirm_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
 
 ```
 
-First acquisition after Matching and execution confirmation use one bounded Lua per
-100 identities on one WorkerGroup/ZSET. The same Lua reads Redis TIME before
+First acquisition before Matching and execution confirmation each use a fixed Lua
+entry per 100 identities on one WorkerGroup/ZSET. Each script reads Redis TIME before
 checking deadlines and exact fences, then returns per-Worker results. There is no
 separate time confirmation read or per-Worker command. Dirty invalidation is also
 a bounded Lua. Properties writes and invalidation remain separate commits.
@@ -970,7 +1008,7 @@ Serviceability policy and evidence classification are defined in
 | manual enable / release | yes | exact observed-score same-polarity release |
 | Worker Matching Properties change | no | Matching facts only; later supplied-ID projection sees the new snapshot |
 | Worker registration during Server Prepare | only when score is missing | initialize cold RECOVERY_RECHECK timeSlot=1, laneRank=0, dirty=0; preserve every existing score exactly |
-| assignment owner leases matched HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` checks Redis time and exact-CAS writes a 1-second clean inventory lease after Matching; either due dirty value is allowed |
+| assignment owner leases observed HOT_ACQUIRE identities | yes | `acquire_observed_hot_score_leases` checks Redis time and exact-CAS writes a 1-second clean inventory lease before Matching; either due dirty value is allowed |
 | assignment owner consumes active clean HOT_ACQUIRE holds | yes | `confirm_active_hot_score_leases` exact-CAS sets dirty=1 and returns the execution fence; dirty entries return STALE |
 | Server after APPLIED Worker or Platform facts writes | best-effort | `mark_current_leases_dirty` preserves coordinates; failure does not undo the facts response |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
@@ -1062,11 +1100,11 @@ negative recovery-recheck acquire range
 observed-score stale fence for active confirmation, lowering, and polarity moves
 dirty bit mark / hot lease clear / stale-confirmation protocol
 same-polarity release
-owner-validated serviceability evidence boundary preserving laneRank and dirty
+current polarity time fence preserving laneRank and dirty
 RECOVERY_RECHECK lookback-window acquisition
 RECOVERY_RECHECK cold-too-old exhausted coordinate
 home bucket score key
-only normalized connected Adapter evidence may refresh a past-slot HOT coordinate
+optional refresh of a strictly older past coordinate to the supplied time
 ```
 
 Production policy is defined in the [Pacer documents](../../../kernel_pacer_jvm/README.md).
@@ -1075,6 +1113,7 @@ claim that every possible policy has a current production caller:
 
 ```text
 network-evidence freshness and optional HOT eligibility floor
+Serviceability event mapping to target polarity and past-time refresh
 candidate ranking / laneRank meaning
 platform scheduling signature policy
 facts-change dirty invalidation and exact candidate confirmation

@@ -154,15 +154,16 @@ when advancing the exact Score. With `B = probeRetryIntervalMillis`:
 The initial HOT Probe is not counted as a Recovery Probe. The existing default
 1-second Producer interval, 60-second base delay and maximum rank 5 remain.
 Configuration rejects multiplication overflow for the maximum retry delay.
-Pacer decides the delay; the Score Owner encodes `floor((Redis now+delay)/100)`
+Pacer decides the delay and target rank; the Score Owner encodes `floor((Redis now+delay)/100)`
 inside the exact batch Lua and preserves dirty. The strict previous-slot due
 boundary prevents an early retry even when the target is rounded down.
 
 The policy directly asks the Score and Resource Owners for bounded observations,
 current semantic states, and canonical Worker descriptors. Only matching exact
 observations with valid Binding are handled. Excluded endpoints are parked in
-the cold range through exact Score Owner operations. The two batch hold operations receive
-`workerId -> WorkerRecheckTarget(observedScore, delayMillis)`; only `TRANSITIONED`
+the cold range through exact Score Owner operations. One `deferObservedToRecovery`
+batch receives `workerId -> WorkerScoreDelayTarget(observedScore, delayMillis, targetLaneRank)`;
+only `TRANSITIONED`
 Workers are grouped by `endpointManagerId` and offered through
 `WorkerServiceabilityRuntime.offerProbeRequests`. A failed or lost offer or
 Report leaves the next recheck time intact. No rollback, renewal or request
@@ -271,15 +272,16 @@ missing Scores, release leases, clear dirty or undo PAUSE.
 ## Score Convergence
 
 `DefaultWorkerServiceabilityEvents` checks Binding Endpoint and Group, then calls
-one bounded Score-owner serviceability Evidence operation. The Network Evidence
+`rewriteCurrentPolarityWithinTimeFence` with the supplied evidence times, target
+polarity and explicit `refreshPastTime` flag. The Network Evidence
 policy cannot read a Worker score or select a concrete score mutation. The
 finite event interface is not a generic EventBus.
 
 The target is fixed by the semantic event:
 
 ```text
-CONNECTED or valid Polling observation          -> HOT
-DISCONNECTED / delivery expired / Probe miss  -> RECOVERY
+CONNECTED or valid Polling observation         -> HOT, refreshPastTime=true
+DISCONNECTED / delivery expired / Probe miss  -> RECOVERY, refreshPastTime=false
 ```
 
 **Core evidence boundary change:** a stored Score in the current 100ms slot

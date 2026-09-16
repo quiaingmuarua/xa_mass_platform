@@ -19,7 +19,7 @@ class DefaultWorkerExecutionResultEventsTest {
                 WorkerScoreCore.class,
                 (_proxy, method, args) -> {
                     if (method.getName().equals(
-                            "releaseCompletedHotScoreHolds"
+                            "releaseObservedHotScoreHolds"
                     )) {
                         calls.add("succeeded:" + args[0] + ":" + args[1]
                                 + ":" + args[2]);

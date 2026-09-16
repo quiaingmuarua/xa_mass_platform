@@ -249,10 +249,13 @@ Task API
 
 Serviceability retains the 1-second production Producer interval and 100-successful-
 hold round budget. It reads current HOT heads, falling back to RECOVERY only for an
-empty raw HOT result in that Group. Pacer supplies retry delays; Score Owner writes
+empty raw HOT result in that Group. Pacer supplies retry delays and target ranks through `deferObservedToRecovery`; Score Owner writes
 the next eligible recheck time using Redis time before the Probe offer. There are
 no per-Group scan cursors or empty-range restart timers. CONNECTED evidence keeps a
 future recheck coordinate, so restored HOT may still wait before admission.
+The event Mechanism chooses target polarity and past-time refresh for the mechanical
+Score operation. Provider construction and close ownership stay unchanged; the
+package-private encoding helper has no separate lifecycle or assembly.
 
 The Serviceability boundary proves that the Main Scheduler derives the ordered
 WorkerGroup input from the same due RUNNING Task source and that Adapter

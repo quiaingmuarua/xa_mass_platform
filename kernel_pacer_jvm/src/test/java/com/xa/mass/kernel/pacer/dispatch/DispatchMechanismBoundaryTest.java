@@ -165,7 +165,7 @@ class DispatchMechanismBoundaryTest {
         }
         assertFalse(selection.contains("acquireWorkerCandidates("));
         assertFalse(selection.contains("releaseScoreHolds("));
-        assertFalse(selection.contains("releaseCompletedHotScoreHolds("));
+        assertFalse(selection.contains("releaseObservedHotScoreHolds("));
         assertFalse(selection.contains("observeDueHot"));
         assertFalse(selection.contains("acquireObservedHotScoreLeases"));
         assertTrue(selection.contains("matching.take(workerGroupId,ruleId,selectors)"));

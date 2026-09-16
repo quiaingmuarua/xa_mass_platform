@@ -371,7 +371,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         scores.initializeRegisteredScores(group,ids);
         var evidence=new LinkedHashMap<String,Long>();
         ids.forEach(id -> evidence.put(id,System.currentTimeMillis()-1000));
-        scores.applyServiceabilityEvidence(group,evidence,WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE);
+        scores.rewriteCurrentPolarityWithinTimeFence(group,evidence,WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE, true);
     }
     // The fixture supplies a closed Kernel-issued batch. Matching cannot choose identities.
     private Map<String,Long> offer(String group,int limit) {
@@ -514,7 +514,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
         assertThat(commandTypes).containsExactly("EVAL"); // Supplied-ID projection only.
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,1)).isEmpty();
-        assertThat(scores.observeDueHotScores("g",List.of("b"),null)).containsKey("b");
+        assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).containsKey("b");
     }
 
     @Test void unmatchedWorkerIsAlreadyHeldAtProjectionAndBecomesDueWithoutRelease() throws Exception {
@@ -528,14 +528,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             var state=scores.getScoreStates("g",ids).get("w");
             assertThat(state.score()).isEqualTo(held.getFirst().score());
             assertThat(state.dirty()).isZero();
-            assertThat(scores.observeDueHotScores("g",ids,null)).isEmpty();
+            assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).isEmpty();
         };
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,1)).isEmpty();
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
         Map<String,Long> due=Map.of();
         while(due.isEmpty() && System.nanoTime()<deadline) {
-            due=scores.observeDueHotScores("g",List.of("w"),null);
+            due=scores.observeDueHotScoreCandidates("g", null, 100);
             if(due.isEmpty())Thread.sleep(20);
         }
         assertThat(due).containsEntry("w",held.getFirst().score());
@@ -691,7 +691,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 var confirmed=scores.confirmActiveHotScoreLeases("g",Map.of("w",candidates.getFirst().score()),
                         System.currentTimeMillis()+5000).get("w");
                 assertThat(confirmed.status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
-                assertThat(scores.releaseCompletedHotScoreHolds("g",Map.of("w",confirmed.score()),System.currentTimeMillis()+200)
+                assertThat(scores.releaseObservedHotScoreHolds("g",Map.of("w",confirmed.score()),System.currentTimeMillis()+200)
                         .get("w").status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
             }
             Thread.sleep(350); // Cross the future release slot without racing Redis TIME at a slot boundary.

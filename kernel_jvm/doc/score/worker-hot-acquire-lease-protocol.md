@@ -62,7 +62,10 @@ Acquisition and confirmation each check Redis TIME inside the same bounded Lua
 as exact comparison and write, once per at most 100 identities on a Group key.
 No preceding time confirmation read is used. Existing 100ms semantics apply:
 acquisition requires slot < nowSlot, while active confirmation allows equality.
-Targets must be later than nowSlot. The operations return individual results;
+The requested target slot must be later than nowSlot, even if the observed
+lease already has a later deadline. Java prepares the full acquisition target
+with dirty=0, or confirmation target with the later time and dirty=1; fixed Lua
+entries share exact comparison and writing while retaining Redis clock checks. The operations return individual results;
 Properties and other Owners remain independent commits.
 
 TaskItems only consume successfully acquired inventory. Counts and take read no
@@ -140,7 +143,9 @@ per-Task Candidate Cache to invalidate or repair.
 [Result Policy](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
 parses the returned context and publishes bounded semantic events. It does not
 call WorkerScoreCore directly. The Worker execution event Owner unwraps the
-opaque WorkerLeaseReference and applies the completed-HOT exact release.
+opaque WorkerLeaseReference and applies `releaseObservedHotScoreHolds` for success,
+or the signed-exact `releaseScoreHolds` for failure. Java prepares release targets
+and the optional exact counterpart; both use the same exact replacement primitive.
 
 The release accepts only the exact returned HOT lease or its exact
 sign-flipped RECOVERY counterpart. The latter may be restored and released

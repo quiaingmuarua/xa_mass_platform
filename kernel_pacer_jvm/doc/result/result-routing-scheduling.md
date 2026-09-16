@@ -172,7 +172,7 @@ owner contract may promote `TERMINAL(tag=5)` to `TERMINAL(tag=6)`. Terminal fail
 storage uses `HSETNX` and therefore cannot replace any observed success.
 
 The current Worker event implementation uses
-`releaseCompletedHotScoreHolds`. It accepts only:
+`releaseObservedHotScoreHolds`. It accepts only:
 
 - the original positive HOT assignment lease; or
 - the exact sign-flipped RECOVERY counterpart of that lease.

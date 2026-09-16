@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerRecheckTarget;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreDelayTarget;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
@@ -127,9 +127,7 @@ final class WorkerServiceabilityDispatchPolicy {
                     workerCatalog.getWorkerDescriptors(
                             workerIds
                     );
-            LinkedHashMap<String, WorkerRecheckTarget> hotTargets = new LinkedHashMap<>();
-            LinkedHashMap<String, WorkerRecheckTarget> recoveryTargets =
-                    new LinkedHashMap<>();
+            LinkedHashMap<String, WorkerScoreDelayTarget> targets = new LinkedHashMap<>();
             LinkedHashMap<String, WorkerDescriptor> probeDescriptors =
                     new LinkedHashMap<>();
             for (WorkerScoreObservation candidate : candidates) {
@@ -164,27 +162,16 @@ final class WorkerServiceabilityDispatchPolicy {
                 boolean isHot = state.polarity() == WorkerScorePolarity.HOT_ACQUIRE;
                 long delayMillis = config.probeRetryIntervalMillis()
                         * (isHot ? 1L : state.laneRank() + 2L);
-                Map<String, WorkerRecheckTarget> targets = isHot ? hotTargets : recoveryTargets;
-                targets.put(candidate.workerId(), new WorkerRecheckTarget(
-                        candidate.score(), delayMillis
+                targets.put(candidate.workerId(), new WorkerScoreDelayTarget(
+                        candidate.score(), delayMillis, isHot ? 0 : state.laneRank() + 1
                 ));
             }
 
-            Map<String, WorkerScoreTransitionResult> hotResults =
-                    workerScores.holdObservedHotForServiceabilityProbes(
-                            workerGroupId,
-                            hotTargets
-                    );
-            Map<String, WorkerScoreTransitionResult> recoveryResults =
-                    workerScores.advanceObservedRecoveryRechecks(
-                            workerGroupId,
-                            recoveryTargets
-                    );
+            Map<String, WorkerScoreTransitionResult> results =
+                    workerScores.deferObservedToRecovery(workerGroupId, targets);
             List<String> heldWorkerIds = new ArrayList<>();
             probeDescriptors.keySet().forEach(workerId -> {
-                WorkerScoreTransitionResult result = hotTargets.containsKey(
-                        workerId
-                ) ? hotResults.get(workerId) : recoveryResults.get(workerId);
+                WorkerScoreTransitionResult result = results.get(workerId);
                 if (result != null && result.status()
                         == WorkerScoreTransitionStatus.TRANSITIONED) {
                     heldWorkerIds.add(workerId);
@@ -223,7 +210,7 @@ final class WorkerServiceabilityDispatchPolicy {
             }
             recoveryScore = toggled.score();
         }
-        workerScores.exhaustRecoveryRecheck(
+        workerScores.parkObservedRecoveryScore(
                 workerGroupId,
                 worker.workerId(),
                 recoveryScore,

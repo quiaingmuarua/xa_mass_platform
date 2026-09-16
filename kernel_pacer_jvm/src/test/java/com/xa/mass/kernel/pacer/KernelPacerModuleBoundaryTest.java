@@ -196,12 +196,12 @@ class KernelPacerModuleBoundaryTest {
                 "WorkerResourceCatalog",
                 "workerLeaseScore()",
                 "releaseScoreHolds",
-                "releaseCompletedHotScoreHolds",
+                "releaseObservedHotScoreHolds",
                 "promoteItemOutcomes",
                 "toggleCurrentPolarity",
                 "rewriteCurrentScores",
-                "applyServiceabilityEvidence",
-                "exhaustRecoveryRecheck"
+                "rewriteCurrentPolarityWithinTimeFence",
+                "parkObservedRecoveryScore"
         );
         List<String> violations = sourceViolations(
                 resultRoot,
