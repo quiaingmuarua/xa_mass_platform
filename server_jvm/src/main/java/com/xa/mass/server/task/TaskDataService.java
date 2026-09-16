@@ -95,11 +95,6 @@ public final class TaskDataService {
                 );
             }
 
-            var binding = matchingCatalog.loadTaskBindings(List.of(taskId)).get(taskId);
-            if (binding == null || !descriptor.workerGroupId().equals(binding.workerGroupId())) {
-                throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.appendItems",
-                        "Task Rule binding is unavailable", null);
-            }
             var validItems = new ArrayList<TaskItem>();
             var results = new LinkedHashMap<
                     String,
@@ -110,7 +105,7 @@ public final class TaskDataService {
                     : latest.entrySet()) {
                 try {
                     var supplied = entry.getValue().workerSelector();
-                    var normalized = matchingCatalog.normalizeQuery(binding.workerGroupId(), binding.ruleId(), supplied == null
+                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), descriptor.ruleId(), supplied == null
                             ? new EligibilityQuery(Map.of()) : supplied);
                     TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
                     validItems.add(item);

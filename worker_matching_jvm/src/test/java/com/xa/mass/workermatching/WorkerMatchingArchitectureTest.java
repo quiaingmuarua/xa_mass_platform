@@ -27,6 +27,8 @@ class WorkerMatchingArchitectureTest {
                 "com.xa.mass.kernel.score",
                 "TaskRuntime",
                 "TaskResourceCatalog",
+                "taskId",
+                ":matching:task:",
                 "WorkerResourceCatalog",
                 "com.xa.mass.kernel.pacer",
                 "com.xa.mass.server",

@@ -35,7 +35,7 @@ agents change the repository; it is not the canonical mechanism narrative.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
 - `worker_matching_jvm/` owns Worker/Platform Properties, fixed Rule Handlers,
-  Task bindings, materialized eligibility indexes and bounded query interpretation.
+  materialized eligibility indexes and bounded query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `server_boot_jvm/` owns the sole production main, Boot JAR and explicit
   platform/preview configuration. It owns no business or resource logic.
@@ -213,19 +213,21 @@ architectures.
   index storage belongs to Matching and loop code belongs to Pacer.
 - Task Owner stores only scheduling descriptors and Item execution data. It owns
   the shared immutable EligibilityQuery structure without quantity or field interpretation. Matching
-  owns every Task binding, fixed Rule Handler and property/index interpretation.
+  owns fixed Rule Handlers and property/index interpretation. Task descriptors own
+  the Rule name and resolved refill targets as immutable configuration.
   Pacer may read and forward Rule names and immutable parameters; it must not depend
   on Matching implementations, interpret business conditions or construct index coordinates.
-  Main reads NORMAL Task configuration through one bounded `WorkerCandidateIndex.loadTaskBindings`
-  call shared by refill and dispatch, checking each binding against the Task Group. Default identity selectors need no facts;
+  Main shares its already-read NORMAL Task descriptors with refill and dispatch.
+  Matching contracts/storage must not accept Task IDs or retain Task configuration.
+  Default identity selectors need no facts;
   only worker.default accepts explicit ID queries; named Rules constrain ANY and
-  interpret their own business queries. Missing bindings never fall back. Matching
+  interpret their own business queries. Unavailable Rules never fall back. Matching
   uses fixed Rule ID-to-instance composition. Rule implementations own normalization,
   qualification, deficits, refill, stock and take; Catalog Eligibility coordination
   must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
   Rule instances own thread-safe Group-isolated Eligibility through normalizeQuery,
-  deficits, refill and take. Catalog owns bindings, target MAX merge,
+  deficits, refill and take. Catalog owns target MAX merge,
   bounded paging and exclusion of IDs actually accepted by earlier Rules. TaskItem and
   refill queries use one string-list structure; Rules normalize all semantics, including
   Default identity queries. Target quantities use MAX; consumption uses actual Item
@@ -247,7 +249,7 @@ architectures.
   Facts and dirty remain separate best-effort commits, without property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
   participates. Item queries consume inventory; they must never drive refill.
-  Refill groups Main's ordinary binding data and calls Matching by Group and Rule name.
+  Refill groups Main's ordinary descriptor data and calls Matching by Group and Rule name.
   Matching merges targets and passes only visited bounded pages to Rules. Do not restore
   executable Task views or refill closures. Server admission must not observe refill or maintain stock. Group demand is a hint, not a reservation; stock and
   exact fences still decide admission and execution. Global expired-stock cleanup
@@ -292,7 +294,7 @@ kernel_jvm`.
   provide unconditional eventual convergence.
 - [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
   separates the fixed refill Producer from Task Dispatch. Main shares one immutable
-  NORMAL binding data batch. Refill uses Task-declared shared targets and no Item reads;
+  NORMAL Task descriptor batch. Refill uses Task-declared shared targets and no Item reads;
   dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
   count. Matching cannot discover IDs or initiate targeted acquisition. It checks
@@ -355,8 +357,10 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
-Server establishes every Task binding, including the default Rule, before
-Kernel Task metadata; failed Task creation does not roll back Matching data.
+Server resolves Rule names and complete refill targets through local Matching
+admission, then creates the complete Kernel Task descriptor. Matching resolution
+has no Redis or inventory side effect. Kernel stores configuration without Rule
+interpretation; no separate Matching binding, rollback or Task lookup is allowed.
 Worker Prepare resolves identity and asks Kernel to establish Binding and cold
 Score membership in separate, retryable stages. Valid network evidence requests
 activation best-effort in every Pacer preset; Prepare itself is not evidence.

@@ -64,7 +64,7 @@ WorkerServiceabilityRuntime
 ```
 
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
-Serviceability Groups. Main shares ordinary immutable binding data. Refill groups
+Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
 Group/Rule targets with each acquired Group batch. Dispatch calls Matching by the
 Task's Group and Rule name. No executable view or refill closure crosses the port.
@@ -154,13 +154,13 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | NORMAL Task binding data | Group shortage observation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
-| TASK_DISPATCH | NORMAL RUNNING and the same binding data | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
+| ELIGIBILITY_REFILL | NORMAL Task descriptors | Group shortage observation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
+| TASK_DISPATCH | NORMAL RUNNING descriptors | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
-Main resolves at most 100 NORMAL Task bindings once whenever refill or dispatch
-is eligible, then shares the result. Missing/unavailable bindings block candidate
-work while dispatch expiry/exhaustion and idle settlement continue. Refill is
+Main shares the already-read NORMAL Task descriptors. Matching performs only
+named eligibility calls, with no Task configuration read. Candidate work is not
+a prerequisite for dispatch expiry/exhaustion or idle settlement. Refill is
 single-flight and targets shared Group/Rule stock. It has no Task-private cache,
 queue or additional Task discovery. See [Matching](../../worker_matching_jvm/README.md).
 

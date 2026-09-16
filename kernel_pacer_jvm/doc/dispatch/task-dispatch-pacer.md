@@ -27,7 +27,7 @@ For each Task, the policy:
 3. stores the fixed failed Result before promoting exhausted or expired Items
    to `TERMINAL(tag=5)`;
 4. identifies claimable Items in observation order;
-5. obtains Worker candidates using the binding Group, Rule name and Item queries;
+5. obtains Worker candidates using the descriptor Group, Rule name and Item queries;
 6. delegates exact Worker confirmation, Item claim, and Command publication;
 7. rewrites ordinary Task pacing in a `finally` boundary.
 
@@ -36,7 +36,7 @@ recheck and exact close or private idle park.
 
 ## Named Rule Query
 
-Main supplies one immutable NORMAL Task binding data batch to refill and
+Main supplies complete immutable NORMAL Task descriptors to refill and
 dispatch. Dispatch passes the explicit Group and Rule name to Matching. All selectors,
 including ANY and explicit IDs, use local destructive take. Only the separate
 refill Producer reads Group HOT heads and exact-acquires a 1-second lease before
@@ -56,7 +56,7 @@ publication do not advance its turn. This avoids synchronizing a blind per-round
 rotation with Worker release cadence. Progress in another Group cannot reset a
 waiting Task's turn.
 
-The hint holds no Worker, Score or binding data and adds no Redis command.
+The hint holds no Worker, Score or Rule configuration and adds no Redis command.
 Leaving the observed batch discards that Task's history; process restart clears all
 history. It prevents fixed-order monopolization among continuously observed
 competing Tasks, without promising equal throughput, weighted priority, Item

@@ -16,12 +16,12 @@ import static org.mockito.Mockito.*;
 class WorkerEligibilityRefillPolicyTest {
     final WorkerScoreCore scores=mock(WorkerScoreCore.class);
     final WorkerCandidateIndex index=mock(WorkerCandidateIndex.class);
-    final Map<String,com.xa.mass.kernel.assignment.TaskRuleBinding> tasks=tasks(List.of("g"));
-    static Map<String,com.xa.mass.kernel.assignment.TaskRuleBinding> tasks(List<String> groups) {
-        var result=new LinkedHashMap<String,com.xa.mass.kernel.assignment.TaskRuleBinding>();
-        groups.forEach(group->result.put("task-"+group,new com.xa.mass.kernel.assignment.TaskRuleBinding(
-                "worker.default",group,List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)))));
-        return result;
+    final List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks=tasks(List.of("g"));
+    static List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks(List<String> groups) {
+        return groups.stream().map(group -> new com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor(
+                "task-"+group,group,com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority","0","maxRetryTimes","1"),"worker.default",
+                List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)))).toList();
     }
     final Map<String,List<com.xa.mass.kernel.assignment.RefillTarget>> targets=Map.of(
             "worker.default",List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)));
@@ -76,7 +76,7 @@ class WorkerEligibilityRefillPolicyTest {
         assertEquals(0,policy.refill(List.of("g"),tasks));
         when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of());
         assertEquals(0,policy.refill(List.of("g"),tasks));
-        assertEquals(0,policy.refill(List.of(),Map.of()));
+        assertEquals(0,policy.refill(List.of(),List.of()));
         verifyNoInteractions(scores);
         verify(index,never()).refill(anyString(),anyMap(),anyList());
     }

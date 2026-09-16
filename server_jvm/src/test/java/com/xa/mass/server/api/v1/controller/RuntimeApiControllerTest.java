@@ -1,6 +1,5 @@
 package com.xa.mass.server.api.v1.controller;
 
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.assignment.RefillTarget;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
@@ -161,20 +160,14 @@ class RuntimeApiControllerTest {
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
         when(matchingCatalog.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
-        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
-            List<String> ids=call.getArgument(0);
-            var result=new LinkedHashMap<String,TaskRuleBinding>();
-            ids.forEach(task -> result.put(task,new TaskRuleBinding(
-                    "worker.default","phone-tools",List.of(new RefillTarget(Map.of(),100)))));
-            return result;
-        });
+
         when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.bindTaskRule(any(), any(), any(), org.mockito.ArgumentMatchers.isNull()))
-                .thenReturn(new MutationResult(MutationStatus.APPLIED));
+        when(matchingCatalog.resolveRefillTargets(any(), any(), any())).thenAnswer(call ->
+                call.getArgument(2) == null ? List.of(new RefillTarget(Map.of(),100)) : call.getArgument(2));
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -534,8 +527,6 @@ class RuntimeApiControllerTest {
 
 
     @Test void createsNamedRuleAndUnrestrictedFiniteTasksWithoutCandidateCapacity() throws Exception {
-        when(matchingCatalog.bindTaskRule(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.isNull())).thenReturn(
-                new WorkerMatchingCatalog.MutationResult(WorkerMatchingCatalog.MutationStatus.APPLIED));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
                 .andExpect(status().isOk());
@@ -548,21 +539,34 @@ class RuntimeApiControllerTest {
             assertThat(task.idleDisposition()).isEqualTo(TaskIdleDisposition.CLOSE_WHEN_IDLE);
             assertThat(task.config()).doesNotContainKey("maximumCandidateWorkers");
         });
-        verify(matchingCatalog).bindTaskRule(anyString(), eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID), org.mockito.ArgumentMatchers.isNull());
+        verify(matchingCatalog).resolveRefillTargets( eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID), org.mockito.ArgumentMatchers.isNull());
     }
 
-    @Test void refillTargetsBelongOnlyToTheMatchingBinding() throws Exception {
-        when(matchingCatalog.bindTaskRule(anyString(),anyString(),anyString(),anyList()))
-                .thenReturn(new MutationResult(MutationStatus.APPLIED));
+    @Test void resolvedRefillTargetsArePersistedInTaskDescriptor() throws Exception {
+        when(matchingCatalog.resolveRefillTargets(anyString(),anyString(),anyList()))
+                .thenReturn(List.of(new RefillTarget(Map.of("worker.country",List.of("CN","US")),20)));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content("""
                 {"workerGroupId":"phone-tools","ruleId":"worker.country",
                  "refillTargets":[{"query":{"worker.country":["US","CN","US"]},"count":20}]}
                 """)).andExpect(status().isOk());
-        verify(matchingCatalog).bindTaskRule(anyString(),eq("phone-tools"),eq("worker.country"),eq(List.of(
+        verify(matchingCatalog).resolveRefillTargets(eq("phone-tools"),eq("worker.country"),eq(List.of(
                 new RefillTarget(Map.of("worker.country",List.of("US","CN","US")),20))));
         var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority","maxRetryTimes");
+        assertThat(descriptor.getValue().ruleId()).isEqualTo("worker.country");
+        assertThat(descriptor.getValue().refillTargets()).containsExactly(
+                new RefillTarget(Map.of("worker.country",List.of("CN","US")),20));
+    }
+
+    @Test void invalidResolvedTargetsCannotCreateTaskMetadata() throws Exception {
+        when(matchingCatalog.resolveRefillTargets(eq("phone-tools"),eq("worker.country"),any()))
+                .thenThrow(new IllegalArgumentException("unsupported refill parameters"));
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
+                .andExpect(status().isBadRequest());
+        verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
+        verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(),anyMap(),anyList());
     }
 
     @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
@@ -597,7 +601,7 @@ class RuntimeApiControllerTest {
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog,org.mockito.Mockito.never()).bindTaskRule(anyString(),anyString(),anyString(),anyList());
+        verify(matchingCatalog,org.mockito.Mockito.never()).resolveRefillTargets(anyString(),anyString(),anyList());
     }
 
     @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
@@ -608,7 +612,7 @@ class RuntimeApiControllerTest {
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog, org.mockito.Mockito.never()).bindTaskRule(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.isNull());
+        verify(matchingCatalog, org.mockito.Mockito.never()).resolveRefillTargets( anyString(), anyString(), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test
@@ -1366,6 +1370,6 @@ class RuntimeApiControllerTest {
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ) : Map.of("priority", "0", "maxRetryTimes", "3"));
+                ) : Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 }

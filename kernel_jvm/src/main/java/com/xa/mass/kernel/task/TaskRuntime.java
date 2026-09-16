@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.task;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
+
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -130,11 +132,19 @@ public interface TaskRuntime {
             String taskId,
             String workerGroupId,
             TaskIdleDisposition idleDisposition,
-            Map<String, String> config
+            Map<String, String> config,
+            String ruleId,
+            List<RefillTarget> refillTargets
     ) {
         public TaskDescriptor {
             requireNonBlank(taskId, "taskId");
             requireNonBlank(workerGroupId, "workerGroupId");
+            requireNonBlank(ruleId, "ruleId");
+            if (ruleId.isBlank()) throw new IllegalArgumentException("ruleId must be non-blank");
+            refillTargets = List.copyOf(Objects.requireNonNull(refillTargets, "refillTargets"));
+            if (refillTargets.isEmpty() || refillTargets.size() > 100) {
+                throw new IllegalArgumentException("refillTargets requires 1..100 targets");
+            }
             Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
             if (!config.keySet().equals(CONFIG_KEYS)) {

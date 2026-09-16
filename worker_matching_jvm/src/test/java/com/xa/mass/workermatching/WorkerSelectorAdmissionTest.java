@@ -18,7 +18,7 @@ class WorkerSelectorAdmissionTest {
         assertEquals(0,RuleHandler.class.getDeclaredClasses().length);
         for(var method:RuleHandler.class.getDeclaredMethods())for(var type:method.getParameterTypes())
             assertFalse(type.getName().contains("Redis") || type.getName().contains("Lease")
-                    || type.getName().contains("TaskRuleBinding"));
+                    || type.getName().contains("TaskDescriptor"));
     }
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);

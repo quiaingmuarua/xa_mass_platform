@@ -3,13 +3,9 @@ package com.xa.mass.kernel.assignment;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /** Matching-owned shared inventory. Pacer carries names and data; Kernel owns execution leases. */
 public interface WorkerCandidateIndex {
-    /** One bounded read for at most 100 unique Task IDs. Unusable bindings map to null. */
-    Map<String, @Nullable TaskRuleBinding> loadTaskBindings(List<String> taskIds);
-
     /** Idempotent Rule admission, without Redis reads or stock changes. */
     EligibilityQuery normalizeQuery(String workerGroupId, String ruleId, EligibilityQuery query);
 

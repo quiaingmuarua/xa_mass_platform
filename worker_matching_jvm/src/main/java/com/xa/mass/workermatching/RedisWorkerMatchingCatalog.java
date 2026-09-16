@@ -1,7 +1,6 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.workermatching.rules.RedisRuleStorage;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import io.lettuce.core.ScanArgs;
@@ -27,13 +26,8 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Matching owns facts, immutable Task bindings, and the finite Group index projections. */
+/** Matching owns facts, named Rule admission, and finite Group index projections. */
 public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, AutoCloseable {
-    private static final String BIND = """
-            local old=redis.call('HGET',KEYS[1],ARGV[1])
-            if old then return old==ARGV[2] and 0 or -1 end
-            redis.call('HSET',KEYS[1],ARGV[1],ARGV[2]); return 1
-            """;
     private final RedisRuleStorage storage;
     private final ObjectMapper mapper=JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
     private final Map<String,RuleHandler> handlers;
@@ -298,35 +292,18 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
     }
 
-    @Override public MutationResult bindTaskRule(String taskId,String group,String ruleId,@Nullable List<RefillTarget> refillTargets) {
-        List<RefillTarget> targets;
-        try {
-            requireNonBlank(taskId,"taskId"); requireNonBlank(group,"workerGroupId"); requireNonBlank(ruleId,"ruleId");
-            targets=resolveTargets(group,ruleId,refillTargets!=null ? refillTargets
-                    : defaultTargets.getOrDefault(group,Map.of()).getOrDefault(ruleId,List.of(new RefillTarget(Map.of(),100))));
-        } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"unknown Rule or unavailable Group index"); }
-        String binding=encodeObject(Map.of("workerGroupId",group,"ruleId",ruleId,"refillTargets",targets.stream()
-                .map(q -> Map.of("query",q.query().query(),"count",q.count())).toList()));
-        long effect=commands().eval(BIND,ScriptOutputType.INTEGER,new String[]{taskRulesKey()},taskId,binding);
-        return effect<0 ? result(MutationStatus.CONFLICT,"Task binding conflicts with stored value")
-                : new MutationResult(effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
-    }
-
-    @Override public Map<String,@Nullable TaskRuleBinding> loadTaskBindings(List<String> taskIds) {
-        var ids=boundedUnique(taskIds,"taskIds"); if (ids.isEmpty()) return Map.of();
-        var rows=commands().hmget(taskRulesKey(),ids.toArray(String[]::new));
-        var result=new LinkedHashMap<String,TaskRuleBinding>();
-        for (var row:rows) {
-            var binding=decodeBinding(row.getValueOrElse(null));
-            result.put(row.getKey(),binding!=null && eligibility(binding.workerGroupId(),binding.ruleId())!=null ? binding : null);
-        }
-        return immutableNullableMap(result);
+    @Override public List<RefillTarget> resolveRefillTargets(String group, String ruleId,
+            @Nullable List<RefillTarget> requested) {
+        requireNonBlank(group, "workerGroupId");
+        requireNonBlank(ruleId, "ruleId");
+        return resolveTargets(group, ruleId, requested != null ? requested
+                : defaultTargets.getOrDefault(group, Map.of()).getOrDefault(ruleId,
+                        List.of(new RefillTarget(Map.of(), 100))));
     }
 
     private String indexBase(String group) { return storage.indexBase(group); }
     private String workerFactsKey(String group) { return storage.base()+":matching:worker:facts:"+group; }
     private String workerPlatformFactsKey(String group) { return storage.base()+":matching:worker:platform-properties:"+group; }
-    private String taskRulesKey() { return storage.base()+":matching:task:rules"; }
 
     @Override
     public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
@@ -384,31 +361,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             String reason
     ) {
         return new MutationResult(status, reason);
-    }
-
-    private @Nullable TaskRuleBinding decodeBinding(@Nullable String raw) {
-        if (raw == null) return null;
-        try {
-            Map<String, Object> object = decodeObject(raw);
-            requireExactFields(object, Set.of("ruleId", "workerGroupId", "refillTargets"));
-            String rule=requireString(object.get("ruleId")), group=requireString(object.get("workerGroupId"));
-            if (!(object.get("refillTargets") instanceof List<?> rows)) throw new IllegalArgumentException("invalid targets");
-            var targets=new ArrayList<RefillTarget>();
-            for (Object row:rows) {
-                var target=requireObject(row);
-                requireExactFields(target,Set.of("query","count"));
-                if (!(target.get("count") instanceof Long count) || count<1 || count>1000) throw new IllegalArgumentException("invalid count");
-                var query=new LinkedHashMap<String,List<String>>();
-                requireObject(target.get("query")).forEach((key,value) -> {
-                    if (!(value instanceof List<?> values)) throw new IllegalArgumentException("invalid query");
-                    query.put(key,values.stream().map(RedisWorkerMatchingCatalog::requireString).toList());
-                });
-                targets.add(new RefillTarget(query,count.intValue()));
-            }
-            return new TaskRuleBinding(rule,group,resolveTargets(group,rule,targets));
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
     }
 
     private String encodeObject(Map<String, ?> value) {
@@ -496,22 +448,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             result.put(stringKey, item);
         });
         return Collections.unmodifiableMap(result);
-    }
-
-    private static String requireString(Object value) {
-        if (!(value instanceof String text) || text.isBlank()) {
-            throw new IllegalArgumentException("value must be non-blank text");
-        }
-        return text;
-    }
-
-    private static void requireExactFields(
-            Map<String, Object> object,
-            Set<String> fields
-    ) {
-        if (!object.keySet().equals(fields)) {
-            throw new IllegalArgumentException("stored fields are invalid");
-        }
     }
 
     private static List<String> boundedUnique(

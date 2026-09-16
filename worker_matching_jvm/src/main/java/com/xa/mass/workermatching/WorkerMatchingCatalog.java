@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
-/** Worker facts, fixed Rule bindings and bounded eligibility index queries. */
+/** Worker facts, named Rule admission and bounded eligibility index queries. */
 public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerCandidateIndex {
 
     int MAX_BATCH_SIZE = 100;
@@ -31,9 +31,9 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
             List<String> workerIds
     );
 
-    /** Binds a fixed named Handler; rejects unavailable Group indexes. */
-    MutationResult bindTaskRule(String taskId, String workerGroupId, String ruleId,
-                                @Nullable List<RefillTarget> refillTargets);
+    /** Resolves immutable targets from explicit input or configured defaults, without Redis or stock access. */
+    List<RefillTarget> resolveRefillTargets(String workerGroupId, String ruleId,
+                                          @Nullable List<RefillTarget> requested);
 
     enum MutationStatus {
         APPLIED,

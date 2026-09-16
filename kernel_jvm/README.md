@@ -14,14 +14,14 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 | `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
 | `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
-| `assignment` | named Matching operations and immutable query, refill-target and Task-binding data |
+| `assignment` | named Matching operations and immutable query and refill-target data |
 | `delivery` | Worker Command and Task Evidence runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe and shared network-evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for their package Owner only |
 
 Matching supplies bounded identities through the Kernel query port. Dispatch policy, result disposition,
 serviceability policy, Pacer loops and thread lifecycle belong to
-[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers, Task-to-Rule bindings and constraint evaluation belong to
+[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
 TaskItems carry the same quantity-free `EligibilityQuery` as Matching operations.
@@ -29,7 +29,8 @@ Kernel checks only its bounded string-list structure and stores the direct Map;
 Rule normalization owns all field meanings, including Default Worker IDs. Pacer
 groups normalized queries and supplies Item counts separately. Old nested property
 conditions are unreadable without conversion or data cleanup; use a new scope
-for those Tasks. Matching's binding and index storage remain unchanged.
+for those Tasks. Task Rule configuration is stored in the Task descriptor; recreate old Tasks in
+a new scope. Matching facts and index formats are unchanged.
 
 The three Result event interfaces are stable semantic Mechanism ports rather
 than Pacer policy or new truth owners. Their default implementations may
@@ -105,8 +106,8 @@ Build:
 ./gradlew :kernel_jvm:build
 ```
 
-All Tasks bind to a Matching Rule and resolved refill targets before Kernel
-creation. Main reads ordinary NORMAL binding data once for independent refill and dispatch.
+Every Task descriptor stores its Rule name and resolved refill targets. Main
+shares complete NORMAL descriptors for independent refill and dispatch.
 Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
 qualifies and admits only those identities with their original fence and deadline;
 it never requests an extension. TaskItems consume the Rule-owned Group inventory. Kernel retains HOT, Score and exact confirmation/

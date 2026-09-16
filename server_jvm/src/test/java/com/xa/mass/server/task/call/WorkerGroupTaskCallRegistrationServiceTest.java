@@ -31,6 +31,7 @@ import org.mockito.ArgumentCaptor;
 
 class WorkerGroupTaskCallRegistrationServiceTest {
 
+    private com.xa.mass.workermatching.WorkerMatchingCatalog matching;
     private WorkerResourceCatalog workerCatalog;
     private TaskResourceCatalog taskCatalog;
     private TaskRuntime taskRuntime;
@@ -43,9 +44,9 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskRuntime = mock(TaskRuntime.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
-        var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        when(matching.bindTaskRule(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull()))
-                .thenReturn(new com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.APPLIED));
+        matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
+        when(matching.resolveRefillTargets(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)));
         service = new WorkerGroupTaskCallRegistrationService(
                 workerCatalog,
                 taskCatalog,
@@ -109,12 +110,32 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         verify(taskRuntime, never()).createTask(any());
     }
 
+    @Test void savedTargetsSurviveDefaultChangesButReregistrationConflicts() {
+        var saved=expectedDescriptor();
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of(saved.taskId(),saved));
+        org.mockito.Mockito.clearInvocations(matching);
+        when(matching.resolveRefillTargets("phone-tools","worker.default",null))
+                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),20)));
+        assertThat(service.requireRegisteredTaskId("phone-tools")).isEqualTo(saved.taskId());
+        org.mockito.Mockito.verifyNoInteractions(matching);
+        assertError(()->service.register("phone-tools"),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskCall.register");
+        verify(taskRuntime,never()).createTask(any());
+        verify(taskLifecycle,never()).approveTask(any());
+    }
+
+    @Test void targetResolutionFailureCannotCreateOrApproveATask() {
+        when(matching.resolveRefillTargets("phone-tools","worker.default",null))
+                .thenThrow(new IllegalArgumentException("invalid targets"));
+        assertError(()->service.register("phone-tools"),ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,"taskCall.register");
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskCatalog,taskLifecycle);
+    }
+
     @Test
     void conflictingPersistentDescriptorRejectsRegistration() {
         TaskDescriptor conflict = new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                ));
+                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -233,7 +254,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         return new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ));
+                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static void assertError(

@@ -86,8 +86,8 @@ Score point recheck; exact downstream transitions reject stale observations.
 A busy Producer skips the current source snapshot without storing a pending
 hint.
 
-Main reads one bounded NORMAL Task binding data batch through Matching, checking
-Groups against Task descriptors. Pacer forwards names and parameters through
+Main shares complete NORMAL Task descriptors without a Matching configuration
+lookup. Pacer forwards their names and parameters through
 named Matching operations without interpreting business conditions. The fixed
 refill Producer alone reads the due Group HOT head from the floor and exact-acquires
 1-second candidate leases before supplying successful fences to Matching. Acquisition
@@ -130,7 +130,7 @@ per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
 or fallback path.
 
 Spring assembly belongs to `server_jvm`. ResultContextCodec and mechanical Redis
-providers remain in `kernel_jvm`; facts, bindings and synchronous Rule index
+providers remain in `kernel_jvm`; facts and synchronous Rule index
 operations remain in `worker_matching_jvm`;
 dispatch-only mechanisms remain package-private here.
 

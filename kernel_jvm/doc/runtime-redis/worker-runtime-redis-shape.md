@@ -44,9 +44,10 @@ accepted missing members. These stages commit separately and retry fills gaps.
 ## Matching Facts
 
 [Worker Matching](../../../worker_matching_jvm/README.md#persistent-catalog) owns
-Worker facts, independent Platform Properties, create-only Task bindings and
-derived Rule indexes. Every Task has a binding; fixed Handlers have no persisted
-DSL definitions. One HMGET prepares at most 100 Task queries. Facts and their
+Worker facts, independent Platform Properties and derived Rule indexes. Task Owner
+stores each Task's Rule name and resolved refill declarations in its descriptor;
+Matching has no Task-ID configuration store. Fixed Handlers have no persisted
+DSL definitions. Facts and their
 enabled index projections update in one Matching Lua; Platform patch no longer
 uses a client pre-read/CAS retry loop.
 

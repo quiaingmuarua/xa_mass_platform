@@ -48,7 +48,6 @@ Network evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 Matching Worker facts xa_mass:<scope>:matching:worker:facts:<workerGroupId>
 Matching Platform     xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
 Matching Rules        xa_mass:<scope>:matching:candidate:rules
-Matching Task binding xa_mass:<scope>:matching:task:rules
 Country Rule index    xa_mass:<scope>:matching:worker:index:country:<workerGroupId>
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>

@@ -1,7 +1,6 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
@@ -23,22 +22,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 class TaskCallSubmissionServiceTest {
-    @Test void bindingGroupMismatchRejectsCallBeforeNormalizationOrSubmission() {
+    @Test void matchingFailureRejectsCallWithoutSubmission() {
         var submission = mock(TaskCallItemSubmission.class);
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of(
                 "task", new TaskRuntime.TaskDescriptor("task", "group",
                         TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
-                        Map.of("priority", "0", "maxRetryTimes", "3"))));
-        when(matching.loadTaskBindings(List.of("task"))).thenReturn(Map.of("task",
-                new TaskRuleBinding("worker.default", "other-group",
-                        List.of(new RefillTarget(Map.of(), 100)))));
+                        Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)))));
+
+        when(matching.normalizeQuery(anyString(),anyString(),any())).thenThrow(new IllegalStateException("unavailable"));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching);
         var item = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, EligibilityQuery.parse(Map.of()));
         assertThatThrownBy(() -> service.submit("task", List.of(item))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission);
-        verify(matching).loadTaskBindings(List.of("task"));
+        verify(matching).normalizeQuery("group", "worker.default", item.workerSelector());
         verifyNoMoreInteractions(matching);
     }
 
@@ -47,8 +45,8 @@ class TaskCallSubmissionServiceTest {
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeQuery(eq("group"),eq("worker.default"),any())).thenAnswer(call -> call.getArgument(2));
-        when(matching.loadTaskBindings(List.of("task"))).thenReturn(Map.of("task",new TaskRuleBinding("worker.default","group",List.of(new RefillTarget(Map.of(),100)))));
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"));
+
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching);
         var cn = EligibilityQuery.parse(Map.of("worker.country", List.of("CN")));
@@ -99,13 +97,13 @@ class TaskCallSubmissionServiceTest {
     }
 
     @Test
-    void unsupportedBindingAndParametersAreRejectedByMatchingEvenWhenOverwritten() {
+    void unsupportedRuleParametersAreRejectedByMatchingEvenWhenOverwritten() {
         var submission = mock(TaskCallItemSubmission.class);
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeQuery(eq("group"),eq("worker.default"),any())).thenAnswer(call -> call.getArgument(2));
-        when(matching.loadTaskBindings(List.of("task"))).thenReturn(Map.of("task",new TaskRuleBinding("worker.default","group",List.of(new RefillTarget(Map.of(),100)))));
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"));
+
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching);
         var any = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, EligibilityQuery.parse(Map.of()));

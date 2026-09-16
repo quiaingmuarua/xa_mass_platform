@@ -11,8 +11,8 @@ and [Delivery](../../../doc/kernel/worker-delivery-dispatch.md).
 
 One Main Scheduler supplies complete bounded input to fixed single-flight
 initialization, Eligibility refill, Task dispatch and optional Serviceability
-Producers. It reads NORMAL Task binding data once, checks Groups against Task
-descriptors, and shares the immutable values. TaskItems only consume stock;
+Producers. It shares complete immutable NORMAL Task descriptors, including Rule
+names and resolved refill declarations, without another Matching lookup. TaskItems only consume stock;
 they never generate refill demand or a matching job.
 
 The refill Producer concatenates targets by Group/Rule and calls Matching's
@@ -37,7 +37,7 @@ Matching has no acquisition callback or inventory renewal capability.
 ## Candidate Selection
 
 ```text
-NORMAL RUNNING Tasks -> one immutable Binding data batch
+NORMAL RUNNING Tasks -> complete immutable Task descriptors
   -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT head
       -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
   -> dispatch: due Item queries -> local destructive take
@@ -122,14 +122,14 @@ and subsequent outcome observations retain their separate lifecycle and commits.
 
 | Failure | Result |
 | --- | --- |
-| missing/unavailable Task binding | no assignment; failure/idle handling continues |
+| unavailable Rule | no assignment; failure/idle handling continues |
 | invalid selector | Server rejects before Item mutation; stored invalid input fails bounded acquisition |
 | HOT observation failure | refill Producer backoff; no acquisition |
 | projection failure | refill Producer backoff; no new Group stock; acquired holds expire |
 | acquisition failure or response loss | no stock from unconfirmed results; committed holds expire |
 | competing exact score or dirtying a held candidate | reject the stale acquisition or execution fence |
 | unused hold | expires naturally; no compensation |
-| restart | local stock is lost; facts/bindings persist and normal refill acquires new holds |
+| restart | local stock is lost; facts and Task descriptors persist and normal refill acquires new holds |
 
 There is no Score/facts transaction, ACK, replay, repair scan or guarantee that
 lost Properties evidence eventually arrives. Rules never couple Task lifecycles.

@@ -58,13 +58,6 @@ public final class WorkerGroupTaskCallRegistrationService {
     public Registration register(String workerGroupId) {
         requireWorkerGroup(workerGroupId, REGISTER_OPERATION);
         TaskDescriptor expected = descriptor(workerGroupId);
-        try {
-            var binding=matching.bindTaskRule(expected.taskId(),workerGroupId,WorkerMatchingCatalog.DEFAULT_RULE_ID,null);
-            if (binding==null || !(binding.status()==WorkerMatchingCatalog.MutationStatus.APPLIED
-                    || binding.status()==WorkerMatchingCatalog.MutationStatus.UNCHANGED)) {
-                throw new IllegalStateException("Call Task binding unavailable or conflicting");
-            }
-        } catch (RuntimeException failure) { throw unavailable(REGISTER_OPERATION,"Call Task binding unavailable",failure); }
         TaskDescriptor existing = loadDescriptor(
                 expected.taskId(),
                 REGISTER_OPERATION
@@ -137,9 +130,9 @@ public final class WorkerGroupTaskCallRegistrationService {
 
     public String requireRegisteredTaskId(String workerGroupId) {
         requireWorkerGroup(workerGroupId, RESOLVE_OPERATION);
-        TaskDescriptor expected = descriptor(workerGroupId);
+        String taskId = taskId(workerGroupId);
         TaskDescriptor existing = loadDescriptor(
-                expected.taskId(),
+                taskId,
                 RESOLVE_OPERATION
         );
         if (existing == null) {
@@ -150,8 +143,14 @@ public final class WorkerGroupTaskCallRegistrationService {
                     null
             );
         }
-        requireEquivalent(expected, existing, RESOLVE_OPERATION);
-        return expected.taskId();
+        if (!existing.taskId().equals(taskId) || !existing.workerGroupId().equals(workerGroupId)
+                || existing.idleDisposition() != TaskIdleDisposition.PARK_WHEN_IDLE
+                || !existing.config().equals(TASK_CONFIG)
+                || !existing.ruleId().equals(WorkerMatchingCatalog.DEFAULT_RULE_ID)) {
+            throw failure(ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT, RESOLVE_OPERATION,
+                    "derived Task descriptor conflicts with registration", null);
+        }
+        return taskId;
     }
 
     public static String taskId(String workerGroupId) {
@@ -232,13 +231,15 @@ public final class WorkerGroupTaskCallRegistrationService {
         }
     }
 
-    private static TaskDescriptor descriptor(String workerGroupId) {
-        return new TaskDescriptor(
-                taskId(workerGroupId),
-                workerGroupId,
-                TaskIdleDisposition.PARK_WHEN_IDLE,
-                TASK_CONFIG
-        );
+    private TaskDescriptor descriptor(String workerGroupId) {
+        try {
+            return new TaskDescriptor(
+                    taskId(workerGroupId), workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
+                    TASK_CONFIG, WorkerMatchingCatalog.DEFAULT_RULE_ID,
+                    matching.resolveRefillTargets(workerGroupId, WorkerMatchingCatalog.DEFAULT_RULE_ID, null));
+        } catch (RuntimeException error) {
+            throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
+        }
     }
 
     private static void requireNonBlank(String workerGroupId) {

@@ -71,9 +71,9 @@ Public API
   -> owner-local Java Redis provider
 
 WorkerMatchingAssembly
-  -> persistent Worker/Platform facts, fixed Rule Handlers and Task bindings
+  -> persistent Worker/Platform facts and fixed Rule Handlers
   -> fixed named Rule Handler with bounded index queries
-  -> startup Rule-index rebuild; synchronous bounded binding/query operations
+  -> startup Rule-index rebuild; synchronous bounded named eligibility operations
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
@@ -106,7 +106,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server establishes named or default Matching Rule bindings before Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server resolves named or default Rule targets locally before creating complete Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
@@ -163,8 +163,8 @@ POST /api/v1/tasks
 ```
 
 The request names one registered WorkerGroup. Server generates task-{UUID}.
-An optional `ruleId` names a fixed Matching Handler; omission binds explicitly to
-`worker.default`. Every Task has a binding before Kernel metadata is created.
+An optional `ruleId` names a fixed Matching Handler; omission selects
+`worker.default`. Each complete Task descriptor stores that name and its targets.
 Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
 configuration enables those instances. Rule interpretation stays in Matching.
 Default retains its optional country queries for current SMS start/cancel flows.
@@ -177,19 +177,22 @@ Server receives no predicate, candidate projection, physical key or lease capabi
 All finite Tasks use CLOSE_WHEN_IDLE. Unknown/blank Rules, unavailable Group
 indexes and unknown request fields are rejected. Priority defaults to 50 and
 retry budget to 3. Optional `refillTargets` stores 1..100 operator-free query/count targets in the
-Matching binding; counts are 1..1000. Omission resolves Matching Group/Rule defaults
+Task descriptor; counts are 1..1000. Omission resolves Matching Group/Rule defaults
 or ANY 100. These are shared Eligibility targets, with equal queries merged by MAX,
-not Task-private quotas. They never enter the Kernel Task descriptor.
+not Task-private quotas. Kernel stores them without interpreting the Rule parameters.
 
 ```json
 {"workerGroupId":"country-workers","ruleId":"worker.country","priority":50,"maxRetryTimes":3}
 ```
 
-Server establishes a Task binding to a fixed Rule Handler through Matching,
-then separately creates the Kernel descriptor. Failed creation may leave an inert
-binding. No rollback, HTTP idempotency or Rule management lifecycle is introduced.
-Task closure does not delete definitions, bindings or indexes. Rule IDs and facts
-remain outside Kernel descriptors.
+Server resolves and validates complete targets through Matching without Redis
+or inventory access, then creates the Kernel descriptor. There is no independent
+Matching write. Configuration defaults are captured at creation and do not rewrite
+existing Tasks. Managed registration compares the complete expected descriptor;
+normal managed lookup uses the saved targets without resolving current defaults.
+Task closure does not delete shared Rule indexes or introduce a Rule lifecycle.
+Old descriptor layouts require recreating Tasks in a new scope; no dual read,
+automatic migration or cleanup is performed.
 
 Every registered WorkerGroup also owns exactly one managed, approved
 `PARK_WHEN_IDLE` Task. Registration returns its Task ID:
@@ -302,7 +305,7 @@ ANY and explicit-ID JSON are unchanged. Enable Groups with
 `xa.mass.worker-matching.rules.worker-groups.<group>` with explicit Handler IDs.
 For named Rules, ANY requires Rule membership and explicit ID queries are rejected.
 All queries use the same immutable string-list Map; each Handler interprets its fields.
-Submission validates the binding but does not take candidates. Finite invalid
+Submission reads Task configuration and normalizes selectors without taking candidates. Finite invalid
 members retain per-member rejection; managed calls validate every original
 query, including overwritten duplicate IDs, before submission.
 
@@ -326,7 +329,7 @@ Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
-`workerSelector` through structural capture and named Matching normalization using the Task binding Group and Rule ID,
+`workerSelector` through structural capture and named Matching normalization using the Task descriptor Group and Rule ID,
 then appends the normalized immutable query. Server validates every original
 query, including overwritten duplicates and identity selectors. It uses the same Catalog injected into Pacer;
 it does not take candidates at submission. Catalog startup rebuilds configured
@@ -456,10 +459,10 @@ cursor, total, stable order, or completeness meaning; unreadable sampled rows
 are counted and omitted from the returned views. Task Preview performs one
 descending `ZREVRANGE ... WITHSCORES` for the highest `1..1000` Task Score
 coordinates, then projects Task and WorkerGroup descriptors through their
-bounded Owner reads. Matching bindings are resolved by Task ID in batches of at
-most 100, each using one HMGET. All Task projections expose the actual `ruleId`
-after checking Group consistency; a missing/corrupt binding maps to 503, never
-to the default Rule. Views expose only the Owner-defined Score Band, not raw Score.
+bounded Owner reads. Rule names come directly from the Task descriptor, without
+a Matching lookup. This is stored configuration, not evidence that its Rule is
+currently available. Corrupt descriptors retain the existing 503 mapping; no
+default Rule substitution occurs. Views expose only the Owner-defined Score Band, not raw Score.
 A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
 meaning, and its order is not business priority or execution evidence.

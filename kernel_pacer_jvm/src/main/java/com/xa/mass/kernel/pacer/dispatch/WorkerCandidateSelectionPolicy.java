@@ -25,7 +25,7 @@ final class WorkerCandidateSelectionPolicy {
     Map<String,HeldWorkerCandidate> takeCandidates(String ruleId, String workerGroupId,
             Map<String,EligibilityQuery> selectors, Set<String> roundWorkerIds) {
         if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
-        if (ruleId==null || selectors.isEmpty()) return Map.of();
+        if (selectors.isEmpty()) return Map.of();
         var items=new LinkedHashMap<EligibilityQuery,List<String>>();
         selectors.forEach((id,selector) -> {
             var normalized = index.normalizeQuery(workerGroupId,ruleId,selector);

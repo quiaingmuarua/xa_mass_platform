@@ -21,12 +21,12 @@ controls acquisition, lease and serviceability eligibility.
 
 ```text
 Server creation
-  -> Matching Task binding (explicit default or named Rule)
-  -> Kernel Task descriptor; captured Item selector validated by Matching
+  -> local Matching target resolution (explicit default or named Rule)
+  -> complete Kernel Task descriptor; Item selector validated by Matching
 
 Kernel Main Scheduler
   -> bounded due RUNNING observation -> INITIAL initialization
-  -> NORMAL descriptors -> one bounded immutable Task binding data read
+  -> complete NORMAL descriptors shared with Producers
   -> refill, Task dispatch and optional Serviceability
 
 Task dispatch
@@ -43,7 +43,7 @@ lifecycle are defined in
 [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md).
 
 Each Matching Rule owns qualification, deficits, admission and atomic consumption
-for its Group inventory; Catalog coordinates bindings and bounded batches.
+for its Group inventory; Catalog coordinates target merging and bounded batches.
 Pacer acquires candidate leases before Rule qualification. Kernel confirms the
 original fences, rejecting dirty/stale evidence. Unselected
 or rejected holds expire naturally. Pacer carries Rule names and ordinary data;

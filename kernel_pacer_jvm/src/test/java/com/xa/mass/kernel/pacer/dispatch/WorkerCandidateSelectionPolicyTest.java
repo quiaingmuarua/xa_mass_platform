@@ -52,9 +52,13 @@ class WorkerCandidateSelectionPolicyTest {
         assertEquals(12,selected.get("c").heldWorkerLeaseScore());
         verify(catalog,times(1)).getWorkerDescriptors(anyList());
     }
-    @Test void unavailableBindingNeverFallsBackAndWrongGroupIsNotAssigned() {
-        assertTrue(policy.takeCandidates(null,"g",Map.of("m",any),new HashSet<>()).isEmpty());
-        verifyNoInteractions(index,catalog);
+    @Test void unavailableRuleNeverFallsBackAndWrongGroupIsNotAssigned() {
+        when(index.normalizeQuery("g","unavailable",any)).thenThrow(new IllegalArgumentException("unavailable Rule"));
+        assertThrows(IllegalArgumentException.class,
+                ()->policy.takeCandidates("unavailable","g",Map.of("m",any),new HashSet<>()));
+        verify(index).normalizeQuery("g","unavailable",any);
+        verifyNoMoreInteractions(index);
+        verifyNoInteractions(catalog);
         when(index.take(eq("g"),eq("worker.default"),anyMap())).thenReturn(Map.of(any,List.of(new HeldCandidate("w",1,6000))));
         when(catalog.getWorkerDescriptors(List.of("w"))).thenReturn(Map.of("w",new WorkerResourceCatalog.WorkerDescriptor("w","other","adapter")));
         var round=new HashSet<String>();

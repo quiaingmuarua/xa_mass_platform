@@ -86,7 +86,6 @@
     ],
     "WorkerCandidateIndex": [
       "groups_needing_refill",
-      "load_task_bindings",
       "normalize_query",
       "refill",
       "take"
@@ -207,7 +206,9 @@
       "task_id",
       "worker_group_id",
       "idle_disposition",
-      "config"
+      "config",
+      "rule_id",
+      "refill_targets"
     ],
     "TaskItem": [
       "message_id",
@@ -307,11 +308,6 @@
       "worker_id",
       "score",
       "expires_at_millis"
-    ],
-    "TaskRuleBinding": [
-      "rule_id",
-      "worker_group_id",
-      "refill_targets"
     ]
   },
   "enums": {

@@ -35,7 +35,7 @@ class TaskDispatchProgressTest {
         var tasks = List.of(task("background", "shared"), task("online", "shared"), task("third", "shared"));
         for (int round = 0; round < 9; round++) {
             if (round % 3 == 0) rig.availableGroups.add("shared");
-            rig.policy.dispatchTasks(tasks, Map.of());
+            rig.policy.dispatchTasks(tasks);
         }
         assertEquals(List.of("background", "online", "third"), rig.published);
         for (var task : tasks) verify(rig.itemScores, times(9)).acquireItemScoreCandidates(task.taskId(), 100);
@@ -48,7 +48,7 @@ class TaskDispatchProgressTest {
         for (int round = 0; round < 4; round++) {
             rig.availableGroups.addAll(List.of("shared", "other"));
             // Task score observation order can change independently of successful dispatch.
-            rig.policy.dispatchTasks(round % 2 == 0 ? tasks : List.of(tasks.get(2), tasks.get(0), tasks.get(1)), Map.of());
+            rig.policy.dispatchTasks(round % 2 == 0 ? tasks : List.of(tasks.get(2), tasks.get(0), tasks.get(1)));
         }
         assertEquals(List.of("background", "online", "background", "online"),
                 rig.published.stream().filter(id -> !id.equals("independent")).toList());
@@ -61,11 +61,11 @@ class TaskDispatchProgressTest {
         var first = task("first", "shared");
         var second = task("second", "shared");
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(first), Map.of());
+        rig.policy.dispatchTasks(List.of(first));
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(first, second), Map.of());
+        rig.policy.dispatchTasks(List.of(first, second));
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(List.of(second), Map.of());
+        rig.policy.dispatchTasks(List.of(second));
         assertEquals(List.of("first", "second", "second"), rig.published);
         verify(rig.itemScores, times(2)).acquireItemScoreCandidates("first", 100);
     }
@@ -75,19 +75,19 @@ class TaskDispatchProgressTest {
         var rig = new Rig();
         var tasks = List.of(task("first", "shared"), task("waiting", "shared"));
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(tasks, Map.of());
+        rig.policy.dispatchTasks(tasks);
         rig.availableGroups.add("shared");
         rig.rejectPublication = true;
-        assertEquals(0, rig.policy.dispatchTasks(tasks, Map.of()));
+        assertEquals(0, rig.policy.dispatchTasks(tasks));
         rig.rejectPublication = false;
         rig.availableGroups.add("shared");
-        rig.policy.dispatchTasks(tasks, Map.of());
+        rig.policy.dispatchTasks(tasks);
         assertEquals(List.of("first", "waiting"), rig.published);
     }
 
     private static ObservedTask task(String id, String group) {
         return new ObservedTask(new TaskDescriptor(id, group, TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority", "50", "maxRetryTimes", "3")), 101L);
+                Map.of("priority", "50", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))), 101L);
     }
 
     private static final class Rig {

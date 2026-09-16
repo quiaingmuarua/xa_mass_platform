@@ -7,7 +7,6 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -91,9 +90,8 @@ final class TaskDispatchPolicy {
         );
     }
 
-    int dispatchTasks(List<ObservedTask> tasks, Map<String,TaskRuleBinding> bindings) {
+    int dispatchTasks(List<ObservedTask> tasks) {
         Objects.requireNonNull(tasks, "tasks");
-        Objects.requireNonNull(bindings, "bindings");
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
                 dispatchTimeMillis,
@@ -161,7 +159,6 @@ final class TaskDispatchPolicy {
                 Map<String, HeldWorkerCandidate> assignments =
                         assignments(
                                 task,
-                                bindings.get(task.taskId()),
                                 claimableIds,
                                 items,
                                 roundWorkerIds
@@ -222,7 +219,6 @@ final class TaskDispatchPolicy {
 
     private Map<String, HeldWorkerCandidate> assignments(
             ObservedTask task,
-            TaskRuleBinding binding,
             List<String> messageIds,
             Map<String, TaskItem> items,
             Set<String> roundWorkerIds
@@ -233,7 +229,7 @@ final class TaskDispatchPolicy {
                     items.get(messageId), "claimable TaskItem").workerSelector());
         }
         return candidateSelection.takeCandidates(
-                binding!=null && task.descriptor().workerGroupId().equals(binding.workerGroupId()) ? binding.ruleId() : null,
+                task.descriptor().ruleId(),
                 task.descriptor().workerGroupId(),
                 selectors,
                 roundWorkerIds

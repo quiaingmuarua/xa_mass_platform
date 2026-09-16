@@ -10,7 +10,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
@@ -51,7 +51,8 @@ public final class TaskCreationService {
         }
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
-        bindTaskMatching(taskId, request);
+        String ruleId = request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId();
+        List<RefillTarget> targets = resolveTargets(request, ruleId);
         var config = new java.util.LinkedHashMap<String, String>();
         config.put("priority", Integer.toString(request.priority()));
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
@@ -59,7 +60,9 @@ public final class TaskCreationService {
                 taskId,
                 request.workerGroupId(),
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                config
+                config,
+                ruleId,
+                targets
         );
         TaskCreationResult result;
         try {
@@ -88,37 +91,15 @@ public final class TaskCreationService {
         };
     }
 
-    private void bindTaskMatching(
-            String taskId,
-            TaskCreateRequest request
-    ) {
-        MutationResult result;
+    private List<RefillTarget> resolveTargets(TaskCreateRequest request, String ruleId) {
         try {
-            result = matchingCatalog.bindTaskRule(taskId, request.workerGroupId(),
-                    request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId(), request.refillTargets());
+            return java.util.Objects.requireNonNull(matchingCatalog.resolveRefillTargets(
+                    request.workerGroupId(), ruleId, request.refillTargets()));
+        } catch (IllegalArgumentException error) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION,
+                    error.getMessage(), error);
         } catch (RuntimeException error) {
             throw unavailable(error);
-        }
-        if (result == null) {
-            throw unavailable(null);
-        }
-        switch (result.status()) {
-            case APPLIED, UNCHANGED -> {
-                return;
-            }
-            case INVALID -> throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    OPERATION,
-                    result.reason(),
-                    null
-            );
-            case CONFLICT -> throw new ServerException(
-                    ServerErrorCode.TASK_STATE_CONFLICT,
-                    OPERATION,
-                    result.reason(),
-                    null
-            );
-            case NOT_FOUND -> throw unavailable(null);
         }
     }
 

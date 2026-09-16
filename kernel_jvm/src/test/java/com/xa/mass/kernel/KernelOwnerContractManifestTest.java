@@ -82,7 +82,6 @@ class KernelOwnerContractManifestTest {
             ),
             Map.entry("TaskItem", TaskRuntime.TaskItem.class),
             Map.entry("EligibilityQuery", EligibilityQuery.class),
-            Map.entry("TaskRuleBinding", com.xa.mass.kernel.assignment.TaskRuleBinding.class),
             Map.entry("TaskItemSuccessResult", TaskRuntime.TaskItemSuccessResult.class),
             Map.entry("TaskItemOutcomeTarget", TaskItemScoreBandCore.TaskItemOutcomeTarget.class),
             Map.entry(

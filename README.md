@@ -11,7 +11,7 @@ active Task set, many Items per Task, and many Workers inside finite Groups.
 | Owner | Responsibility |
 | --- | --- |
 | Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
-| Worker Matching | Worker/Platform Properties, fixed Rule Handlers, Task bindings, materialized eligibility indexes and shared inventory |
+| Worker Matching | Worker/Platform Properties, fixed Rule Handlers, materialized eligibility indexes and shared inventory |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
@@ -28,7 +28,7 @@ scheduling eligibility.
 
 ```text
 TASK
-API -> Server binds Task to a shared Matching Rule, then writes Kernel Task/Items
+API -> Server resolves Rule targets locally, then writes complete Kernel Task/Items
     -> Pacer acquires 1-second candidate leases; Matching qualifies and stocks the same fences
     -> Pacer calls Matching with Group, Rule name and Item demand to consume held stock
     -> Kernel checks exact clean fences
@@ -114,7 +114,7 @@ exercises their shared runtime and preserves each scenario's business semantics.
 | --- | --- |
 | Kernel mechanisms | [kernel_jvm](kernel_jvm/README.md): stable contracts, Redis providers, Scores, resources and bounded identity ports |
 | Kernel policy | [kernel_pacer_jvm](kernel_pacer_jvm/README.md): fixed Result/Dispatch Convergence behind one KernelPacerRuntime |
-| Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts/bindings and bounded Rule index queries |
+| Matching | [worker_matching_jvm](worker_matching_jvm/README.md): persistent facts and indexes and bounded Rule index queries |
 | Runtime API | [server_jvm](server_jvm/README.md): Spring API and provider/lifecycle assembly |
 | Executable composition | [server_boot_jvm](server_boot_jvm/README.md): sole Boot entry and platform/preview composition |
 | Delivery and execution | [transport](transport/README.md): shared contract/Core, Netty Adapter, Java and Android Workers |
@@ -166,8 +166,8 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
 
-All Tasks bind to a Matching Rule and resolved refill targets before Kernel
-creation. Main prepares NORMAL bindings once for independent refill and dispatch.
+Every Task descriptor stores its Rule name and resolved refill targets. Main
+shares complete NORMAL descriptors for independent refill and dispatch.
 **Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
 Matching qualifies only the leased IDs and admits their original fences and deadlines
 to shared Group/Rule inventory. Matching time and stock waiting share that second;

@@ -71,7 +71,7 @@ class AssignmentPacersTest {
         var selectors = new LinkedHashMap<String, EligibilityQuery>();
         selectors.put(explicit.messageId(), explicit.workerSelector());
         selectors.put(anyWorker.messageId(), anyWorker.workerSelector());
-        when(selection.takeCandidates(null,
+        when(selection.takeCandidates("worker.default",
                 "group-1", selectors, Set.of()
         )).thenReturn(Map.of(
                 explicit.messageId(), worker("worker-target", 201L),
@@ -92,9 +92,9 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        , Map.of()));
+        ));
 
-        verify(selection).takeCandidates(null,
+        verify(selection).takeCandidates("worker.default",
                 "group-1", selectors, Set.of()
         );
     }
@@ -136,7 +136,7 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        , Map.of()));
+        ));
 
         InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
         order.verify(taskRuntime).storeTaskItemFailedResults(
@@ -184,7 +184,7 @@ class AssignmentPacersTest {
             TaskIdleDisposition idle,
             int priority) {
         return new ObservedTask(
-                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1")),
+                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))),
                 777_777_777L
         );
     }

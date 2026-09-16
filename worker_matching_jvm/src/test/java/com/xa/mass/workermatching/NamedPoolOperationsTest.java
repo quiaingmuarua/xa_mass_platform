@@ -21,7 +21,6 @@ class NamedPoolOperationsTest {
     final RedisClient client=mock(RedisClient.class);
     @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
     @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
-    final Map<String,String> bindings=new LinkedHashMap<>();
     CountingRule rule;
     CountingRule failingRule;
     final java.util.concurrent.atomic.AtomicLong clock=new java.util.concurrent.atomic.AtomicLong(1000);
@@ -34,11 +33,6 @@ class NamedPoolOperationsTest {
         when(client.connect(StringCodec.UTF8)).thenReturn(connection);
         when(connection.isOpen()).thenReturn(true);
         when(connection.sync()).thenReturn(redis);
-        when(redis.hmget(anyString(),any(String[].class))).thenAnswer(call->{
-            String[] ids=(String[])call.getRawArguments()[1];
-            return Arrays.stream(ids).map(id->bindings.containsKey(id)
-                    ?KeyValue.just(id,bindings.get(id)):KeyValue.<String,String>empty(id)).toList();
-        });
         storage=new RedisRuleStorage(client,new RedisKeyspace("test_named_pool"),Map.of(),clock::get);
         rule=new CountingRule(storage); failingRule=new CountingRule(storage);
         catalog=new RedisWorkerMatchingCatalog(storage,
@@ -47,9 +41,21 @@ class NamedPoolOperationsTest {
     }
     @AfterEach void close() { catalog.close(); }
 
-    void bind(String task,String group,List<RefillTarget> targets) {
-        bindings.put(task,json.writeValueAsString(Map.of("workerGroupId",group,"ruleId","test.pool","refillTargets",targets)));
+    @Test void resolvesTargetsWithoutTaskIdentityRedisOrInventoryChanges() {
+        var expected = pool(8,"US");
+        var resolved = catalog.resolveRefillTargets("g1", "test.pool",
+                List.of(pool(3,"US","US"),expected));
+        assertEquals(List.of(expected), resolved);
+        assertThrows(UnsupportedOperationException.class, resolved::clear);
+        assertEquals(List.of(new RefillTarget(Map.of(),100)),catalog.resolveRefillTargets("g1","test.pool",null));
+        assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","test.pool",List.of()));
+        assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","unknown",null));
+        assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("other","test.pool",null));
+        assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","test.pool",Collections.nCopies(101,expected)));
+        assertTrue(catalog.take("g1","test.pool",Map.of(ANY,1)).get(ANY).isEmpty());
+        verifyNoInteractions(redis);
     }
+
     static RefillTarget pool(int count,String... values) {
         return new RefillTarget(Map.of("pool",List.of(values)),count);
     }
@@ -57,21 +63,10 @@ class NamedPoolOperationsTest {
         return Arrays.stream(ids).map(id->new HeldCandidate(id,20,2000)).toList();
     }
 
-    Map<String,Map<String,List<RefillTarget>>> targets(String... taskIds) {
-        var result=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
-        catalog.loadTaskBindings(List.of(taskIds)).values().forEach(binding->{
-            if(binding!=null)result.computeIfAbsent(binding.workerGroupId(),k->new LinkedHashMap<>())
-                    .computeIfAbsent(binding.ruleId(),k->new ArrayList<>()).addAll(binding.refillTargets());
-        });
-        return result;
-    }
-
-    @Test void namedOperationsMergeSharedTaskTargetsWithoutBindingReads() {
-        bind("a","g1",List.of(pool(1,"US")));
-        bind("b","g1",List.of(pool(2,"US","US")));
-        bind("c","g2",List.of(pool(1,"CN")));
+    @Test void namedOperationsMergeDeclarationsWithoutTaskRegistration() {
         rule.facts.putAll(Map.of("w1","US","w2","US","w3","US","w4","CN"));
-        var targets=targets("a","b","c");
+        var targets=Map.of("g1",Map.of("test.pool",List.of(pool(1,"US"),pool(2,"US","US"))),
+                "g2",Map.of("test.pool",List.of(pool(1,"CN"))));
         assertTrue(rule.observedTargets.isEmpty());
         clearInvocations(redis);
         var needed=catalog.groupsNeedingRefill(targets);
@@ -86,7 +81,7 @@ class NamedPoolOperationsTest {
         verifyNoInteractions(redis);
     }
 
-    @Test void namedRefillAndTakeNeedNeitherTaskBindingNorPreparation() {
+    @Test void namedRefillAndTakeNeedNoPreparation() {
         rule.facts.putAll(Map.of("a","US","b","US"));
         var targets=Map.of("test.pool",List.of(pool(1,"US")));
         assertEquals(1,catalog.refill("g1",targets,offer("a")));

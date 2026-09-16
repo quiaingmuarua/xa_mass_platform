@@ -1,6 +1,5 @@
 package com.xa.mass.server.api.v1.controller;
 
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.assignment.RefillTarget;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -71,8 +70,7 @@ class RuntimeViewControllerTest {
         workerScheduling = mock(WorkerSchedulingService.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(matchingCatalog.loadTaskBindings(anyList()))
-                .thenReturn(Map.of());
+
         when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
                 .thenAnswer(invocation -> {
                     String workerGroupId = invocation.getArgument(0);
@@ -135,11 +133,7 @@ class RuntimeViewControllerTest {
         tasks.put("task-terminal", task("task-terminal", "group-a"));
         when(taskCatalog.loadTaskAllocationDescriptors(taskIds))
                 .thenReturn(tasks);
-        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(call -> {
-            List<String> ids=call.getArgument(0); var bindings=new LinkedHashMap<String,TaskRuleBinding>();
-            ids.forEach(id -> bindings.put(id,new TaskRuleBinding("worker.default",tasks.get(id).workerGroupId(), List.of(new RefillTarget(Map.of(),100)))));
-            return bindings;
-        });
+
 
         var groups = new LinkedHashMap<String, WorkerGroupDescriptor>();
         groups.put("group-b", group(
@@ -213,7 +207,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
-        verify(matchingCatalog).loadTaskBindings(List.of("task-review", "task-group-missing", "task-terminal"));
+        verifyNoInteractions(matchingCatalog);
     }
 
     @Test
@@ -720,15 +714,10 @@ class RuntimeViewControllerTest {
         when(taskScores.previewScoreStates(1000)).thenReturn(ids.stream()
                 .map(id -> scoreState(id, TaskScoreBand.RUNNING_VISIBLE)).toList());
         when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
-                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3")))));
+                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))))));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
                 .thenReturn(groupLookup("group-a"));
-        when(matchingCatalog.loadTaskBindings(anyList())).thenAnswer(invocation -> {
-            List<String> batch = invocation.getArgument(0);
-            org.assertj.core.api.Assertions.assertThat(batch).hasSize(100);
-            return batch.stream().collect(Collectors.toMap(id -> id,
-                    id -> new TaskRuleBinding("rule-shared", "group-a", List.of(new RefillTarget(Map.of(),100)))));
-        });
+
         mockMvc.perform(post("/api/v1/runtime-view/tasks:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1000"))
                 .andExpect(status().isOk())
@@ -736,7 +725,7 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.entries.length()").value(1000))
                 .andExpect(jsonPath("$.entries[0].taskId").value("task-0"))
                 .andExpect(jsonPath("$.entries[999].taskId").value("task-999"));
-        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadTaskBindings(anyList());
+        verifyNoInteractions(matchingCatalog);
     }
 
     @Test
@@ -919,7 +908,7 @@ class RuntimeViewControllerTest {
         return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ));
+                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static TaskScoreState scoreState(

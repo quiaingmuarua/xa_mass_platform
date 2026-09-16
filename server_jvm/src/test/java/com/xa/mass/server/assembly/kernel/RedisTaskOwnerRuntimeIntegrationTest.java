@@ -1,6 +1,7 @@
 package com.xa.mass.server.assembly.kernel;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.RefillTarget;
 
 
 import com.xa.mass.server.task.TaskDataService;
@@ -124,6 +125,68 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         if (redisClient != null) {
             redisClient.shutdown();
         }
+    }
+
+    @Test void completeRuleConfigurationRoundTripsWithoutAMatchingOwner() {
+        var descriptor = new TaskDescriptor("rule-task","phone-tools",TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                config(4),"external.rule",List.of(new RefillTarget(Map.of("custom.field",List.of("b","a","b")),73)));
+        var commands = new CopyOnWriteArrayList<String>();
+        redisClient.addListener(new CommandListener() {
+            @Override public void commandStarted(CommandStartedEvent event) {
+                commands.add(event.getCommand().getArgs().toString());
+            }
+        });
+        assertThat(runtime.createTask(descriptor).status()).isEqualTo(TaskCreationStatus.CREATED);
+        assertThat(catalog.loadTaskAllocationDescriptors(List.of("rule-task"))).containsEntry("rule-task",descriptor);
+        assertThat(redis.hgetall(keyspace.base()+":task:rule-task:descriptor"))
+                .containsOnlyKeys("workerGroupId","idleDisposition","configJson","ruleId","refillTargetsJson");
+        assertThat(commands).noneMatch(command -> command.contains(":matching:task:rules"));
+        assertThat(redis.exists(keyspace.base()+":matching:task:rules")).isZero();
+    }
+
+    @Test void concurrentCreationNeverMixesRuleAndTargets() throws Exception {
+        var left = new TaskDescriptor("contended","phone-tools",TaskIdleDisposition.PARK_WHEN_IDLE,
+                config(1),"rule.left",List.of(new RefillTarget(Map.of("field",List.of("left")),10)));
+        var right = new TaskDescriptor("contended","phone-tools",TaskIdleDisposition.PARK_WHEN_IDLE,
+                config(2),"rule.right",List.of(new RefillTarget(Map.of("field",List.of("right")),20)));
+        var start = new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var operations = new ArrayList<java.util.concurrent.Future<TaskRuntime.TaskCreationResult>>();
+            for(int i=0;i<40;i++) {
+                var requested=i%2==0 ? left : right;
+                operations.add(executor.submit(()->{start.await();return runtime.createTask(requested);}));
+            }
+            start.countDown();
+            int created=0;
+            for(var operation:operations)if(operation.get(10,java.util.concurrent.TimeUnit.SECONDS).status()==TaskCreationStatus.CREATED)created++;
+            assertThat(created).isEqualTo(1);
+        }
+        assertThat(catalog.loadTaskAllocationDescriptors(List.of("contended")).get("contended")).isIn(left,right);
+    }
+
+    @Test void legacyMissingOrMalformedRuleConfigurationIsNeverDefaultedOrRepaired() {
+        storeTask("invalid-descriptor");
+        String key=keyspace.base()+":task:invalid-descriptor:descriptor";
+        var original=redis.hgetall(key);
+        redis.hdel(key,"ruleId","refillTargetsJson");
+        assertThatThrownBy(()->catalog.loadTaskAllocationDescriptors(List.of("invalid-descriptor")))
+                .isInstanceOf(IllegalStateException.class).hasMessage("Task descriptor is corrupt");
+        assertThat(redis.hgetall(key)).hasSize(3);
+        redis.hset(key,original);
+        for(String bad:List.of("null","{}","[]","[{\"query\":{},\"count\":0}]",
+                "[{\"query\":{},\"count\":1001}]","[{\"query\":{},\"count\":\"1\"}]",
+                "[{\"query\":{},\"count\":1.0}]","[{\"count\":1}]",
+                "[{\"query\":null,\"count\":1}]","[{\"query\":{\"worker.country\":[123]},\"count\":1}]",
+                "[{\"query\":{},\"count\":1,\"extra\":true}]","[null]")) {
+            redis.hset(key,"refillTargetsJson",bad);
+            assertThatThrownBy(()->catalog.loadTaskAllocationDescriptors(List.of("invalid-descriptor")))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("Task descriptor is corrupt");
+            assertThat(redis.hget(key,"refillTargetsJson")).isEqualTo(bad);
+        }
+        redis.hset(key,original);
+        redis.hset(key,"ruleId"," ");
+        assertThatThrownBy(()->catalog.loadTaskAllocationDescriptors(List.of("invalid-descriptor")))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -465,7 +528,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "idleDisposition", "PARK_WHEN_IDLE",
                 "configJson", "{\"maxRetryTimes\":\"3\","
                         + ""
-                        + "\"priority\":\"7\"}"
+                        + "\"priority\":\"7\"}",
+                "ruleId", "worker.default",
+                "refillTargetsJson", "[{\"count\":100,\"query\":{}}]"
         ));
         var created = scoreCore.getScoreStates(
                 List.of("task-commands")
@@ -1136,7 +1201,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 mock(TaskCreationService.class),
                 new TaskLifecycleService(lifecycle, catalog)
         );
-        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3")));
+        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task").status()
@@ -1455,7 +1520,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority));
+        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static Map<String, String> config(int priority) {
@@ -1489,7 +1554,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         "configJson",
                         "{\"maxRetryTimes\":\"3\","
 
-                                + "\"priority\":\"0\"}"
+                                + "\"priority\":\"0\"}",
+                        "ruleId", "worker.default",
+                        "refillTargetsJson", "[{\"query\":{},\"count\":100}]"
                 )
         );
     }

@@ -280,7 +280,7 @@ class DefaultTaskCommandsTest {
         return new TaskDescriptor(taskId, "workers", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", Integer.toString(priority),
                         "maxRetryTimes", "3"
-                ));
+                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static DefaultTaskLifecycleCommands lifecycle(

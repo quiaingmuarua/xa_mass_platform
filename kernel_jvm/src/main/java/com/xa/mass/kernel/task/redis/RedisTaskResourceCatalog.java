@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.task.redis;
 
+import com.xa.mass.kernel.assignment.RefillTarget;
+
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -70,7 +72,9 @@ public final class RedisTaskResourceCatalog
             if (!fields.keySet().equals(Set.of(
                     "workerGroupId",
                     "idleDisposition",
-                    "configJson"
+                    "configJson",
+                    "ruleId",
+                    "refillTargetsJson"
             ))) {
                 throw new IllegalArgumentException(
                         "Task descriptor fields are invalid"
@@ -90,11 +94,24 @@ public final class RedisTaskResourceCatalog
                     new TypeReference<>() {
                     }
             );
+            List<Map<String, Object>> targets = mapper.readValue(
+                    required(fields, "refillTargetsJson"), new TypeReference<>() {});
+            if (targets == null) throw new IllegalArgumentException("refillTargetsJson must be an array");
+            var refillTargets = new java.util.ArrayList<RefillTarget>();
+            for (var target : targets) {
+                if (target == null || !target.keySet().equals(Set.of("query", "count"))
+                        || !(target.get("query") instanceof Map<?, ?>)) {
+                    throw new IllegalArgumentException("refill target fields are invalid");
+                }
+                refillTargets.add(RefillTarget.parse(target));
+            }
             return new TaskDescriptor(
                     taskId,
                     workerGroupId,
                     idleDisposition,
-                    config
+                    config,
+                    required(fields, "ruleId"),
+                    refillTargets
             );
         } catch (JacksonException | IllegalArgumentException error) {
             throw new IllegalStateException(

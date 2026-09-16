@@ -1,6 +1,6 @@
 # XA Mass Worker Matching JVM
 
-Status: current facts, Rule binding, source index and Eligibility Owner.
+Status: current facts, named Rule admission, source index and Eligibility Owner.
 
 A Rule is a stable semantic ID mapped to one thread-safe Handler instance in fixed
 application composition. It owns qualification, shortfalls, admission, inventory
@@ -32,7 +32,7 @@ This partial-success contract is independent of atomic Facts/index writes below.
 
 ```text
 Worker / Platform facts -> one Lua -> enabled Rule indexes
-NORMAL Tasks -> bindings -> Group/Rule target MAX -> Rule deficits
+NORMAL Task descriptors -> Group/Rule target MAX -> Rule deficits
   -> Pacer HOT head -> Kernel exact 1-second lease -> offered held IDs
   -> Rule qualification and admission -> Rule-owned local stock
 Item selectors -> Rule.take -> current address
@@ -44,22 +44,20 @@ discover replacement IDs, renew holds, decode Kernel scores or claim Items.
 Pacer carries Rule names, Group coordinates and immutable query data. It does not
 interpret business fields, depend on Handler implementations or construct index coordinates.
 
-## Shared Rule Binding
+## Named Rule Admission
 
-`bindTaskRule(taskId, workerGroupId, ruleId, refillTargets)` creates an immutable
-binding before Kernel Task creation. Omitted targets resolve from Group/Rule
-configuration, otherwise ANY 100. Explicit targets override defaults. Complete
-normalized targets are stored; identical bindings are unchanged, different or
-corrupt bindings conflict. Configuration changes do not rewrite existing bindings.
-Unknown/unavailable Rules and unsupported targets are rejected. Failed Kernel
-creation may leave an inert binding; it does not roll back Matching.
+`resolveRefillTargets(workerGroupId, ruleId, requested)` resolves bounded immutable
+targets without Redis access or stock changes. Explicit targets override configured
+Group/Rule defaults, otherwise ANY 100. It normalizes queries and merges duplicates
+using MAX. Empty targets, unknown/unavailable Rules and unsupported queries fail.
+Server stores the resulting snapshot with the Rule name in the Kernel Task
+descriptor. Matching does not accept Task IDs, persist Task configuration or own
+Task lifecycle. The [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md)
+owns descriptor creation, lookup, corruption handling and configuration equality.
 
-`loadTaskBindings(taskIds)` resolves at most 100 unique Tasks with one HMGET.
-Missing/corrupt bindings and unavailable Rules yield null. Main and Server admission
-check the returned Group against the Kernel Task descriptor. Main shares immutable
-configuration data between refill and dispatch. There are no executable Task views.
-`TaskRuleBinding` and `RefillTarget` live with `WorkerCandidateIndex` in Kernel's
-assignment contract package; Matching still owns their interpretation and persistence.
+`RefillTarget` and `EligibilityQuery` remain shared assignment values. Rule
+implementations own their interpretation; Kernel stores their structure. Main
+shares its complete immutable Task descriptors with independent refill and dispatch.
 
 The refill Producer groups and concatenates declarations by Group/Rule without
 interpreting or merging queries. It calls `groupsNeedingRefill(targetsByGroup)`
@@ -71,7 +69,7 @@ Shortage observation does not advance the target cursor; a refill attempt does.
 
 Global expired-stock and inactive-cursor cleanup belongs to `groupsNeedingRefill`.
 The hint and later admission may observe different stock. Refill independently
-validates and works without a prior hint or binding read. Both operations may redo
+validates and works without a prior hint or Task registration. Both operations may redo
 bounded local target normalization; they retain no shared execution plan, Handler
 view or inventory transaction. Server admission and Main do not maintain stock.
 
@@ -126,7 +124,7 @@ count)` for shortages, without checking Worker existence.
 Old `{op,values}` conditions are rejected, including in retained TaskItem records;
 there is no compatibility reader or conversion to ANY. Recreate old property-query
 Tasks in a new scope. Existing records are never automatically migrated or cleared.
-Old ANY/ID Maps already have the current shape and remain readable. Task Binding,
+Old ANY/ID Maps already have the current shape and remain readable. Task target JSON,
 Facts, index keys and index encoding are unchanged by this query migration.
 
 | Rule | Source qualification | Queries |
@@ -137,7 +135,7 @@ Facts, index keys and index encoding are unchanged by this query migration.
 | `proof.worker.facts` | Fixed pool/target/platform and slot partitions | Finite proof selectors on configured Groups |
 
 Only Default accepts explicit Worker IDs, without property combinations. Named
-Rules reject them; old named-Rule ID bindings are unavailable with no fallback.
+Rules reject them; named-Rule ID targets are rejected with no fallback.
 Default's optional country capability remains for current SMS start/cancel flows.
 
 ## Adding a Rule
@@ -251,7 +249,6 @@ All keys use `xa_mass:<scope>`:
 ```text
 :matching:worker:facts:<group>                         HASH workerId -> Worker JSON
 :matching:worker:platform-properties:<group>           HASH workerId -> Platform JSON
-:matching:task:rules                                  HASH taskId -> {ruleId,workerGroupId,refillTargets}
 :matching:worker:index:<encoded-group>:<handler>       ZSET workerId -> source coordinate
 :matching:worker:index:<encoded-group>:<handler>:partitions
                                                       HASH workerId -> partition suffixes
@@ -301,7 +298,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 
 ## Cost, Failure and Proof
 
-- Binding read: one HMGET per bounded Main batch.
+- Target resolution: local only, no Redis; Task configuration reads belong to Task Owner.
 - Group shortage observation: zero Redis commands; local target aggregation and
   one global expiry sweep per round. Named refill independently repeats bounded
   target normalization; only visited target pages reach Rule inventory operations.
@@ -324,8 +321,7 @@ dispatch. `INITIAL_HOLD` retains attempted `batchSize` and successful `count`;
 their difference counts rejected candidates only when `failed=false`. A failed
 call is unconfirmed, not proof of lease rejection. No management API or diagnostics thread is added.
 
-Binding failure blocks candidates while Item expiry/exhaustion/idle settlement
-continues. Refill infrastructure failure reaches its Producer backoff; partial
+Candidate failures do not add a prerequisite to Item expiry/exhaustion/idle settlement. Refill infrastructure failure reaches its Producer backoff; partial
 holds expire. Take misses never query a source or acquire a new hold. Restart
 loses local inventory and rebuilds it through ordinary refill without adoption,
 ACK, replay or a repair scan.
@@ -341,6 +337,7 @@ Items, including shared and different Rules within one Group. Runtime Boundary a
 Dynamic Matching witness real Worker execution; Call Performance separately
 measures mixed-workload behavior. See [TESTING](../TESTING.md).
 
-This Rule ownership change affects no HTTP, Binding shape, Redis keys or Score
-encoding. Restart the existing process: local stock is discarded and outstanding
-holds expire. It requires no runtime-data cleanup or migration.
+Task configuration now lives in the Task descriptor. Recreate Tasks in a new scope;
+old descriptor formats are rejected, and old Matching data is neither read nor
+cleared. HTTP, facts/index formats and Score encoding are unchanged. Local stock
+is still lost on restart and outstanding holds expire.

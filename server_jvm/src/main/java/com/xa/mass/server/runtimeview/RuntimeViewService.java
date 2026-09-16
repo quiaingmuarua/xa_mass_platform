@@ -20,7 +20,6 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -83,20 +82,12 @@ public final class RuntimeViewService {
                     ? Map.of()
                     : taskCatalog.loadTaskAllocationDescriptors(taskIds);
             var workerGroupIds = new LinkedHashSet<String>();
-            var boundTaskIds = new ArrayList<String>();
             for (String taskId : taskIds) {
                 TaskDescriptor task = tasks.get(taskId);
                 validateTaskIdentity(taskId, task);
                 if (task != null) {
                     workerGroupIds.add(task.workerGroupId());
-                    boundTaskIds.add(taskId);
                 }
-            }
-            Map<String, TaskRuleBinding> taskRules = new LinkedHashMap<>();
-            for (int offset = 0; offset < boundTaskIds.size(); offset += WorkerMatchingCatalog.MAX_BATCH_SIZE) {
-                taskRules.putAll(matchingCatalog.loadTaskBindings(boundTaskIds.subList(
-                        offset, Math.min(offset + WorkerMatchingCatalog.MAX_BATCH_SIZE, boundTaskIds.size())
-                )));
             }
             Map<String, WorkerGroupDescriptor> groups = workerGroupIds.isEmpty()
                     ? Map.of()
@@ -120,10 +111,7 @@ public final class RuntimeViewService {
                         taskScoreView(scoreState),
                         task == null
                                 ? null
-                                : toView(
-                                        task,
-                                        taskRules.get(task.taskId())
-                                ),
+                                : toView(task),
                         group == null ? null : toView(group)
                 ));
             }
@@ -352,18 +340,12 @@ public final class RuntimeViewService {
         );
     }
 
-    private static TaskView toView(
-            TaskDescriptor descriptor,
-            TaskRuleBinding rule
-    ) {
-        if (rule==null || !descriptor.workerGroupId().equals(rule.workerGroupId())) {
-            throw new IllegalStateException("Task Rule binding is missing or inconsistent");
-        }
+    private static TaskView toView(TaskDescriptor descriptor) {
         return new TaskView(
                 descriptor.taskId(),
                 descriptor.workerGroupId(),
                 descriptor.idleDisposition().name(),
-                rule.ruleId(),
+                descriptor.ruleId(),
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
                 )

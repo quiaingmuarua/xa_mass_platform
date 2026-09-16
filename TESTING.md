@@ -113,8 +113,8 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 
 ## Selection Decision
 
-Rule binding and index proof belongs to Redis Owner: concurrent create-only
-bindings, strict corruption rejection, one-command bind and 100-Task HMGET,
+Task configuration and index proof belongs to Redis Owner: complete create-only
+descriptors, concurrent configuration integrity and strict corruption rejection,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
 rebuild isolation. Matching tests prove the four-operation Rule interface, unsupported condition
 rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
@@ -328,11 +328,11 @@ Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
-Redis Owner proves strict bindings, preserved source coordinates, sparse phone partitions,
+Redis Owner proves complete Task descriptors, preserved source coordinates, sparse phone partitions,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
-one binding HMGET per at-most-100-Task round, direct Group/Rule operations without
-executable binding views or refill callbacks, six commands for named refill of
-100 identities even across 100 queries, and zero Redis access for local take or
+no Matching Task configuration access, local target resolution and direct Group/Rule operations without
+executable binding views or refill callbacks, bounded named refill command counts
+from the Matching Owner contract, and zero Redis access for local take or
 satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
 batches. Properties dirtying invalidates old fences; a fresh hold after natural
 expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.

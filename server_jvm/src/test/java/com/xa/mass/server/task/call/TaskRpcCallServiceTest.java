@@ -1,7 +1,6 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.TaskRuleBinding;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
@@ -492,13 +491,7 @@ class TaskRpcCallServiceTest {
                 invocation.getArgument(1), invocation.getArgument(2)));
         var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
-        when(matching.loadTaskBindings(anyList())).thenAnswer(call -> {
-            List<String> ids=call.getArgument(0);
-            var result=new LinkedHashMap<String,TaskRuleBinding>();
-            ids.forEach(task -> result.put(task,new TaskRuleBinding(
-                    "worker.default","group-1",List.of(new RefillTarget(Map.of(),100)))));
-            return result;
-        });
+
         return new TaskRpcCallService(
                 new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching),
                 taskRuntime, registry, properties
@@ -509,7 +502,7 @@ class TaskRpcCallServiceTest {
         return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ));
+                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static TaskItemRequest item(

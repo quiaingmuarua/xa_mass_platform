@@ -51,7 +51,7 @@ class DispatchConvergenceLifecycleTest {
             List<ObservedTask> tasks = invocation.getArgument(0);
             dispatchedTasks.set(taskIds(tasks));
             return complete(rounds, allVirtual);
-        }).when(fixture.dispatch).dispatchTasks(any(), org.mockito.ArgumentMatchers.anyMap());
+        }).when(fixture.dispatch).dispatchTasks(any());
         doAnswer(invocation -> {
             List<String> groups = invocation.getArgument(0);
             serviceabilityGroups.set(groups);
@@ -115,7 +115,7 @@ class DispatchConvergenceLifecycleTest {
 
         assertTrue(sourceAttempt.await(2, TimeUnit.SECONDS));
         verify(fixture.initialization, never()).initialize(any());
-        verify(fixture.dispatch, never()).dispatchTasks(any(), org.mockito.ArgumentMatchers.anyMap());
+        verify(fixture.dispatch, never()).dispatchTasks(any());
         verify(fixture.serviceability, never()).dispatchProbes(
                 any(), any()
         );
@@ -133,7 +133,7 @@ class DispatchConvergenceLifecycleTest {
         doAnswer(ignored -> {
             dispatchRounds.countDown();
             return 1;
-        }).when(fixture.dispatch).dispatchTasks(any(), org.mockito.ArgumentMatchers.anyMap());
+        }).when(fixture.dispatch).dispatchTasks(any());
 
         fixture.runtime.start();
 
@@ -156,7 +156,7 @@ class DispatchConvergenceLifecycleTest {
             try { new CountDownLatch(1).await(); }
             catch (InterruptedException stop) { interrupted.countDown(); Thread.currentThread().interrupt(); }
             return 0;
-        }).when(fixture.dispatch).dispatchTasks(any(), org.mockito.ArgumentMatchers.anyMap());
+        }).when(fixture.dispatch).dispatchTasks(any());
         doAnswer(call -> { probes.countDown(); return 0; })
                 .when(fixture.serviceability).dispatchProbes(any(), any());
         fixture.runtime.start();
@@ -175,7 +175,7 @@ class DispatchConvergenceLifecycleTest {
         stubNormalBatch(fixture);
         doAnswer(ignored -> {
             throw new AssertionError("fatal producer failure");
-        }).when(fixture.dispatch).dispatchTasks(any(), org.mockito.ArgumentMatchers.anyMap());
+        }).when(fixture.dispatch).dispatchTasks(any());
 
         fixture.runtime.start();
 
@@ -226,7 +226,7 @@ class DispatchConvergenceLifecycleTest {
             String taskId,
             String workerGroupId
     ) {
-        return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"));
+        return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
     }
 
     private static Fixture fixture(
@@ -249,7 +249,6 @@ class DispatchConvergenceLifecycleTest {
                                 taskCatalog,
                                 initialization,
                                 dispatch,
-                                mock(WorkerCandidateIndex.class),
                                 mock(WorkerEligibilityRefillPolicy.class),
                                 serviceabilityConfig == null
                                         ? null

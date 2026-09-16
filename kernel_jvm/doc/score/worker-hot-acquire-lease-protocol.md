@@ -28,7 +28,7 @@ exact execution confirmation remain. There is no Matching acquisition callback,
 ## Acquisition And Handoff
 
 ```text
-NORMAL bindings -> local Group deficits
+NORMAL Task descriptors -> local Group deficits
   -> Pacer read-only due HOT head, including dirty=0 and dirty=1
   -> one Kernel exact acquisition, 1 second, dirty=0 -> supplied successful fences
   -> Matching supplied-ID current projection and acceptance plan -> shared inventory

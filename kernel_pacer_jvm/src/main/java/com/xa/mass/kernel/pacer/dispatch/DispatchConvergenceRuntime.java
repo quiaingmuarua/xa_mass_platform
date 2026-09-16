@@ -111,7 +111,6 @@ public final class DispatchConvergenceRuntime {
                 taskCatalog,
                 initialization,
                 dispatch,
-                candidateIndex,
                 refill,
                 serviceabilityDispatch,
                 assignment,

@@ -177,6 +177,8 @@ class RuntimeBoundaryIntegrationTest {
 
     @MockitoSpyBean
     private WorkerMatchingCatalog matchingCatalog;
+    @Autowired
+    private com.xa.mass.kernel.task.TaskResourceCatalog taskCatalog;
     @MockitoSpyBean
     private WorkerPreparationService preparationService;
 
@@ -418,9 +420,7 @@ class RuntimeBoundaryIntegrationTest {
                         "CN", Map.of("executor", secondId, "host", "second"),
                         "US", Map.of("executor", firstId, "host", "first")));
                 assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
-                verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).loadTaskBindings(org.mockito.ArgumentMatchers.argThat(
-                        tasks -> tasks!=null && (tasks.contains(indexedFirst) || tasks.contains(indexedSecond))));
-                assertThat(matchingCatalog.loadTaskBindings(List.of(indexedFirst, indexedSecond)).values())
+                assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(indexedFirst, indexedSecond)).values())
                         .allSatisfy(rule -> assertThat(rule.ruleId()).isEqualTo("worker.country"));
                 assertThat(first.snapshot().workerId()).isEqualTo(firstId);
                 assertThat(second.snapshot().workerId()).isEqualTo(secondId);
@@ -478,9 +478,7 @@ class RuntimeBoundaryIntegrationTest {
                     assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor",workerId);
                 }
             }
-            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).loadTaskBindings(org.mockito.ArgumentMatchers.argThat(
-                    ids -> ids!=null && ids.containsAll(tasks.keySet())));
-            assertThat(matchingCatalog.loadTaskBindings(List.copyOf(tasks.keySet())).values())
+            assertThat(taskCatalog.loadTaskAllocationDescriptors(List.copyOf(tasks.keySet())).values())
                     .allSatisfy(binding -> assertThat(binding.ruleId()).isEqualTo(BucketRuleHandler.ID));
             verify(preparationService,times(1)).prepareAll(eq(group),any(),any(),anyList());
         }
@@ -912,8 +910,10 @@ class RuntimeBoundaryIntegrationTest {
                     "platform.proofEnabled",List.of("yes"));
             String taskId=createTask(workerGroupId,"proof.worker.facts");
             String otherTaskId=createTask(workerGroupId,"proof.worker.facts");
-            var sharedRules = matchingCatalog.loadTaskBindings(List.of(taskId, otherTaskId));
-            assertThat(sharedRules.get(taskId)).isNotNull().isEqualTo(sharedRules.get(otherTaskId));
+            var sharedRules = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId, otherTaskId));
+            assertThat(sharedRules.get(taskId)).isNotNull();
+            assertThat(sharedRules.get(taskId).ruleId()).isEqualTo(sharedRules.get(otherTaskId).ruleId());
+            assertThat(sharedRules.get(taskId).refillTargets()).isEqualTo(sharedRules.get(otherTaskId).refillTargets());
             assertThat(sharedRules.get(taskId).ruleId()).isNotIn(taskId, otherTaskId);
             appendItem(taskId, firstMessageId, selector);
             appendItem(taskId, secondMessageId, selector);
@@ -952,8 +952,8 @@ class RuntimeBoundaryIntegrationTest {
             ).statusCode()).isEqualTo(200);
             // The second Task already shared the Rule before the first closed.
             // Its independent append, approval and execution still work afterwards.
-            assertThat(matchingCatalog.loadTaskBindings(List.of(taskId, otherTaskId)).values())
-                    .containsOnly(sharedRules.get(taskId));
+            assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(taskId, otherTaskId)).values())
+                    .containsExactlyInAnyOrderElementsOf(sharedRules.values());
             appendItem(otherTaskId, "after-other-task-closed", selector);
             assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve", null).statusCode()).isEqualTo(200);
             awaitStoredResult(otherTaskId, "after-other-task-closed");
