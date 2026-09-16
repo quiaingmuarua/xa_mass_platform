@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.List;
 
 record WorkerServiceabilityDispatchConfig(
@@ -58,12 +57,9 @@ record WorkerServiceabilityDispatchConfig(
     }
 
     static void requireFloor(long floor) {
-        if (floor < WorkerScoreCore.SLOT_MILLIS
-                || floor % WorkerScoreCore.SLOT_MILLIS != 0
-                || floor > WorkerScoreCore.MAX_TIME_MILLIS) {
+        if (floor <= 0) {
             throw new IllegalArgumentException(
-                    "hotEligibilityFloorMillis must be a valid "
-                            + "score-slot-aligned time"
+                    "hotEligibilityFloorMillis must be positive"
             );
         }
     }

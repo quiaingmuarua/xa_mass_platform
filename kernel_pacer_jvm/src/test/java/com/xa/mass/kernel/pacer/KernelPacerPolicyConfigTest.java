@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,7 @@ class KernelPacerPolicyConfigTest {
     }
 
     @Test
-    void serviceabilityPresetMintsOneAlignedFloorPerAssembly() {
+    void serviceabilityPresetSamplesOneMillisecondFloorPerAssembly() {
         for (PolicyPreset preset : List.of(
                 PolicyPreset.SERVICEABILITY_DEFAULT,
                 PolicyPreset.SCENARIO_LAB,
@@ -48,26 +47,29 @@ class KernelPacerPolicyConfigTest {
             assertEquals(preset, config.preset());
             assertTrue(config.serviceabilityEnabled());
             assertEquals(
-                    12_300,
+                    12_345,
                     config.hotEligibilityFloorMillis()
             );
         }
     }
 
     @Test
-    void rejectsFloorsOutsideTheSharedScoreContract() {
+    void validatesPolicyFloorsWithoutEncodingConstraints() {
+        assertEquals(1, new KernelPacerPolicyConfig(PolicyPreset.SERVICEABILITY_DEFAULT, 1).hotEligibilityFloorMillis());
+        assertEquals(Long.MAX_VALUE, new KernelPacerPolicyConfig(PolicyPreset.SERVICEABILITY_DEFAULT,
+                Long.MAX_VALUE).hotEligibilityFloorMillis());
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new KernelPacerPolicyConfig(
                         PolicyPreset.SERVICEABILITY_DEFAULT,
-                        WorkerScoreCore.SLOT_MILLIS - 1
+                        0
                 )
         );
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new KernelPacerPolicyConfig(
                         PolicyPreset.DEFAULT,
-                        WorkerScoreCore.SLOT_MILLIS
+                        1
                 )
         );
     }

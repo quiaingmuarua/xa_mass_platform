@@ -103,6 +103,12 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 .forEach((name, value) -> registry.add(prefix + "." + name, () -> value));
     }
 
+    private boolean isHot(String workerId) {
+        var state = scores.observeSchedulingStates(GROUP, List.of(workerId)).statesByWorkerId().get(workerId);
+        return state == WorkerScoreCore.SchedulingState.HOT_SCORE_OVERDUE
+                || state == WorkerScoreCore.SchedulingState.HELD_HOT;
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void lostDisconnectIsReplacedByActualTaskDeliveryExpiryAndWorkRecovers() throws Exception {
@@ -126,7 +132,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             await("Worker preparation", () -> worker.snapshot().workerId() != null);
             String workerId = worker.snapshot().workerId();
             await("verified connected HOT baseline", () -> connectionState(workerId).equals("connected")
-                    && scores.getScoreStates(GROUP, List.of(workerId)).get(workerId).polarity() == HOT_ACQUIRE);
+                    && isHot(workerId));
 
             doAnswer(call -> {
                 List<DeliveryReport> reports = (List<DeliveryReport>) call.callRealMethod();
@@ -191,14 +197,14 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             worker.stop();
             await("disconnect consumed and deliberately lost", () -> lostDisconnects.get() == 1
                     && connectionState(workerId).equals("disconnected"));
-            assertThat(scores.getScoreStates(GROUP, List.of(workerId)).get(workerId).polarity()).isEqualTo(HOT_ACQUIRE);
+            assertThat(isHot(workerId)).isTrue();
             post("/api/v1/tasks/" + task + "/items", List.of(Map.of(
                     "messageId", "offline-item", "eventCode", EVENT, "payload", Map.of())));
             post("/api/v1/tasks/" + task + "/approve", null);
             await("actual expiry evidence changes Score", () -> deliveryEvidence.get() > 0
                     && rejectedDeliveries.get() > 0 && applied.get() != null
                     && applied.get().status() == TRANSITIONED
-                    && scores.getScoreStates(GROUP, List.of(workerId)).get(workerId).polarity() == RECOVERY_RECHECK);
+                    && scores.observeSchedulingStates(GROUP, List.of(workerId)).statesByWorkerId().get(workerId) == WorkerScoreCore.SchedulingState.RECOVERY);
 
             assertThat(delivered).isNotEmpty();
             assertThat(invoked).hasValue(0);

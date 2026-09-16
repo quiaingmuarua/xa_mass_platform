@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
@@ -41,9 +40,9 @@ class WorkerServiceabilityDispatchPolicyTest {
         long opaqueScore = 777_777_777L;
         when(scores.observeHotCandidatesBefore(
                 "group-1", 10_000L, 100
-        )).thenReturn(List.of(new WorkerScoreObservation(
+        )).thenReturn(Map.of(
                 "worker-1", opaqueScore
-        )));
+        ));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L)).thenReturn(Map.of("worker-1", transitioned(-123L)));
         when(runtime.offerProbeRequests(
@@ -56,7 +55,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
 
         assertEquals(1, offered);
-        verify(scores, never()).getScoreStates(anyString(), anyList());
+        verify(scores, never()).observeSchedulingStates(anyString(), anyList());
         verify(scores).deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L);
         verify(scores, never()).observeRecoveryRecheckCandidates(
                 "group-1", 100
@@ -79,12 +78,12 @@ class WorkerServiceabilityDispatchPolicyTest {
         long opaqueScore = -888_888_888L;
         when(scores.observeHotCandidatesBefore(
                 "group-1", 10_000L, 100
-        )).thenReturn(List.of());
+        )).thenReturn(Map.of());
         when(scores.observeRecoveryRecheckCandidates(
                 "group-1", 100
-        )).thenReturn(List.of(new WorkerScoreObservation(
+        )).thenReturn(Map.of(
                 "worker-1", opaqueScore
-        )));
+        ));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L)).thenReturn(Map.of("worker-1", transitioned(-321L)));
         when(runtime.offerProbeRequests(
@@ -96,7 +95,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 config()
         ));
         verify(scores).deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L);
-        verify(scores, never()).getScoreStates(anyString(), anyList());
+        verify(scores, never()).observeSchedulingStates(anyString(), anyList());
     }
 
     @Test
@@ -107,7 +106,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         AtomicLong now = new AtomicLong(10_000L);
         long opaqueScore = -888_888_888L;
         when(scores.observeRecoveryRecheckCandidates("group-1", 100))
-                .thenReturn(List.of(), List.of(new WorkerScoreObservation("worker-1", opaqueScore)));
+                .thenReturn(Map.of(), Map.of("worker-1", opaqueScore));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L))
@@ -135,9 +134,9 @@ class WorkerServiceabilityDispatchPolicyTest {
         long opaqueScore = 999_999_999L;
         when(scores.observeHotCandidatesBefore(
                 "group-1", 10_000L, 100
-        )).thenReturn(List.of(new WorkerScoreObservation(
+        )).thenReturn(Map.of(
                 "worker-1", opaqueScore
-        )));
+        ));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of(
                 "worker-1",
                 worker("worker-1", "system-polling")
@@ -174,9 +173,9 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
         when(scores.observeHotCandidatesBefore(
                 "group-1", 10_000L, 100
-        )).thenReturn(List.of(new WorkerScoreObservation(
+        )).thenReturn(Map.of(
                 "worker-1", 123_456_789L
-        )));
+        ));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", 123_456_789L), 1_000))
@@ -205,7 +204,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var runtime = mock(WorkerServiceabilityRuntime.class);
         var ids = List.of("deleted", "time-changed", "dirty-changed", "polarity-changed", "paused", "unchanged");
         long fence = hot ? 777L : -888L;
-        var observations = ids.stream().map(id -> new WorkerScoreObservation(id, fence)).toList();
+        var observations = observations(ids, fence);
         if (hot) {
             when(scores.observeHotCandidatesBefore("group-1", 10_000, 100)).thenReturn(observations);
         } else {
@@ -226,7 +225,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 .thenReturn(Map.of("unchanged", ProbeRequestOfferStatus.OFFERED));
 
         assertEquals(1, policy(scores, catalog, runtime).dispatchProbes(List.of("group-1"), config()));
-        verify(scores, never()).getScoreStates(anyString(), anyList());
+        verify(scores, never()).observeSchedulingStates(anyString(), anyList());
         verify(scores).deferObservedToRecovery("group-1", fences, 1_000);
         verify(runtime).offerProbeRequests("adapter-1", List.of("unchanged"));
         org.mockito.Mockito.verifyNoMoreInteractions(runtime);
@@ -239,7 +238,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var runtime = mock(WorkerServiceabilityRuntime.class);
         var ids = List.of("missing", "wrong-group", "wrong-id");
         when(scores.observeHotCandidatesBefore("group-1", 10_000, 100))
-                .thenReturn(ids.stream().map(id -> new WorkerScoreObservation(id, 777L)).toList());
+                .thenReturn(observations(ids, 777L));
         when(catalog.getWorkerDescriptors(ids)).thenReturn(Map.of(
                 "wrong-group", new WorkerDescriptor("wrong-group", "group-2", "system-polling"),
                 "wrong-id", worker("another-worker", "system-polling")));
@@ -258,7 +257,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var catalog = mock(WorkerResourceCatalog.class);
         var runtime = mock(WorkerServiceabilityRuntime.class);
         when(scores.observeHotCandidatesBefore("group-1", 10_000, 100))
-                .thenReturn(List.of(new WorkerScoreObservation("worker-1", 777L)));
+                .thenReturn(Map.of("worker-1", 777L));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "system-polling")));
         when(scores.toggleCurrentPolarity("group-1", "worker-1", 777L))
@@ -279,9 +278,9 @@ class WorkerServiceabilityDispatchPolicyTest {
         long opaqueScore = 444_444_444L;
         when(scores.observeHotCandidatesBefore(
                 "group-1", 19_000L, 100
-        )).thenReturn(List.of(new WorkerScoreObservation(
+        )).thenReturn(Map.of(
                 "worker-1", opaqueScore
-        )));
+        ));
         when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", opaqueScore), 1_000L)).thenReturn(Map.of("worker-1", transitioned(-123L)));
         when(runtime.offerProbeRequests(
@@ -313,7 +312,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         for (int round = 0; round < 8; round++) {
             long fence = -7_000L - round;
             when(scores.observeRecoveryRecheckCandidates("group-1", 100))
-                    .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+                    .thenReturn(Map.of("worker-1", fence));
             var targets = Map.of("worker-1", fence);
             when(scores.deferObservedToRecovery("group-1", targets, 15_000))
                     .thenReturn(Map.of("worker-1", transitioned(-8_000L - round)));
@@ -338,7 +337,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var ids = java.util.stream.IntStream.range(0, 100).mapToObj(i -> "worker-" + i).toList();
         long fence = 1234567L;
         when(scores.observeHotCandidatesBefore("group-1", 10_000L, 100))
-                .thenReturn(ids.stream().map(id -> new WorkerScoreObservation(id, fence)).toList());
+                .thenReturn(observations(ids, fence));
         var descriptors = new LinkedHashMap<String, WorkerDescriptor>();
         var targets = new LinkedHashMap<String, Long>();
         var held = new LinkedHashMap<String, WorkerScoreTransitionResult>();
@@ -380,7 +379,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var runtime = mock(WorkerServiceabilityRuntime.class);
         long fence = -777L;
         when(scores.observeRecoveryRecheckCandidates("group-1", 100))
-                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+                .thenReturn(Map.of("worker-1", fence));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
         var targets = Map.of("worker-1", fence);
@@ -406,7 +405,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         var runtime = mock(WorkerServiceabilityRuntime.class);
         long fence = -777L;
         when(scores.observeRecoveryRecheckCandidates("group-1", 100))
-                .thenReturn(List.of(new WorkerScoreObservation("worker-1", fence)));
+                .thenReturn(Map.of("worker-1", fence));
         when(catalog.getWorkerDescriptors(List.of("worker-1")))
                 .thenReturn(Map.of("worker-1", worker("worker-1", "system-polling")));
 
@@ -415,6 +414,24 @@ class WorkerServiceabilityDispatchPolicyTest {
         verify(scores, never()).toggleCurrentPolarity("group-1", "worker-1", fence);
         verify(scores).deferObservedToRecovery("group-1", Map.of(), 1_000);
         org.mockito.Mockito.verifyNoInteractions(runtime);
+    }
+
+    @Test
+    void forwardsMillisecondFloorAndStaleCutoffWithoutSlotAlignment() {
+        var scores = mock(WorkerScoreCore.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var runtime = mock(WorkerServiceabilityRuntime.class);
+        var config = new WorkerServiceabilityDispatchConfig(1_000, 10_055, 15_000, 1_001, List.of());
+        policy(scores, catalog, runtime, 10_060).dispatchProbes(List.of("group-1"), config);
+        verify(scores).observeHotCandidatesBefore("group-1", 10_055, 100);
+        policy(scores, catalog, runtime, 20_087).dispatchProbes(List.of("group-1"), config);
+        verify(scores).observeHotCandidatesBefore("group-1", 19_086, 100);
+    }
+
+    private static Map<String, Long> observations(List<String> ids, long fence) {
+        var observations = new LinkedHashMap<String, Long>();
+        ids.forEach(id -> observations.put(id, fence));
+        return observations;
     }
 
     private static WorkerServiceabilityDispatchPolicy policy(

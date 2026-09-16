@@ -35,7 +35,8 @@ Adapter delivery deadline.
 ## HOT Eligibility Epoch
 
 When periodic Serviceability is configured, `KernelPacerRuntime` mints one immutable,
-100ms-aligned `hotEligibilityFloorMillis` for that process instance. Restarting
+millisecond `hotEligibilityFloorMillis` for that process instance. Only the
+Score Owner converts it to the current encoding's slot boundary. Restarting
 the loops on the same Application does not change it; a new Kernel process has
 a new epoch.
 
@@ -55,12 +56,14 @@ activation; registration does not consult current time.
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
 
-Serviceability also computes one call-local, slot-aligned HOT Probe cutoff:
+Serviceability computes one call-local HOT Probe cutoff in milliseconds:
 
 ```text
-max(hotEligibilityFloorMillis, now - hotProbeStaleAfterMillis)
+max(hotEligibilityFloorMillis, max(0, now - hotProbeStaleAfterMillis))
 ```
 
+The Owner alone aligns the cutoff. The observation is an immutable ordered Map
+of IDs to opaque fences; Policy does not decode it or make a second point read.
 It may observe ordinary due HOT coordinates older than that cutoff as
 loss-compensation candidates. This range deliberately overlaps Assignment:
 the exact observed-score hold wins only when the Worker has remained unchanged;

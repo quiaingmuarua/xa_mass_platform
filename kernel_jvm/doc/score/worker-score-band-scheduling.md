@@ -167,10 +167,49 @@ its exact fence; cold parking has its own fixed target.
 Caller inputs are bounded identities, opaque observed fences, millisecond
 times, a relative delay and the mechanical polarity/refresh choice.
 Raw ranges, encoded coordinates and dirty values are not caller construction
-capabilities. WorkerScoreState exposes polarity, timeMillis and dirty, plus
-the opaque original score. WorkerScoreObservation carries identity and the
-opaque range observation. Deferral takes a Map of observed Scores and one
-delayMillis for the whole batch. Numeric target errors remain Owner INVALID results.
+capabilities. Decoded fields, encoding constants, the PAUSE sentinel and slot
+alignment remain package-private to WorkerScoreEncoding. The public polarity
+enum names mechanical intent without exposing numeric encoding.
+
+All candidate observations return immutable workerId-to-opaque-Score Maps in
+Redis iteration order. HOT Serviceability reads preserve descending score/member
+order; RECOVERY reads preserve earliest-recheck order, including existing tie
+ordering. Callers may retain, associate, exact-compare and return these fences;
+they cannot decode or calculate coordinates. Deferral takes one delayMillis for
+the whole Map. Numeric target errors retain each operation's existing handling.
+
+Pacer supplies millisecond floors and cutoffs without aligning them. Only the
+Owner checks representability and converts to slots. Raw and pre-aligned valid
+inputs select identical ranges; no public encoding-normalization helper is added.
+
+### Scheduling Observation And Controls
+
+WorkerScoreCore owns observeSchedulingStates(group, workerIds), pauseScheduling
+and resumeScheduling. This moves state interpretation and PAUSE composition from
+Server into the existing Score Owner; no new state, Lua or lifecycle is introduced.
+
+Observation accepts 1..100 unique IDs, makes one ZMSCORE read and decodes it before
+sampling the local JVM clock once. WorkerSchedulingObservation combines that
+readAtMillis with a complete immutable Map in request order. Classification is:
+missing -> MISSING; either polarity at PAUSE -> PAUSED; RECOVERY at or below the
+cold slot -> COLD; remaining RECOVERY -> RECOVERY; HOT at the current/future slot
+-> HELD_HOT; earlier HOT -> HOT_SCORE_OVERDUE. Dirty does not affect this view.
+This is a bounded Score projection, not Binding, Matching or network evidence,
+and HOT_SCORE_OVERDUE does not assert floor-aware scheduling eligibility.
+
+Pause composes current-time advance to the private PAUSE coordinate, preserving
+polarity and dirty, with one EVAL and no pre-read. Resume reads once; missing is
+MISSING and non-PAUSE is UNCHANGED. For PAUSE it samples local time and composes
+ordinary exact release, retaining the ZMSCORE + TIME + EVAL order. A later deletion
+or fence change is CONFLICT, never a second observation or retry. Resume retains
+polarity and dirty. Both controls return APPLIED, UNCHANGED, MISSING or CONFLICT;
+Server maps these meanings to its existing ActionOutcome and business errors.
+
+Corrupt Score handling remains path-specific: observation/resume decode failures
+throw; pause retains current-time advance's original comparisons and result
+mapping, including an existing coordinate at/above the target returning unchanged.
+Server keeps validation, result completeness checks, wire names and error mapping.
+It does not decode Score or sample a second observation clock.
 
 ## Java Composition and Fixed Atomic Operations
 
@@ -222,11 +261,12 @@ No preceding point reads, per-member TIME, retries or new keys are added.
 
 ### Current Same-Polarity Rewrite
 
-rewriteCurrentScores(group, workerIds, targetTimeMillis) atomically reads
+The private current-time composition atomically reads
 each current member and advances only when abs(current) < targetSlot * 2.
 It preserves sign and dirty; missing is STALE, and it never creates.
-Same-slot or later coordinates do not advance. Server pause uses this operation
-with PAUSE_TIME_MILLIS.
+Same-slot or later coordinates do not advance. Kernel pauseScheduling composes
+this operation with its private PAUSE_TIME_MILLIS; no public arbitrary-time
+rewrite remains without a production caller.
 
 ### Release
 
@@ -408,4 +448,8 @@ operation is added in this change.
 WorkerScoreEncodingTest and WorkerScoreRedisBoundaryTest cover encoding and
 I/O ownership. RedisWorkerOwnerRuntimeIntegrationTest covers atomicity, Redis
 time, field preservation, long-lived due reads and equal-score head progress.
+It also proves shared observation time, pause/resume command budgets and exact
+resume conflicts. Its test source lives in the Score Owner package, while the
+Server redis-owner lane continues to execute it. Runtime proof fences use only
+test-side Redis witnesses; no inspection capability is reopened in production.
 Pacer and Runtime proofs cover policy, delivery, Binding and original fences.

@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 public final class RedisWorkerScoreCore
         implements WorkerScoreCore, AutoCloseable {
@@ -192,11 +193,20 @@ public final class RedisWorkerScoreCore
 
     private final RedisClient redisClient;
     private final RedisKeyspace keyspace;
+    private final LongSupplier currentTimeMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerScoreCore(
             RedisClient redisClient,
             RedisKeyspace keyspace
+    ) {
+        this(redisClient, keyspace, System::currentTimeMillis);
+    }
+
+    RedisWorkerScoreCore(
+            RedisClient redisClient,
+            RedisKeyspace keyspace,
+            LongSupplier currentTimeMillis
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
@@ -206,24 +216,59 @@ public final class RedisWorkerScoreCore
                 keyspace,
                 "keyspace"
         );
+        this.currentTimeMillis = java.util.Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
     }
 
     @Override
-    public Map<String, WorkerScoreState> getScoreStates(
+    public WorkerSchedulingObservation observeSchedulingStates(
             String homeBucketId,
             List<String> workerIds
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
-        if (workerIds == null) {
-            throw new IllegalArgumentException(
-                    "workerIds must be present"
-            );
-        }
-        if (workerIds.isEmpty()) {
-            return Map.of();
+        if (workerIds == null || workerIds.isEmpty() || workerIds.size() > MAX_SCORE_BATCH_SIZE
+                || new LinkedHashSet<>(workerIds).size() != workerIds.size()) {
+            throw new IllegalArgumentException("workerIds must contain 1..100 unique values");
         }
         workerIds.forEach(workerId ->
                 requireNonBlank(workerId, "workerId"));
+        Map<String, WorkerScoreState> states = readScoreStates(homeBucketId, workerIds);
+        long readAtMillis = currentTimeMillis.getAsLong();
+        var projected = new LinkedHashMap<String, SchedulingState>();
+        states.forEach((id, state) -> projected.put(id, schedulingState(state, readAtMillis)));
+        return new WorkerSchedulingObservation(readAtMillis, projected);
+    }
+
+    @Override
+    public WorkerSchedulingChangeStatus pauseScheduling(String homeBucketId, String workerId) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        requireNonBlank(workerId, "workerId");
+        var result = rewriteCurrentScores(homeBucketId, List.of(workerId), PAUSE_TIME_MILLIS).get(workerId);
+        return switch (result.status()) {
+            case TRANSITIONED -> WorkerSchedulingChangeStatus.APPLIED;
+            case NOOP -> WorkerSchedulingChangeStatus.UNCHANGED;
+            case STALE -> result.score() == null
+                    ? WorkerSchedulingChangeStatus.MISSING : WorkerSchedulingChangeStatus.UNCHANGED;
+            case INVALID -> WorkerSchedulingChangeStatus.CONFLICT;
+        };
+    }
+
+    @Override
+    public WorkerSchedulingChangeStatus resumeScheduling(String homeBucketId, String workerId) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        requireNonBlank(workerId, "workerId");
+        var state = readScoreStates(homeBucketId, List.of(workerId)).get(workerId);
+        if (state == null) return WorkerSchedulingChangeStatus.MISSING;
+        if (state.timeMillis() != PAUSE_TIME_MILLIS) return WorkerSchedulingChangeStatus.UNCHANGED;
+        var result = releaseScoreHolds(homeBucketId, Map.of(workerId, state.score()),
+                currentTimeMillis.getAsLong()).get(workerId);
+        return switch (result.status()) {
+            case TRANSITIONED -> WorkerSchedulingChangeStatus.APPLIED;
+            case NOOP -> WorkerSchedulingChangeStatus.UNCHANGED;
+            case STALE, INVALID -> WorkerSchedulingChangeStatus.CONFLICT;
+        };
+    }
+
+    private Map<String, WorkerScoreState> readScoreStates(String homeBucketId, List<String> workerIds) {
         List<Double> loaded = readScores(homeBucketId, workerIds);
         Map<String, WorkerScoreState> states = new LinkedHashMap<>();
         for (int index = 0; index < workerIds.size(); index++) {
@@ -276,21 +321,21 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public List<WorkerScoreObservation> observeHotCandidatesBefore(
+    public Map<String, Long> observeHotCandidatesBefore(
             String homeBucketId,
             long hotCutoffMillis,
             int limit
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (limit <= 0 || !validTimeMillis(hotCutoffMillis)) {
-            return List.of();
+            return Map.of();
         }
         long cutoffScore = absoluteScore(
                 hotCutoffMillis / SLOT_MILLIS,
                 MIN_DIRTY
         );
         if (cutoffScore <= MIN_BASE) {
-            return List.of();
+            return Map.of();
         }
         return rangeWorkerCandidates(
                 homeBucketId,
@@ -301,22 +346,22 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public List<WorkerScoreObservation> observeRecoveryRecheckCandidates(
+    public Map<String, Long> observeRecoveryRecheckCandidates(
             String homeBucketId,
             int limit
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (limit <= 0) {
-            return List.of();
+            return Map.of();
         }
         long currentTimeSlot = redisTimeMillis() / SLOT_MILLIS;
         long dueTimeSlot = currentTimeSlot - 1;
         if (dueTimeSlot < MIN_TIME_SLOT) {
-            return List.of();
+            return Map.of();
         }
         long windowStart = COLD_PARK_TIME_SLOT + 1;
         if (dueTimeSlot < windowStart) {
-            return List.of();
+            return Map.of();
         }
         long maximumScore = -absoluteScore(
                 windowStart,
@@ -356,8 +401,7 @@ public final class RedisWorkerScoreCore
         return sampleMembers(homeBucketId, limit);
     }
 
-    @Override
-    public Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
+    private Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
             String homeBucketId,
             List<String> workerIds,
             long targetTimeMillis
@@ -644,7 +688,7 @@ public final class RedisWorkerScoreCore
                 new LinkedHashMap<>();
         if (!pending.isEmpty()) {
             List<String> arguments = new ArrayList<>();
-            arguments.add(Integer.toString(targetPolarity.value()));
+            arguments.add(Integer.toString(polarityValue(targetPolarity)));
             arguments.add(Boolean.toString(refreshPastTime));
             arguments.add(Long.toString(SLOT_MILLIS));
             arguments.add(Integer.toString(SLOT_FACTOR));
@@ -949,7 +993,7 @@ public final class RedisWorkerScoreCore
         return new WorkerScoreTransitionResult(status, null);
     }
 
-    private List<WorkerScoreObservation> rangeWorkerCandidates(
+    private Map<String, Long> rangeWorkerCandidates(
             String homeBucketId,
             long minimumScore,
             long maximumScore,
@@ -963,16 +1007,14 @@ public final class RedisWorkerScoreCore
                         0,
                         limit
                 );
-        List<WorkerScoreObservation> observations = new ArrayList<>(
-                rows.size()
-        );
+        var observations = new LinkedHashMap<String, Long>();
         for (ScoredValue<String> row : rows) {
-            observations.add(new WorkerScoreObservation(
+            observations.put(
                     row.getValue(),
                     scoreToLong(row.getScore())
-            ));
+            );
         }
-        return List.copyOf(observations);
+        return java.util.Collections.unmodifiableMap(observations);
     }
 
     private static WorkerScoreTransitionResult scriptResult(Object raw) {

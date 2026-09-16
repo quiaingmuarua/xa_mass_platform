@@ -7,13 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerSchedulingChangeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -53,14 +50,7 @@ class WorkerSchedulingControllerTest {
 
     @Test
     void pauseTransitionReturnsApplied() throws Exception {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.TRANSITIONED, 123L)
-        ));
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(WorkerSchedulingChangeStatus.APPLIED);
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
@@ -71,14 +61,7 @@ class WorkerSchedulingControllerTest {
 
     @Test
     void duplicatePauseReturnsUnchanged() throws Exception {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.STALE, 123L)
-        ));
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(WorkerSchedulingChangeStatus.UNCHANGED);
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
@@ -88,14 +71,7 @@ class WorkerSchedulingControllerTest {
     @Test
     void missingAndInvalidTransitionsUseBusinessErrors()
             throws Exception {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.STALE, null)
-        ));
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(WorkerSchedulingChangeStatus.MISSING);
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15008))
@@ -103,14 +79,7 @@ class WorkerSchedulingControllerTest {
                         "Worker resource was not found"
                 ));
 
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.INVALID, null)
-        ));
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(WorkerSchedulingChangeStatus.CONFLICT);
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15009))
@@ -121,19 +90,8 @@ class WorkerSchedulingControllerTest {
 
     @Test
     void resumeNoopRequiresNoRequestBody() throws Exception {
-        when(workerScores.getScoreStates(
-                GROUP_ID,
-                List.of(WORKER_ID)
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                new WorkerScoreCore.WorkerScoreState(
-                        WORKER_ID,
-                        123L,
-                        WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE,
-                        1_000L,
-                        0
-                )
-        ));
+        when(workerScores.resumeScheduling(GROUP_ID, WORKER_ID))
+                .thenReturn(WorkerSchedulingChangeStatus.UNCHANGED);
 
         mockMvc.perform(post(RESUME_PATH))
                 .andExpect(status().isOk())
@@ -144,21 +102,11 @@ class WorkerSchedulingControllerTest {
 
     @Test
     void providerFailureReturnsServiceUnavailable() throws Exception {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenThrow(new IllegalStateException("Redis unavailable"));
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenThrow(new IllegalStateException("Redis unavailable"));
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15004));
     }
 
-    private static WorkerScoreTransitionResult result(
-            WorkerScoreTransitionStatus status,
-            Long score
-    ) {
-        return new WorkerScoreTransitionResult(status, score);
-    }
 }

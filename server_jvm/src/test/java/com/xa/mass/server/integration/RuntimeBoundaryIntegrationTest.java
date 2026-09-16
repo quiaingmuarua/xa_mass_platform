@@ -24,7 +24,7 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import static com.xa.mass.kernel.score.redis.WorkerScoreRedisFixture.*;
 import com.xa.mass.server.assembly.pacer.KernelPacerAssembly;
 import com.xa.mass.server.task.call.TaskRpcResultProbe;
 import com.xa.mass.server.testsupport.RedisTestScope;
@@ -163,6 +163,17 @@ class RuntimeBoundaryIntegrationTest {
     @Autowired
     private WorkerScoreCore workerScores;
 
+    @Autowired
+    private RedisClient redisWitnessClient;
+    private io.lettuce.core.api.StatefulRedisConnection<String, String> redisWitness;
+
+    @org.junit.jupiter.api.BeforeEach
+    void openScoreWitness() { redisWitness = redisWitnessClient.connect(); }
+
+    @org.junit.jupiter.api.AfterEach
+    void closeScoreWitness() { redisWitness.close(); }
+
+
     @MockitoSpyBean
     private com.xa.mass.kernel.delivery.TaskEvidenceRuntime taskEvidence;
 
@@ -262,12 +273,18 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(matchingCatalog.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
             assertThat(send("PATCH", "/api/v1/worker-groups/" + groupId + "/workers/" + firstId
                     + "/platform-properties", "{\"pool\":\"a\"}").statusCode()).isEqualTo(400);
-            for (long time : List.of(System.currentTimeMillis() + 60_000, WorkerScoreCore.PAUSE_TIME_MILLIS)) {
-                workerScores.rewriteCurrentScores(groupId, ids, time);
-                var before = workerScores.getScoreStates(groupId, ids);
+            for (boolean pause : List.of(false, true)) {
+                if (pause) ids.forEach(id -> workerScores.pauseScheduling(groupId, id));
+                else {
+                    var times = new LinkedHashMap<String, Long>();
+                    ids.forEach(id -> times.put(id, System.currentTimeMillis() + 60_000));
+                    workerScores.rewriteCurrentPolarityWithinTimeFence(groupId, times,
+                            WorkerScorePolarity.RECOVERY_RECHECK, true);
+                }
+                var before = readWorkerFences(groupId, ids);
                 assertThat(send("POST", route + "-batch", JSON.writeValueAsString(requests)).body())
                         .isEqualTo(batch.body());
-                assertThat(workerScores.getScoreStates(groupId, ids)).isEqualTo(before);
+                assertThat(readWorkerFences(groupId, ids)).isEqualTo(before);
             }
             var preview = JSON.readTree(send("POST", "/api/v1/runtime-view/worker-groups/" + groupId
                     + "/workers:preview", "2").body());
@@ -318,17 +335,17 @@ class RuntimeBoundaryIntegrationTest {
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
                 URI endpoint = worker.snapshot().endpointUri();
                 long holdUntil = System.currentTimeMillis() + 60_000;
-                long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                long observed = readWorkerFences(groupId, List.of(workerId)).get(workerId);
                 workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
-                long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                long held = readWorkerFences(groupId, List.of(workerId)).get(workerId);
 
                 host.set(Map.of("network.type", "cellular", "ssid", "lab"));
                 assertThat(worker.reportProperties(Map.of("network.type", "cellular"))).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
-                assertThat(workerScores.getScoreStates(groupId,List.of(workerId)).get(workerId).dirty()).isEqualTo(1);
+                assertThat(dirty(readWorkerFences(groupId,List.of(workerId)).get(workerId))).isEqualTo(1);
 
                 // Re-Prepare cannot replace the observed baseline with stale startup input.
-                var scoreBeforePrepare = workerScores.getScoreStates(groupId, List.of(workerId));
+                var scoreBeforePrepare = readWorkerFences(groupId, List.of(workerId));
                 PreparedCoordinate repeated = prepareWorker(groupId, "live-host",
                         type == WorkerTransportType.WEBSOCKET ? TransportProfile.WEBSOCKET : TransportProfile.SOCKET,
                         Map.of("network.type", "stale-startup"));
@@ -336,7 +353,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(repeated.endpointUri()).isEqualTo(endpoint);
                 assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
                         .workerProperties()).isEqualTo(host.get());
-                assertThat(workerScores.getScoreStates(groupId, List.of(workerId))).isEqualTo(scoreBeforePrepare);
+                assertThat(readWorkerFences(groupId, List.of(workerId))).isEqualTo(scoreBeforePrepare);
 
                 host.set(Map.of());
                 assertThat(worker.reportProperties()).isTrue();
@@ -552,11 +569,11 @@ class RuntimeBoundaryIntegrationTest {
                 if(Set.of(groupA,groupB).contains(group)) {
                     supplied.add(group);
                     // Proof-only read: production still carries the fence without reading it back.
-                    var states=workerScores.getScoreStates(group,offered.stream().map(HeldCandidate::workerId).toList());
+                    var states=readWorkerFences(group,offered.stream().map(HeldCandidate::workerId).toList());
                     for(var held:offered) {
                         assertThat(identities.get(held.workerId())).containsEntry("group",group);
-                        assertThat(states.get(held.workerId()).score()).isEqualTo(held.score());
-                        assertThat(states.get(held.workerId()).dirty()).isZero();
+                        assertThat(states.get(held.workerId())).isEqualTo(held.score());
+                        assertThat(dirty(states.get(held.workerId()))).isZero();
                     }
                 }
                 return call.callRealMethod();
@@ -710,9 +727,9 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(facts.platformProperties()).isEqualTo(Map.of("pool", "retained"));
 
                 long holdUntil = System.currentTimeMillis() + 60_000;
-                long observed = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                long observed = readWorkerFences(groupId, List.of(workerId)).get(workerId);
                 workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
-                long held = workerScores.getScoreStates(groupId, List.of(workerId)).get(workerId).score();
+                long held = readWorkerFences(groupId, List.of(workerId)).get(workerId);
                 assertThat(worker.snapshot().workerId()).isEqualTo(workerId);
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
                 verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
@@ -1134,14 +1151,14 @@ class RuntimeBoundaryIntegrationTest {
         String workerId = boundWorker.workerId();
         awaitWorkerRegistered(workerGroupId, workerId);
 
-        WorkerScoreState initial = awaitWorkerScore(
+        Long initial = awaitWorkerScore(
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.RECOVERY_RECHECK
         );
-        assertThat(initial.timeMillis()).isEqualTo(100);
+        assertThat(timeMillis(initial)).isEqualTo(100);
 
-        assertThat(initial.dirty()).isZero();
+        assertThat(dirty(initial)).isZero();
         assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();
 
         RunningWorker first = startWorker(
@@ -1157,29 +1174,27 @@ class RuntimeBoundaryIntegrationTest {
         boolean demandTaskCreated = false;
         try {
             awaitConnectionState(workerId, "CONNECTED");
-            WorkerScoreState connected = awaitWorkerScore(
+            Long connected = awaitWorkerScore(
                     workerGroupId,
                     workerId,
                     WorkerScorePolarity.HOT_ACQUIRE
             );
-            assertThat(connected.timeMillis())
-                    .isGreaterThanOrEqualTo(initial.timeMillis());
+            assertThat(timeMillis(connected))
+                    .isGreaterThanOrEqualTo(timeMillis(initial));
 
             first.close();
             first = null;
             awaitConnectionState(workerId, "DISCONNECTED");
-            WorkerScoreState disconnected = awaitWorkerScore(
+            Long disconnected = awaitWorkerScore(
                     workerGroupId,
                     workerId,
                     WorkerScorePolarity.RECOVERY_RECHECK
             );
-            assertThat(disconnected.timeMillis())
-                    .isGreaterThanOrEqualTo(connected.timeMillis());
+            assertThat(timeMillis(disconnected))
+                    .isGreaterThanOrEqualTo(timeMillis(connected));
 
 
-            long reconnectEvidenceFloor = System.currentTimeMillis()
-                    / WorkerScoreCore.SLOT_MILLIS
-                    * WorkerScoreCore.SLOT_MILLIS;
+            long reconnectEvidenceFloor = slotStart(System.currentTimeMillis());
             reconnected = startWorker(
                     workerGroupId,
                     clientWorkerKey,
@@ -1189,14 +1204,14 @@ class RuntimeBoundaryIntegrationTest {
                     TransportProfile.WEBSOCKET
             );
             awaitConnectionState(workerId, "CONNECTED");
-            WorkerScoreState restored = awaitWorkerScore(
+            Long restored = awaitWorkerScore(
                     workerGroupId,
                     workerId,
                     WorkerScorePolarity.HOT_ACQUIRE
             );
-            assertThat(restored.timeMillis())
+            assertThat(timeMillis(restored))
                     .isGreaterThanOrEqualTo(Math.max(
-                            disconnected.timeMillis(),
+                            timeMillis(disconnected),
                             reconnectEvidenceFloor
                     ));
 
@@ -1345,7 +1360,7 @@ class RuntimeBoundaryIntegrationTest {
             String workerId,
             String demandTaskId
     ) throws Exception {
-        WorkerScoreState before = awaitWorkerScore(
+        Long before = awaitWorkerScore(
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE
@@ -1353,16 +1368,16 @@ class RuntimeBoundaryIntegrationTest {
         // Establish the exact RECOVERY fixture before Task approval exposes
         // this Group to periodic probes. Never overwrite an in-flight hold.
         assertThat(workerScores.toggleCurrentPolarity(
-                workerGroupId, workerId, before.score()
+                workerGroupId, workerId, before
         ).status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
-        WorkerScoreState recovery = awaitWorkerScore(
+        Long recovery = awaitWorkerScore(
                 workerGroupId, workerId, WorkerScorePolarity.RECOVERY_RECHECK
         );
-        assertThat(recovery.timeMillis()).isEqualTo(before.timeMillis());
+        assertThat(timeMillis(recovery)).isEqualTo(timeMillis(before));
         assertThat(send(
                 "POST", "/api/v1/tasks/" + demandTaskId + "/approve", null
         ).statusCode()).isEqualTo(200);
-        WorkerScoreState after = awaitWorkerScore(
+        Long after = awaitWorkerScore(
                 workerGroupId,
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE,
@@ -1371,8 +1386,8 @@ class RuntimeBoundaryIntegrationTest {
         // The explicit missing target cannot hold this Worker. A fresh RECOVERY
         // coordinate may still occupy the current slot at the first scan. The
         // next eligible round schedules its next recheck before offering a probe.
-        assertThat(after.timeMillis()).isGreaterThan(
-                before.timeMillis()
+        assertThat(timeMillis(after)).isGreaterThan(
+                timeMillis(before)
         );
 
     }
@@ -1392,7 +1407,11 @@ class RuntimeBoundaryIntegrationTest {
         );
     }
 
-    private WorkerScoreState awaitWorkerScore(
+    private Map<String, Long> readWorkerFences(String group, List<String> ids) {
+        return readScores(redisWitness.sync(), REDIS_KEYSPACE, group, ids);
+    }
+
+    private Long awaitWorkerScore(
             String workerGroupId,
             String workerId,
             WorkerScorePolarity expectedPolarity
@@ -1405,7 +1424,7 @@ class RuntimeBoundaryIntegrationTest {
         );
     }
 
-    private WorkerScoreState awaitWorkerScore(
+    private Long awaitWorkerScore(
             String workerGroupId,
             String workerId,
             WorkerScorePolarity expectedPolarity,
@@ -1413,15 +1432,15 @@ class RuntimeBoundaryIntegrationTest {
     ) throws InterruptedException {
         long deadline = System.nanoTime()
                 + maximumWait.toNanos();
-        WorkerScoreState lastObserved = null;
+        Long lastObserved = null;
         while (System.nanoTime() < deadline) {
-            WorkerScoreState state = workerScores.getScoreStates(
+            Long state = readWorkerFences(
                     workerGroupId,
                     List.of(workerId)
             ).get(workerId);
             lastObserved = state;
-            if (state != null
-                    && state.polarity() == expectedPolarity) {
+            // Keep polarity and field witnesses tied to this one Redis observation.
+            if (state != null && hasPolarity(state, expectedPolarity)) {
                 return state;
             }
             Thread.sleep(20);

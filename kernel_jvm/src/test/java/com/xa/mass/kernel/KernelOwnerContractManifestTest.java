@@ -129,8 +129,8 @@ class KernelOwnerContractManifestTest {
                     WorkerResourceCatalog.RegistrationResult.class
             ),
             Map.entry(
-                    "WorkerScoreState",
-                    WorkerScoreCore.WorkerScoreState.class
+                    "WorkerSchedulingObservation",
+                    WorkerScoreCore.WorkerSchedulingObservation.class
             ),
             Map.entry(
                     "WorkerScoreTransitionResult",
@@ -197,6 +197,8 @@ class KernelOwnerContractManifestTest {
                             "RegistrationStatus",
                             WorkerResourceCatalog.RegistrationStatus.class
                     ),
+                    Map.entry("SchedulingState", WorkerScoreCore.SchedulingState.class),
+                    Map.entry("WorkerSchedulingChangeStatus", WorkerScoreCore.WorkerSchedulingChangeStatus.class),
                     Map.entry(
                             "WorkerScorePolarity",
                             WorkerScoreCore.WorkerScorePolarity.class

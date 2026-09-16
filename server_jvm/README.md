@@ -583,10 +583,18 @@ Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
 `503/15004`.
 
 Runtime View may request one bounded `1..100` Worker scheduling observation.
-The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
-batch read; `WorkerSchedulingService` projects only facts derivable from that
-Score snapshot. This projection is independent of Adapter connection, Binding
-and Task execution evidence.
+`WorkerScoreCore.observeSchedulingStates` performs one batch read, interprets
+the Score snapshot and supplies one shared local read time. WorkerSchedulingService
+validates the request and result completeness, then passes that Kernel observation
+to Runtime View for wire serialization. It owns no decoded fields, slot arithmetic
+or state classification. This projection is independent of Adapter connection,
+Binding and Task execution evidence.
+
+Pause and resume call the Kernel pauseScheduling/resumeScheduling operations.
+Kernel owns the PAUSE sentinel, exact resume fence and time sampling. Server maps
+APPLIED/UNCHANGED to ActionOutcome and MISSING/CONFLICT to the existing errors;
+provider failures retain the scheduling-unavailable response. Properties mutation
+still owns APPLIED-only best-effort invalidation, independently of these controls.
 
 ```text
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/

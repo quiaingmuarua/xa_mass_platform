@@ -505,9 +505,11 @@ class ServerArchitectureBoundaryTest {
         String scheduling = readSources(WORKER_SCHEDULING);
         assertThat(scheduling)
                 .contains("WorkerScoreCore")
-                .contains("rewriteCurrentScores")
-                .contains("getScoreStates")
-                .contains("releaseScoreHolds")
+                .contains("pauseScheduling")
+                .contains("resumeScheduling")
+                .contains("observeSchedulingStates")
+                .doesNotContain("WorkerScoreState")
+                .doesNotContain("PAUSE_TIME_MILLIS")
                 .doesNotContain("RedisWorkerScoreCore")
                 .doesNotContain(".score.redis")
                 .doesNotContain("PythonKernelHttpTransport")
@@ -524,9 +526,9 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("io.lettuce");
 
         String serverSources = readSources(SERVER_SOURCE);
-        assertThat(occurrences(serverSources, "rewriteCurrentScores("))
+        assertThat(occurrences(serverSources, ".pauseScheduling("))
                 .isEqualTo(1);
-        assertThat(occurrences(serverSources, "releaseScoreHolds("))
+        assertThat(occurrences(serverSources, ".resumeScheduling("))
                 .isEqualTo(1);
     }
 

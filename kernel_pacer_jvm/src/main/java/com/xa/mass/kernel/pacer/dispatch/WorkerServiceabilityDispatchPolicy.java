@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
@@ -100,12 +99,12 @@ final class WorkerServiceabilityDispatchPolicy {
             if (remainingProbeBudget == 0) {
                 break;
             }
-            List<WorkerScoreObservation> hot = workerScores.observeHotCandidatesBefore(
+            Map<String, Long> hot = workerScores.observeHotCandidatesBefore(
                     workerGroupId,
                     hotProbeCutoffMillis,
                     remainingProbeBudget
             );
-            List<WorkerScoreObservation> candidates = hot.isEmpty()
+            Map<String, Long> candidates = hot.isEmpty()
                     ? workerScores.observeRecoveryRecheckCandidates(
                             workerGroupId,
                             remainingProbeBudget
@@ -115,9 +114,7 @@ final class WorkerServiceabilityDispatchPolicy {
                 continue;
             }
 
-            List<String> workerIds = candidates.stream()
-                    .map(WorkerScoreObservation::workerId)
-                    .toList();
+            List<String> workerIds = List.copyOf(candidates.keySet());
             Map<String, WorkerDescriptor> descriptors =
                     workerCatalog.getWorkerDescriptors(
                             workerIds
@@ -125,13 +122,13 @@ final class WorkerServiceabilityDispatchPolicy {
             LinkedHashMap<String, Long> observedScores = new LinkedHashMap<>();
             LinkedHashMap<String, WorkerDescriptor> probeDescriptors =
                     new LinkedHashMap<>();
-            for (WorkerScoreObservation candidate : candidates) {
+            for (var candidate : candidates.entrySet()) {
                 WorkerDescriptor descriptor = descriptors.get(
-                        candidate.workerId()
+                        candidate.getKey()
                 );
                 if (descriptor == null
                         || !workerGroupId.equals(descriptor.workerGroupId())
-                        || !candidate.workerId().equals(
+                        || !candidate.getKey().equals(
                                 descriptor.workerId()
                         )) {
                     continue;
@@ -141,13 +138,13 @@ final class WorkerServiceabilityDispatchPolicy {
                 )) {
                     coldPark(
                             workerGroupId,
-                            candidate,
+                            candidate.getKey(), candidate.getValue(),
                             !hot.isEmpty()
                     );
                     continue;
                 }
-                probeDescriptors.put(candidate.workerId(), descriptor);
-                observedScores.put(candidate.workerId(), candidate.score());
+                probeDescriptors.put(candidate.getKey(), descriptor);
+                observedScores.put(candidate.getKey(), candidate.getValue());
             }
 
             Map<String, WorkerScoreTransitionResult> results =
@@ -177,14 +174,14 @@ final class WorkerServiceabilityDispatchPolicy {
 
     private void coldPark(
             String workerGroupId,
-            WorkerScoreObservation worker,
+            String workerId, long observedScore,
             boolean observedHot
     ) {
-        long recoveryScore = worker.score();
+        long recoveryScore = observedScore;
         if (observedHot) {
             var toggled = workerScores.toggleCurrentPolarity(
                     workerGroupId,
-                    worker.workerId(),
+                    workerId,
                     recoveryScore
             );
             if (toggled.status()
@@ -196,7 +193,7 @@ final class WorkerServiceabilityDispatchPolicy {
         }
         workerScores.parkObservedRecoveryScore(
                 workerGroupId,
-                worker.workerId(),
+                workerId,
                 recoveryScore
         );
     }
@@ -233,12 +230,9 @@ final class WorkerServiceabilityDispatchPolicy {
         long staleBeforeMillis = nowMillis <= hotProbeStaleAfterMillis
                 ? 0
                 : nowMillis - hotProbeStaleAfterMillis;
-        long alignedStaleBeforeMillis = staleBeforeMillis
-                / WorkerScoreCore.SLOT_MILLIS
-                * WorkerScoreCore.SLOT_MILLIS;
         return Math.max(
                 hotEligibilityFloorMillis,
-                alignedStaleBeforeMillis
+                staleBeforeMillis
         );
     }
 

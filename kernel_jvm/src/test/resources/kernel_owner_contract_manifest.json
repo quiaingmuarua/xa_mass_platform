@@ -50,21 +50,7 @@
       "MAX_WORKER_BATCH_SIZE": 100
     },
     "WorkerScoreCore": {
-      "HOT_ACQUIRE_POLARITY": 1,
-      "MAX_DIRTY": 1,
       "MAX_SCORE_BATCH_SIZE": 100,
-      "MAX_TIME_MILLIS": 9999999999900,
-      "MAX_TIME_SLOT": 99999999999,
-      "MIN_BASE": 1,
-      "MIN_DIRTY": 0,
-      "MIN_TIME_MILLIS": 0,
-      "MIN_TIME_SLOT": 0,
-      "PAUSE_TIME_MILLIS": 9999999999900,
-      "PAUSE_TIME_SLOT": 99999999999,
-      "RECOVERY_RECHECK_POLARITY": -1,
-      "SLOT_FACTOR": 2,
-      "SLOT_MILLIS": 100,
-      "ZERO_SCORE": 0,
       "MAX_REGISTRATION_BATCH_SIZE": 100,
       "MAX_REGISTERED_WORKER_SAMPLE_LIMIT": 1000
     }
@@ -150,17 +136,18 @@
       "acquire_observed_hot_score_leases",
       "confirm_active_hot_score_leases",
       "defer_observed_to_recovery",
-      "get_score_states",
       "initialize_registered_scores",
       "mark_current_leases_dirty",
       "observe_due_hot_score_candidates",
       "observe_hot_candidates_before",
       "observe_recovery_recheck_candidates",
+      "observe_scheduling_states",
       "park_observed_recovery_score",
+      "pause_scheduling",
       "release_observed_hot_score_holds",
       "release_score_holds",
+      "resume_scheduling",
       "rewrite_current_polarity_within_time_fence",
-      "rewrite_current_scores",
       "sample_registered_worker_ids",
       "toggle_current_polarity"
     ]
@@ -265,13 +252,6 @@
       "status",
       "reason"
     ],
-    "WorkerScoreState": [
-      "worker_id",
-      "score",
-      "polarity",
-      "time_millis",
-      "dirty"
-    ],
     "WorkerScoreTransitionResult": [
       "status",
       "score"
@@ -294,6 +274,10 @@
       "worker_id",
       "score",
       "expires_at_millis"
+    ],
+    "WorkerSchedulingObservation": [
+      "read_at_millis",
+      "states_by_worker_id"
     ]
   },
   "enums": {
@@ -370,14 +354,28 @@
       "not_found"
     ],
     "WorkerScorePolarity": [
-      1,
-      -1
+      "HOT_ACQUIRE",
+      "RECOVERY_RECHECK"
     ],
     "WorkerScoreTransitionStatus": [
       "transitioned",
       "noop",
       "stale",
       "invalid"
+    ],
+    "SchedulingState": [
+      "HOT_SCORE_OVERDUE",
+      "HELD_HOT",
+      "PAUSED",
+      "RECOVERY",
+      "COLD",
+      "MISSING"
+    ],
+    "WorkerSchedulingChangeStatus": [
+      "APPLIED",
+      "UNCHANGED",
+      "MISSING",
+      "CONFLICT"
     ]
   }
 }

@@ -1,6 +1,8 @@
 package com.xa.mass.kernel.score;
 
 import java.util.List;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -8,28 +10,19 @@ import org.jspecify.annotations.Nullable;
 
 public interface WorkerScoreCore {
 
-    int HOT_ACQUIRE_POLARITY = 1;
-    int RECOVERY_RECHECK_POLARITY = -1;
-    long ZERO_SCORE = 0;
-    long MIN_BASE = 1;
-    long MIN_TIME_SLOT = 0;
-    long SLOT_MILLIS = 100;
-    long MAX_TIME_SLOT = 99_999_999_999L;
-    long PAUSE_TIME_SLOT = MAX_TIME_SLOT;
-    long MIN_TIME_MILLIS = 0;
-    long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
-    long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
-    int MIN_DIRTY = 0;
-    int MAX_DIRTY = 1;
-    int SLOT_FACTOR = 2;
     int MAX_SCORE_BATCH_SIZE = 100;
     int MAX_REGISTRATION_BATCH_SIZE = 100;
     int MAX_REGISTERED_WORKER_SAMPLE_LIMIT = 1000;
 
-    Map<String, @Nullable WorkerScoreState> getScoreStates(
+    /** Observes 1..100 unique IDs in request order, with one shared local read time. */
+    WorkerSchedulingObservation observeSchedulingStates(
             String homeBucketId,
             List<String> workerIds
     );
+
+    WorkerSchedulingChangeStatus pauseScheduling(String homeBucketId, String workerId);
+
+    WorkerSchedulingChangeStatus resumeScheduling(String homeBucketId, String workerId);
 
     /**
      * Reads the head of the current due HOT range, including either dirty value.
@@ -44,14 +37,14 @@ public interface WorkerScoreCore {
     );
 
     /** Reads a bounded descending HOT head below the exclusive cutoff, without a cursor. */
-    List<WorkerScoreObservation> observeHotCandidatesBefore(
+    Map<String, Long> observeHotCandidatesBefore(
             String homeBucketId,
             long hotCutoffMillis,
             int limit
     );
 
     /** Reads the earliest due rechecks after the cold slot, without an age limit or cursor. */
-    List<WorkerScoreObservation> observeRecoveryRecheckCandidates(
+    Map<String, Long> observeRecoveryRecheckCandidates(
             String homeBucketId,
             int limit
     );
@@ -66,12 +59,6 @@ public interface WorkerScoreCore {
     List<String> sampleRegisteredWorkerIds(
             String homeBucketId,
             int limit
-    );
-
-    Map<String, WorkerScoreTransitionResult> rewriteCurrentScores(
-            String homeBucketId,
-            List<String> workerIds,
-            long targetTimeMillis
     );
 
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
@@ -142,18 +129,8 @@ public interface WorkerScoreCore {
     );
 
     enum WorkerScorePolarity {
-        HOT_ACQUIRE(1),
-        RECOVERY_RECHECK(-1);
-
-        private final int value;
-
-        WorkerScorePolarity(int value) {
-            this.value = value;
-        }
-
-        public int value() {
-            return value;
-        }
+        HOT_ACQUIRE,
+        RECOVERY_RECHECK
     }
 
     enum WorkerScoreTransitionStatus {
@@ -173,16 +150,20 @@ public interface WorkerScoreCore {
         }
     }
 
-    record WorkerScoreState(
-            String workerId,
-            long score,
-            WorkerScorePolarity polarity,
-            long timeMillis,
-            int dirty
+    enum SchedulingState {
+        HOT_SCORE_OVERDUE, HELD_HOT, PAUSED, RECOVERY, COLD, MISSING
+    }
+
+    enum WorkerSchedulingChangeStatus {
+        APPLIED, UNCHANGED, MISSING, CONFLICT
+    }
+
+    record WorkerSchedulingObservation(
+            long readAtMillis,
+            Map<String, SchedulingState> statesByWorkerId
     ) {
-        public WorkerScoreState {
-            Objects.requireNonNull(workerId, "workerId");
-            Objects.requireNonNull(polarity, "polarity");
+        public WorkerSchedulingObservation {
+            statesByWorkerId = Collections.unmodifiableMap(new LinkedHashMap<>(statesByWorkerId));
         }
     }
 
@@ -192,15 +173,6 @@ public interface WorkerScoreCore {
     ) {
         public WorkerScoreTransitionResult {
             Objects.requireNonNull(status, "status");
-        }
-    }
-
-    record WorkerScoreObservation(
-            String workerId,
-            long score
-    ) {
-        public WorkerScoreObservation {
-            Objects.requireNonNull(workerId, "workerId");
         }
     }
 

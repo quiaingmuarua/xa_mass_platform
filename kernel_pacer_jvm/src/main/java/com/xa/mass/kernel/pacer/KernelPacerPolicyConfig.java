@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.pacer;
 
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
@@ -41,9 +40,7 @@ record KernelPacerPolicyConfig(
         if (!serviceabilityEnabled(preset)) {
             return new KernelPacerPolicyConfig(preset, 0);
         }
-        long current = currentTimeMillis.getAsLong();
-        long floor = current / WorkerScoreCore.SLOT_MILLIS
-                * WorkerScoreCore.SLOT_MILLIS;
+        long floor = currentTimeMillis.getAsLong();
         return new KernelPacerPolicyConfig(preset, floor);
     }
 
@@ -56,12 +53,9 @@ record KernelPacerPolicyConfig(
     }
 
     private static void requireFloor(long floor) {
-        if (floor < WorkerScoreCore.SLOT_MILLIS
-                || floor % WorkerScoreCore.SLOT_MILLIS != 0
-                || floor > WorkerScoreCore.MAX_TIME_MILLIS) {
+        if (floor <= 0) {
             throw new IllegalArgumentException(
-                    "hotEligibilityFloorMillis must be a valid "
-                            + "score-slot-aligned time"
+                    "hotEligibilityFloorMillis must be positive"
             );
         }
     }

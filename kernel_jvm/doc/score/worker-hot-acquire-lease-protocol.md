@@ -197,3 +197,15 @@ HTTP, Binding and Redis key shapes are unchanged. Worker Score now uses
 polarity * (timeSlot * 2 + dirty); previous Score layouts and correlated fences
 cannot be mixed with it. This change supplies no compatibility reader, migration
 or automatic cleanup. Local inventory is discarded on process restart.
+
+## Caller Observation Boundary
+
+Candidate Maps and transition results carry opaque Score fences. Decoded time,
+dirty, polarity values and slot arithmetic stay inside the Score Owner. Pacer
+supplies raw millisecond floors/deadlines; Owner alignment preserves the existing
+ranges and execution-time lease checks. Matching retains the original supplied
+Score and deadline without interpreting either as a new coordinate.
+
+Operator pause/resume and the six-state scheduling observation also belong to
+WorkerScoreCore. Their Server surface maps semantic results only; it cannot use
+HELD_HOT as evidence that a particular candidate is clean or confirmable.

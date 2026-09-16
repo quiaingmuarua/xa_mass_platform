@@ -2,15 +2,14 @@ package com.xa.mass.server.worker.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerSchedulingChangeStatus;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerSchedulingObservation;
+import com.xa.mass.kernel.score.WorkerScoreCore.SchedulingState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
@@ -21,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 class WorkerSchedulingServiceTest {
 
@@ -54,314 +52,76 @@ class WorkerSchedulingServiceTest {
     }
 
     @Test
-    void pauseUsesTheFixedOwnerHold() {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.TRANSITIONED, null)
-        ));
-
-        assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(ActionOutcome.applied());
+    void pauseAndResumeOnlyMapKernelOutcomes() {
+        for (boolean pause : List.of(true, false)) {
+            for (WorkerSchedulingChangeStatus status : WorkerSchedulingChangeStatus.values()) {
+                if (pause) when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(status);
+                else when(workerScores.resumeScheduling(GROUP_ID, WORKER_ID)).thenReturn(status);
+                java.util.function.Supplier<ActionOutcome> action = () -> pause
+                        ? service.pause(GROUP_ID, WORKER_ID) : service.resume(GROUP_ID, WORKER_ID);
+                switch (status) {
+                    case APPLIED -> assertThat(action.get()).isEqualTo(ActionOutcome.applied());
+                    case UNCHANGED -> assertThat(action.get()).isEqualTo(ActionOutcome.unchanged());
+                    case MISSING -> assertThatThrownBy(action::get).isInstanceOf(ServerException.class)
+                            .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_RESOURCE_NOT_FOUND);
+                    case CONFLICT -> assertThatThrownBy(action::get).isInstanceOf(ServerException.class)
+                            .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT);
+                }
+            }
+        }
+        verify(workerScores, org.mockito.Mockito.times(4)).pauseScheduling(GROUP_ID, WORKER_ID);
+        verify(workerScores, org.mockito.Mockito.times(4)).resumeScheduling(GROUP_ID, WORKER_ID);
+        org.mockito.Mockito.verifyNoMoreInteractions(workerScores);
     }
 
     @Test
-    void pauseClassifiesAnExistingFixedHoldAsNoop() {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.STALE, 123L)
-        ));
-
-        assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(ActionOutcome.unchanged());
+    void observeReturnsTheKernelBatchWithoutReinterpretingStatesOrTime() {
+        var states = new LinkedHashMap<String, SchedulingState>();
+        for (SchedulingState state : SchedulingState.values()) states.put(state.name(), state);
+        var ids = List.copyOf(states.keySet());
+        var observation = new WorkerSchedulingObservation(12_345, states);
+        when(workerScores.observeSchedulingStates(GROUP_ID, ids)).thenReturn(observation);
+        assertThat(service.observe(GROUP_ID, ids)).isSameAs(observation);
+        verify(workerScores).observeSchedulingStates(GROUP_ID, ids);
+        org.mockito.Mockito.verifyNoMoreInteractions(workerScores);
     }
 
     @Test
-    void pauseMapsMissingAndInvalidOwnerResultsToBusinessErrors() {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.STALE, null)
-        ));
-        assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
-                .isInstanceOfSatisfying(ServerException.class, error ->
-                        assertThat(error.errorCode()).isEqualTo(
-                                ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
-                        ));
-
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.INVALID, null)
-        ));
-        assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
-                .isInstanceOfSatisfying(ServerException.class, error ->
-                        assertThat(error.errorCode()).isEqualTo(
-                                ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
-                        ));
+    void observeRejectsInvalidInputsBeforeOwnerAccess() {
+        for (List<String> ids : List.of(List.<String>of(), List.of(" "), List.of("w", "w"),
+                java.util.stream.IntStream.range(0,101).mapToObj(i -> "w" + i).toList())) {
+            assertThatThrownBy(() -> service.observe(GROUP_ID, ids)).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> service.observe(GROUP_ID, null)).isInstanceOf(IllegalArgumentException.class);
+        org.mockito.Mockito.verifyNoInteractions(workerScores);
     }
 
     @Test
-    void resumeReleasesOnlyTheExactPausedObservation() {
-        long pausedScore = 19_999_999_999_804L;
-        when(workerScores.getScoreStates(
-                GROUP_ID,
-                List.of(WORKER_ID)
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                new WorkerScoreState(
-                        WORKER_ID,
-                        pausedScore,
-                        WorkerScorePolarity.HOT_ACQUIRE,
-                        WorkerScoreCore.PAUSE_TIME_MILLIS,
-                        0
-                )
-        ));
-        when(workerScores.releaseScoreHolds(
-                org.mockito.ArgumentMatchers.eq(GROUP_ID),
-                org.mockito.ArgumentMatchers.eq(Map.of(
-                        WORKER_ID,
-                        pausedScore
-                )),
-                anyLong()
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                result(WorkerScoreTransitionStatus.TRANSITIONED, 456L)
-        ));
-        long before = System.currentTimeMillis();
-
-        ActionOutcome status = service.resume(
-                GROUP_ID,
-                WORKER_ID
-        );
-        long after = System.currentTimeMillis();
-
-        assertThat(status)
-                .isEqualTo(ActionOutcome.applied());
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Long>> observations =
-                ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Long> releaseTime = ArgumentCaptor.forClass(Long.class);
-        verify(workerScores).releaseScoreHolds(
-                org.mockito.ArgumentMatchers.eq(GROUP_ID),
-                observations.capture(),
-                releaseTime.capture()
-        );
-        assertThat(observations.getValue())
-                .containsExactlyEntriesOf(Map.of(WORKER_ID, pausedScore));
-        assertThat(releaseTime.getValue()).isBetween(before, after);
-    }
-
-    @Test
-    void resumeMapsConcurrentReleaseChangesToAStateConflict() {
-        long pausedScore = 19_999_999_999_804L;
-        when(workerScores.getScoreStates(
-                GROUP_ID,
-                List.of(WORKER_ID)
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                new WorkerScoreState(
-                        WORKER_ID,
-                        pausedScore,
-                        WorkerScorePolarity.HOT_ACQUIRE,
-                        WorkerScoreCore.PAUSE_TIME_MILLIS,
-                        0
-                )
-        ));
-
-        for (WorkerScoreTransitionStatus status : List.of(
-                WorkerScoreTransitionStatus.STALE,
-                WorkerScoreTransitionStatus.INVALID
-        )) {
-            when(workerScores.releaseScoreHolds(
-                    org.mockito.ArgumentMatchers.eq(GROUP_ID),
-                    org.mockito.ArgumentMatchers.eq(Map.of(
-                            WORKER_ID,
-                            pausedScore
-                    )),
-                    anyLong()
-            )).thenReturn(Map.of(
-                    WORKER_ID,
-                    result(status, pausedScore)
-            ));
-
-            assertThatThrownBy(() -> service.resume(GROUP_ID, WORKER_ID))
-                    .isInstanceOfSatisfying(ServerException.class, error ->
-                            assertThat(error.errorCode()).isEqualTo(
-                                    ServerErrorCode
-                                            .WORKER_RESOURCE_STATE_CONFLICT
-                            ));
+    void incompleteOwnerObservationIsUnavailableRatherThanInventingMissingStates() {
+        var nullState = new LinkedHashMap<String, SchedulingState>();
+        nullState.put(WORKER_ID, null);
+        when(workerScores.observeSchedulingStates(GROUP_ID, List.of(WORKER_ID)))
+                .thenReturn(null, new WorkerSchedulingObservation(10, Map.of()),
+                        new WorkerSchedulingObservation(10, Map.of("another", SchedulingState.MISSING)),
+                        new WorkerSchedulingObservation(10, nullState));
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> service.observe(GROUP_ID, List.of(WORKER_ID)))
+                    .isInstanceOf(ServerException.class).extracting("errorCode")
+                    .isEqualTo(ServerErrorCode.WORKER_SCHEDULING_UNAVAILABLE);
         }
     }
 
     @Test
-    void resumeIsNoopWhenTheWorkerIsNotPaused() {
-        when(workerScores.getScoreStates(
-                GROUP_ID,
-                List.of(WORKER_ID)
-        )).thenReturn(Map.of(
-                WORKER_ID,
-                new WorkerScoreState(
-                        WORKER_ID,
-                        123L,
-                        WorkerScorePolarity.RECOVERY_RECHECK,
-                        1_000L,
-                        1
-                )
-        ));
-
-        assertThat(service.resume(GROUP_ID, WORKER_ID))
-                .isEqualTo(ActionOutcome.unchanged());
-        verify(workerScores, never()).releaseScoreHolds(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyMap(),
-                anyLong()
-        );
-    }
-
-    @Test
-    void resumeRejectsAMissingWorkerResource() {
-        Map<String, WorkerScoreState> states = new LinkedHashMap<>();
-        states.put(WORKER_ID, null);
-        when(workerScores.getScoreStates(
-                GROUP_ID,
-                List.of(WORKER_ID)
-        )).thenReturn(states);
-
-        assertThatThrownBy(() -> service.resume(GROUP_ID, WORKER_ID))
-                .isInstanceOfSatisfying(ServerException.class, error ->
-                        assertThat(error.errorCode()).isEqualTo(
-                                ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
-                        ));
-    }
-
-    @Test
-    void observeProjectsOneBoundedBatchWithoutExposingScores() {
-        long nowMillis = System.currentTimeMillis();
-        List<String> workerIds = List.of(
-                "due",
-                "held",
-                "paused",
-                "recovery",
-                "cold",
-                "missing"
-        );
-        Map<String, WorkerScoreState> states = new LinkedHashMap<>();
-        states.put("due", state(
-                "due",
-                WorkerScorePolarity.HOT_ACQUIRE,
-                WorkerScoreCore.SLOT_MILLIS
-        ));
-        states.put("held", state(
-                "held",
-                WorkerScorePolarity.HOT_ACQUIRE,
-                nowMillis + 60_000L
-        ));
-        states.put("paused", state(
-                "paused",
-                WorkerScorePolarity.HOT_ACQUIRE,
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        ));
-        states.put("recovery", state(
-                "recovery",
-                WorkerScorePolarity.RECOVERY_RECHECK,
-                3_000L
-        ));
-        states.put("cold", state(
-                "cold",
-                WorkerScorePolarity.RECOVERY_RECHECK,
-                WorkerScoreCore.SLOT_MILLIS
-        ));
-        states.put("missing", null);
-        when(workerScores.getScoreStates(GROUP_ID, workerIds))
-                .thenReturn(states);
-
-        WorkerSchedulingService.WorkerSchedulingObservation observation =
-                service.observe(GROUP_ID, workerIds);
-
-        assertThat(observation.readAtMillis()).isGreaterThanOrEqualTo(
-                nowMillis
-        );
-        assertThat(observation.statesByWorkerId()).containsExactly(
-                Map.entry("due", WorkerSchedulingService
-                        .SchedulingState.HOT_SCORE_OVERDUE),
-                Map.entry("held", WorkerSchedulingService
-                        .SchedulingState.HELD_HOT),
-                Map.entry("paused", WorkerSchedulingService
-                        .SchedulingState.PAUSED),
-                Map.entry("recovery", WorkerSchedulingService
-                        .SchedulingState.RECOVERY),
-                Map.entry("cold", WorkerSchedulingService
-                        .SchedulingState.COLD),
-                Map.entry("missing", WorkerSchedulingService
-                        .SchedulingState.MISSING)
-        );
-        verify(workerScores).getScoreStates(GROUP_ID, workerIds);
-    }
-
-    @Test
-    void observeRejectsInvalidIdentityBatchesBeforeReadingScores() {
-        assertThatThrownBy(() -> service.observe(GROUP_ID, List.of()))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.observe(
-                GROUP_ID,
-                List.of(WORKER_ID, WORKER_ID)
-        )).isInstanceOf(IllegalArgumentException.class);
-        verify(workerScores, never()).getScoreStates(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyList()
-        );
-    }
-
-    @Test
-    void providerFailureUsesTheWorkerSchedulingErrorOwner() {
-        when(workerScores.rewriteCurrentScores(
-                GROUP_ID,
-                List.of(WORKER_ID),
-                WorkerScoreCore.PAUSE_TIME_MILLIS
-        )).thenThrow(new IllegalStateException("Redis unavailable"));
-
-        assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
-                .isInstanceOfSatisfying(ServerException.class, error -> {
-                    assertThat(error.errorCode()).isEqualTo(
-                            ServerErrorCode.WORKER_SCHEDULING_UNAVAILABLE
-                    );
-                    assertThat(error.operation())
-                            .isEqualTo("workerScheduling.pause");
-                });
-    }
-
-    private static WorkerScoreTransitionResult result(
-            WorkerScoreTransitionStatus status,
-            Long score
-    ) {
-        return new WorkerScoreTransitionResult(status, score);
-    }
-
-    private static WorkerScoreState state(
-            String workerId,
-            WorkerScorePolarity polarity,
-            long timeMillis
-    ) {
-        return new WorkerScoreState(
-                workerId,
-                polarity.value() * (timeMillis / WorkerScoreCore.SLOT_MILLIS) * WorkerScoreCore.SLOT_FACTOR,
-                polarity,
-                timeMillis,
-                WorkerScoreCore.MIN_DIRTY
-        );
+    void unavailableAndAbsentMutationResultsKeepTheExistingError() {
+        when(workerScores.pauseScheduling(GROUP_ID, WORKER_ID)).thenReturn(null)
+                .thenThrow(new IllegalStateException("Redis unavailable"));
+        when(workerScores.resumeScheduling(GROUP_ID, WORKER_ID)).thenReturn(null)
+                .thenThrow(new IllegalStateException("Redis unavailable"));
+        for (int i = 0; i < 2; i++) {
+            assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID)).isInstanceOf(ServerException.class)
+                    .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_SCHEDULING_UNAVAILABLE);
+            assertThatThrownBy(() -> service.resume(GROUP_ID, WORKER_ID)).isInstanceOf(ServerException.class)
+                    .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_SCHEDULING_UNAVAILABLE);
+        }
     }
 }

@@ -63,7 +63,7 @@ class RedisWorkerScoreCoreTest {
         RedisClient redisClient = RedisClient.create("redis://127.0.0.1:1");
         try (var scoreCore = new RedisWorkerScoreCore(redisClient,
                 new RedisKeyspace("test_worker_score_unit"))) {
-            for (long delay : new long[]{0, -1, Long.MAX_VALUE, WorkerScoreCore.PAUSE_TIME_MILLIS}) {
+            for (long delay : new long[]{0, -1, Long.MAX_VALUE, WorkerScoreEncoding.PAUSE_TIME_MILLIS}) {
                 var results = scoreCore.deferObservedToRecovery("g", Map.of(
                         "hot", 20_000L, "recovery", -20_001L, "invalid", 0L), delay);
                 assertEquals(3, results.size());
@@ -103,6 +103,8 @@ class RedisWorkerScoreCoreTest {
                     java.util.stream.IntStream.range(0, 101).mapToObj(i -> "w" + i).toList())) {
                 assertThrows(IllegalArgumentException.class,
                         () -> scoreCore.markCurrentLeasesDirty("group-1", ids));
+                assertThrows(IllegalArgumentException.class,
+                        () -> scoreCore.observeSchedulingStates("group-1", ids));
             }
             assertThrows(IllegalArgumentException.class,
                     () -> scoreCore.markCurrentLeasesDirty("group-1", null));

@@ -39,12 +39,12 @@ does not inspect lane policy. There is no production Pacer JSON, dynamic lane
 registry, or per-field Server override.
 
 Every preset consumes Network Evidence. When periodic Serviceability is enabled,
-Runtime mints one Worker-Score-slot-aligned
-`hotEligibilityFloorMillis`. Serviceability Dispatch and refill initial
+Runtime samples one millisecond `hotEligibilityFloorMillis`; the Score Owner
+alone converts it to an encoding slot. Serviceability Dispatch and refill initial
 acquisition receive the same immutable value. Network Evidence requests an
 availability transition and does not receive the floor. The floor is not stored in Redis or exposed
 through Health or Runtime APIs. Serviceability may widen only its own bounded
-HOT discovery up to the stale-HOT cutoff derived from its Probe retry interval;
+HOT discovery up to the stale-HOT cutoff derived from its separate HOT stale threshold;
 Refill continues to use the immutable floor.
 
 ## Mechanical Owners

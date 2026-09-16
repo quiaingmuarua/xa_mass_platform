@@ -306,14 +306,19 @@ public final class RuntimeViewService {
             );
         }
         try {
-            WorkerSchedulingService.WorkerSchedulingObservation observation =
+            var observation =
                     workerScheduling.observe(workerGroupId, workerIds);
             var states = new LinkedHashMap<String, String>();
             workerIds.forEach(workerId -> states.put(
                     workerId,
-                    observation.statesByWorkerId()
-                            .get(workerId)
-                            .wireValue()
+                    switch (observation.statesByWorkerId().get(workerId)) {
+                        case HOT_SCORE_OVERDUE -> "hot-score-overdue";
+                        case HELD_HOT -> "held-hot";
+                        case PAUSED -> "paused";
+                        case RECOVERY -> "recovery";
+                        case COLD -> "cold";
+                        case MISSING -> "missing";
+                    }
             ));
             return new WorkerSchedulingObserveResponse(
                     workerGroupId,

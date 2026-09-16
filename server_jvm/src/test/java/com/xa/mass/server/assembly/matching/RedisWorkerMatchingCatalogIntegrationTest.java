@@ -1,5 +1,7 @@
 package com.xa.mass.server.assembly.matching;
 
+import static com.xa.mass.kernel.score.redis.WorkerScoreRedisFixture.*;
+
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.*;
 import com.xa.mass.kernel.assignment.WorkerMatching;
@@ -189,7 +191,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThatThrownBy(()->catalog.refill("g",targets.get("g"),held)).isInstanceOf(IllegalStateException.class);
         assertThat(commandTypes).isEmpty();
         commandTypes.clear();assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,1)).isEmpty();assertThat(commandTypes).isEmpty();
-        assertThat(scores.getScoreStates("g",List.of("w")).get("w").score()).isEqualTo(held.getFirst().score());
+        assertThat(readScores(redis, keyspace, "g",List.of("w")).get("w")).isEqualTo(held.getFirst().score());
     }
     @Test void rebuildUsesOnlyTheEnabledHandlersDeclaredRootAndDescendants() {
         useBucketRule(false);
@@ -499,7 +501,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.upsertWorkerFactsBatch("g",Map.of("target",messageFacts("US","new-phone")));
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
         assertThat(takeItems(catalog,prepared.get("messages").workerGroupId(),prepared.get("messages").ruleId(),ANY,1)).isEmpty();
-        assertThat(scores.getScoreStates("g",List.of("target")).get("target").score()).isEqualTo(held.getFirst().score());
+        assertThat(readScores(redis, keyspace, "g",List.of("target")).get("target")).isEqualTo(held.getFirst().score());
     }
 
     @Test void offeredBatchIsClosedEvenWhenTheIndexContainsBetterWorkers() {
@@ -525,9 +527,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var held=acquire("g",offer("g",100));
         beforeQualification=ids->{
             assertThat(ids).containsExactly("w");
-            var state=scores.getScoreStates("g",ids).get("w");
-            assertThat(state.score()).isEqualTo(held.getFirst().score());
-            assertThat(state.dirty()).isZero();
+            var state=readScores(redis, keyspace, "g",ids).get("w");
+            assertThat(state).isEqualTo(held.getFirst().score());
+            assertThat(dirty(state)).isZero();
             assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).isEmpty();
         };
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
@@ -564,7 +566,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
 
     @Test void headAcquisitionReachesARareMatchWithoutSkippingUnmatchedWorkers() {
         var ids=IntStream.range(0,250).mapToObj(i->"w-%03d".formatted(i)).toList();
-        long observed=(System.currentTimeMillis()/100-100)*WorkerScoreCore.SLOT_FACTOR+1;
+        long observed=dueDirtyScore(System.currentTimeMillis());
         for(int start=0;start<ids.size();start+=100) {
             var facts=new LinkedHashMap<String,Map<String,String>>();
             for(String id:ids.subList(start,Math.min(start+100,ids.size()))) {
@@ -588,7 +590,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(added).isEqualTo(1);
         assertThat(takeItems(catalog,prepared.get("rare").workerGroupId(),prepared.get("rare").ruleId(),CN,1))
                 .extracting(HeldCandidate::workerId).containsExactly("w-249");
-        assertThat(scores.getScoreStates("g",List.of("w-000")).get("w-000").score()).isNotEqualTo(observed);
+        assertThat(readScores(redis, keyspace, "g",List.of("w-000")).get("w-000")).isNotEqualTo(observed);
     }
 
     @Test void discardedAcquisitionResponseLeavesNoStockAndCannotRescueTheOldFence() {
@@ -611,7 +613,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var prepared=declarations("task");
         var held=acquire("g",offer("g",100));
         beforeQualification=ids->{
-            assertThat(scores.getScoreStates("g",ids).get("w").dirty()).isZero();
+            assertThat(dirty(readScores(redis, keyspace, "g",ids).get("w"))).isZero();
             catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
             assertThat(scores.markCurrentLeasesDirty("g",ids).get("w").status())
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);

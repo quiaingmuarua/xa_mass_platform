@@ -15,7 +15,7 @@ class WorkerScoreEncodingTest {
                 var state = decodeState("w", score);
                 assertEquals(12300, state.timeMillis());
                 assertEquals(dirty, state.dirty());
-                assertEquals(sign, state.polarity().value());
+                assertEquals(sign, polarityValue(state.polarity()));
                 assertEquals(sign * (248L + dirty), replaceTime(score, 124));
             }
         }

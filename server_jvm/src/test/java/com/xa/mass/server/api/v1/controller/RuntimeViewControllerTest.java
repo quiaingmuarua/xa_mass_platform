@@ -33,7 +33,7 @@ import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveRespon
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import com.xa.mass.server.worker.scheduling.WorkerSchedulingService.SchedulingState;
+import com.xa.mass.kernel.score.WorkerScoreCore.SchedulingState;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
 import java.time.Instant;
@@ -737,8 +737,7 @@ class RuntimeViewControllerTest {
         when(workerScheduling.observe(
                 "group-a",
                 List.of("worker-2", "worker-1")
-        )).thenReturn(new WorkerSchedulingService
-                .WorkerSchedulingObservation(
+        )).thenReturn(new com.xa.mass.kernel.score.WorkerScoreCore.WorkerSchedulingObservation(
                 1_234L,
                 states
         ));

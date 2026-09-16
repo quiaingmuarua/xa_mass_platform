@@ -4,9 +4,43 @@ import static com.xa.mass.kernel.score.WorkerScoreCore.*;
 
 /** Compact score arithmetic. Callers retain their operation-specific validation. */
 final class WorkerScoreEncoding {
+    static final long ZERO_SCORE = 0;
+    static final long MIN_BASE = 1;
+    static final long MIN_TIME_SLOT = 0;
+    static final long SLOT_MILLIS = 100;
+    static final long MAX_TIME_SLOT = 99_999_999_999L;
+    static final long PAUSE_TIME_SLOT = MAX_TIME_SLOT;
+    static final long MIN_TIME_MILLIS = 0;
+    static final long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
+    static final long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
+    static final int MIN_DIRTY = 0;
+    static final int MAX_DIRTY = 1;
+    static final int SLOT_FACTOR = 2;
     static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
 
     private WorkerScoreEncoding() {
+    }
+
+    record WorkerScoreState(String workerId, long score, WorkerScorePolarity polarity,
+                            long timeMillis, int dirty) {}
+
+    static int polarityValue(WorkerScorePolarity polarity) {
+        return switch (polarity) {
+            case HOT_ACQUIRE -> 1;
+            case RECOVERY_RECHECK -> -1;
+        };
+    }
+
+    static SchedulingState schedulingState(WorkerScoreState state, long readAtMillis) {
+        if (state == null) return SchedulingState.MISSING;
+        if (state.timeMillis() == PAUSE_TIME_MILLIS) return SchedulingState.PAUSED;
+        if (state.polarity() == WorkerScorePolarity.RECOVERY_RECHECK) {
+            return state.timeMillis() <= COLD_PARK_TIME_SLOT * SLOT_MILLIS
+                    ? SchedulingState.COLD : SchedulingState.RECOVERY;
+        }
+        long currentSlotMillis = readAtMillis / SLOT_MILLIS * SLOT_MILLIS;
+        return state.timeMillis() >= currentSlotMillis
+                ? SchedulingState.HELD_HOT : SchedulingState.HOT_SCORE_OVERDUE;
     }
 
     static long replaceTime(long score, long targetSlot) {
