@@ -182,7 +182,6 @@ class DispatchMechanismBoundaryTest {
             throws IOException {
         for (String token : List.of(
                 "SLOT_FACTOR",
-                "DIRTY_FACTOR",
                 "Math.abs(",
                 "absoluteScore(",
                 "decodeScore(",

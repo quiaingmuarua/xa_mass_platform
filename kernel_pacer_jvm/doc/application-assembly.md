@@ -249,8 +249,12 @@ Task API
 
 Serviceability retains the 1-second production Producer interval and 100-successful-
 hold round budget. It reads current HOT heads, falling back to RECOVERY only for an
-empty raw HOT result in that Group. Pacer supplies a fixed eligibility delay through `deferObservedToRecovery`; Score Owner writes
-the next eligible recheck time using Redis time before the Probe offer. There are
+empty raw HOT result in that Group. Range observations go directly through Binding
+validation to the exact write; no Score-state point read is used. Pacer supplies
+opaque observed Scores and one fixed batch delay to `deferObservedToRecovery`;
+Score Owner writes the next eligible recheck time using Redis time before the Probe offer.
+HOT keeps one range command, RECOVERY keeps TIME plus one range command, and
+deferral keeps one EVAL. Each non-empty candidate Group saves the former ZMSCORE. There are
 no per-Group scan cursors or empty-range restart timers. Recheck delay defaults to
 15 seconds, independently of the 60-second HOT stale threshold. This delay does
 not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff; cold

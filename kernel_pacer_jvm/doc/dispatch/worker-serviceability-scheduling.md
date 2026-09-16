@@ -161,12 +161,14 @@ hold budget determine actual progress. A delayed round starts the next delay
 from its Redis execution time. An eligible Recovery member is not cold-parked
 because of its age or how often it has been checked.
 
-The policy directly asks the Score and Resource Owners for bounded observations,
-current semantic states, and canonical Worker descriptors. Only matching exact
-observations with valid Binding are handled. Excluded endpoints are parked in
-the cold range through exact Score Owner operations. One `deferObservedToRecovery`
-batch receives `workerId -> WorkerScoreDelayTarget(observedScore, delayMillis)`;
-only `TRANSITIONED`
+The policy reads `observeHotCandidatesBefore`, falling back to
+`observeRecoveryRecheckCandidates` only for an empty HOT result, then loads
+canonical Worker descriptors for Binding checks. It does not point-read Score
+states. The selected observation entry supplies the lane; Pacer passes the
+original opaque fences to `deferObservedToRecovery(group, observedScores, delayMillis)`
+with one shared delay. The final exact CAS rejects deletion, time/dirty/polarity
+changes and intervening PAUSE. A non-empty HOT result never falls through to
+RECOVERY because its Bindings or writes failed. Only `TRANSITIONED`
 Workers are grouped by `endpointManagerId` and offered through
 `WorkerServiceabilityRuntime.offerProbeRequests`. A failed or lost offer or
 Report leaves the next recheck time intact. No rollback, renewal or request
@@ -182,6 +184,13 @@ stale CAS outcomes do not themselves guarantee progress or authorize a repair
 scan. There is no retained range, cursor, empty-range cooldown or extra wakeup.
 An empty read is retried on the next normal Producer round. The Task score batch
 is never mutated or held by Serviceability.
+
+Removing the former Score-state point read saves one ZMSCORE per non-empty
+candidate Group. HOT observation remains one range command; RECOVERY remains
+one TIME followed by one range command. Deferral remains one EVAL, with one
+internal TIME and one common target time base. Serviceability range reads keep
+their existing exception for fractional Scores; Refill instead omits corrupt
+rows within its raw-row budget. Neither path fetches replacement rows.
 
 Runtime Boundary establishes its connected RECOVERY fixture with an exact Owner
 toggle before approving the Task that exposes the Group. It must not overwrite
@@ -200,8 +209,11 @@ offline age.
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former
 hard-coded Polling branch. An excluded HOT score is exact-toggled to RECOVERY;
-an excluded RECOVERY score is used as observed. The exact negative score is
-then cold-parked at slot 1 with dirty preserved. PAUSE remains unchanged.
+an excluded RECOVERY score is used as observed. HOT cold parking uses the new
+fence returned by the successful toggle; a failed toggle stops the sequence.
+The exact negative score is then cold-parked at slot 1 with dirty preserved.
+PAUSE is excluded by observation ranges, and a later PAUSE change fails the
+exact fence at either write.
 No probe request is written. A later valid Polling observation can restore HOT
 availability for a Polling Worker; other excluded endpoints require fresh valid
 network evidence.

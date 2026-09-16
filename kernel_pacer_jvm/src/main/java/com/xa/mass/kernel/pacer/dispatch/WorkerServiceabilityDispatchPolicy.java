@@ -1,10 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreDelayTarget;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
@@ -103,13 +100,13 @@ final class WorkerServiceabilityDispatchPolicy {
             if (remainingProbeBudget == 0) {
                 break;
             }
-            List<WorkerScoreObservation> hot = workerScores.acquireHotCandidatesBefore(
+            List<WorkerScoreObservation> hot = workerScores.observeHotCandidatesBefore(
                     workerGroupId,
                     hotProbeCutoffMillis,
                     remainingProbeBudget
             );
             List<WorkerScoreObservation> candidates = hot.isEmpty()
-                    ? workerScores.acquireRecoveryRecheckCandidates(
+                    ? workerScores.observeRecoveryRecheckCandidates(
                             workerGroupId,
                             remainingProbeBudget
                     )
@@ -121,23 +118,18 @@ final class WorkerServiceabilityDispatchPolicy {
             List<String> workerIds = candidates.stream()
                     .map(WorkerScoreObservation::workerId)
                     .toList();
-            Map<String, WorkerScoreState> states =
-                    workerScores.getScoreStates(workerGroupId, workerIds);
             Map<String, WorkerDescriptor> descriptors =
                     workerCatalog.getWorkerDescriptors(
                             workerIds
                     );
-            LinkedHashMap<String, WorkerScoreDelayTarget> targets = new LinkedHashMap<>();
+            LinkedHashMap<String, Long> observedScores = new LinkedHashMap<>();
             LinkedHashMap<String, WorkerDescriptor> probeDescriptors =
                     new LinkedHashMap<>();
             for (WorkerScoreObservation candidate : candidates) {
-                WorkerScoreState state = states.get(candidate.workerId());
                 WorkerDescriptor descriptor = descriptors.get(
                         candidate.workerId()
                 );
-                if (state == null
-                        || state.score() != candidate.score()
-                        || descriptor == null
+                if (descriptor == null
                         || !workerGroupId.equals(descriptor.workerGroupId())
                         || !candidate.workerId().equals(
                                 descriptor.workerId()
@@ -149,18 +141,21 @@ final class WorkerServiceabilityDispatchPolicy {
                 )) {
                     coldPark(
                             workerGroupId,
-                            state
+                            candidate,
+                            !hot.isEmpty()
                     );
                     continue;
                 }
                 probeDescriptors.put(candidate.workerId(), descriptor);
-                targets.put(candidate.workerId(), new WorkerScoreDelayTarget(
-                        candidate.score(), config.recheckDelayMillis()
-                ));
+                observedScores.put(candidate.workerId(), candidate.score());
             }
 
             Map<String, WorkerScoreTransitionResult> results =
-                    workerScores.deferObservedToRecovery(workerGroupId, targets);
+                    workerScores.deferObservedToRecovery(
+                            workerGroupId,
+                            observedScores,
+                            config.recheckDelayMillis()
+                    );
             List<String> heldWorkerIds = new ArrayList<>();
             probeDescriptors.keySet().forEach(workerId -> {
                 WorkerScoreTransitionResult result = results.get(workerId);
@@ -182,13 +177,11 @@ final class WorkerServiceabilityDispatchPolicy {
 
     private void coldPark(
             String workerGroupId,
-            WorkerScoreState worker
+            WorkerScoreObservation worker,
+            boolean observedHot
     ) {
-        if (worker.timeMillis() == WorkerScoreCore.PAUSE_TIME_MILLIS) {
-            return;
-        }
         long recoveryScore = worker.score();
-        if (worker.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
+        if (observedHot) {
             var toggled = workerScores.toggleCurrentPolarity(
                     workerGroupId,
                     worker.workerId(),

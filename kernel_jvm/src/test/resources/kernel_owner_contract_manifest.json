@@ -50,7 +50,6 @@
       "MAX_WORKER_BATCH_SIZE": 100
     },
     "WorkerScoreCore": {
-      "DIRTY_FACTOR": 2,
       "HOT_ACQUIRE_POLARITY": 1,
       "MAX_DIRTY": 1,
       "MAX_SCORE_BATCH_SIZE": 100,
@@ -65,7 +64,6 @@
       "RECOVERY_RECHECK_POLARITY": -1,
       "SLOT_FACTOR": 2,
       "SLOT_MILLIS": 100,
-      "TIME_SCALE": 10,
       "ZERO_SCORE": 0,
       "MAX_REGISTRATION_BATCH_SIZE": 100,
       "MAX_REGISTERED_WORKER_SAMPLE_LIMIT": 1000
@@ -149,15 +147,15 @@
       "sample_worker_group_descriptors"
     ],
     "WorkerScoreCore": [
-      "acquire_hot_candidates_before",
       "acquire_observed_hot_score_leases",
-      "acquire_recovery_recheck_candidates",
       "confirm_active_hot_score_leases",
       "defer_observed_to_recovery",
       "get_score_states",
       "initialize_registered_scores",
       "mark_current_leases_dirty",
       "observe_due_hot_score_candidates",
+      "observe_hot_candidates_before",
+      "observe_recovery_recheck_candidates",
       "park_observed_recovery_score",
       "release_observed_hot_score_holds",
       "release_score_holds",
@@ -168,10 +166,6 @@
     ]
   },
   "dtos": {
-    "WorkerScoreDelayTarget": [
-      "observed_score",
-      "delay_millis"
-    ],
     "TaskItemOutcomeObservation": [
       "message_id",
       "tag",

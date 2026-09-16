@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class WorkerScoreEncodingTest {
     @Test
-    void compactCoordinatesAndSingleFieldReplacementsPreserveOtherFields() {
+    void compactCoordinatesAndTimeReplacementPreserveOtherFields() {
         for (int sign : new int[]{-1, 1}) {
             for (int dirty : new int[]{0, 1}) {
                 long score = sign * (246L + dirty);
@@ -17,9 +17,6 @@ class WorkerScoreEncodingTest {
                 assertEquals(dirty, state.dirty());
                 assertEquals(sign, state.polarity().value());
                 assertEquals(sign * (248L + dirty), replaceTime(score, 124));
-                assertEquals(sign * (246L + 1 - dirty), replaceDirty(score, 1 - dirty));
-                assertEquals(Math.abs(score), replacePolarity(score, WorkerScorePolarity.HOT_ACQUIRE));
-                assertEquals(-Math.abs(score), replacePolarity(score, WorkerScorePolarity.RECOVERY_RECHECK));
             }
         }
     }

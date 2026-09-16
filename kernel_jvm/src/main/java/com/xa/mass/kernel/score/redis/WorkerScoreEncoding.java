@@ -13,15 +13,6 @@ final class WorkerScoreEncoding {
         return Long.signum(score) * (targetSlot * SLOT_FACTOR + Math.abs(score) % SLOT_FACTOR);
     }
 
-    static long replaceDirty(long score, int targetDirty) {
-        long absolute = Math.abs(score);
-        return Long.signum(score) * (absolute - absolute % DIRTY_FACTOR + targetDirty);
-    }
-
-    static long replacePolarity(long score, WorkerScorePolarity targetPolarity) {
-        return targetPolarity.value() * Math.abs(score);
-    }
-
     static long absoluteScore(
             long timeSlot,
             int dirty
@@ -44,11 +35,8 @@ final class WorkerScoreEncoding {
         }
         long absolute = Math.abs(score);
         long timeSlot = absolute / SLOT_FACTOR;
-        int dirty = Math.toIntExact(absolute % DIRTY_FACTOR);
-        if (timeSlot < MIN_TIME_SLOT
-                || timeSlot > MAX_TIME_SLOT
-                || dirty < MIN_DIRTY
-                || dirty > MAX_DIRTY) {
+        int dirty = Math.toIntExact(absolute % SLOT_FACTOR);
+        if (timeSlot > MAX_TIME_SLOT) {
             throw new IllegalStateException("Worker score is invalid");
         }
         return new WorkerScoreState(

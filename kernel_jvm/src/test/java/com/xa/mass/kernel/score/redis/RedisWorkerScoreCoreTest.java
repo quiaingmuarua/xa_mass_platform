@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreDelayTarget;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import io.lettuce.core.RedisClient;
@@ -40,17 +39,11 @@ class RedisWorkerScoreCoreTest {
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
-                    scoreCore.deferObservedToRecovery(
-                            "group-1",
-                            Map.of("worker-1", new WorkerScoreDelayTarget(0L, 1_000L))
-                    ).get("worker-1").status()
+                    scoreCore.deferObservedToRecovery("group-1", Map.of("worker-1", 0L), 1_000L).get("worker-1").status()
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
-                    scoreCore.deferObservedToRecovery(
-                            "group-1",
-                            Map.of("worker-1", new WorkerScoreDelayTarget(2L, 0L))
-                    ).get("worker-1").status()
+                    scoreCore.deferObservedToRecovery("group-1", Map.of("worker-1", 2L), 0L).get("worker-1").status()
             );
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
@@ -71,26 +64,25 @@ class RedisWorkerScoreCoreTest {
         try (var scoreCore = new RedisWorkerScoreCore(redisClient,
                 new RedisKeyspace("test_worker_score_unit"))) {
             for (long delay : new long[]{0, -1, Long.MAX_VALUE, WorkerScoreCore.PAUSE_TIME_MILLIS}) {
-                assertEquals(WorkerScoreTransitionStatus.INVALID,
-                        scoreCore.deferObservedToRecovery("g",
-                                Map.of("w", new WorkerScoreDelayTarget(20_000L, delay)))
-                                .get("w").status());
-                assertEquals(WorkerScoreTransitionStatus.INVALID,
-                        scoreCore.deferObservedToRecovery("g",
-                                Map.of("w", new WorkerScoreDelayTarget(-20_000L, delay)))
-                                .get("w").status());
+                var results = scoreCore.deferObservedToRecovery("g", Map.of(
+                        "hot", 20_000L, "recovery", -20_001L, "invalid", 0L), delay);
+                assertEquals(3, results.size());
+                results.values().forEach(result -> {
+                    assertEquals(WorkerScoreTransitionStatus.INVALID, result.status());
+                    assertEquals(null, result.score());
+                });
+                assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of(), delay));
             }
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scoreCore.deferObservedToRecovery("g",
-                            Map.of("cold", new WorkerScoreDelayTarget(-2L, 1_000)))
+                    scoreCore.deferObservedToRecovery("g", Map.of("cold", -2L), 1_000)
                             .get("cold").status());
-            assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of()));
-            var tooMany = new java.util.LinkedHashMap<String, WorkerScoreDelayTarget>();
-            for (int i = 0; i < 101; i++) tooMany.put("w" + i, new WorkerScoreDelayTarget(-20_000, 1_000));
+            assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of(), 1_000));
+            var tooMany = new java.util.LinkedHashMap<String, Long>();
+            for (int i = 0; i < 101; i++) tooMany.put("w" + i, -20_000L);
             assertThrows(IllegalArgumentException.class,
-                    () -> scoreCore.deferObservedToRecovery("g", tooMany));
+                    () -> scoreCore.deferObservedToRecovery("g", tooMany, 1_000));
             assertThrows(IllegalArgumentException.class,
-                    () -> scoreCore.deferObservedToRecovery("g", null));
+                    () -> scoreCore.deferObservedToRecovery("g", null, 1_000));
         } finally {
             redisClient.shutdown();
         }

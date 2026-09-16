@@ -358,7 +358,7 @@ class WorkerSchedulingServiceTest {
     ) {
         return new WorkerScoreState(
                 workerId,
-                polarity.value() * timeMillis * WorkerScoreCore.TIME_SCALE,
+                polarity.value() * (timeMillis / WorkerScoreCore.SLOT_MILLIS) * WorkerScoreCore.SLOT_FACTOR,
                 polarity,
                 timeMillis,
                 WorkerScoreCore.MIN_DIRTY

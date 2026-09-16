@@ -13,7 +13,6 @@ public interface WorkerScoreCore {
     long ZERO_SCORE = 0;
     long MIN_BASE = 1;
     long MIN_TIME_SLOT = 0;
-    int TIME_SCALE = 10;
     long SLOT_MILLIS = 100;
     long MAX_TIME_SLOT = 99_999_999_999L;
     long PAUSE_TIME_SLOT = MAX_TIME_SLOT;
@@ -22,8 +21,7 @@ public interface WorkerScoreCore {
     long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
     int MIN_DIRTY = 0;
     int MAX_DIRTY = 1;
-    int DIRTY_FACTOR = 2;
-    int SLOT_FACTOR = DIRTY_FACTOR;
+    int SLOT_FACTOR = 2;
     int MAX_SCORE_BATCH_SIZE = 100;
     int MAX_REGISTRATION_BATCH_SIZE = 100;
     int MAX_REGISTERED_WORKER_SAMPLE_LIMIT = 1000;
@@ -46,14 +44,14 @@ public interface WorkerScoreCore {
     );
 
     /** Reads a bounded descending HOT head below the exclusive cutoff, without a cursor. */
-    List<WorkerScoreObservation> acquireHotCandidatesBefore(
+    List<WorkerScoreObservation> observeHotCandidatesBefore(
             String homeBucketId,
             long hotCutoffMillis,
             int limit
     );
 
     /** Reads the earliest due rechecks after the cold slot, without an age limit or cursor. */
-    List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
+    List<WorkerScoreObservation> observeRecoveryRecheckCandidates(
             String homeBucketId,
             int limit
     );
@@ -101,9 +99,13 @@ public interface WorkerScoreCore {
             long observedScore
     );
 
-    /** Sets the next eligible RECOVERY time from Redis time and a caller-supplied delay. */
+    /**
+     * Defers up to 100 exact due observations using one delay from Redis execution time.
+     * Empty input returns no results; an invalid common delay returns INVALID per member
+     * without accessing Redis.
+     */
     Map<String, WorkerScoreTransitionResult> deferObservedToRecovery(
-            String homeBucketId, Map<String, WorkerScoreDelayTarget> targets
+            String homeBucketId, Map<String, Long> observedScores, long delayMillis
     );
 
     /**
@@ -169,10 +171,6 @@ public interface WorkerScoreCore {
         public String wireValue() {
             return wireValue;
         }
-    }
-
-    /** Carries an opaque fence and eligibility delay; the Owner validates numeric inputs. */
-    record WorkerScoreDelayTarget(long observedScore, long delayMillis) {
     }
 
     record WorkerScoreState(

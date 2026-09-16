@@ -44,7 +44,7 @@ polarity = sign(score)
 ```
 
 - HOT_ACQUIRE = +1; RECOVERY_RECHECK = -1; score zero is invalid.
-- SLOT_MILLIS = 100; SLOT_FACTOR = DIRTY_FACTOR = 2.
+- SLOT_MILLIS = 100; SLOT_FACTOR = 2 is the sole encoding factor.
 - MAX_TIME_SLOT = PAUSE_TIME_SLOT = 99_999_999_999.
 - MAX_TIME_MILLIS = PAUSE_TIME_MILLIS = 9_999_999_999_900.
 - MIN_TIME_SLOT = 0; MIN_BASE = 1; dirty is 0 or 1.
@@ -90,15 +90,15 @@ Valid available evidence may refresh the cold time and restore HOT.
 PAUSE remains distinct: evidence can correct its polarity but preserves its
 maximum-time hold. No cold-member scan, activation ACK or replay is installed.
 
-## Acquire Queries
+## Read-Only Observations
 
 All observations are read-only; only successful transitions move the head.
 
 | Operation | Range and order |
 | --- | --- |
 | observeDueHotScoreCandidates | Positive due head at or above the supplied HOT floor, ascending Score/member order |
-| acquireHotCandidatesBefore | Positive head strictly below the supplied cutoff, descending numeric order |
-| acquireRecoveryRecheckCandidates | Negative coordinates after cold slot and strictly before Redis current slot, descending numeric order |
+| observeHotCandidatesBefore | Positive head strictly below the supplied cutoff, descending numeric order |
+| observeRecoveryRecheckCandidates | Negative coordinates after cold slot and strictly before Redis current slot, descending numeric order |
 
 Refill due-head observation uses one short Lua containing Redis TIME and
 ZRANGE BYSCORE LIMIT 0 limit WITHSCORES. It accepts 1..100 raw rows and returns
@@ -121,9 +121,11 @@ Within one time slot, clean precedes dirty; dirty is not a business priority.
 
 Current slots, future slots, PAUSE and cold entries are excluded. Every round
 starts at the head, with no cursor, offset continuation or cooldown.
-Corrupt rows consume the raw-row budget and are omitted without replacement
-reads. Observation or failed CAS alone does not guarantee progress through a
-corrupt or invalid head.
+Refill omits corrupt rows within its raw-row budget. Serviceability range reads
+retain their existing strict integer conversion: a fractional Score throws
+IllegalStateException. Neither path performs replacement reads or repairs data.
+Observation or failed CAS alone does not guarantee progress through a corrupt
+or invalid head.
 
 Pacer discovers only Groups supplied by Main's current Task input; this is not
 a global Worker discovery or reconciliation facility. Successful acquisition
@@ -166,18 +168,20 @@ Caller inputs are bounded identities, opaque observed fences, millisecond
 times, a relative delay and the mechanical polarity/refresh choice.
 Raw ranges, encoded coordinates and dirty values are not caller construction
 capabilities. WorkerScoreState exposes polarity, timeMillis and dirty, plus
-the opaque original score; WorkerScoreDelayTarget carries observedScore and
-delayMillis. Numeric target errors remain Owner INVALID results.
+the opaque original score. WorkerScoreObservation carries identity and the
+opaque range observation. Deferral takes a Map of observed Scores and one
+delayMillis for the whole batch. Numeric target errors remain Owner INVALID results.
 
 ## Java Composition and Fixed Atomic Operations
 
 Package-private WorkerScoreEncoding centralizes arithmetic and validation.
-For absolute value a and sign p:
+Known targets use direct encoding; changing only time preserves sign and dirty:
 
 ```text
-replace time:      p * (targetSlot * 2 + a % 2)
-replace dirty:     p * (a - a % 2 + targetDirty)
-replace polarity:  targetPolarity * a
+replace time:     sign(score) * (targetSlot * 2 + abs(score) % 2)
+toggle polarity:  -score
+acquisition:      requestedSlot * 2
+confirmation:     max(observedSlot, requestedSlot) * 2 + 1
 ```
 
 Public provider methods prepare parameters and combine private operations.
@@ -196,7 +200,11 @@ exact comparisons, execution-time checks and current-value changes.
 | Current polarity correction | Fixed time fence and optional past-time refresh |
 
 Fixed scripts share exact read/compare, write-if-changed and batch-result
-functions. They do not interpret events, business modes or rule expressions.
+functions, plus a fixed Redis TIME-to-milliseconds helper. Each time-dependent
+script samples TIME once. Acquisition passes one complete target per batch;
+confirmation passes request and PAUSE time bases per batch and complete targets
+per member. Both reject an expired requested time before checking exact fences.
+They do not interpret events, business modes or rule expressions.
 Ordinary same-value replacement returns NOOP. Completed HOT release maps an
 accepted NOOP to TRANSITIONED in Java. It accepts only the original HOT fence
 or its exact negative, never arbitrary alternatives.
@@ -242,23 +250,29 @@ PAUSE. It cannot repair a changed observation or choose evidence freshness.
 
 ### Exact Due Coordinate Deferral
 
-deferObservedToRecovery accepts up to 100
-workerId -> WorkerScoreDelayTarget(observedScore, delayMillis) entries per Group.
-Java validates observations and delays and supplies the preserved dirty.
-One fixed Lua reads TIME once and performs:
+deferObservedToRecovery(group, observedScores, delayMillis) accepts up to 100
+workerId -> observedScore entries in one Group. An empty Map returns an empty
+result. Java validates the common delay once; a nonpositive or out-of-range
+delay yields INVALID for every member without Redis access. Invalid observations
+remain individual INVALID results. Java supplies each valid observation's dirty.
+One fixed Lua reads TIME and calculates the target time base once for the batch:
 
 ```text
-storedScore == observedScore
 targetSlot = floor((redisNowMillis + delayMillis) / 100)
-storedSlot < redisNowSlot
-write -(targetSlot * 2 + dirty)
+targetBase = targetSlot * 2
+
+for each member:
+    storedScore == observedScore
+    validate execution-time target
+    storedSlot < redisNowSlot
+    write -(targetBase + dirty)
 ```
 
 Relative addition precedes rounding. Missing/changed exact observations or
 non-due current/future coordinates are STALE. Invalid coordinates, nonpositive
 or out-of-range delays, cold RECOVERY inputs and targets reaching PAUSE are
-INVALID. Exact comparison precedes execution-time target and due checks.
-Rejected members are unchanged.
+INVALID. Exact comparison precedes execution-time target and due checks, even
+though the target base is calculated before the loop. Rejected members are unchanged.
 
 Pacer chooses the delay and whether to offer a Probe; Score Owner has no
 attempt count or outcome interpretation. Only TRANSITIONED members are offered.
@@ -299,7 +313,8 @@ replacement. It neither counts failures nor decides to stop checking.
 
 Its production caller is the excluded-Endpoint branch. HOT exclusions retain
 the existing two-step sequence: exact polarity toggle, then exact cold park.
-PAUSE is skipped by the policy. Valid available evidence can later activate
+Observation ranges exclude PAUSE; an intervening PAUSE change fails the exact
+fence at either write. Valid available evidence can later activate
 the retained member. Registration independently initializes absent cold members.
 
 ### Dirty Lease Fence
@@ -310,8 +325,8 @@ when already dirty, STALE when missing, INVALID for illegal stored values.
 It applies to due, held and RECOVERY coordinates alike.
 
 acquireObservedHotScoreLeases accepts due HOT with either dirty value and
-writes the Java-prepared target time with dirty=0. Redis execution time must
-still admit the requested future slot.
+writes requestedSlot * 2, prepared and passed once per batch in Java.
+Redis execution time must still admit the requested future slot.
 
 confirmActiveHotScoreLeases accepts only exact clean HOT in the current or
 future slot, excluding PAUSE. Java prepares max(observedSlot, requestedSlot)

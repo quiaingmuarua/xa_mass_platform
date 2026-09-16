@@ -63,10 +63,13 @@ as exact comparison and write, once per at most 100 identities on a Group key.
 No preceding time confirmation read is used. Existing 100ms semantics apply:
 acquisition requires slot < nowSlot, while active confirmation allows equality.
 The requested target slot must be later than nowSlot, even if the observed
-lease already has a later deadline. Java prepares the full acquisition target
-with dirty=0, or confirmation target with the later time and dirty=1; fixed Lua
-entries share exact comparison and writing while retaining Redis clock checks. The operations return individual results;
-Properties and other Owners remain independent commits.
+lease already has a later deadline. Java prepares requestedSlot * 2 once per
+acquisition batch, or max(observedSlot, requestedSlot) * 2 + 1 per confirmation
+member. Lua receives the requested time base and compares against the Redis
+current time base, rejecting an expired request before exact comparison.
+Confirmation also receives the PAUSE time base and retains its clean/active
+checks. Fixed entries share exact comparison and writing. The operations return
+individual results; Properties and other Owners remain independent commits.
 
 TaskItems only consume successfully acquired inventory. Counts and take read no
 Worker Score. No match or projection failure leaves the already acquired hold to
