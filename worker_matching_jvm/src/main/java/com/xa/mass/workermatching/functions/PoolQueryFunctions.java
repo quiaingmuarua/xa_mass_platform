@@ -1,11 +1,14 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.functions;
+
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.RuleInputs;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.QueryFunctions;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
+import com.xa.mass.workermatching.pool.CandidatePool.Selection;
 import java.util.*;
 import java.util.function.BiFunction;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 
 /** Item interpretation over injected stock. Functions neither maintain nor create a Pool. */
 public final class PoolQueryFunctions {

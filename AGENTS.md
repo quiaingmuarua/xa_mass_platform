@@ -229,6 +229,15 @@ architectures.
   qualification and resource selection; CandidatePool owns mechanical range stock. Catalog coordination
   must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
+  Pool resources depend only on their clock and shared capacity budget. Index resources
+  own their physical definitions and reads; they must not depend on Pools, refill policies
+  or function names. Fixed composition injects existing resources into functions and
+  policies; neither creates its own storage. FactsIndexStore owns the shared Matching
+  connection, Facts persistence, atomic index writes and startup rebuild. Index upkeep
+  is independent of Task demand and Pool consumption, expiry or capacity. Server exposes
+  one Catalog lifecycle Bean, and failed startup closes Matching resources without
+  shutting down the Server-owned RedisClient. Keep package dependencies aligned with
+  the [Matching resource contract](worker_matching_jvm/README.md#fixed-resource-composition).
   PoolRefillPolicy owns target normalization, deficits and refill; CandidatePool owns entries and views. Item execution uses fixed
   normalizeInput/execute function pairs, not storage objects as executors. Catalog owns target MAX merge,
   bounded non-Country paging, messageId-to-candidate correlation and exclusion of IDs actually

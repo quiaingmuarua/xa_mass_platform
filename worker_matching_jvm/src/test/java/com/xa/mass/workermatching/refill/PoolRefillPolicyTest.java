@@ -1,4 +1,12 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.index.MessagingIndex;
+import com.xa.mass.workermatching.index.PartitionedZsetIndex;
+import com.xa.mass.workermatching.index.ProofFactsIndex;
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 
@@ -13,10 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PoolRefillPolicyTest {
+    final CandidateBudget budget = new CandidateBudget();
     @Test void messagingKeepsCountryAndPhoneIntersection() {
-        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_rule"))) {
-            var stock=new CandidatePool(storage);
-            var handler=new MessagingPoolPolicy(storage,stock);
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
+            var stock=new CandidatePool(()->1000, budget);
+            var handler=new MessagingPoolPolicy(()->1000, stock, new MessagingIndex(storage::commands, storage.keyspace()));
             var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"),
                     "worker.phone",List.of("+86123"))));
             var match=handler.target("g",q);
@@ -27,8 +36,8 @@ class PoolRefillPolicyTest {
         }
     }
     @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
-        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_rule"))) {
-            for(var rule:List.of(new CountryPoolPolicy(storage,new CandidatePool(storage)),new MessagingPoolPolicy(storage,new CandidatePool(storage)),new ProofFactsPoolPolicy(storage,new CandidatePool(storage)))) {
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
+            for(var rule:List.of(new CountryPoolPolicy(()->1000, new CandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(()->1000, new CandidatePool(()->1000, budget), new MessagingIndex(storage::commands, storage.keyspace())),new ProofFactsPoolPolicy(()->1000, new CandidatePool(()->1000, budget), new ProofFactsIndex(storage::commands, storage.keyspace())))) {
                 assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of())));
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("w")))));
             }
@@ -36,9 +45,9 @@ class PoolRefillPolicyTest {
     }
     @Test void anyNeedsNoFactsAndRejectsIdentityAndCountryConditions() {
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_any"),()->1000)) {
-            var stock=new CandidatePool(storage);
-            var rule=new AnyPoolPolicy(storage,stock);
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_any"), Map.of())) {
+            var stock=new CandidatePool(()->1000, budget);
+            var rule=new AnyPoolPolicy(()->1000, stock);
             var function=PoolQueryFunctions.any(stock);
             var target=new EligibilityQuery(Map.of());
             assertEquals(target,rule.normalizeQuery("g",target));

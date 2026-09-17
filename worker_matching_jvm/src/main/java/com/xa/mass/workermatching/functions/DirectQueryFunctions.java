@@ -1,4 +1,6 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.functions;
+
+import com.xa.mass.workermatching.index.PhoneIndex;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.QueryFunctions;
@@ -13,8 +15,8 @@ import java.util.Objects;
 public final class DirectQueryFunctions {
     private final PhoneIndex phones;
 
-    public DirectQueryFunctions(MatchingStorage storage) {
-        phones = new PhoneIndex(Objects.requireNonNull(storage));
+    public DirectQueryFunctions(PhoneIndex phones) {
+        this.phones = Objects.requireNonNull(phones);
     }
 
     public static QueryFunctions identity() {

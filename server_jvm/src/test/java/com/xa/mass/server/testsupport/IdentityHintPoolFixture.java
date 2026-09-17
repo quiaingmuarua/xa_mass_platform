@@ -4,9 +4,13 @@ import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.PoolRefillPolicy;
-import com.xa.mass.workermatching.rules.*;
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.refill.AnyPoolPolicy;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+
 import java.util.Set;
-import com.xa.mass.workermatching.rules.MatchingStorage;
+import java.util.function.LongSupplier;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,11 +24,15 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     private final com.xa.mass.workermatching.QueryFunctions consumer;
     private final AtomicInteger hintsReturned = new AtomicInteger();
 
-    public IdentityHintPoolFixture(MatchingStorage storage) {
-        var stock = new CandidatePool(storage);
-        pool = new AnyPoolPolicy(storage,stock);
+    private final CandidatePool stock;
+
+    public IdentityHintPoolFixture(LongSupplier clock, CandidatePool stock) {
+        this.stock = stock;
+        pool = new AnyPoolPolicy(clock,stock);
         consumer = PoolQueryFunctions.any(stock);
     }
+
+    public CandidatePool stock() { return stock; }
 
     public int hintsReturned() { return hintsReturned.get(); }
 

@@ -1,9 +1,13 @@
 package com.xa.mass.server.testsupport;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.rules.*;
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.refill.PoolMaintenance;
+import com.xa.mass.workermatching.index.IndexMutation;
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.workermatching.QueryFunctions;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.*;
@@ -40,12 +44,13 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
             """;
     private final boolean failSnapshot;
     private final CandidatePool stock;
-    public BucketPoolFixture(MatchingStorage storage, CandidatePool stock, boolean failSnapshot) {
-        super(storage,stock); this.stock=stock; this.failSnapshot=failSnapshot;
+    private final FactsIndexStore storage;
+    public BucketPoolFixture(LongSupplier clock, FactsIndexStore storage, CandidatePool stock, boolean failSnapshot) {
+        super(clock,stock); this.storage=storage; this.stock=stock; this.failSnapshot=failSnapshot;
     }
     public QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
-    public static List<MatchingStorage.IndexMutation> indexes() {
-        return List.of(new MatchingStorage.IndexMutation("test_buckets",PREPARE));
+    public static List<IndexMutation> indexes() {
+        return List.of(new IndexMutation("test_buckets",PREPARE));
     }
     @Override protected EligibilityQuery normalize(String group,EligibilityQuery input) {
             var expression = input.query();
@@ -70,7 +75,7 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
     @Override protected Map<String,String> readQualifications(String group,List<String> ids) {
         if(failSnapshot)throw new IllegalStateException("injected bucket projection failure");
         var result=new LinkedHashMap<String,String>();
-        for(var row:storage.commands().hmget(storage.indexKey(group,"test_buckets"),ids.toArray(String[]::new)))
+        for(var row:storage.commands().hmget(IndexMutation.base(storage.keyspace(),group)+":test_buckets",ids.toArray(String[]::new)))
             if(row.hasValue())result.put(row.getKey(),decode(row.getValue()));
         return result;
     }

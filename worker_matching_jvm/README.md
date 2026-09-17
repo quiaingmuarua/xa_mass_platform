@@ -182,11 +182,39 @@ Item encoding, Facts, index keys and Score fences remain unchanged.
 
 ## Fixed Resource Composition
 
-`MatchingComposition` creates each CandidatePool once. Pool maintenance and named
-consumer functions receive the same resource. Storage does not know executorName;
-functions need not implement a maintenance interface. Index mutations are assembled
-by resource namespace and deduplicated before Facts write and startup rebuild.
-Conflicting names/resources fail assembly; there is no dynamic registry or executorType.
+`MatchingComposition` creates each enabled resource once and injects it into its
+users. Pool maintenance and named consumer functions receive the same CandidatePool;
+Direct functions receive an existing PhoneIndex. Resources do not know executorName.
+Functions need not implement a maintenance interface. There is no dynamic registry
+or executorType, and composition does not create a Pool or policy for Identity/Phone-only Groups.
+
+| Package | Owned implementation |
+| --- | --- |
+| `functions` | Local input interpretation, resource access and candidate correlation |
+| `pool` | CandidatePool entries, range views, deadlines and CandidateBudget |
+| `refill` | Target interpretation, held-ID qualification and membership calculation |
+| `index` | Phone, Messaging and Proof resource definitions, reads and mutation Lua |
+| `storage` | Facts encoding, persistence, atomic index-write assembly, rebuild and Redis connection |
+
+CandidatePool receives only a clock and shared CandidateBudget. Composition retains
+the fixed Pool map; Catalog expires that collection and reads budget diagnostics.
+There is no self-registration or resource manager. Index resources receive Redis
+access and keyspace, with no Pool, capacity, refill-policy or function-name dependency.
+Messaging and Proof policies use injected index readers; Country receives the bounded
+Worker Facts reader. Policies neither construct indexes nor define their write Lua.
+
+`FactsIndexStore` deduplicates IndexMutation definitions by resource namespace before
+assembling the single preflight-and-write Lua. Conflicting definitions fail assembly.
+Group `pools/functions` configuration determines the fixed index dependencies, with
+no separate `indexes` configuration and no Task demand prerequisite. Phone depends
+only on Worker `phone`; Messaging retains its Worker enablement, country and phone
+projection; Proof also consumes Platform `proofEnabled`. Country has no Redis index.
+
+Server owns one Catalog lifecycle Bean. Composition uses one lazy shared Matching
+Redis connection, completes startup rebuild before returning Catalog, and closes
+the store if assembly or rebuild fails. Catalog closes its store idempotently after
+platform callers stop; it never shuts down the Server-owned RedisClient. There are
+no per-index connections, constructor-started threads or background repair tasks.
 
 | Pool | Maintenance |
 | --- | --- |
@@ -282,9 +310,10 @@ Refill may underfill after concurrent consumption or exceed an observed target
 after concurrent admission. Current hard pool/process capacity and deadlines still
 apply. Later rounds converge; targets do not reserve stock or extend leases.
 
-`MatchingStorage` still owns implementation key construction, index-write assembly
-and the shared source connection. Facts and all enabled indexes prepare before any
-write in one Lua, independently of the local refill/consume failure contracts.
+Facts and all enabled indexes prepare before any write in one Lua, independently
+of the local refill/consume failure contracts. Index queries do not consume members;
+Pool consumption, expiry and capacity changes do not remove property indexes.
+Properties sealing remains a separate commit and never edits Pool entries directly.
 The test-only [Bucket Pool fixture](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketPoolFixture.java)
 retains its SET/HASH source and real Worker proof. Separate test functions accept
 string/integer inputs without implementing Pool maintenance or owning Pool stock.

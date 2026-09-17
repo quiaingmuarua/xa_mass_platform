@@ -1,15 +1,23 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.index.PartitionedZsetIndex;
+import com.xa.mass.workermatching.index.CountryIndex;
+import java.util.function.LongSupplier;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import com.xa.mass.workermatching.pool.CandidatePool.Selection;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 
 /** Supply interpretation over the existing partitioned source indexes. */
 abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetIndex.Projection> {
-    private final String namespace;
-    PartitionedPoolPolicy(MatchingStorage storage, CandidatePool pool, String namespace) { super(storage, pool); this.namespace = namespace; }
-    abstract PartitionedZsetIndex.Criteria criteria(Map<String, List<String>> query);
+    protected record Criteria(String partition, String kind, List<String> values) {}
+    private final PartitionedZsetIndex index;
+    PartitionedPoolPolicy(LongSupplier clock, CandidatePool pool, PartitionedZsetIndex index) {
+        super(clock, pool); this.index = Objects.requireNonNull(index);
+    }
+    abstract Criteria criteria(Map<String, List<String>> query);
 
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
         var expression = input.query();
@@ -20,7 +28,7 @@ abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetInde
         var criteria = criteria(query.query());
         return selection(criteria);
     }
-    protected static Selection selection(PartitionedZsetIndex.Criteria criteria) {
+    protected static Selection selection(Criteria criteria) {
         if (criteria.partition().isEmpty())
             return criteria.kind().equals("any") ? all() : range("country", criteria.values());
         return criteria.kind().equals("any") ? range("partition:" + criteria.partition(), List.of("1"))
@@ -37,12 +45,12 @@ abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetInde
         return views;
     }
     @Override protected Map<String, PartitionedZsetIndex.Projection> readQualifications(String group, List<String> ids) {
-        return new PartitionedZsetIndex(storage::commands, storage.indexKey(group, namespace)).snapshot(ids);
+        return index.snapshot(group, ids);
     }
-    static PartitionedZsetIndex.Criteria countries(Map<String,List<String>> query,Set<String> supported,String partition) {
+    static Criteria countries(Map<String,List<String>> query,Set<String> supported,String partition) {
         if(!supported.containsAll(query.keySet()))throw new IllegalArgumentException("unsupported Pool target condition");
-        if(!query.containsKey("worker.country"))return new PartitionedZsetIndex.Criteria(partition,"any",List.of());
+        if(!query.containsKey("worker.country"))return new Criteria(partition,"any",List.of());
         var codes=query.get("worker.country").stream().map(v->Integer.toString(CountryIndex.code(v))).distinct().toList();
-        return new PartitionedZsetIndex.Criteria(partition,"countries",codes);
+        return new Criteria(partition,"countries",codes);
     }
 }

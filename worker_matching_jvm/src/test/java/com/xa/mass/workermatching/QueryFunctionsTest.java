@@ -1,9 +1,13 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.pool.CandidateBudget;
+
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
 import com.xa.mass.kernel.assignment.*;
 import com.xa.mass.kernel.assignment.WorkerMatching.*;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.rules.*;
+
 import io.lettuce.core.RedisClient;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,13 +16,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class QueryFunctionsTest {
-    RedisWorkerMatchingCatalog catalog(MatchingStorage storage, Map<String,QueryFunctions> functions) {
-        return new RedisWorkerMatchingCatalog(storage,Map.of(),
-                functions,Map.of("g",new MatchingGroup(Set.of(),functions.keySet())),Map.of());
+    final CandidateBudget budget = new CandidateBudget();
+    RedisWorkerMatchingCatalog catalog(FactsIndexStore storage, Map<String,QueryFunctions> functions) {
+        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), functions, Map.of("g",new MatchingGroup(Set.of(),functions.keySet())));
     }
     @Test void scalarFunctionsNeedNeitherRefillPolicyNorPoolAndKeepCallLocalOrder() {
         var client=mock(RedisClient.class); var calls=new ArrayList<String>();
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_function_table"))) {
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_function_table"), Map.of())) {
             QueryFunctions strings=new QueryFunctions((group,input)-> {
                 if(!(input instanceof String text))throw new IllegalArgumentException(); return text.toUpperCase(Locale.ROOT);
             },(group,inputs)-> {
@@ -50,7 +54,7 @@ class QueryFunctionsTest {
     }
     @Test void lateAdmissionFailureConsumesNothingAndLaterExecutionFailureDoesNotRollBack() {
         var consumed=new AtomicInteger();
-        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_function_failure"))) {
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_function_failure"), Map.of())) {
             var first=new QueryFunctions((g,i)->i,(g,inputs)-> {
                 consumed.incrementAndGet(); return Map.of(inputs.keySet().iterator().next(),new WorkerCandidate("w",12));
             });
@@ -71,7 +75,7 @@ class QueryFunctionsTest {
             calls.incrementAndGet(); var result=new LinkedHashMap<String,WorkerCandidate>();
             inputs.keySet().forEach(id->result.put(id,new WorkerCandidate("same",19)));return result;
         });
-        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_function_dedup"));
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_function_dedup"), Map.of());
                 var catalog=catalog(storage,Map.of("first",fn,"second",fn))) {
             var requests=new LinkedHashMap<String,WorkerQuery>();
             requests.put("first",new WorkerQuery("first",Map.of())); requests.put("second",new WorkerQuery("second",Map.of()));
@@ -98,10 +102,8 @@ class QueryFunctionsTest {
             return Collections.unmodifiableMap(result);
         });
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_map_function"));
-                var catalog=new RedisWorkerMatchingCatalog(storage,
-                        Map.of("map",rule),
-                        Map.of("map",functions),Map.of("g",new MatchingGroup(Set.of("map"),Set.of("map"))),Map.of())) {
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_map_function"), Map.of());
+                var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of("map",rule), Map.of("map",functions), Map.of("g",new MatchingGroup(Set.of("map"),Set.of("map"))))) {
             var targets=List.of(new RefillTarget("map",new EligibilityQuery(Map.of()),1));
             assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));
             assertEquals(1,catalog.refill("g",targets,List.of(new HeldCandidate("w",44,System.currentTimeMillis()+1000))));

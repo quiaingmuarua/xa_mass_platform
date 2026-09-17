@@ -1,55 +1,123 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.workermatching.rules.*;
+import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.workermatching.functions.DirectQueryFunctions;
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.index.IndexMutation;
+import com.xa.mass.workermatching.index.MessagingIndex;
+import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.ProofFactsIndex;
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.refill.AnyPoolPolicy;
+import com.xa.mass.workermatching.refill.CountryPoolPolicy;
+import com.xa.mass.workermatching.refill.MessagingPoolPolicy;
+import com.xa.mass.workermatching.refill.ProofFactsPoolPolicy;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+import io.lettuce.core.RedisClient;
 import java.util.*;
+import java.util.function.LongSupplier;
 
-/** Fixed production resource wiring. No lookup, lifecycle or dynamic registration protocol. */
+/** Fixed resource wiring; resource construction and startup precede every Pacer caller. */
 public final class MatchingComposition {
-    private final Map<String,CandidatePool> pools;
-    private final Map<String,PoolRefillPolicy> policies;
-    private final Map<String,QueryFunctions> functions;
-    private final Map<String,List<MatchingStorage.IndexMutation>> indexes;
-    public MatchingComposition(MatchingStorage storage, Map<String,MatchingGroup> groups) {
-        var any = new CandidatePool(storage);
-        var country = new CandidatePool(storage);
-        var messaging = new CandidatePool(storage);
-        var proof = new CandidatePool(storage);
-        Map<String,PoolRefillPolicy> policies = Map.of(
-                "any", new AnyPoolPolicy(storage, any),
-                "country", new CountryPoolPolicy(storage, country),
-                "messaging", new MessagingPoolPolicy(storage, messaging),
-                "proof-facts", new ProofFactsPoolPolicy(storage, proof));
-        var functions = Map.of(
-                "worker.any", PoolQueryFunctions.any(any),
-                "worker.country", PoolQueryFunctions.country(country),
-                "worker.messaging.available", PoolQueryFunctions.messaging(messaging),
-                "proof.worker.facts", PoolQueryFunctions.proofFacts(proof),
-                "workerId", DirectQueryFunctions.identity(),
-                "worker.phone", new DirectQueryFunctions(storage).phone());
-        var dependencies = Map.of("worker.any", "any", "worker.country", "country", "worker.messaging.available", "messaging",
-                "proof.worker.facts", "proof-facts");
-        var indexes = new LinkedHashMap<String,List<MatchingStorage.IndexMutation>>();
-        groups.forEach((group, config) -> {
+    private final FactsIndexStore storage;
+    private final LongSupplier clock;
+    private final CandidateBudget budget = new CandidateBudget();
+    private final Map<String, MatchingGroup> groups;
+    private final Map<String, CandidatePool> pools;
+    private final Map<String, PoolRefillPolicy> policies;
+    private final Map<String, QueryFunctions> functions;
+
+    public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
+        this.storage = Objects.requireNonNull(storage);
+        this.clock = Objects.requireNonNull(clock);
+        this.groups = Map.copyOf(groups);
+        var enabledPools = new HashSet<String>();
+        var enabledFunctions = new HashSet<String>();
+        var dependencies = Map.of("worker.any", "any", "worker.country", "country",
+                "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
+        groups.values().forEach(config -> {
             for (String name : config.functions()) {
                 String required = dependencies.get(name);
                 if (required != null && !config.pools().contains(required))
                     throw new IllegalArgumentException("Function " + name + " requires Pool " + required);
             }
-            var resources = new ArrayList<MatchingStorage.IndexMutation>();
-            if (config.pools().contains("messaging")) resources.add(MessagingPoolPolicy.index());
-            if (config.pools().contains("proof-facts")) resources.add(ProofFactsPoolPolicy.index());
-            if (config.functions().contains("worker.phone")) resources.add(PhoneIndex.mutation());
-            indexes.put(group,List.copyOf(resources));
+            enabledPools.addAll(config.pools());
+            enabledFunctions.addAll(config.functions());
         });
-        this.pools = Map.of("any",any,"country",country,"messaging",messaging,"proof-facts",proof);
-        this.policies = Map.copyOf(policies); this.functions = Map.copyOf(functions); this.indexes = Map.copyOf(indexes);
+        var pools = new LinkedHashMap<String, CandidatePool>();
+        var policies = new LinkedHashMap<String, PoolRefillPolicy>();
+        var functions = new LinkedHashMap<String, QueryFunctions>();
+        functions.put("workerId", DirectQueryFunctions.identity());
+        for (String name : List.of("any", "country", "messaging", "proof-facts")) {
+            if (!enabledPools.contains(name)) continue;
+            var pool = new CandidatePool(clock, budget);
+            pools.put(name, pool);
+            switch (name) {
+                case "any" -> {
+                    policies.put(name, new AnyPoolPolicy(clock, pool));
+                    functions.put("worker.any", PoolQueryFunctions.any(pool));
+                }
+                case "country" -> {
+                    policies.put(name, new CountryPoolPolicy(clock, pool, storage::readWorkerFacts));
+                    functions.put("worker.country", PoolQueryFunctions.country(pool));
+                }
+                case "messaging" -> {
+                    var index = new MessagingIndex(storage::commands, storage.keyspace());
+                    policies.put(name, new MessagingPoolPolicy(clock, pool, index));
+                    functions.put("worker.messaging.available", PoolQueryFunctions.messaging(pool));
+                }
+                case "proof-facts" -> {
+                    var index = new ProofFactsIndex(storage::commands, storage.keyspace());
+                    policies.put(name, new ProofFactsPoolPolicy(clock, pool, index));
+                    functions.put("proof.worker.facts", PoolQueryFunctions.proofFacts(pool));
+                }
+                default -> throw new IllegalStateException("Unexpected built-in Pool");
+            }
+        }
+        if (enabledFunctions.contains("worker.phone")) {
+            var phone = new PhoneIndex(storage::commands, storage.keyspace());
+            functions.put("worker.phone", new DirectQueryFunctions(phone).phone());
+        }
+        this.pools = Map.copyOf(pools);
+        this.policies = Map.copyOf(policies);
+        this.functions = Map.copyOf(functions);
     }
-    public Map<String,CandidatePool> pools() { return pools; }
-    public Map<String,PoolRefillPolicy> policies() { return policies; }
-    public Map<String,QueryFunctions> functions() { return functions; }
-    public Map<String,List<MatchingStorage.IndexMutation>> indexes() { return indexes; }
-    public static RedisWorkerMatchingCatalog create(MatchingStorage storage, Map<String,MatchingGroup> groups) {
-        var composition = new MatchingComposition(storage,groups);
-        return new RedisWorkerMatchingCatalog(storage,composition.policies,composition.functions,groups,composition.indexes);
+
+    /** Fixed dependencies, independent of Task demand or current Pool inventory. */
+    public static Map<String, List<IndexMutation>> indexes(Map<String, MatchingGroup> groups) {
+        var indexes = new LinkedHashMap<String, List<IndexMutation>>();
+        groups.forEach((group, config) -> {
+            var resources = new ArrayList<IndexMutation>();
+            if (config.pools().contains("messaging")) resources.add(MessagingIndex.mutation());
+            if (config.pools().contains("proof-facts")) resources.add(ProofFactsIndex.mutation());
+            if (config.functions().contains("worker.phone")) resources.add(PhoneIndex.mutation());
+            indexes.put(group, List.copyOf(resources));
+        });
+        return Collections.unmodifiableMap(indexes);
+    }
+
+    public Map<String, CandidatePool> pools() { return pools; }
+    public CandidateBudget budget() { return budget; }
+    public Map<String, PoolRefillPolicy> policies() { return policies; }
+    public Map<String, QueryFunctions> functions() { return functions; }
+
+    public RedisWorkerMatchingCatalog catalog() {
+        return new RedisWorkerMatchingCatalog(storage, budget, pools, clock, policies, functions, groups);
+    }
+
+    public static RedisWorkerMatchingCatalog create(RedisClient client, RedisKeyspace keyspace,
+            Map<String, MatchingGroup> groups) {
+        var storage = new FactsIndexStore(client, keyspace, indexes(groups));
+        try {
+            var composition = new MatchingComposition(storage, groups, System::currentTimeMillis);
+            var catalog = composition.catalog();
+            storage.rebuildIndexes();
+            return catalog;
+        } catch (RuntimeException | Error failure) {
+            try { storage.close(); }
+            catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
+        }
     }
 }

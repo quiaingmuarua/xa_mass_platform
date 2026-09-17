@@ -1,4 +1,6 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.pool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
@@ -7,7 +9,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 
 class CandidatePoolTest {
     final AtomicLong clock=new AtomicLong(1000);

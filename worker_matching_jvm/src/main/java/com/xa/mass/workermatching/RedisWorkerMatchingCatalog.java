@@ -1,14 +1,12 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.workermatching.rules.MatchingStorage;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerQuery;
-import io.lettuce.core.ScanArgs;
-import io.lettuce.core.ScanCursor;
-import io.lettuce.core.KeyValue;
-import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,21 +21,15 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 /** Matching owns facts, Pool supply admission, and finite Group index projections. */
 public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, AutoCloseable {
-    private final MatchingStorage storage;
-    private final ObjectMapper mapper=JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
+    private final FactsIndexStore storage;
+    private final CandidateBudget budget;
+    private final Map<String, CandidatePool> pools;
     private final Map<String,PoolRefillPolicy> handlers;
     private final Map<String,QueryFunctions> executors;
     private final Map<String,MatchingGroup> groups;
-    private final Map<String,List<MatchingStorage.IndexMutation>> indexesByGroup;
-    private final Map<String,String> scriptsByGroup;
-    private static final String NO_INDEX_SCRIPT=FactsIndexStore.script(List.of());
     private record Scope(String workerGroupId,String poolName) { }
     private final LongSupplier clock;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
@@ -45,11 +37,14 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private long lastDiagnosticMillis;
     private long requestedDeficit;
 
-    public RedisWorkerMatchingCatalog(MatchingStorage storage,Map<String,PoolRefillPolicy> poolPolicies,
-            Map<String,QueryFunctions> queryFunctions,
-            Map<String,MatchingGroup> groups,Map<String,List<MatchingStorage.IndexMutation>> indexesByGroup) {
+    public RedisWorkerMatchingCatalog(FactsIndexStore storage, CandidateBudget budget,
+            Map<String, CandidatePool> pools, LongSupplier clock,
+            Map<String,PoolRefillPolicy> poolPolicies, Map<String,QueryFunctions> queryFunctions,
+            Map<String,MatchingGroup> groups) {
         this.storage=Objects.requireNonNull(storage,"storage");
-        this.clock=storage::now;
+        this.budget=Objects.requireNonNull(budget,"budget");
+        this.pools=Map.copyOf(pools);
+        this.clock=Objects.requireNonNull(clock,"clock");
         this.handlers=Map.copyOf(poolPolicies);
         this.executors=Map.copyOf(queryFunctions);
         executors.keySet().forEach(id -> requireNonBlank(id,"executorName"));
@@ -59,8 +54,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             if(!instances.add(handler))throw new IllegalArgumentException("one Pool name per maintenance instance");
         });
         this.groups = Map.copyOf(groups);
-        var indexes = new LinkedHashMap<String,List<MatchingStorage.IndexMutation>>();
-        var scripts = new LinkedHashMap<String,String>();
         groups.forEach((group, configuration) -> {
             requireNonBlank(group, "WorkerGroup");
             for (String name : configuration.pools())
@@ -68,48 +61,8 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             for (String name : configuration.functions())
                 if (!executors.containsKey(name)) throw new IllegalArgumentException("Unknown function: " + name);
         });
-        indexesByGroup.forEach((group, mutations) -> {
-            if (!groups.containsKey(group)) throw new IllegalArgumentException("Index Group unavailable");
-            var unique = new LinkedHashMap<String,MatchingStorage.IndexMutation>();
-            for (var mutation : mutations) {
-                var prior = unique.putIfAbsent(mutation.namespace(), mutation);
-                if (prior != null && !prior.equals(mutation)) throw new IllegalArgumentException("Conflicting index resource");
-            }
-            var captured = List.copyOf(unique.values());
-            indexes.put(group, captured); scripts.put(group, FactsIndexStore.script(captured));
-        });
-        this.indexesByGroup = Map.copyOf(indexes); this.scriptsByGroup = Map.copyOf(scripts);
-    }
-
-    /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
-    public void rebuildIndexes() {
-        for (String group:indexesByGroup.keySet()) {
-            if(indexesByGroup.get(group).isEmpty())continue;
-            var redis=commands();
-            ScanCursor cursor;
-            for(var index:indexesByGroup.get(group)) {
-                String root=indexBase(group)+":"+index.namespace();
-                // The exact root and its descendants only; never another resource's index.
-                redis.unlink(root);
-                cursor=ScanCursor.INITIAL;
-                do {
-                    var page=redis.scan(cursor,new ScanArgs().match(root+":*").limit(100));
-                    if(!page.getKeys().isEmpty())redis.unlink(page.getKeys().toArray(String[]::new));
-                    cursor=page;
-                } while(!cursor.isFinished());
-            }
-            cursor=ScanCursor.INITIAL;
-            do {
-                var page=redis.hscan(workerFactsKey(group),cursor,new ScanArgs().limit(100));
-                var ids=new ArrayList<String>();
-                for (var entry:page.getMap().entrySet()) {
-                    decodeObject(entry.getValue()); ids.add(entry.getKey()); ids.add("{}");
-                    if (ids.size()==200) { mutate(group,"rebuild",ids); ids.clear(); }
-                }
-                if (!ids.isEmpty()) mutate(group,"rebuild",ids);
-                cursor=page;
-            } while (!cursor.isFinished());
-        }
+        if (!groups.keySet().containsAll(storage.indexedGroups()))
+            throw new IllegalArgumentException("Index Group unavailable");
     }
 
     private @Nullable PoolRefillPolicy eligibility(String group,String id) {
@@ -205,7 +158,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private record RefillPage(List<RefillTarget> queries,int nextCursor,int deficit) { }
 
     private @Nullable RefillPage page(Scope scope,List<RefillTarget> targets,PoolRefillPolicy handler) {
-        int room=storage.availableCapacity();
+        int room=budget.available();
         if(room==0)return null;
         int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
         for(int offset=0;offset<targets.size();offset+=100) {
@@ -222,7 +175,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     @Override public Set<String> groupsNeedingRefill(Map<String,List<RefillTarget>> supplied) {
         var targets=targets(supplied);
-        storage.expireCandidates();
+        pools.values().forEach(CandidatePool::expireAll);
         queryCursors.keySet().retainAll(targets.keySet());
         eligibilityCursors.keySet().retainAll(supplied.keySet());
         var deficits=new LinkedHashMap<String,Integer>();
@@ -230,7 +183,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             var handler=requireEligibility(scope.workerGroupId(),scope.poolName());
             if (scope.poolName().equals("country")) {
                 int missing=handler.deficits(scope.workerGroupId(),targetCounts(rows)).values().stream().mapToInt(Integer::intValue).sum();
-                if(missing>0)deficits.merge(scope.workerGroupId(),Math.min(storage.availableCapacity(),missing),Integer::sum);
+                if(missing>0)deficits.merge(scope.workerGroupId(),Math.min(budget.available(),missing),Integer::sum);
             } else {
                 var page=page(scope,rows,handler);
                 if(page!=null)deficits.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
@@ -240,7 +193,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         long now=clock.getAsLong();
         if(now-lastDiagnosticMillis>=60_000) {
             System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,
-                    "Eligibility refill deficit="+requestedDeficit+" "+storage.diagnostics());
+                    "Eligibility refill deficit="+requestedDeficit+" "+budget.diagnostics());
             lastDiagnosticMillis=now;
         }
         return Collections.unmodifiableSet(new LinkedHashSet<>(deficits.keySet()));
@@ -264,7 +217,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         if(remaining.isEmpty() || scopes.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
-        int room=Math.min(100,storage.availableCapacity()), added=0;
+        int room=Math.min(100,budget.available()), added=0;
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<room;n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
@@ -309,12 +262,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         };
     }
 
-    private List<Long> mutate(String group,String mode,List<String> input) {
-        var args=new ArrayList<String>(); args.add(mode); args.addAll(input);
-        return commands().eval(scriptsByGroup.getOrDefault(group,NO_INDEX_SCRIPT),ScriptOutputType.MULTI,
-                new String[]{workerFactsKey(group),workerPlatformFactsKey(group),indexBase(group)},args.toArray(String[]::new));
-    }
-
     @Override public Map<String,MutationResult> upsertWorkerFactsBatch(String group,Map<String,Map<String,String>> facts) {
         requireNonBlank(group,"workerGroupId"); Objects.requireNonNull(facts,"facts");
         if (facts.isEmpty() || facts.size()>100) throw new IllegalArgumentException("Worker facts batch must contain 1..100 entries");
@@ -323,10 +270,10 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             requireNonBlank(id,"workerId");
             if (properties==null || ((Map<?,?>)properties).entrySet().stream().anyMatch(e -> !(e.getKey() instanceof String key) || key.isBlank() || !(e.getValue() instanceof String))) {
                 result.put(id,result(MutationStatus.INVALID,"invalid Worker properties"));
-            } else { ids.add(id); args.add(id); args.add(encodeObject(properties)); }
+            } else { ids.add(id); args.add(id); args.add(FactsIndexStore.encodeObject(properties)); }
         });
         if (!args.isEmpty()) {
-            var effects=mutate(group,"replace",args);
+            var effects=storage.replaceWorkerFacts(group,args);
             for (int i=0;i<ids.size();i++) result.put(ids.get(i),new MutationResult(effects.get(i)==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED));
         }
         var ordered=new LinkedHashMap<String,MutationResult>(); facts.keySet().forEach(id -> ordered.put(id,result.get(id)));
@@ -338,9 +285,9 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         String encoded;
         try {
             if (properties.size()>100 || properties.keySet().stream().anyMatch(key -> key==null || key.isBlank())) throw new IllegalArgumentException("invalid property names");
-            encoded=encodeObject(properties);
+            encoded=FactsIndexStore.encodeObject(properties);
         } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"invalid platform properties"); }
-        long effect=mutate(group,"patch",List.of(id,encoded)).getFirst();
+        long effect=storage.patchPlatformProperties(group,id,encoded);
         return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
     }
 
@@ -350,58 +297,13 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return targets(Map.of(group,declarations)).values().stream().flatMap(List::stream).toList();
     }
 
-    private String indexBase(String group) { return storage.indexBase(group); }
-    private String workerFactsKey(String group) { return storage.workerFactsKey(group); }
-    private String workerPlatformFactsKey(String group) { return storage.base()+":matching:worker:platform-properties:"+group; }
-
-    @Override
-    public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
-            String workerGroupId,
-            List<String> workerIds
-    ) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        List<String> ids = boundedUnique(workerIds, "workerIds");
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
-        RedisCommands<String, String> commands = commands();
-        List<KeyValue<String, String>> workers = commands.hmget(
-                workerFactsKey(workerGroupId),
-                ids.toArray(String[]::new)
-        );
-        List<KeyValue<String, String>> platforms = commands.hmget(
-                workerPlatformFactsKey(workerGroupId),
-                ids.toArray(String[]::new)
-        );
-        LinkedHashMap<String, WorkerFacts> result = new LinkedHashMap<>();
-        for (int index = 0; index < ids.size(); index++) {
-            String workerId = ids.get(index);
-            String workerRaw = workers.get(index).getValueOrElse(null);
-            if (workerRaw == null) {
-                result.put(workerId, null);
-                continue;
-            }
-            try {
-                String platformRaw = platforms.get(index).getValueOrElse(null);
-                result.put(workerId, new WorkerFacts(
-                        workerId,
-                        workerGroupId,
-                        decodeObject(workerRaw),
-                        platformRaw == null
-                                ? Map.of()
-                                : decodeObject(platformRaw)
-                ));
-            } catch (IllegalArgumentException error) {
-                result.put(workerId, null);
-            }
-        }
-        return immutableNullableMap(result);
+    @Override public Map<String, @Nullable WorkerFacts> loadWorkerFacts(String group, List<String> workerIds) {
+        requireNonBlank(group, "workerGroupId");
+        return storage.loadWorkerFacts(group, boundedUnique(workerIds, "workerIds"));
     }
 
-    private RedisCommands<String, String> commands() { return storage.commands(); }
-
     @Override public void close() {
-        System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,"Eligibility stopped "+storage.diagnostics());
+        System.getLogger(getClass().getName()).log(System.Logger.Level.INFO,"Eligibility stopped "+budget.diagnostics());
         storage.close();
     }
 
@@ -410,64 +312,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             String reason
     ) {
         return new MutationResult(status, reason);
-    }
-
-    private String encodeObject(Map<String, ?> value) {
-        try {
-            return mapper.writeValueAsString(canonicalJsonValue(value));
-        } catch (JacksonException error) {
-            throw new IllegalArgumentException(
-                    "value is not JSON-compatible",
-                    error
-            );
-        }
-    }
-
-    private Map<String, Object> decodeObject(String raw) { return MatchingStorage.decodeObject(raw); }
-
-    private static Object canonicalJsonValue(Object value) {
-        if (value instanceof Map<?, ?> mapping) {
-            TreeMap<String, Object> sorted = new TreeMap<>();
-            mapping.forEach((key, item) -> {
-                if (!(key instanceof String stringKey)) {
-                    throw new IllegalArgumentException(
-                            "JSON object keys must be strings"
-                    );
-                }
-                sorted.put(stringKey, canonicalJsonValue(item));
-            });
-            return sorted;
-        }
-        if (value instanceof Collection<?> collection) {
-            List<Object> items = new ArrayList<>(collection.size());
-            collection.forEach(item -> items.add(canonicalJsonValue(item)));
-            return items;
-        }
-        return snapshotJsonValue(value);
-    }
-
-    private static Object snapshotJsonValue(Object value) {
-        return canonicalJsonValueScalar(value);
-    }
-
-    private static Object canonicalJsonValueScalar(Object value) {
-        if (value == null || value instanceof String
-                || value instanceof Boolean) {
-            return value;
-        }
-        if (value instanceof Double number && !Double.isFinite(number)) {
-            throw new IllegalArgumentException("JSON numbers must be finite");
-        }
-        if (value instanceof Float number && !Float.isFinite(number)) {
-            throw new IllegalArgumentException("JSON numbers must be finite");
-        }
-        if (value instanceof Number) {
-            return value;
-        }
-        if (value instanceof Map<?, ?> || value instanceof Collection<?>) {
-            return canonicalJsonValue(value);
-        }
-        throw new IllegalArgumentException("value is not JSON-compatible");
     }
 
     private static List<String> boundedUnique(

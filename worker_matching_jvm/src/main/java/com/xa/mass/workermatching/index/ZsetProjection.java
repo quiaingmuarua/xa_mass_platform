@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.index;
 
 /** Shared by the existing ZSET Rules, not a requirement on other Rule layouts. */
 final class ZsetProjection {

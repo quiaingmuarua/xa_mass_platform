@@ -1,19 +1,22 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.pool.CandidatePool;
+import java.util.function.LongSupplier;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import com.xa.mass.workermatching.pool.CandidatePool.Selection;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import com.xa.mass.workermatching.PoolRefillPolicy;
 import java.util.*;
 import org.jspecify.annotations.Nullable;
 
 /** Existing Pool strategy support. Inventory is a separate range resource, never a predicate scan. */
 public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
-    protected final MatchingStorage storage;
+    protected final LongSupplier clock;
     private final CandidatePool pool;
-    protected PoolMaintenance(MatchingStorage storage, CandidatePool pool) {
-        this.storage = Objects.requireNonNull(storage);
+    protected PoolMaintenance(LongSupplier clock, CandidatePool pool) {
+        this.clock = Objects.requireNonNull(clock);
         this.pool = Objects.requireNonNull(pool);
     }
     protected abstract EligibilityQuery normalize(String group, EligibilityQuery query);
@@ -68,7 +71,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         if (observation.room() == 0) return List.of();
         var missing = missing(selections, targets, observation);
         if (missing.values().stream().noneMatch(value -> value > 0)) return List.of();
-        long now = storage.now();
+        long now = clock.getAsLong();
         var live = offered.stream().filter(held -> held.expiresAtMillis() > now).toList();
         if (live.isEmpty()) return List.of();
         var values = readQualifications(group, live.stream().map(HeldCandidate::workerId).toList());

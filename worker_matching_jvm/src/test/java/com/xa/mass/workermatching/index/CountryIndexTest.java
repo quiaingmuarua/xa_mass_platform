@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.index;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.HashSet;

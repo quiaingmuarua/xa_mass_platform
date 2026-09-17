@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;

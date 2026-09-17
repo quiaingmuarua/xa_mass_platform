@@ -1,4 +1,4 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.pool;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
@@ -10,7 +10,7 @@ public final class CandidatePool {
     public enum SelectionKind { ALL, VIEW }
     public record Selection(SelectionKind kind, String view, List<String> values) {
         public Selection { values = List.copyOf(new TreeSet<>(values)); }
-        boolean matches(String id, Map<String, String> memberships) {
+        public boolean matches(String id, Map<String, String> memberships) {
             return switch (kind) {
                 case ALL -> true;
                 case VIEW -> memberships.containsKey(view) && values.contains(memberships.get(view));
@@ -20,12 +20,8 @@ public final class CandidatePool {
     public static Selection all() { return new Selection(SelectionKind.ALL, "", List.of()); }
     public static Selection range(String view, List<String> values) { return new Selection(SelectionKind.VIEW, view, values); }
 
-    public CandidatePool(MatchingStorage storage) {
-        this(storage::now, storage.budget);
-        storage.addCandidateOwner(this);
-    }
-    record Admission(HeldCandidate held, Map<String, String> views) {
-        Admission { views = Map.copyOf(views); }
+    public record Admission(HeldCandidate held, Map<String, String> views) {
+        public Admission { views = Map.copyOf(views); }
     }
     static final class Entry {
         final HeldCandidate held;
@@ -48,10 +44,10 @@ public final class CandidatePool {
         final NavigableMap<Expiry, Entry> expiry = new TreeMap<>();
         long nextOrder;
     }
-    record Observation(Map<Selection, Integer> counts, Set<String> present, int room) { }
-    record ViewObservation(Map<String, Integer> counts, int total, Set<String> present, int room) { }
+    public record Observation(Map<Selection, Integer> counts, Set<String> present, int room) { }
+    public record ViewObservation(Map<String, Integer> counts, int total, Set<String> present, int room) { }
     /** One count snapshot of a view, without copying or visiting its entries. */
-    synchronized ViewObservation observeView(String group, String name, Collection<String> ids) {
+    public synchronized ViewObservation observeView(String group, String name, Collection<String> ids) {
         expire(group);
         Stock stock = groups.get(group);
         var counts = new LinkedHashMap<String, Integer>();
@@ -71,12 +67,12 @@ public final class CandidatePool {
     private final Map<String, Stock> groups = new HashMap<>();
     private long countBuckets, selectedEntries, expiredEntries;
 
-    CandidatePool(java.util.function.LongSupplier clock, CandidateBudget budget) {
+    public CandidatePool(java.util.function.LongSupplier clock, CandidateBudget budget) {
         this.clock = Objects.requireNonNull(clock);
         this.budget = Objects.requireNonNull(budget);
     }
 
-    synchronized Observation observe(String group, Collection<Selection> selections, Collection<String> ids) {
+    public synchronized Observation observe(String group, Collection<Selection> selections, Collection<String> ids) {
         expire(group);
         Stock stock = groups.get(group);
         var counts = new LinkedHashMap<Selection, Integer>();
@@ -104,7 +100,7 @@ public final class CandidatePool {
         };
     }
 
-    synchronized List<String> admit(String group, List<Admission> selected) {
+    public synchronized List<String> admit(String group, List<Admission> selected) {
         expire(group);
         Stock existing = groups.get(group);
         Stock stock = existing == null ? new Stock() : existing;
@@ -214,7 +210,7 @@ public final class CandidatePool {
         if (stock.identities.isEmpty()) groups.remove(group);
     }
 
-    synchronized void expireAll() { for (String group : List.copyOf(groups.keySet())) expire(group); }
+    public synchronized void expireAll() { for (String group : List.copyOf(groups.keySet())) expire(group); }
     synchronized Visits visits() { return new Visits(countBuckets, selectedEntries, expiredEntries); }
     synchronized int viewBuckets(String group) {
         var stock = groups.get(group);

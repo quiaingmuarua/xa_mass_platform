@@ -8,7 +8,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
-import com.xa.mass.workermatching.rules.*;
+
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -39,8 +39,7 @@ class PhoneIndexIntegrationTest {
         connection = client.connect(); redis = connection.sync(); catalog = create();
     }
     private RedisWorkerMatchingCatalog create() {
-        var storage = new MatchingStorage(client, keyspace);
-        return com.xa.mass.workermatching.MatchingComposition.create(storage, Map.of(
+        return com.xa.mass.workermatching.MatchingComposition.create(client, keyspace, Map.of(
                 "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("any","messaging"), Set.of("worker.any","worker.phone","worker.messaging.available")),
                 "other", new com.xa.mass.workermatching.MatchingGroup(Set.of(), Set.of("worker.phone"))));
     }
@@ -114,7 +113,7 @@ class PhoneIndexIntegrationTest {
         catalog.upsertWorkerFactsBatch("other", Map.of("b", Map.of("phone", "+2")));
         redis.sadd(value("g", "+1"), "stale"); redis.hset(root("g"), "a", "wrong");
         assertThat(find("g", "+1", 10)).isEmpty();
-        catalog.close(); catalog = create(); catalog.rebuildIndexes();
+        catalog.close(); catalog = create();
         assertThat(find("g", "+1", 10).values()).extracting(WorkerCandidate::workerId).containsExactly("a");
         assertThat(find("other", "+2", 10).values()).extracting(WorkerCandidate::workerId).containsExactly("b");
         assertThat(redis.smembers(value("g", "+1"))).containsExactly("a");

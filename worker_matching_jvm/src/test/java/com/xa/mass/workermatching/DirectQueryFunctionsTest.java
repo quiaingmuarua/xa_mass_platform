@@ -1,9 +1,14 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.functions.DirectQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.rules.*;
+
 import io.lettuce.core.RedisClient;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DirectQueryFunctionsTest {
+    final CandidateBudget budget = new CandidateBudget();
     @Test void identityNeedsNoFactsStockOrRedisAndRetainsInvocationLocalCorrelation() {
         var client = mock(RedisClient.class);
-        try (var storage = new MatchingStorage(client, new RedisKeyspace("test_direct_identity"));
+        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_direct_identity"), Map.of());
              var catalog = catalog(storage)) {
             var input = new LinkedHashMap<String, WorkerQuery>();
             input.put("first", new WorkerQuery("workerId", "w1"));
@@ -35,7 +41,7 @@ class DirectQueryFunctionsTest {
 
     @Test void localAdmissionIsStrictAndPhoneEnablementDoesNotReadRedis() {
         var client = mock(RedisClient.class);
-        try (var storage = new MatchingStorage(client, new RedisKeyspace("test_direct_admission"));
+        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_direct_admission"), Map.of());
              var catalog = catalog(storage)) {
             for (Object input : List.of("", " ", 42, true, List.of("w"), Map.of("workerId", "w"))) {
                 assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("workerId", input)));
@@ -57,8 +63,8 @@ class DirectQueryFunctionsTest {
 
     @Test void noPoolGroupRejectsAnyAndRetiredDefaultWithoutImplicitSupply() {
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_explicit_any"));
-                var catalog=MatchingComposition.create(storage,Map.of())) {
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_explicit_any"), Map.of());
+                var catalog=new MatchingComposition(storage, Map.of(), System::currentTimeMillis).catalog()) {
             assertEquals(List.of(),catalog.normalizeRefill("g",List.of()));
             assertEquals(Set.of(),catalog.groupsNeedingRefill(Map.of("g",List.of())));
             for(String pool:List.of("any","default"))
@@ -67,14 +73,11 @@ class DirectQueryFunctionsTest {
             for(String function:List.of("worker.any","worker.default"))
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g",new WorkerQuery(function,Map.of())));
             assertEquals(new WorkerCandidate("w",0),catalog.take("g",Map.of("m",new WorkerQuery("workerId","w"))).get("m"));
-            assertEquals(10000,storage.availableCapacity());verifyNoInteractions(client);
+            verifyNoInteractions(client);
         }
     }
 
-    private RedisWorkerMatchingCatalog catalog(MatchingStorage storage) {
-        return new RedisWorkerMatchingCatalog(storage,
-                Map.of(),
-                Map.of("workerId", DirectQueryFunctions.identity(), "worker.phone", new DirectQueryFunctions(storage).phone()),
-                Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), Map.of());
+    private RedisWorkerMatchingCatalog catalog(FactsIndexStore storage) {
+        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", DirectQueryFunctions.identity(), "worker.phone", new DirectQueryFunctions(new PhoneIndex(storage::commands, storage.keyspace())).phone()), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))));
     }
 }

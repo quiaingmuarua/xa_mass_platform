@@ -793,6 +793,14 @@ assembly. The `assembly.redis` package owns connection and health only;
 Redis key operations live in
 owner-local provider packages.
 
+`assembly.matching` exposes one Catalog lifecycle Bean. Matching's fixed composition
+creates the enabled Pool and Index resources, shares one Matching Redis connection,
+and completes index rebuild before platform callers start. Failed assembly closes
+that connection; Catalog destruction closes it idempotently without shutting down
+the Server-owned RedisClient. Server does not assemble separate index lifecycles.
+Resource dependencies and atomic Facts/index writes belong to the
+[Matching Owner](../worker_matching_jvm/README.md#fixed-resource-composition).
+
 Worker Prepare composes Server identity resolution and Kernel
 `WorkerResourceCatalog.registerWorkers`. Catalog owns the unique persistent
 Binding and initializes missing members through Score Owner. A normal 1..100

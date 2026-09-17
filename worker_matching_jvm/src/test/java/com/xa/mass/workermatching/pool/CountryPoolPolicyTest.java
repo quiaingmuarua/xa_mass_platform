@@ -1,4 +1,12 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.pool;
+
+import com.xa.mass.workermatching.refill.CountryPoolPolicy;
+
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.*;
 import com.xa.mass.kernel.assignment.WorkerMatching.*;
@@ -16,13 +24,14 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class CountryPoolPolicyTest {
+    final CandidateBudget budget = new CandidateBudget();
     final RedisClient client=mock(RedisClient.class);
     @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
     @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
     final AtomicLong clock=new AtomicLong(1000);
-    final MatchingStorage storage=new MatchingStorage(client,new RedisKeyspace("test_country_buckets"),clock::get);
-    final CandidatePool pool=new CandidatePool(storage);
-    final CountryPoolPolicy policy=new CountryPoolPolicy(storage,pool);
+    final FactsIndexStore storage=new FactsIndexStore(client, new RedisKeyspace("test_country_buckets"), Map.of());
+    final CandidatePool pool=new CandidatePool(clock::get, budget);
+    final CountryPoolPolicy policy=new CountryPoolPolicy(clock::get, pool, storage::readWorkerFacts);
     final Map<String,String> facts=new HashMap<>();
     final List<List<String>> reads=new ArrayList<>();
     final EligibilityQuery any=new EligibilityQuery(Map.of());
@@ -50,17 +59,15 @@ class CountryPoolPolicyTest {
         targets.put(any,1);targets.put(country("CN","US","CN"),1);targets.put(country("US","GB"),1);
         assertEquals(List.of("us"),policy.refill("g",targets,offers("jp","us","cn","gb"),100));
         assertTrue(policy.deficits("g",targets).values().stream().allMatch(n->n==0));
-        assertEquals(1,pool.viewBuckets("g"));assertEquals(9999,storage.availableCapacity());
+        assertEquals(1,pool.viewBuckets("g"));assertEquals(9999,budget.available());
         assertEquals(List.of(List.of("jp","us","cn","gb")),reads);
         clearInvocations(redis);
         var selected=PoolQueryFunctions.country(pool).execute().apply("g",Map.of("m",List.of("US","US")));
         assertEquals(new WorkerCandidate("us",20),selected.get("m"));verifyNoInteractions(redis);
-        assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,storage.availableCapacity());
+        assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,budget.available());
     }
     @Test void equivalentCountryTargetsMergeMaxAndCountOneUnion() {
-        try(var catalog=new RedisWorkerMatchingCatalog(storage,Map.of("country",policy),
-                Map.of("worker.country",PoolQueryFunctions.country(pool)),
-                Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))),Map.of())) {
+        try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",PoolQueryFunctions.country(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))))) {
             var target=new RefillTarget("country",country("CN","US"),3);
             var declarations=catalog.normalizeRefill("g",List.of(
                     new RefillTarget("country",country("US","CN","US"),1),target));
@@ -69,7 +76,7 @@ class CountryPoolPolicyTest {
             facts("us","US");facts("cn","CN");facts("gb","GB");
             assertEquals(2,catalog.refill("g",declarations,offers("us","cn","gb")));
             assertEquals(Map.of(target.target(),1),policy.deficits("g",Map.of(target.target(),3)));
-            assertEquals(9998,storage.availableCapacity());
+            assertEquals(9998,budget.available());
         }
     }
     @Test void fullTargetsUseOneCountSnapshotAndOneFactsReadWithoutCountryPaging() {
@@ -77,9 +84,7 @@ class CountryPoolPolicyTest {
         for(int i=0;i<200;i++) targets.add(new RefillTarget("country",country(""+(char)('A'+i/26)+(char)('A'+i%26)),1));
         facts("late","HR"); // coordinate 199, beyond a 100-target first page
         var traced=spy(policy);
-        try(var catalog=new RedisWorkerMatchingCatalog(storage,Map.of("country",traced),
-                Map.of("worker.country",PoolQueryFunctions.country(pool)),
-                Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))),Map.of())) {
+        try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), clock::get, Map.of("country",traced), Map.of("worker.country",PoolQueryFunctions.country(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))))) {
             assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));
@@ -95,19 +100,19 @@ class CountryPoolPolicyTest {
         facts("valid","CN");facts("lowercase","cn");facts.put("number","{\"country\":42}");facts.put("empty","{}");
         facts.put("corrupt","[]");
         assertThrows(IllegalArgumentException.class,()->policy.refill("g",Map.of(any,100),offers("valid","corrupt"),100));
-        assertEquals(10000,storage.availableCapacity());assertEquals(0,pool.viewBuckets("g"));
+        assertEquals(10000,budget.available());assertEquals(0,pool.viewBuckets("g"));
         assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100));
         clock.set(2000); assertTrue(PoolQueryFunctions.country(pool).execute().apply("g",Map.of("m",Map.of())).isEmpty());
-        assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,storage.availableCapacity());
+        assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,budget.available());
     }
     @Test void readFailureAndTimeSpentReadingCannotCreateEntriesOrRenewDeadline() {
         when(redis.hmget(anyString(),any(String[].class))).thenThrow(new IllegalStateException("read failed"));
         assertThrows(IllegalStateException.class,()->policy.refill("g",Map.of(any,1),offers("w"),1));
-        assertEquals(10000,storage.availableCapacity());
+        assertEquals(10000,budget.available());
         doAnswer(call->{clock.set(2000);return List.of(KeyValue.just("w","{\"country\":\"CN\"}"));})
                 .when(redis).hmget(anyString(),any(String[].class));
         assertTrue(policy.refill("g",Map.of(any,1),offers("w"),1).isEmpty());
-        assertEquals(10000,storage.availableCapacity());
+        assertEquals(10000,budget.available());
     }
     @Test void multiCountryTakeKeepsAdmissionOrderAndDoesNotVisitUnrelatedEntries() {
         facts("a","US");facts("b","CN");facts("c","JP");facts("d","CN");

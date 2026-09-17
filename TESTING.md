@@ -446,3 +446,14 @@ invalidation. Messaging/Proof paging and enabled-index atomic writes remain sepa
 regressions. Country fixtures no longer rely on the retired Country ZSET. Convergence
 checkpoints use a single Identity target after stopping the backup; the independent
 Proof Pool witness retains qualification and strict-fence coverage.
+
+Matching resource separation uses those same proof lanes. Focused assembly tests
+cover no-Pool Identity/Phone composition, a single shared connection, conflicting
+index definitions, startup failure cleanup and idempotent Catalog close. Architecture
+tests enforce actual package dependency restrictions for Pool, Index, refill and
+function implementations. Redis Owner covers Phone updates and rebuild without Task
+demand, non-destructive shared-index queries, Pool capacity/expiry independence,
+namespace-deduplicated writes and every enabled index's preflight protection. Existing
+Messaging/Proof qualification, concurrent Worker/Platform writes, strict-fence/Direct
+competition and real Worker proofs remain unchanged; these tests claim no new capacity
+or performance result.

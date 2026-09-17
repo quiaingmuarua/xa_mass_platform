@@ -1,15 +1,15 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.pool;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
 
 /** Process capacity accounting only: no Worker identity, projection or matching operation. */
-final class CandidateBudget {
+public final class CandidateBudget {
     static final int PER_ELIGIBILITY = 1000, PROCESS = 10_000, ELIGIBILITIES = 100;
     private final Map<Object, Integer> counts = new IdentityHashMap<>();
     private int size;
     private long admitted, consumed, expired, capacityLimited;
-    synchronized int available() { return PROCESS - size; }
+    public synchronized int available() { return PROCESS - size; }
     synchronized int room(Object pool) {
         int count = counts.getOrDefault(pool, 0);
         return count == 0 && counts.size() == ELIGIBILITIES ? 0 : Math.min(PROCESS - size, PER_ELIGIBILITY - count);
@@ -28,7 +28,7 @@ final class CandidateBudget {
         size -= count;
         if (expiration) expired += count; else consumed += count;
     }
-    synchronized String diagnostics() {
+    public synchronized String diagnostics() {
         return "resident=" + size + " eligibilities=" + counts.size() + " admitted=" + admitted
                 + " consumed=" + consumed + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
     }

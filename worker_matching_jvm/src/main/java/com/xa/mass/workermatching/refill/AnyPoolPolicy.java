@@ -1,11 +1,14 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.pool.CandidatePool;
+import java.util.function.LongSupplier;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
 
 /** Explicit unconditional stock: no Facts, identity targeting or property views. */
 public final class AnyPoolPolicy extends PoolMaintenance<Void> {
-    public AnyPoolPolicy(MatchingStorage storage, CandidatePool pool) { super(storage, pool); }
+    public AnyPoolPolicy(LongSupplier clock, CandidatePool pool) { super(clock, pool); }
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery query) {
         if (!query.query().isEmpty()) throw new IllegalArgumentException("any Pool requires an empty target");
         return query;

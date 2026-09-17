@@ -1,9 +1,16 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.rules.*;
+import com.xa.mass.workermatching.refill.CountryPoolPolicy;
+
 import io.lettuce.core.RedisClient;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -11,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class WorkerSelectorAdmissionTest {
+    final CandidateBudget budget = new CandidateBudget();
     @Test void publicRuleContractContainsOnlyEligibilityOperations() {
         var methods=Arrays.stream(PoolRefillPolicy.class.getDeclaredMethods()).map(java.lang.reflect.Method::getName)
                 .collect(java.util.stream.Collectors.toSet());
@@ -22,9 +30,9 @@ class WorkerSelectorAdmissionTest {
     }
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_admission"))) {
-            var stock=new CandidatePool(storage);
-            var rule=new CountryPoolPolicy(storage,stock);
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
+            var stock=new CandidatePool(System::currentTimeMillis, budget);
+            var rule=new CountryPoolPolicy(System::currentTimeMillis, stock, storage::readWorkerFacts);
             assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             assertThrows(IllegalArgumentException.class,()->EligibilityQuery.parse(Map.of("worker.country",Map.of("op","in","values",List.of("CN")))));
             assertDoesNotThrow(()->rule.normalizeQuery("g",EligibilityQuery.parse(Map.of("worker.country",List.of("CN")))));
@@ -37,12 +45,10 @@ class WorkerSelectorAdmissionTest {
     }
     @Test void invalidCompositionAndTargetsFailWithoutRedis() {
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_admission"))) {
-            assertThrows(IllegalArgumentException.class,()->MatchingComposition.create(storage,
-                    Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of()))));
-            assertThrows(IllegalArgumentException.class,()->MatchingComposition.create(storage,
-                    Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country")))));
-            try(var catalog=MatchingComposition.create(storage,Map.of("g",new MatchingGroup(Set.of("country"),Set.of())))) {
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
+            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of())), System::currentTimeMillis).catalog());
+            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country"))), System::currentTimeMillis).catalog());
+            try(var catalog=new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("country"),Set.of())), System::currentTimeMillis).catalog()) {
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
                         new RefillTarget("country",new EligibilityQuery(Map.of("workerId",List.of("w"))),1))));
             }

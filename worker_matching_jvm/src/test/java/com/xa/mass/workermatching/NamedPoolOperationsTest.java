@@ -1,14 +1,22 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerQuery;
-import com.xa.mass.workermatching.rules.*;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import com.xa.mass.workermatching.refill.AnyPoolPolicy;
+import com.xa.mass.workermatching.refill.PoolMaintenance;
+
+import com.xa.mass.workermatching.pool.CandidatePool.Selection;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -22,6 +30,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class NamedPoolOperationsTest {
+    final CandidateBudget budget = new CandidateBudget();
     final RedisClient client=mock(RedisClient.class);
     @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
     @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
@@ -30,21 +39,18 @@ class NamedPoolOperationsTest {
     final java.util.concurrent.atomic.AtomicLong clock=new java.util.concurrent.atomic.AtomicLong(1000);
     final JsonMapper json=JsonMapper.builder().build();
     RedisWorkerMatchingCatalog catalog;
-    MatchingStorage storage;
+    FactsIndexStore storage;
     static final EligibilityQuery ANY=EligibilityQuery.parse(Map.of());
 
     @BeforeEach void setUp() {
         when(client.connect(StringCodec.UTF8)).thenReturn(connection);
         when(connection.isOpen()).thenReturn(true);
         when(connection.sync()).thenReturn(redis);
-        storage=new MatchingStorage(client,new RedisKeyspace("test_named_pool"),clock::get);
-        rule=new CountingRule(storage); failingRule=new CountingRule(storage);
-        var defaultStock=new CandidatePool(storage);
-        var defaults=new AnyPoolPolicy(storage,defaultStock);
-        catalog=new RedisWorkerMatchingCatalog(storage,
-                Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule),
-                Map.of("worker.any",PoolQueryFunctions.any(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()),
-                configuredGroups(),Map.of());
+        storage=new FactsIndexStore(client, new RedisKeyspace("test_named_pool"), Map.of());
+        rule=new CountingRule(clock::get,budget); failingRule=new CountingRule(clock::get,budget);
+        var defaultStock=new CandidatePool(clock::get, budget);
+        var defaults=new AnyPoolPolicy(clock::get, defaultStock);
+        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",PoolQueryFunctions.any(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups());
     }
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
@@ -299,8 +305,8 @@ class NamedPoolOperationsTest {
 
     static final class CountingRule extends PoolMaintenance<String> {
         final CandidatePool stock;
-        CountingRule(MatchingStorage storage) { this(storage,new CandidatePool(storage)); }
-        CountingRule(MatchingStorage storage,CandidatePool stock) { super(storage,stock); this.stock=stock; }
+        CountingRule(java.util.function.LongSupplier clock, CandidateBudget budget) { this(clock,new CandidatePool(clock,budget)); }
+        CountingRule(java.util.function.LongSupplier clock,CandidatePool stock) { super(clock,stock); this.stock=stock; }
         QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
         final Map<String,String> facts=new HashMap<>();
         final Set<EligibilityQuery> observedTargets=new LinkedHashSet<>();

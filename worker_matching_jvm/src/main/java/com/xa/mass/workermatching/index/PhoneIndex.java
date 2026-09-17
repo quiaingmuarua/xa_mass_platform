@@ -1,4 +1,9 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.index;
+
+import com.xa.mass.kernel.redis.RedisKeyspace;
+import io.lettuce.core.api.sync.RedisCommands;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 import io.lettuce.core.ScriptOutputType;
 import java.util.ArrayList;
@@ -52,14 +57,17 @@ public final class PhoneIndex {
             return result
             """;
 
-    private final MatchingStorage storage;
-    PhoneIndex(MatchingStorage storage) { this.storage = storage; }
-
-    public static MatchingStorage.IndexMutation mutation() {
-        return new MatchingStorage.IndexMutation("phone", PREPARE);
+    private final Supplier<RedisCommands<String, String>> commands;
+    private final RedisKeyspace keyspace;
+    public PhoneIndex(Supplier<RedisCommands<String, String>> commands, RedisKeyspace keyspace) {
+        this.commands = Objects.requireNonNull(commands); this.keyspace = Objects.requireNonNull(keyspace);
     }
 
-    Map<String, List<String>> lookup(String group, Map<String, Integer> counts) {
+    public static IndexMutation mutation() {
+        return new IndexMutation("phone", PREPARE);
+    }
+
+    public Map<String, List<String>> lookup(String group, Map<String, Integer> counts) {
         if (counts.isEmpty()) return Map.of();
         var args = new ArrayList<String>();
         int total = 0;
@@ -70,8 +78,8 @@ public final class PhoneIndex {
             total += request.getValue();
             args.add(request.getKey()); args.add(Integer.toString(request.getValue()));
         }
-        List<?> rows = storage.commands().eval(LOOKUP, ScriptOutputType.MULTI,
-                new String[]{storage.indexKey(group, "phone")}, args.toArray(String[]::new));
+        List<?> rows = commands.get().eval(LOOKUP, ScriptOutputType.MULTI,
+                new String[]{IndexMutation.base(keyspace, group) + ":phone"}, args.toArray(String[]::new));
         var result = new LinkedHashMap<String, List<String>>();
         int row = 0;
         for (String phone : counts.keySet()) {

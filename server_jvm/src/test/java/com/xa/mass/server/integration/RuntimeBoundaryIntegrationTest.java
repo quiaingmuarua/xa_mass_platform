@@ -13,7 +13,10 @@ import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.*;
-import com.xa.mass.workermatching.rules.*;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.server.testsupport.BucketPoolFixture;
 import com.xa.mass.server.testsupport.IdentityHintPoolFixture;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -95,16 +98,29 @@ class RuntimeBoundaryIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods=false)
     static class MatchingTestAssembly {
-        @Bean MatchingStorage matchingStorage(RedisClient client,XaMassRedisProperties redis) {
-            return new MatchingStorage(client,redis.keyspace());
+        @Bean(destroyMethod="close") FactsIndexStore matchingFactsStore(
+                RedisClient client, XaMassRedisProperties redis, MatchingProperties rules) {
+            var indexes=new LinkedHashMap<>(MatchingComposition.indexes(rules.groups()));
+            rules.groups().forEach((group,config)->{if(config.pools().contains(BucketPoolFixture.ID)) {
+                var all=new ArrayList<>(indexes.getOrDefault(group,List.of()));
+                all.addAll(BucketPoolFixture.indexes()); indexes.put(group,List.copyOf(all));
+            }});
+            return new FactsIndexStore(client,redis.keyspace(),indexes);
         }
-        @Bean IdentityHintPoolFixture identityHintRule(MatchingStorage storage) {
-            return new IdentityHintPoolFixture(storage);
+        @Bean MatchingComposition matchingTestComposition(FactsIndexStore storage,MatchingProperties rules) {
+            return new MatchingComposition(storage,rules.groups(),System::currentTimeMillis);
         }
-        @Bean(destroyMethod="close") com.xa.mass.workermatching.RedisWorkerMatchingCatalog workerMatchingCatalog(
-                MatchingStorage storage,MatchingProperties rules,IdentityHintPoolFixture identityHintRule) {
-            var composition=new MatchingComposition(storage,rules.groups());
-            var bucket=new BucketPoolFixture(storage,new CandidatePool(storage),false);
+        @Bean IdentityHintPoolFixture identityHintRule(MatchingComposition composition) {
+            return new IdentityHintPoolFixture(System::currentTimeMillis,
+                    new CandidatePool(System::currentTimeMillis,composition.budget()));
+        }
+        @Bean(destroyMethod="close") RedisWorkerMatchingCatalog workerMatchingCatalog(
+                FactsIndexStore storage,MatchingComposition composition,MatchingProperties rules,
+                IdentityHintPoolFixture identityHintRule) {
+            var stock=new CandidatePool(System::currentTimeMillis,composition.budget());
+            var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,false);
+            var pools=new LinkedHashMap<>(composition.pools());
+            pools.put(BucketPoolFixture.ID,stock); pools.put(IdentityHintPoolFixture.ID,identityHintRule.stock());
             var handlers=new LinkedHashMap<>(composition.policies());
             handlers.put(BucketPoolFixture.ID,bucket); handlers.put(IdentityHintPoolFixture.ID,identityHintRule);
             var functions=new LinkedHashMap<>(composition.functions());
@@ -125,12 +141,9 @@ class RuntimeBoundaryIntegrationTest {
                 var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("phone",((List<?>)input).getFirst())));
                 return messaging.execute().apply(g,local);
             }));
-            var indexes=new LinkedHashMap<>(composition.indexes());
-            rules.groups().forEach((group,config)->{if(config.pools().contains(BucketPoolFixture.ID)) {
-                var all=new ArrayList<>(indexes.getOrDefault(group,List.of())); all.addAll(BucketPoolFixture.indexes()); indexes.put(group,List.copyOf(all));
-            }});
-            var catalog=new RedisWorkerMatchingCatalog(storage,handlers,functions,rules.groups(),indexes);
-            try { catalog.rebuildIndexes(); return catalog; }
+            var catalog=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
+                    System::currentTimeMillis,handlers,functions,rules.groups());
+            try { storage.rebuildIndexes(); return catalog; }
             catch(RuntimeException failure) { catalog.close(); throw failure; }
         }
 
@@ -207,7 +220,6 @@ class RuntimeBoundaryIntegrationTest {
 
     @org.junit.jupiter.api.AfterEach
     void closeScoreWitness() { redisWitness.close(); }
-
 
     @MockitoSpyBean
     private com.xa.mass.kernel.delivery.TaskEvidenceRuntime taskEvidence;
@@ -499,7 +511,6 @@ class RuntimeBoundaryIntegrationTest {
             }
         }
     }
-
 
     @Test
     void realWorkersServeTwoTasksFromTheSameRefilledEligibility() throws Exception {
@@ -835,7 +846,6 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText())).containsAllEntriesOf(executor);
         });
     }
-
 
     @Test
     void lostFullPropertiesPublicationIsReplacedByNextIncrementalObservationOnBothTextProtocols() throws Exception {
@@ -1346,7 +1356,6 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(timeMillis(disconnected))
                     .isGreaterThanOrEqualTo(timeMillis(connected));
 
-
             long reconnectEvidenceFloor = slotStart(System.currentTimeMillis());
             reconnected = startWorker(
                     workerGroupId,
@@ -1367,7 +1376,6 @@ class RuntimeBoundaryIntegrationTest {
                             timeMillis(disconnected),
                             reconnectEvidenceFloor
                     ));
-
 
             demandTaskId=createTask(workerGroupId,"worker.any");
             demandTaskCreated = true;

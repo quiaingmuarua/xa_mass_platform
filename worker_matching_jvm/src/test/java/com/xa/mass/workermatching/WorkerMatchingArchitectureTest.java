@@ -13,15 +13,27 @@ class WorkerMatchingArchitectureTest {
     private static final Path SOURCE = Path.of("src/main/java");
 
     @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
-        Path rules=SOURCE.resolve("com/xa/mass/workermatching/rules");
-        for(String file:List.of("CandidatePool.java","MatchingStorage.java")) {
-            String source=Files.readString(rules.resolve(file));
-            for(String forbidden:List.of("executorName","QueryFunctions","PoolRefillPolicy"))
-                assertFalse(source.contains(forbidden),file+" must not depend on "+forbidden);
+        assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.",
+                ".functions.", ".refill.", "executorName", "QueryFunctions", "PoolRefillPolicy"));
+        assertPackageDependencies("index", List.of(".pool.", ".refill.", ".functions.",
+                "executorName", "QueryFunctions", "PoolRefillPolicy", "CandidateBudget"));
+        assertPackageDependencies("storage", List.of(".pool.", ".refill.", ".functions.",
+                "executorName", "CandidateBudget", "CandidatePool"));
+        assertPackageDependencies("functions", List.of(".refill.", ".storage.", "io.lettuce",
+                "PoolRefillPolicy", "PoolMaintenance", "new CandidatePool", "new PhoneIndex",
+                "new MessagingIndex", "new ProofFactsIndex", "new Thread"));
+        assertPackageDependencies("refill", List.of("io.lettuce", "IndexMutation", "prepareLua",
+                "new PhoneIndex", "new MessagingIndex", "new ProofFactsIndex", "redis.call", ":matching:"));
+    }
+
+    private void assertPackageDependencies(String name, List<String> forbidden) throws IOException {
+        try (var files=Files.walk(SOURCE.resolve("com/xa/mass/workermatching").resolve(name))) {
+            for (Path file:files.filter(path->path.toString().endsWith(".java")).toList()) {
+                String source=Files.readString(file);
+                for(String dependency:forbidden)
+                    assertFalse(source.contains(dependency),file+" must not depend on "+dependency);
+            }
         }
-        String consumers=Files.readString(rules.resolve("PoolQueryFunctions.java"));
-        for(String forbidden:List.of("PoolRefillPolicy","PoolMaintenance","PartitionedPoolPolicy","new CandidatePool","new Thread"))
-            assertFalse(consumers.contains(forbidden),"Consumer functions only receive existing resources: "+forbidden);
     }
 
     @Test

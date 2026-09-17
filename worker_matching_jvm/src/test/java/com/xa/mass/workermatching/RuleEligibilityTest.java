@@ -1,13 +1,21 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.CandidatePool;
+
+import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.rules.*;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import com.xa.mass.workermatching.refill.AnyPoolPolicy;
+import com.xa.mass.workermatching.refill.PoolMaintenance;
+
+import com.xa.mass.workermatching.pool.CandidatePool.Selection;
+import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import io.lettuce.core.RedisClient;
 import java.util.*;
 import java.util.concurrent.*;
@@ -18,12 +26,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class RuleEligibilityTest {
+    final CandidateBudget budget = new CandidateBudget();
     final AtomicLong clock=new AtomicLong(1000);
-    final MatchingStorage storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_rule_stock"),clock::get);
+    final FactsIndexStore storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule_stock"), Map.of());
     final TestPoolPolicy rule=new TestPoolPolicy();
     static final EligibilityQuery ANY=EligibilityQuery.parse(Map.of());
     @AfterEach void close() { storage.close(); }
-    final class TestPoolPolicy extends com.xa.mass.workermatching.rules.PoolMaintenance<String> {
+    final class TestPoolPolicy extends com.xa.mass.workermatching.refill.PoolMaintenance<String> {
         Map<String,String> current=Map.of();
         int reads, evaluations;
         boolean fail, foreign;
@@ -31,8 +40,8 @@ class RuleEligibilityTest {
         Runnable beforeMatch=()->{};
         List<String> readIds=List.of();
         final CandidatePool stock;
-        TestPoolPolicy() { this(new CandidatePool(RuleEligibilityTest.this.storage)); }
-        TestPoolPolicy(CandidatePool stock) { super(RuleEligibilityTest.this.storage,stock);this.stock=stock; }
+        TestPoolPolicy() { this(new CandidatePool(RuleEligibilityTest.this.clock::get, budget)); }
+        TestPoolPolicy(CandidatePool stock) { super(RuleEligibilityTest.this.clock::get,stock);this.stock=stock; }
         QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
         @Override protected EligibilityQuery normalize(String group,EligibilityQuery input) {
             var expression = input.query();
@@ -161,14 +170,14 @@ class RuleEligibilityTest {
         assertEquals(80,new HashSet<>(accepted).size());
         assertEquals(0,rule.deficits("g",Map.of(ANY,50)).get(ANY));
         assertEquals(80,consume(rule,"g",Map.of(),100).size());
-        assertEquals(10_000,storage.availableCapacity());
+        assertEquals(10_000,budget.available());
     }
     @Test void concurrentRefillsStillRespectCurrentHardCapacity() throws Exception {
         populate(950);
         var accepted=refillTogether(1000,offers(950,100,"US"),offers(1050,100,"US"));
         assertEquals(50,accepted.size());
         assertEquals(50,new HashSet<>(accepted).size());
-        assertEquals(9000,storage.availableCapacity());
+        assertEquals(9000,budget.available());
         assertEquals(0,rule.deficits("g",Map.of(ANY,1000)).get(ANY));
     }
     private List<String> refillTogether(int target,List<HeldCandidate> first,List<HeldCandidate> second) throws Exception {
@@ -196,8 +205,6 @@ class RuleEligibilityTest {
         assertEquals(candidate(replacement),consume(rule,"g",Map.of(),1).getFirst());
     }
 
-
-
     private static void await(CountDownLatch latch) {
         try { assertTrue(latch.await(5,TimeUnit.SECONDS)); }
         catch(InterruptedException error) { Thread.currentThread().interrupt();throw new AssertionError(error); }
@@ -217,15 +224,16 @@ class RuleEligibilityTest {
         assertEquals(10,rule.deficits("g",targets(List.of(target))).get(target.target()));
     }
     @Test void processAndResidentGroupCapsAreSharedAcrossRuleOwnedPools() {
-        var defaults=new AnyPoolPolicy(storage,new CandidatePool(storage));
+        var defaultStock=new CandidatePool(clock::get, budget);
+        var defaults=new AnyPoolPolicy(clock::get, defaultStock);
         var any=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000);
         for(int g=0;g<10;g++)for(int n=0;n<10;n++)
             assertEquals(100,defaults.refill("g"+g,targets(List.of(any)),offers(n*100,100,"US"),100).size());
-        assertEquals(0,storage.availableCapacity());
+        assertEquals(0,budget.available());
         assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).isEmpty());
         clock.set(6000);
-        assertEquals(0,storage.availableCapacity(),"unrelated expiry requires global shortage-observation cleanup");
-        storage.expireCandidates(); assertEquals(10_000,storage.availableCapacity());
+        assertEquals(0,budget.available(),"unrelated expiry requires global shortage-observation cleanup");
+        defaultStock.expireAll(); rule.stock.expireAll(); assertEquals(10_000,budget.available());
         for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).size());
         assertTrue(defaults.refill("other",targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).isEmpty());
     }

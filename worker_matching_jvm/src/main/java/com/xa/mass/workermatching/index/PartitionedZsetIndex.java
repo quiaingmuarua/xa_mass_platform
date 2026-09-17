@@ -1,5 +1,6 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.index;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -7,8 +8,7 @@ import java.util.*;
 import java.util.function.Supplier;
 
 /** Bounded query mechanics shared by explicitly composed Rules; coordinates never leave Matching. */
-final class PartitionedZsetIndex {
-    record Criteria(String partition, String kind, List<String> values) { }
+public abstract class PartitionedZsetIndex {
     // Shared metadata validation for facts projection and bounded post-hold reads.
     static final String PARTITIONS_LUA = """
             local function partitions(key,id)
@@ -51,21 +51,23 @@ final class PartitionedZsetIndex {
             return result
             """;
 
-    record Projection(String prefix, Set<String> partitions) {
+    public record Projection(String prefix, Set<String> partitions) {
 
     }
 
     private final Supplier<RedisCommands<String,String>> commands;
-    private final String key;
+    private final RedisKeyspace keyspace;
+    private final String namespace;
 
-    PartitionedZsetIndex(Supplier<RedisCommands<String,String>> commands, String key) {
-        this.commands=commands; this.key=key;
+    protected PartitionedZsetIndex(Supplier<RedisCommands<String,String>> commands, RedisKeyspace keyspace, String namespace) {
+        this.commands=Objects.requireNonNull(commands); this.keyspace=Objects.requireNonNull(keyspace); this.namespace=namespace;
     }
 
     /** Recheck membership and obtain the entire query projection after acquisition established the initial soft hold. */
-    Map<String,Projection> snapshot(List<String> ids) {
+    public Map<String,Projection> snapshot(String group, List<String> ids) {
         if (ids.isEmpty()) return Map.of();
         if (ids.size()>100) throw new IllegalArgumentException("at most 100 identities");
+        String key = IndexMutation.base(keyspace, group) + ":" + namespace;
         List<?> rows=commands.get().eval(SNAPSHOT,ScriptOutputType.MULTI,new String[]{key,key+":partitions"},ids.toArray(String[]::new));
         var result=new LinkedHashMap<String,Projection>();
         for (int i=0;i<ids.size();i++) {

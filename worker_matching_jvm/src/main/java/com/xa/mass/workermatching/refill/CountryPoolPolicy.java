@@ -1,4 +1,9 @@
-package com.xa.mass.workermatching.rules;
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.RuleInputs;
+import java.util.function.LongSupplier;
+import java.util.function.BiFunction;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
@@ -7,10 +12,13 @@ import java.util.*;
 
 /** Country supply over bounded Facts reads and local counts; no source index or cursor. */
 public final class CountryPoolPolicy implements PoolRefillPolicy {
-    private final MatchingStorage storage;
+    private final LongSupplier clock;
+    private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts;
     private final CandidatePool pool;
-    public CountryPoolPolicy(MatchingStorage storage, CandidatePool pool) {
-        this.storage = Objects.requireNonNull(storage);
+    public CountryPoolPolicy(LongSupplier clock, CandidatePool pool,
+            BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts) {
+        this.clock = Objects.requireNonNull(clock);
+        this.readFacts = Objects.requireNonNull(readFacts);
         this.pool = Objects.requireNonNull(pool);
     }
     @Override public EligibilityQuery normalizeQuery(String group, EligibilityQuery query) {
@@ -62,11 +70,11 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
         var observed = pool.observeView(group, "country", ids);
         var missing = missing(countries, targets, observed);
         if (observed.room() == 0 || missing.values().stream().noneMatch(count -> count > 0)) return List.of();
-        long now = storage.now();
+        long now = clock.getAsLong();
         var live = offered.stream().filter(held -> held.expiresAtMillis() > now).toList();
         if (live.isEmpty()) return List.of();
         // Decode every returned Facts value before preparing or committing any entry.
-        var facts = storage.readWorkerFacts(group, live.stream().map(HeldCandidate::workerId).toList());
+        var facts = readFacts.apply(group, live.stream().map(HeldCandidate::workerId).toList());
         var prepared = new LinkedHashMap<String, CandidatePool.Admission>();
         for (var held : live) {
             Object value = facts.getOrDefault(held.workerId(), Map.of()).get("country");
