@@ -49,7 +49,8 @@ class ScenarioWorkerProfileContractTest {
                     );
 
     @EnableConfigurationProperties({WorkerEndpointDirectory.class,
-            com.xa.mass.server.assembly.matching.MatchingRuleProperties.class})
+            com.xa.mass.server.task.call.TaskRpcProperties.class})
+    @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class EndpointConfiguration {}
 
     @Test
@@ -60,11 +61,11 @@ class ScenarioWorkerProfileContractTest {
                 "spring.profiles.active=scenario-workers"
         ).run(context -> {
             assertThat(context).hasNotFailed();
-            var defaults=context.getBean(com.xa.mass.server.assembly.matching.MatchingRuleProperties.class)
-                    .defaultRefillTargets();
+            var defaults=context.getBean(com.xa.mass.server.task.call.TaskRpcProperties.class)
+                    .refillByWorkerGroup();
             for (String group : List.of("scenario-string-utils-workers","scenario-phone-number-workers")) {
-                assertThat(defaults.get(group).get("worker.default")).containsExactly(
-                        new RefillTarget(Map.of(),1000));
+                assertThat(defaults.get(group)).containsExactly(
+                        new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000));
             }
             assertThat(context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class

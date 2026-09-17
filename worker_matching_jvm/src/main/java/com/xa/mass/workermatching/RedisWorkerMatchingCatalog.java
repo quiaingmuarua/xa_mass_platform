@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.workermatching.rules.RedisRuleStorage;
+import com.xa.mass.workermatching.rules.MatchingStorage;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import io.lettuce.core.ScanArgs;
@@ -29,73 +29,69 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Matching owns facts, named Rule admission, and finite Group index projections. */
+/** Matching owns facts, Pool supply admission, and finite Group index projections. */
 public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, AutoCloseable {
-    private final RedisRuleStorage storage;
+    private final MatchingStorage storage;
     private final ObjectMapper mapper=JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
-    private final Map<String,RuleHandler> handlers;
+    private final Map<String,PoolRefillPolicy> handlers;
     private final Map<String,QueryFunctions> executors;
-    private final Map<String,Set<String>> rulesByGroup;
-    private final Map<String,List<RedisRuleStorage.IndexMutation>> indexesByGroup;
+    private final Map<String,MatchingGroup> groups;
+    private final Map<String,List<MatchingStorage.IndexMutation>> indexesByGroup;
     private final Map<String,String> scriptsByGroup;
     private static final String NO_INDEX_SCRIPT=FactsIndexStore.script(List.of());
-    private record Scope(String workerGroupId,String ruleId) { }
+    private record Scope(String workerGroupId,String poolName) { }
     private final LongSupplier clock;
-    private final Map<String,Map<String,List<RefillTarget>>> defaultTargets;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
     private final Map<Scope,Integer> queryCursors=new LinkedHashMap<>();
     private long lastDiagnosticMillis;
     private long requestedDeficit;
 
-    public RedisWorkerMatchingCatalog(RedisRuleStorage storage,Map<String,RuleHandler> ruleHandlers,
+    public RedisWorkerMatchingCatalog(MatchingStorage storage,Map<String,PoolRefillPolicy> poolPolicies,
             Map<String,QueryFunctions> queryFunctions,
-            Map<String,Set<String>> groupRules,Map<String,Map<String,List<RefillTarget>>> defaultTargets) {
+            Map<String,MatchingGroup> groups,Map<String,List<MatchingStorage.IndexMutation>> indexesByGroup) {
         this.storage=Objects.requireNonNull(storage,"storage");
         this.clock=storage::now;
-        this.handlers=Map.copyOf(ruleHandlers);
+        this.handlers=Map.copyOf(poolPolicies);
         this.executors=Map.copyOf(queryFunctions);
         executors.keySet().forEach(id -> requireNonBlank(id,"executorName"));
-        if(!handlers.containsKey(DEFAULT_RULE_ID))throw new IllegalArgumentException("worker.default Handler is required");
-        handlers.keySet().forEach(id->requireNonBlank(id,"Rule ID"));
-        var instances=Collections.newSetFromMap(new java.util.IdentityHashMap<RuleHandler,Boolean>());
+        if(!handlers.containsKey(DEFAULT_POOL_NAME))throw new IllegalArgumentException("default Pool policy is required");
+        handlers.keySet().forEach(id->requireNonBlank(id,"Pool name"));
+        var instances=Collections.newSetFromMap(new java.util.IdentityHashMap<PoolRefillPolicy,Boolean>());
         handlers.values().forEach(handler->{
-            if(!instances.add(handler))throw new IllegalArgumentException("one Rule ID per Handler instance");
+            if(!instances.add(handler))throw new IllegalArgumentException("one Pool name per maintenance instance");
         });
-        var groups=new LinkedHashMap<String,Set<String>>();
-        var indexes=new LinkedHashMap<String,List<RedisRuleStorage.IndexMutation>>();
-        var scripts=new LinkedHashMap<String,String>();
-        groupRules.forEach((group,ids)->{
-            requireNonBlank(group,"WorkerGroup");
-            var enabled=Set.copyOf(ids);
-            var mutations=new ArrayList<RedisRuleStorage.IndexMutation>();
-            for(String id:enabled) {
-                var handler=handlers.get(id);
-                if(handler==null && !executors.containsKey(id))throw new IllegalArgumentException("Unknown function: "+id);
-                mutations.addAll(storage.indexes(id));
+        this.groups = Map.copyOf(groups);
+        var indexes = new LinkedHashMap<String,List<MatchingStorage.IndexMutation>>();
+        var scripts = new LinkedHashMap<String,String>();
+        groups.forEach((group, configuration) -> {
+            requireNonBlank(group, "WorkerGroup");
+            for (String name : configuration.pools())
+                if (!handlers.containsKey(name)) throw new IllegalArgumentException("Unknown Pool: " + name);
+            for (String name : configuration.functions())
+                if (!executors.containsKey(name)) throw new IllegalArgumentException("Unknown function: " + name);
+        });
+        indexesByGroup.forEach((group, mutations) -> {
+            if (!groups.containsKey(group)) throw new IllegalArgumentException("Index Group unavailable");
+            var unique = new LinkedHashMap<String,MatchingStorage.IndexMutation>();
+            for (var mutation : mutations) {
+                var prior = unique.putIfAbsent(mutation.namespace(), mutation);
+                if (prior != null && !prior.equals(mutation)) throw new IllegalArgumentException("Conflicting index resource");
             }
-            groups.put(group,enabled); indexes.put(group,List.copyOf(mutations));
-            scripts.put(group,FactsIndexStore.script(mutations));
+            var captured = List.copyOf(unique.values());
+            indexes.put(group, captured); scripts.put(group, FactsIndexStore.script(captured));
         });
-        rulesByGroup=Map.copyOf(groups); indexesByGroup=Map.copyOf(indexes); scriptsByGroup=Map.copyOf(scripts);
-        var defaults=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
-        defaultTargets.forEach((group,rules) -> {
-            requireNonBlank(group,"WorkerGroup");
-            var targets=new LinkedHashMap<String,List<RefillTarget>>();
-            rules.forEach((rule,queries) -> targets.put(rule,resolveTargets(group,rule,queries)));
-            defaults.put(group,Map.copyOf(targets));
-        });
-        this.defaultTargets=Map.copyOf(defaults);
+        this.indexesByGroup = Map.copyOf(indexes); this.scriptsByGroup = Map.copyOf(scripts);
     }
 
     /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
     public void rebuildIndexes() {
-        for (String group:rulesByGroup.keySet()) {
+        for (String group:indexesByGroup.keySet()) {
             if(indexesByGroup.get(group).isEmpty())continue;
             var redis=commands();
             ScanCursor cursor;
             for(var index:indexesByGroup.get(group)) {
                 String root=indexBase(group)+":"+index.namespace();
-                // The exact root and its descendants only; never another Rule's index.
+                // The exact root and its descendants only; never another resource's index.
                 redis.unlink(root);
                 cursor=ScanCursor.INITIAL;
                 do {
@@ -118,23 +114,24 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         }
     }
 
-    private @Nullable RuleHandler eligibility(String group,String id) {
+    private @Nullable PoolRefillPolicy eligibility(String group,String id) {
         var handler=handlers.get(id);
-        var enabled=rulesByGroup.getOrDefault(group,Set.of());
-        return handler==null || !DEFAULT_RULE_ID.equals(id) && !enabled.contains(id) ? null : handler;
+        var enabled=groups.getOrDefault(group,new MatchingGroup(Set.of(),Set.of())).pools();
+        return handler==null || !DEFAULT_POOL_NAME.equals(id) && !enabled.contains(id) ? null : handler;
     }
 
-    private RuleHandler requireEligibility(String group,String ruleId) {
-        requireNonBlank(group,"workerGroupId"); requireNonBlank(ruleId,"ruleId");
-        var handler=eligibility(group,ruleId);
-        if(handler==null)throw new IllegalArgumentException("unavailable Rule");
+    private PoolRefillPolicy requireEligibility(String group,String poolName) {
+        requireNonBlank(group,"workerGroupId"); requireNonBlank(poolName,"poolName");
+        var handler=eligibility(group,poolName);
+        if(handler==null)throw new IllegalArgumentException("unavailable Pool");
         return handler;
     }
 
     private QueryFunctions requireExecutor(String group, String name) {
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var executor = executors.get(name);
-        if (executor == null || !DEFAULT_RULE_ID.equals(name) && !rulesByGroup.getOrDefault(group, Set.of()).contains(name))
+        if (executor == null || !"worker.default".equals(name) && !"workerId".equals(name)
+                && !groups.getOrDefault(group, new MatchingGroup(Set.of(),Set.of())).functions().contains(name))
             throw new IllegalArgumentException("unavailable Matching function");
         return executor;
     }
@@ -178,41 +175,38 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     }
 
     /** Capture and validate the bounded declarations before observing or changing inventory. */
-    private Map<Scope,List<RefillTarget>> targets(Map<String,Map<String,List<RefillTarget>>> supplied) {
-        Objects.requireNonNull(supplied,"targetsByGroup");
-        if(supplied.size()>100)throw new IllegalArgumentException("at most 100 Group/Rule coordinates");
+    private Map<Scope,List<RefillTarget>> targets(Map<String,List<RefillTarget>> supplied) {
+        Objects.requireNonNull(supplied,"refillByGroup");
+        if(supplied.size()>100)throw new IllegalArgumentException("at most 100 Groups");
         var captured=new LinkedHashMap<Scope,List<RefillTarget>>();
         int declarations=0;
         for(var group:supplied.entrySet()) {
             requireNonBlank(group.getKey(),"workerGroupId");
-            var rules=Objects.requireNonNull(group.getValue(),"targetsByRule");
-            if(rules.isEmpty() || rules.size()>100-captured.size())
-                throw new IllegalArgumentException("requires 1..100 Group/Rule coordinates");
-            for(var rule:rules.entrySet()) {
-                requireEligibility(group.getKey(),rule.getKey());
-                var rows=Objects.requireNonNull(rule.getValue(),"refillTargets");
-                if(rows.isEmpty() || rows.size()>10_000-declarations)
-                    throw new IllegalArgumentException("requires nonempty targets and at most 10,000 declarations");
-                declarations+=rows.size();
-                captured.put(new Scope(group.getKey(),rule.getKey()),List.copyOf(rows));
+            var rows=Objects.requireNonNull(group.getValue(),"refill");
+            if(rows.size()>10_000-declarations) throw new IllegalArgumentException("at most 10,000 declarations");
+            declarations+=rows.size();
+            for(var row:rows) {
+                Objects.requireNonNull(row,"refill declaration");
+                requireEligibility(group.getKey(),row.poolName());
+                captured.computeIfAbsent(new Scope(group.getKey(),row.poolName()),ignored->new ArrayList<>()).add(row);
             }
         }
         var result=new LinkedHashMap<Scope,List<RefillTarget>>();
         captured.forEach((scope,rows)->{
             var merged=new LinkedHashMap<EligibilityQuery,Integer>();
-            var handler=requireEligibility(scope.workerGroupId(),scope.ruleId());
-            rows.forEach(target->merged.merge(handler.normalizeQuery(scope.workerGroupId(),target.query()),
+            var handler=requireEligibility(scope.workerGroupId(),scope.poolName());
+            rows.forEach(target->merged.merge(handler.normalizeQuery(scope.workerGroupId(),target.target()),
                     target.count(),Math::max));
             result.put(scope,merged.entrySet().stream()
                     .sorted(java.util.Comparator.comparing(e->e.getKey().toString()))
-                    .map(e->RefillTarget.of(e.getKey(),e.getValue())).toList());
+                    .map(e->new RefillTarget(scope.poolName(),e.getKey(),e.getValue())).toList());
         });
         return Collections.unmodifiableMap(result);
     }
 
     private record RefillPage(List<RefillTarget> queries,int nextCursor,int deficit) { }
 
-    private @Nullable RefillPage page(Scope scope,List<RefillTarget> targets,RuleHandler handler) {
+    private @Nullable RefillPage page(Scope scope,List<RefillTarget> targets,PoolRefillPolicy handler) {
         int room=storage.availableCapacity();
         if(room==0)return null;
         int start=Math.floorMod(queryCursors.getOrDefault(scope,0),targets.size());
@@ -228,14 +222,14 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return null;
     }
 
-    @Override public Set<String> groupsNeedingRefill(Map<String,Map<String,List<RefillTarget>>> supplied) {
+    @Override public Set<String> groupsNeedingRefill(Map<String,List<RefillTarget>> supplied) {
         var targets=targets(supplied);
         storage.expireCandidates();
         queryCursors.keySet().retainAll(targets.keySet());
         eligibilityCursors.keySet().retainAll(supplied.keySet());
         var deficits=new LinkedHashMap<String,Integer>();
         targets.forEach((scope,rows)->{
-            var page=page(scope,rows,requireEligibility(scope.workerGroupId(),scope.ruleId()));
+            var page=page(scope,rows,requireEligibility(scope.workerGroupId(),scope.poolName()));
             if(page!=null)deficits.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
         });
         deficits.values().forEach(deficit->requestedDeficit+=Math.min(deficit,10_000));
@@ -248,7 +242,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return Collections.unmodifiableSet(new LinkedHashSet<>(deficits.keySet()));
     }
 
-    @Override public int refill(String group,Map<String,List<RefillTarget>> targetsByRule,
+    @Override public int refill(String group,List<RefillTarget> declarations,
             List<HeldCandidate> offered) {
         requireNonBlank(group,"workerGroupId");
         Objects.requireNonNull(offered,"offeredCandidates");
@@ -258,28 +252,30 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             Objects.requireNonNull(candidate,"heldCandidate"); requireNonBlank(candidate.workerId(),"Worker ID");
             if(held.putIfAbsent(candidate.workerId(),candidate)!=null)throw new IllegalArgumentException("held Worker IDs must be unique");
         }
-        var scopes=targets(Map.of(group,targetsByRule)).entrySet().stream()
-                .sorted(java.util.Comparator.comparing(entry->entry.getKey().ruleId())).toList();
+        var scopes=targets(Map.of(group,declarations)).entrySet().stream()
+                .sorted(java.util.Comparator.<Map.Entry<Scope,List<RefillTarget>>>comparingInt(
+                        entry -> poolOrder(entry.getKey().poolName()))
+                        .thenComparing(entry -> entry.getKey().poolName())).toList();
         var remaining=new LinkedHashSet<>(held.keySet());
-        if(remaining.isEmpty())return 0;
+        if(remaining.isEmpty() || scopes.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
         int room=Math.min(100,storage.availableCapacity()), added=0;
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<room;n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
-            var handler=requireEligibility(group,scope.ruleId());
+            var handler=requireEligibility(group,scope.poolName());
             var page=page(scope,entry.getValue(),handler);
             if(page==null)continue;
             long now=clock.getAsLong();
             remaining.removeIf(id->held.get(id).expiresAtMillis()<=now);
             if(remaining.isEmpty())break;
             queryCursors.put(scope,page.nextCursor());
-            // Each Rule commits its own admission. A later failure preserves earlier successes.
+            // Each Pool commits its own admission. A later failure preserves earlier successes.
             var accepted=handler.refill(group,targetCounts(page.queries()),
                     remaining.stream().map(held::get).toList(),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
-                throw new IllegalStateException("Rule returned invalid admitted identities");
+                throw new IllegalStateException("Pool policy returned invalid admitted identities");
             remaining.removeAll(accepted); added+=accepted.size();
         }
         return added;
@@ -287,18 +283,19 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     private static Map<EligibilityQuery, Integer> targetCounts(List<RefillTarget> targets) {
         var result = new LinkedHashMap<EligibilityQuery, Integer>();
-        targets.forEach(target -> result.merge(target.query(), target.count(), Math::max));
+        targets.forEach(target -> result.merge(target.target(), target.count(), Math::max));
         return Collections.unmodifiableMap(result);
     }
 
-    private List<RefillTarget> resolveTargets(String group,String rule,List<RefillTarget> targets) {
-        var index=eligibility(group,rule);
-        if (index==null) throw new IllegalArgumentException("unavailable Rule");
-        if (targets.isEmpty() || targets.size()>100) throw new IllegalArgumentException("refillTargets requires 1..100 queries");
-        var merged=new LinkedHashMap<EligibilityQuery,Integer>();
-        targets.forEach(target -> { var normalized=index.normalizeQuery(group,target.query());
-            merged.merge(normalized,target.count(),Math::max); });
-        return merged.entrySet().stream().map(e -> RefillTarget.of(e.getKey(),e.getValue())).toList();
+    /** Preserve the fixed maintenance rotation independently of consumer function names. */
+    private static int poolOrder(String name) {
+        return switch (name) {
+            case "proof-facts" -> 0;
+            case "country" -> 1;
+            case "default" -> 2;
+            case "messaging" -> 3;
+            default -> 4;
+        };
     }
 
     private List<Long> mutate(String group,String mode,List<String> input) {
@@ -336,13 +333,10 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
     }
 
-    @Override public List<RefillTarget> resolveRefillTargets(String group, String ruleId,
-            @Nullable List<RefillTarget> requested) {
-        requireNonBlank(group, "workerGroupId");
-        requireNonBlank(ruleId, "ruleId");
-        return resolveTargets(group, ruleId, requested != null ? requested
-                : defaultTargets.getOrDefault(group, Map.of()).getOrDefault(ruleId,
-                        List.of(new RefillTarget(Map.of(), 100))));
+    @Override public List<RefillTarget> normalizeRefill(String group, List<RefillTarget> declarations) {
+        requireNonBlank(group,"workerGroupId"); Objects.requireNonNull(declarations,"refill");
+        if (declarations.size()>100) throw new IllegalArgumentException("at most 100 refill declarations");
+        return targets(Map.of(group,declarations)).values().stream().flatMap(List::stream).toList();
     }
 
     private String indexBase(String group) { return storage.indexBase(group); }

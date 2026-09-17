@@ -184,7 +184,7 @@ class AssignmentPacersTest {
             TaskIdleDisposition idle,
             int priority) {
         return new ObservedTask(
-                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))),
+                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),
                 777_777_777L
         );
     }

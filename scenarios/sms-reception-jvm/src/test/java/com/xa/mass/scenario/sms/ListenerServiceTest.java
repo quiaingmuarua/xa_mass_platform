@@ -98,8 +98,8 @@ class ListenerServiceTest {
             service.accept(record, result(record, "LISTENING", false));
             assertThat(service.metrics()).containsEntry("activeListenersObserved", 1);
             verify(client.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream().anyMatch(item ->
-                    record.cancelId.equals(item.messageId()) && Map.of("workerId", List.of("real-worker"))
-                            .equals(item.workerSelector().input()) && "extension.worker.sms.listen.cancel".equals(item.eventCode()))));
+                    record.cancelId.equals(item.messageId()) && "workerId".equals(item.workerSelector().executorName())
+                            && "real-worker".equals(item.workerSelector().input()) && "extension.worker.sms.listen.cancel".equals(item.eventCode()))));
             assertThat(record.view()).containsEntry("status", "CANCELLING");
             service.accept(record, result(record, "CANCELLED", false));
             assertThat(record.view()).containsEntry("status", "CANCELLED");

@@ -43,7 +43,7 @@ cancelled reader requests. Client shutdown does not replace the runner audit.
 - Four witness Tasks each have 100 Items, 100 ms delay, priority 10. All Tasks bind to `proof.worker.facts`; their Items carry pool/target/platform
   selectors. At Task creation the Harness declares matching refill targets
   (count 100); live Items never generate refill demand. These targets share one
-  Group/Rule inventory, including the A/B background pools and target witnesses.
+  Group/Pool inventory, including the A/B background pools and target witnesses.
   They use the public finite lifecycle with
   maxRetryTimes=3. Total: seven Tasks and 150,400 submitted Items.
 

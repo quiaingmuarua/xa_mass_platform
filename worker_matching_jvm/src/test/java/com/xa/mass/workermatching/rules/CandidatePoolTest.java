@@ -7,7 +7,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.xa.mass.workermatching.rules.PoolRule.*;
+import static com.xa.mass.workermatching.rules.CandidatePool.*;
 
 class CandidatePoolTest {
     final AtomicLong clock=new AtomicLong(1000);
@@ -18,6 +18,26 @@ class CandidatePoolTest {
                 Map.of("country",country,"phone","number-"+id,"country-phone",country+"/number-"+id));
     }
     List<String> ids(List<WorkerCandidate> candidates) { return candidates.stream().map(WorkerCandidate::workerId).toList(); }
+
+    @Test void distinctFunctionsShareOneResourceAndAllMembershipsDisappearTogether() {
+        var functions=Map.of(
+                "by-country",PoolQueryFunctions.create(pool,(g,input)-> {
+                    if (!(input instanceof String)) throw new IllegalArgumentException(); return input;
+                },(g,input)->range("country",List.of((String)input))),
+                "by-phone",PoolQueryFunctions.create(pool,(g,input)-> {
+                    if (!(input instanceof Map<?,?> map) || !(map.get("number") instanceof String)) throw new IllegalArgumentException(); return input;
+                },(g,input)->range("phone",List.of((String)((Map<?,?>)input).get("number")))));
+        pool.admit("g",List.of(row("a","CN",5000)));
+        assertEquals(9999,budget.available());
+        var first=functions.get("by-country").execute().apply("g",Map.of("country-request","CN"));
+        assertEquals("a",first.get("country-request").workerId());
+        assertTrue(functions.get("by-phone").execute().apply("g",Map.of("phone-request",Map.of("number","number-a"))).isEmpty());
+        assertEquals(0,pool.viewBuckets("g")); assertEquals(10_000,budget.available());
+        pool.admit("g",List.of(row("b","CN",5000)));
+        assertEquals("b",functions.get("by-phone").execute().apply("g",Map.of("phone-request",Map.of("number","number-b"))).get("phone-request").workerId());
+        assertTrue(functions.get("by-country").execute().apply("g",Map.of("country-request","CN")).isEmpty());
+        assertEquals(10_000,budget.available());
+    }
 
     @Test void countsAndSelectionVisitOnlyRequestedRangesAndExpiryHasIndependentAccounting() {
         var entries=new ArrayList<CandidatePool.Admission>();

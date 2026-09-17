@@ -1,3 +1,4 @@
+import type { WorkerQuery } from "@/task-call-debug/types";
 import type { FiniteTaskSeedItem, FiniteTaskStage, TaskItemApiRequest } from "./types";
 
 export const MAX_TASK_SEED_BYTES = 1024 * 1024;
@@ -43,11 +44,13 @@ export function buildSeedItems(
 export function materializeTaskItems(
   taskId: string,
   eventCode: string,
-  seeds: FiniteTaskSeedItem[]
+  seeds: FiniteTaskSeedItem[],
+  workerSelector: WorkerQuery
 ): TaskItemApiRequest[] {
   return seeds.map((seed) => ({
     messageId: `${taskId}-${String(seed.lineNumber).padStart(5, "0")}`,
     eventCode,
+    workerSelector,
     payload: { ...seed.payload }
   }));
 }

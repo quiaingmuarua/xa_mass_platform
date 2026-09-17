@@ -26,5 +26,5 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// RefillTarget uses standard constructor binding in the Server configuration.
+// Retain public constructor parameter metadata for shared value contracts.
 tasks.withType(JavaCompile).configureEach { options.compilerArgs.add('-parameters') }

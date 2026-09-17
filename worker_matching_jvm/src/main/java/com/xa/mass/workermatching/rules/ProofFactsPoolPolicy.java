@@ -1,27 +1,14 @@
 package com.xa.mass.workermatching.rules;
 
 import java.util.*;
+import com.xa.mass.workermatching.rules.CandidatePool.Selection;
+import static com.xa.mass.workermatching.rules.CandidatePool.*;
 
 /** Installed only in explicitly configured proof Groups. */
-public final class ProofFactsRuleHandler extends PartitionedRuleHandler {
-    @Override protected Object normalizeLocalInput(String group, Object input) {
-        var values = RuleInputs.object(input, Set.of("proofPool", "proofTarget", "proofEnabled", "convergenceSlot"));
-        if (values.containsKey("convergenceSlot") && values.size() != 1)
-            throw new IllegalArgumentException("convergenceSlot cannot combine with proof fields");
-        values.replaceAll((key, value) -> RuleInputs.text(value));
-        return Collections.unmodifiableMap(values);
-    }
-    @Override protected Selection select(String group, Object input) {
-        var values = RuleInputs.object(input, Set.of("proofPool", "proofTarget", "proofEnabled", "convergenceSlot"));
-        if (values.isEmpty()) return all();
-        String partition = values.containsKey("convergenceSlot") ? "slot:" + values.get("convergenceSlot")
-                : values.getOrDefault("proofPool", "*") + "|" + values.getOrDefault("proofTarget", "*")
-                        + "|" + values.getOrDefault("proofEnabled", "*");
-        return range("partition:" + partition, List.of("1"));
-    }
-    public ProofFactsRuleHandler(RedisRuleStorage storage) { super(storage,"proof"); }
-    static RedisRuleStorage.IndexMutation index() {
-        return new RedisRuleStorage.IndexMutation("proof",ZsetProjection.prepare( """
+public final class ProofFactsPoolPolicy extends PartitionedPoolPolicy {
+    public ProofFactsPoolPolicy(MatchingStorage storage, CandidatePool pool) { super(storage,pool,"proof"); }
+    public static MatchingStorage.IndexMutation index() {
+        return new MatchingStorage.IndexMutation("proof",ZsetProjection.prepare( """
             local pool=type(w.proofPool)=='string' and w.proofPool or '~'
             local target=w.proofTarget=='yes' and 'yes' or 'no'
             local enabled=p.proofEnabled=='yes' and 'yes' or 'no'

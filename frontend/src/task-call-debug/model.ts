@@ -99,7 +99,7 @@ function parseJsonObject(text: string, label: string): Record<string, JsonValue>
   return parsed as Record<string, JsonValue>;
 }
 
-function parseWorkerSelector(text: string): WorkerQuery {
+export function parseWorkerSelector(text: string): WorkerQuery {
   const value = parseJsonObject(text, "Worker Selector");
   if (
     Object.keys(value).length !== 2 ||

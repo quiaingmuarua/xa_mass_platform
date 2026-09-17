@@ -167,7 +167,8 @@ def main() -> int:
     }), encoding="utf-8")
     config = private / "server.properties"
     config.write_text("xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n" + "".join(
-        f"xa.mass.worker-matching.rules.worker-groups[{group}][0]=proof.worker.facts\n"
+        f"xa.mass.worker-matching.groups[{group}].pools[0]=proof-facts\n"
+        f"xa.mass.worker-matching.groups[{group}].functions[0]=proof.worker.facts\n"
         for group in (STRING_GROUP, PHONE_GROUP)), encoding="utf-8")
     scope = "test_worker_dynamic_matching_" + uuid.uuid4().hex[:12]
     environment = {**os.environ, "XA_MASS_REDIS_URL": options.redis_url, "XA_MASS_REDIS_SCOPE": scope}

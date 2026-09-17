@@ -66,7 +66,7 @@ WorkerServiceabilityRuntime
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
 Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
-Group/Rule targets with each acquired Group batch. Dispatch calls Matching by the
+Group/Pool targets with each acquired Group batch. Dispatch calls Matching by the
 Task's Group and Rule name, passing messageId-to-query Maps and receiving
 messageId-to-held-candidate Maps. Only Matching normalizes and groups queries;
 Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
@@ -163,7 +163,7 @@ The fixed Producers are:
 Main shares the already-read NORMAL Task descriptors. Matching performs only
 named eligibility calls, with no Task configuration read. Candidate work is not
 a prerequisite for dispatch expiry/exhaustion or idle settlement. Refill is
-single-flight and targets shared Group/Rule stock. It has no Task-private cache,
+single-flight and targets shared Group/Pool stock. It has no Task-private cache,
 queue or additional Task discovery. See [Matching](../../worker_matching_jvm/README.md).
 
 A Task Source or INITIAL-classification failure defers every currently eligible

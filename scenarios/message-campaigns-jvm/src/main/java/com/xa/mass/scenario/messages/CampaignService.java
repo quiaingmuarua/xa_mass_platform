@@ -104,8 +104,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             fields.put("worker.country",List.of(campaign.specification.country()));
             if (campaign.specification.senderPhone()!=null) fields.put("worker.phone",List.of(campaign.specification.senderPhone()));
             var query=new EligibilityQuery(fields);
-            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3,
-                    List.of(RefillTarget.of(query,100)))).taskId();
+            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group, 50, 3, List.of(RefillTarget.of("messaging", query, 100)))).taskId();
             var input = new LinkedHashMap<String, Object>();
             input.put("country", List.of(campaign.specification.country()));
             if (campaign.specification.senderPhone() != null) input.put("phone", campaign.specification.senderPhone());

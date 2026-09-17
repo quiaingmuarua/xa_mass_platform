@@ -44,7 +44,7 @@ const filteredEntries = computed(() => {
       entry.taskId,
       entry.scoreBand,
       entry.task?.workerGroupId,
-      entry.task?.ruleId,
+      entry.task?.refill.map((item) => item.poolName).join(" "),
       entry.task?.idleDisposition
     ]
       .filter((value): value is string => value !== undefined)
@@ -279,9 +279,16 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
               <span class="task-group-id">{{ workerGroupId(row) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="ALLOCATION" min-width="190">
+          <el-table-column label="POOL SUPPLY" min-width="190">
             <template #default="{ row }">
-              {{ row.task?.ruleId ?? "—" }}
+              {{
+                row.task?.refill
+                  .map(
+                    (item: { poolName: string; count: number }) =>
+                      `${item.poolName} × ${item.count}`
+                  )
+                  .join(", ") || "无供给"
+              }}
             </template>
           </el-table-column>
           <el-table-column label="IDLE DISPOSITION" min-width="170">
@@ -371,9 +378,9 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
                   <dd>{{ workerGroupId(selectedEntry) }}</dd>
                 </div>
                 <div>
-                  <dt>Rule binding</dt>
+                  <dt>Pool 供给声明</dt>
                   <dd>
-                    {{ selectedEntry.task?.ruleId ?? "描述符缺失" }}
+                    <pre>{{ selectedEntry.task?.refill ?? "描述符缺失" }}</pre>
                   </dd>
                 </div>
                 <div>

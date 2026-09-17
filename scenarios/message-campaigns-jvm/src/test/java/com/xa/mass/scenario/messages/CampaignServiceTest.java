@@ -41,7 +41,7 @@ class CampaignServiceTest {
             verify(lifecycle, timeout(3000)).approve("finite-task");
             var order = inOrder(creation, data, lifecycle);
             order.verify(creation).create(argThat(r -> r.workerGroupId().equals("demo-sim")
-                    && r.ruleId().equals("worker.messaging.available")));
+                    && r.refill().stream().allMatch(t -> t.poolName().equals("messaging"))));
             order.verify(data, times(2)).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 100 && items.stream().allMatch(i -> i.workerSelector().input().equals(Map.of("country", List.of("CN"), "phone", "+86123")))));
             order.verify(data).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 1));
             order.verify(lifecycle).approve("finite-task");

@@ -43,18 +43,14 @@ final class WorkerEligibilityRefillPolicy {
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
         int start = lastAttemptedGroup == null ? 0 : (groups.indexOf(lastAttemptedGroup) + 1) % groups.size();
-        var collected = new LinkedHashMap<String, Map<String, List<RefillTarget>>>();
+        var collected = new LinkedHashMap<String, List<RefillTarget>>();
         tasks.forEach(descriptor -> {
             if (!groups.contains(descriptor.workerGroupId())) throw new IllegalArgumentException("Task Group outside root input");
-            collected.computeIfAbsent(descriptor.workerGroupId(), ignored -> new LinkedHashMap<>())
-                    .computeIfAbsent(descriptor.ruleId(), ignored -> new ArrayList<>()).addAll(descriptor.refillTargets());
+            if (!descriptor.refill().isEmpty())
+                collected.computeIfAbsent(descriptor.workerGroupId(), ignored -> new ArrayList<>()).addAll(descriptor.refill());
         });
-        var targets = new LinkedHashMap<String, Map<String, List<RefillTarget>>>();
-        collected.forEach((group, rules) -> {
-            var captured = new LinkedHashMap<String, List<RefillTarget>>();
-            rules.forEach((rule, rows) -> captured.put(rule, List.copyOf(rows)));
-            targets.put(group, Collections.unmodifiableMap(captured));
-        });
+        var targets = new LinkedHashMap<String, List<RefillTarget>>();
+        collected.forEach((group, declarations) -> targets.put(group, List.copyOf(declarations)));
         var neededGroups = index.groupsNeedingRefill(Collections.unmodifiableMap(targets));
         int budget = ROUND_BUDGET, admitted = 0;
         for (int n = 0; n < groups.size() && budget > 0; n++) {

@@ -28,12 +28,32 @@ export const workerGroupViewSchema = z
   })
   .strict();
 
+export const refillSchema = z
+  .array(
+    z
+      .object({
+        poolName: z.string().refine((value) => value.trim().length > 0),
+        target: z
+          .record(
+            z.string().refine((value) => value.trim().length > 0),
+            z
+              .array(z.string().refine((value) => value.trim().length > 0))
+              .min(1)
+              .max(100)
+          )
+          .refine((value) => Object.keys(value).length <= 100),
+        count: z.number().int().min(1).max(1000)
+      })
+      .strict()
+  )
+  .max(100);
+
 const taskViewSchema = z
   .object({
     taskId: z.string().min(1),
     workerGroupId: z.string().min(1),
     idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
-    ruleId: z.string().min(1),
+    refill: refillSchema,
     config: z.record(z.string(), z.string())
   })
   .strict();

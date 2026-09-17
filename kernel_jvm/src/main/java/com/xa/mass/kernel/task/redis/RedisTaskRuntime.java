@@ -58,8 +58,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "workerGroupId", ARGV[1],
               "idleDisposition", ARGV[2],
               "configJson", ARGV[3],
-              "ruleId", ARGV[4],
-              "refillTargetsJson", ARGV[5]
+              "refillJson", ARGV[4]
             )
             return 1
             """;
@@ -298,8 +297,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 descriptor.idleDisposition().name()
         );
         fields.put("configJson", configJson);
-        fields.put("ruleId", descriptor.ruleId());
-        fields.put("refillTargetsJson", mapper.writeValueAsString(descriptor.refillTargets()));
+        fields.put("refillJson", mapper.writeValueAsString(descriptor.refill()));
         return fields;
     }
 
@@ -314,8 +312,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 fields.get("workerGroupId"),
                 fields.get("idleDisposition"),
                 fields.get("configJson"),
-                fields.get("ruleId"),
-                fields.get("refillTargetsJson")
+                fields.get("refillJson")
         );
         return result != null && result == 1L;
     }

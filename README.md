@@ -30,8 +30,9 @@ scheduling eligibility.
 TASK
 API -> Server resolves Rule targets locally, then writes complete Kernel Task/Items
     -> Pacer acquires 1-second candidate leases; Matching qualifies and stocks the same fences
-    -> Pacer calls Matching with Group, Rule name and Item demand to consume held stock
-    -> Kernel exact-transfers soft Worker fences into sealed execution holds
+    -> Pacer forwards Item function names and local input to Matching
+    -> Pool consumes held stock; Identity/Phone query functions return identity hints
+    -> Kernel exact-transfers Pool fences or directly acquires current Worker execution holds
     -> Kernel claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence
@@ -166,12 +167,12 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
 
-Every Task descriptor stores its Rule name and resolved refill targets. Main
+Every Task descriptor stores optional Pool supply declarations. Empty supply is valid; Item functions remain explicit and independent. Main
 shares complete NORMAL descriptors for independent refill and dispatch.
-**Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
+**For Pool refill, Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
 Matching qualifies only the leased IDs and admits their original fences and deadlines
-to shared Group/Rule inventory. Matching time and stock waiting share that second;
-unmatched leases expire naturally. TaskItems only consume stock: Pacer passes
+to shared Group/Pool inventory. Matching time and stock waiting share that second;
+unmatched leases expire naturally. TaskItems consume Pool stock or use direct Identity/Phone lookup: Pacer passes
 message IDs and queries through `WorkerMatching`; Matching normalizes, groups and
 returns the candidate for each fulfilled request. Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

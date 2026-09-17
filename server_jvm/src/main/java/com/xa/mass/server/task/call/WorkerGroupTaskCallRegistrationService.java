@@ -33,6 +33,7 @@ public final class WorkerGroupTaskCallRegistrationService {
     private final TaskResourceCatalog taskCatalog;
     private final TaskRuntime taskRuntime;
     private final WorkerMatchingCatalog matching;
+    private final TaskRpcProperties rpc;
     private final TaskLifecycleCommands taskLifecycle;
 
     public WorkerGroupTaskCallRegistrationService(
@@ -40,8 +41,10 @@ public final class WorkerGroupTaskCallRegistrationService {
             TaskResourceCatalog taskCatalog,
             TaskRuntime taskRuntime,
             TaskLifecycleCommands taskLifecycle,
-            WorkerMatchingCatalog matching
+            WorkerMatchingCatalog matching,
+            TaskRpcProperties rpc
     ) {
+        this.rpc = Objects.requireNonNull(rpc,"rpc");
         this.matching = Objects.requireNonNull(matching,"matching");
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -145,8 +148,7 @@ public final class WorkerGroupTaskCallRegistrationService {
         }
         if (!existing.taskId().equals(taskId) || !existing.workerGroupId().equals(workerGroupId)
                 || existing.idleDisposition() != TaskIdleDisposition.PARK_WHEN_IDLE
-                || !existing.config().equals(TASK_CONFIG)
-                || !existing.ruleId().equals(WorkerMatchingCatalog.DEFAULT_RULE_ID)) {
+                || !existing.config().equals(TASK_CONFIG)) {
             throw failure(ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT, RESOLVE_OPERATION,
                     "derived Task descriptor conflicts with registration", null);
         }
@@ -235,8 +237,9 @@ public final class WorkerGroupTaskCallRegistrationService {
         try {
             return new TaskDescriptor(
                     taskId(workerGroupId), workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
-                    TASK_CONFIG, WorkerMatchingCatalog.DEFAULT_RULE_ID,
-                    matching.resolveRefillTargets(workerGroupId, WorkerMatchingCatalog.DEFAULT_RULE_ID, null));
+                    TASK_CONFIG, matching.normalizeRefill(workerGroupId, rpc.refillByWorkerGroup().getOrDefault(workerGroupId,
+                            List.of(new com.xa.mass.kernel.assignment.RefillTarget("default",
+                                    new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),100)))));
         } catch (RuntimeException error) {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }

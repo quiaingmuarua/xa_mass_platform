@@ -98,6 +98,18 @@ class WorkerCandidateSelectionPolicyTest {
         assertThrows(IllegalArgumentException.class,()->policy.takeCandidates("g",items,new HashSet<>()));
         verifyNoInteractions(matching,catalog);
     }
+    @Test void directIdentitiesStillRequireExistingSameGroupDescriptors() {
+        var input = new LinkedHashMap<String, WorkerQuery>();
+        input.put("missing", new WorkerQuery("workerId", "absent"));
+        input.put("foreign", new WorkerQuery("workerId", "foreign"));
+        input.put("valid", new WorkerQuery("worker.phone", "+1"));
+        when(matching.take("g", input)).thenReturn(Map.of("missing", new WorkerCandidate("absent", 0),
+                "foreign", new WorkerCandidate("foreign", 0), "valid", new WorkerCandidate("ok", 0)));
+        when(catalog.getWorkerDescriptors(List.of("absent", "foreign", "ok")))
+                .thenReturn(Map.of("foreign", descriptor("foreign", "another-group"), "ok", descriptor("ok", "g")));
+        assertEquals(Set.of("valid"), policy.takeCandidates("g", input, new HashSet<>()).keySet());
+        verify(matching).take("g", input); verifyNoMoreInteractions(matching);
+    }
     private static WorkerResourceCatalog.WorkerDescriptor descriptor(String id,String group) {
         return new WorkerResourceCatalog.WorkerDescriptor(id,group,"adapter");
     }

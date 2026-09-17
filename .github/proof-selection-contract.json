@@ -156,7 +156,37 @@
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
     {
-      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/rules/RuleHandlerTest.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/PhoneIndex.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Independent phone membership and bounded lookup affect all Server-backed Worker execution paths."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/DirectQueryFunctions.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Identity and Phone executors retain the Matching production proof selection without adding a new lane."
+    },
+    {
+      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/rules/PoolRefillPolicyTest.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -818,13 +848,58 @@
       "reason": "Renaming the routed candidate preserves the existing Dispatch proof selection, including Android and distribution."
     },
     {
-      "path": "server_jvm/src/test/java/com/xa/mass/server/testsupport/IdentityHintRuleHandler.java",
+      "path": "server_jvm/src/test/java/com/xa/mass/server/testsupport/IdentityHintPoolFixture.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary"
       ],
       "reason": "The zero-expectation Rule is a Runtime Boundary fixture only, not a production Rule or profile."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MatchingComposition.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MatchingGroup.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/PoolRefillPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
     }
   ]
 }

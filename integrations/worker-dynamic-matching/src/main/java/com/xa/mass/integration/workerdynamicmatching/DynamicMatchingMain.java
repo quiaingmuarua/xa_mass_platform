@@ -140,8 +140,7 @@ public final class DynamicMatchingMain {
                 for (Worker w : targets()) {
                     int n = round;
                     pending.add(writers.submit(() -> {
-                        try { mutate(w, "PATCH", Map.of("proofPool", "B", "sequence", "" + n,
-                                "mirror", "" + n, "delta-" + n, "" + n)); }
+                        try { mutate(w, "PATCH", Map.of("proofPool", "B", "sequence", "" + n, "mirror", "" + n, "delta-" + n, "" + n)); }
                         catch (Exception error) { throw new CompletionException(error); }
                     }));
                 }
@@ -209,9 +208,7 @@ public final class DynamicMatchingMain {
 
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
-        var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group,
-                "ruleId", "proof.worker.facts", "priority", witness ? 10 : 50, "maxRetryTimes", 3,
-                "refillTargets",List.of(Map.of("query",rule,"count",100))), false);
+        var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group, "priority", witness ? 10 : 50, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","proof-facts","target", rule, "count", 100))), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {
@@ -228,8 +225,7 @@ public final class DynamicMatchingMain {
             String token = UUID.randomUUID().toString();
             t.tokens.add(token);
             tokenTasks.put(token, t);
-            items.add(Map.of("messageId", token, "eventCode", EVENT,
-                    "payload", Map.of("probeToken", token, "delayMillis", delay), "workerSelector", Map.of("executorName","proof.worker.facts","input",input)));
+            items.add(Map.of("messageId", token, "eventCode", EVENT, "payload", Map.of("probeToken", token, "delayMillis", delay), "workerSelector", Map.of("executorName", "proof.worker.facts", "input", input)));
         }
         for (int offset = 0; offset < items.size(); offset += 100) {
             var page = items.subList(offset, Math.min(offset + 100, items.size()));
@@ -266,9 +262,7 @@ public final class DynamicMatchingMain {
     private void succeeded(Task t) throws Exception {
         until(Math.min(dynamicDeadline, t.eligibleSince + TimeUnit.SECONDS.toNanos(60)),
                 () -> t.complete() && t.completed.containsAll(t.tokens), "witness-" + t.label);
-        checkpoints.add(Map.of("stage", t.label, "succeeded", t.succeeded.size(), "attempts", t.entries.get(),
-                "executorsSha256", digest(t.executors.stream().sorted().toList()), "executorCheck", true,
-                "eligibleToCompletionMillis", millisSince(t.eligibleSince)));
+        checkpoints.add(Map.of("stage", t.label, "succeeded", t.succeeded.size(), "attempts", t.entries.get(), "executorsSha256", digest(t.executors.stream().sorted().toList()), "executorCheck", true, "eligibleToCompletionMillis", millisSince(t.eligibleSince)));
     }
 
     private void loaded() throws Exception {
@@ -298,8 +292,7 @@ public final class DynamicMatchingMain {
         w.history.add(w.expected); // In-flight reads are judged against this request, whose failure fails the proof.
         long sent = w.lastMutation = System.nanoTime();
         mutations.incrementAndGet();
-        var response = lab.call("POST", w.path() + ":inputs", Map.of("eventName",
-                method.equals("PUT") ? "properties.replace" : "properties.update", "payload", supplied), false);
+        var response = lab.call("POST", w.path() + ":inputs", Map.of("eventName", method.equals("PUT") ? "properties.replace" : "properties.update", "payload", supplied), false);
         require(response.keySet().equals(Set.of("persisted", "sendAccepted"))
                 && Boolean.TRUE.equals(response.get("persisted")) && Boolean.TRUE.equals(response.get("sendAccepted")), "properties-not-accepted");
         accepted.incrementAndGet();
@@ -325,8 +318,7 @@ public final class DynamicMatchingMain {
             return observed[0] >= 0 && observed[1] >= 0;
         }, "properties-checkpoint");
         checkWorld(false);
-        checkpoints.add(Map.of("stage", stage, "adapterMillis", observed[0], "serverMillis", observed[1],
-                "propertiesSha256", digest(workers.stream().map(w -> new TreeMap<>(w.expected)).toList()), "controlsUnchanged", true));
+        checkpoints.add(Map.of("stage", stage, "adapterMillis", observed[0], "serverMillis", observed[1], "propertiesSha256", digest(workers.stream().map(w -> new TreeMap<>(w.expected)).toList()), "controlsUnchanged", true));
     }
 
     private boolean observeRuntime(boolean initial) throws Exception {
@@ -366,8 +358,7 @@ public final class DynamicMatchingMain {
 
     private boolean observeAdapterPage(List<Worker> page, boolean initial) throws Exception {
         var response = runtime.call("POST", "/api/v1/worker-delivery/endpoint-managers/" + ADAPTER + "/direct-calls",
-                Map.of("messageType", "platform.adapter.worker-properties.snapshot", "waitTimeoutMillis", 1_000,
-                        "opaquePayload", Jsons.toJson(Map.of("workerIds", page.stream().map(w -> w.id).toList()))), true);
+                Map.of("messageType", "platform.adapter.worker-properties.snapshot", "waitTimeoutMillis", 1_000, "opaquePayload", Jsons.toJson(Map.of("workerIds", page.stream().map(w -> w.id).toList()))), true);
         var result = object(object(response.get("results")).get(ADAPTER));
         if ("unobserved".equals(result.get("status")) && "timeout".equals(result.get("reason"))) throw new TemporaryRead();
         require("observed".equals(result.get("status")) && "platform.adapter.command.succeeded".equals(result.get("messageType")), "adapter-snapshot-rejected");
@@ -550,8 +541,7 @@ public final class DynamicMatchingMain {
                 if (error instanceof ProofFailure rejected) code = rejected.code;
             evidence.put("failureCode", code);
         }
-        evidence.put("workers", workers.stream().map(w -> Map.of("workerGroupId", w.group, "labWorkerKey", w.key,
-                "workerId", w.id == null ? "unobserved" : w.id, "baselineSha256", digest(new TreeMap<>(w.baseline)))).toList());
+        evidence.put("workers", workers.stream().map(w -> Map.of("workerGroupId", w.group, "labWorkerKey", w.key, "workerId", w.id == null ? "unobserved" : w.id, "baselineSha256", digest(new TreeMap<>(w.baseline)))).toList());
         evidence.put("mutationRequests", mutations.get()); evidence.put("sendAcceptedCount", accepted.get());
         evidence.put("platformMutationRequests", platformMutations.get());
         evidence.put("adapterReads", adapterReads.get()); evidence.put("serverReads", serverReads.get());
@@ -559,9 +549,7 @@ public final class DynamicMatchingMain {
         evidence.put("elapsedMillis", workloadStarted == 0 ? 0 : millisSince(workloadStarted));
         evidence.put("dynamicElapsedMillis", dynamicElapsedMillis);
         evidence.put("checkpoints", checkpoints);
-        evidence.put("tasks", tasks.stream().map(t -> Map.of("taskId", t.id, "label", t.label,
-                "submitted", t.tokens.size(), "succeeded", t.succeeded.size(), "enteredAttempts", t.entries.get(),
-                "completedTokens", t.completed.size(), "executorsSha256", digest(t.executors.stream().sorted().toList()))).toList());
+        evidence.put("tasks", tasks.stream().map(t -> Map.of("taskId", t.id, "label", t.label, "submitted", t.tokens.size(), "succeeded", t.succeeded.size(), "enteredAttempts", t.entries.get(), "completedTokens", t.completed.size(), "executorsSha256", digest(t.executors.stream().sorted().toList()))).toList());
         Files.createDirectories(output.toAbsolutePath().getParent());
         Files.writeString(output, Jsons.toJson(evidence) + "\n");
     }

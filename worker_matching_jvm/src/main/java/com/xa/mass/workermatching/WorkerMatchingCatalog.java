@@ -10,11 +10,11 @@ import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
-/** Worker facts, named Rule admission and bounded eligibility index queries. */
+/** Worker facts, Pool supply admission and bounded eligibility index queries. */
 public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerMatching {
 
     int MAX_BATCH_SIZE = 100;
-    String DEFAULT_RULE_ID = "worker.default";
+    String DEFAULT_POOL_NAME = "default";
 
     /** Idempotent Server admission, without Redis reads or stock changes. */
     WorkerQuery normalizeQuery(String workerGroupId, WorkerQuery query);
@@ -36,9 +36,8 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
             List<String> workerIds
     );
 
-    /** Resolves immutable targets from explicit input or configured defaults, without Redis or stock access. */
-    List<RefillTarget> resolveRefillTargets(String workerGroupId, String ruleId,
-                                          @Nullable List<RefillTarget> requested);
+    /** Normalizes explicit immutable supply, including an empty list, without defaults, Redis or stock access. */
+    List<RefillTarget> normalizeRefill(String workerGroupId, List<RefillTarget> declarations);
 
     enum MutationStatus {
         APPLIED,

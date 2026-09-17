@@ -19,6 +19,10 @@ their platform behavior. `preview` imports both [SMS Reception](../scenarios/sms
 and [Message Campaigns](../scenarios/message-campaigns-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
 
+Preview enables the independent `worker.phone` query for `demo-sim`, alongside its
+existing Pool Rules. Direct `workerId` is available in every Group; Matching owns
+the [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
+
 `PreviewConfiguration` supplies the common `demo-sim` Group and complete String,
 SMS and Messages event declarations. Each scenario consumes the same declaration
 through existing Server registration services. A declaration is not evidence

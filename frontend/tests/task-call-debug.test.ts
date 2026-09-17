@@ -522,7 +522,7 @@ function entry(
       taskId: "task-1",
       workerGroupId: "group-a",
       idleDisposition: "PARK_WHEN_IDLE",
-      ruleId: "worker.default",
+      refill: [{ poolName: "default", target: {}, count: 100 }],
       config: {
         priority: "0",
         maxRetryTimes: "3"

@@ -110,13 +110,13 @@
           "minItems" : 1,
           "type" : "array"
         },
-        "description" : "Direct immutable string-list query. The bound Rule interprets fields; empty means no additional condition within that Rule. No quantity or operator objects.",
+        "description" : "Immutable string-list supply target. The selected Pool maintenance policy interprets fields; empty means no additional condition. No quantity or operator objects.",
         "maxProperties" : 100,
         "type" : "object"
       },
       "RefillTarget" : {
         "additionalProperties" : false,
-        "description" : "Shared Eligibility stock target. Equal normalized queries merge by MAX; omitted query means ANY. Count is not part of query identity.",
+        "description" : "Shared Pool supply declaration. Equal normalized targets in a Group/Pool merge by MAX; target is required, including an explicit empty object. This is not a Task-private quota.",
         "properties" : {
           "count" : {
             "format" : "int32",
@@ -124,11 +124,16 @@
             "minimum" : 1,
             "type" : "integer"
           },
-          "query" : {
+          "poolName" : {
+            "minLength" : 1,
+            "pattern" : ".*\\S.*",
+            "type" : "string"
+          },
+          "target" : {
             "$ref" : "#/components/schemas/EligibilityQuery"
           }
         },
-        "required" : [ "count" ],
+        "required" : [ "count", "poolName", "target" ],
         "type" : "object"
       },
       "TaskCreateRequest" : {
@@ -145,17 +150,14 @@
             "minimum" : 0,
             "type" : "integer"
           },
-          "refillTargets" : {
-            "description" : "Optional shared Eligibility refill targets. Equal normalized queries merge by maximum across Tasks. Omission resolves the Group/Rule default at binding creation, otherwise ANY 100. Only worker.default accepts workerId queries; their effective target is capped by unique ID count. Targets are not private Task quotas.",
+          "refill" : {
+            "description" : "Optional Pool waterline declarations; omission means no supply. Equal targets in the same Group/Pool merge by MAX, never private quotas.",
             "items" : {
               "$ref" : "#/components/schemas/RefillTarget"
             },
             "maxItems" : 100,
-            "minItems" : 1,
+            "minItems" : 0,
             "type" : "array"
-          },
-          "ruleId" : {
-            "type" : "string"
           },
           "workerGroupId" : {
             "minLength" : 1,
@@ -200,10 +202,10 @@
           },
           "workerSelector" : {
             "$ref" : "#/components/schemas/WorkerQuery",
-            "description" : "Named Matching function and its local JSON input. Omission uses the Task refill Rule with empty input for finite append; managed Call requires an explicit query. The function must be enabled for the Group but need not match the Task refill Rule."
+            "description" : "Named Matching function and its local JSON input. Required for finite append and managed Call. The Group-enabled function is independent of Task Pool supply declarations."
           }
         },
-        "required" : [ "eventCode", "messageId", "payload" ],
+        "required" : [ "eventCode", "messageId", "payload", "workerSelector" ],
         "type" : "object"
       },
       "TaskItemResultResponse" : {
@@ -309,8 +311,11 @@
           "idleDisposition" : {
             "type" : "string"
           },
-          "ruleId" : {
-            "type" : "string"
+          "refill" : {
+            "items" : {
+              "$ref" : "#/components/schemas/RefillTarget"
+            },
+            "type" : "array"
           },
           "taskId" : {
             "type" : "string"

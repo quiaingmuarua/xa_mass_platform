@@ -4,89 +4,89 @@ Status: current fixed query functions, facts, source index and bounded Pool Owne
 
 Matching uses an immutable, construction-time name-to-function table for Item
 consumption. Functions interpret local JSON inputs and choose resource access.
-Current functions are Pool strategies named after their refill Rule IDs; the
-storage resource itself is not an executor. Rule refill contracts and Item
+Function names are protocol identities, independent of Pool resource names. Independent `workerId` and
+`worker.phone` functions locate identity hints without Pool stock; storage itself is not an executor. Pool maintenance and Item
 consumption are separate capabilities.
 
-Each Group/Rule has one bounded inventory shared by its Tasks. One strategy can
+Each Group/Pool has one bounded inventory shared by its Tasks. One strategy can
 serve multiple Groups, with Group passed explicitly on every call. There is no
-dynamic registry, per-Task cache or Matching execution thread. Independent Property
-Index, identity, mixed and external executors are not implemented in this slice.
+dynamic registry, per-Task cache or Matching execution thread. Identity and exact phone lookup use fixed functions; mixed/external strategies and
+dynamic property index configuration are not implemented.
 
 ## Owner Boundary
 
 Pacer synchronously calls Matching from its existing independent refill and dispatch
-Producers. It observes the Group HOT head and exact-acquires 1-second candidate
-leases before a Rule reads eligibility. Only successful new fences are offered.
+Producers. For Pool supply it observes the Group HOT head and exact-acquires 1-second candidate
+leases before a maintenance policy reads eligibility. Only successful new fences are offered.
 Matching processing and stock waiting share the original deadline; unmatched leases
 expire naturally. Kernel/Pacer retains all Score, confirmation and claim authority.
 
 | Stage | Authority and fence |
 | --- | --- |
 | Supply | Pacer reads a bounded Group HOT head and exact-acquires soft leases |
-| Qualification and admission | Each Rule reads only offered IDs and retains admitted candidates with the original fences and deadlines |
-| Coordination | Catalog excludes IDs actually accepted by an earlier Rule from later Rules in that Group batch |
-| Execution | Kernel exact-transfers a soft inventory fence with seal=true, then exact-claims the Item |
+| Qualification and admission | Each Pool policy reads only offered IDs and retains admitted candidates with the original fences and deadlines |
+| Coordination | Catalog excludes IDs actually accepted by an earlier Pool from later Pools in that Group batch |
+| Execution | Kernel exact-transfers a Pool fence or atomically acquires a current identity; only the returned sealed fence permits Item claim |
 
-**Cross-Rule failure contract:** Rule A's successful refill remains committed if
-Rule B subsequently fails. The exception ends the remaining batch and reaches the
+**Cross-Pool failure contract:** Pool A's successful refill remains committed if
+Pool B's maintenance subsequently fails. The exception ends the remaining batch and reaches the
 existing Pacer failure path. The next normal round observes new shortfalls.
-There is no rollback or automatic replay. Within each current Rule implementation,
+There is no rollback or automatic replay. Within each current maintenance implementation,
 Redis reads and fallible validation/matching finish before its bounded local commit.
 This partial-success contract is independent of atomic Facts/index writes below.
 
 ```text
-Worker / Platform facts -> one Lua -> enabled Rule indexes
-NORMAL Task descriptors -> Group/Rule target MAX -> Rule deficits
+Worker / Platform facts -> one Lua -> enabled Matching indexes
+NORMAL Task descriptors -> Group/Pool target MAX -> maintenance deficits
   -> Pacer HOT head -> Kernel exact 1-second lease -> offered held IDs
-  -> Rule qualification and admission -> Rule-owned local stock
+  -> qualification and admission -> shared Pool resource
 messageId -> WorkerQuery(executorName, input) -> fixed function table
-  -> strategy interpretation/grouping -> Pool range take
-  -> messageId -> held candidate -> current address
-  -> Kernel exact transfer(seal=true) -> exact Item claim -> Command
+  -> strategy interpretation/grouping -> Pool range take / identity / phone index
+  -> messageId -> WorkerCandidate -> current address
+  -> Kernel strict transfer / current execution acquire -> exact Item claim -> Command
 ```
 
-Rules receive opaque held fences, never a lease acquisition capability. They cannot
+Maintenance policies receive opaque held fences, never a lease acquisition capability. They cannot
 discover replacement IDs, renew holds, decode Kernel scores or claim Items.
-Pacer carries refill Rule names, Group coordinates, correlation IDs and immutable query data
+Pacer carries Pool supply names, Group coordinates, correlation IDs and immutable query data
 through `WorkerMatching`. It does not normalize or semantically group queries,
-interpret business fields, depend on Handler implementations or construct index coordinates.
+interpret business fields, depend on maintenance/function implementations or construct index coordinates.
 
-## Named Rule Admission
+## Pool Supply Admission
 
-`resolveRefillTargets(workerGroupId, ruleId, requested)` resolves bounded immutable
-targets without Redis access or stock changes. Explicit targets override configured
-Group/Rule defaults, otherwise ANY 100. It normalizes queries and merges duplicates
-using MAX. Empty targets, unknown/unavailable Rules and unsupported queries fail.
-Server stores the resulting snapshot with the Rule name in the Kernel Task
-descriptor. Matching does not accept Task IDs, persist Task configuration or own
-Task lifecycle. The [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md)
-owns descriptor creation, lookup, corruption handling and configuration equality.
+`normalizeRefill(workerGroupId, declarations)` validates a bounded list without Redis
+access or stock changes. A declaration is `{poolName,target,count}`; targets use the
+existing string-list EligibilityQuery. Equal normalized targets in the same Group/Pool
+merge by MAX. Empty lists are valid and mean no supply. Matching supplies no implicit
+Pool, target or Task configuration. Unknown/disabled Pools and invalid targets fail.
 
-`RefillTarget` and `EligibilityQuery` remain shared assignment values. Rule
-implementations own their interpretation; Kernel stores their structure. Main
-shares its complete immutable Task descriptors with independent refill and dispatch.
+Server stores the complete list in TaskDescriptor.refill. Ordinary Task creation
+omission means `[]`; explicit null and retired `ruleId/refillTargets` fields fail.
+Managed Call registration explicitly supplies default/{} /100, with overrides in
+`xa.mass.task-rpc.refill-by-worker-group`; an override of `[]` disables that supply.
+Matching does not receive Task IDs or own Task lifecycle. The [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md)
+owns persistence, strict decoding and descriptor equality.
 
-The refill Producer groups and concatenates declarations by Group/Rule without
-interpreting or merging queries. It calls `groupsNeedingRefill(targetsByGroup)`
-once, then `refill(group, targetsByRule, heldCandidates)` for each acquired Group
-batch. Matching normalizes equal targets using MAX and resolves each Rule by name.
-The input is bounded to 100 Group/Rule coordinates and 10,000 declarations; each
-Rule operation receives at most 100 queries through the existing rotating pages.
-Shortage observation does not advance the target cursor; a refill attempt does.
+Pacer concatenates declarations by Group and passes `groupsNeedingRefill(refillByGroup)`,
+then `refill(group, declarations, heldCandidates)` for acquired Groups. Matching selects
+Pool maintenance by resource name, normalizes targets, MAX-merges and pages them.
+Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
+limit. Each policy operation receives at most 100 targets. Observation does not advance
+the target cursor; an actual refill attempt does.
 
 Global expired-stock and inactive-cursor cleanup belongs to `groupsNeedingRefill`.
 The hint and later admission may observe different stock. Refill independently
 validates and works without a prior hint or Task registration. Both operations may redo
-bounded local target normalization; they retain no shared execution plan, Handler
+bounded local target normalization; they retain no shared execution plan, policy
 view or inventory transaction. Server admission and Main do not maintain stock.
 
 Server admission uses `WorkerMatchingCatalog.normalizeQuery(group, WorkerQuery)`.
 The Pacer port exposes shortage observation, refill and
 `take(group, queriesByMessageId)`. The function name belongs to each Item, not an
 outer Task binding. Unknown or Group-disabled names fail without fallback; names
-are matched exactly, never classified by prefix. Explicit functions may differ
-from the Task's supply Rule. Group enablement still controls existing indexes.
+are matched exactly, never classified by prefix. Item functions do not depend on Task supply declarations. A Task with no supply can
+consume stock maintained by another Task. Group resource enablement controls indexes
+independently of demand, including Phone Index updates and startup rebuild.
 
 Take accepts at most 100 nonblank message IDs. Catalog captures input order and
 normalizes the complete batch before any consumption. It invokes each function
@@ -104,21 +104,21 @@ remains the refill/inventory value, and storage checks its original deadline.
 Current Pool take reads no Redis or Facts. Function results are candidates only;
 Kernel retains execution admission.
 
-A Rule may explicitly return `expectedScore=0` as an identity hint. Catalog
+Identity and Phone functions return `expectedScore=0` as an identity hint. Catalog
 preserves that value without reading WorkerScore, filling in a fence or downgrading
-a nonzero expectation. Pacer consumes the zero sentinel to select Kernel's current-state
-transfer by IDs; nonzero fences go unchanged to its exact observed-score transfer.
-Kernel receives no optional-fence sentinel and atomically admits active soft HOT and seals
-the execution lease. This hint can compete for a later soft hold and carries no
-historical qualification guarantee. Production Rules all retain strict fences;
-the zero-mode Rule exists only in Runtime Boundary test assembly.
+a nonzero expectation. Pacer consumes zero to call `acquireCurrentHotScoreLeases`
+by IDs; nonzero fences go unchanged to exact observed-score transfer. Kernel receives
+no sentinel. Current acquisition admits due HOT with either mark or active soft HOT
+and always seals the execution lease; it rejects active sealed HOT and RECOVERY.
+It requires no earlier Pool refill. The hint carries no historical qualification
+guarantee. Pool strategies continue to return strict fences.
 
 Message IDs are call-local correlation keys. Matching neither stores them nor reads
 Items, deduplicates requests across calls or owns their lifecycle. Filtering an
 association or failing address lookup, confirmation or claim does not transfer its
 candidate to another message ID, restore stock, trigger another take or renew a lease.
 
-## Unified Queries and Fixed Handlers
+## Item Queries and Pool Maintenance
 
 Item requests use the passive Kernel contract `WorkerQuery(executorName, input)`.
 The input is an immutable JSON value: object, array, string, number or boolean.
@@ -140,17 +140,20 @@ or Item lifecycle. They need not implement a refill interface or use Pool storag
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
 | `worker.messaging.available` | `{}` or an object with optional `country` list and `phone` string; conditions intersect |
 | `proof.worker.facts` | String scalar fields `proofPool`, `proofTarget`, `proofEnabled`, or exclusive `convergenceSlot` |
+| `workerId` | One nonblank Worker ID string; no facts or stock read |
+| `worker.phone` | One exact nonempty Worker phone string; Group-enabled independent property index |
 
-Each function rejects unknown local fields and preserves its previous qualification
+Each Pool function rejects unknown local fields and preserves its previous qualification
 rules. Countries remain strict uppercase two-letter codes. Empty object means no
-additional condition within that function; empty arrays are not ANY. SMS IDs and
-Messages phone queries still consume existing Pool entries, not all-Worker indexes.
+additional condition within a Pool function; empty arrays are not ANY. Default Pool
+IDs and Messages phone queries still consume existing stock. SMS cancellation uses
+the separate workerId function; its listener creation continues using Pool queries.
 
 ```json
 {"workerSelector":{"executorName":"worker.messaging.available","input":{"country":["CN"],"phone":"+8613800000000"}}}
 ```
 
-The [RuleHandler interface](src/main/java/com/xa/mass/workermatching/RuleHandler.java)
+The [PoolRefillPolicy interface](src/main/java/com/xa/mass/workermatching/PoolRefillPolicy.java)
 now owns only the refill side:
 
 | Operation | Contract |
@@ -160,31 +163,71 @@ now owns only the refill side:
 | `refill(group, targets, offered, maxAccepted)` | Qualify held IDs and return actual admissions with original fences/deadlines |
 
 `EligibilityQuery` remains the quantity-free string-list structure for supply.
-`RefillTarget` and TaskDescriptor keep their existing HTTP, YAML and Redis shape:
-`{"query":{"worker.country":["CN"]},"count":100}`. Target counts are 1..1000;
-normalization and MAX merging stay in Matching. Omitted targets resolve at Task
-creation as before. Item requests cannot change or drive these declarations.
+`RefillTarget(poolName,target,count)` carries the resource name and quantity. TaskDescriptor
+stores `refill` with 0..100 declarations; each count is 1..1000. Item queries remain
+WorkerQuery and must be explicit at both finite append and managed Call. They cannot
+generate, modify or imply Pool supply.
 
-Each Rule call has at most 100 targets, offered candidates remain at most 100 unique
+Each maintenance call has at most 100 targets, offered candidates remain at most 100 unique
 IDs, and maxAccepted remains 0..100. Default identity targets saturate at their
 unique ID count. All structure and fallible qualification checks precede admission.
 
-This is a one-time Item protocol cutover. Old direct Maps, including old ANY and
-ID records, are unreadable; HTTP rejects them. Recreate verification Tasks in a new
-scope. There is no compatibility parser, conversion to ANY, migration or automatic
-cleanup. Task descriptors, refill declarations, Facts and index encodings remain.
+Task descriptors switch once to `refillJson`; recreate Tasks in a new scope. Old
+Rule/target fields, missing supply and corrupt entries fail reading. No dual read,
+conversion, default supply, migration or cleanup is provided. Existing WorkerQuery
+Item encoding, Facts, index keys and Score fences remain unchanged.
 
-## Adding a Rule
+## Fixed Resource Composition
 
-Assembly supplies fixed Rule and query-function Maps. Current Pool strategies
-supply method references for their consumption entries. Duplicate names fail
-assembly; there is no registration API, plugin loading or executor type inferred
-from its name. Future property executors can use property names when implemented;
-`worker.phone` and `workerId` are not standalone registered functions today.
+`MatchingComposition` creates each CandidatePool once. Pool maintenance and named
+consumer functions receive the same resource. Storage does not know executorName;
+functions need not implement a maintenance interface. Index mutations are assembled
+by resource namespace and deduplicated before Facts write and startup rebuild.
+Conflicting names/resources fail assembly; there is no dynamic registry or executorType.
 
-`PoolRule` handles current strategy interpretation and offered-ID qualification.
+| Pool | Maintenance |
+| --- | --- |
+| `default` | identity stock, optional country view; no Facts required for ANY/ID |
+| `country` | country eligibility |
+| `messaging` | enabled messaging, country and phone views |
+| `proof-facts` | finite proof memberships |
+
+`default` Pool and functions `worker.default` / `workerId` are universally available.
+Other Pools/functions require explicit Group configuration; Pool-consuming functions
+require their corresponding resource. Existing consumer names and input semantics remain.
+
+## Identity and Phone Query Functions
+
+```json
+{"executorName":"workerId","input":"w-123"}
+{"executorName":"worker.phone","input":"+8613800000000"}
+```
+
+Identity input is a nonblank string. It returns identity evidence without Redis,
+Facts or Pool access. Pacer still checks existence, Group and Endpoint before Kernel
+admission. Phone input is a nonempty exact string; there is no trim or telephone
+format conversion. Its index depends only on Worker `phone`, not country,
+`messaging.enabled` or Platform Properties. Existing Messaging phone conditions
+retain their separate Pool semantics.
+
+Phone storage uses the existing encoded Group index base plus `:phone`: a reverse
+HASH maps Worker ID to phone; `:value:<sha1(phone)>` SETs map exact values to IDs.
+Facts and all enabled indexes preflight before writing in the same Lua. Replacement
+removes the old association; absent/empty phone removes membership. Startup rebuild
+uses persisted Facts before Pacer starts, without background repair.
+
+Equal phone requests share one positive-count SRANDMEMBER; one read-only Lua handles
+the batch, checks selected IDs against the reverse HASH, and returns at most the
+requested count (100 total). Selection is random, non-destructive and has no cursor,
+busy-worker rescan or fairness guarantee. Multiple Workers may share a phone. Missing
+matches are omitted; corruption of index types fails without repair. Identity hints
+are not persisted and consume no Pool capacity. Phone observation and execution
+admission are separate commits, with no property version or enduring value guarantee.
+
+`PoolMaintenance` handles supply target interpretation, offered-ID qualification and membership calculation.
+`PoolQueryFunctions` independently interprets Item input over an injected resource.
 The internal `CandidatePool` is a concrete memory resource with no Redis or
-executor interface. It stores one identity Entry per Group/Rule, the original
+executor interface. It stores one identity Entry per Group/Pool, the original
 held candidate, admission order and finite view memberships. It never receives a
 business predicate callback.
 
@@ -209,34 +252,36 @@ Refill may underfill after concurrent consumption or exceed an observed target
 after concurrent admission. Current hard pool/process capacity and deadlines still
 apply. Later rounds converge; targets do not reserve stock or extend leases.
 
-`RedisRuleStorage` still owns implementation key construction, index-write assembly
+`MatchingStorage` still owns implementation key construction, index-write assembly
 and the shared source connection. Facts and all enabled indexes prepare before any
 write in one Lua, independently of the local refill/consume failure contracts.
-The test-only [Bucket Rule](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketRuleHandler.java)
+The test-only [Bucket Pool fixture](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketPoolFixture.java)
 retains its SET/HASH source and real Worker proof. Separate test functions accept
-string/integer inputs without implementing a Rule or owning Pool stock.
+string/integer inputs without implementing Pool maintenance or owning Pool stock.
 
 ```yaml
 xa:
   mass:
     worker-matching:
-      rules:
-        worker-groups:
-          demo-sim: [worker.country, worker.messaging.available]
-        default-refill-targets:
-          demo-sim:
-            "[worker.default]":
-              - query: {"worker.country": [CN]}
-                count: 10
+      groups:
+        demo-sim:
+          pools: [country, messaging]
+          functions: [worker.country, worker.messaging.available, worker.phone]
+    task-rpc:
+      refill-by-worker-group:
+        demo-sim:
+          - '{"poolName":"default","target":{},"count":100}'
 ```
 
-Rare partitions and identities still need suitable supply targets. The
-scenario-workers preset targets ANY 1000; the general default remains 100.
+Managed supply uses complete JSON declaration strings so an explicit empty target
+survives Boot binding and missing target still fails the shared strict decoder.
+Lab managed Tasks explicitly request 1000; ordinary Tasks default to no supply.
+Phone Index depends on Group resource composition, never Task demand.
 
 ## Inventory and Refill Bounds
 
-Current Rules retain candidates only in this process: at most 100 resident
-Group/Rule pools, 1000 entries per pool and 10000 in total. Each entry carries
+Current Pools retain candidates only in this process: at most 100 resident
+Group/Pool pools, 1000 entries per pool and 10000 in total. Each entry carries
 its identity, range memberships, admission order, original opaque fence and deadline.
 Tasks have no reserved share. Restart discards all stock without adoption.
 
@@ -246,28 +291,28 @@ disabled Tasks supply no later demand; an in-flight round is not a lifecycle loc
 Pacer rotates Groups, at most 100 HOT candidates per Group and 1000 per round.
 A positive deficit enables a Group but never reduces its fixed HOT scan budget.
 
-Catalog rotates Rules and bounded query pages, including empty attempts. A Rule
+Catalog rotates Pool policies and bounded query pages, including empty attempts. A maintenance policy
 prioritizes constrained targets before ANY, incrementing all overlapping target
 counts for each selected candidate. Offered memberships are computed once before
 admission; range decisions remain local. Each Group batch passes only remaining
-IDs to later Rules; an actual acceptance, not a count estimate, removes an offer.
+IDs to later Pools; an actual acceptance, not a count estimate, removes an offer.
 
-Global lazy expiry runs once at Group shortage observation by invoking current Rule-owned
+Global lazy expiry runs once at Group shortage observation by invoking current resource-owned
 pool cleanup. It does not store a second inventory. Group access expires only its
 own pool; diagnostics and capacity reads do not sweep unrelated pools. Admission
 uses observed shortages and rechecks each entry's original deadline and shared
 hard capacity at commit, without revalidating the whole inventory.
 Other expiry may release capacity after the round's budget was observed, so a
-round may conservatively underfill. A Rule with no available capacity reports zero
+round may conservatively underfill. A Pool with no available capacity reports zero
 refill deficit, preserving the existing full-stock supply suppression. No operation
 extends a lease.
 
 Pacer computes the original deadline immediately before acquisition. Qualification
-time and inventory waiting consume that same second. Explicit IDs only filter
+time and inventory waiting consume that same second. Explicit Pool IDs only filter
 offered identities and stock; they never trigger a targeted HOT read. Rare targets
 may wait longer under the fixed Group supply policy.
 
-Consumption is destructive. Misses, read failures, ambiguous acquisition and failed
+Pool consumption is destructive. Misses, read failures, ambiguous acquisition and failed
 admission leave any held Kernel lease to expire; there is no compensation release,
 renewal, reinsertion, replay or pending registry. Unobserved mark changes may
 temporarily overcount stock; final execution transfer still requires the exact
@@ -284,15 +329,18 @@ All keys use `xa_mass:<scope>`:
 ```text
 :matching:worker:facts:<group>                         HASH workerId -> Worker JSON
 :matching:worker:platform-properties:<group>           HASH workerId -> Platform JSON
-:matching:worker:index:<encoded-group>:<handler>       ZSET workerId -> source coordinate
-:matching:worker:index:<encoded-group>:<handler>:partitions
+:matching:worker:index:<encoded-group>:<namespace>       ZSET workerId -> source coordinate
+:matching:worker:index:<encoded-group>:<namespace>:partitions
                                                       HASH workerId -> partition suffixes
-:matching:worker:index:<encoded-group>:<handler>:partition:<digest>
+:matching:worker:index:<encoded-group>:<namespace>:partition:<digest>
                                                       ZSET workerId -> source coordinate
+:matching:worker:index:<encoded-group>:phone            HASH workerId -> exact phone
+:matching:worker:index:<encoded-group>:phone:value:<digest>
+                                                      SET of Worker IDs; digest = SHA-1(phone)
 ```
 
 Group encoding is UTF-8 Base64 URL without padding; partition digests use SHA-1
-of the existing ZSET Handler suffixes. Those implementations retain the source coordinate `countryCode * 2^43 +
+of the existing index partition suffixes. Those implementations retain the source coordinate `countryCode * 2^43 +
 lastTakenMillis` with base-26 A..Z prefix 0..675 and milliseconds since 2000-01-01.
 Proof partitions use prefix zero. The retained low time component is preserved
 by facts updates; refill no longer rotates or writes these coordinates. This index coordinate is
@@ -316,7 +364,7 @@ Unexpected/corrupt stored data fails; it is not converted to empty eligible fact
 Server separately asks Worker Score Owner to invalidate candidate eligibility
 after APPLIED facts writes. Facts/index and sealing are different Owner commits;
 there is no cross-owner transaction, guaranteed retry or repair. Acquisition creates
-the soft hold before Matching reads current projections. Matching never unseals it:
+the soft hold before Matching reads current Pool projections. Matching never unseals it:
 successful sealing after acquisition invalidates that candidate's fence,
 including when it follows the projection read. Facts may still change between
 projection and invalidation/transfer; mark is not a facts version and does not
@@ -327,7 +375,7 @@ existing valid scores, including due and recovery scores; it is not lease-only.
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
 malformed facts abort startup. Cleanup visits only the declared roots and descendants
-of enabled Rules, leaving other index namespaces untouched. With no configured Groups, rebuild is a no-op
+of enabled Rules/functions, leaving other index namespaces untouched. With no configured Groups, rebuild is a no-op
 and opens no Redis connection. Refill reads their projections only for Pacer-issued IDs; there is no
 autonomous source take, index repair scan, lease registry or per-Task publication.
 
@@ -337,7 +385,9 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Group shortage observation: zero Redis commands; local target aggregation and
   one global expiry sweep per round. Named refill independently repeats bounded
   target normalization; only visited target pages reach Rule inventory operations.
-- Normalized stock counts and take: zero Redis commands or facts reads.
+- Pool stock counts and take: zero Redis commands or facts reads.
+- Identity take: zero Redis commands. Nonempty Phone take: one read-only Lua for
+  grouped exact phone values, returning at most 100 identities without a lease read.
 - Each nonempty eligible Group batch: one read-only HOT head Lua (TIME and
   ZRANGE BYSCORE LIMIT 0 limit inside), then one candidate-acquisition Lua, followed by at most one
   projection read per participating Handler. No successful acquisitions means no
@@ -359,7 +409,8 @@ their difference counts rejected candidates only when `failed=false`. A failed
 call is unconfirmed, not proof of lease rejection. No management API or diagnostics thread is added.
 
 Candidate failures do not add a prerequisite to Item expiry/exhaustion/idle settlement. Refill infrastructure failure reaches its Producer backoff; partial
-holds expire. Take misses never query a source or acquire a new hold. Restart
+holds expire. Pool misses never query a source or acquire a new hold; direct lookup
+misses never scan alternatives or retry busy identities. Restart
 loses local inventory and rebuilds it through ordinary refill without adoption,
 ACK, replay or a repair scan.
 
@@ -374,7 +425,13 @@ Items, including shared and different Rules within one Group. Runtime Boundary a
 Dynamic Matching witness real Worker execution; Call Performance separately
 measures mixed-workload behavior. See [TESTING](../TESTING.md).
 
+Runtime Boundary additionally blocks Group refill and proves Identity and Phone
+queries executing due Workers through real delivery and Result observation. Redis
+Owner checks independent phone replacement, removal, shared numbers, corruption,
+concurrent writes and startup rebuilding, plus direct/Pool execution races.
+
 Task configuration now lives in the Task descriptor. Recreate Tasks in a new scope;
 old descriptor formats are rejected, and old Matching data is neither read nor
-cleared. HTTP, facts/index formats and Score encoding are unchanged. Local stock
+cleared. HTTP, existing facts/Rule index formats and Score encoding are unchanged;
+the independent phone namespace is additional. Local stock
 is still lost on restart and outstanding holds expire.

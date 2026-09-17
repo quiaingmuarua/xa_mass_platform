@@ -25,12 +25,28 @@ describe("finite Task input model", () => {
     const seeds = buildSeedItems(lines, "value");
 
     expect(lines).toEqual(["one", "", "three"]);
-    expect(materializeTaskItems("task-1", "string.md5", seeds)).toEqual([
-      { messageId: "task-1-00001", eventCode: "string.md5", payload: { value: "one" } },
-      { messageId: "task-1-00002", eventCode: "string.md5", payload: { value: "" } },
+    expect(
+      materializeTaskItems("task-1", "string.md5", seeds, {
+        executorName: "worker.default",
+        input: {}
+      })
+    ).toEqual([
+      {
+        messageId: "task-1-00001",
+        eventCode: "string.md5",
+        workerSelector: { executorName: "worker.default", input: {} },
+        payload: { value: "one" }
+      },
+      {
+        messageId: "task-1-00002",
+        eventCode: "string.md5",
+        workerSelector: { executorName: "worker.default", input: {} },
+        payload: { value: "" }
+      },
       {
         messageId: "task-1-00003",
         eventCode: "string.md5",
+        workerSelector: { executorName: "worker.default", input: {} },
         payload: { value: "three" }
       }
     ]);
@@ -69,10 +85,16 @@ describe("HttpFiniteTaskClient", () => {
     await client.createTask({
       workerGroupId: "group-1",
       priority: 50,
+      refill: [],
       maxRetryTimes: 3
     });
     await client.appendItems("task-1", [
-      { messageId: "task-1-00001", eventCode: "event", payload: { value: "a" } }
+      {
+        messageId: "task-1-00001",
+        eventCode: "event",
+        workerSelector: { executorName: "worker.default", input: {} },
+        payload: { value: "a" }
+      }
     ]);
     await client.approveTask("task-1");
     await expect(client.exportResults("task-1")).resolves.toMatchObject({
@@ -127,7 +149,12 @@ describe("HttpFiniteTaskClient", () => {
 
     await expect(
       client.appendItems("task-1", [
-        { messageId: "message-1", eventCode: "event", payload: {} }
+        {
+          messageId: "message-1",
+          eventCode: "event",
+          workerSelector: { executorName: "worker.default", input: {} },
+          payload: {}
+        }
       ])
     ).rejects.toMatchObject({ kind: "schema" });
     await expect(client.approveTask("task-1")).rejects.toMatchObject({
@@ -247,9 +274,10 @@ function executionRequest(contents: string) {
   return {
     workerGroupId: "scenario-string-utils-workers",
     eventCode: "extension.worker.string.md5",
+    workerSelector: { executorName: "worker.default", input: {} },
     payloadKey: "value",
     file: textFile("seed.txt", contents),
-    config: { priority: 50, maxRetryTimes: 3 }
+    config: { priority: 50, maxRetryTimes: 3, refill: [] }
   };
 }
 

@@ -133,18 +133,13 @@ public interface TaskRuntime {
             String workerGroupId,
             TaskIdleDisposition idleDisposition,
             Map<String, String> config,
-            String ruleId,
-            List<RefillTarget> refillTargets
+            List<RefillTarget> refill
     ) {
         public TaskDescriptor {
             requireNonBlank(taskId, "taskId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            requireNonBlank(ruleId, "ruleId");
-            if (ruleId.isBlank()) throw new IllegalArgumentException("ruleId must be non-blank");
-            refillTargets = List.copyOf(Objects.requireNonNull(refillTargets, "refillTargets"));
-            if (refillTargets.isEmpty() || refillTargets.size() > 100) {
-                throw new IllegalArgumentException("refillTargets requires 1..100 targets");
-            }
+            refill = List.copyOf(Objects.requireNonNull(refill, "refill"));
+            if (refill.size() > 100) throw new IllegalArgumentException("refill allows at most 100 declarations");
             Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
             if (!config.keySet().equals(CONFIG_KEYS)) {

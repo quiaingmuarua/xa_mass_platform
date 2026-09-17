@@ -10,7 +10,7 @@ import java.util.*;
 import java.util.function.LongSupplier;
 
 /** Implementation-side Redis and candidate resources. Created once per Catalog, never per Task. */
-public final class RedisRuleStorage implements AutoCloseable {
+public final class MatchingStorage implements AutoCloseable {
     /**
      * Trusted storage assembly input, separate from Eligibility operations. Lua returns prepare;
      * prepare validates without writes and returns apply. Facts and every enabled index prepare
@@ -24,34 +24,19 @@ public final class RedisRuleStorage implements AutoCloseable {
     }
     private final RedisClient client;
     private final RedisKeyspace keyspace;
-    private final Map<String, List<IndexMutation>> indexes;
     private final LongSupplier clock;
     private final List<CandidatePool> candidateOwners = new ArrayList<>();
     final CandidateBudget budget = new CandidateBudget();
     private StatefulRedisConnection<String, String> connection;
     private boolean closed;
-    public RedisRuleStorage(RedisClient client, RedisKeyspace keyspace) {
-        this(client, keyspace, Map.of(), System::currentTimeMillis);
+    public MatchingStorage(RedisClient client, RedisKeyspace keyspace) {
+        this(client, keyspace, System::currentTimeMillis);
     }
-    public RedisRuleStorage(RedisClient client, RedisKeyspace keyspace,
-            Map<String, List<IndexMutation>> additionalIndexes, LongSupplier clock) {
-        this.client = Objects.requireNonNull(client); this.keyspace = Objects.requireNonNull(keyspace);
+    public MatchingStorage(RedisClient client, RedisKeyspace keyspace, LongSupplier clock) {
+        this.client = Objects.requireNonNull(client);
+        this.keyspace = Objects.requireNonNull(keyspace);
         this.clock = Objects.requireNonNull(clock);
-        var mutations = new LinkedHashMap<String, List<IndexMutation>>();
-        mutations.put("worker.country", List.of(CountryRuleHandler.index()));
-        mutations.put("worker.messaging.available", List.of(MessagingRuleHandler.index()));
-        mutations.put("proof.worker.facts", List.of(ProofFactsRuleHandler.index()));
-        additionalIndexes.forEach((id, values) -> {
-            if (mutations.putIfAbsent(id, List.copyOf(values)) != null)
-                throw new IllegalArgumentException("duplicate Rule storage: " + id);
-        });
-        var namespaces = new HashSet<String>();
-        mutations.values().forEach(values -> values.forEach(index -> {
-            if (!namespaces.add(index.namespace())) throw new IllegalArgumentException("Conflicting Rule index namespace: " + index.namespace());
-        }));
-        indexes = Map.copyOf(mutations);
     }
-    public List<IndexMutation> indexes(String ruleId) { return indexes.getOrDefault(ruleId, List.of()); }
     public long now() { return clock.getAsLong(); }
     public int availableCapacity() { return budget.available(); }
     public String diagnostics() { return budget.diagnostics(); }

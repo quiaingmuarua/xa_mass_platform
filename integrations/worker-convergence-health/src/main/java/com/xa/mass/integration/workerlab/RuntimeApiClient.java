@@ -173,20 +173,12 @@ final class RuntimeApiClient {
                         "managed Task call Item requires workerSelector"
                 );
             }
-            encoded.add(Map.of(
-                    "messageId", item.messageId(),
-                    "eventCode", item.eventCode(),
-                    "payload", item.payload(),
-                    "workerSelector", Map.of("executorName","worker.default","input",item.workerSelector())
-            ));
+            encoded.add(Map.of("messageId", item.messageId(), "eventCode", item.eventCode(), "payload", item.payload(), "workerSelector", Map.of("executorName", "worker.default", "input", item.workerSelector())));
         }
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/items:call",
-                Map.of(
-                        "items", encoded,
-                        "waitTimeoutMillis", waitTimeoutMillis
-                )
+                Map.of("items", encoded, "waitTimeoutMillis", waitTimeoutMillis)
         );
         requireStatus(response, 200, "call Task Items");
         Map<String, Object> results = response.body();
@@ -266,13 +258,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response created = http.send(
                 "POST",
                 "/api/v1/tasks",
-                Map.of(
-                        "workerGroupId", workerGroupId,
-                        "ruleId", "proof.worker.facts",
-                        "refillTargets",List.of(Map.of("query",workerSelector,"count",1)),
-                        "priority", 50,
-                        "maxRetryTimes", 3
-                )
+                Map.of("workerGroupId", workerGroupId, "refill", List.of(Map.of("poolName","proof-facts","target", workerSelector, "count", 1)), "priority", 50, "maxRetryTimes", 3)
         );
         requireStatus(created, 200, "create Rule witness Task");
         String taskId = JsonValues.requiredString(created.body(), "taskId");
@@ -280,12 +266,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response appended = http.send(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/items",
-                List.of(Map.of(
-                        "messageId", messageId,
-                        "eventCode", eventCode,
-                        "payload", payload,
-                        "workerSelector", Map.of("executorName","proof.worker.facts","input",Map.of("convergenceSlot",((List<?>)workerSelector.get("worker.convergenceSlot")).getFirst()))
-                ))
+                List.of(Map.of("messageId", messageId, "eventCode", eventCode, "payload", payload, "workerSelector", Map.of("executorName", "proof.worker.facts", "input", Map.of("convergenceSlot", ((List<?>)workerSelector.get("worker.convergenceSlot")).getFirst()))))
         );
         requireStatus(appended, 200, "append Rule witness Item");
         Map<String, Object> appendOutcome = JsonValues.object(

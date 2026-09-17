@@ -248,8 +248,8 @@ class RuntimeApiClientTest {
                 assertThat(Jsons.parseObject(request.body()))
                         .containsEntry("workerGroupId", "group-1")
                         .containsEntry(
-                                "ruleId",
-                                "proof.worker.facts"
+                                "refill",
+                                List.of(Map.of("poolName","proof-facts","target",Map.of("worker.convergenceSlot",List.of("C")),"count",1L))
                         );
             });
         } finally {

@@ -23,7 +23,7 @@ class DispatchMechanismBoundaryTest {
         );
         assertTrue(source.contains("worker.expectedScore()"));
         assertTrue(source.contains("transferObservedHotScoreLeases("));
-        assertTrue(source.contains("transferCurrentHotScoreLeases("));
+        assertTrue(source.contains("acquireCurrentHotScoreLeases("));
         for (String parallelInput : List.of(
                 "itemsByMessageId",
                 "observedItemScores",

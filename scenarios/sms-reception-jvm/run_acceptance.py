@@ -97,11 +97,17 @@ def mixed_capabilities(run, inventory):
                  "extension.worker.string.base64.encode"]).issubset(events), "Mixed events are not installed")
     listener = wait_state(run, create(run, request="mixed-worker"), {"LISTENING"})
     require(listener["workerId"] == cn["workerId"], "SMS listener identity changed")
-    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim"})["taskId"]
+    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "refill": [{"poolName": "default", "target": {}, "count": 100}]})["taskId"]
     messages = [str(uuid.uuid4()) for _ in range(3)]
+    selectors = [
+        {"executorName": "worker.default", "input": {"workerId": [cn["workerId"]]}},
+        {"executorName": "workerId", "input": cn["workerId"]},
+        {"executorName": "worker.phone", "input": cn["phone"]},
+    ]
     http(run.url, f"/api/v1/tasks/{task}/items", [
         {"messageId": message, "eventCode": "extension.worker.string.md5",
-         "payload": {"value": "shared-sms-worker"}, "workerSelector": {"executorName": "worker.default", "input": {"workerId": [cn["workerId"]]}}, "ttlMillis": 30000} for message in messages])
+         "payload": {"value": "shared-sms-worker"}, "workerSelector": selector, "ttlMillis": 30000}
+        for message, selector in zip(messages, selectors)])
     http(run.url, f"/api/v1/tasks/{task}/approve", {})
     results = {}
     def strings_observed():
@@ -118,6 +124,7 @@ def mixed_capabilities(run, inventory):
     received = wait_state(run, listener, {"RECEIVED"})
     require(received["workerId"] == cn["workerId"], "Shared Worker identity mismatch")
     return {"workerId": cn["workerId"], "targetedTaskId": task, "stringResults": len(results),
+            "queryFunctions": [selector["executorName"] for selector in selectors],
             "smsObserved": True, "installedEvents": events,
             "claim": "one actual Worker serves both Tasks; no fairness or capacity claim"}
 

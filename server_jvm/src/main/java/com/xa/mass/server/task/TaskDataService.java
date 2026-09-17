@@ -105,8 +105,8 @@ public final class TaskDataService {
                     : latest.entrySet()) {
                 try {
                     var supplied = entry.getValue().workerSelector();
-                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), supplied == null
-                            ? new WorkerQuery(descriptor.ruleId(), Map.of()) : supplied);
+                    if (supplied == null) throw new IllegalArgumentException("workerSelector is required");
+                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), supplied);
                     TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
                     validItems.add(item);
                 } catch (IllegalArgumentException error) {

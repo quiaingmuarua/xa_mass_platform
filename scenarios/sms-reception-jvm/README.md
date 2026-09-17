@@ -162,6 +162,7 @@ Backend 从 `succeeded` Result 的完整业务内容读取接码状态，不从 
 当前完整快照，不创建第二个监听、不换号码、不把原 Reporter 转给新 run。
 
 取消先表示意图。建立期间取消，Backend 等待实际 Worker 归属后发送定向 Task；
+取消使用 `workerId` 查询函数，不等待目标重新进入 Pool；监听创建仍使用原 Pool 查询。
 本地队列尚未接纳取消意图时，后续观察轮次可以继续尝试本地准入。已实际提交的命令不由
 Backend 自动重发。Host 确认前保持“取消中”；短信已获胜时不能改判取消。
 已过有效窗口的取消按明确到期报告。
@@ -254,7 +255,9 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 不暴露 Reporter、不作为 Backend 的结果来源。
 
 功能场景还从实际 Worker 读取事件快照，再在 CN 同一号码保持监听期间，通过同 Group 的
-有限 Rule-index Task 执行字符串事件，随后验证短信结果。这只证明同一 Worker 承接两类
+有限 Task 分别使用 Default ID Pool、`workerId` 和 `worker.phone` 查询执行字符串事件，随后
+验证短信结果。号码查询通过 Preview 实际启用的独立索引，SMS-only 库存没有 Messaging
+启用属性。该场景不阻断补货；无 Pool／无预先租约的证明归 Runtime Boundary。这只证明同一 Worker 承接两类
 Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身份稳定的重启、去重保留以及
 新监听成功；旧监听的本地 INTERRUPTED 与产品 UNCONFIRMED 分别记录，不计入正常流的状态不一致。
 

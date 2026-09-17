@@ -98,15 +98,17 @@ own APPLIED-only ordering and best-effort response preservation. Runtime Boundar
 and Worker lanes remain downstream witnesses, not a facts/Score transaction or
 loss-repair guarantee.
 
-Observed-score and current-state transfer are Redis Owner claims: both contenders compete
-atomically for active soft HOT, targets never shorten the current deadline, and
-sealed, expired, missing or corrupt members do not gain execution leases. Exact
-transfer rejects zero; current-state transfer receives only identities. Pacer tests
+Observed-score transfer and current execution acquisition are Redis Owner claims:
+both compete atomically for active soft HOT, and the latter also accepts due HOT
+with either mark without an initial hold. Targets never shorten deadlines; active
+sealed, RECOVERY, missing or corrupt members cannot gain execution leases. Exact
+transfer rejects zero; current acquisition receives only identities and always seals. Pacer tests
 prove mixed-candidate partitioning, no strict-to-current fallback, partial-call
 failure without compensation, TRANSITIONED-only Item claim and the returned execution fence in
-ResultContext. Runtime Boundary adds a test-only identity-hint Rule using real
-Pool refill, Matching, Pacer, Worker execution and Result observation; production
-Rules remain strict. Identity hints may compete for a later soft hold and do not
+ResultContext. Runtime Boundary retains the strict Pool and test-only identity-hint
+Pool witnesses, and ordinary empty-supply Tasks to prove production workerId and
+worker.phone execution from due Workers with neither Pool entries nor prior soft
+holds. Production Pool Rules remain strict. Identity hints may compete for a later soft hold and do not
 promise preservation of an earlier qualification decision.
 
 TaskItem generic terminal progression is a Redis Owner claim: tags 2..9,
@@ -127,14 +129,14 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 Task configuration and index proof belongs to Redis Owner: complete create-only
 descriptors, concurrent configuration integrity and strict corruption rejection,
 one-Lua facts/index updates, independent Worker/Platform writes and startup
-rebuild isolation. Matching tests prove the four-operation Rule interface, unsupported condition
+rebuild isolation. Matching tests prove the Pool maintenance interface and fixed query functions, unsupported condition
 rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
 original fences and atomic destructive consumption. Catalog tests own messageId
 correlation, equivalent/interleaved queries, shortages, immutable input-ordered
 results, whole-batch admission before consumption and independent reuse of IDs
 across calls. Redis Owner proves the Country path adds no Redis access during take.
 Kernel tests own immutable
-query capture and strict direct-Map JSON; Server tests own flat target configuration
+WorkerQuery capture and strict envelope JSON; Server tests own flat target configuration
 and HTTP admission. Redis Owner rejects old property conditions without rewriting
 records or substituting ANY.
 The separately assembled bucket SET/projection HASH Rule proves that a different
@@ -345,11 +347,11 @@ Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
-Redis Owner proves complete Task descriptors, preserved source coordinates, sparse phone partitions,
+Redis Owner proves complete Task descriptors, preserved source coordinates, sparse Messaging phone partitions,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
-no Matching Task configuration access, local target resolution and direct Group/Rule operations without
+no Matching Task configuration access, local target resolution and direct Group/Pool operations without
 executable binding views or refill callbacks, bounded named refill command counts
-from the Matching Owner contract, and zero Redis access for local take or
+from the Matching Owner contract, and zero Redis access for Pool take or
 satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
 batches. Properties sealing invalidates old fences; a fresh hold after natural
 expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.
@@ -358,12 +360,21 @@ Focused tests cover direct named refill/take without Task registration or prior
 shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
 capacities, concurrent take, constrained-target budget sharing and source failure
 after hold. Pacer tests keep refill independent of Item observation and dispatch
-independent of source reads/acquisition. Runtime Boundary uses actual WebSocket,
+independent of Pool source reads/acquisition. Runtime Boundary uses actual WebSocket,
 Socket and Polling Workers, including multiple Tasks consuming one shared pool.
 Dynamic Matching preserves its 1,000 Worker/150,400 Item workload with explicit
 proof-Rule refill targets. Messages declares country plus sparse phone targets.
 The existing mixed Call workload supplies coexistence and aggregate Redis cost
 evidence; a local nonreference run is not a throughput improvement claim.
+
+The independent Phone Index has Redis Owner proofs for exact value replacement,
+removal, multiple Workers per value, Group isolation, Platform independence,
+all-index preflight atomicity, concurrent writes and startup rebuild. A direct Phone
+batch uses one read-only Lua and at most 100 random identities, with reverse
+membership validation; tests assert bounds and validity, not random distribution
+or latency. Mixed Pool/Identity/Phone tests retain whole-batch admission and first
+association wins. Identity uses no Redis in Matching; Pacer still verifies existence
+and Group before Kernel execution acquisition.
 
 ## CI Gate
 

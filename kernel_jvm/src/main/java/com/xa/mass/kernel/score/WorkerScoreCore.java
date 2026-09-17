@@ -83,18 +83,17 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Transfers current active soft HOT holds without a prior score observation. Reads,
-     * validates and retains or extends each current deadline atomically. Missing or ineligible
-     * members are STALE; corrupt scores are INVALID without a score payload. Never creates
-     * or repairs a member. Seal makes the resulting hold non-transferable; an unchanged
-     * soft target is NOOP, not new authority. IDs must be unique; empty input is a no-op.
-     * Both transfer operations process at most 100 Workers per Lua, without a batch transaction.
+     * Acquires sealed execution leases from current due HOT (either mark) or active soft HOT.
+     * Reads, validates and retains or extends each deadline atomically, without a prior score
+     * observation. Active sealed, RECOVERY or missing members are STALE; corrupt scores are
+     * INVALID without a score payload. Never creates or repairs a member. Success always
+     * transitions to a sealed fence; there is no soft/NOOP mode. IDs must be unique; empty
+     * input is a no-op. Each Lua processes at most 100 Workers, without a batch transaction.
      */
-    Map<String, WorkerScoreTransitionResult> transferCurrentHotScoreLeases(
+    Map<String, WorkerScoreTransitionResult> acquireCurrentHotScoreLeases(
             String homeBucketId,
             List<String> workerIds,
-            long targetTimeMillis,
-            boolean seal
+            long targetTimeMillis
     );
 
     /** Seals current coordinates for 1..100 unique IDs without changing time or polarity. */

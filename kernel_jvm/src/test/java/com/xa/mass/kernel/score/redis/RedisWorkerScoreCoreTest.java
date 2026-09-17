@@ -142,19 +142,19 @@ class RedisWorkerScoreCoreTest {
     void currentTransferValidatesCompleteIdentityBatchBeforeRedisAccess() {
         RedisClient client = RedisClient.create("redis://127.0.0.1:1");
         try (var scores = new RedisWorkerScoreCore(client, new RedisKeyspace("test_worker_score_unit"))) {
-            assertEquals(Map.of(), scores.transferCurrentHotScoreLeases("g", List.of(), 1_000, true));
+            assertEquals(Map.of(), scores.acquireCurrentHotScoreLeases("g", List.of(), 1_000));
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scores.transferCurrentHotScoreLeases("g", List.of("w"), -1, true).get("w").status());
+                    scores.acquireCurrentHotScoreLeases("g", List.of("w"), -1).get("w").status());
             assertThrows(IllegalArgumentException.class,
-                    () -> scores.transferCurrentHotScoreLeases("g", null, 1_000, true));
+                    () -> scores.acquireCurrentHotScoreLeases("g", null, 1_000));
             assertThrows(IllegalArgumentException.class,
-                    () -> scores.transferCurrentHotScoreLeases(" ", List.of("w"), 1_000, true));
+                    () -> scores.acquireCurrentHotScoreLeases(" ", List.of("w"), 1_000));
             for (String last : new String[]{null, " ", "w0"}) {
                 var ids = new java.util.ArrayList<String>();
                 for (int i = 0; i < 101; i++) ids.add("w" + i);
                 ids.add(last);
                 assertThrows(IllegalArgumentException.class,
-                        () -> scores.transferCurrentHotScoreLeases("g", ids, 1_000, true));
+                        () -> scores.acquireCurrentHotScoreLeases("g", ids, 1_000));
             }
         } finally {
             client.shutdown();

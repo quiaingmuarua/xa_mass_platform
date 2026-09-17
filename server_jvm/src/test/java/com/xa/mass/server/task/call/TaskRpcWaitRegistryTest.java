@@ -499,28 +499,10 @@ class TaskRpcWaitRegistryTest {
             int maxPendingObservations,
             int maxProbeItemsPerRound
     ) {
-        return new TaskRpcProperties(
-                30_000,
-                60_000,
-                maxWaiters,
-                maxPendingObservations,
-                maxProbeItemsPerRound,
-                50,
-                100,
-                250
-        );
+        return new TaskRpcProperties(30_000, 60_000, maxWaiters, maxPendingObservations, maxProbeItemsPerRound, 50, 100, 250, java.util.Map.of());
     }
 
     private static TaskRpcProperties fastProperties() {
-        return new TaskRpcProperties(
-                30_000,
-                60_000,
-                10,
-                10,
-                10,
-                1,
-                1,
-                1
-        );
+        return new TaskRpcProperties(30_000, 60_000, 10, 10, 10, 1, 1, 1, java.util.Map.of());
     }
 }

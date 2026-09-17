@@ -2,16 +2,18 @@ package com.xa.mass.workermatching.rules;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
+import com.xa.mass.workermatching.rules.CandidatePool.Selection;
+import static com.xa.mass.workermatching.rules.CandidatePool.*;
 
-/** Complete Eligibility implementation for the existing partitioned ZSET Rules. */
-abstract class PartitionedRuleHandler extends PoolRule<PartitionedZsetIndex.Projection> {
+/** Supply interpretation over the existing partitioned source indexes. */
+abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetIndex.Projection> {
     private final String namespace;
-    PartitionedRuleHandler(RedisRuleStorage storage, String namespace) { super(storage); this.namespace = namespace; }
+    PartitionedPoolPolicy(MatchingStorage storage, CandidatePool pool, String namespace) { super(storage, pool); this.namespace = namespace; }
     abstract PartitionedZsetIndex.Criteria criteria(Map<String, List<String>> query);
 
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
         var expression = input.query();
-        if (expression.containsKey("workerId")) throw new IllegalArgumentException("workerId query requires worker.default");
+        if (expression.containsKey("workerId")) throw new IllegalArgumentException("workerId target requires the default Pool");
         var query = RuleQueries.normalize(input); criteria(query.query()); return query;
     }
     @Override protected Selection target(String group, EligibilityQuery query) {
@@ -38,7 +40,7 @@ abstract class PartitionedRuleHandler extends PoolRule<PartitionedZsetIndex.Proj
         return new PartitionedZsetIndex(storage::commands, storage.indexKey(group, namespace)).snapshot(ids);
     }
     static PartitionedZsetIndex.Criteria countries(Map<String,List<String>> query,Set<String> supported,String partition) {
-        if(!supported.containsAll(query.keySet()))throw new IllegalArgumentException("unsupported Rule condition");
+        if(!supported.containsAll(query.keySet()))throw new IllegalArgumentException("unsupported Pool target condition");
         if(!query.containsKey("worker.country"))return new PartitionedZsetIndex.Criteria(partition,"any",List.of());
         var codes=query.get("worker.country").stream().map(v->Integer.toString(CountryIndex.code(v))).distinct().toList();
         return new PartitionedZsetIndex.Criteria(partition,"countries",codes);

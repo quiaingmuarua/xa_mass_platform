@@ -660,7 +660,7 @@
               <span class="owner">MATCHING</span>
               <h3>解释事实与条件</h3>
               <p>
-                维护 Worker 属性与匹配规则，从 Kernel 提供的有限 Worker 集合中过滤候选。
+                维护 Worker 属性、共享候选库存与查询函数，按任务项条件提供有限候选身份。
               </p>
             </article>
             <article class="card server">
@@ -731,21 +731,20 @@
           </div>
           <div class="grid-2 section-block">
             <article class="card matching">
-              <span class="owner">Rule Index</span>
-              <h3>按属性条件匹配</h3>
+              <span class="owner">Pool Function</span>
+              <h3>从共享库存获取候选</h3>
               <p>
-                Matching 将 Worker 属性提前物化为索引，按 Task
-                绑定与任务项条件提供候选。 Kernel
-                获取可用资源、持有并复核资格，最后确认分配。
+                Task 可以为共享 Pool 声明目标水位。Matching 按资格接纳候选，
+                任务项通过具名查询函数消费库存；多个 Task 可以共享同一份资源。
+                供给声明与任务项查询分别配置。
               </p>
             </article>
             <article class="card kernel">
-              <span class="owner">Default Rule</span>
-              <h3>按身份范围获取</h3>
+              <span class="owner">Direct Query</span>
+              <h3>按身份或号码定位</h3>
               <p>
-                任务项提供明确的 Worker ID 列表，或用空条件（ANY）让 Kernel
-                在所属分组内获取可用 Worker。绑定具名 Rule 时，身份选择也必须满足该 Rule
-                的资格。
+                任务项也可以按 Worker ID 或号码直接定位，无需声明 Pool 供给。
+                两条路径最终都由 Kernel 检查当前资源状态、授予执行租约并领取任务项。
               </p>
             </article>
           </div>

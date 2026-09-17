@@ -145,9 +145,9 @@ public final class RedisWorkerScoreCore
             end
             return results
             """;
-    private static final String TRANSFER_CURRENT_SCRIPT = ACTIVE_TRANSFER_FUNCTION + """
-            local maximum = tonumber(ARGV[5])
-            local function transfer(id)
+    private static final String ACQUIRE_CURRENT_SCRIPT = LEASE_CLOCK + """
+            local maximum = tonumber(ARGV[4])
+            local function acquire(id)
               if requested_base <= now_base then return {'invalid'} end
               local stored = redis.call('ZSCORE', KEYS[1], id)
               if not stored then return {'stale'} end
@@ -157,10 +157,14 @@ public final class RedisWorkerScoreCore
               if absolute == 0 or absolute > maximum or absolute ~= math.floor(absolute) then
                 return {'invalid'}
               end
-              return transfer_active(id, current)
+              if current < 0 or (current >= now_base and current % factor ~= 0) then
+                return {'stale', current}
+              end
+              local target = math.max(requested_base, current - current % factor) + 1
+              return write_changed(KEYS[1], id, current, target)
             end
             local results = {}
-            for i = 6, #ARGV do append_result(results, ARGV[i], transfer(ARGV[i])) end
+            for i = 5, #ARGV do append_result(results, ARGV[i], acquire(ARGV[i])) end
             return results
             """;
     private static final String DEFER_DUE_SCRIPT = EXACT_FUNCTIONS + REDIS_TIME_FUNCTION + """
@@ -495,11 +499,10 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public Map<String, WorkerScoreTransitionResult> transferCurrentHotScoreLeases(
+    public Map<String, WorkerScoreTransitionResult> acquireCurrentHotScoreLeases(
             String homeBucketId,
             List<String> workerIds,
-            long targetTimeMillis,
-            boolean seal
+            long targetTimeMillis
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (workerIds == null) {
@@ -520,12 +523,12 @@ public final class RedisWorkerScoreCore
         LinkedHashMap<String, WorkerScoreTransitionResult> results = new LinkedHashMap<>();
         for (int offset = 0; offset < ordered.size(); offset += MAX_SCORE_BATCH_SIZE) {
             List<String> batch = ordered.subList(offset, Math.min(offset + MAX_SCORE_BATCH_SIZE, ordered.size()));
-            List<String> arguments = new ArrayList<>(5 + batch.size());
+            List<String> arguments = new ArrayList<>(4 + batch.size());
             arguments.addAll(List.of(Long.toString(requestedBase), Long.toString(SLOT_MILLIS),
-                    Integer.toString(SLOT_FACTOR), Integer.toString(seal ? SEALED_MARK : SOFT_MARK),
+                    Integer.toString(SLOT_FACTOR),
                     Long.toString(absoluteScore(MAX_TIME_SLOT, SEALED_MARK))));
             arguments.addAll(batch);
-            results.putAll(executeBatch(homeBucketId, batch, TRANSFER_CURRENT_SCRIPT, arguments, "current_hot_leases"));
+            results.putAll(executeBatch(homeBucketId, batch, ACQUIRE_CURRENT_SCRIPT, arguments, "current_hot_leases"));
         }
         return results;
     }

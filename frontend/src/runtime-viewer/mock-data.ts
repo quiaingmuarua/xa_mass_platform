@@ -59,7 +59,7 @@ function mockTask(taskId: string, workerGroupId: string): TaskView {
     taskId,
     workerGroupId,
     idleDisposition: "PARK_WHEN_IDLE",
-    ruleId: "worker.default",
+    refill: [{ poolName: "default", target: {}, count: 100 }],
     config: {
       priority: "0",
       maxRetryTimes: "3"

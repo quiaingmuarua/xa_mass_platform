@@ -118,8 +118,8 @@ final class TaskAssignmentDispatcher {
                 ));
         }
         if (!currentWorkers.isEmpty()) {
-            verified.putAll(workerScores.transferCurrentHotScoreLeases(
-                    task.descriptor().workerGroupId(), currentWorkers, claimUntilMillis, true));
+            verified.putAll(workerScores.acquireCurrentHotScoreLeases(
+                    task.descriptor().workerGroupId(), currentWorkers, claimUntilMillis));
         }
         LinkedHashMap<String, Long> verifiedScores = new LinkedHashMap<>();
         verified.forEach((workerId, result) -> {

@@ -73,14 +73,16 @@ public class OpenApiConfiguration {
             values.setMinItems(1); values.setMaxItems(100);
             var query = new io.swagger.v3.oas.models.media.MapSchema();
             query.setAdditionalProperties(values); query.setMaxProperties(100);
-            query.setDescription("Direct immutable string-list query. The bound Rule interprets fields; "
-                    + "empty means no additional condition within that Rule. No quantity or operator objects.");
+            query.setDescription("Immutable string-list supply target. The selected Pool maintenance policy interprets fields; "
+                    + "empty means no additional condition. No quantity or operator objects.");
             document.getComponents().addSchemas("EligibilityQuery", query);
             Schema<?> target = document.getComponents().getSchemas().get("RefillTarget");
-            target.setDescription("Shared Eligibility stock target. Equal normalized queries merge by MAX; "
-                    + "omitted query means ANY. Count is not part of query identity.");
-            target.setRequired(List.of("count")); target.setAdditionalProperties(false);
-            target.getProperties().put("query", new Schema<>().$ref("#/components/schemas/EligibilityQuery"));
+            target.setDescription("Shared Pool supply declaration. Equal normalized targets in a Group/Pool merge by MAX; "
+                    + "target is required, including an explicit empty object. This is not a Task-private quota.");
+            target.setRequired(List.of("poolName","target","count")); target.setAdditionalProperties(false);
+            target.getProperties().get("poolName").setMinLength(1);
+            target.getProperties().get("poolName").setPattern(".*\\S.*");
+            target.getProperties().put("target", new Schema<>().$ref("#/components/schemas/EligibilityQuery"));
             target.getProperties().get("count").setMinimum(java.math.BigDecimal.ONE);
             target.getProperties().get("count").setMaximum(java.math.BigDecimal.valueOf(1000));
             Schema<?> item = document.getComponents().getSchemas().get("TaskItemRequest");

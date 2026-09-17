@@ -12,13 +12,13 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.RuleHandler;
+import com.xa.mass.workermatching.*;
 import com.xa.mass.workermatching.rules.*;
-import com.xa.mass.server.testsupport.BucketRuleHandler;
-import com.xa.mass.server.testsupport.IdentityHintRuleHandler;
+import com.xa.mass.server.testsupport.BucketPoolFixture;
+import com.xa.mass.server.testsupport.IdentityHintPoolFixture;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import com.xa.mass.server.assembly.matching.MatchingRuleProperties;
+import com.xa.mass.server.assembly.matching.MatchingProperties;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -95,24 +95,41 @@ class RuntimeBoundaryIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods=false)
     static class MatchingTestAssembly {
-        @Bean RedisRuleStorage matchingRuleStorage(RedisClient client,XaMassRedisProperties redis) {
-            return new RedisRuleStorage(client,redis.keyspace(),Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
+        @Bean MatchingStorage matchingStorage(RedisClient client,XaMassRedisProperties redis) {
+            return new MatchingStorage(client,redis.keyspace());
         }
-        @Bean IdentityHintRuleHandler identityHintRule(RedisRuleStorage storage) {
-            return new IdentityHintRuleHandler(storage);
+        @Bean IdentityHintPoolFixture identityHintRule(MatchingStorage storage) {
+            return new IdentityHintPoolFixture(storage);
         }
         @Bean(destroyMethod="close") com.xa.mass.workermatching.RedisWorkerMatchingCatalog workerMatchingCatalog(
-                RedisRuleStorage storage,MatchingRuleProperties rules,IdentityHintRuleHandler identityHintRule) {
-            Map<String,com.xa.mass.workermatching.rules.PoolRule<?>> pools=Map.of(
-                    "worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),"worker.country",new CountryRuleHandler(storage),
-                    "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage),
-                    BucketRuleHandler.ID,new BucketRuleHandler(storage));
-            var handlers=new java.util.LinkedHashMap<String,RuleHandler>(pools);
-            handlers.put(IdentityHintRuleHandler.ID,identityHintRule);
-            var functions=new java.util.LinkedHashMap<String,com.xa.mass.workermatching.QueryFunctions>();
-            pools.forEach((name,pool)->functions.put(name,pool.queryFunctions()));
-            functions.put(IdentityHintRuleHandler.ID,identityHintRule.queryFunctions());
-            var catalog=new com.xa.mass.workermatching.RedisWorkerMatchingCatalog(storage,handlers,functions,rules.workerGroups(),rules.defaultRefillTargets());
+                MatchingStorage storage,MatchingProperties rules,IdentityHintPoolFixture identityHintRule) {
+            var composition=new MatchingComposition(storage,rules.groups());
+            var bucket=new BucketPoolFixture(storage,new CandidatePool(storage),false);
+            var handlers=new LinkedHashMap<>(composition.policies());
+            handlers.put(BucketPoolFixture.ID,bucket); handlers.put(IdentityHintPoolFixture.ID,identityHintRule);
+            var functions=new LinkedHashMap<>(composition.functions());
+            functions.put(BucketPoolFixture.ID,bucket.functions()); functions.put(IdentityHintPoolFixture.ID,identityHintRule.queryFunctions());
+            var messaging = PoolQueryFunctions.messaging(composition.pools().get("messaging"));
+            functions.put("proof.messaging.country", new QueryFunctions((g,input)-> {
+                if (!(input instanceof String country)) throw new IllegalArgumentException("country string required");
+                messaging.normalizeInput().apply(g,Map.of("country",List.of(country))); return country;
+            }, (g,inputs)-> {
+                var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("country",List.of(input))));
+                return messaging.execute().apply(g,local);
+            }));
+            functions.put("proof.messaging.phones", new QueryFunctions((g,input)-> {
+                if (!(input instanceof List<?> phones) || phones.size()!=1 || !(phones.getFirst() instanceof String phone))
+                    throw new IllegalArgumentException("one phone required");
+                messaging.normalizeInput().apply(g,Map.of("phone",phone)); return List.of(phone);
+            }, (g,inputs)-> {
+                var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("phone",((List<?>)input).getFirst())));
+                return messaging.execute().apply(g,local);
+            }));
+            var indexes=new LinkedHashMap<>(composition.indexes());
+            rules.groups().forEach((group,config)->{if(config.pools().contains(BucketPoolFixture.ID)) {
+                var all=new ArrayList<>(indexes.getOrDefault(group,List.of())); all.addAll(BucketPoolFixture.indexes()); indexes.put(group,List.copyOf(all));
+            }});
+            var catalog=new RedisWorkerMatchingCatalog(storage,handlers,functions,rules.groups(),indexes);
             try { catalog.rebuildIndexes(); return catalog; }
             catch(RuntimeException failure) { catalog.close(); throw failure; }
         }
@@ -179,7 +196,7 @@ class RuntimeBoundaryIntegrationTest {
     private WorkerScoreCore workerScores;
 
     @Autowired
-    private IdentityHintRuleHandler identityHintRule;
+    private IdentityHintPoolFixture identityHintRule;
 
     @Autowired
     private RedisClient redisWitnessClient;
@@ -211,16 +228,31 @@ class RuntimeBoundaryIntegrationTest {
     @MockitoSpyBean
     private WorkerPreparationService preparationService;
 
+    private static String poolName(String function) { return switch(function) { case "worker.default" -> "default"; case "worker.country" -> "country"; case "worker.messaging.available" -> "messaging"; case "proof.worker.facts" -> "proof-facts"; default -> function; }; }
+
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
-        registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
-        registry.add("xa.mass.worker-matching.rules.worker-groups[shared-eligibility-boundary][0]", () -> BucketRuleHandler.ID);
-        registry.add("xa.mass.worker-matching.rules.worker-groups[identity-hint-boundary][0]", () -> IdentityHintRuleHandler.ID);
-        registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][0]", () -> "worker.country");
-        registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][1]", () -> "worker.messaging.available");
-        registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
-        registry.add("xa.mass.worker-matching.rules.worker-groups[property-tools-boundary][0]", () -> "proof.worker.facts");
+        registry.add("xa.mass.task-rpc.refill-by-worker-group[direct-query-boundary]", () -> "");
+        registry.add("xa.mass.worker-matching.groups[country-index-websocket].functions[0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.groups[country-index-websocket].pools[0]", () -> "country");
+        registry.add("xa.mass.worker-matching.groups[shared-eligibility-boundary].functions[0]", () -> BucketPoolFixture.ID);
+        registry.add("xa.mass.worker-matching.groups[shared-eligibility-boundary].pools[0]", () -> BucketPoolFixture.ID);
+        registry.add("xa.mass.worker-matching.groups[identity-hint-boundary].functions[0]", () -> IdentityHintPoolFixture.ID);
+        registry.add("xa.mass.worker-matching.groups[identity-hint-boundary].pools[0]", () -> IdentityHintPoolFixture.ID);
+        registry.add("xa.mass.worker-matching.groups[direct-query-boundary].functions[0]", () -> "worker.phone");
+        registry.add("xa.mass.worker-matching.groups[group-refill-a].functions[0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.groups[group-refill-a].pools[0]", () -> "country");
+        registry.add("xa.mass.worker-matching.groups[group-refill-a].functions[1]", () -> "worker.messaging.available");
+        registry.add("xa.mass.worker-matching.groups[group-refill-a].pools[1]", () -> "messaging");
+        registry.add("xa.mass.worker-matching.groups[country-index-socket].functions[0]", () -> "worker.country");
+        registry.add("xa.mass.worker-matching.groups[country-index-socket].pools[0]", () -> "country");
+        registry.add("xa.mass.worker-matching.groups[property-tools-boundary].functions[0]", () -> "proof.worker.facts");
+        registry.add("xa.mass.worker-matching.groups[property-tools-boundary].pools[0]", () -> "proof-facts");
+        registry.add("xa.mass.worker-matching.groups[shared-pool-functions].pools[0]", () -> "messaging");
+        registry.add("xa.mass.worker-matching.groups[shared-pool-functions].functions[0]", () -> "proof.messaging.country");
+        registry.add("xa.mass.worker-matching.groups[shared-pool-functions].functions[1]", () -> "proof.messaging.phones");
+        registry.add("xa.mass.task-rpc.refill-by-worker-group[shared-pool-functions]", () -> "");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
         registry.add("xa.mass.task-item-outcomes.names[8]", () -> "read");
         registry.add("xa.mass.task-item-outcomes.names[9]", () -> "replied");
@@ -325,8 +357,7 @@ class RuntimeBoundaryIntegrationTest {
                     ? WEBSOCKET_ENDPOINT_MANAGER_ID : SOCKET_ENDPOINT_MANAGER_ID;
             assertThat(send("POST", "/api/v1/worker-groups/" + groupId + ":register",
                     "{\"eventCodes\":[]}").statusCode()).isEqualTo(200);
-            AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of(
-                    "network.type", "wifi", "ssid", "lab"));
+            AtomicReference<Map<String, String>> host = new AtomicReference<>(Map.of("network.type", "wifi", "ssid", "lab"));
             CountDownLatch firstObservation = new CountDownLatch(1);
             AtomicInteger firstSubmissions = new AtomicInteger();
             doAnswer(invocation -> {
@@ -438,9 +469,7 @@ class RuntimeBoundaryIntegrationTest {
                 String firstId = first.snapshot().workerId(), secondId = second.snapshot().workerId();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutors(taskId, Map.of(
-                        "CN", Map.of("executor", firstId, "host", "first"),
-                        "US", Map.of("executor", secondId, "host", "second")));
+                assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", firstId, "host", "first"), "US", Map.of("executor", secondId, "host", "second")));
                 String indexedFirst = createIndexedTask(group);
                 String indexedSecond = createIndexedTask(group);
                 String indexedItem = assertFiniteCountryExecutor(indexedFirst, "CN", firstId, "first");
@@ -452,12 +481,10 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(second.reportProperties()).isTrue();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutors(taskId, Map.of(
-                        "CN", Map.of("executor", secondId, "host", "second"),
-                        "US", Map.of("executor", firstId, "host", "first")));
+                assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", secondId, "host", "second"), "US", Map.of("executor", firstId, "host", "first")));
                 assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(indexedFirst, indexedSecond)).values())
-                        .allSatisfy(rule -> assertThat(rule.ruleId()).isEqualTo("worker.country"));
+                        .allSatisfy(rule -> assertThat(rule.refill()).extracting(RefillTarget::poolName).containsOnly("country"));
                 assertThat(first.snapshot().workerId()).isEqualTo(firstId);
                 assertThat(second.snapshot().workerId()).isEqualTo(secondId);
                 verify(preparationService, times(2)).prepareAll(eq(group), any(), any(), anyList());
@@ -470,27 +497,24 @@ class RuntimeBoundaryIntegrationTest {
     void realWorkersServeTwoTasksFromTheSameRefilledEligibility() throws Exception {
         String group="shared-eligibility-boundary";
         String event="extension.worker.shared.executor";
-        assertThat(send("POST","/api/v1/worker-groups/"+group+":register",Jsons.toJson(Map.of("eventCodes",List.of(event)))).statusCode()).isEqualTo(200);
+        assertThat(send("POST","/api/v1/worker-groups/"+group+":register",Jsons.toJson(Map.of("eventCodes", List.of(event)))).statusCode()).isEqualTo(200);
         var host=new AtomicReference<JavaWorker>();
         var handler=WorkerEventDefinition.extension("shared.executor",WorkerEventParameterResolvers.jsonMap(),
-                ignored -> Jsons.toJson(Map.of("executor",host.get().snapshot().workerId())));
+                ignored -> Jsons.toJson(Map.of("executor", host.get().snapshot().workerId())));
         try(var worker=JavaWorker.create(URI.create("http://127.0.0.1:"+port),group,"shared-host",WorkerTransportType.WEBSOCKET,
-                () -> Map.of("testBucket","red"),List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
+                () -> Map.of("testBucket", "red"),List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
             host.set(worker); worker.start();
             awaitCondition(() -> worker.snapshot().workerId()!=null);
             String workerId=worker.snapshot().workerId();
-            awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,Map.of("testBucket","red"));
-            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"ruleId",BucketRuleHandler.ID,
-                    "refillTargets",List.of(Map.of("query",Map.of("workerId",List.of(workerId)),"count",1))))).statusCode()).isEqualTo(400);
+            awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,Map.of("testBucket", "red"));
+            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("workerId", List.of(workerId)), "count", 1))))).statusCode()).isEqualTo(400);
             var tasks=new LinkedHashMap<String,List<String>>();
             for(int t=0;t<2;t++) {
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"ruleId",BucketRuleHandler.ID,
-                        "refillTargets",List.of(Map.of("query",Map.of("test.bucket",List.of("red")),"count",t+1)))));
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("test.bucket", List.of("red")), "count", t+1)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 String rejectedId=UUID.randomUUID().toString();
-                var rejected=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of(
-                        "messageId",rejectedId,"eventCode",event,"payload",Map.of(),"workerSelector",Map.of("executorName",BucketRuleHandler.ID,"input",Map.of("workerId",List.of(workerId)))))));
+                var rejected=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of("messageId", rejectedId, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", BucketPoolFixture.ID, "input", Map.of("workerId", List.of(workerId)))))));
                 assertThat(rejected.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(rejected.body()).get(rejectedId).get("status").asText()).isEqualTo("rejected");
                 var missing=send("POST","/api/v1/tasks/"+task+"/items:states",Jsons.toJson(List.of(rejectedId)));
@@ -498,8 +522,7 @@ class RuntimeBoundaryIntegrationTest {
                 var items=new ArrayList<Map<String,Object>>(); var ids=new ArrayList<String>();
                 for(int i=0;i<6;i++) {
                     String id=UUID.randomUUID().toString();ids.add(id);
-                    items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
-                            "workerSelector",Map.of("executorName",BucketRuleHandler.ID,"input",Map.of("test.bucket",List.of("red")))));
+                    items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", BucketPoolFixture.ID, "input", Map.of("test.bucket", List.of("red")))));
                 }
                 assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items)).statusCode()).isEqualTo(200);
                 tasks.put(task,ids);
@@ -515,7 +538,7 @@ class RuntimeBoundaryIntegrationTest {
                 }
             }
             assertThat(taskCatalog.loadTaskAllocationDescriptors(List.copyOf(tasks.keySet())).values())
-                    .allSatisfy(binding -> assertThat(binding.ruleId()).isEqualTo(BucketRuleHandler.ID));
+                    .allSatisfy(binding -> assertThat(binding.refill()).extracting(RefillTarget::poolName).containsOnly(BucketPoolFixture.ID));
             verify(preparationService,times(1)).prepareAll(eq(group),any(),any(),anyList());
         }
     }
@@ -536,8 +559,7 @@ class RuntimeBoundaryIntegrationTest {
             awaitCondition(() -> worker.snapshot().workerId() != null);
             String workerId = worker.snapshot().workerId();
             awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, Map.of("fixture", "identity-hint"));
-            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group,
-                    "ruleId", IdentityHintRuleHandler.ID, "refillTargets", List.of(Map.of("query", Map.of(), "count", 1)))));
+            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",IdentityHintPoolFixture.ID,"target", Map.of(), "count", 1)))));
             assertThat(created.statusCode()).isEqualTo(200);
             String task = JSON.readTree(created.body()).get("taskId").asText();
             var ids = new ArrayList<String>();
@@ -545,7 +567,7 @@ class RuntimeBoundaryIntegrationTest {
             for (int i = 0; i < 3; i++) {
                 String id = UUID.randomUUID().toString();
                 ids.add(id);
-                items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName",IdentityHintRuleHandler.ID,"input",Map.of())));
+                items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", IdentityHintPoolFixture.ID, "input", Map.of())));
             }
             assertThat(send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(items)).statusCode()).isEqualTo(200);
             assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
@@ -562,20 +584,98 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
+    void identityAndPhoneExecuteEmptySupplyTasksWithoutPoolStock() throws Exception {
+        String group = "direct-query-boundary", event = "extension.worker.direct.query", phone = "+8613800000000";
+        assertThat(send("POST", "/api/v1/worker-groups/" + group + ":register",
+                Jsons.toJson(Map.of("eventCodes", List.of(event)))).statusCode()).isEqualTo(200);
+        var host = new AtomicReference<JavaWorker>();
+        var handler = WorkerEventDefinition.extension("direct.query", WorkerEventParameterResolvers.jsonMap(),
+                ignored -> Jsons.toJson(Map.of("executor", host.get().snapshot().workerId())));
+        Map<String, String> facts = Map.of("phone", phone, "messaging.enabled", "false");
+        try (var worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "direct-query-host",
+                WorkerTransportType.WEBSOCKET, () -> facts, List.of(handler),
+                WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()))) {
+            host.set(worker); worker.start(); awaitCondition(() -> worker.snapshot().workerId() != null);
+            String workerId = worker.snapshot().workerId();
+            awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, facts);
+            for (String function : List.of("workerId", "worker.phone")) {
+                awaitCondition(() -> {
+                    var score = readScores(redisWitness.sync(), REDIS_KEYSPACE, group, List.of(workerId)).get(workerId);
+                    return score != null && hasPolarity(score, WorkerScorePolarity.HOT_ACQUIRE)
+                            && timeMillis(score) < slotStart(System.currentTimeMillis());
+                });
+                assertThat(matchingCatalog.take(group, Map.of("pool", new com.xa.mass.kernel.assignment.WorkerQuery("worker.default", Map.of())))).isEmpty();
+                var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of())));
+                assertThat(created.statusCode()).isEqualTo(200);
+                String task = JSON.readTree(created.body()).get("taskId").asText(), id = UUID.randomUUID().toString();
+                var item = Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", function, "input", function.equals("workerId") ? workerId : phone));
+                var appended = send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(List.of(item)));
+                assertThat(appended.statusCode()).isEqualTo(200);
+                assertThat(JSON.readTree(appended.body()).get(id).get("status").asText()).isEqualTo("applied");
+                assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
+                awaitTaskExport(task);
+                var loaded = send("POST", "/api/v1/tasks/" + task + "/results:load", Jsons.toJson(List.of(id)));
+                var result = JSON.readTree(loaded.body()).get(id);
+                assertThat(result.get("status").asText()).isEqualTo("succeeded");
+                assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText())).containsEntry("executor", workerId);
+            }
+            verify(matchingCatalog, org.mockito.Mockito.never()).refill(eq(group), anyList(), anyList());
+        }
+    }
+
+    @Test
+    void separateSupplierAndConsumerUseTwoFunctionsOverOneMessagingPool() throws Exception {
+        String group="shared-pool-functions", event="extension.worker.pool.share", phone="+8613800000001";
+        assertThat(send("POST","/api/v1/worker-groups/"+group+":register",Jsons.toJson(Map.of("eventCodes",List.of(event)))).statusCode()).isEqualTo(200);
+        var host=new AtomicReference<JavaWorker>();
+        var handler=WorkerEventDefinition.extension("pool.share",WorkerEventParameterResolvers.jsonMap(),
+                ignored->Jsons.toJson(Map.of("executor",host.get().snapshot().workerId())));
+        var facts=Map.of("phone",phone,"country","CN","messaging.enabled","true");
+        try(var worker=JavaWorker.create(URI.create("http://127.0.0.1:"+port),group,"shared-pool-host",WorkerTransportType.WEBSOCKET,
+                ()->facts,List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
+            host.set(worker);worker.start();awaitCondition(()->worker.snapshot().workerId()!=null);
+            String workerId=worker.snapshot().workerId();awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,facts);
+            var supplied=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"refill",List.of(Map.of("poolName","messaging","target",Map.of(),"count",1)))));
+            String supplier=JSON.readTree(supplied.body()).get("taskId").asText();
+            // An unresolved identity keeps the supplier active while its demand drives stock.
+            String pending=UUID.randomUUID().toString();
+            assertThat(send("POST","/api/v1/tasks/"+supplier+"/items",Jsons.toJson(List.of(Map.of("messageId",pending,"eventCode",event,
+                    "payload",Map.of(),"workerSelector",Map.of("executorName","workerId","input","absent-worker"))))).statusCode()).isEqualTo(200);
+            assertThat(send("POST","/api/v1/tasks/"+supplier+"/approve",null).statusCode()).isEqualTo(200);
+            for(String function:List.of("proof.messaging.country","proof.messaging.phones")) {
+                var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"refill",List.of())));
+                String task=JSON.readTree(consumer.body()).get("taskId").asText(), id=UUID.randomUUID().toString();
+                assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(task)).get(task).refill()).isEmpty();
+                Object input=function.endsWith("country")?"CN":List.of(phone);
+                assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
+                        "workerSelector",Map.of("executorName",function,"input",input))))).statusCode()).isEqualTo(200);
+                assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+                awaitTaskExport(task);
+                var observed=JSON.readTree(send("POST","/api/v1/tasks/"+task+"/results:load",Jsons.toJson(List.of(id))).body()).get(id);
+                assertThat(observed.get("status").asText()).isEqualTo("succeeded");
+                assertThat(Jsons.parseObject(observed.get("opaqueResultPayload").asText())).containsEntry("executor",workerId);
+            }
+            assertThat(send("POST","/api/v1/tasks/"+supplier+"/close",null).statusCode()).isEqualTo(200);
+            assertThat(matchingCatalog.normalizeQuery(group,new com.xa.mass.kernel.assignment.WorkerQuery("proof.messaging.country","CN")).input()).isEqualTo("CN");
+            // Closing supply neither unregisters functions nor forces a stock clear.
+            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).refill(eq(group),anyList(),anyList());
+        }
+    }
+
+    @Test
     void groupBatchesServeMultipleRulesAndSharedTasksThroughActualWorkers() throws Exception {
         String groupA="group-refill-a",groupB="group-refill-b",event="extension.worker.group.refill";
         for(String group:List.of(groupA,groupB))assertThat(send("POST","/api/v1/worker-groups/"+group+":register",
-                Jsons.toJson(Map.of("eventCodes",List.of(event)))).statusCode()).isEqualTo(200);
+                Jsons.toJson(Map.of("eventCodes", List.of(event)))).statusCode()).isEqualTo(200);
         var workers=new ArrayList<JavaWorker>();
         var identities=new LinkedHashMap<String,Map<String,String>>();
         try {
             for(int i=0;i<6;i++) {
                 String group=i<4?groupA:groupB;
-                Map<String,String> facts=Map.of("country",i<2?"CN":"US","messaging.enabled",i%2==0?"true":"false",
-                        "phone","+1202555000"+i);
+                Map<String,String> facts=Map.of("country", i<2?"CN":"US", "messaging.enabled", i%2==0?"true":"false", "phone", "+1202555000"+i);
                 var host=new AtomicReference<JavaWorker>();
                 var handler=WorkerEventDefinition.extension("group.refill",WorkerEventParameterResolvers.jsonMap(),
-                        ignored->Jsons.toJson(Map.of("executor",host.get().snapshot().workerId())));
+                        ignored->Jsons.toJson(Map.of("executor", host.get().snapshot().workerId())));
                 var worker=JavaWorker.create(URI.create("http://127.0.0.1:"+port),group,"group-refill-host-"+i,
                         WorkerTransportType.WEBSOCKET,()->facts,List.of(handler),
                         WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()));
@@ -591,9 +691,8 @@ class RuntimeBoundaryIntegrationTest {
             for(int t=0;t<4;t++) {
                 String group=t==3?groupB:groupA;
                 String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.default";
-                Map<String,Object> query=t<2?Map.of("worker.country",List.of("CN")):Map.of();
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"ruleId",rule,
-                        "refillTargets",List.of(Map.of("query",query,"count",t<2?t+1:2)))));
+                Map<String,Object> query=t<2?Map.of("worker.country", List.of("CN")):Map.of();
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 taskGroups.put(task,group);taskRules.put(task,rule);
@@ -602,8 +701,8 @@ class RuntimeBoundaryIntegrationTest {
                     var items=new ArrayList<Map<String,Object>>();
                     for(int i=0;i<100;i++) {
                         String id=UUID.randomUUID().toString();ids.add(id);
-                        Map<String,Object> selector=Map.of("executorName",rule,"input",t<2?List.of("CN"):Map.of());
-                        items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),"workerSelector",selector));
+                        Map<String,Object> selector=Map.of("executorName", rule, "input", t<2?List.of("CN"):Map.of());
+                        items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", selector));
                     }
                     var appended=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items));
                     assertThat(appended.statusCode()).isEqualTo(200);
@@ -616,10 +715,10 @@ class RuntimeBoundaryIntegrationTest {
             var multiGroupRoot=new java.util.concurrent.atomic.AtomicBoolean();
             var supplied=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();
             doAnswer(call->{
-                Map<String,Map<String,List<RefillTarget>>> targets=call.getArgument(0);
+                Map<String,List<RefillTarget>> targets=call.getArgument(0);
                 var rules=targets.get(groupA);
-                if(rules!=null && rules.containsKey("worker.messaging.available")
-                        && rules.getOrDefault("worker.country",List.of()).size()==2)multiRuleRoot.set(true);
+                if(rules!=null && rules.stream().anyMatch(t->t.poolName().equals("messaging"))
+                        && rules.stream().filter(t->t.poolName().equals("country")).count()==2)multiRuleRoot.set(true);
                 if(targets.containsKey(groupA) && targets.containsKey(groupB))multiGroupRoot.set(true);
                 return call.callRealMethod();
             }).when(matchingCatalog).groupsNeedingRefill(anyMap());
@@ -637,7 +736,7 @@ class RuntimeBoundaryIntegrationTest {
                     }
                 }
                 return call.callRealMethod();
-            }).when(matchingCatalog).refill(anyString(),anyMap(),anyList());
+            }).when(matchingCatalog).refill(anyString(),anyList(),anyList());
             for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
             var pending=new LinkedHashMap<String,List<String>>();tasks.forEach((task,ids)->pending.put(task,new ArrayList<>(ids)));
             long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
@@ -667,23 +766,20 @@ class RuntimeBoundaryIntegrationTest {
             for(String task:tasks.keySet())awaitTaskExport(task);
         } finally {
             doCallRealMethod().when(matchingCatalog).groupsNeedingRefill(anyMap());
-            doCallRealMethod().when(matchingCatalog).refill(anyString(),anyMap(),anyList());
+            doCallRealMethod().when(matchingCatalog).refill(anyString(),anyList(),anyList());
             for(var worker:workers)worker.close();
         }
     }
 
     private String createIndexedTask(String group) throws Exception {
-        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "ruleId", "worker.country",
-                "refillTargets",List.of(Map.of("query",Map.of("worker.country",List.of("CN")),"count",1)))));
+        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName","country","target", Map.of("worker.country", List.of("CN")), "count", 1)))));
         assertThat(created.statusCode()).isEqualTo(200);
         return JSON.readTree(created.body()).get("taskId").asText();
     }
 
     private String assertFiniteCountryExecutor(String taskId, String country, String workerId, String host) throws Exception {
         String messageId = UUID.randomUUID().toString();
-        var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of(
-                "messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(),
-                "workerSelector", Map.of("executorName","worker.country","input",List.of(country))))));
+        var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.country", "input", List.of(country))))));
         assertThat(appended.statusCode()).isEqualTo(200);
         assertThat(JSON.readTree(appended.body()).get(messageId).get("status").asText()).isEqualTo("applied");
         assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve", null).statusCode()).isEqualTo(200);
@@ -718,11 +814,9 @@ class RuntimeBoundaryIntegrationTest {
         expectedByCountry.forEach((country, executor) -> {
             String messageId = UUID.randomUUID().toString();
             expected.put(messageId, executor);
-            items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
-                    "payload", Map.of(), "workerSelector", Map.of("executorName","worker.default","input",Map.of("country",List.of(country)))));
+            items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.default", "input", Map.of("country", List.of(country)))));
         });
-        var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
-                "items", items, "waitTimeoutMillis", 10000)));
+        var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of("items", items, "waitTimeoutMillis", 10000)));
         assertThat(response.statusCode()).isEqualTo(200);
         var results = JSON.readTree(response.body());
         expected.forEach((id, executor) -> {
@@ -802,9 +896,7 @@ class RuntimeBoundaryIntegrationTest {
     private void assertAdapterProperties(String adapterId, String workerId, Map<String, String> expected)
             throws Exception {
         var response = send("POST", "/api/v1/worker-delivery/endpoint-managers/" + adapterId + "/direct-calls",
-                JSON.writeValueAsString(Map.of(
-                        "messageType", "platform.adapter.worker-properties.snapshot",
-                        "opaquePayload", workerIdsPayload(workerId), "waitTimeoutMillis", 3_000)));
+                JSON.writeValueAsString(Map.of("messageType", "platform.adapter.worker-properties.snapshot", "opaquePayload", workerIdsPayload(workerId), "waitTimeoutMillis", 3_000)));
         Map<String, Object> payload = Jsons.parseObject(observedDirectPayload(response, adapterId, "platform.adapter.command.succeeded"));
         Map<?, ?> observations = (Map<?, ?>) payload.get("propertiesByWorkerId");
         Map<?, ?> observation = (Map<?, ?>) observations.get(workerId);
@@ -883,11 +975,7 @@ class RuntimeBoundaryIntegrationTest {
                                     ? WorkerTransportType.WEBSOCKET : WorkerTransportType.SOCKET);
             try {
                 var submitted = send("POST", "/api/v1/tasks/" + taskId + "/items:call",
-                        Jsons.toJson(Map.of("items", List.of(Map.of(
-                                "messageId", messageId, "eventCode", TEST_EVENT_CODE,
-                                "payload", Map.of("value", "input"),
-                                "workerSelector", Map.of("executorName","worker.default","input",Map.of("workerId", List.of(prepared.workerId()))))),
-                                "waitTimeoutMillis", 1)));
+                        Jsons.toJson(Map.of("items", List.of(Map.of("messageId", messageId, "eventCode", TEST_EVENT_CODE, "payload", Map.of("value", "input"), "workerSelector", Map.of("executorName", "worker.default", "input", Map.of("workerId", List.of(prepared.workerId()))))), "waitTimeoutMillis", 1)));
                 assertThat(submitted.statusCode()).isEqualTo(200);
                 assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
                 verify(taskEvidence, org.mockito.Mockito.atLeastOnce()).appendTaskEvidence(
@@ -983,15 +1071,13 @@ class RuntimeBoundaryIntegrationTest {
             ).statusCode()).isEqualTo(200);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
-            Map<String,Object> selector=Map.of("executorName","proof.worker.facts",
-                    "input",Map.of("proofPool","A","proofEnabled","yes"));
+            Map<String,Object> selector=Map.of("executorName", "proof.worker.facts", "input", Map.of("proofPool", "A", "proofEnabled", "yes"));
             String taskId=createTask(workerGroupId,"proof.worker.facts");
             String otherTaskId=createTask(workerGroupId,"proof.worker.facts");
             var sharedRules = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId, otherTaskId));
             assertThat(sharedRules.get(taskId)).isNotNull();
-            assertThat(sharedRules.get(taskId).ruleId()).isEqualTo(sharedRules.get(otherTaskId).ruleId());
-            assertThat(sharedRules.get(taskId).refillTargets()).isEqualTo(sharedRules.get(otherTaskId).refillTargets());
-            assertThat(sharedRules.get(taskId).ruleId()).isNotIn(taskId, otherTaskId);
+            assertThat(sharedRules.get(taskId).refill()).isEqualTo(sharedRules.get(otherTaskId).refill());
+            assertThat(sharedRules.get(taskId).refill()).extracting(RefillTarget::poolName).doesNotContain(taskId, otherTaskId);
             appendItem(taskId, firstMessageId, selector);
             appendItem(taskId, secondMessageId, selector);
             assertThat(send(
@@ -1016,10 +1102,7 @@ class RuntimeBoundaryIntegrationTest {
                 );
             }
             assertThat(exportedResults).containsExactlyInAnyOrderEntriesOf(
-                    Map.of(
-                            firstMessageId, TEST_RESULT,
-                            secondMessageId, TEST_RESULT
-                    )
+                    Map.of(firstMessageId, TEST_RESULT, secondMessageId, TEST_RESULT)
             );
 
             assertThat(send(
@@ -1282,7 +1365,7 @@ class RuntimeBoundaryIntegrationTest {
             appendItem(
                     demandTaskId,
                     "serviceability-demand-item-" + suffix,
-                    Map.of("executorName","worker.default","input",Map.of("workerId",List.of("missing-worker-"+suffix)))
+                    Map.of("executorName", "worker.default", "input", Map.of("workerId", List.of("missing-worker-"+suffix)))
             );
             awaitServiceabilitySnapshot(workerGroupId, workerId, demandTaskId);
         } finally {
@@ -1331,11 +1414,7 @@ class RuntimeBoundaryIntegrationTest {
                 "/api/v1/worker-delivery/endpoint-managers/"
                         + WEBSOCKET_ENDPOINT_MANAGER_ID
                         + "/direct-calls",
-                JSON.writeValueAsString(Map.of(
-                        "messageType", eventCode,
-                        "opaquePayload", opaquePayload,
-                        "waitTimeoutMillis", 3_000
-                ))
+                JSON.writeValueAsString(Map.of("messageType", eventCode, "opaquePayload", opaquePayload, "waitTimeoutMillis", 3_000))
         );
     }
 
@@ -1409,10 +1488,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private static String workerIdsPayload(String workerId) {
-        return Jsons.toJson(Map.of(
-                "workerIds",
-                List.of(workerId)
-        ));
+        return Jsons.toJson(Map.of("workerIds", List.of(workerId)));
     }
 
     private void awaitServiceabilitySnapshot(
@@ -1645,9 +1721,7 @@ class RuntimeBoundaryIntegrationTest {
                     && workerGroupId.equals(
                             workerGroup.get("workerGroupId").asText()
                     )
-                    && "worker.default".equals(task.get(
-                            "ruleId"
-                    ).asText())
+                    && "default".equals(task.get("refill").get(0).get("poolName").asText())
                     && "PARK_WHEN_IDLE".equals(
                             task.get("idleDisposition").asText()
                     )
@@ -1845,8 +1919,7 @@ class RuntimeBoundaryIntegrationTest {
         HttpResponse<String> response = send(
                 "POST",
                 "/api/v1/tasks/" + taskId + "/items",
-                JSON.writeValueAsString(List.of(Map.of("messageId",messageId,"eventCode",TEST_EVENT_CODE,
-                        "payload",Map.of("value","input"),"workerSelector",selector)))
+                JSON.writeValueAsString(List.of(Map.of("messageId", messageId, "eventCode", TEST_EVENT_CODE, "payload", Map.of("value", "input"), "workerSelector", selector)))
         );
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("\"status\":\"applied\"");
@@ -1867,10 +1940,7 @@ class RuntimeBoundaryIntegrationTest {
                                 WorkerEventParameterResolvers.jsonMap(),
                                 payload ->
                                 Jsons.toJson(
-                                        Map.of(
-                                                "observed",
-                                                payload.get("value")
-                                        )
+                                        Map.of("observed", payload.get("value"))
                                 )
                         ),
                         WorkerEventDefinition.extension(
@@ -2067,13 +2137,13 @@ class RuntimeBoundaryIntegrationTest {
                 """
                 {
                   "workerGroupId": "%s",
-                  "ruleId": "%s",
+                  "refill": [{"poolName":"%s","target":{},"count":100}],
                   "priority": 0,
                   "maxRetryTimes": 3
                 }
                 """.formatted(
                 workerGroupId,
-                ruleId
+                poolName(ruleId)
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);

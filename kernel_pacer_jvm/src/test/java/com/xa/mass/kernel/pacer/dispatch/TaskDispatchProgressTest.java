@@ -86,8 +86,7 @@ class TaskDispatchProgressTest {
     }
 
     private static ObservedTask task(String id, String group) {
-        return new ObservedTask(new TaskDescriptor(id, group, TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority", "50", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100))), 101L);
+        return new ObservedTask(new TaskDescriptor(id, group, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "50", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))), 101L);
     }
 
     private static final class Rig {

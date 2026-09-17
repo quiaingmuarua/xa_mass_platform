@@ -163,36 +163,29 @@ POST /api/v1/tasks
 ```
 
 The request names one registered WorkerGroup. Server generates task-{UUID}.
-An optional `ruleId` names a fixed Matching Handler; omission selects
-`worker.default`. Each complete Task descriptor stores that name and its targets.
-Assembly supplies a fixed immutable Rule ID-to-Handler Map to Matching; Group
-configuration enables those instances. Rule interpretation stays in Matching.
-Default retains its optional country queries for current SMS start/cancel flows.
-Matching storage assembly supplies the current Rules with one shared Redis connection
-and a capacity budget. Each Handler owns its Group-isolated Eligibility operations;
-Server receives no predicate, candidate projection, physical key or lease capability.
-Matching storage assembly supplies the current Rules with one shared Redis connection
-and a capacity budget. Each Handler owns its Group-isolated Eligibility operations;
-Server receives no predicate, candidate projection, physical key or lease capability.
-All finite Tasks use CLOSE_WHEN_IDLE. Unknown/blank Rules, unavailable Group
-indexes and unknown request fields are rejected. Priority defaults to 50 and
-retry budget to 3. Optional `refillTargets` stores 1..100 operator-free query/count targets in the
-Task descriptor; counts are 1..1000. Omission resolves Matching Group/Rule defaults
-or ANY 100. These are shared Eligibility targets, with equal queries merged by MAX,
-not Task-private quotas. Kernel stores them without interpreting the Rule parameters.
+Optional `refill` supplies 0..100 `{poolName,target,count}` declarations. Omission
+means `[]`; explicit null, retired `ruleId/refillTargets`, unavailable Pools and
+invalid targets fail. Counts are 1..1000. Matching normalizes and MAX-merges equal
+Group/Pool targets without Redis reads or stock changes. Kernel stores the complete
+immutable list. These watermarks are shared supply hints, never Task-private quotas.
+Priority defaults to 50 and retry budget to 3; finite Tasks use CLOSE_WHEN_IDLE.
 
 ```json
-{"workerGroupId":"country-workers","ruleId":"worker.country","priority":50,"maxRetryTimes":3}
+{"workerGroupId":"country-workers","refill":[{"poolName":"country","target":{"worker.country":["CN"]},"count":100}],"priority":50,"maxRetryTimes":3}
 ```
 
-Server resolves and validates complete targets through Matching without Redis
-or inventory access, then creates the Kernel descriptor. There is no independent
-Matching write. Configuration defaults are captured at creation and do not rewrite
-existing Tasks. Managed registration compares the complete expected descriptor;
-normal managed lookup uses the saved targets without resolving current defaults.
-Task closure does not delete shared Rule indexes or introduce a Rule lifecycle.
-Old descriptor layouts require recreating Tasks in a new scope; no dual read,
-automatic migration or cleanup is performed.
+An empty-supply Task can use Identity, Phone or stock supplied by another Task.
+Item functions are explicit and independent. Closing a supplier does not clear stock
+or unregister functions. Matching owns resource/maintenance/function composition;
+Server receives no predicate, index key, candidate selection or lease capability.
+
+Server normalizes declarations then creates Kernel metadata. No independent Matching
+write or rollback exists. Managed Call registration explicitly supplies default/{} /100;
+`xa.mass.task-rpc.refill-by-worker-group` can replace it, including with `[]`. Nonempty
+configuration entries use complete JSON strings decoded as the same RefillTarget.
+Lab overrides remain 1000. Re-registration compares the complete expected descriptor;
+ordinary lookup reads saved declarations without resolving new defaults. Old Task
+layouts require a new scope; no migration, cleanup or dual reading is provided.
 
 Every registered WorkerGroup also owns exactly one managed, approved
 `PARK_WHEN_IDLE` Task. Registration returns its Task ID:
@@ -294,21 +287,27 @@ export may therefore contain newer content.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
-derives the absolute expiry. Finite Task append may supply `workerSelector`; omission means the Task Rule with empty object input;
-managed Task Call requires a Selector object, where `{}` means no Worker
-additional restriction within the bound Rule. Only `worker.default` accepts
-`{"workerId":["a","b"]}`; those IDs remain restricted to the bound WorkerGroup.
-Property maps may combine the Handler's supported conditions with AND. Country uses
-`{"worker.country":["CN","US"]}` with 1..100 values.
-Values are strict uppercase ASCII pairs. Old nested operator conditions are rejected;
+derives the absolute expiry. Finite Task append requires explicit `workerSelector`; a missing selector rejects that Item;
+managed Task Call requires an explicit Selector envelope. Pool functions interpret
+their own local inputs: worker.default accepts `{"workerId":["a","b"]}` in its stock;
+worker.country accepts `["CN","US"]`; Messaging combines its supported conditions
+with AND. Values remain Group-scoped, and country codes are strict uppercase ASCII pairs.
 Items use `workerSelector: {executorName, input}`. The input is bounded immutable
 JSON interpreted only by the named Matching function. Finite append omission uses
 the descriptor's Rule name with empty object input; managed Call requires an
 explicit envelope. A function must be enabled for the Group and may differ from
-the Task's supply Rule. Old direct selector Maps are rejected rather than converted
-to ANY; retained old Items are unreadable. See [Matching](../worker_matching_jvm/README.md#unified-queries-and-fixed-handlers)
+the Task's Pool supply declarations. Old direct selector Maps are rejected rather than converted
+to ANY; retained old Items are unreadable. See [Matching](../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)
 for local input shapes, bounds and Pool semantics. Refill declarations and Task
 creation remain unchanged.
+
+Direct queries use `{"executorName":"workerId","input":"w-123"}` or
+`{"executorName":"worker.phone","input":"+8613800000000"}`. Identity is available
+in all Groups; Phone requires explicit Group enablement and indexes the exact
+Worker Properties phone without Messaging conditions. Neither requires Pool stock.
+Matching returns identity hints, Pacer verifies Binding/Group, and Kernel atomically
+acquires execution from due HOT or an active soft hold. Active sealed holds cannot
+be preempted. Server neither reads Score nor selects an alternative on failure.
 
 Submission normalizes without consuming candidates. Finite invalid members retain
 per-member rejection; managed calls validate every original query, including
@@ -544,8 +543,8 @@ Prepare success does not imply connectivity, scheduling availability or observed
 Properties. All Workers, including Polling, initially remain cold. Valid network
 evidence may later request activation; evidence loss has no replay guarantee. New Workers
 have no Matching facts until an admitted Adapter observation creates them;
-named Rules require indexed eligibility. Default ANY/explicit IDs do not require
-these facts; property queries require index
+named Pool Rules require indexed eligibility. Default Pool ANY/IDs and direct
+workerId do not require these facts; property queries require index
 membership. Polling has no current Adapter Properties path, so new Polling
 Workers use default ANY/explicit selection. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never

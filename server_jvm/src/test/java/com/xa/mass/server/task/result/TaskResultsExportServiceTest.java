@@ -286,7 +286,7 @@ class TaskResultsExportServiceTest {
             String taskId,
             TaskIdleDisposition disposition
     ) {
-        return new TaskDescriptor(taskId, "group-1", disposition, Map.of("priority", "50", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+        return new TaskDescriptor(taskId, "group-1", disposition, Map.of("priority", "50", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskScoreState score(

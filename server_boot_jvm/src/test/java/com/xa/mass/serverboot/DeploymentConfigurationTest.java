@@ -32,6 +32,7 @@ class DeploymentConfigurationTest {
             ServerWorkerAssemblyProperties.class, ServerWorkerDeliveryAdapterProperties.class,
             WorkerEndpointDirectory.class, TaskRpcProperties.class, DirectCallProperties.class,
             TaskItemOutcomeProperties.class})
+    @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class BoundConfiguration {}
 
     private ApplicationContextRunner configuration(String profile, Map<String, Object> environment) {

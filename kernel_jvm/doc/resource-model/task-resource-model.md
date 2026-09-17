@@ -4,81 +4,74 @@ Status: active Java Kernel Task scheduling metadata contract.
 
 ## Owner Boundary
 
-Kernel owns Task configuration, scheduling, claim, retry and finality. The Task
-descriptor is the single persistent source for its Rule name and resolved refill
-declarations. Kernel checks their structure without interpreting parameters.
-Matching owns facts, Rule semantics and Group/Rule stock; it has no Task-ID
-configuration relationship. No Rule instance or index coordinate is stored in Task.
+Kernel owns Task configuration, scheduling, claim, retry and finality. A descriptor
+stores optional Pool supply declarations. Kernel validates immutable structure;
+Matching interprets targets, qualifications and resource access without Task IDs.
 
 ```text
-TaskDescriptor = taskId, workerGroupId, idleDisposition, config, ruleId, refillTargets
+TaskDescriptor = taskId, workerGroupId, idleDisposition, config, refill
+RefillTarget = poolName, target, count
 TaskItem = messageId, eventCode, createdAtMillis, payload, priority,
            expireAtMillis, workerSelector
 ```
 
-Task config contains exactly the string values `priority` (0 is highest) and
-`maxRetryTimes` (initial Item budget). A new key requires a named scheduling
-consumer. Rule configuration uses separate descriptor fields. Rule name is non-blank;
-the immutable target list has 1..100 entries with counts 1..1000. Descriptor
-equality includes both fields; Kernel neither supplies defaults nor resolves Rules.
+Task config contains exactly string `priority` and `maxRetryTimes`. Supply allows
+0..100 declarations, each with nonblank poolName, required EligibilityQuery target
+and count 1..1000. Empty target is `{}`; empty refill is no supply. Equality includes
+all declarations. Kernel does not infer defaults, resolve Pools or interpret fields.
 
 ## Cross-Owner Creation
 
-Server selects the supplied Rule or `worker.default` and locally resolves complete
-targets through Matching before creating the Kernel descriptor. Explicit targets
-override Group/Rule defaults, otherwise ANY 100. Resolution has no Redis or stock
-side effect. The complete descriptor is create-only; Task Score initialization and
-descriptor writing retain their existing separate commit and retry boundaries.
-No independent Matching write or dangling binding remains.
+Server normalizes explicit supply through Matching before Kernel create. Ordinary
+Task omission means `[]`, explicit null fails. Managed Call registration constructs
+its own default/{} /100 or explicit configured override. Saved declarations are a
+creation-time snapshot. Re-registration compares the full expected descriptor;
+normal lookup does not recompute current defaults.
 
-Saved targets are a creation-time snapshot. Managed registration compares the full
-expected descriptor; ordinary lookup of an existing managed Task checks its fixed
-ownership and Call attributes without resolving current defaults.
+Descriptor creation is create-only in one Lua. Score initialization and descriptor
+writing retain separate commit and retry boundaries; they are not one transaction.
+There is no separate Matching binding or configuration store.
 
-Before Item append or managed Call, Server captures the selector with Kernel's
-bounded parser and validates it through Matching using the descriptor Group and Rule name. Kernel stores
-the immutable Map unchanged. ANY is `{}`; explicit IDs use the sole key
-`workerId`; other maps are Handler-owned property conditions, including bounded
-multi-field AND queries. Kernel does not interpret operators or facts.
+All Item requests explicitly carry WorkerQuery(executorName,input). Server uses
+Matching for admission, Kernel captures and stores bounded JSON without interpreting
+it. Finite append retains per-item rejection; managed Call validates its whole batch
+before writing. Supply does not constrain the Item function or confer query rights.
 
 ## Scheduling Handoff
 
-Main shares its already-read immutable NORMAL Task descriptors with refill and
-dispatch. No separate Matching configuration read or join remains. Pacer carries
-Rule names without interpreting query fields.
-The refill Producer concatenates Task targets by Group/Rule. Matching observes
-shortages and admits candidates through separate named calls, normalizing targets
-with MAX and preserving bounded paging. Pacer acquires the 1-second lease before
-Matching reads eligibility; stock retains that fence and deadline without renewal.
-Dispatch calls `WorkerMatching` with the explicit Group, Rule name and
-messageId-to-query Map. Matching normalizes and groups queries, then returns the
-held candidate for each fulfilled message ID. No
-executable binding view or refill callback crosses the module boundary.
+Main shares immutable NORMAL Task descriptors. Refill concatenates declarations by
+Group; Matching chooses Pools, normalizes and MAX-merges targets, and pages bounded
+operations. Pacer acquires candidate leases before eligibility reads. Stock retains
+the original fence and deadline. With no demand, maintenance still reaps expired
+stock and inactive cursors, but no refill HOT read/acquire occurs.
 
-Kernel retains HOT/floor/exact initial acquisition, round uniqueness, execution
-confirmation, Item claim and Command construction. Properties invalidate old
-fences through mark; stock can overcount until consumed or expired. No per-Task
-invalidation or compensation release is required.
+Dispatch forwards explicit Group and messageId-to-WorkerQuery data. Matching returns
+at most one candidate per Item. Query interpretation and grouping stay in Matching;
+Kernel owns execution admission and Item claim. Pool results use original nonzero
+fences; identity/index hints use zero only at Pacer, selecting Kernel's distinct
+current-state acquisition method. Command and ResultContext use the new sealed fence.
 
-Task lifecycle is independent: finite Tasks use CLOSE_WHEN_IDLE and managed
-Calls use PARK_WHEN_IDLE. Matching absence must not block Item exhaustion/expiry
-or idle settlement. Item terminal outcomes remain terminal for scheduling while
-accepting later monotonic observations, independently of Task closure.
+Tasks share Group/Pool stock without quotas. Closing a supplier stops subsequent
+supply hints, without clearing inventory or revoking another Task's query. Item
+queries never create demand. No views, closures or Rule instances cross module boundaries.
+
+Finite Tasks use CLOSE_WHEN_IDLE; managed Calls use PARK_WHEN_IDLE. Candidate
+failure does not block Item exhaustion, expiry or idle settlement. Item terminal
+outcomes remain terminal for scheduling while admitting later monotonic observations,
+independently of Task closure. Stock invalidation never reopens scheduling.
 
 ## Redis Shape
 
-Descriptors use exactly `workerGroupId`, `idleDisposition`, `configJson`, `ruleId`
-and `refillTargetsJson` in their HASH, written together by the create-only Lua.
-Targets are a JSON array of `{query,count}` objects. Missing/newly required fields,
-unknown target fields, null queries and non-integer counts fail strict decoding.
-TaskItem JSON has the exact fields above; `workerSelector` is the complete
-`{executorName,input}` WorkerQuery envelope. Kernel validates bounded immutable
-JSON structure and leaves all local parameter meaning to Matching. Root input is
-required and non-null. Old direct Maps (including ANY and ID), missing/null
-selectors and operator/wrapper forms are unreadable, never converted to ANY.
-Supply EligibilityQuery/RefillTarget and descriptor formats remain unchanged.
+The existing descriptor HASH has exactly `workerGroupId`, `idleDisposition`,
+`configJson`, `refillJson`, written together by the create-only Lua. refillJson is an
+array of `{poolName,target,count}`; an empty array is valid. Missing fields, retired
+ruleId/refillTargetsJson, invalid targets/counts and corrupt JSON fail reading.
+No old Matching HASH is consulted and no default is substituted.
 
-Use a new scope to recreate Tasks. Old descriptors fail as corrupt; there is no
-retired Matching lookup or default substitution. Old scopes remain untouched; no
-dual reader, automatic data migration or cleanup is added.
-Matching storage belongs to [its Owner](../../../worker_matching_jvm/README.md).
+TaskItem workerSelector remains the complete `{executorName,input}` WorkerQuery.
+Root input is required and non-null; bounded immutable JSON and current encoding
+remain unchanged. Old direct selectors remain unreadable, never converted to ANY.
+
+Use a new scope to recreate Tasks. No dual reader, conversion, data migration or
+cleanup is added. Facts, indexes and Worker scores remain under their existing
+Owners. Matching storage belongs to [its Owner](../../../worker_matching_jvm/README.md).

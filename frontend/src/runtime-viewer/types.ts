@@ -34,11 +34,17 @@ export interface WorkerGroupView {
   eventCodes: string[];
 }
 
+export interface RefillTarget {
+  poolName: string;
+  target: Record<string, string[]>;
+  count: number;
+}
+
 export interface TaskView {
   taskId: string;
   workerGroupId: string;
   idleDisposition: "CLOSE_WHEN_IDLE" | "PARK_WHEN_IDLE";
-  ruleId: string;
+  refill: RefillTarget[];
   config: Record<string, string>;
 }
 

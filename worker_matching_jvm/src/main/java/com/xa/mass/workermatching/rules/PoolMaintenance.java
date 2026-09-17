@@ -2,49 +2,28 @@ package com.xa.mass.workermatching.rules;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
-import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.workermatching.QueryFunctions;
-import com.xa.mass.workermatching.RuleHandler;
+import com.xa.mass.workermatching.rules.CandidatePool.Selection;
+import com.xa.mass.workermatching.rules.CandidatePool.SelectionKind;
+import static com.xa.mass.workermatching.rules.CandidatePool.*;
+import com.xa.mass.workermatching.PoolRefillPolicy;
 import java.util.*;
 import org.jspecify.annotations.Nullable;
 
 /** Existing Pool strategy support. Inventory is a separate range resource, never a predicate scan. */
-public abstract class PoolRule<P> implements RuleHandler {
-    protected final RedisRuleStorage storage;
+public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
+    protected final MatchingStorage storage;
     private final CandidatePool pool;
-    protected enum SelectionKind { ALL, VIEW, IDS }
-    protected record Selection(SelectionKind kind, String view, List<String> values) {
-        protected Selection { values = List.copyOf(new TreeSet<>(values)); }
-        boolean matches(String id, Map<String, String> memberships) {
-            return switch (kind) {
-                case ALL -> true;
-                case IDS -> values.contains(id);
-                case VIEW -> memberships.containsKey(view) && values.contains(memberships.get(view));
-            };
-        }
-    }
-    protected static Selection all() { return new Selection(SelectionKind.ALL, "", List.of()); }
-    protected static Selection range(String view, List<String> values) { return new Selection(SelectionKind.VIEW, view, values); }
-    protected static Selection identities(List<String> ids) { return new Selection(SelectionKind.IDS, "", ids); }
-
-    protected PoolRule(RedisRuleStorage storage) {
+    protected PoolMaintenance(MatchingStorage storage, CandidatePool pool) {
         this.storage = Objects.requireNonNull(storage);
-        pool = new CandidatePool(storage::now, storage.budget);
-        storage.addCandidateOwner(pool);
+        this.pool = Objects.requireNonNull(pool);
     }
     protected abstract EligibilityQuery normalize(String group, EligibilityQuery query);
     protected abstract Selection target(String group, EligibilityQuery normalized);
-    protected abstract Object normalizeLocalInput(String group, Object input);
-    protected abstract Selection select(String group, Object normalizedInput);
     /** Reads only offered identities; null qualification may be valid for Default identity admission. */
     protected abstract Map<String, P> readQualifications(String group, List<String> offered);
     /** Null means ineligible; a non-null map assigns at most one bucket per view. */
     protected abstract @Nullable Map<String, String> memberships(String group, String workerId, @Nullable P qualification);
 
-    public final QueryFunctions queryFunctions() { return new QueryFunctions(this::normalizeInput, this::execute); }
-    public final Object normalizeInput(String group, Object input) {
-        identity(group); return normalizeLocalInput(group, Objects.requireNonNull(input, "input"));
-    }
     @Override public final EligibilityQuery normalizeQuery(String group, EligibilityQuery query) {
         identity(group); return normalize(group, Objects.requireNonNull(query, "query"));
     }
@@ -96,7 +75,7 @@ public abstract class PoolRule<P> implements RuleHandler {
         if (live.isEmpty()) return List.of();
         var values = readQualifications(group, live.stream().map(HeldCandidate::workerId).toList());
         if (!new HashSet<>(live.stream().map(HeldCandidate::workerId).toList()).containsAll(values.keySet()))
-            throw new IllegalStateException("Rule read an unoffered identity");
+            throw new IllegalStateException("Pool policy read an unoffered identity");
         // All fallible business interpretation finishes before the resource commits any entry.
         var prepared = new LinkedHashMap<String, CandidatePool.Admission>();
         for (var held : live) {
@@ -123,27 +102,6 @@ public abstract class PoolRule<P> implements RuleHandler {
         return pool.admit(group, List.copyOf(selected.values()));
     }
 
-    public final Map<String, WorkerCandidate> execute(String group, Map<String, Object> inputs) {
-        identity(group); Objects.requireNonNull(inputs);
-        if (inputs.size() > 100) throw new IllegalArgumentException("at most 100 requests");
-        var groups = new LinkedHashMap<Selection, List<String>>();
-        inputs.forEach((id, input) -> {
-            identity(id);
-            var selection = select(group, normalizeInput(group, input));
-            groups.computeIfAbsent(selection, ignored -> new ArrayList<>()).add(id);
-        });
-        var limits = new LinkedHashMap<Selection, Integer>();
-        groups.forEach((selection, ids) -> limits.put(selection, ids.size()));
-        var taken = pool.take(group, limits);
-        var assigned = new HashMap<String, WorkerCandidate>();
-        groups.forEach((selection, ids) -> {
-            var candidates = taken.get(selection);
-            for (int i = 0; i < candidates.size(); i++) assigned.put(ids.get(i), candidates.get(i));
-        });
-        var result = new LinkedHashMap<String, WorkerCandidate>();
-        inputs.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
-        return Collections.unmodifiableMap(result);
-    }
     private static void identity(String id) {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("non-blank identity required");
     }

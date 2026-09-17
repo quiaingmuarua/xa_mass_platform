@@ -51,8 +51,7 @@ public final class TaskCreationService {
         }
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
-        String ruleId = request.ruleId() == null ? WorkerMatchingCatalog.DEFAULT_RULE_ID : request.ruleId();
-        List<RefillTarget> targets = resolveTargets(request, ruleId);
+        List<RefillTarget> targets = resolveTargets(request);
         var config = new java.util.LinkedHashMap<String, String>();
         config.put("priority", Integer.toString(request.priority()));
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
@@ -61,7 +60,6 @@ public final class TaskCreationService {
                 request.workerGroupId(),
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config,
-                ruleId,
                 targets
         );
         TaskCreationResult result;
@@ -91,10 +89,10 @@ public final class TaskCreationService {
         };
     }
 
-    private List<RefillTarget> resolveTargets(TaskCreateRequest request, String ruleId) {
+    private List<RefillTarget> resolveTargets(TaskCreateRequest request) {
         try {
-            return java.util.Objects.requireNonNull(matchingCatalog.resolveRefillTargets(
-                    request.workerGroupId(), ruleId, request.refillTargets()));
+            return java.util.Objects.requireNonNull(matchingCatalog.normalizeRefill(
+                    request.workerGroupId(), request.refill()));
         } catch (IllegalArgumentException error) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION,
                     error.getMessage(), error);

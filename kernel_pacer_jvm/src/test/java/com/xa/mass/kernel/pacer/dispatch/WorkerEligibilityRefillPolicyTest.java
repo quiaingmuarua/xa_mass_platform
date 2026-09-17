@@ -20,11 +20,10 @@ class WorkerEligibilityRefillPolicyTest {
     static List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks(List<String> groups) {
         return groups.stream().map(group -> new com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor(
                 "task-"+group,group,com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
-                Map.of("priority","0","maxRetryTimes","1"),"worker.default",
-                List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)))).toList();
+                Map.of("priority","0","maxRetryTimes","1"),
+                List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)))).toList();
     }
-    final Map<String,List<com.xa.mass.kernel.assignment.RefillTarget>> targets=Map.of(
-            "worker.default",List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)));
+    final List<com.xa.mass.kernel.assignment.RefillTarget> targets=List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100));
     final java.util.concurrent.atomic.AtomicLong clock=new java.util.concurrent.atomic.AtomicLong(1000);
     final WorkerEligibilityRefillPolicy policy=new WorkerEligibilityRefillPolicy(scores,index,500L,clock::get);
 
@@ -40,7 +39,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void pacerAcquiresBeforeMatchingAndSuppliesOnlyTheNewOpaqueFence() {
         oneIssuedWorker();
-        when(index.refill(eq("g"),anyMap(),anyList())).thenAnswer(call->{
+        when(index.refill(eq("g"),anyList(),anyList())).thenAnswer(call->{
             List<HeldCandidate> offered=call.getArgument(2);
             assertEquals(List.of(new HeldCandidate("w",20L,2000L)),offered);
             verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
@@ -78,7 +77,7 @@ class WorkerEligibilityRefillPolicyTest {
         assertEquals(0,policy.refill(List.of("g"),tasks));
         assertEquals(0,policy.refill(List.of(),List.of()));
         verifyNoInteractions(scores);
-        verify(index,never()).refill(anyString(),anyMap(),anyList());
+        verify(index,never()).refill(anyString(),anyList(),anyList());
     }
 
     @Test void emptyRoundsRotateAcrossMoreGroupsThanTheGlobalBudget() {
@@ -108,7 +107,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void projectionFailureLeavesTheAcquiredLeaseToExpire() {
         oneIssuedWorker();
-        when(index.refill(eq("g"),anyMap(),anyList())).thenThrow(new IllegalStateException("projection"));
+        when(index.refill(eq("g"),anyList(),anyList())).thenThrow(new IllegalStateException("projection"));
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
         verify(scores).observeDueHotScoreCandidates("g",500L,100);
         verify(scores).acquireObservedHotScoreLeases("g",Map.of("w",10L),2000L);
@@ -122,14 +121,14 @@ class WorkerEligibilityRefillPolicyTest {
                     .thenReturn(Map.of("w",new WorkerScoreTransitionResult(status,20L)));
             assertEquals(0,policy.refill(List.of("g"),tasks));
         }
-        verify(index,never()).refill(anyString(),anyMap(),anyList());
+        verify(index,never()).refill(anyString(),anyList(),anyList());
     }
 
     @Test void ambiguousAcquisitionDoesNotReachMatchingOrRetryWithinTheRound() {
         oneIssuedWorker();
         when(scores.acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong())).thenThrow(new IllegalStateException("response lost"));
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
-        verify(index,never()).refill(anyString(),anyMap(),anyList());
+        verify(index,never()).refill(anyString(),anyList(),anyList());
         verify(scores,times(1)).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
     }
 
@@ -139,7 +138,7 @@ class WorkerEligibilityRefillPolicyTest {
             clock.set(2000);return Map.of("w",10L);
         });
         when(scores.acquireObservedHotScoreLeases("g",Map.of("w",10L),3000L)).thenReturn(Map.of("w",changed(30L)));
-        when(index.refill(eq("g"),anyMap(),anyList())).thenAnswer(call->{
+        when(index.refill(eq("g"),anyList(),anyList())).thenAnswer(call->{
             clock.set(6000);
             assertEquals(List.of(new HeldCandidate("w",30L,3000L)),call.getArgument(2)); return 0;
         });
@@ -156,7 +155,7 @@ class WorkerEligibilityRefillPolicyTest {
             Map<String,Long> observed=call.getArgument(1);
             return Map.of(observed.keySet().iterator().next(),changed(20L));
         });
-        when(index.refill(eq("g"),anyMap(),anyList())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
+        when(index.refill(eq("g"),anyList(),anyList())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
         policy.refill(List.of("g"),tasks);
         assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
         policy.refill(List.of("g"),tasks);

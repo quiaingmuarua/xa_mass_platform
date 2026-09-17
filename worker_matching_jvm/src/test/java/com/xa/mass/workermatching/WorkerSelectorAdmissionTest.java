@@ -12,38 +12,40 @@ import static org.mockito.Mockito.*;
 
 class WorkerSelectorAdmissionTest {
     @Test void publicRuleContractContainsOnlyEligibilityOperations() {
-        var methods=Arrays.stream(RuleHandler.class.getDeclaredMethods()).map(java.lang.reflect.Method::getName)
+        var methods=Arrays.stream(PoolRefillPolicy.class.getDeclaredMethods()).map(java.lang.reflect.Method::getName)
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("normalizeQuery","deficits","refill"),methods);
-        assertEquals(0,RuleHandler.class.getDeclaredClasses().length);
-        for(var method:RuleHandler.class.getDeclaredMethods())for(var type:method.getParameterTypes())
+        assertEquals(0,PoolRefillPolicy.class.getDeclaredClasses().length);
+        for(var method:PoolRefillPolicy.class.getDeclaredMethods())for(var type:method.getParameterTypes())
             assertFalse(type.getName().contains("Redis") || type.getName().contains("Lease")
                     || type.getName().contains("TaskDescriptor"));
     }
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);
-        try(var storage=new RedisRuleStorage(client,new RedisKeyspace("test_admission"))) {
-            var rule=new CountryRuleHandler(storage);
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_admission"))) {
+            var stock=new CandidatePool(storage);
+            var rule=new CountryPoolPolicy(storage,stock);
             assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             assertThrows(IllegalArgumentException.class,()->EligibilityQuery.parse(Map.of("worker.country",Map.of("op","in","values",List.of("CN")))));
             assertDoesNotThrow(()->rule.normalizeQuery("g",EligibilityQuery.parse(Map.of("worker.country",List.of("CN")))));
             for(var query:List.of(Map.of("workerId",List.of("w")),Map.of("workerid",List.of("w")),
                     Map.of("country",List.of("CN")),Map.of("worker.country",List.of("cn"))))
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(query)));
-            assertThrows(IllegalArgumentException.class,()->rule.execute("g",Map.of("m",Map.of("workerId",List.of("w")))));
+            assertThrows(IllegalArgumentException.class,()->PoolQueryFunctions.country(stock).execute().apply("g",Map.of("m",Map.of("workerId",List.of("w")))));
             verifyNoInteractions(client);
         }
     }
     @Test void invalidCompositionAndTargetsFailWithoutRedis() {
         var client=mock(RedisClient.class);
-        try(var storage=new RedisRuleStorage(client,new RedisKeyspace("test_admission"))) {
-            var handlers=Map.<String,RuleHandler>of("worker.default",new DefaultRuleHandler(storage,Map.of()),
-                    "worker.country",new CountryRuleHandler(storage));
-            assertThrows(IllegalArgumentException.class,()->new RedisWorkerMatchingCatalog(storage,handlers,Map.of(),Map.of("g",Set.of("unknown")),Map.of()));
-            assertThrows(IllegalArgumentException.class,()->new RedisWorkerMatchingCatalog(storage,handlers,Map.of(),Map.of("g",Set.of("worker.country")),
-                    Map.of("g",Map.of("worker.country",List.of(new RefillTarget(Map.of("workerId",List.of("w")),1))))));
-            assertThrows(IllegalArgumentException.class,()->new RedisRuleStorage(client,new RedisKeyspace("test_admission"),
-                    Map.of("custom",List.of(new RedisRuleStorage.IndexMutation("country","return function() end"))),System::currentTimeMillis));
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_admission"))) {
+            assertThrows(IllegalArgumentException.class,()->MatchingComposition.create(storage,
+                    Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of()))));
+            assertThrows(IllegalArgumentException.class,()->MatchingComposition.create(storage,
+                    Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country")))));
+            try(var catalog=MatchingComposition.create(storage,Map.of("g",new MatchingGroup(Set.of("country"),Set.of())))) {
+                assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
+                        new RefillTarget("country",new EligibilityQuery(Map.of("workerId",List.of("w"))),1))));
+            }
             verifyNoInteractions(client);
         }
     }

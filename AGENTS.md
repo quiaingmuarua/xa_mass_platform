@@ -34,7 +34,7 @@ agents change the repository; it is not the canonical mechanism narrative.
   score/resource mechanisms.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
-- `worker_matching_jvm/` owns Worker/Platform Properties, fixed Rule Handlers,
+- `worker_matching_jvm/` owns Worker/Platform Properties, fixed query functions and Pool maintenance,
   materialized eligibility indexes and bounded query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `server_boot_jvm/` owns the sole production main, Boot JAR and explicit
@@ -213,47 +213,52 @@ architectures.
   index storage belongs to Matching and loop code belongs to Pacer.
 - Task Owner stores only scheduling descriptors and Item execution data. It owns
   shared immutable WorkerQuery consumption data and EligibilityQuery refill data without field interpretation. Matching
-  owns fixed Rule Handlers and property/index interpretation. Task descriptors own
-  the Rule name and resolved refill targets as immutable configuration.
+  owns fixed query functions, Pool maintenance and property/index interpretation. Task descriptors own
+  optional Pool supply declarations as immutable configuration; Items independently name query functions.
   Pacer depends only on WorkerMatching for Matching operations. It may forward
-  Group, Rule names, message IDs and immutable queries, but must not normalize or
+  Group, Pool names, message IDs and immutable queries, but must not normalize or
   semantically aggregate queries, depend on Matching implementations, interpret
   business conditions or construct index coordinates. Matching may associate this
   call's requests with candidates; it must not retain message IDs or own Item state.
   Main shares its already-read NORMAL Task descriptors with refill and dispatch.
   Matching contracts/storage must not accept Task IDs or retain Task configuration.
-  Default identity selectors need no facts;
-  only worker.default accepts explicit ID queries; named Rules constrain ANY and
-  interpret their own business queries. Unavailable Rules never fall back. Matching
-  uses immutable fixed query functions and Rule refill composition. Pool strategies own local input interpretation,
+  Default Pool identity selectors and the direct workerId function need no facts;
+  worker.default IDs consume stock while workerId returns caller-supplied identity. Pool functions constrain ANY and
+  interpret their own business queries. Unavailable functions never fall back. Matching
+  uses immutable fixed query functions and Pool maintenance composition. Pool strategies own local input interpretation,
   qualification and resource selection; CandidatePool owns mechanical range stock. Catalog coordination
   must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
-  RuleHandler owns normalizeQuery, deficits and refill. Item execution uses fixed
+  PoolRefillPolicy owns target normalization, deficits and refill; CandidatePool owns entries and views. Item execution uses fixed
   normalizeInput/execute function pairs, not storage objects as executors. Catalog owns target MAX merge,
   bounded paging, messageId-to-candidate correlation and exclusion of IDs actually
-  accepted by earlier Rules. TaskItem uses WorkerQuery(executorName, input);
+  accepted by earlier Pools. TaskItem uses WorkerQuery(executorName, input);
   refill retains its existing string-list EligibilityQuery. Kernel and Pacer must
   not interpret local input fields. Target quantities use MAX; Pool consumption uses actual Item
   counts inside Matching. Pacer submits one query per message ID and receives at most
   one WorkerCandidate for it. Consumption carries identity and an explicit expectedScore,
-  never the inventory deadline. Current production Pool Rules retain the original
+  never the inventory deadline. Current production Pool functions retain the original
   nonzero fence. Zero is an explicit identity hint only at the Matching-to-Pacer
   boundary. Pacer partitions candidates into observed-score and current-identity
-  batches, calling transferObservedHotScoreLeases or transferCurrentHotScoreLeases.
-  Kernel's exact input rejects zero; its current-state operation takes IDs only.
+  batches, calling transferObservedHotScoreLeases or acquireCurrentHotScoreLeases.
+  Kernel's exact input rejects zero; current execution acquisition takes IDs only,
+  admits due HOT or active soft HOT and always seals without preempting active sealed holds.
   Pacer accepts only TRANSITIONED, and uses the returned
   sealed execution fence for Command/ResultContext and exact Result release.
-  It must not retry a failed strict expectation through current-state transfer.
+  It must not retry a failed strict expectation through current execution acquisition.
   Dropping an association must not transfer its candidate,
   restore stock or trigger a replacement take. No function-name prefix routing,
   fallback executor, dynamic registry or placeholder Index executor is allowed.
   Validate the complete batch before consumption; later function execution failure
-  preserves earlier consumption. Explicit Item functions may differ from Task supply
-  Rules but must be Group-enabled and cannot generate refill demand. Shared
-  capacity coordination stores budgets only. Earlier Rule admissions survive a later
-  Rule failure; the exception ends the remaining batch without rollback or replay.
-  Each current Rule validates and reads before its own bounded local commit.
+  preserves earlier consumption. Item functions are independent of Task supply
+  declarations but must be Group-enabled (worker.default and workerId are universal) and cannot generate refill demand.
+  Direct worker.phone uses an independent Group property index without country or
+  Messaging eligibility. Same-phone requests share a bounded random read with reverse
+  membership validation; there is no busy-candidate rescan, Pool fallback or property-version guarantee.
+  Direct functions are not Pool names and cannot be used as supply declarations. Shared
+  capacity coordination stores budgets only. Earlier Pool admissions survive a later
+  maintenance failure; the exception ends the remaining batch without rollback or replay.
+  Each current maintenance policy validates and reads before its own bounded local commit.
   Pool counts use maintained range buckets; take visits selected ranges rather than
   copying/filtering the whole pool. Storage receives no business predicate. Expiry
   uses removable deadline order; all range references leave with the Entry, and
@@ -263,16 +268,17 @@ architectures.
   Leave concurrent target/stock changes to later rounds rather than reserving deficits.
   Facts/index atomic writes remain a separate one-Lua storage assembly contract.
   Pacer alone discovers HOT IDs and issues
-  closed batches of already acquired 1-second candidate leases. **Pacer acquires
-  before Matching reads eligibility:** qualification and stock waiting share the
+  closed batches of already acquired 1-second candidate leases for Pool refill. **Pacer acquires
+  before Matching reads Pool eligibility:** qualification and stock waiting share the
   original deadline. Matching retains the supplied fences without an acquisition
   callback or inventory extension; Handlers have no lease capability. Kernel retains
   all Score, confirmation and claim authority. Acquisition establishes a soft hold before the
   projection read; later successful invalidation rejects that candidate at confirmation.
   Facts and sealing remain separate best-effort commits, without property versions.
   No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
-  participates. Item queries consume inventory; they must never drive refill.
-  Refill groups Main's ordinary descriptor data and calls Matching by Group and Rule name.
+  participates. Pool Item queries consume inventory; direct queries locate identity
+  without stock. Neither may drive refill or acquire leases inside Matching.
+  Refill groups Main's ordinary descriptor declarations by Group and calls Matching by Pool name.
   Matching merges targets and passes only visited bounded pages to Rules. Do not restore
   executable Task views or refill closures. Server admission must not observe refill or maintain stock. Group demand is a hint, not a reservation; stock and
   exact fences still decide admission and execution. Global expired-stock cleanup
@@ -318,9 +324,10 @@ kernel_jvm`.
 - [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
   separates the fixed refill Producer from Task Dispatch. Main shares one immutable
   NORMAL Task descriptor batch. Refill uses Task-declared shared targets and no Item reads;
-  dispatch consumes local Matching stock for every selector. Pacer rotates Groups,
+  dispatch forwards Item queries to Matching; Pool functions consume local stock,
+  while Identity/Phone functions return direct identity hints. For refill Pacer rotates Groups,
   at most 100 HOT candidates per Group and 1000 per round, independent of deficit
-  count. Matching cannot discover IDs or initiate targeted acquisition. It checks
+  count. Pool qualification cannot discover extra IDs or initiate targeted acquisition. It checks
   supplied identities through Rule-owned operations and admits at most one Eligibility
   per offered ID in that Group batch. Pacer exact-acquires the
   observed Group batch before invoking Matching; only successful new fences are
@@ -332,8 +339,9 @@ kernel_jvm`.
   scans, repair or an automatic-progress promise through a fully corrupt head.
   Acquisition accepts due mark=0/1 and establishes soft mark=0;
   production Pool execution transfer requires exact soft active HOT fences and sets mark=1.
-  Identity hints use the separate current-state transfer. Both transfer entries check
-  Redis time and active soft state atomically; no zero sentinel reaches Kernel.
+  Identity hints use separate current execution acquisition, accepting due HOT with
+  either mark or active soft HOT. Both execution entries check Redis time atomically;
+  no zero sentinel reaches Kernel and active sealed holds cannot be preempted.
   Kernel transfers soft candidates with seal=true
   and carries the returned execution fence into ResultContext. Properties writes
   invalidate through Score Owner. Unused/rejected holds expire without release
@@ -382,8 +390,10 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter startup and create-only advisory WorkerGroup seeds.
 
-Server resolves Rule names and complete refill targets through local Matching
-admission, then creates the complete Kernel Task descriptor. Matching resolution
+Server normalizes explicit Pool supply declarations through local Matching admission,
+then creates the complete Kernel Task descriptor. Ordinary omission means no supply;
+managed Call registration owns its explicit default and configured overrides. Both
+finite append and managed Call require an explicit WorkerQuery; finite rejection stays per Item. Matching resolution
 has no Redis or inventory side effect. Kernel stores configuration without Rule
 interpretation; no separate Matching binding, rollback or Task lookup is allowed.
 Worker Prepare resolves identity and asks Kernel to establish Binding and cold

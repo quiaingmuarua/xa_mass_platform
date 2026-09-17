@@ -73,8 +73,7 @@ public final class RedisTaskResourceCatalog
                     "workerGroupId",
                     "idleDisposition",
                     "configJson",
-                    "ruleId",
-                    "refillTargetsJson"
+                    "refillJson"
             ))) {
                 throw new IllegalArgumentException(
                         "Task descriptor fields are invalid"
@@ -95,23 +94,22 @@ public final class RedisTaskResourceCatalog
                     }
             );
             List<Map<String, Object>> targets = mapper.readValue(
-                    required(fields, "refillTargetsJson"), new TypeReference<>() {});
-            if (targets == null) throw new IllegalArgumentException("refillTargetsJson must be an array");
-            var refillTargets = new java.util.ArrayList<RefillTarget>();
+                    required(fields, "refillJson"), new TypeReference<>() {});
+            if (targets == null) throw new IllegalArgumentException("refillJson must be an array");
+            var declarations = new java.util.ArrayList<RefillTarget>();
             for (var target : targets) {
-                if (target == null || !target.keySet().equals(Set.of("query", "count"))
-                        || !(target.get("query") instanceof Map<?, ?>)) {
+                if (target == null || !target.keySet().equals(Set.of("poolName", "target", "count"))
+                        || !(target.get("target") instanceof Map<?, ?>)) {
                     throw new IllegalArgumentException("refill target fields are invalid");
                 }
-                refillTargets.add(RefillTarget.parse(target));
+                declarations.add(RefillTarget.parse(target));
             }
             return new TaskDescriptor(
                     taskId,
                     workerGroupId,
                     idleDisposition,
                     config,
-                    required(fields, "ruleId"),
-                    refillTargets
+                    declarations
             );
         } catch (JacksonException | IllegalArgumentException error) {
             throw new IllegalStateException(

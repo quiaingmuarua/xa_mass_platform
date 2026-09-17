@@ -12,6 +12,18 @@ class WorkerMatchingArchitectureTest {
 
     private static final Path SOURCE = Path.of("src/main/java");
 
+    @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
+        Path rules=SOURCE.resolve("com/xa/mass/workermatching/rules");
+        for(String file:List.of("CandidatePool.java","MatchingStorage.java")) {
+            String source=Files.readString(rules.resolve(file));
+            for(String forbidden:List.of("executorName","QueryFunctions","PoolRefillPolicy"))
+                assertFalse(source.contains(forbidden),file+" must not depend on "+forbidden);
+        }
+        String consumers=Files.readString(rules.resolve("PoolQueryFunctions.java"));
+        for(String forbidden:List.of("PoolRefillPolicy","PoolMaintenance","PartitionedPoolPolicy","new CandidatePool","new Thread"))
+            assertFalse(consumers.contains(forbidden),"Consumer functions only receive existing resources: "+forbidden);
+    }
+
     @Test
     void matchingDoesNotOwnSchedulingOrPlatformMechanisms()
             throws IOException {

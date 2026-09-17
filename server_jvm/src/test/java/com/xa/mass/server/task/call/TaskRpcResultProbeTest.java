@@ -24,7 +24,7 @@ class TaskRpcResultProbeTest {
         results.put("hit", success);
         results.put("miss", null);
         when(runtime.loadTaskItemResults("task", List.of("hit", "miss"))).thenReturn(results);
-        var probe = new TaskRpcResultProbe(runtime, registry, new TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250));
+        var probe = new TaskRpcResultProbe(runtime, registry, new TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, java.util.Map.of()));
         Path path = temporary.resolve("probe.jfr");
         try (var recording = new Recording()) {
             recording.enable(TaskRpcStageEvent.class);

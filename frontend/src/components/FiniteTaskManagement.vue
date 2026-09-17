@@ -7,6 +7,10 @@ import { useRuntimeViewerStore, useTaskManagementStore } from "@/runtime-context
 import { stageLabel } from "@/task-management/model";
 import type { FiniteTaskSession, FiniteTaskStage } from "@/task-management/types";
 
+import { refillSchema } from "@/runtime-viewer/schemas";
+import { parseWorkerSelector } from "@/task-call-debug/model";
+const draftError = ref<string>();
+
 const runtimeStore = useRuntimeViewerStore();
 const taskStore = useTaskManagementStore();
 const emit = defineEmits<{ taskChanged: [] }>();
@@ -19,7 +23,8 @@ const draft = ref({
   workerGroupId: "",
   eventCode: "",
   payloadKey: "value",
-  ruleId: "",
+  refillText: "[]",
+  workerSelectorText: '{"executorName":"worker.default","input":{}}',
   priority: 50,
   maxRetryTimes: 3
 });
@@ -37,12 +42,14 @@ const selectedTask = computed(() =>
 async function openCreate(): Promise<void> {
   await runtimeStore.initializeWorkerGroups();
   taskStore.clearMessages();
+  draftError.value = undefined;
   const group = availableGroups.value[0];
   draft.value = {
     workerGroupId: group?.workerGroupId ?? "",
     eventCode: group?.eventCodes[0] ?? "",
     payloadKey: "value",
-    ruleId: "",
+    refillText: "[]",
+    workerSelectorText: '{"executorName":"worker.default","input":{}}',
     priority: 50,
     maxRetryTimes: 3
   };
@@ -63,14 +70,25 @@ function chooseFile(event: Event): void {
 
 async function createAndAppend(): Promise<void> {
   if (inputFile.value === undefined) return;
+  draftError.value = undefined;
+  let refill, workerSelector;
+  try {
+    refill = refillSchema.parse(JSON.parse(draft.value.refillText));
+    workerSelector = parseWorkerSelector(draft.value.workerSelectorText);
+  } catch (error) {
+    draftError.value =
+      error instanceof Error ? error.message : "Invalid supply or Worker query";
+    return;
+  }
   const task = await taskStore.createAndAppend({
     workerGroupId: draft.value.workerGroupId,
     eventCode: draft.value.eventCode,
+    workerSelector,
     payloadKey: draft.value.payloadKey,
     file: inputFile.value,
     config: {
       priority: Number(draft.value.priority),
-      ...(draft.value.ruleId.trim() ? { ruleId: draft.value.ruleId.trim() } : {}),
+      refill,
       maxRetryTimes: Number(draft.value.maxRetryTimes)
     }
   });
@@ -368,13 +386,28 @@ function formatBytes(value: number): string {
             ><input v-model.number="draft.priority" type="number" min="0" max="99"
           /></label>
           <label
-            ><span>Rule ID（可选）</span
-            ><input v-model="draft.ruleId" type="text" placeholder="worker.default"
-          /></label>
-          <label
             ><span>Retries</span
             ><input v-model.number="draft.maxRetryTimes" type="number" min="0" max="98"
           /></label>
+          <label class="finite-task-form__wide"
+            ><span>Pool 供给 · JSON（默认 []）</span
+            ><textarea v-model="draft.refillText" rows="4" />
+            <small
+              >Pool 查询需要组内其他活跃 Task 或本 Task
+              提供供给；按身份或号码定位无需供给。</small
+            >
+          </label>
+          <label class="finite-task-form__wide"
+            ><span>Worker Selector · JSON（必填）</span
+            ><textarea v-model="draft.workerSelectorText" rows="4" />
+          </label>
+          <el-alert
+            v-if="draftError"
+            class="finite-task-form__wide"
+            type="error"
+            :closable="false"
+            :title="draftError"
+          />
         </div>
         <el-button
           type="primary"

@@ -113,8 +113,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     @SuppressWarnings("unchecked")
     void lostDisconnectIsReplacedByActualTaskDeliveryExpiryAndWorkRecovers() throws Exception {
         post("/api/v1/worker-groups/" + GROUP + ":register", Map.of("eventCodes", List.of(EVENT)));
-        String task = (String) post("/api/v1/tasks", Map.of(
-                "workerGroupId", GROUP, "ruleId", "worker.default", "maxRetryTimes", 3)).get("taskId");
+        String task = (String) post("/api/v1/tasks", Map.of("workerGroupId", GROUP, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","default","target",Map.of(),"count",100)))).get("taskId");
         var invoked = new AtomicInteger();
         var lostDisconnects = new AtomicInteger();
         var deliveryEvidence = new AtomicInteger();
@@ -198,8 +197,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             await("disconnect consumed and deliberately lost", () -> lostDisconnects.get() == 1
                     && connectionState(workerId).equals("disconnected"));
             assertThat(isHot(workerId)).isTrue();
-            post("/api/v1/tasks/" + task + "/items", List.of(Map.of(
-                    "messageId", "offline-item", "eventCode", EVENT, "payload", Map.of())));
+            post("/api/v1/tasks/" + task + "/items", List.of(Map.of("messageId", "offline-item", "eventCode", EVENT, "payload", Map.of(), "workerSelector", Map.of("executorName","worker.default","input",Map.of()))));
             post("/api/v1/tasks/" + task + "/approve", null);
             await("actual expiry evidence changes Score", () -> deliveryEvidence.get() > 0
                     && rejectedDeliveries.get() > 0 && applied.get() != null

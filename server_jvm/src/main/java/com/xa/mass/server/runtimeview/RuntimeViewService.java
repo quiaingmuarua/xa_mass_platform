@@ -350,7 +350,7 @@ public final class RuntimeViewService {
                 descriptor.taskId(),
                 descriptor.workerGroupId(),
                 descriptor.idleDisposition().name(),
-                descriptor.ruleId(),
+                descriptor.refill(),
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
                 )

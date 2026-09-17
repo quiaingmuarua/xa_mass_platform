@@ -37,7 +37,7 @@ class TaskAssignmentDispatcherTest {
         WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
         when(expectedScore == 0
-                ? workerScores.transferCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L, true)
+                ? workerScores.acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L)
                 : workerScores.transferObservedHotScoreLeases("group-1", Map.of("worker-1", expectedScore), 5_000L, true)).thenReturn(Map.of(
                 "worker-1",
                 new WorkerScoreTransitionResult(
@@ -95,7 +95,7 @@ class TaskAssignmentDispatcherTest {
                 published.get().forward()
         );
         if (expectedScore == 0) {
-            verify(workerScores).transferCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L, true);
+            verify(workerScores).acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L);
         } else {
             verify(workerScores).transferObservedHotScoreLeases("group-1", Map.of("worker-1", expectedScore), 5_000L, true);
         }
@@ -109,7 +109,7 @@ class TaskAssignmentDispatcherTest {
         WorkerScoreCore workerScores = mock(WorkerScoreCore.class);
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
         when(expectedScore == 0
-                ? workerScores.transferCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L, true)
+                ? workerScores.acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L)
                 : workerScores.transferObservedHotScoreLeases("group-1", Map.of("worker-1", expectedScore), 5_000L, true)).thenReturn(Map.of(
                 "worker-1",
                 new WorkerScoreTransitionResult(
@@ -134,7 +134,7 @@ class TaskAssignmentDispatcherTest {
         ));
         verifyNoInteractions(itemScores, commands);
         if (expectedScore == 0) {
-            verify(workerScores).transferCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L, true);
+            verify(workerScores).acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L);
         } else {
             verify(workerScores).transferObservedHotScoreLeases("group-1", Map.of("worker-1", expectedScore), 5_000L, true);
         }
@@ -150,7 +150,7 @@ class TaskAssignmentDispatcherTest {
                 5_000L, true)).thenReturn(Map.of(
                         "strict", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 501L),
                         "stale", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE, 601L)));
-        when(workerScores.transferCurrentHotScoreLeases("group-1", List.of("hint", "sealed"), 5_000L, true))
+        when(workerScores.acquireCurrentHotScoreLeases("group-1", List.of("hint", "sealed"), 5_000L))
                 .thenReturn(Map.of(
                         "hint", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 701L),
                         "sealed", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE, 801L)));
@@ -176,7 +176,7 @@ class TaskAssignmentDispatcherTest {
         assertEquals(codec.encode(new ResultContextCodec.ResultContext("task-1", "m-strict", "strict", "group-1", 501L)),
                 published.get().get("strict").forward());
         verify(workerScores).transferObservedHotScoreLeases("group-1", Map.of("strict", 401L, "stale", 402L), 5_000L, true);
-        verify(workerScores).transferCurrentHotScoreLeases("group-1", List.of("hint", "sealed"), 5_000L, true);
+        verify(workerScores).acquireCurrentHotScoreLeases("group-1", List.of("hint", "sealed"), 5_000L);
         verify(itemScores).rewriteObservedItemScores("task-1", Map.of("m-hint", 301L, "m-strict", 303L), 5_000L, -1);
         verifyNoMoreInteractions(workerScores, itemScores);
     }
@@ -188,7 +188,7 @@ class TaskAssignmentDispatcherTest {
         WorkerCommandRuntime commands = mock(WorkerCommandRuntime.class);
         when(workerScores.transferObservedHotScoreLeases("group-1", Map.of("strict", 401L), 5_000L, true))
                 .thenReturn(Map.of("strict", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 501L)));
-        when(workerScores.transferCurrentHotScoreLeases("group-1", List.of("hint"), 5_000L, true))
+        when(workerScores.acquireCurrentHotScoreLeases("group-1", List.of("hint"), 5_000L))
                 .thenThrow(new IllegalStateException("current transfer unavailable"));
         assertThrows(IllegalStateException.class, () -> new TaskAssignmentDispatcher(itemScores, workerScores, commands,
                 new ResultContextCodec()).dispatch(dueTask(), List.of(
@@ -196,7 +196,7 @@ class TaskAssignmentDispatcherTest {
                         attempt(item("m-strict"), 302L, worker("strict", 401L))), 5_000L));
         var order = org.mockito.Mockito.inOrder(workerScores);
         order.verify(workerScores).transferObservedHotScoreLeases("group-1", Map.of("strict", 401L), 5_000L, true);
-        order.verify(workerScores).transferCurrentHotScoreLeases("group-1", List.of("hint"), 5_000L, true);
+        order.verify(workerScores).acquireCurrentHotScoreLeases("group-1", List.of("hint"), 5_000L);
         verifyNoMoreInteractions(workerScores);
         verifyNoInteractions(itemScores, commands);
     }
@@ -306,7 +306,7 @@ class TaskAssignmentDispatcherTest {
         return new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "1"
-                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskItem item() {

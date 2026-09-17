@@ -12,13 +12,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class QueryFunctionsTest {
-    RedisWorkerMatchingCatalog catalog(RedisRuleStorage storage, Map<String,QueryFunctions> functions) {
-        return new RedisWorkerMatchingCatalog(storage,Map.of("worker.default",new DefaultRuleHandler(storage,Map.of())),
-                functions,Map.of("g",functions.keySet()),Map.of());
+    RedisWorkerMatchingCatalog catalog(MatchingStorage storage, Map<String,QueryFunctions> functions) {
+        return new RedisWorkerMatchingCatalog(storage,Map.of("default",new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of())),
+                functions,Map.of("g",new MatchingGroup(Set.of(),functions.keySet())),Map.of());
     }
-    @Test void scalarFunctionsNeedNeitherRuleHandlerNorPoolAndKeepCallLocalOrder() {
+    @Test void scalarFunctionsNeedNeitherRefillPolicyNorPoolAndKeepCallLocalOrder() {
         var client=mock(RedisClient.class); var calls=new ArrayList<String>();
-        try(var storage=new RedisRuleStorage(client,new RedisKeyspace("test_function_table"))) {
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_function_table"))) {
             QueryFunctions strings=new QueryFunctions((group,input)-> {
                 if(!(input instanceof String text))throw new IllegalArgumentException(); return text.toUpperCase(Locale.ROOT);
             },(group,inputs)-> {
@@ -50,7 +50,7 @@ class QueryFunctionsTest {
     }
     @Test void lateAdmissionFailureConsumesNothingAndLaterExecutionFailureDoesNotRollBack() {
         var consumed=new AtomicInteger();
-        try(var storage=new RedisRuleStorage(mock(RedisClient.class),new RedisKeyspace("test_function_failure"))) {
+        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_function_failure"))) {
             var first=new QueryFunctions((g,i)->i,(g,inputs)-> {
                 consumed.incrementAndGet(); return Map.of(inputs.keySet().iterator().next(),new WorkerCandidate("w",12));
             });
@@ -71,7 +71,7 @@ class QueryFunctionsTest {
             calls.incrementAndGet(); var result=new LinkedHashMap<String,WorkerCandidate>();
             inputs.keySet().forEach(id->result.put(id,new WorkerCandidate("same",19)));return result;
         });
-        try(var storage=new RedisRuleStorage(mock(RedisClient.class),new RedisKeyspace("test_function_dedup"));
+        try(var storage=new MatchingStorage(mock(RedisClient.class),new RedisKeyspace("test_function_dedup"));
                 var catalog=catalog(storage,Map.of("first",fn,"second",fn))) {
             var requests=new LinkedHashMap<String,WorkerQuery>();
             requests.put("first",new WorkerQuery("first",Map.of())); requests.put("second",new WorkerQuery("second",Map.of()));
@@ -80,7 +80,7 @@ class QueryFunctionsTest {
     }
     @Test void independentMapStockCanShareRefillAndNamedConsumptionWithoutUsingPoolResource() {
         var held=new LinkedHashMap<String,HeldCandidate>();
-        RuleHandler rule=new RuleHandler() {
+        PoolRefillPolicy rule=new PoolRefillPolicy() {
             public EligibilityQuery normalizeQuery(String g,EligibilityQuery q) {
                 if(!q.query().isEmpty())throw new IllegalArgumentException(); return q;
             }
@@ -98,11 +98,11 @@ class QueryFunctionsTest {
             return Collections.unmodifiableMap(result);
         });
         var client=mock(RedisClient.class);
-        try(var storage=new RedisRuleStorage(client,new RedisKeyspace("test_map_function"));
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_map_function"));
                 var catalog=new RedisWorkerMatchingCatalog(storage,
-                        Map.of("worker.default",new DefaultRuleHandler(storage,Map.of()),"map",rule),
-                        Map.of("map",functions),Map.of("g",Set.of("map")),Map.of())) {
-            var targets=Map.of("map",List.of(new RefillTarget(Map.of(),1)));
+                        Map.of("default",new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of()),"map",rule),
+                        Map.of("map",functions),Map.of("g",new MatchingGroup(Set.of("map"),Set.of("map"))),Map.of())) {
+            var targets=List.of(new RefillTarget("map",new EligibilityQuery(Map.of()),1));
             assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));
             assertEquals(1,catalog.refill("g",targets,List.of(new HeldCandidate("w",44,System.currentTimeMillis()+1000))));
             assertEquals(new WorkerCandidate("w",44),catalog.take("g",Map.of("m",new WorkerQuery("map",Map.of()))).get("m"));

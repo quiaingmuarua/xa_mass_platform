@@ -172,8 +172,8 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
         return new TaskItemRequest(command.messageId(), "extension.worker.sms.listen."
                 + (command.cancel ? "cancel" : "start"), payload, 5,
                 command.cancel ? SETUP_MILLIS : Math.max(1, record.setupDeadline - clock.millis()),
-                new WorkerQuery("worker.default", command.cancel ? Map.of("workerId", List.of(command.workerId))
-                        : Map.of("country", List.of(record.country))));
+                command.cancel ? new WorkerQuery("workerId", command.workerId)
+                        : new WorkerQuery("worker.default", Map.of("country", List.of(record.country))));
     }
     public Map<String, Object> get(String id) { return require(id).view(); }
     public Map<String, Object> page(int offset, int pageSize) {

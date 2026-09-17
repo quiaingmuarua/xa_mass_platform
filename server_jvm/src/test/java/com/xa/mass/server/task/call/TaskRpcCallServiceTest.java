@@ -499,7 +499,7 @@ class TaskRpcCallServiceTest {
         return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskItemRequest item(
@@ -546,15 +546,6 @@ class TaskRpcCallServiceTest {
             int maxWaiters,
             int maxPendingObservations
     ) {
-        return new TaskRpcProperties(
-                30_000,
-                60_000,
-                maxWaiters,
-                maxPendingObservations,
-                256,
-                50,
-                100,
-                250
-        );
+        return new TaskRpcProperties(30_000, 60_000, maxWaiters, maxPendingObservations, 256, 50, 100, 250, java.util.Map.of());
     }
 }

@@ -30,10 +30,10 @@ parameters. Pacer passes Group and messageId-to-query Maps; Matching routes thro
 its fixed function table and returns at most one candidate per message ID. Pacer
 retains correlation, address checks and mechanical execution admission.
 
-Task Rule configuration and `RefillTarget`/`EligibilityQuery` supply declarations
-remain in the descriptor with their existing format. Item queries do not drive
+Task Pool supply uses `RefillTarget(poolName,target,count)` and `EligibilityQuery`; declarations
+are optional in descriptor `refill`, persisted as `refillJson`. Ordinary Tasks default to no supply. Item queries do not drive
 refill and can name a different Group-enabled function. Old direct selector Maps
-(including ANY/ID) are unreadable after this cutover; use a new scope, with no
+(including ANY/ID) are unreadable from the earlier Item cutover; use a new scope, with no
 conversion or data cleanup. Matching Facts and source indexes are unchanged.
 
 The three Result event interfaces are stable semantic Mechanism ports rather
@@ -122,9 +122,13 @@ Build:
 ./gradlew :kernel_jvm:build
 ```
 
-Every Task descriptor stores its Rule name and resolved refill targets. Main
+Every Task descriptor stores optional Pool supply declarations. Empty supply is valid; Item functions remain explicit and independent. Main
 shares complete NORMAL descriptors for independent refill and dispatch.
-Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
+For Pool refill, Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
 qualifies and admits only those identities with their original fence and deadline;
-it never requests an extension. TaskItems consume the Rule-owned Group inventory. Kernel retains HOT, Score and exact confirmation/
+it never requests an extension. Pool Item queries consume the Rule-owned Group inventory.
+Direct Identity/Phone queries require no Pool hold and return an identity hint;
+Kernel admits due HOT or active soft HOT into a sealed execution lease atomically.
+Active sealed holds cannot be preempted. Strict Pool candidates keep exact fencing.
+Kernel retains HOT, Score and exact confirmation/
 claim authority; no Task-private candidate cache or Item-triggered supply exists.

@@ -2,11 +2,30 @@ package com.xa.mass.workermatching.rules;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.workermatching.rules.PoolRule.Selection;
+
 import java.util.*;
 
 /** Local inventory resource. Views partition entries; no business predicates or Redis calls. */
-final class CandidatePool {
+public final class CandidatePool {
+    public enum SelectionKind { ALL, VIEW, IDS }
+    public record Selection(SelectionKind kind, String view, List<String> values) {
+        public Selection { values = List.copyOf(new TreeSet<>(values)); }
+        boolean matches(String id, Map<String, String> memberships) {
+            return switch (kind) {
+                case ALL -> true;
+                case IDS -> values.contains(id);
+                case VIEW -> memberships.containsKey(view) && values.contains(memberships.get(view));
+            };
+        }
+    }
+    public static Selection all() { return new Selection(SelectionKind.ALL, "", List.of()); }
+    public static Selection range(String view, List<String> values) { return new Selection(SelectionKind.VIEW, view, values); }
+    public static Selection identities(List<String> ids) { return new Selection(SelectionKind.IDS, "", ids); }
+
+    public CandidatePool(MatchingStorage storage) {
+        this(storage::now, storage.budget);
+        storage.addCandidateOwner(this);
+    }
     record Admission(HeldCandidate held, Map<String, String> views) {
         Admission { views = Map.copyOf(views); }
     }
@@ -99,7 +118,7 @@ final class CandidatePool {
         return List.copyOf(accepted);
     }
 
-    Map<Selection, List<WorkerCandidate>> take(String group, Map<Selection, Integer> limits) {
+    public Map<Selection, List<WorkerCandidate>> take(String group, Map<Selection, Integer> limits) {
         return commit(group, select(group, limits));
     }
 

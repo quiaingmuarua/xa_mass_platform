@@ -16,9 +16,8 @@ public record TaskItemRequest(
         @NotNull Map<String, Object> payload,
         @Min(0) @Max(10) Integer priority,
         @Positive Long ttlMillis,
-        @Schema(description = "Named Matching function and its local JSON input. "
-                + "Omission uses the Task refill Rule with empty input for finite append; managed Call requires an explicit query. "
-                + "The function must be enabled for the Group but need not match the Task refill Rule.")
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Named Matching function and its local JSON input. "
+                + "Required for finite append and managed Call. The Group-enabled function is independent of Task Pool supply declarations.")
         WorkerQuery workerSelector
 ) {
     public TaskItemRequest {

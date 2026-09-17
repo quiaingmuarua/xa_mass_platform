@@ -1,4 +1,5 @@
-import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
+import type { WorkerQuery } from "@/task-call-debug/types";
+import type { RefillTarget, RuntimeDataSourceMode } from "@/runtime-viewer/types";
 
 export type FiniteTaskStage =
   | "CREATED"
@@ -8,7 +9,7 @@ export type FiniteTaskStage =
 
 export interface FiniteTaskConfig {
   priority: number;
-  ruleId?: string;
+  refill: RefillTarget[];
   maxRetryTimes: number;
 }
 
@@ -21,6 +22,7 @@ export interface FiniteTaskSession {
   taskId: string;
   workerGroupId: string;
   eventCode: string;
+  workerSelectorText: string;
   payloadKey: string;
   originalFileName: string;
   byteCount: number;
@@ -35,6 +37,7 @@ export interface FiniteTaskSession {
 export interface CreateFiniteTaskExecutionRequest {
   workerGroupId: string;
   eventCode: string;
+  workerSelector: WorkerQuery;
   payloadKey: string;
   file: File;
   config: FiniteTaskConfig;
@@ -51,6 +54,7 @@ export interface TaskCreateApiResponse {
 export interface TaskItemApiRequest {
   messageId: string;
   eventCode: string;
+  workerSelector: WorkerQuery;
   payload: Record<string, string>;
 }
 

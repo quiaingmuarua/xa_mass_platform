@@ -93,7 +93,7 @@ function resetDraft(): void {
   eventName.value = props.entry.workerGroup?.eventCodes[0] ?? "";
   payloadText.value = "{}";
   workerSelectorText.value = JSON.stringify(
-    { executorName: props.entry.task?.ruleId ?? "worker.default", input: {} },
+    { executorName: "worker.default", input: {} },
     null,
     2
   );
@@ -145,8 +145,14 @@ async function scrollToLatest(): Promise<void> {
         <dd>{{ entry.task?.workerGroupId ?? "—" }}</dd>
       </div>
       <div>
-        <dt>Allocation</dt>
-        <dd>{{ entry.task?.ruleId ?? "MISSING" }}</dd>
+        <dt>Pool 供给</dt>
+        <dd>
+          {{
+            entry.task?.refill
+              .map((item) => `${item.poolName} × ${item.count}`)
+              .join(", ") || "无"
+          }}
+        </dd>
       </div>
     </dl>
 

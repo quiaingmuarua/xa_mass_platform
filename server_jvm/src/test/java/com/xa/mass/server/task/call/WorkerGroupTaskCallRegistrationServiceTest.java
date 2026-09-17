@@ -45,14 +45,9 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         taskRuntime = mock(TaskRuntime.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
         matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        when(matching.resolveRefillTargets(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull()))
-                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),100)));
-        service = new WorkerGroupTaskCallRegistrationService(
-                workerCatalog,
-                taskCatalog,
-                taskRuntime,
-                taskLifecycle, matching
-        );
+        when(matching.normalizeRefill(org.mockito.ArgumentMatchers.anyString(),anyList()))
+                .thenAnswer(call -> call.getArgument(1));
+        service = new WorkerGroupTaskCallRegistrationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("phone-tools")))
                 .thenReturn(Map.of(
                         "phone-tools",
@@ -89,6 +84,18 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         verify(taskLifecycle).approveTask("scenario-rpc-phone-tools");
     }
 
+    @Test void explicitEmptyManagedOverrideCreatesNoSupply() {
+        var rpc=new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of("phone-tools",List.of()));
+        service=new WorkerGroupTaskCallRegistrationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc);
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
+        when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
+        when(taskLifecycle.approveTask("scenario-rpc-phone-tools")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
+        service.register("phone-tools");
+        var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class); verify(taskRuntime).createTask(descriptor.capture());
+        assertThat(descriptor.getValue().refill()).isEmpty();
+        verify(matching).normalizeRefill("phone-tools",List.of());
+    }
+
     @Test
     void exactExistingRegistrationIsIdempotent() {
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
@@ -114,8 +121,8 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         var saved=expectedDescriptor();
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of(saved.taskId(),saved));
         org.mockito.Mockito.clearInvocations(matching);
-        when(matching.resolveRefillTargets("phone-tools","worker.default",null))
-                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget(Map.of(),20)));
+        when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
+                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 20)));
         assertThat(service.requireRegisteredTaskId("phone-tools")).isEqualTo(saved.taskId());
         org.mockito.Mockito.verifyNoInteractions(matching);
         assertError(()->service.register("phone-tools"),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskCall.register");
@@ -124,7 +131,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
     }
 
     @Test void targetResolutionFailureCannotCreateOrApproveATask() {
-        when(matching.resolveRefillTargets("phone-tools","worker.default",null))
+        when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
                 .thenThrow(new IllegalArgumentException("invalid targets"));
         assertError(()->service.register("phone-tools"),ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,"taskCall.register");
         org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskCatalog,taskLifecycle);
@@ -135,7 +142,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         TaskDescriptor conflict = new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -254,7 +261,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         return new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static void assertError(

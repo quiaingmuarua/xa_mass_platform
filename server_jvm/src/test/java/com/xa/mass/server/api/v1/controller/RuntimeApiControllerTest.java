@@ -166,8 +166,7 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new MutationResult(MutationStatus.APPLIED));
-        when(matchingCatalog.resolveRefillTargets(any(), any(), any())).thenAnswer(call ->
-                call.getArgument(2) == null ? List.of(new RefillTarget(Map.of(),100)) : call.getArgument(2));
+        when(matchingCatalog.normalizeRefill(any(), anyList())).thenAnswer(call -> call.getArgument(1));
         when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -270,13 +269,7 @@ class RuntimeApiControllerTest {
                 taskRuntime, taskRpcRegistry, rpcProperties
         );
         WorkerGroupTaskCallRegistrationService registrations =
-                new WorkerGroupTaskCallRegistrationService(
-                        workerCatalog,
-                        taskCatalog,
-                        taskRuntime,
-                        taskLifecycle,
-                        matchingCatalog
-                );
+                new WorkerGroupTaskCallRegistrationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()));
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
                 matchingCatalog,
@@ -316,16 +309,7 @@ class RuntimeApiControllerTest {
     }
 
     private static TaskRpcProperties rpcProperties() {
-        return new TaskRpcProperties(
-                30_000,
-                60_000,
-                10_000,
-                100_000,
-                256,
-                50,
-                100,
-                250
-        );
+        return new TaskRpcProperties(30_000, 60_000, 10_000, 100_000, 256, 50, 100, 250, java.util.Map.of());
     }
 
     @Test
@@ -526,47 +510,60 @@ class RuntimeApiControllerTest {
     }
 
 
-    @Test void createsNamedRuleAndUnrestrictedFiniteTasksWithoutCandidateCapacity() throws Exception {
+    @Test void createsExplicitSupplyAndEmptySupplyTasksWithoutCandidateCapacity() throws Exception {
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
+                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"workerGroupId\":\"phone-tools\"}"))
                 .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
+                .andExpect(status().isOk());
         var descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
-        verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(descriptors.capture());
+        verify(taskRuntime, org.mockito.Mockito.times(3)).createTask(descriptors.capture());
         assertThat(descriptors.getAllValues()).allSatisfy(task -> {
             assertThat(task.idleDisposition()).isEqualTo(TaskIdleDisposition.CLOSE_WHEN_IDLE);
             assertThat(task.config()).doesNotContainKey("maximumCandidateWorkers");
         });
-        verify(matchingCatalog).resolveRefillTargets( eq("phone-tools"), eq(WorkerMatchingCatalog.DEFAULT_RULE_ID), org.mockito.ArgumentMatchers.isNull());
+        assertThat(descriptors.getAllValues().subList(1, 3)).allSatisfy(task -> assertThat(task.refill()).isEmpty());
+        verify(matchingCatalog, org.mockito.Mockito.times(2)).normalizeRefill(eq("phone-tools"),eq(List.of()));
     }
 
     @Test void resolvedRefillTargetsArePersistedInTaskDescriptor() throws Exception {
-        when(matchingCatalog.resolveRefillTargets(anyString(),anyString(),anyList()))
-                .thenReturn(List.of(new RefillTarget(Map.of("worker.country",List.of("CN","US")),20)));
+        when(matchingCatalog.normalizeRefill(anyString(),anyList()))
+                .thenReturn(List.of(new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN","US"))), 20)));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content("""
-                {"workerGroupId":"phone-tools","ruleId":"worker.country",
-                 "refillTargets":[{"query":{"worker.country":["US","CN","US"]},"count":20}]}
+                {"workerGroupId":"phone-tools",
+                 "refill":[{"poolName":"country","target":{"worker.country":["US","CN","US"]},"count":20}]}
                 """)).andExpect(status().isOk());
-        verify(matchingCatalog).resolveRefillTargets(eq("phone-tools"),eq("worker.country"),eq(List.of(
-                new RefillTarget(Map.of("worker.country",List.of("US","CN","US")),20))));
+        verify(matchingCatalog).normalizeRefill(eq("phone-tools"),eq(List.of(
+                new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("US","CN","US"))), 20))));
         var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority","maxRetryTimes");
-        assertThat(descriptor.getValue().ruleId()).isEqualTo("worker.country");
-        assertThat(descriptor.getValue().refillTargets()).containsExactly(
-                new RefillTarget(Map.of("worker.country",List.of("CN","US")),20));
+        assertThat(descriptor.getValue().refill()).extracting(RefillTarget::poolName).containsOnly("country");
+        assertThat(descriptor.getValue().refill()).containsExactly(
+                new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN","US"))), 20));
     }
 
     @Test void invalidResolvedTargetsCannotCreateTaskMetadata() throws Exception {
-        when(matchingCatalog.resolveRefillTargets(eq("phone-tools"),eq("worker.country"),any()))
+        when(matchingCatalog.normalizeRefill(eq("phone-tools"),any()))
                 .thenThrow(new IllegalArgumentException("unsupported refill parameters"));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\",\"ruleId\":\"worker.country\"}"))
+                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isBadRequest());
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(),anyMap(),anyList());
+        verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(),anyList(),anyList());
+    }
+
+    @Test void missingSelectorRejectsOnlyThatFiniteItem() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
+                [{"messageId":"missing-selector","eventCode":"event","payload":{}},
+                 {"messageId":"valid","eventCode":"event","payload":{},"workerSelector":{"executorName":"workerId","input":"worker"}}]
+                """)).andExpect(status().isOk()).andExpect(jsonPath("$.missing-selector.status").value("rejected"));
+        verify(taskRuntime).appendItems(eq("task-1"),org.mockito.ArgumentMatchers.argThat(items ->
+                items.size()==1 && items.getFirst().messageId().equals("valid")));
     }
 
     @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
@@ -613,27 +610,27 @@ class RuntimeApiControllerTest {
     }
 
     @Test void malformedRefillTargetsCannotSilentlyBecomeAny() throws Exception {
-        for(String targets:List.of("[]","[{\"count\":0}]","[{\"count\":1001}]",
+        for(String targets:List.of("null","[{\"count\":0}]","[{\"count\":1001}]",
                 "[{\"query\":{\"worker.country\":[\"\"]},\"count\":1}]",
                 "[{\"conditions\":{\"worker.country\":[\"CN\"]},\"count\":1}]",
                 "[{\"query\":{\"worker.country\":{\"op\":\"eq\",\"values\":[\"CN\"]}},\"count\":1}]")) {
             mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"workerGroupId\":\"phone-tools\",\"refillTargets\":"+targets+"}"))
+                    .content("{\"workerGroupId\":\"phone-tools\",\"refill\":"+targets+"}"))
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog,org.mockito.Mockito.never()).resolveRefillTargets(anyString(),anyString(),anyList());
+        verify(matchingCatalog,org.mockito.Mockito.never()).normalizeRefill(anyString(),anyList());
     }
 
     @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
         for (String extra : List.of("\"ruleId\":\"worker.country\",\"allocationRule\":{}",
-                "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10")) {
+                "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10", "\"ruleId\":\"worker.default\"", "\"refillTargets\":[]")) {
             mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
                     .content("{\"workerGroupId\":\"phone-tools\","+extra+"}"))
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog, org.mockito.Mockito.never()).resolveRefillTargets( anyString(), anyString(), org.mockito.ArgumentMatchers.isNull());
+        verify(matchingCatalog, org.mockito.Mockito.never()).normalizeRefill(anyString(),anyList());
     }
 
     @Test
@@ -683,7 +680,8 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-1",
                                     "eventCode": "telecom.phone.inspect",
                                     "payload": {"phoneNumber": "+14155552671"},
-                                    "ttlMillis": 30000
+                                    "ttlMillis": 30000,
+                                    "workerSelector":{"executorName":"worker.default","input":{}}
                                   }]
                                 """))
                 .andExpect(status().isOk())
@@ -770,7 +768,7 @@ class RuntimeApiControllerTest {
                         .content("""
                                 [
                                   {"messageId":"message-invalid","eventCode":"event","payload":{}},
-                                  {"messageId":"message-missing","eventCode":"event","payload":{}},
+                                  {"messageId":"message-missing","eventCode":"event","payload":{},"workerSelector":{"executorName":"worker.default","input":{}}},
                                   {"messageId":"message-retry","eventCode":"event","payload":{}}
                                 ]
                                 """))
@@ -1391,6 +1389,6 @@ class RuntimeApiControllerTest {
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ) : Map.of("priority", "0", "maxRetryTimes", "3"), "worker.default", java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget(java.util.Map.of(), 100)));
+                ) : Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 }

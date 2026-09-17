@@ -133,6 +133,7 @@
       "sample_worker_group_descriptors"
     ],
     "WorkerScoreCore": [
+      "acquire_current_hot_score_leases",
       "acquire_observed_hot_score_leases",
       "defer_observed_to_recovery",
       "initialize_registered_scores",
@@ -149,7 +150,6 @@
       "sample_registered_worker_ids",
       "seal_current_score_holds",
       "toggle_current_polarity",
-      "transfer_current_hot_score_leases",
       "transfer_observed_hot_score_leases"
     ]
   },
@@ -182,8 +182,7 @@
       "worker_group_id",
       "idle_disposition",
       "config",
-      "rule_id",
-      "refill_targets"
+      "refill"
     ],
     "TaskItem": [
       "message_id",

@@ -1,3 +1,5 @@
+import { refillSchema } from "@/runtime-viewer/schemas";
+import { parseWorkerSelector } from "@/task-call-debug/model";
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
@@ -75,6 +77,15 @@ export function createTaskManagementStore(
       if (payloadKey.length === 0) {
         return fail(finiteTaskConfigurationError("Payload Key must not be blank."));
       }
+      try {
+        parseWorkerSelector(JSON.stringify(request.workerSelector));
+      } catch {
+        return fail(
+          finiteTaskConfigurationError(
+            "Worker Selector must explicitly name a function and input."
+          )
+        );
+      }
       if (!validConfig(request.config)) {
         return fail(
           finiteTaskConfigurationError(
@@ -120,13 +131,14 @@ export function createTaskManagementStore(
           taskId: created.taskId,
           workerGroupId: request.workerGroupId,
           eventCode: request.eventCode,
+          workerSelectorText: JSON.stringify(request.workerSelector),
           payloadKey,
           originalFileName: request.file.name,
           byteCount: content.byteLength,
           lineCount: lines.length,
           appendedCount: 0,
           stage: "CREATED",
-          config: { ...request.config },
+          config: structuredClone(request.config),
           createdAt: now,
           updatedAt: now
         };
@@ -136,7 +148,8 @@ export function createTaskManagementStore(
         const items = materializeTaskItems(
           task.taskId,
           task.eventCode,
-          buildSeedItems(lines, payloadKey)
+          buildSeedItems(lines, payloadKey),
+          request.workerSelector
         );
         for (const chunk of chunkTaskItems(items)) {
           const response = await client.appendItems(task.taskId, chunk);
@@ -257,7 +270,7 @@ function validConfig(config: CreateFiniteTaskExecutionRequest["config"]): boolea
     Number.isInteger(config.priority) &&
     config.priority >= 0 &&
     config.priority <= 99 &&
-    (config.ruleId === undefined || config.ruleId.trim().length > 0) &&
+    refillSchema.safeParse(config.refill).success &&
     Number.isInteger(config.maxRetryTimes) &&
     config.maxRetryTimes >= 0 &&
     config.maxRetryTimes <= 98
