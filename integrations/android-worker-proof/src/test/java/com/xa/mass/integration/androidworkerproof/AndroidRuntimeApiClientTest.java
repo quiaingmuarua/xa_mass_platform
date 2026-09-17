@@ -78,7 +78,17 @@ final class AndroidRuntimeApiClientTest {
         AndroidRuntimeApiClient.TaskCall call = client.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 100L),
+                Map.of("executorName", "workerId", "input", "worker-1"),
                 1_000L
+        );
+        List<Object> submittedItems = JsonValues.array(
+                lastItemsCall.get().get("items"), "items"
+        );
+        assertEquals(1, submittedItems.size());
+        assertEquals(
+                Map.of("executorName", "workerId", "input", "worker-1"),
+                JsonValues.object(submittedItems.get(0), "item")
+                        .get("workerSelector")
         );
         assertEquals(AndroidRuntimeApiClient.CallStatus.SUCCEEDED, call.status());
         assertEquals(

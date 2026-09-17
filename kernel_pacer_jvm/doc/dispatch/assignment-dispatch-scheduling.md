@@ -180,7 +180,7 @@ establish their named execution/failure claims. Follow the
 [mainline code/proof pointers](../../../doc/kernel/scheduling-overview.md#production-and-proof-pointers)
 and [TESTING](../../../TESTING.md) for current selection.
 
-The [2026-09-15 verification notes](../../../doc/archive/verification/2026-09-15-pre-matching-lease-proof.md)
+The [2026-09-15 verification notes](https://github.com/quiaingmuarua/xa_mass_platform/blob/86052b2855a8d73c4df9d03cd5c40af31d0bf6f3/kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#serviceability-and-verification-scope)
 preserve version-scoped results and an unresolved failure observation. They are
 historical evidence, not a current pass/fail report or a production contract.
 

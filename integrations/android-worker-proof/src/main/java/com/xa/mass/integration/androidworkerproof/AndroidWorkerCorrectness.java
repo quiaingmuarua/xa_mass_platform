@@ -106,6 +106,7 @@ final class AndroidWorkerCorrectness {
             AndroidRuntimeApiClient.TaskCall call = runtime.callItem(
                     AndroidWorkerProofConstants.DELAY_EVENT,
                     Map.of("delayMillis", 100L),
+                    Map.of("executorName", "workerId", "input", workerId),
                     AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
             );
             if (!messageIds.add(call.messageId())) {
@@ -214,6 +215,7 @@ final class AndroidWorkerCorrectness {
         AndroidRuntimeApiClient.TaskCall witness = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 100L),
+                Map.of("executorName", "workerId", "input", workerId),
                 AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         AndroidWorkerProofAssertions.awaitSucceededCall(

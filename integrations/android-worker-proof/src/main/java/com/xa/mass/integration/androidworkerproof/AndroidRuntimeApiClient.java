@@ -109,17 +109,6 @@ final class AndroidRuntimeApiClient {
     TaskCall callItem(
             String eventName,
             Map<String, Object> payload,
-            long waitTimeoutMillis
-    ) {
-        return callItems(
-                List.of(new TaskItemCall(eventName, payload, Map.of())),
-                waitTimeoutMillis
-        ).get(0);
-    }
-
-    TaskCall callItem(
-            String eventName,
-            Map<String, Object> payload,
             Map<String, Object> workerSelector,
             long waitTimeoutMillis
     ) {

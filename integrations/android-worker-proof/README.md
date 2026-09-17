@@ -28,6 +28,11 @@ Worker ID across Prepare, Adapter route, Properties observation, Kernel
 serviceability, ten sequential `extension.worker.lab.delay` Task Items,
 explicit stop/start, and App process restart.
 
+Single-Worker Task Items explicitly use `workerSelector` with
+`{"executorName":"workerId","input":"<observed-worker-id>"}`, just like the
+Triad's identity-targeted Items. The Group needs no Pool supply; an empty selector
+object is not a valid query and must not be sent as an implicit default.
+
 The ten Item identities and `SUCCEEDED` statuses are exact. Result payloads are
 opaque. This lane does not claim throughput, concurrent Handler execution, or
 device-matrix compatibility.

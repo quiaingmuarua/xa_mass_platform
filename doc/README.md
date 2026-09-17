@@ -54,7 +54,7 @@ mechanism and verification.
 
 ## Historical Change Records
 
-- [Pre-Matching lease verification, 2026-09-15](archive/verification/2026-09-15-pre-matching-lease-proof.md)
+- [Pre-Matching lease verification, 2026-09-15](https://github.com/quiaingmuarua/xa_mass_platform/blob/86052b2855a8d73c4df9d03cd5c40af31d0bf6f3/kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#serviceability-and-verification-scope)
   preserves the named baseline/worktree results and their evidence limits.
 - [Task and Rule decoupling record](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/task-rule-decoupling-plan.md) records the
   earlier Matching-owned binding cutover and its version-scoped local proofs.

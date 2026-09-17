@@ -128,6 +128,7 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 10_000L),
+                Map.of("executorName", "workerId", "input", workerId),
                 AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         if (delayed.status()
@@ -203,6 +204,7 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 30_000L),
+                Map.of("executorName", "workerId", "input", workerId),
                 AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         if (delayed.status()
@@ -375,6 +377,7 @@ final class AndroidWorkerConvergenceHealth {
         AndroidRuntimeApiClient.TaskCall witness = runtime.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
                 Map.of("delayMillis", 100L),
+                Map.of("executorName", "workerId", "input", workerId),
                 AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
         );
         AndroidWorkerProofAssertions.awaitSucceededCall(
