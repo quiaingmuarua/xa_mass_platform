@@ -418,3 +418,12 @@ Redis-timed cases cover both evidence/confirmation orders, concurrent CAS,
 Only a missed timing window may be resampled; a wrong in-window result fails.
 Worker Convergence Health retains its original outage fixture and timeout;
 these checks do not promise strict network ordering or evidence replay.
+
+Matching consumption uses the fixed function table and `WorkerQuery` envelope.
+Kernel query tests own immutable JSON bounds and strict decoding; Matching tests
+own whole-batch admission, scalar functions, function ordering, Group isolation,
+range counts and entry commit races. Range-access counters use a controlled clock
+and report expiry separately; they are not performance or capacity evidence.
+Redis Owner retains qualification command budgets and zero-Redis Pool take.
+Runtime Boundary and Scenario Coexistence cover the new envelope through real
+Workers. Use new scopes; old direct-selector Items are deliberately unreadable.

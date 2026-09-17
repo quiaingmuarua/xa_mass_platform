@@ -86,6 +86,7 @@ runtime_boundary:
   - '!**/*.md'
 worker_correctness:
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/task/TaskRuntime.java'
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
   - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
@@ -242,6 +243,7 @@ android_host:
   - '!**/*.md'
 android_emulator:
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
+  - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/task/TaskRuntime.java'
   - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'

@@ -20,7 +20,7 @@ public class WorkerMatchingConfiguration {
     }
 
     @Bean
-    Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules) {
+    Map<String,PoolRule<?>> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules) {
         return Map.of("worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),
                 "worker.country",new CountryRuleHandler(storage),
                 "worker.messaging.available",new MessagingRuleHandler(storage),
@@ -29,8 +29,10 @@ public class WorkerMatchingConfiguration {
 
     @Bean(destroyMethod="close")
     RedisWorkerMatchingCatalog workerMatchingCatalog(RedisRuleStorage storage,MatchingRuleProperties rules,
-            @Qualifier("matchingRuleHandlers") Map<String,RuleHandler> handlers) {
-        var catalog=new RedisWorkerMatchingCatalog(storage,handlers,rules.workerGroups(),rules.defaultRefillTargets());
+            @Qualifier("matchingRuleHandlers") Map<String,PoolRule<?>> handlers) {
+        var functions = new java.util.LinkedHashMap<String,com.xa.mass.workermatching.QueryFunctions>();
+        handlers.forEach((name, rule) -> functions.put(name, rule.queryFunctions()));
+        var catalog=new RedisWorkerMatchingCatalog(storage,new java.util.LinkedHashMap<>(handlers),functions,rules.workerGroups(),rules.defaultRefillTargets());
         try { catalog.rebuildIndexes(); return catalog; }
         catch (RuntimeException failure) { catalog.close(); throw failure; }
     }

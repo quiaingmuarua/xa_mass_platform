@@ -83,7 +83,7 @@ class RuntimeApiClientTest {
                     List.class,
                     requestBody.get().get("items")
             );
-            assertTrue(items.stream().allMatch(raw -> Map.of().equals(
+            assertTrue(items.stream().allMatch(raw -> Map.of("executorName","worker.default","input",Map.of()).equals(
                     RuntimeApiClient.objectMap(raw, "item")
                             .get("workerSelector")
             )));

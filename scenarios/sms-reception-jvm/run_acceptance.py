@@ -101,7 +101,7 @@ def mixed_capabilities(run, inventory):
     messages = [str(uuid.uuid4()) for _ in range(3)]
     http(run.url, f"/api/v1/tasks/{task}/items", [
         {"messageId": message, "eventCode": "extension.worker.string.md5",
-         "payload": {"value": "shared-sms-worker"}, "workerSelector": {"workerId": [cn["workerId"]]}, "ttlMillis": 30000} for message in messages])
+         "payload": {"value": "shared-sms-worker"}, "workerSelector": {"executorName": "worker.default", "input": {"workerId": [cn["workerId"]]}}, "ttlMillis": 30000} for message in messages])
     http(run.url, f"/api/v1/tasks/{task}/approve", {})
     results = {}
     def strings_observed():
@@ -302,7 +302,7 @@ def functional(run):
     before = http(run.host, "/lab/v1/sms/metrics")["host"]["listeners"]
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_message,
          "eventCode": "extension.worker.sms.listen.start", "payload": payload, "ttlMillis": 10000,
-         "workerSelector": {"workerId": [older["workerId"]]}}], "waitTimeoutMillis": 1})
+         "workerSelector": {"executorName": "worker.default", "input": {"workerId": [older["workerId"]]}}}], "waitTimeoutMillis": 1})
     duplicate_result = {}
     def duplicate_observed():
         nonlocal duplicate_result

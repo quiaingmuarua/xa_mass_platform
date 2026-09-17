@@ -189,7 +189,7 @@ def functional(run):
     duplicate_id = str(uuid.uuid4())
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_id,
         "eventCode": "extension.worker.message.send", "payload": payload, "ttlMillis": 10000,
-        "workerSelector": {"workerId": [rows[0]["workerId"]]}}], "waitTimeoutMillis": 1})
+        "workerSelector": {"executorName": "worker.default", "input": {"workerId": [rows[0]["workerId"]]}}}], "waitTimeoutMillis": 1})
     wait(run, lambda: http(run.url, f"/api/v1/tasks/{task}/results:load", [duplicate_id])[duplicate_id]["status"] == "succeeded", 20, "duplicate real execution")
     require(http(run.host, "/lab/v1/messages/metrics")["messages"] == 2, "Duplicate execution delivered another message")
     # Same Reporter must still target the original Item, not the duplicate execution Item.

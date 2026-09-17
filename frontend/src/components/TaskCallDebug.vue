@@ -24,7 +24,7 @@ const config = useRuntimeViewerConfig();
 const taskCallDebug = useTaskCallDebugStore();
 const eventName = ref("");
 const payloadText = ref("{}");
-const workerSelectorText = ref("{}");
+const workerSelectorText = ref("");
 const waitTimeoutMillis = ref(DEFAULT_TASK_CALL_TIMEOUT_MILLIS);
 const validationError = ref<TaskCallDebugErrorPresentation>();
 const historyViewport = ref<HTMLElement>();
@@ -92,7 +92,11 @@ function clearHistory(): void {
 function resetDraft(): void {
   eventName.value = props.entry.workerGroup?.eventCodes[0] ?? "";
   payloadText.value = "{}";
-  workerSelectorText.value = "{}";
+  workerSelectorText.value = JSON.stringify(
+    { executorName: props.entry.task?.ruleId ?? "worker.default", input: {} },
+    null,
+    2
+  );
   waitTimeoutMillis.value = DEFAULT_TASK_CALL_TIMEOUT_MILLIS;
   validationError.value = undefined;
 }
@@ -334,8 +338,8 @@ async function scrollToLatest(): Promise<void> {
           :disabled="!availability.enabled || busy"
         />
         <small>
-          {} 表示任意可服务 Worker；指定目标使用 {"workerId":["id"]}，属性参数由
-          Matching 校验。
+          executorName 选择 Matching 函数；input 的格式由该函数定义。默认使用当前 Task
+          的补货 Rule 和空输入。
         </small>
       </label>
 

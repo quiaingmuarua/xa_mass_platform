@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.task;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -272,7 +272,7 @@ class DefaultTaskCommandsTest {
                 Map.of("value", "abc"),
                 5,
                 10_000L,
-                EligibilityQuery.parse(Map.of())
+                new WorkerQuery("worker.default", Map.of())
         );
     }
 

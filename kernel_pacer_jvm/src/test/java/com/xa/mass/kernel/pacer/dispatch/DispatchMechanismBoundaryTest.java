@@ -169,7 +169,7 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("releaseObservedHotScoreHolds("));
         assertFalse(selection.contains("observeDueHot"));
         assertFalse(selection.contains("acquireObservedHotScoreLeases"));
-        assertTrue(selection.contains("matching.take(workerGroupId,ruleId,selectors)"));
+        assertTrue(selection.contains("matching.take(workerGroupId,selectors)"));
         assertFalse(selection.contains("normalizeQuery"));
         assertFalse(selection.contains("RefillTarget"));
         assertFalse(selection.contains("computeIfAbsent"));

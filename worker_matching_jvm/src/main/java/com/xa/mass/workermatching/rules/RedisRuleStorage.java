@@ -26,7 +26,7 @@ public final class RedisRuleStorage implements AutoCloseable {
     private final RedisKeyspace keyspace;
     private final Map<String, List<IndexMutation>> indexes;
     private final LongSupplier clock;
-    private final List<LocalCandidateRule<?>> candidateOwners = new ArrayList<>();
+    private final List<CandidatePool> candidateOwners = new ArrayList<>();
     final CandidateBudget budget = new CandidateBudget();
     private StatefulRedisConnection<String, String> connection;
     private boolean closed;
@@ -67,11 +67,11 @@ public final class RedisRuleStorage implements AutoCloseable {
         return connection.sync();
     }
     // Fixed construction-time ownership, not a public registration or lifecycle SPI.
-    synchronized void addCandidateOwner(LocalCandidateRule<?> owner) { candidateOwners.add(owner); }
+    synchronized void addCandidateOwner(CandidatePool owner) { candidateOwners.add(owner); }
     public void expireCandidates() {
-        List<LocalCandidateRule<?>> owners;
+        List<CandidatePool> owners;
         synchronized (this) { owners = List.copyOf(candidateOwners); }
-        owners.forEach(LocalCandidateRule::expireAll);
+        owners.forEach(CandidatePool::expireAll);
     }
     @Override public synchronized void close() {
         if (closed) return;

@@ -1,6 +1,7 @@
 package com.xa.mass.kernel;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import com.xa.mass.kernel.assignment.WorkerMatching;
 
@@ -82,6 +83,7 @@ class KernelOwnerContractManifestTest {
             ),
             Map.entry("TaskItem", TaskRuntime.TaskItem.class),
             Map.entry("EligibilityQuery", EligibilityQuery.class),
+            Map.entry("WorkerQuery", WorkerQuery.class),
             Map.entry("TaskItemSuccessResult", TaskRuntime.TaskItemSuccessResult.class),
             Map.entry("TaskItemOutcomeTarget", TaskItemScoreBandCore.TaskItemOutcomeTarget.class),
             Map.entry(

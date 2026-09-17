@@ -22,15 +22,15 @@ public interface WorkerMatching {
 
     /**
      * Local destructive consumption for at most 100 nonblank message IDs, one candidate per ID.
-     * Matching validates and normalizes the entire batch before consuming stock. Equivalent
-     * queries share an allocation group in first-appearance order; IDs within it retain their
-     * input order. Results retain input order, omit unfulfilled IDs and never repeat a Worker.
+     * Matching validates and normalizes the entire batch before executing fixed named functions.
+     * Functions execute in first-appearance order and own their local input semantics. Current
+     * Pool functions group equivalent selections and retain Item order within each group. Results retain input order, omit unfulfilled IDs and never repeat a Worker.
      * IDs are invocation-local correlation only. A nonzero expected score is an exact fence;
      * zero is an identity hint with no historical fence. Neither grants execution authority.
      * A valid empty batch does not access stock. Returns an immutable snapshot.
      */
-    Map<String, WorkerCandidate> take(String workerGroupId, String ruleId,
-            Map<String, EligibilityQuery> queriesByMessageId);
+    Map<String, WorkerCandidate> take(String workerGroupId,
+            Map<String, WorkerQuery> queriesByMessageId);
 
     /** Pacer selects current-state transfer for zero, exact transfer otherwise; the score stays opaque. */
     record WorkerCandidate(String workerId, long expectedScore) {

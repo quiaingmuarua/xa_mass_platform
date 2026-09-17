@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Runtime Boundary fixture only: real Pool supply, explicit identity-only execution hints. */
 public final class IdentityHintRuleHandler implements RuleHandler {
     public static final String ID = "proof.identity-hint";
-    private final RuleHandler pool;
+    private final DefaultRuleHandler pool;
     private final AtomicInteger hintsReturned = new AtomicInteger();
 
     public IdentityHintRuleHandler(RedisRuleStorage storage) {
@@ -37,12 +37,12 @@ public final class IdentityHintRuleHandler implements RuleHandler {
         return pool.refill(group, targets, offered, maxAccepted);
     }
 
-    @Override public Map<EligibilityQuery, List<WorkerCandidate>> take(String group, Map<EligibilityQuery, Integer> limits) {
-        var result = new LinkedHashMap<EligibilityQuery, List<WorkerCandidate>>();
-        pool.take(group, limits).forEach((query, candidates) -> {
-            result.put(query, candidates.stream().map(candidate -> new WorkerCandidate(candidate.workerId(), 0)).toList());
-            hintsReturned.addAndGet(candidates.size());
+    public com.xa.mass.workermatching.QueryFunctions queryFunctions() {
+        return new com.xa.mass.workermatching.QueryFunctions(pool::normalizeInput,(group,inputs)-> {
+            var result=new LinkedHashMap<String,WorkerCandidate>();
+            pool.execute(group,inputs).forEach((id,candidate)->result.put(id,new WorkerCandidate(candidate.workerId(),0)));
+            hintsReturned.addAndGet(result.size());
+            return Collections.unmodifiableMap(result);
         });
-        return Collections.unmodifiableMap(result);
     }
 }

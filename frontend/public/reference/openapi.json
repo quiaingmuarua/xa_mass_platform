@@ -199,8 +199,8 @@
             "type" : "integer"
           },
           "workerSelector" : {
-            "$ref" : "#/components/schemas/EligibilityQuery",
-            "description" : "{} selects within the bound Rule. Only worker.default accepts {workerId: [id, ...]}, scoped to its WorkerGroup. Other query parameters belong to the Handler. Existing country queries use {worker.country: [CN, ...]}; country accepts 1..100 strict [A-Z]{2} values. Named Rules reject workerId. Omission means ANY for finite append; managed Call requires a selector object."
+            "$ref" : "#/components/schemas/WorkerQuery",
+            "description" : "Named Matching function and its local JSON input. Omission uses the Task refill Rule with empty input for finite append; managed Call requires an explicit query. The function must be enabled for the Group but need not match the Task refill Rule."
           }
         },
         "required" : [ "eventCode", "messageId", "payload" ],
@@ -524,6 +524,22 @@
             "type" : "array"
           }
         },
+        "type" : "object"
+      },
+      "WorkerQuery" : {
+        "additionalProperties" : false,
+        "properties" : {
+          "executorName" : {
+            "minLength" : 1,
+            "pattern" : ".*\\S.*",
+            "type" : "string"
+          },
+          "input" : {
+            "description" : "Executor-local JSON. Root cannot be null; nested null is preserved. Each container has at most 100 members, container depth at most 8, encoded input at most 64 KiB. Only the selected Matching function interprets its shape.",
+            "type" : [ "object", "array", "string", "number", "boolean" ]
+          }
+        },
+        "required" : [ "executorName", "input" ],
         "type" : "object"
       },
       "WorkerResultBatchResponse" : {

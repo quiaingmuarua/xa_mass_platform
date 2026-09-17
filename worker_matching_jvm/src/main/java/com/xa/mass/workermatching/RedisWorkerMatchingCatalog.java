@@ -3,6 +3,7 @@ package com.xa.mass.workermatching;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.workermatching.rules.RedisRuleStorage;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
 import io.lettuce.core.KeyValue;
@@ -12,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +34,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private final RedisRuleStorage storage;
     private final ObjectMapper mapper=JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
     private final Map<String,RuleHandler> handlers;
+    private final Map<String,QueryFunctions> executors;
     private final Map<String,Set<String>> rulesByGroup;
     private final Map<String,List<RedisRuleStorage.IndexMutation>> indexesByGroup;
     private final Map<String,String> scriptsByGroup;
@@ -44,10 +48,13 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private long requestedDeficit;
 
     public RedisWorkerMatchingCatalog(RedisRuleStorage storage,Map<String,RuleHandler> ruleHandlers,
+            Map<String,QueryFunctions> queryFunctions,
             Map<String,Set<String>> groupRules,Map<String,Map<String,List<RefillTarget>>> defaultTargets) {
         this.storage=Objects.requireNonNull(storage,"storage");
         this.clock=storage::now;
         this.handlers=Map.copyOf(ruleHandlers);
+        this.executors=Map.copyOf(queryFunctions);
+        executors.keySet().forEach(id -> requireNonBlank(id,"executorName"));
         if(!handlers.containsKey(DEFAULT_RULE_ID))throw new IllegalArgumentException("worker.default Handler is required");
         handlers.keySet().forEach(id->requireNonBlank(id,"Rule ID"));
         var instances=Collections.newSetFromMap(new java.util.IdentityHashMap<RuleHandler,Boolean>());
@@ -63,7 +70,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             var mutations=new ArrayList<RedisRuleStorage.IndexMutation>();
             for(String id:enabled) {
                 var handler=handlers.get(id);
-                if(handler==null)throw new IllegalArgumentException("Unknown Rule: "+id);
+                if(handler==null && !executors.containsKey(id))throw new IllegalArgumentException("Unknown function: "+id);
                 mutations.addAll(storage.indexes(id));
             }
             groups.put(group,enabled); indexes.put(group,List.copyOf(mutations));
@@ -124,39 +131,49 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return handler;
     }
 
-    @Override public EligibilityQuery normalizeQuery(String group,String ruleId,EligibilityQuery query) {
-        return requireEligibility(group,ruleId).normalizeQuery(group,Objects.requireNonNull(query,"query"));
+    private QueryFunctions requireExecutor(String group, String name) {
+        requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
+        var executor = executors.get(name);
+        if (executor == null || !DEFAULT_RULE_ID.equals(name) && !rulesByGroup.getOrDefault(group, Set.of()).contains(name))
+            throw new IllegalArgumentException("unavailable Matching function");
+        return executor;
     }
 
-    @Override public Map<String,WorkerCandidate> take(String group,String ruleId,
-            Map<String,EligibilityQuery> queriesByMessageId) {
-        var handler=requireEligibility(group,ruleId);
-        Objects.requireNonNull(queriesByMessageId,"queriesByMessageId");
-        if(queriesByMessageId.size()>100)throw new IllegalArgumentException("at most 100 Item queries");
-        var captured=new LinkedHashMap<String,EligibilityQuery>();
-        queriesByMessageId.forEach((id,query)->{
-            requireNonBlank(id,"messageId");
-            captured.put(id,Objects.requireNonNull(query,"query"));
-        });
-        if(captured.isEmpty())return Map.of();
+    @Override public WorkerQuery normalizeQuery(String group, WorkerQuery query) {
+        Objects.requireNonNull(query, "query");
+        var function = requireExecutor(group, query.executorName());
+        return new WorkerQuery(query.executorName(), function.normalizeInput().apply(group, query.input()));
+    }
 
-        // All admission must finish before the single destructive Rule operation.
-        var groups=new LinkedHashMap<EligibilityQuery,List<String>>();
-        captured.forEach((id,query)->groups.computeIfAbsent(handler.normalizeQuery(group,query),
-                ignored->new ArrayList<>()).add(id));
-        var limits=new LinkedHashMap<EligibilityQuery,Integer>();
-        groups.forEach((query,ids)->limits.put(query,ids.size()));
-        var taken=handler.take(group,limits);
-        var assigned=new LinkedHashMap<String,WorkerCandidate>();
-        groups.forEach((query,ids)->{
-            var candidates=taken.getOrDefault(query,List.of());
-            for(int i=0;i<Math.min(ids.size(),candidates.size());i++)assigned.put(ids.get(i),candidates.get(i));
+    @Override public Map<String,WorkerCandidate> take(String group, Map<String,WorkerQuery> queriesByMessageId) {
+        requireNonBlank(group, "workerGroupId");
+        Objects.requireNonNull(queriesByMessageId, "queriesByMessageId");
+        if (queriesByMessageId.size() > 100) throw new IllegalArgumentException("at most 100 Item queries");
+        var captured = new LinkedHashMap<String,WorkerQuery>();
+        queriesByMessageId.forEach((id, query) -> {
+            requireNonBlank(id, "messageId"); captured.put(id, Objects.requireNonNull(query, "query"));
         });
-        var result=new LinkedHashMap<String,WorkerCandidate>();
-        captured.keySet().forEach(id->{
-            var candidate=assigned.get(id);
-            if(candidate!=null)result.put(id,candidate);
+        // Complete every function's pure admission before any executor can consume inventory.
+        var grouped = new LinkedHashMap<String,Map<String,Object>>();
+        captured.forEach((id, query) -> {
+            var normalized = normalizeQuery(group, query);
+            grouped.computeIfAbsent(normalized.executorName(), ignored -> new LinkedHashMap<>()).put(id, normalized.input());
         });
+        var assigned = new HashMap<String,WorkerCandidate>();
+        var workers = new HashSet<String>();
+        grouped.forEach((name, inputs) -> {
+            var result = Objects.requireNonNull(executors.get(name).execute().apply(group, Collections.unmodifiableMap(inputs)), "executor result");
+            for (var row : result.entrySet()) {
+                if (!inputs.containsKey(row.getKey()) || row.getValue() == null)
+                    throw new IllegalStateException("executor returned an unrequested or null candidate");
+            }
+            inputs.keySet().forEach(id -> {
+                var candidate = result.get(id);
+                if (candidate != null && workers.add(candidate.workerId())) assigned.put(id, candidate);
+            });
+        });
+        var result = new LinkedHashMap<String,WorkerCandidate>();
+        captured.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
         return Collections.unmodifiableMap(result);
     }
 

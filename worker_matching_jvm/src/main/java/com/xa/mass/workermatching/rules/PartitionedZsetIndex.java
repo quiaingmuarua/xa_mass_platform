@@ -52,14 +52,7 @@ final class PartitionedZsetIndex {
             """;
 
     record Projection(String prefix, Set<String> partitions) {
-        boolean matches(String id, Criteria criteria) {
-            return (criteria.partition().isEmpty() || partitions.contains(criteria.partition()))
-                    && switch (criteria.kind()) {
-                        case "any" -> true;
-                        case "countries" -> criteria.values().contains(prefix);
-                        default -> throw new IllegalArgumentException("unknown criteria");
-                    };
-        }
+
     }
 
     private final Supplier<RedisCommands<String,String>> commands;

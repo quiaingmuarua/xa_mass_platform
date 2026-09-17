@@ -7,7 +7,7 @@ import type {
 import { taskCallDebugConfigurationError } from "./errors";
 import type {
   TaskCallDebugDraft,
-  EligibilityQuery,
+  WorkerQuery,
   ValidatedTaskCallDebugDraft
 } from "./types";
 
@@ -99,28 +99,33 @@ function parseJsonObject(text: string, label: string): Record<string, JsonValue>
   return parsed as Record<string, JsonValue>;
 }
 
-function parseWorkerSelector(text: string): EligibilityQuery {
-  const entries = Object.entries(parseJsonObject(text, "Worker Selector"));
-  if (entries.length > 100) throw invalidWorkerSelector();
-  const query: EligibilityQuery = {};
-  for (const [field, values] of entries) {
-    if (
-      !isNonBlankString(field) ||
-      !Array.isArray(values) ||
-      values.length < 1 ||
-      values.length > 100 ||
-      !values.every(isNonBlankString)
-    )
+function parseWorkerSelector(text: string): WorkerQuery {
+  const value = parseJsonObject(text, "Worker Selector");
+  if (
+    Object.keys(value).length !== 2 ||
+    !isNonBlankString(value.executorName) ||
+    !("input" in value) ||
+    value.input === null
+  )
+    throw invalidWorkerSelector();
+  const inspect = (input: JsonValue, depth: number): void => {
+    if (typeof input === "number" && !Number.isFinite(input))
       throw invalidWorkerSelector();
-    Object.defineProperty(query, field, { value: [...values], enumerable: true });
-  }
-  return query;
+    if (input === null || typeof input !== "object") return;
+    const children = Array.isArray(input) ? input : Object.values(input);
+    if (depth >= 8 || children.length > 100) throw invalidWorkerSelector();
+    children.forEach((child) => inspect(child, depth + 1));
+  };
+  inspect(value.input, 0);
+  if (new TextEncoder().encode(JSON.stringify(value.input)).length > 64 * 1024)
+    throw invalidWorkerSelector();
+  return { executorName: value.executorName, input: value.input };
 }
 
 function invalidWorkerSelector(): Error {
   return taskCallDebugConfigurationError(
-    'Worker Selector 必须是最多 100 个字段的字符串列表对象，例如 {}、{"workerId":["id"]}、' +
-      '{"worker.country":["CN","US"]}。每字段允许 1–100 个非空字符串；字段含义由 Matching Rule 校验。'
+    'Worker Selector 需要 executorName 和非 null 的 JSON input，例如 {"executorName":"worker.default","input":{}}。' +
+      "input 每容器最多 100 项、容器深度最多 8、最多 64 KiB；局部参数由 Matching 函数校验。"
   );
 }
 

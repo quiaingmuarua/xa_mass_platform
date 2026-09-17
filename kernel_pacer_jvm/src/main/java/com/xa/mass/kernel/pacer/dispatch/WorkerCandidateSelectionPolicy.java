@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerMatching;
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import java.util.Collections;
@@ -21,11 +21,11 @@ final class WorkerCandidateSelectionPolicy {
         this.matching=Objects.requireNonNull(matching,"matching");
     }
 
-    Map<String,RoutedWorkerCandidate> takeCandidates(String ruleId, String workerGroupId,
-            Map<String,EligibilityQuery> selectors, Set<String> roundWorkerIds) {
+    Map<String,RoutedWorkerCandidate> takeCandidates(String workerGroupId,
+            Map<String,WorkerQuery> selectors, Set<String> roundWorkerIds) {
         if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
         if (selectors.isEmpty()) return Map.of();
-        var taken=matching.take(workerGroupId,ruleId,selectors);
+        var taken=matching.take(workerGroupId,selectors);
         var selected=new LinkedHashMap<String,String>();
         var scores=new LinkedHashMap<String,Long>();
         selectors.keySet().forEach(id -> {

@@ -21,7 +21,7 @@ import type {
 } from "@/task-call-debug/types";
 
 describe("Task Call Debug request model", () => {
-  it("captures binding parameters without interpreting Matching semantics", () => {
+  it("captures function inputs without interpreting Matching semantics", () => {
     for (const selector of [
       {},
       { "worker.country": ["CN"] },
@@ -30,16 +30,57 @@ describe("Task Call Debug request model", () => {
       { "worker.future": ["$eq", "value", "value"] },
       { a: ["x"], b: ["y"] },
       { workerId: ["id", "id"] },
-      { workerId: ["worker-b", "worker-a"] }
+      { workerId: ["worker-b", "worker-a"] },
+      "text",
+      7,
+      true,
+      [1, null, false]
     ]) {
       expect(
         validateTaskCallDebugDraft(
           draft({
-            workerSelectorText: JSON.stringify(selector)
+            workerSelectorText: JSON.stringify({
+              executorName: "test.function",
+              input: selector
+            })
           })
         ).workerSelector
-      ).toEqual(selector);
+      ).toEqual({ executorName: "test.function", input: selector });
     }
+  });
+  it("checks the query envelope and bounded JSON independently of local parameters", () => {
+    const query = (input: unknown) => ({ executorName: "test.function", input });
+    const validate = (value: unknown) =>
+      validateTaskCallDebugDraft(draft({ workerSelectorText: JSON.stringify(value) }));
+    let nested: unknown = true;
+    for (let i = 0; i < 8; i++) nested = [nested];
+    expect(validate(query(nested)).workerSelector.input).toEqual(nested);
+    expect(validate(query("x".repeat(65_534))).workerSelector.input).toHaveLength(
+      65_534
+    );
+    expect(validate(query(Array(100).fill(null))).workerSelector.input).toHaveLength(
+      100
+    );
+    for (const invalid of [
+      { executorName: "test.function" },
+      { executorName: " ", input: {} },
+      { executorName: 1, input: {} },
+      { ...query({}), extra: true },
+      query(null),
+      query([nested]),
+      query(Array(101).fill(null)),
+      query(Object.fromEntries(Array.from({ length: 101 }, (_, i) => [String(i), i]))),
+      query("x".repeat(65_535))
+    ]) {
+      expect(() => validate(invalid)).toThrow("Worker Selector");
+    }
+    expect(() =>
+      validateTaskCallDebugDraft(
+        draft({
+          workerSelectorText: '{"executorName":"test.function","input":1e999}'
+        })
+      )
+    ).toThrow("Worker Selector");
   });
   it("accepts custom Events and finite Worker Selectors", () => {
     const validated = validateTaskCallDebugDraft(
@@ -48,7 +89,8 @@ describe("Task Call Debug request model", () => {
         workerGroupId: " group-a ",
         eventName: " extension.worker.custom ",
         payloadText: '  {"value":"hello"}  ',
-        workerSelectorText: '{"workerId":["worker-a"]}'
+        workerSelectorText:
+          '{"executorName":"worker.default","input":{"workerId":["worker-a"]}}'
       })
     );
 
@@ -57,7 +99,10 @@ describe("Task Call Debug request model", () => {
       workerGroupId: "group-a",
       eventName: "extension.worker.custom",
       payload: { value: "hello" },
-      workerSelector: { workerId: ["worker-a"] }
+      workerSelector: {
+        executorName: "worker.default",
+        input: { workerId: ["worker-a"] }
+      }
     });
     expect(validated.payloadText).toBe('  {"value":"hello"}  ');
   });
@@ -154,7 +199,10 @@ describe("HttpTaskCallDebugClient", () => {
             eventCode: "extension.worker.custom",
             payload: { value: "hello" },
             priority: 5,
-            workerSelector: { workerId: ["worker-a"] }
+            workerSelector: {
+              executorName: "worker.default",
+              input: { workerId: ["worker-a"] }
+            }
           }
         ],
         waitTimeoutMillis: 3_000
@@ -293,7 +341,7 @@ describe("Task Call Debug browser-memory store", () => {
       messageId: "task-debug-1787644800123-1",
       state: "sending",
       payloadText: '{"value":"hello"}',
-      workerSelectorText: "{}"
+      workerSelectorText: '{"executorName":"worker.default","input":{}}'
     });
 
     pending.resolve({
@@ -490,7 +538,7 @@ function draft(overrides: Partial<TaskCallDebugDraft> = {}): TaskCallDebugDraft 
     workerGroupId: "group-a",
     eventName: "extension.worker.custom",
     payloadText: '{"value":"hello"}',
-    workerSelectorText: "{}",
+    workerSelectorText: '{"executorName":"worker.default","input":{}}',
     waitTimeoutMillis: 3_000,
     ...overrides
   };
@@ -504,7 +552,10 @@ function clientRequest(
     messageId: "message-1",
     eventName: "extension.worker.custom",
     payload: { value: "hello" },
-    workerSelector: { workerId: ["worker-a"] },
+    workerSelector: {
+      executorName: "worker.default",
+      input: { workerId: ["worker-a"] }
+    },
     waitTimeoutMillis: 3_000,
     ...overrides
   };

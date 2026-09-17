@@ -1,6 +1,6 @@
 package com.xa.mass.server.task;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -105,8 +105,8 @@ public final class TaskDataService {
                     : latest.entrySet()) {
                 try {
                     var supplied = entry.getValue().workerSelector();
-                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), descriptor.ruleId(), supplied == null
-                            ? new EligibilityQuery(Map.of()) : supplied);
+                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), supplied == null
+                            ? new WorkerQuery(descriptor.ruleId(), Map.of()) : supplied);
                     TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
                     validItems.add(item);
                 } catch (IllegalArgumentException error) {

@@ -45,8 +45,8 @@ NORMAL RUNNING Tasks -> complete immutable Task descriptors
       -> current Endpoint/Group -> Worker exact confirm -> Item exact claim
 ```
 
-Matching owns query semantics and shared stock per Group/Rule. Pacer forwards Group/Rule coordinates,
-message IDs and Item queries through `WorkerMatching`, without normalization or
+Matching owns fixed query functions and shared stock per Group/Rule. Pacer forwards Group,
+message IDs and Item WorkerQuery envelopes through `WorkerMatching`, without normalization or
 semantic aggregation. No Task-private candidate cache or quota exists.
 Refill takes no Item input. All selectors, including ANY and explicit IDs, consume
 inventory; a miss leaves the Item due without a source query or fresh hold.
@@ -69,7 +69,7 @@ establishes a soft hold on success. Only TRANSITIONED new fences reach Matching;
 acquisition skips it. Owner response loss does not trigger a confirmation read.
 
 Matching calls each participating Rule synchronously with the remaining held IDs.
-Each Rule owns qualification, inventory, shortages and atomic take, and reads only
+Each Rule owns qualification and shortages, and reads only
 its offered identities. Catalog rotates Rules/target pages and excludes IDs actually
 admitted by an earlier Rule. Current Rules prioritize constrained targets before ANY
 and recheck expiry/capacity at local commit, retaining original fences and deadlines.
@@ -91,8 +91,12 @@ not retroactively cancel an in-flight refill. Old stock expires without renewal.
 Dispatch preserves its 100-Item per-Task budget and actual-publication ordering
 hint: unserved Tasks first, then least recently served. Within a Task, Pacer submits
 one complete messageId-to-query Map. Matching validates and normalizes the entire
-batch, groups equivalent queries and assigns candidates in each group's Item order.
-The result follows original request order and omits requests without candidates.
+batch, routes functions in first-appearance order, and each Pool function groups
+equivalent selections and assigns candidates in its group's Item order.
+The result follows original request order and omits misses and later cross-function
+duplicate Workers without replacing them. A later execution exception does not
+restore earlier consumed inventory. The Item function may differ from the Task
+supply Rule but never drives supply.
 Each take returns at most 100 unique candidates and removes them before address
 lookup, confirmation and claim. Pacer filters round-duplicate Workers and missing
 or wrong-Group addresses for their associated message ID only; it never redistributes

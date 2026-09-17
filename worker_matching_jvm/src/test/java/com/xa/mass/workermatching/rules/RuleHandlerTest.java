@@ -18,11 +18,11 @@ class RuleHandlerTest {
             var handler=new MessagingRuleHandler(storage);
             var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"),
                     "worker.phone",List.of("+86123"))));
-            var match=handler.predicate("g",q);
-            assertTrue(match.test("w",new PartitionedZsetIndex.Projection("65",Set.of("phone:+86123"))));
-            assertFalse(match.test("w",new PartitionedZsetIndex.Projection("65",Set.of("phone:other"))));
-            assertFalse(match.test("w",new PartitionedZsetIndex.Projection("538",Set.of("phone:+86123"))));
-            assertFalse(match.test("w",null));
+            var match=handler.select("g",handler.normalizeInput("g",Map.of("country",List.of("CN"),"phone","+86123")));
+            assertTrue(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("65",Set.of("phone:+86123")))));
+            assertFalse(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("65",Set.of("phone:other")))));
+            assertFalse(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("538",Set.of("phone:+86123")))));
+            assertNull(handler.memberships("g","w",null));
         }
     }
     @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
@@ -45,7 +45,7 @@ class RuleHandlerTest {
                     new HeldCandidate("outside",1,2000),new HeldCandidate("a",2,2000),new HeldCandidate("b",3,2000)),100));
             assertEquals(0,rule.deficits("g",Map.of(target,100)).get(target));
             var selector=EligibilityQuery.parse(Map.of("workerId",List.of("a","b")));
-            assertEquals(2,rule.take("g",Map.of(selector,100)).get(selector).size());
+            assertEquals(2,rule.execute("g",Map.of("m1",selector.query(),"m2",selector.query())).size());
             assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             assertDoesNotThrow(()->rule.normalizeQuery("country",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             verifyNoInteractions(client);
@@ -64,10 +64,10 @@ class RuleHandlerTest {
             assertEquals(2,deficits.get(supplied));
             assertThrows(UnsupportedOperationException.class,deficits::clear);
             rule.refill("g",targets,List.of(new HeldCandidate("a",11,2000),new HeldCandidate("b",12,2000)),100);
-            var limits=new LinkedHashMap<EligibilityQuery,Integer>(); limits.put(supplied,1); limits.put(any,1);
-            var taken=rule.take("g",limits);
-            assertEquals(List.of(supplied,any),List.copyOf(taken.keySet()));
-            assertEquals(2,taken.values().stream().flatMap(List::stream).map(h -> h.workerId()).distinct().count());
+            var limits=new LinkedHashMap<String,Object>(); limits.put("id",supplied.query()); limits.put("any",Map.of());
+            var taken=rule.execute("g",limits);
+            assertEquals(List.of("id","any"),List.copyOf(taken.keySet()));
+            assertEquals(2,taken.values().stream().map(h -> h.workerId()).distinct().count());
             assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(any,0),List.of(),0));
             assertThrows(IllegalArgumentException.class,()->rule.deficits("g",Map.of(any,1001)));
             verifyNoInteractions(client);

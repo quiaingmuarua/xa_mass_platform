@@ -70,12 +70,13 @@ accepting later monotonic observations, independently of Task closure.
 Descriptors use exactly `workerGroupId`, `idleDisposition`, `configJson`, `ruleId`
 and `refillTargetsJson` in their HASH, written together by the create-only Lua.
 Targets are a JSON array of `{query,count}` objects. Missing/newly required fields,
-unknown target fields, null queries and non-integer counts fail strict decoding. TaskItem JSON has the exact fields above; workerSelector is the Map itself,
-not an envelope. Old descriptor mode/capacity fields, missing/null selectors and
-old wrapper/array forms and nested `{op,values}` property conditions are rejected
-rather than interpreted as unrestricted. The shared EligibilityQuery contains only
-string-list parameters; Rule normalization defines all meanings, including IDs.
-Existing ANY and ID Maps retain their shape and remain readable.
+unknown target fields, null queries and non-integer counts fail strict decoding.
+TaskItem JSON has the exact fields above; `workerSelector` is the complete
+`{executorName,input}` WorkerQuery envelope. Kernel validates bounded immutable
+JSON structure and leaves all local parameter meaning to Matching. Root input is
+required and non-null. Old direct Maps (including ANY and ID), missing/null
+selectors and operator/wrapper forms are unreadable, never converted to ANY.
+Supply EligibilityQuery/RefillTarget and descriptor formats remain unchanged.
 
 Use a new scope to recreate Tasks. Old descriptors fail as corrupt; there is no
 retired Matching lookup or default substitution. Old scopes remain untouched; no

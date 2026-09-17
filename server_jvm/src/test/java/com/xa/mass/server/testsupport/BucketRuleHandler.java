@@ -8,7 +8,7 @@ import java.util.*;
 import java.util.function.*;
 
 /** Non-ZSET Rule: bucket SETs and a HASH source, with Rule-owned local Eligibility. */
-public final class BucketRuleHandler extends LocalCandidateRule<String> {
+public final class BucketRuleHandler extends PoolRule<String> {
     public static final String ID="proof.bucket";
     private static final String PREPARE="""
             local function projection(raw)
@@ -50,8 +50,17 @@ public final class BucketRuleHandler extends LocalCandidateRule<String> {
                 || values.stream().anyMatch(v->!(v instanceof String)))throw new IllegalArgumentException("bucket requires string parameters");
         return new EligibilityQuery(Map.of("test.bucket",List.copyOf(new TreeSet<>(values.stream().map(String.class::cast).toList()))));
     }
-    @Override protected BiPredicate<String,String> predicate(String group,EligibilityQuery query) {
-        return (id,bucket)->bucket!=null && (query.query().isEmpty() || query.query().get("test.bucket").contains(bucket));
+    @Override protected Selection target(String group,EligibilityQuery query) {
+        return query.query().isEmpty() ? all() : range("bucket",query.query().get("test.bucket"));
+    }
+    @Override protected Object normalizeLocalInput(String group,Object input) {
+        return normalize(group,EligibilityQuery.parse((Map<?,?>)input)).query();
+    }
+    @Override protected Selection select(String group,Object input) {
+        return target(group,EligibilityQuery.parse((Map<?,?>)input));
+    }
+    @Override protected Map<String,String> memberships(String group,String id,String bucket) {
+        return bucket==null ? null : Map.of("bucket",bucket);
     }
     @Override protected Map<String,String> readQualifications(String group,List<String> ids) {
         if(failSnapshot)throw new IllegalStateException("injected bucket projection failure");

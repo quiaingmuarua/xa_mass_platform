@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -107,13 +107,13 @@ class TaskDispatchProgressTest {
                 List<String> ids = call.getArgument(1);
                 var result = new LinkedHashMap<String, TaskItem>();
                 ids.forEach(id -> result.put(id, new TaskItem(id, "event", 0, Map.of(), 0, null,
-                        EligibilityQuery.parse(Map.of()))));
+                        new WorkerQuery("worker.default", Map.of()))));
                 return result;
             });
-            when(selection.takeCandidates(any(), anyString(), anyMap(), anySet())).thenAnswer(call -> {
-                String group = call.getArgument(1);
-                Map<String, EligibilityQuery> selectors = call.getArgument(2);
-                Set<String> roundWorkers = call.getArgument(3);
+            when(selection.takeCandidates(anyString(), anyMap(), anySet())).thenAnswer(call -> {
+                String group = call.getArgument(0);
+                Map<String, WorkerQuery> selectors = call.getArgument(1);
+                Set<String> roundWorkers = call.getArgument(2);
                 String worker = "worker-" + group;
                 if (!availableGroups.contains(group) || !roundWorkers.add(worker)) return Map.of();
                 return Map.of(selectors.keySet().iterator().next(), new RoutedWorkerCandidate(worker, group, "adapter", 301L));

@@ -1,7 +1,7 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 
@@ -410,7 +410,7 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                EligibilityQuery.parse(Map.of(
+                                new WorkerQuery("worker.default", Map.of(
                                         "workerId",
                                         List.of("worker-b", "worker-a")
                                 ))
@@ -425,10 +425,7 @@ class TaskRpcCallServiceTest {
         );
         verify(submission).submit(eq("task-1"), items.capture());
         assertThat(items.getValue()).singleElement().satisfies(item ->
-                assertThat(item.workerSelector().query().get("workerId")).containsExactly(
-                        "worker-b",
-                        "worker-a"
-                )
+                assertThat(item.workerSelector().input()).isEqualTo(Map.of("workerId",List.of("worker-b","worker-a")))
         );
         registry.shutdown();
     }
@@ -454,7 +451,7 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                EligibilityQuery.parse(Map.of("workerId", "worker"))
+                                WorkerQuery.parse(Map.of("workerId", "worker"))
                         )),
                         1_000L
                 )
@@ -486,11 +483,11 @@ class TaskRpcCallServiceTest {
         TaskItemMapper taskItems = mock(TaskItemMapper.class);
         when(taskItems.nowMillis()).thenReturn(1_000L);
         when(taskItems.callItem(
-                any(TaskItemRequest.class), eq(1_000L), any(EligibilityQuery.class))).thenAnswer(invocation -> new TaskItemMapper().callItem(
+                any(TaskItemRequest.class), eq(1_000L), any(WorkerQuery.class))).thenAnswer(invocation -> new TaskItemMapper().callItem(
                 invocation.getArgument(0),
                 invocation.getArgument(1), invocation.getArgument(2)));
         var matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        when(matching.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
+        when(matching.normalizeQuery(anyString(),any())).thenAnswer(call -> call.getArgument(1));
 
         return new TaskRpcCallService(
                 new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching),
@@ -515,7 +512,7 @@ class TaskRpcCallServiceTest {
                 payload,
                 5,
                 1_000L,
-                EligibilityQuery.parse(Map.of())
+                new WorkerQuery("worker.default", Map.of())
         );
     }
 

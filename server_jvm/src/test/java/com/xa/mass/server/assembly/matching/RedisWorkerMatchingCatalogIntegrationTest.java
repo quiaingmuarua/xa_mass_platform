@@ -16,6 +16,8 @@ import com.xa.mass.workermatching.RuleHandler;
 import com.xa.mass.workermatching.rules.*;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.workermatching.QueryFunctions;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.server.testsupport.BucketRuleHandler;
 import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
@@ -43,7 +45,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     private final List<String> refillStages=new ArrayList<>();
     private java.util.function.Consumer<List<String>> beforeQualification=ids->{};
     private java.util.function.Consumer<List<String>> afterAdmission=ids->{};
-    private static Map<String,RuleHandler> handlers(RedisRuleStorage storage,Map<String,Set<String>> groups) {
+    private static Map<String,PoolRule<?>> handlers(RedisRuleStorage storage,Map<String,Set<String>> groups) {
         return Map.of("worker.default",new DefaultRuleHandler(storage,groups),"worker.country",new CountryRuleHandler(storage),
                 "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage));
     }
@@ -63,8 +65,13 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     private RedisWorkerMatchingCatalog createCatalog(Map<String,Set<String>> groups,
             Map<String,Map<String,List<RefillTarget>>> defaults) {
         var storage=new RedisRuleStorage(redisClient,keyspace);
-        var traced=new LinkedHashMap<>(handlers(storage,groups)); traced.replaceAll((id,handler)->trace(handler));
-        return new RedisWorkerMatchingCatalog(storage,traced,groups,defaults);
+        var pools=handlers(storage,groups);
+        var traced=new LinkedHashMap<String,RuleHandler>(); pools.forEach((id,handler)->traced.put(id,trace(handler)));
+        return new RedisWorkerMatchingCatalog(storage,traced,functions(pools),groups,defaults);
+    }
+    private static Map<String,QueryFunctions> functions(Map<String,PoolRule<?>> pools) {
+        var result=new LinkedHashMap<String,QueryFunctions>(); pools.forEach((id,pool)->result.put(id,pool.queryFunctions()));
+        return result;
     }
     private RuleHandler trace(RuleHandler handler) {
         return new RuleHandler() {
@@ -74,9 +81,6 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 var ids=offered.stream().map(h -> h.workerId()).toList();
                 refillStages.add("qualification"); beforeQualification.accept(ids);
                 var result=handler.refill(group,targets,offered,maxAccepted); afterAdmission.accept(ids); return result;
-            }
-            public Map<EligibilityQuery,List<WorkerCandidate>> take(String group,Map<EligibilityQuery,Integer> limits) {
-                return handler.take(group,limits);
             }
         };
     }
@@ -110,28 +114,28 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var groups=Map.of("g",Set.of("worker.country",BucketRuleHandler.ID));
         var storage=new RedisRuleStorage(redisClient,keyspace,Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
         var rules=new LinkedHashMap<>(handlers(storage,groups)); rules.put(BucketRuleHandler.ID,new BucketRuleHandler(storage,failSnapshot));
-        catalog=new RedisWorkerMatchingCatalog(storage,rules,groups,Map.of());
+        catalog=new RedisWorkerMatchingCatalog(storage,new LinkedHashMap<>(rules),functions(rules),groups,Map.of());
     }
     @Test void countryTakeNormalizesAndCorrelatesWithoutRedisOrPartialConsumptionOnBadInput() {
         catalog.upsertWorkerFactsBatch("g",Map.of("cn",Map.of("country","CN"),"us",Map.of("country","US")));
         hot("g",List.of("cn","us"));
         declare("countries","worker.country");
         assertThat(refill("countries")).isEqualTo(2);
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        requests.put("first",EligibilityQuery.parse(Map.of("worker.country",List.of("CN","CN"))));
-        requests.put("second",US);
-        requests.put("equivalent",CN);
-        requests.put("late-invalid",EligibilityQuery.parse(Map.of("workerId",List.of("us"))));
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        requests.put("first",new WorkerQuery("worker.country",List.of("CN","CN")));
+        requests.put("second",new WorkerQuery("worker.country",List.of("US")));
+        requests.put("equivalent",new WorkerQuery("worker.country",List.of("CN")));
+        requests.put("late-invalid",new WorkerQuery("worker.country",Map.of("workerId",List.of("us"))));
         commandTypes.clear();
-        assertThatThrownBy(()->catalog.take("g","worker.country",requests)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->catalog.take("g",requests)).isInstanceOf(IllegalArgumentException.class);
         assertThat(commandTypes).isEmpty();
         requests.remove("late-invalid");
-        var result=catalog.take("g","worker.country",requests);
+        var result=catalog.take("g",requests);
         assertThat(result.keySet()).containsExactly("first","second");
         assertThat(result.values()).extracting(h -> h.workerId()).containsExactly("cn","us");
         assertThat(commandTypes).isEmpty();
         assertThatThrownBy(result::clear).isInstanceOf(UnsupportedOperationException.class);
-        assertThat(catalog.take("g","worker.country",requests)).isEmpty();
+        assertThat(catalog.take("g",requests)).isEmpty();
     }
     @Test void independentBucketLayoutSharesStockAndRetainsBatchCommandBudgets() {
         useBucketRule(false);
@@ -145,17 +149,32 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isEqualTo(100);
         assertThat(commandTypes).containsExactly("EVAL","EVAL","HMGET");
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isZero();
-        var selector=EligibilityQuery.parse(Map.of("test.bucket",List.of("red","blue")));
+        var selector=Map.of("test.bucket",List.of("red","blue"));
         var first=takeItems(catalog,prepared.get("a").workerGroupId(),prepared.get("a").ruleId(),selector,40);
         var second=takeItems(catalog,prepared.get("b").workerGroupId(),prepared.get("b").ruleId(),selector,100);
         assertThat(first).hasSize(40);assertThat(second).hasSize(60);assertThat(commandTypes).isEmpty();
         var ids=new HashSet<String>();first.forEach(h->assertThat(ids.add(h.workerId())).isTrue());second.forEach(h->assertThat(ids.add(h.workerId())).isTrue());
     }
+    @Test void messagingPhoneAndCountryIntersectionUsesOnlyExistingStockViews() {
+        catalog.upsertWorkerFactsBatch("g",Map.of("cn",messageFacts("CN","same"),
+                "us",messageFacts("US","same"),"other",messageFacts("CN","other")));
+        hot("g",List.of("cn","us","other")); declare("messages","worker.messaging.available");
+        assertThat(refill("messages")).isEqualTo(3);
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        requests.put("intersection",new WorkerQuery("worker.messaging.available",Map.of("country",List.of("CN"),"phone","same")));
+        requests.put("phone",new WorkerQuery("worker.messaging.available",Map.of("phone","same")));
+        requests.put("other",new WorkerQuery("worker.messaging.available",Map.of("phone","other")));
+        commandTypes.clear();
+        assertThat(catalog.take("g",requests).values()).extracting(WorkerCandidate::workerId).containsExactly("cn","us","other");
+        assertThat(commandTypes).isEmpty();
+        assertThat(catalog.take("g",requests)).isEmpty();
+        assertThat(commandTypes).isEmpty();
+    }
     @Test void bucketFactsMutationSealedFenceAndLaterRefillConverge() throws Exception {
         useBucketRule(false);catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red")));hot("g",List.of("w"));
         declareTask("bucket","g",BucketRuleHandler.ID,List.of(new RefillTarget(Map.of("test.bucket",List.of("red","blue")),1)));
         var prepared=declarations("bucket");assertThat(refillDeclarations(prepared)).isEqualTo(1);
-        var held=takeItems(catalog,prepared.get("bucket").workerGroupId(),prepared.get("bucket").ruleId(),ANY,1).getFirst();
+        var held=takeItems(catalog,prepared.get("bucket").workerGroupId(),prepared.get("bucket").ruleId(),Map.of(),1).getFirst();
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","blue")));
         scores.sealCurrentScoreHolds("g",List.of("w"));
         assertThat(scores.transferObservedHotScoreLeases("g",Map.of("w",held.expectedScore()),System.currentTimeMillis()+5000, true).get("w").status())
@@ -163,7 +182,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5))
                 .until(() -> scores.observeDueHotScoreCandidates("g",null,100).containsKey(held.workerId()));
         assertThat(refillDeclarations(prepared)).isEqualTo(1);
-        var blue=EligibilityQuery.parse(Map.of("test.bucket",List.of("blue")));
+        var blue=Map.of("test.bucket",List.of("blue"));
         assertThat(takeItems(catalog,prepared.get("bucket").workerGroupId(),prepared.get("bucket").ruleId(),blue,1)).extracting(h -> h.workerId()).containsExactly("w");
         catalog.patchWorkerPlatformProperties("g","w",Map.of("testEnabled","no"));
         assertThat(redis.hget(keyspace.base()+":matching:worker:index:Zw:test_buckets","w")).isNull();
@@ -192,7 +211,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         commandTypes.clear();
         assertThatThrownBy(()->catalog.refill("g",targets.get("g"),held)).isInstanceOf(IllegalStateException.class);
         assertThat(commandTypes).isEmpty();
-        commandTypes.clear();assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,1)).isEmpty();assertThat(commandTypes).isEmpty();
+        commandTypes.clear();assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of(),1)).isEmpty();assertThat(commandTypes).isEmpty();
         assertThat(readScores(redis, keyspace, "g",List.of("w")).get("w")).isEqualTo(held.getFirst().score());
     }
     @Test void rebuildUsesOnlyTheEnabledHandlersDeclaredRootAndDescendants() {
@@ -205,14 +224,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var groups=Map.of("g",Set.of(BucketRuleHandler.ID));
         var storage=new RedisRuleStorage(redisClient,keyspace,Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
         var rules=new LinkedHashMap<>(handlers(storage,groups)); rules.put(BucketRuleHandler.ID,new BucketRuleHandler(storage));
-        catalog=new RedisWorkerMatchingCatalog(storage,rules,groups,Map.of());
+        catalog=new RedisWorkerMatchingCatalog(storage,new LinkedHashMap<>(rules),functions(rules),groups,Map.of());
         catalog.rebuildIndexes();
         assertThat(redis.hkeys(root)).containsExactly("w");
         assertThat(redis.exists(root+":orphan")).isZero();
         assertThat(redis.get(root+"_neighbor")).isEqualTo("kept");
         assertThat(redis.zscore(indexKey(),"other-rule-member")).isEqualTo(1);
         hot("g",List.of("w")); var query=declare("rebuilt",BucketRuleHandler.ID); refill("rebuilt");
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,1)).extracting(h -> h.workerId()).containsExactly("w");
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of(),1)).extracting(h -> h.workerId()).containsExactly("w");
     }
     @Test
     void boundedBatchReplacesWholeMapsAndPreservesIndependentPlatformProperties() {
@@ -418,9 +437,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     @Test void explicitDefaultRuleDoesNotRequireFacts() {
         var query=declare("default",WorkerMatchingCatalog.DEFAULT_RULE_ID);
         hot("g",List.of("no-facts"));
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,1)).isEmpty();
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of(),1)).isEmpty();
         assertThat(refill("default")).isEqualTo(1);
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,1)).extracting(h -> h.workerId()).containsExactly("no-facts");
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of(),1)).extracting(h -> h.workerId()).containsExactly("no-facts");
         assertThat(catalog.loadWorkerFacts("g",List.of("no-facts"))).containsEntry("no-facts",null);
     }
     @Test void namedRulesRejectIdsAndAnyUsesOnlyTheirHeldMembership() {
@@ -428,16 +447,16 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         hot("g",List.of("cn","us","empty"));
         var query=declare("country","worker.country");
         assertThat(refill("country")).isEqualTo(2);
-        var ids=EligibilityQuery.parse(Map.of("workerId",List.of("cn","empty")));
-        assertThatThrownBy(()->catalog.normalizeQuery(query.workerGroupId(),query.ruleId(),ids)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->catalog.take(query.workerGroupId(),query.ruleId(),Map.of("m",ids))).isInstanceOf(IllegalArgumentException.class);
+        var ids=new WorkerQuery(query.ruleId(),Map.of("workerId",List.of("cn","empty")));
+        assertThatThrownBy(()->catalog.normalizeQuery(query.workerGroupId(),ids)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->catalog.take(query.workerGroupId(),Map.of("m",ids))).isInstanceOf(IllegalArgumentException.class);
         commandTypes.clear();
         assertThatThrownBy(()->catalog.resolveRefillTargets("g","worker.country",
                 List.of(new RefillTarget(Map.of("workerId",List.of("cn")),1))))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(commandTypes).isEmpty();
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),CN,1)).extracting(h -> h.workerId()).containsExactly("cn");
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),ANY,100)).extracting(h -> h.workerId()).containsExactly("us");
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),List.of("CN"),1)).extracting(h -> h.workerId()).containsExactly("cn");
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of(),100)).extracting(h -> h.workerId()).containsExactly("us");
     }
     @Test void sharedTargetsUseMaximumAndOtherTasksCanConsumeTheSameStock() {
         var facts=new LinkedHashMap<String,Map<String,String>>();
@@ -450,8 +469,8 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refill("a","b")).isEqualTo(5);
         var views=declarations("a","b"); commandTypes.clear();
         assertThat(refillDeclarations(views)).isZero();
-        assertThat(takeItems(catalog,views.get("a").workerGroupId(),views.get("a").ruleId(),US,20)).hasSize(20);
-        assertThat(takeItems(catalog,views.get("b").workerGroupId(),views.get("b").ruleId(),US,1)).isEmpty();
+        assertThat(takeItems(catalog,views.get("a").workerGroupId(),views.get("a").ruleId(),List.of("US"),20)).hasSize(20);
+        assertThat(takeItems(catalog,views.get("b").workerGroupId(),views.get("b").ruleId(),List.of("US"),1)).isEmpty();
         assertThat(commandTypes).isEmpty();
     }
     @Test void targetResolutionRequiresNoRedisReadOrTaskRegistration() {
@@ -473,7 +492,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
         assertThat(refillStages).containsExactly("observe","acquire","qualification");
         commandTypes.clear();
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),CN,100)).hasSize(100);
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),List.of("CN"),100)).hasSize(100);
         assertThat(commandTypes).isEmpty();
     }
     @Test void hundredDistinctTargetsUseOneObservationProjectionAndAcquisitionBatch() {
@@ -489,7 +508,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refillDeclarations(prepared)).isEqualTo(100);
         assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
         commandTypes.clear();
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,100)).hasSize(100);
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),Map.of(),100)).hasSize(100);
         assertThat(commandTypes).isEmpty();
     }
 
@@ -502,7 +521,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var held=acquire("g",offer("g",100));
         catalog.upsertWorkerFactsBatch("g",Map.of("target",messageFacts("US","new-phone")));
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
-        assertThat(takeItems(catalog,prepared.get("messages").workerGroupId(),prepared.get("messages").ruleId(),ANY,1)).isEmpty();
+        assertThat(takeItems(catalog,prepared.get("messages").workerGroupId(),prepared.get("messages").ruleId(),Map.of(),1)).isEmpty();
         assertThat(readScores(redis, keyspace, "g",List.of("target")).get("target")).isEqualTo(held.getFirst().score());
     }
 
@@ -517,7 +536,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         commandTypes.clear();
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
         assertThat(commandTypes).containsExactly("EVAL"); // Supplied-ID projection only.
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,1)).isEmpty();
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),Map.of(),1)).isEmpty();
         assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).containsKey("b");
     }
 
@@ -535,7 +554,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).isEmpty();
         };
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,1)).isEmpty();
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),Map.of(),1)).isEmpty();
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
         Map<String,Long> due=Map.of();
         while(due.isEmpty() && System.nanoTime()<deadline) {
@@ -558,7 +577,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL");
         assertThat(refillStages).containsExactly("acquire","qualification","qualification");
         var delivered=new HashSet<String>();
-        prepared.values().forEach(view->takeItems(catalog,view.workerGroupId(),view.ruleId(),ANY,100).forEach(held->{
+        prepared.values().forEach(view->takeItems(catalog,view.workerGroupId(),view.ruleId(),Map.of(),100).forEach(held->{
             assertThat(delivered.add(held.workerId())).isTrue();
             assertThat(held).isEqualTo(candidate(original.get(held.workerId())));
             assertThat(held.expectedScore()).isNotEqualTo(observed.get(held.workerId()));
@@ -590,7 +609,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         }
         assertThat(visited).containsExactlyElementsOf(ids);
         assertThat(added).isEqualTo(1);
-        assertThat(takeItems(catalog,prepared.get("rare").workerGroupId(),prepared.get("rare").ruleId(),CN,1))
+        assertThat(takeItems(catalog,prepared.get("rare").workerGroupId(),prepared.get("rare").ruleId(),List.of("CN"),1))
                 .extracting(h -> h.workerId()).containsExactly("w-249");
         assertThat(readScores(redis, keyspace, "g",List.of("w-000")).get("w-000")).isNotEqualTo(observed);
     }
@@ -600,7 +619,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var prepared=declarations("task");var observed=offer("g",100);
         // The owner committed, but its returned batch never reaches Matching.
         assertThat(acquire("g",observed)).hasSize(1);
-        commandTypes.clear();assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),ANY,1)).isEmpty();
+        commandTypes.clear();assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),Map.of(),1)).isEmpty();
         assertThat(commandTypes).isEmpty();
         assertThat(scores.transferObservedHotScoreLeases("g",Map.of("w",observed.get("w")),System.currentTimeMillis()+5000, true).get("w").status())
                 .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
@@ -621,7 +640,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         };
         assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),CN,1)).isEmpty();
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),List.of("CN"),1)).isEmpty();
     }
 
     @Test void invalidationAfterAdmissionRejectsTheOriginalCandidateFence() {
@@ -637,7 +656,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         };
         assertThat(catalog.refill("g",targets(prepared).get("g"),offered)).isEqualTo(1);
-        var held=takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),CN,1).getFirst();
+        var held=takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),List.of("CN"),1).getFirst();
         assertThat(held).isEqualTo(candidate(offered.getFirst()));
         assertThat(scores.transferObservedHotScoreLeases("g",Map.of("w",held.expectedScore()),System.currentTimeMillis()+5000, true)
                 .get("w").status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
@@ -651,21 +670,21 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")));
         scores.sealCurrentScoreHolds("g",List.of("w"));
         assertThat(acquire("g",observed)).isEmpty();
-        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),CN,1)).isEmpty();
+        assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),prepared.get("task").ruleId(),List.of("CN"),1)).isEmpty();
     }
 
     @Test void sealedStockCannotTransferAndAnInitialFenceCommitsOnlyOnce() throws Exception {
         hot("g",List.of("w")); declare("task",WorkerMatchingCatalog.DEFAULT_RULE_ID);
         refill("task"); scores.sealCurrentScoreHolds("g",List.of("w"));
         var binding=declarations("task").get("task");
-        var held=takeItems(catalog,binding.workerGroupId(),binding.ruleId(),ANY,1).getFirst();
+        var held=takeItems(catalog,binding.workerGroupId(),binding.ruleId(),Map.of(),1).getFirst();
         var rejected=scores.transferObservedHotScoreLeases("g",Map.of("w",held.expectedScore()),System.currentTimeMillis()+5000, true);
         assertThat(rejected.get("w").status()).isNotEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         // No compensation: the rejected initial hold expires, then refill obtains a new soft fence.
         org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5))
                 .until(() -> scores.observeDueHotScoreCandidates("g",null,100).containsKey(held.workerId()));
         assertThat(refill("task")).isEqualTo(1);
-        long soft=takeItems(catalog,binding.workerGroupId(),binding.ruleId(),ANY,1).getFirst().expectedScore();
+        long soft=takeItems(catalog,binding.workerGroupId(),binding.ruleId(),Map.of(),1).getFirst().expectedScore();
         try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var operations=IntStream.range(0,20).mapToObj(i -> executor.submit(() -> scores.transferObservedHotScoreLeases(
                     "g",Map.of("w",soft),System.currentTimeMillis()+5000, true).get("w").status())).toList();
@@ -690,7 +709,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                 originalDeadline + 5_000, seal).get("w");
         assertThat(transferred.status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         var binding = prepared.get("task");
-        var cached = takeItems(catalog, binding.workerGroupId(), binding.ruleId(), ANY, 1).getFirst();
+        var cached = takeItems(catalog, binding.workerGroupId(), binding.ruleId(),Map.of(), 1).getFirst();
         assertThat(cached).isEqualTo(candidate(original));
         assertThat(originalDeadline).isGreaterThan(System.currentTimeMillis());
         assertThat(scores.transferObservedHotScoreLeases("g", Map.of("w", cached.expectedScore()),
@@ -707,7 +726,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         hot("g",List.of("w")); declare("task",WorkerMatchingCatalog.DEFAULT_RULE_ID); refill("task");
         try(var restarted=createCatalog(Map.of(),Map.of())) {
             var views=declarations("task");
-            assertThat(takeItems(restarted,views.get("task").workerGroupId(),views.get("task").ruleId(),ANY,1)).isEmpty();
+            assertThat(takeItems(restarted,views.get("task").workerGroupId(),views.get("task").ruleId(),Map.of(),1)).isEmpty();
             assertThat(refillDeclarations(restarted,"g",views,100)).isZero();
         }
     }
@@ -720,7 +739,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         for(int round=0;round<6;round++) {
             assertThat(refillDeclarations(prepared)).isEqualTo(1);
             for(var task:prepared.entrySet()) {
-                var candidates=takeItems(catalog,task.getValue().workerGroupId(),task.getValue().ruleId(),ANY,1);
+                var candidates=takeItems(catalog,task.getValue().workerGroupId(),task.getValue().ruleId(),Map.of(),1);
                 if(candidates.isEmpty())continue;
                 winners.add(task.getKey());
                 var confirmed=scores.transferObservedHotScoreLeases("g",Map.of("w",candidates.getFirst().expectedScore()),
@@ -793,7 +812,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
                     neighbor.resolveRefillTargets(special+":other","worker.country",null));
             hot(special+":other",List.of("b"));
             refillDeclarations(neighbor,special+":other",Map.of("neighbor",query),100);
-            assertThat(takeItems(neighbor,query.workerGroupId(),query.ruleId(),ANY,1)).extracting(h -> h.workerId()).containsExactly("b");
+            assertThat(takeItems(neighbor,query.workerGroupId(),query.ruleId(),Map.of(),1)).extracting(h -> h.workerId()).containsExactly("b");
         }
     }
     @Test void startupRebuildUsesRetainedFactsAndOnlyThisGroupsIndexes() {
@@ -802,7 +821,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         redis.set(keyspace.base()+":unrelated","kept");
         catalog.rebuildIndexes();
         hot("g",List.of("w")); refill("message");
-        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),CN,1)).extracting(h -> h.workerId()).containsExactly("w");
+        assertThat(takeItems(catalog,query.workerGroupId(),query.ruleId(),Map.of("country",List.of("CN")),1)).extracting(h -> h.workerId()).containsExactly("w");
         assertThat(redis.get(keyspace.base()+":unrelated")).isEqualTo("kept");
     }
 
@@ -810,9 +829,9 @@ class RedisWorkerMatchingCatalogIntegrationTest {
 
     /** Fixture for stock-volume proofs: submit distinct Items through the public correlation port. */
     private static List<WorkerCandidate> takeItems(com.xa.mass.kernel.assignment.WorkerMatching matching,
-            String group,String rule,EligibilityQuery query,int count) {
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        for(int i=0;i<count;i++)requests.put("message-"+i,query);
-        return List.copyOf(matching.take(group,rule,requests).values());
+            String group,String rule,Object input,int count) {
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        for(int i=0;i<count;i++)requests.put("message-"+i,new WorkerQuery(rule,input));
+        return List.copyOf(matching.take(group,requests).values());
     }
 }

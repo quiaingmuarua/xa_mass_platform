@@ -241,7 +241,7 @@ class RuntimeApiClientTest {
             });
             assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).endsWith("/rule-task-1/items");
-                assertThat(((Map<?, ?>) Jsons.parseArray(request.body()).getFirst()).get("workerSelector")).isEqualTo(Map.of("worker.convergenceSlot", List.of("C")));
+                assertThat(((Map<?, ?>) Jsons.parseArray(request.body()).getFirst()).get("workerSelector")).isEqualTo(Map.of("executorName","proof.worker.facts","input",Map.of("convergenceSlot","C")));
             });
             assertThat(requests).anySatisfy(request -> {
                 assertThat(request.path()).isEqualTo("/api/v1/tasks");

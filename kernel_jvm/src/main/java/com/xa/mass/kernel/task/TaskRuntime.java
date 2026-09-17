@@ -2,7 +2,7 @@ package com.xa.mass.kernel.task;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import java.util.Collections;
@@ -101,7 +101,7 @@ public interface TaskRuntime {
             Map<String, Object> payload,
             int priority,
             @Nullable Long expireAtMillis,
-            EligibilityQuery workerSelector
+            WorkerQuery workerSelector
     ) {
         public TaskItem {
             requireNonBlank(messageId, "messageId");

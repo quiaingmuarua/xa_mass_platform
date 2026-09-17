@@ -212,7 +212,7 @@ architectures.
 - Candidate identity query contracts remain bounded here;
   index storage belongs to Matching and loop code belongs to Pacer.
 - Task Owner stores only scheduling descriptors and Item execution data. It owns
-  the shared immutable EligibilityQuery structure without quantity or field interpretation. Matching
+  shared immutable WorkerQuery consumption data and EligibilityQuery refill data without field interpretation. Matching
   owns fixed Rule Handlers and property/index interpretation. Task descriptors own
   the Rule name and resolved refill targets as immutable configuration.
   Pacer depends only on WorkerMatching for Matching operations. It may forward
@@ -225,16 +225,16 @@ architectures.
   Default identity selectors need no facts;
   only worker.default accepts explicit ID queries; named Rules constrain ANY and
   interpret their own business queries. Unavailable Rules never fall back. Matching
-  uses fixed Rule ID-to-instance composition. Rule implementations own normalization,
-  qualification, deficits, refill, stock and take; Catalog Eligibility coordination
+  uses immutable fixed query functions and Rule refill composition. Pool strategies own local input interpretation,
+  qualification and resource selection; CandidatePool owns mechanical range stock. Catalog coordination
   must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
   index updates still prepare before writing in one bounded Lua operation.
-  Rule instances own thread-safe Group-isolated Eligibility through normalizeQuery,
-  deficits, refill and take. Catalog owns target MAX merge,
+  RuleHandler owns normalizeQuery, deficits and refill. Item execution uses fixed
+  normalizeInput/execute function pairs, not storage objects as executors. Catalog owns target MAX merge,
   bounded paging, messageId-to-candidate correlation and exclusion of IDs actually
-  accepted by earlier Rules. TaskItem and
-  refill queries use one string-list structure; Rules normalize all semantics, including
-  Default identity queries. Target quantities use MAX; consumption uses actual Item
+  accepted by earlier Rules. TaskItem uses WorkerQuery(executorName, input);
+  refill retains its existing string-list EligibilityQuery. Kernel and Pacer must
+  not interpret local input fields. Target quantities use MAX; Pool consumption uses actual Item
   counts inside Matching. Pacer submits one query per message ID and receives at most
   one WorkerCandidate for it. Consumption carries identity and an explicit expectedScore,
   never the inventory deadline. Current production Pool Rules retain the original
@@ -246,10 +246,18 @@ architectures.
   sealed execution fence for Command/ResultContext and exact Result release.
   It must not retry a failed strict expectation through current-state transfer.
   Dropping an association must not transfer its candidate,
-  restore stock or trigger a replacement take. Do not restore operator objects or a separate Item selector protocol. Shared
+  restore stock or trigger a replacement take. No function-name prefix routing,
+  fallback executor, dynamic registry or placeholder Index executor is allowed.
+  Validate the complete batch before consumption; later function execution failure
+  preserves earlier consumption. Explicit Item functions may differ from Task supply
+  Rules but must be Group-enabled and cannot generate refill demand. Shared
   capacity coordination stores budgets only. Earlier Rule admissions survive a later
   Rule failure; the exception ends the remaining batch without rollback or replay.
   Each current Rule validates and reads before its own bounded local commit.
+  Pool counts use maintained range buckets; take visits selected ranges rather than
+  copying/filtering the whole pool. Storage receives no business predicate. Expiry
+  uses removable deadline order; all range references leave with the Entry, and
+  multiple references do not count as separately budgeted pools.
   Candidate stock observations are not optimistic transactions: commit only current,
   live entries and hard capacity; do not retry a whole selection on a pool revision.
   Leave concurrent target/stock changes to later rounds rather than reserving deficits.
@@ -862,7 +870,7 @@ deployment follows concrete business or operational needs.
   defects through scenario-side scheduling or delivery repair, or count unconfirmed
   outcomes as success. Return platform regressions to their owning proof.
 - Both scenarios depend only on approved `server_jvm` application services and
-  existing DTOs, including the shared `EligibilityQuery` and `RefillTarget` value
+  existing DTOs, including `WorkerQuery`, refill `EligibilityQuery` and `RefillTarget` value
   contracts required by those APIs. These values grant no Kernel or Matching
   operation access. Server has no scenario or executable dependency; scenarios have
   no dependency on each other and create no Redis clients, Owners, Pacer or Adapter.

@@ -194,6 +194,7 @@
       "expire_at_millis",
       "worker_selector"
     ],
+    "WorkerQuery": ["executor_name", "input"],
     "EligibilityQuery": [
       "query"
     ],

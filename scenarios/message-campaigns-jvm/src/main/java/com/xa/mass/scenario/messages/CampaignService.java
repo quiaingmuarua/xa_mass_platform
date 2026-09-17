@@ -3,6 +3,7 @@ package com.xa.mass.scenario.messages;
 import com.xa.mass.kernel.assignment.RefillTarget;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
@@ -105,12 +106,16 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             var query=new EligibilityQuery(fields);
             campaign.taskId=creation.create(new TaskCreateRequest(campaign.group,"worker.messaging.available",50,3,
                     List.of(RefillTarget.of(query,100)))).taskId();
+            var input = new LinkedHashMap<String, Object>();
+            input.put("country", List.of(campaign.specification.country()));
+            if (campaign.specification.senderPhone() != null) input.put("phone", campaign.specification.senderPhone());
+            var selector = new WorkerQuery("worker.messaging.available", input);
             for (int start = 0; start < campaign.messages.size(); start += 100) {
                 requireRunning();
                 var items = campaign.messages.subList(start, Math.min(start + 100, campaign.messages.size())).stream()
                         .map(message -> new TaskItemRequest(message.id, "extension.worker.message.send", Map.of(
                                 "campaignId", campaign.id, "messageId", message.id, "country", campaign.specification.country(),
-                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, query)).toList();
+                                "recipientId", message.recipient, "body", campaign.specification.body()), 5, 60_000L, selector)).toList();
                 var appended = data.appendFiniteTaskItems(campaign.taskId, items);
                 if (appended.size() != items.size() || items.stream().anyMatch(item ->
                         appended.get(item.messageId()) == null || !"applied".equals(appended.get(item.messageId()).status().wireValue())))

@@ -24,15 +24,17 @@ serviceability policy, Pacer loops and thread lifecycle belong to
 [`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
-TaskItems carry the same quantity-free `EligibilityQuery` as Matching operations.
-Kernel checks only its bounded string-list structure and stores the direct Map;
-Rule normalization owns all field meanings, including Default Worker IDs. Pacer
-passes messageId-to-query Maps; Matching normalizes, groups equivalent queries and
-returns at most one original held candidate per message ID. Pacer retains only
-request correlation and subsequent mechanical checks. Old nested property
-conditions are unreadable without conversion or data cleanup; use a new scope
-for those Tasks. Task Rule configuration is stored in the Task descriptor; recreate old Tasks in
-a new scope. Matching facts and index formats are unchanged.
+TaskItems carry `WorkerQuery(executorName, input)`, a bounded immutable JSON
+request. Kernel stores its envelope without interpreting function names or local
+parameters. Pacer passes Group and messageId-to-query Maps; Matching routes through
+its fixed function table and returns at most one candidate per message ID. Pacer
+retains correlation, address checks and mechanical execution admission.
+
+Task Rule configuration and `RefillTarget`/`EligibilityQuery` supply declarations
+remain in the descriptor with their existing format. Item queries do not drive
+refill and can name a different Group-enabled function. Old direct selector Maps
+(including ANY/ID) are unreadable after this cutover; use a new scope, with no
+conversion or data cleanup. Matching Facts and source indexes are unchanged.
 
 The three Result event interfaces are stable semantic Mechanism ports rather
 than Pacer policy or new truth owners. Their default implementations may

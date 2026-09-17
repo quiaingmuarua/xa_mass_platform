@@ -5,6 +5,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.workermatching.rules.*;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
@@ -36,42 +37,26 @@ class NamedPoolOperationsTest {
         when(connection.sync()).thenReturn(redis);
         storage=new RedisRuleStorage(client,new RedisKeyspace("test_named_pool"),Map.of(),clock::get);
         rule=new CountingRule(storage); failingRule=new CountingRule(storage);
+        var defaults=new DefaultRuleHandler(storage,Map.of());
         catalog=new RedisWorkerMatchingCatalog(storage,
-                Map.of("worker.default",new DefaultRuleHandler(storage,Map.of()),"test.pool",rule,"zz.fail",failingRule),
+                Map.of("worker.default",defaults,"test.pool",rule,"zz.fail",failingRule),
+                Map.of("worker.default",defaults.queryFunctions(),"test.pool",rule.queryFunctions(),"zz.fail",failingRule.queryFunctions()),
                 Map.of("g1",Set.of("test.pool","zz.fail"),"g2",Set.of("test.pool")),Map.of());
     }
     @AfterEach void close() { catalog.close(); }
 
-    @Test void equivalentAndInterleavedQueriesAreGroupedOnceThenCorrelatedInInputOrder() {
-        var handler=mock(RuleHandler.class);
-        var raw=pool(1,"US","CN","US").query();
-        var normalized=pool(1,"CN","US").query();
-        var narrow=pool(1,"CN").query();
-        when(handler.normalizeQuery("g1",raw)).thenReturn(normalized);
-        when(handler.normalizeQuery("g1",normalized)).thenReturn(normalized);
-        when(handler.normalizeQuery("g1",narrow)).thenReturn(narrow);
-        var supplied=List.of(new WorkerCandidate("first", 0),
-                new WorkerCandidate("second", 42), new WorkerCandidate("third", 44));
-        when(handler.take(eq("g1"),anyMap())).thenAnswer(call->{
-            Map<EligibilityQuery,Integer> limits=call.getArgument(1);
-            assertEquals(List.of(normalized,narrow),List.copyOf(limits.keySet()));
-            assertEquals(Map.of(normalized,3,narrow,1),limits);
-            return Map.of(normalized,List.of(supplied.get(0),supplied.get(1)),narrow,List.of(supplied.get(2)));
-        });
-        try(var matching=new RedisWorkerMatchingCatalog(storage,Map.of("worker.default",handler),Map.of(),Map.of())) {
-            var requests=new LinkedHashMap<String,EligibilityQuery>();
-            requests.put("a",raw); requests.put("b",narrow); requests.put("c",normalized); requests.put("d",raw);
-            var result=matching.take("g1","worker.default",requests);
-            assertEquals(List.of("a","b","c"),List.copyOf(result.keySet()));
-            assertSame(supplied.get(0),result.get("a"));
-            assertSame(supplied.get(2),result.get("b"));
-            assertSame(supplied.get(1),result.get("c"));
-            assertThrows(UnsupportedOperationException.class,result::clear);
-            requests.clear();
-            assertEquals(3,result.size());
-            verify(handler,times(1)).take(eq("g1"),anyMap());
-            verifyNoInteractions(redis);
-        }
+    @Test void equivalentAndInterleavedQueriesAreGroupedThenCorrelatedInInputOrder() {
+        rule.facts.putAll(Map.of("a","US","b","CN","c","CN"));
+        catalog.refill("g1",Map.of("test.pool",List.of(pool(3,"US","CN"))),offer("a","b","c"));
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        requests.put("first",new WorkerQuery("test.pool",Map.of("pool",List.of("US","CN","US"))));
+        requests.put("narrow",new WorkerQuery("test.pool",Map.of("pool",List.of("CN"))));
+        requests.put("equivalent",new WorkerQuery("test.pool",Map.of("pool",List.of("CN","US"))));
+        var result=catalog.take("g1",requests);
+        assertEquals(List.of("first","narrow","equivalent"),List.copyOf(result.keySet()));
+        assertEquals(List.of("a","c","b"),result.values().stream().map(WorkerCandidate::workerId).toList());
+        assertThrows(UnsupportedOperationException.class,result::clear);
+        requests.clear(); assertEquals(3,result.size()); verifyNoInteractions(redis);
     }
 
     @Test void candidateRequiresIdentityButLeavesFenceInterpretationToScoreOwner() {
@@ -85,57 +70,50 @@ class NamedPoolOperationsTest {
         rule.facts.put("worker","US");
         assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(1,"US"))),offer("worker")));
         int before=rule.normalizations;
-        assertTrue(catalog.take("g1","test.pool",Map.of()).isEmpty());
-        assertEquals(before,rule.normalizations);
-        assertThrows(IllegalArgumentException.class,()->catalog.take(" ","test.pool",Map.of()));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1"," ",Map.of()));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","missing",Map.of()));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("other","test.pool",Map.of()));
-        assertThrows(NullPointerException.class,()->catalog.take("g1","test.pool",null));
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        requests.put("valid",ANY);
-        requests.put("late",EligibilityQuery.parse(Map.of("unsupported",List.of("x"))));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
-        requests.put("late",null);
-        assertThrows(NullPointerException.class,()->catalog.take("g1","test.pool",requests));
-        requests.remove("late"); requests.put(" ",ANY);
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
-        requests.remove(" "); requests.put(null,ANY);
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
-        requests.remove(null);
-        for(int i=0;i<100;i++)requests.put("m"+i,ANY);
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g1","test.pool",requests));
-        var remaining=catalog.take("g1","test.pool",Map.of("valid",ANY));
-        assertEquals("worker",remaining.get("valid").workerId());
+        assertTrue(catalog.take("g1",Map.of()).isEmpty()); assertEquals(before,rule.normalizations);
+        assertThrows(IllegalArgumentException.class,()->catalog.take(" ",Map.of()));
+        assertThrows(NullPointerException.class,()->catalog.take("g1",null));
+        var any=new WorkerQuery("test.pool",Map.of());
+        var requests=new LinkedHashMap<String,WorkerQuery>(); requests.put("valid",any);
+        for(var bad:List.of(new WorkerQuery("missing",Map.of()),new WorkerQuery("test.pool",Map.of("unsupported",List.of("x"))))) {
+            requests.put("late",bad);
+            assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
+        }
+        requests.put("late",null); assertThrows(NullPointerException.class,()->catalog.take("g1",requests));
+        requests.remove("late"); requests.put(" ",any);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
+        requests.remove(" "); requests.put(null,any);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests)); requests.remove(null);
+        for(int i=0;i<100;i++)requests.put("m"+i,any);
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("other",Map.of("m",any)));
+        assertEquals("worker",catalog.take("g1",Map.of("valid",any)).get("valid").workerId());
         verifyNoInteractions(redis);
     }
 
     @Test void overlappingQueriesShortagesAndRepeatedMessageIdsHaveOnlyCallLocalMeaning() {
         var targets=Map.of("worker.default",List.of(new RefillTarget(Map.of(),3)));
-        var held=offer("one","two","three");
-        assertEquals(3,catalog.refill("g1",targets,held));
-        var identity=EligibilityQuery.parse(Map.of("workerId",List.of("one")));
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        requests.put("id-first",identity); requests.put("any-first",ANY);
-        requests.put("id-again",identity); requests.put("any-next",ANY); requests.put("unfilled",ANY);
-        var result=catalog.take("g1","worker.default",requests);
+        var held=offer("one","two","three"); assertEquals(3,catalog.refill("g1",targets,held));
+        var identity=new WorkerQuery("worker.default",Map.of("workerId",List.of("one")));
+        var any=new WorkerQuery("worker.default",Map.of());
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        requests.put("id-first",identity); requests.put("any-first",any); requests.put("id-again",identity);
+        requests.put("any-next",any); requests.put("unfilled",any);
+        var result=catalog.take("g1",requests);
         assertEquals(List.of("id-first","any-first","any-next"),List.copyOf(result.keySet()));
         assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
-        assertTrue(catalog.take("g1","worker.default",requests).isEmpty());
+        assertTrue(catalog.take("g1",requests).isEmpty());
         assertEquals(1,catalog.refill("g1",targets,offer("four")));
-        assertEquals("four",catalog.take("g1","worker.default",Map.of("id-first",ANY)).get("id-first").workerId());
+        assertEquals("four",catalog.take("g1",Map.of("id-first",any)).get("id-first").workerId());
         verifyNoInteractions(redis);
     }
 
     @Test void oneHundredMessagesCanShareOneNormalizedQuery() {
-        var held=new ArrayList<HeldCandidate>();
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        for(int i=0;i<100;i++) {
-            held.add(new HeldCandidate("worker"+i,20+i,2000));
-            requests.put("message"+i,ANY);
-        }
+        var held=new ArrayList<HeldCandidate>(); var requests=new LinkedHashMap<String,WorkerQuery>();
+        for(int i=0;i<100;i++) { held.add(new HeldCandidate("worker"+i,20+i,2000));
+            requests.put("message"+i,new WorkerQuery("worker.default",Map.of())); }
         assertEquals(100,catalog.refill("g1",Map.of("worker.default",List.of(new RefillTarget(Map.of(),100))),held));
-        var result=catalog.take("g1","worker.default",requests);
+        var result=catalog.take("g1",requests);
         assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
         assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
         verifyNoInteractions(redis);
@@ -152,7 +130,7 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","unknown",null));
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("other","test.pool",null));
         assertThrows(IllegalArgumentException.class,()->catalog.resolveRefillTargets("g1","test.pool",Collections.nCopies(101,expected)));
-        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
         verifyNoInteractions(redis);
     }
 
@@ -175,9 +153,9 @@ class NamedPoolOperationsTest {
         assertThrows(UnsupportedOperationException.class,needed::clear);
         assertEquals(2,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
         assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
-        assertEquals(List.of("w1","w2"),takeItems(catalog,"g1","test.pool",ANY,2)
+        assertEquals(List.of("w1","w2"),takeItems(catalog,"g1","test.pool",Map.of(),2)
                 .stream().map(h -> h.workerId()).toList());
-        assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",ANY,1)
+        assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",Map.of(),1)
                 .stream().map(h -> h.workerId()).toList());
         verifyNoInteractions(redis);
     }
@@ -186,10 +164,10 @@ class NamedPoolOperationsTest {
         rule.facts.putAll(Map.of("a","US","b","US"));
         var targets=Map.of("test.pool",List.of(pool(1,"US")));
         assertEquals(1,catalog.refill("g1",targets,offer("a")));
-        assertTrue(takeItems(catalog,"g2","test.pool",ANY,1).isEmpty());
+        assertTrue(takeItems(catalog,"g2","test.pool",Map.of(),1).isEmpty());
         assertEquals(1,catalog.refill("g2",targets,offer("b")));
-        assertEquals("a",takeItems(catalog,"g1","test.pool",ANY,1).getFirst().workerId());
-        assertEquals("b",takeItems(catalog,"g2","test.pool",ANY,1).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
+        assertEquals("b",takeItems(catalog,"g2","test.pool",Map.of(),1).getFirst().workerId());
         verifyNoInteractions(redis);
     }
 
@@ -202,7 +180,7 @@ class NamedPoolOperationsTest {
         assertEquals(0,catalog.refill("g1",targets,offer("second")));
         assertEquals(reads,rule.snapshots.size());
         assertTrue(catalog.groupsNeedingRefill(Map.of("g1",targets)).isEmpty());
-        catalog.take("g1","test.pool",Map.of("m",ANY));
+        catalog.take("g1",Map.of("m",new WorkerQuery("test.pool",Map.of())));
         assertEquals(1,catalog.refill("g1",targets,offer("second")));
     }
 
@@ -227,8 +205,8 @@ class NamedPoolOperationsTest {
                 java.util.stream.IntStream.range(0,101).mapToObj(i->new HeldCandidate("w"+i,20,2000)).toList()));
         assertThrows(NullPointerException.class,()->catalog.refill("g1",targets,Arrays.asList((HeldCandidate)null)));
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",Map.of("missing",List.of(pool(1,"US"))),offer("w")));
-        assertThrows(IllegalArgumentException.class,()->catalog.take("g2","zz.fail",Map.of("m",ANY)));
-        assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g1","missing",ANY));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g2",Map.of("m",new WorkerQuery("zz.fail",Map.of()))));
+        assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g1",new WorkerQuery("missing",Map.of())));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",List.of()))));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Map.of("test.pool",Collections.nCopies(10_001,pool(1,"US"))))));
         var tooMany=new LinkedHashMap<String,Map<String,List<RefillTarget>>>();
@@ -239,7 +217,7 @@ class NamedPoolOperationsTest {
                 "test.pool",List.of(pool(1,"US"))));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(tooMany));
         assertTrue(rule.snapshots.isEmpty());
-        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
         verifyNoInteractions(redis);
     }
 
@@ -258,7 +236,7 @@ class NamedPoolOperationsTest {
         assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(2,"US"))),
                 List.of(new HeldCandidate("old",20,1000),live)));
         assertEquals(List.of(List.of("live")),rule.snapshots);
-        assertEquals(candidate(live),takeItems(catalog,"g1","test.pool",ANY,1).getFirst());
+        assertEquals(candidate(live),takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst());
     }
 
     @Test void qualificationConsumesOriginalDeadline() {
@@ -266,7 +244,7 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")));
         assertEquals(0,catalog.refill("g1",targets,offer("w")));
         assertEquals(List.of(List.of("w")),rule.snapshots);
-        assertTrue(takeItems(catalog,"g1","test.pool",ANY,1).isEmpty());
+        assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
         assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",targets)));
     }
 
@@ -276,8 +254,8 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"CN")));
         assertThrows(IllegalStateException.class,()->catalog.refill("g1",targets,offer("us","cn")));
         assertEquals(List.of(List.of("us","cn")),rule.snapshots);
-        assertEquals(List.of("us"),takeItems(catalog,"g1","test.pool",ANY,1).stream().map(h -> h.workerId()).toList());
-        assertTrue(takeItems(catalog,"g1","zz.fail",ANY,1).isEmpty());
+        assertEquals(List.of("us"),takeItems(catalog,"g1","test.pool",Map.of(),1).stream().map(h -> h.workerId()).toList());
+        assertTrue(takeItems(catalog,"g1","zz.fail",Map.of(),1).isEmpty());
     }
 
     @Test void acceptedIdsAreExcludedFromLaterRulesAndRuleAttemptsRotate() {
@@ -286,68 +264,13 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"US")));
         assertEquals(2,catalog.refill("g1",targets,offer("a","b")));
         assertEquals(List.of(List.of("b")),failingRule.snapshots);
-        assertEquals("a",takeItems(catalog,"g1","test.pool",ANY,1).getFirst().workerId());
-        assertEquals("b",takeItems(catalog,"g1","zz.fail",ANY,1).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
+        assertEquals("b",takeItems(catalog,"g1","zz.fail",Map.of(),1).getFirst().workerId());
         assertEquals(1,catalog.refill("g1",targets,offer("a")));
-        assertEquals("a",takeItems(catalog,"g1","zz.fail",ANY,1).getFirst().workerId());
+        assertEquals("a",takeItems(catalog,"g1","zz.fail",Map.of(),1).getFirst().workerId());
     }
 
-    @Test void catalogWorksWithIndependentMapRuleWithoutBindingsOrRedis() {
-        RuleHandler mapRule=new MapRule();
-        try(var other=new RedisWorkerMatchingCatalog(storage,
-                Map.of("worker.default",new DefaultRuleHandler(storage,Map.of()),"map",mapRule),
-                Map.of("g1",Set.of("map")),Map.of())) {
-            var targets=Map.of("map",List.of(new RefillTarget(Map.of(),2)));
-            assertEquals(ANY,other.normalizeQuery("g1","map",ANY));
-            assertEquals(Set.of("g1"),other.groupsNeedingRefill(Map.of("g1",targets)));
-            var held=offer("first","second");
-            assertEquals(2,other.refill("g1",targets,held));
-            assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),takeItems(other,"g1","map",ANY,2));
-            verifyNoInteractions(redis);
-        }
-    }
-    /** Deliberately independent representation: no local-candidate base, index or storage resource. */
-    static final class MapRule implements RuleHandler {
-        final Map<String,LinkedHashMap<String,HeldCandidate>> groups=new HashMap<>();
-        public EligibilityQuery normalizeQuery(String group,EligibilityQuery query) {
-            if(group==null || group.isBlank() || !query.query().isEmpty())throw new IllegalArgumentException();
-            return query;
-        }
-        public synchronized Map<EligibilityQuery,Integer> deficits(String group,Map<EligibilityQuery,Integer> targets) {
-            if(targets.size()>100)throw new IllegalArgumentException();
-            var result=new LinkedHashMap<EligibilityQuery,Integer>();
-            targets.forEach((q,count)->{
-                normalizeQuery(group,q);
-                if(count==null || count<1 || count>1000)throw new IllegalArgumentException();
-                result.put(q,Math.max(0,count-groups.getOrDefault(group,new LinkedHashMap<>()).size()));
-            });
-            return Collections.unmodifiableMap(result);
-        }
-        public synchronized List<String> refill(String group,Map<EligibilityQuery,Integer> targets,List<HeldCandidate> offered,int maxAccepted) {
-            var missing=deficits(group,targets);
-            if(offered.size()>100 || maxAccepted<0 || maxAccepted>100 || offered.stream().map(h -> h.workerId()).distinct().count()!=offered.size())
-                throw new IllegalArgumentException();
-            int limit=Math.min(maxAccepted,missing.values().stream().mapToInt(Integer::intValue).max().orElse(0));
-            var pool=groups.computeIfAbsent(group,k->new LinkedHashMap<>());var accepted=new ArrayList<String>();
-            for(var candidate:offered)if(accepted.size()<limit && pool.putIfAbsent(candidate.workerId(),candidate)==null)accepted.add(candidate.workerId());
-            return List.copyOf(accepted);
-        }
-        public synchronized Map<EligibilityQuery,List<WorkerCandidate>> take(String group,Map<EligibilityQuery,Integer> limits) {
-            if(limits.size()>100 || limits.values().stream().anyMatch(n->n<1 || n>100) || limits.values().stream().mapToInt(Integer::intValue).sum()>100)
-                throw new IllegalArgumentException();
-            limits.keySet().forEach(selector->normalizeQuery(group,selector));
-            var result=new LinkedHashMap<EligibilityQuery,List<WorkerCandidate>>();
-            var pool=groups.getOrDefault(group,new LinkedHashMap<>());
-            limits.forEach((selector,count)->{
-                var taken=new ArrayList<HeldCandidate>();var iterator=pool.values().iterator();
-                while(iterator.hasNext() && taken.size()<count) { taken.add(iterator.next());iterator.remove(); }
-                result.put(selector,taken.stream().map(NamedPoolOperationsTest::candidate).toList());
-            });
-            return Collections.unmodifiableMap(result);
-        }
-    }
-
-    static final class CountingRule extends LocalCandidateRule<String> {
+    static final class CountingRule extends PoolRule<String> {
         CountingRule(RedisRuleStorage storage) { super(storage); }
         final Map<String,String> facts=new HashMap<>();
         final Set<EligibilityQuery> observedTargets=new LinkedHashSet<>();
@@ -363,9 +286,19 @@ class NamedPoolOperationsTest {
                     .map(String.class::cast).distinct().sorted().toList()));
             return new EligibilityQuery(result);
         }
-        @Override protected java.util.function.BiPredicate<String,String> predicate(String group,EligibilityQuery query) {
+        @Override protected Selection target(String group,EligibilityQuery query) {
             observedTargets.add(query);
-            return (id,pool)->pool!=null && (query.query().isEmpty() || query.query().get("pool").contains(pool));
+            return query.query().isEmpty() ? all() : range("pool",query.query().get("pool"));
+        }
+        @Override protected Object normalizeLocalInput(String group,Object input) {
+            return normalize(group,EligibilityQuery.parse((Map<?,?>)input)).query();
+        }
+        @Override protected Selection select(String group,Object input) {
+            var query=EligibilityQuery.parse((Map<?,?>)input);
+            return query.query().isEmpty() ? all() : range("pool",query.query().get("pool"));
+        }
+        @Override protected Map<String,String> memberships(String group,String id,String pool) {
+            return pool==null ? null : Map.of("pool",pool);
         }
         @Override protected Map<String,String> readQualifications(String group,List<String> ids) {
             beforeSnapshot.run(); snapshots.add(List.copyOf(ids));
@@ -377,9 +310,9 @@ class NamedPoolOperationsTest {
 
     /** Fixture for stock-volume proofs: submit distinct Items through the public correlation port. */
     private static List<WorkerCandidate> takeItems(com.xa.mass.kernel.assignment.WorkerMatching matching,
-            String group,String rule,EligibilityQuery query,int count) {
-        var requests=new LinkedHashMap<String,EligibilityQuery>();
-        for(int i=0;i<count;i++)requests.put("message-"+i,query);
-        return List.copyOf(matching.take(group,rule,requests).values());
+            String group,String rule,Object input,int count) {
+        var requests=new LinkedHashMap<String,WorkerQuery>();
+        for(int i=0;i<count;i++)requests.put("message-"+i,new WorkerQuery(rule,input));
+        return List.copyOf(matching.take(group,requests).values());
     }
 }

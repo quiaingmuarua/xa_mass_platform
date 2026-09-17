@@ -10,7 +10,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -42,13 +42,13 @@ public final class TaskCallSubmissionService {
             throw invalid("taskId must be non-blank");
         }
         // Capture every input, including duplicates, before any Owner call.
-        List<EligibilityQuery> selectors = captureSelectors(items);
+        List<WorkerQuery> selectors = captureSelectors(items);
         TaskDescriptor descriptor = requireCallableTask(taskId);
         long createdAtMillis = taskItems.nowMillis();
         var latest = new LinkedHashMap<String, TaskItem>();
         try {
             for (int i = 0; i < items.size(); i++) {
-                EligibilityQuery selector = matching.normalizeQuery(descriptor.workerGroupId(), descriptor.ruleId(), selectors.get(i));
+                WorkerQuery selector = matching.normalizeQuery(descriptor.workerGroupId(), selectors.get(i));
                 TaskItemRequest item = items.get(i);
                 latest.put(item.messageId(), taskItems.callItem(item, createdAtMillis, selector));
             }
@@ -123,7 +123,7 @@ public final class TaskCallSubmissionService {
         return descriptor;
     }
 
-    private static List<EligibilityQuery> captureSelectors(
+    private static List<WorkerQuery> captureSelectors(
             List<TaskItemRequest> items
     ) {
         if (items == null || items.isEmpty() || items.size() > 100) {
@@ -134,7 +134,7 @@ public final class TaskCallSubmissionService {
                     null
             );
         }
-        var selectors = new ArrayList<EligibilityQuery>(items.size());
+        var selectors = new ArrayList<WorkerQuery>(items.size());
         for (TaskItemRequest item : items) {
             if (item == null) {
                 throw new ServerException(

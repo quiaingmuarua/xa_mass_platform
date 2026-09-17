@@ -101,12 +101,22 @@ class RuntimeBoundaryIntegrationTest {
         @Bean IdentityHintRuleHandler identityHintRule(RedisRuleStorage storage) {
             return new IdentityHintRuleHandler(storage);
         }
-        @Bean Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules,
-                IdentityHintRuleHandler identityHintRule) {
-            return Map.of("worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),"worker.country",new CountryRuleHandler(storage),
+        @Bean(destroyMethod="close") com.xa.mass.workermatching.RedisWorkerMatchingCatalog workerMatchingCatalog(
+                RedisRuleStorage storage,MatchingRuleProperties rules,IdentityHintRuleHandler identityHintRule) {
+            Map<String,com.xa.mass.workermatching.rules.PoolRule<?>> pools=Map.of(
+                    "worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),"worker.country",new CountryRuleHandler(storage),
                     "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage),
-                    BucketRuleHandler.ID,new BucketRuleHandler(storage), IdentityHintRuleHandler.ID,identityHintRule);
+                    BucketRuleHandler.ID,new BucketRuleHandler(storage));
+            var handlers=new java.util.LinkedHashMap<String,RuleHandler>(pools);
+            handlers.put(IdentityHintRuleHandler.ID,identityHintRule);
+            var functions=new java.util.LinkedHashMap<String,com.xa.mass.workermatching.QueryFunctions>();
+            pools.forEach((name,pool)->functions.put(name,pool.queryFunctions()));
+            functions.put(IdentityHintRuleHandler.ID,identityHintRule.queryFunctions());
+            var catalog=new com.xa.mass.workermatching.RedisWorkerMatchingCatalog(storage,handlers,functions,rules.workerGroups(),rules.defaultRefillTargets());
+            try { catalog.rebuildIndexes(); return catalog; }
+            catch(RuntimeException failure) { catalog.close(); throw failure; }
         }
+
     }
 
     private static final int SERVER_PORT = availablePort();
@@ -480,7 +490,7 @@ class RuntimeBoundaryIntegrationTest {
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 String rejectedId=UUID.randomUUID().toString();
                 var rejected=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of(
-                        "messageId",rejectedId,"eventCode",event,"payload",Map.of(),"workerSelector",Map.of("workerId",List.of(workerId))))));
+                        "messageId",rejectedId,"eventCode",event,"payload",Map.of(),"workerSelector",Map.of("executorName",BucketRuleHandler.ID,"input",Map.of("workerId",List.of(workerId)))))));
                 assertThat(rejected.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(rejected.body()).get(rejectedId).get("status").asText()).isEqualTo("rejected");
                 var missing=send("POST","/api/v1/tasks/"+task+"/items:states",Jsons.toJson(List.of(rejectedId)));
@@ -489,7 +499,7 @@ class RuntimeBoundaryIntegrationTest {
                 for(int i=0;i<6;i++) {
                     String id=UUID.randomUUID().toString();ids.add(id);
                     items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
-                            "workerSelector",Map.of("test.bucket",List.of("red"))));
+                            "workerSelector",Map.of("executorName",BucketRuleHandler.ID,"input",Map.of("test.bucket",List.of("red")))));
                 }
                 assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items)).statusCode()).isEqualTo(200);
                 tasks.put(task,ids);
@@ -535,7 +545,7 @@ class RuntimeBoundaryIntegrationTest {
             for (int i = 0; i < 3; i++) {
                 String id = UUID.randomUUID().toString();
                 ids.add(id);
-                items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of()));
+                items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName",IdentityHintRuleHandler.ID,"input",Map.of())));
             }
             assertThat(send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(items)).statusCode()).isEqualTo(200);
             assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
@@ -592,7 +602,7 @@ class RuntimeBoundaryIntegrationTest {
                     var items=new ArrayList<Map<String,Object>>();
                     for(int i=0;i<100;i++) {
                         String id=UUID.randomUUID().toString();ids.add(id);
-                        Map<String,Object> selector=t<2?Map.of("worker.country",List.of("CN")):Map.of();
+                        Map<String,Object> selector=Map.of("executorName",rule,"input",t<2?List.of("CN"):Map.of());
                         items.add(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),"workerSelector",selector));
                     }
                     var appended=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items));
@@ -673,7 +683,7 @@ class RuntimeBoundaryIntegrationTest {
         String messageId = UUID.randomUUID().toString();
         var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of(
                 "messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(),
-                "workerSelector", Map.of("worker.country", List.of(country))))));
+                "workerSelector", Map.of("executorName","worker.country","input",List.of(country))))));
         assertThat(appended.statusCode()).isEqualTo(200);
         assertThat(JSON.readTree(appended.body()).get(messageId).get("status").asText()).isEqualTo("applied");
         assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve", null).statusCode()).isEqualTo(200);
@@ -709,7 +719,7 @@ class RuntimeBoundaryIntegrationTest {
             String messageId = UUID.randomUUID().toString();
             expected.put(messageId, executor);
             items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor",
-                    "payload", Map.of(), "workerSelector", Map.of("worker.country", List.of(country))));
+                    "payload", Map.of(), "workerSelector", Map.of("executorName","worker.default","input",Map.of("country",List.of(country)))));
         });
         var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of(
                 "items", items, "waitTimeoutMillis", 10000)));
@@ -876,7 +886,7 @@ class RuntimeBoundaryIntegrationTest {
                         Jsons.toJson(Map.of("items", List.of(Map.of(
                                 "messageId", messageId, "eventCode", TEST_EVENT_CODE,
                                 "payload", Map.of("value", "input"),
-                                "workerSelector", Map.of("workerId", List.of(prepared.workerId())))),
+                                "workerSelector", Map.of("executorName","worker.default","input",Map.of("workerId", List.of(prepared.workerId()))))),
                                 "waitTimeoutMillis", 1)));
                 assertThat(submitted.statusCode()).isEqualTo(200);
                 assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
@@ -973,8 +983,8 @@ class RuntimeBoundaryIntegrationTest {
             ).statusCode()).isEqualTo(200);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
-            Map<String,Object> selector=Map.of("worker.proofPool",List.of("A"),
-                    "platform.proofEnabled",List.of("yes"));
+            Map<String,Object> selector=Map.of("executorName","proof.worker.facts",
+                    "input",Map.of("proofPool","A","proofEnabled","yes"));
             String taskId=createTask(workerGroupId,"proof.worker.facts");
             String otherTaskId=createTask(workerGroupId,"proof.worker.facts");
             var sharedRules = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId, otherTaskId));
@@ -1272,7 +1282,7 @@ class RuntimeBoundaryIntegrationTest {
             appendItem(
                     demandTaskId,
                     "serviceability-demand-item-" + suffix,
-                    Map.of("workerId",List.of("missing-worker-"+suffix))
+                    Map.of("executorName","worker.default","input",Map.of("workerId",List.of("missing-worker-"+suffix)))
             );
             awaitServiceabilitySnapshot(workerGroupId, workerId, demandTaskId);
         } finally {
@@ -1737,7 +1747,7 @@ class RuntimeBoundaryIntegrationTest {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "payload": {"value": "input"},
-                            "workerSelector": {"workerId": ["%s"]}
+                            "workerSelector": {"executorName":"worker.default","input":{"workerId": ["%s"]}}
                           }],
                           "waitTimeoutMillis": 10000
                         }

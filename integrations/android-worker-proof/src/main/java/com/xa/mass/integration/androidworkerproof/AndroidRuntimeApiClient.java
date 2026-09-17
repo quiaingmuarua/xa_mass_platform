@@ -145,7 +145,7 @@ final class AndroidRuntimeApiClient {
             item.put("messageId", messageId);
             item.put("eventCode", call.eventName());
             item.put("payload", call.payload());
-            item.put("workerSelector", call.workerSelector());
+            item.put("workerSelector", Map.of("executorName","worker.default","input",call.workerSelector()));
             items.add(Map.copyOf(item));
         }
         JsonHttpClient.Response response = http.send(

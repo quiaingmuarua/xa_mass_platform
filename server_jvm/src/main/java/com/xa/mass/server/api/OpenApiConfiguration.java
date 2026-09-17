@@ -84,7 +84,16 @@ public class OpenApiConfiguration {
             target.getProperties().get("count").setMinimum(java.math.BigDecimal.ONE);
             target.getProperties().get("count").setMaximum(java.math.BigDecimal.valueOf(1000));
             Schema<?> item = document.getComponents().getSchemas().get("TaskItemRequest");
-            var selector = new Schema<>().$ref("#/components/schemas/EligibilityQuery");
+            Schema<?> workerQuery = document.getComponents().getSchemas().get("WorkerQuery");
+            workerQuery.setRequired(List.of("executorName", "input")); workerQuery.setAdditionalProperties(false);
+            workerQuery.getProperties().get("executorName").setMinLength(1);
+            workerQuery.getProperties().get("executorName").setPattern(".*\\S.*");
+            Schema<?> input = workerQuery.getProperties().get("input");
+            input.setTypes(new LinkedHashSet<>(List.of("object", "array", "string", "number", "boolean")));
+            input.setDescription("Executor-local JSON. Root cannot be null; nested null is preserved. "
+                    + "Each container has at most 100 members, container depth at most 8, encoded input at most 64 KiB. "
+                    + "Only the selected Matching function interprets its shape.");
+            var selector = new Schema<>().$ref("#/components/schemas/WorkerQuery");
             selector.setDescription(item.getProperties().get("workerSelector").getDescription());
             item.getProperties().put("workerSelector", selector);
         };

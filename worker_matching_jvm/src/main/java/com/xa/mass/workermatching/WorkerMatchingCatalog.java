@@ -2,6 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,7 +17,7 @@ public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.Wor
     String DEFAULT_RULE_ID = "worker.default";
 
     /** Idempotent Server admission, without Redis reads or stock changes. */
-    EligibilityQuery normalizeQuery(String workerGroupId, String ruleId, EligibilityQuery query);
+    WorkerQuery normalizeQuery(String workerGroupId, WorkerQuery query);
 
     /** Creates or replaces complete string Properties for 1..100 Workers in one Group. */
     Map<String, MutationResult> upsertWorkerFactsBatch(

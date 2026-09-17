@@ -1,6 +1,6 @@
 package com.xa.mass.server.assembly.kernel;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
 
 
@@ -200,7 +200,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("phoneNumber", "+14155552671"),
                 0,
                 createdAt + 60_000,
-                EligibilityQuery.parse(Map.of())
+                new WorkerQuery("worker.default", Map.of())
         );
 
         assertThat(runtime.appendItems(
@@ -217,7 +217,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         + "\"eventCode\":\"telecom.phone.inspect\","
                         + "\"expireAtMillis\":" + (createdAt + 60_000) + ","
                         + "\"payload\":{\"phoneNumber\":\"+14155552671\"},"
-                        + "\"priority\":0,\"workerSelector\":{}}"
+                        + "\"priority\":0,\"workerSelector\":{\"executorName\":\"worker.default\",\"input\":{}}}"
         );
         double score = redis.zscore(
                 keyspace.base() + ":task:task-1:item_score",
@@ -285,7 +285,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of(),
                 0,
                 createdAt + 60_000,
-                EligibilityQuery.parse(Map.of("workerId", List.of("worker-b", "worker-a")))
+                new WorkerQuery("worker.default", Map.of("workerId", List.of("worker-b", "worker-a")))
         );
 
         assertThat(runtime.appendItems(
@@ -304,15 +304,27 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test void opaquePropertySelectorRoundTripsWithoutKernelInterpretation() {
         long now = redisTimeMillis();
-        var selector = EligibilityQuery.parse(Map.of("worker.test.region", List.of("east", "west")));
+        var selector = new WorkerQuery("worker.default", Map.of("worker.test.region", List.of("east", "west")));
         var item = new TaskItem("indexed", "event", now, Map.of(), 0, now + 60_000, selector);
         storeTask("indexed-task");
         assertThat(runtime.appendItems("indexed-task", List.of(item)).get("indexed").status()).isEqualTo(TaskItemAppendStatus.APPENDED);
         assertThat(runtime.loadTaskItems("indexed-task", List.of("indexed"))).containsEntry("indexed", item);
         assertThat(Jsons.parseObject(redis.hget(keyspace.base() + ":task:indexed-task:items", "indexed")))
-                .containsEntry("workerSelector", selector.query())
+                .containsEntry("workerSelector", Map.of("executorName",selector.executorName(),"input",selector.input()))
                 .doesNotContainKeys("indexQuery", "targetWorkerIds");
-
+        int number = 0;
+        for (Object input : List.of(7L, "7", true, java.util.Arrays.asList(null, false),
+                Map.of("arbitrary", java.util.Arrays.asList(7L, true, null)))) {
+            var nativeItem = new TaskItem("native-" + number++, "event", now, Map.of(), 0, now + 60_000,
+                    new WorkerQuery("unregistered.function", input));
+            assertThat(runtime.appendItems("indexed-task", List.of(nativeItem)).get(nativeItem.messageId()).status())
+                    .isEqualTo(TaskItemAppendStatus.APPENDED);
+            var loadedNative = runtime.loadTaskItems("indexed-task", List.of(nativeItem.messageId())).get(nativeItem.messageId());
+            assertThat(loadedNative).isNotNull();
+            // JSON preserves number/string identity, not a caller's Java Number subclass.
+            assertThat(loadedNative.workerSelector().executorName()).isEqualTo(nativeItem.workerSelector().executorName());
+            assertThat(Jsons.toJson(loadedNative.workerSelector().input())).isEqualTo(Jsons.toJson(input));
+        }
     }
 
     @Test
@@ -340,10 +352,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         oldAny.put("workerSelector", List.of());
         var oldTriple = new LinkedHashMap<>(common);
         oldTriple.put("workerSelector", List.of("workerId", "$eq", "worker"));
+        var previousAny = new LinkedHashMap<>(common); previousAny.put("workerSelector",Map.of());
+        var previousId = new LinkedHashMap<>(common); previousId.put("workerSelector",Map.of("workerId",List.of("w")));
         var oldCondition = new LinkedHashMap<>(common);
         oldCondition.put("workerSelector", Map.of("worker.country", Map.of("op", "eq", "values", List.of("CN"))));
         for (Map<String, Object> record : List.of(common, oldIds, oldQuery, wrapped, missingValue,
-                mixed, malformed, oldAny, oldTriple, oldCondition)) {
+                mixed, malformed, oldAny, oldTriple, oldCondition, previousAny, previousId)) {
             String encoded = Jsons.toJson(record);
             redis.hset(keyspace.base() + ":task:old-shape:items", "item", encoded);
             assertThat(runtime.loadTaskItems("old-shape", List.of("item"))).containsEntry("item", null);
@@ -482,7 +496,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         Map.of(),
                         5,
                         redisTimeMillis() + 60_000,
-                        EligibilityQuery.parse(Map.of())
+                        new WorkerQuery("worker.default", Map.of())
                 ))
         ).get("message-1").status()).isEqualTo(
                 TaskItemAppendStatus.NOT_FOUND
@@ -570,7 +584,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("value", "abc"),
                 5,
                 now + 60_000,
-                EligibilityQuery.parse(Map.of())
+                new WorkerQuery("worker.default", Map.of())
         );
         var submitted = callSubmission.submit(
                 "task-commands",
@@ -677,7 +691,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("value", "abc"),
                 5,
                 now + 60_000,
-                EligibilityQuery.parse(Map.of())
+                new WorkerQuery("worker.default", Map.of())
         );
 
         var submitted = new DefaultTaskCallItemSubmission(
@@ -1393,7 +1407,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void reappendPreservesTerminalAndLateSuccessAdvancesFailedWithoutReopeningTask() {
         runtime.createTask(descriptor("outcomes", 0));
         long now = redisTimeMillis();
-        var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, EligibilityQuery.parse(Map.of()));
+        var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, new WorkerQuery("worker.default", Map.of()));
         runtime.appendItems("outcomes", List.of(item));
         runtime.storeTaskItemFailedResults("outcomes", List.of("item"));
         itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), 5, 5_000));

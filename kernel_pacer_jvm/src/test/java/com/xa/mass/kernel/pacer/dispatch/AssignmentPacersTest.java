@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,10 +68,10 @@ class AssignmentPacersTest {
                 explicit.messageId(), explicit,
                 anyWorker.messageId(), anyWorker
         ));
-        var selectors = new LinkedHashMap<String, EligibilityQuery>();
+        var selectors = new LinkedHashMap<String, WorkerQuery>();
         selectors.put(explicit.messageId(), explicit.workerSelector());
         selectors.put(anyWorker.messageId(), anyWorker.workerSelector());
-        when(selection.takeCandidates("worker.default",
+        when(selection.takeCandidates(
                 "group-1", selectors, Set.of()
         )).thenReturn(Map.of(
                 explicit.messageId(), worker("worker-target", 201L),
@@ -94,7 +94,7 @@ class AssignmentPacersTest {
                         10))
         ));
 
-        verify(selection).takeCandidates("worker.default",
+        verify(selection).takeCandidates(
                 "group-1", selectors, Set.of()
         );
     }
@@ -121,7 +121,7 @@ class AssignmentPacersTest {
                         Map.of(),
                         0,
                         999L,
-                        EligibilityQuery.parse(Map.of())
+                        new WorkerQuery("worker.default", Map.of())
                 )
         ));
 
@@ -200,7 +200,7 @@ class AssignmentPacersTest {
                 Map.of(),
                 0,
                 null,
-                EligibilityQuery.parse(targetWorkerIds.isEmpty()
+                new WorkerQuery("worker.default", targetWorkerIds.isEmpty()
                         ? Map.of() : Map.of("workerId", targetWorkerIds))
         );
     }

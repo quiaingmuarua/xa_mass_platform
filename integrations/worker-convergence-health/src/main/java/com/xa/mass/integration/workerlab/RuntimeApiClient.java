@@ -177,7 +177,7 @@ final class RuntimeApiClient {
                     "messageId", item.messageId(),
                     "eventCode", item.eventCode(),
                     "payload", item.payload(),
-                    "workerSelector", item.workerSelector()
+                    "workerSelector", Map.of("executorName","worker.default","input",item.workerSelector())
             ));
         }
         JsonHttpClient.Response response = http.send(
@@ -284,7 +284,7 @@ final class RuntimeApiClient {
                         "messageId", messageId,
                         "eventCode", eventCode,
                         "payload", payload,
-                        "workerSelector", workerSelector
+                        "workerSelector", Map.of("executorName","proof.worker.facts","input",Map.of("convergenceSlot",((List<?>)workerSelector.get("worker.convergenceSlot")).getFirst()))
                 ))
         );
         requireStatus(appended, 200, "append Rule witness Item");

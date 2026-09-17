@@ -294,20 +294,25 @@ export may therefore contain newer content.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
-derives the absolute expiry. Finite Task append may supply `workerSelector`; omission means `{}`;
+derives the absolute expiry. Finite Task append may supply `workerSelector`; omission means the Task Rule with empty object input;
 managed Task Call requires a Selector object, where `{}` means no Worker
 additional restriction within the bound Rule. Only `worker.default` accepts
 `{"workerId":["a","b"]}`; those IDs remain restricted to the bound WorkerGroup.
 Property maps may combine the Handler's supported conditions with AND. Country uses
 `{"worker.country":["CN","US"]}` with 1..100 values.
 Values are strict uppercase ASCII pairs. Old nested operator conditions are rejected;
-ANY and explicit-ID JSON are unchanged. Enable Groups with
-`xa.mass.worker-matching.rules.worker-groups.<group>` with explicit Handler IDs.
-For named Rules, ANY requires Rule membership and explicit ID queries are rejected.
-All queries use the same immutable string-list Map; each Handler interprets its fields.
-Submission reads Task configuration and normalizes selectors without taking candidates. Finite invalid
-members retain per-member rejection; managed calls validate every original
-query, including overwritten duplicate IDs, before submission.
+Items use `workerSelector: {executorName, input}`. The input is bounded immutable
+JSON interpreted only by the named Matching function. Finite append omission uses
+the descriptor's Rule name with empty object input; managed Call requires an
+explicit envelope. A function must be enabled for the Group and may differ from
+the Task's supply Rule. Old direct selector Maps are rejected rather than converted
+to ANY; retained old Items are unreadable. See [Matching](../worker_matching_jvm/README.md#unified-queries-and-fixed-handlers)
+for local input shapes, bounds and Pool semantics. Refill declarations and Task
+creation remain unchanged.
+
+Submission normalizes without consuming candidates. Finite invalid members retain
+per-member rejection; managed calls validate every original query, including
+overwritten duplicate IDs, before submission.
 
 The HTTP Call service and the SMS business module share Server's
 `TaskCallSubmissionService`: complete input validation, bounded managed-Task
@@ -329,12 +334,13 @@ Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker. Server passes the finite Item
-`workerSelector` through structural capture and named Matching normalization using the Task descriptor Group and Rule ID,
+`workerSelector` through structural capture and named Matching normalization using the Task descriptor Group and the Item executor name,
 then appends the normalized immutable query. Server validates every original
 query, including overwritten duplicates and identity selectors. It uses the same Catalog
 instance exposed to Pacer only through `WorkerMatching`. The Catalog's Server admission
 method is not part of that Pacer port. Submission does not take candidates; dispatch
-passes messageId-to-query Maps for Matching to normalize, group and correlate.
+passes messageId-to-query Maps for the fixed function table to normalize, execute
+and correlate.
 Catalog startup rebuilds configured
 derived indexes before the bean is exposed. Matching owns the country range and
 take time; Kernel retains hold, exact soft-to-sealed transfer and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
@@ -426,7 +432,7 @@ assuming every non-2xx response means no execution occurred.
       "eventCode": "extension.worker.string.md5",
       "payload": {"value": "hello"},
       "ttlMillis": 30000,
-      "workerSelector": {}
+      "workerSelector": {"executorName":"worker.default","input":{}}
     }
   ],
   "waitTimeoutMillis": 30000

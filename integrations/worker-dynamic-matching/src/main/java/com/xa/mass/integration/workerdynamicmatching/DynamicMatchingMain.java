@@ -219,13 +219,17 @@ public final class DynamicMatchingMain {
                 allowed.add(w.coordinate());
         }
         Task t = new Task(label, id, group, witness, Set.copyOf(allowed), admitted);
+        var input = new LinkedHashMap<String,Object>();
+        if (rule.containsKey("worker.proofPool")) input.put("proofPool",((List<?>)rule.get("worker.proofPool")).getFirst());
+        if (rule.containsKey("worker.proofTarget")) input.put("proofTarget",((List<?>)rule.get("worker.proofTarget")).getFirst());
+        if (rule.containsKey("platform.proofEnabled")) input.put("proofEnabled",((List<?>)rule.get("platform.proofEnabled")).getFirst());
         List<Map<String, Object>> items = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             String token = UUID.randomUUID().toString();
             t.tokens.add(token);
             tokenTasks.put(token, t);
             items.add(Map.of("messageId", token, "eventCode", EVENT,
-                    "payload", Map.of("probeToken", token, "delayMillis", delay), "workerSelector", rule));
+                    "payload", Map.of("probeToken", token, "delayMillis", delay), "workerSelector", Map.of("executorName","proof.worker.facts","input",input)));
         }
         for (int offset = 0; offset < items.size(); offset += 100) {
             var page = items.subList(offset, Math.min(offset + 100, items.size()));

@@ -4,6 +4,21 @@ import java.util.*;
 
 /** Installed only in explicitly configured proof Groups. */
 public final class ProofFactsRuleHandler extends PartitionedRuleHandler {
+    @Override protected Object normalizeLocalInput(String group, Object input) {
+        var values = RuleInputs.object(input, Set.of("proofPool", "proofTarget", "proofEnabled", "convergenceSlot"));
+        if (values.containsKey("convergenceSlot") && values.size() != 1)
+            throw new IllegalArgumentException("convergenceSlot cannot combine with proof fields");
+        values.replaceAll((key, value) -> RuleInputs.text(value));
+        return Collections.unmodifiableMap(values);
+    }
+    @Override protected Selection select(String group, Object input) {
+        var values = RuleInputs.object(input, Set.of("proofPool", "proofTarget", "proofEnabled", "convergenceSlot"));
+        if (values.isEmpty()) return all();
+        String partition = values.containsKey("convergenceSlot") ? "slot:" + values.get("convergenceSlot")
+                : values.getOrDefault("proofPool", "*") + "|" + values.getOrDefault("proofTarget", "*")
+                        + "|" + values.getOrDefault("proofEnabled", "*");
+        return range("partition:" + partition, List.of("1"));
+    }
     public ProofFactsRuleHandler(RedisRuleStorage storage) { super(storage,"proof"); }
     static RedisRuleStorage.IndexMutation index() {
         return new RedisRuleStorage.IndexMutation("proof",ZsetProjection.prepare( """

@@ -717,7 +717,7 @@
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/LocalCandidateRule.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/CandidatePool.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -774,6 +774,21 @@
         "product_coexistence"
       ],
       "reason": "Moved Matching data contract preserves the original Matching production proof selection."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Item query envelope preserves the existing shared contract proof coverage."
     },
     {
       "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerMatching.java",

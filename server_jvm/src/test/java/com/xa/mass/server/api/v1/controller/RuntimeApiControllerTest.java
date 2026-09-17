@@ -2,7 +2,7 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -159,7 +159,7 @@ class RuntimeApiControllerTest {
         });
         when(workerIdentity.registrationKey(any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
-        when(matchingCatalog.normalizeQuery(anyString(),anyString(),any())).thenAnswer(call -> call.getArgument(2));
+        when(matchingCatalog.normalizeQuery(anyString(),any())).thenAnswer(call -> call.getArgument(1));
 
         when(matchingCatalog.patchWorkerPlatformProperties(
                 any(),
@@ -570,25 +570,46 @@ class RuntimeApiControllerTest {
     }
 
     @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
-        var normalized=EligibilityQuery.parse(Map.of("worker.country",List.of("CN","US")));
-        when(matchingCatalog.normalizeQuery(anyString(),anyString(),any())).thenReturn(normalized);
+        var normalized=new WorkerQuery("worker.default",Map.of("country",List.of("CN","US")));
+        when(matchingCatalog.normalizeQuery(anyString(),any())).thenReturn(normalized);
         mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
                 [{"messageId":"message-1","eventCode":"event","payload":{},
-                  "workerSelector":{"worker.country":["US","CN","CN"]}}]
+                  "workerSelector":{"executorName":"worker.default","input":{"country":["US","CN","CN"]}}}]
                 """)).andExpect(status().isOk());
         verify(taskRuntime).appendItems(eq("task-1"), org.mockito.ArgumentMatchers.argThat(items ->
                 items.size()==1 && normalized.equals(items.getFirst().workerSelector())));
-        verify(matchingCatalog,org.mockito.Mockito.never()).take(anyString(),anyString(),anyMap());
+        verify(matchingCatalog,org.mockito.Mockito.never()).take(anyString(),anyMap());
     }
 
-    @Test void oldConditionsAndNonStringItemParametersFailBeforeOwners() throws Exception {
+    @Test void oldConditionsAndMalformedQueryEnvelopesFailBeforeOwners() throws Exception {
         for (String selector : List.of("{\"worker.country\":{\"op\":\"in\",\"values\":[\"CN\"]}}",
-                "{\"worker.country\":[1]}", "{\"workerId\":[true]}", "{\"a\":[null]}", "{\"a\":\"x\"}")) {
+                "{\"worker.country\":[1]}", "{\"workerId\":[true]}", "{\"a\":[null]}", "{\"a\":\"x\"}",
+                "{\"executorName\":7,\"input\":{}}", "{\"executorName\":\"f\",\"input\":null}",
+                "{\"executorName\":\"f\",\"input\":{},\"extra\":true}")) {
             mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON)
                     .content("[{\"messageId\":\"m\",\"eventCode\":\"event\",\"payload\":{},\"workerSelector\":"+selector+"}]"))
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime,org.mockito.Mockito.never()).appendItems(anyString(),anyList());
+    }
+
+    @Test void httpPreservesNativeFunctionInputsWithoutBusinessCoercion() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
+                [{"messageId":"number","eventCode":"event","payload":{},"workerSelector":{"executorName":"test.scalar","input":7}},
+                 {"messageId":"text","eventCode":"event","payload":{},"workerSelector":{"executorName":"test.scalar","input":"7"}},
+                 {"messageId":"flag","eventCode":"event","payload":{},"workerSelector":{"executorName":"test.scalar","input":true}},
+                 {"messageId":"array","eventCode":"event","payload":{},"workerSelector":{"executorName":"test.scalar","input":[null,false]}}]
+                """)).andExpect(status().isOk());
+        verify(taskRuntime).appendItems(eq("task-1"), org.mockito.ArgumentMatchers.argThat(items -> {
+            assertThat(items).hasSize(4);
+            assertThat(items.get(0).workerSelector().input()).isInstanceOf(Number.class);
+            assertThat(((Number) items.get(0).workerSelector().input()).intValue()).isEqualTo(7);
+            assertThat(items.get(1).workerSelector().input()).isEqualTo("7");
+            assertThat(items.get(2).workerSelector().input()).isEqualTo(true);
+            assertThat(items.get(3).workerSelector().input()).isEqualTo(java.util.Arrays.asList(null,false));
+            return items.stream().allMatch(item -> item.workerSelector().executorName().equals("test.scalar"));
+        }));
+        verify(matchingCatalog,org.mockito.Mockito.never()).take(anyString(),anyMap());
     }
 
     @Test void malformedRefillTargetsCannotSilentlyBecomeAny() throws Exception {
@@ -941,7 +962,7 @@ class RuntimeApiControllerTest {
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
                                             "payload": {"phoneNumber": "+14155552671"},
-                                            "workerSelector": {}
+                                            "workerSelector": {"executorName":"worker.default","input":{}}
                                           }],
                                           "waitTimeoutMillis": 1000
                                         }
@@ -995,7 +1016,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {}
+                                    "workerSelector": {"executorName":"worker.default","input":{}}
                                   }]
                                 }
                                 """))
@@ -1010,7 +1031,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-finite",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {}
+                                    "workerSelector": {"executorName":"worker.default","input":{}}
                                   }]
                                 }
                                 """))
@@ -1051,7 +1072,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {}
+                                    "workerSelector": {"executorName":"worker.default","input":{}}
                                   }]
                                 }
                                 """))
@@ -1081,7 +1102,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-unregistered",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {}
+                                    "workerSelector": {"executorName":"worker.default","input":{}}
                                   }]
                                 }
                                 """))
