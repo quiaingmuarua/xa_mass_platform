@@ -273,7 +273,7 @@ class LoadedRecoveryWorkloadTest {
                     exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8
             ));
-            assertThat(request).containsOnlyKeys("workerGroupId", "priority", "maxRetryTimes");
+            assertThat(request).containsOnlyKeys("workerGroupId", "refill", "priority", "maxRetryTimes");
             String taskId = String.format(
                     "task-%02d",
                     createdTasks.incrementAndGet()

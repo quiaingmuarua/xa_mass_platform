@@ -900,6 +900,36 @@
         "product_coexistence"
       ],
       "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/AnyPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/rules/CountryPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
     }
   ]
 }

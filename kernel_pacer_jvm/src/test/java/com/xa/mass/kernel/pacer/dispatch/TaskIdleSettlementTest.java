@@ -95,7 +95,7 @@ class TaskIdleSettlementTest {
                 new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                                 "priority", "0",
                                 "maxRetryTimes", "1"
-                        ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),
+                        ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),
                 777_777_777L
         );
     }

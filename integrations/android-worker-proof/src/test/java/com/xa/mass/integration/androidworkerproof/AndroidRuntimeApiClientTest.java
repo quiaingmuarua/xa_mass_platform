@@ -115,12 +115,12 @@ final class AndroidRuntimeApiClientTest {
                         new AndroidRuntimeApiClient.TaskItemCall(
                                 AndroidWorkerProofConstants.DELAY_EVENT,
                                 Map.of("delayMillis", 100L),
-                                Map.of("workerId", List.of("worker-lab1"))
+                                Map.of("executorName", "workerId", "input", "worker-lab1")
                         ),
                         new AndroidRuntimeApiClient.TaskItemCall(
                                 AndroidWorkerProofConstants.DELAY_EVENT,
                                 Map.of("delayMillis", 100L),
-                                Map.of("workerId", List.of("worker-lab2"))
+                                Map.of("executorName", "workerId", "input", "worker-lab2")
                         )
                 ),
                 1_000L
@@ -134,7 +134,7 @@ final class AndroidRuntimeApiClientTest {
         List<Object> items = JsonValues.array(request.get("items"), "items");
         assertEquals(2, items.size());
         assertEquals(
-                Map.of("executorName","worker.default","input",Map.of("workerId", List.of("worker-lab1"))),
+                Map.of("executorName", "workerId", "input", "worker-lab1"),
                 JsonValues.object(
                         JsonValues.object(items.get(0), "item")
                                 .get("workerSelector"),
@@ -142,7 +142,7 @@ final class AndroidRuntimeApiClientTest {
                 )
         );
         assertEquals(
-                Map.of("executorName","worker.default","input",Map.of("workerId", List.of("worker-lab2"))),
+                Map.of("executorName", "workerId", "input", "worker-lab2"),
                 JsonValues.object(
                         JsonValues.object(items.get(1), "item")
                                 .get("workerSelector"),

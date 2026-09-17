@@ -172,7 +172,7 @@ class RuntimeViewControllerTest {
                 ).value("beta"))
                 .andExpect(jsonPath(
                         "$.entries[0].task.refill[0].poolName"
-                ).value("default"))
+                ).value("any"))
                 .andExpect(jsonPath("$.entries[0].task.idleDisposition")
                         .value("PARK_WHEN_IDLE"))
                 .andExpect(jsonPath(
@@ -714,7 +714,7 @@ class RuntimeViewControllerTest {
         when(taskScores.previewScoreStates(1000)).thenReturn(ids.stream()
                 .map(id -> scoreState(id, TaskScoreBand.RUNNING_VISIBLE)).toList());
         when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
-                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))))));
+                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))))));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
                 .thenReturn(groupLookup("group-a"));
 
@@ -907,7 +907,7 @@ class RuntimeViewControllerTest {
         return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskScoreState scoreState(

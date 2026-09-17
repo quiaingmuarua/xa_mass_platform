@@ -13,7 +13,7 @@ Each scenario uses:
 ```text
 2 WorkerGroups x 500 Workers
 one WebSocket Adapter
-default Rule through managed batch items:call
+explicit Any Pool through managed batch items:call
 independent Lab, Network, Scheduling and Task observations
 ```
 
@@ -50,10 +50,10 @@ phase and is not treated as downstream convergence evidence.
 Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
 250-millisecond immediate observation window. Item one is the named valid
 witness, every tenth Item has deterministic invalid input, and String Items
-two and three are the delay and fail background work. Managed default Rule waves
-use empty Worker Selectors. A separate finite Rule-index Task owns the
+two and three are the delay and fail background work. Managed Any waves use explicit
+`worker.any` queries with empty input. A separate finite Rule-index Task owns the
 Properties-matching witness with an explicit one-candidate refill target. The
-scenario profile resolves managed default Rules to ANY 1000 at binding creation;
+scenario profile supplies explicit `any / {} / 1000` declarations at Task creation;
 refill remains shared and independent of the current Item batch.
 
 The phase order is:
@@ -93,16 +93,16 @@ String Item in wave two is the only checkpoint execution promoted to an oracle.
 2. Explicitly stop the backup before arming the checkpoint and observe it
    STOPPED, disconnected and scheduling unavailable. Arm the target's
    Scenario-only checkpoint. The complete wave-two String batch uses an
-   explicit Worker ID selector containing only the target and backup IDs.
+   independent `workerId` function targeting only the checkpoint Worker.
    There is no `labSlot` condition or backup Properties mutation. With the
    backup unavailable, wait for the target Handler to enter the checkpoint.
 3. Kill Worker Simulator and require the entire 1,000-Worker world to become
    disconnected. Sample each Group's scheduling states once for diagnostics,
    then proceed to recovery without waiting for every Score to leave HOT.
-4. Restart 999 Workers, including the backup, while excluding the original
-   target. Require the 999 identities to reconnect unchanged and the explicitly
-   targeted backup to become HOT before closing the original checkpoint
-   witness. This does not require all recovered Workers to be simultaneously
+4. Restart 999 Workers, including the original target, while keeping the backup
+   stopped. Require the 999 identities to reconnect unchanged and the original
+   target to become HOT before closing its checkpoint witness through direct
+   identity admission. This proves same-identity recovery, not ID-list failover. This does not require all recovered Workers to be simultaneously
    HOT while due work is present.
 5. Complete both wave-three recovery witnesses.
 6. Kill Host again, observe the recovered world disconnected, and require the

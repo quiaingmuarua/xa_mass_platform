@@ -20,8 +20,9 @@ The refill Producer concatenates declarations by Group and calls Matching's
 `groupsNeedingRefill` before acquiring held candidates. Pacer intersects the hint
 with Main's Group roots and retains its rotation and supply budgets. It then calls
 `refill(group, declarations, held)` directly. Matching resolves names on each call,
-merges targets using MAX and preserves target paging and Pool rotation. Hint reads
-do not advance query cursors; actual refill attempts do. No inventory snapshot or
+merges targets using MAX and preserves Pool rotation. Country processes complete
+bounded targets against memory bucket counts; other Pools retain target paging.
+Hint reads do not advance their query cursors; actual refill attempts do. No inventory snapshot or
 executable preparation is required between those calls. Server admission does not
 observe shortages or maintain inventory.
 
@@ -31,8 +32,8 @@ observe shortages or maintain inventory.
 Only successful new fences are supplied. Matching admits the qualified subset
 using those same fences and original deadlines; processing and stock waiting share
 the second. Unmatched leases expire naturally. Execution confirmation remains a
-separate exact transition. Default Pool ID queries filter the supplied batch and stock,
-without point acquisition. Redis-time validation remains inside each lease CAS.
+separate exact transition. Unconditional Any requires explicit Pool/function
+enablement and declared supply. Redis-time validation remains inside each lease CAS.
 Matching has no acquisition callback or inventory renewal capability.
 
 ## Candidate Selection
@@ -49,7 +50,7 @@ NORMAL RUNNING Tasks -> complete immutable Task descriptors
 Matching owns fixed query functions and shared stock per Group/Pool. Pacer forwards Group,
 message IDs and Item WorkerQuery envelopes through `WorkerMatching`, without normalization or
 semantic aggregation. No Task-private candidate cache or quota exists.
-Refill takes no Item input. Pool queries, including ANY and Default IDs, consume
+Refill takes no Item input. Pool queries, including explicit ANY, consume
 inventory; a miss leaves the Item due without a source query or fresh hold.
 Direct workerId/worker.phone queries need no stock: they return identity hints and
 leave current execution eligibility to Kernel, without changing Task refill demand.

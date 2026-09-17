@@ -6,6 +6,11 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.nio.charset.StandardCharsets;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
 import java.util.function.LongSupplier;
 
@@ -21,6 +26,25 @@ public final class MatchingStorage implements AutoCloseable {
             if (namespace == null || !namespace.matches("[A-Za-z0-9_-]+") || prepareLua == null || prepareLua.isBlank())
                 throw new IllegalArgumentException("invalid Rule index mutation");
         }
+    }
+    private static final ObjectMapper FACTS_JSON = JsonMapper.builder().enable(DeserializationFeature.USE_LONG_FOR_INTS).build();
+    public static Map<String, Object> decodeObject(String raw) {
+        try {
+            Map<String, Object> value = FACTS_JSON.readValue(raw, new TypeReference<Map<String, Object>>() { });
+            if (value == null) throw new IllegalArgumentException("value must be an object");
+            return Collections.unmodifiableMap(new LinkedHashMap<>(value));
+        } catch (JacksonException error) { throw new IllegalArgumentException("stored JSON is malformed", error); }
+    }
+    public String workerFactsKey(String group) { return base() + ":matching:worker:facts:" + group; }
+    /** Internal supply read: one bounded Worker HASH read, no Platform facts or index scan. */
+    Map<String, Map<String, Object>> readWorkerFacts(String group, List<String> ids) {
+        if (ids.size() > 100 || new HashSet<>(ids).size() != ids.size())
+            throw new IllegalArgumentException("at most 100 unique Worker identities");
+        if (ids.isEmpty()) return Map.of();
+        var result = new LinkedHashMap<String, Map<String, Object>>();
+        for (var value : commands().hmget(workerFactsKey(group), ids.toArray(String[]::new)))
+            if (value.hasValue()) result.put(value.getKey(), decodeObject(value.getValue()));
+        return Collections.unmodifiableMap(result);
     }
     private final RedisClient client;
     private final RedisKeyspace keyspace;

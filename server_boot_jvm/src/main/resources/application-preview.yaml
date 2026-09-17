@@ -3,6 +3,10 @@ server:
   port: ${PREVIEW_SERVER_PORT:18500}
 xa:
   mass:
+    task-rpc:
+      refill-by-worker-group:
+        demo-sim:
+          - '{"poolName":"country","target":{},"count":100}'
     worker-matching:
       groups:
         demo-sim:

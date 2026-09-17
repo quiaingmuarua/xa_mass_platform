@@ -16,14 +16,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Runtime Boundary fixture only: real Pool supply, explicit identity-only execution hints. */
 public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     public static final String ID = "proof.identity-hint";
-    private final DefaultPoolPolicy pool;
+    private final AnyPoolPolicy pool;
     private final com.xa.mass.workermatching.QueryFunctions consumer;
     private final AtomicInteger hintsReturned = new AtomicInteger();
 
     public IdentityHintPoolFixture(MatchingStorage storage) {
         var stock = new CandidatePool(storage);
-        pool = new DefaultPoolPolicy(storage, stock, Set.of());
-        consumer = PoolQueryFunctions.defaults(stock, Set.of());
+        pool = new AnyPoolPolicy(storage,stock);
+        consumer = PoolQueryFunctions.any(stock);
     }
 
     public int hintsReturned() { return hintsReturned.get(); }

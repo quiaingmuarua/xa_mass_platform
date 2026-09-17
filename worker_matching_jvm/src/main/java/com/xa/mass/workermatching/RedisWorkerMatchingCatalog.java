@@ -24,7 +24,6 @@ import java.util.TreeMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -54,7 +53,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         this.handlers=Map.copyOf(poolPolicies);
         this.executors=Map.copyOf(queryFunctions);
         executors.keySet().forEach(id -> requireNonBlank(id,"executorName"));
-        if(!handlers.containsKey(DEFAULT_POOL_NAME))throw new IllegalArgumentException("default Pool policy is required");
         handlers.keySet().forEach(id->requireNonBlank(id,"Pool name"));
         var instances=Collections.newSetFromMap(new java.util.IdentityHashMap<PoolRefillPolicy,Boolean>());
         handlers.values().forEach(handler->{
@@ -117,7 +115,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private @Nullable PoolRefillPolicy eligibility(String group,String id) {
         var handler=handlers.get(id);
         var enabled=groups.getOrDefault(group,new MatchingGroup(Set.of(),Set.of())).pools();
-        return handler==null || !DEFAULT_POOL_NAME.equals(id) && !enabled.contains(id) ? null : handler;
+        return handler==null || !enabled.contains(id) ? null : handler;
     }
 
     private PoolRefillPolicy requireEligibility(String group,String poolName) {
@@ -130,7 +128,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private QueryFunctions requireExecutor(String group, String name) {
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var executor = executors.get(name);
-        if (executor == null || !"worker.default".equals(name) && !"workerId".equals(name)
+        if (executor == null || !"workerId".equals(name)
                 && !groups.getOrDefault(group, new MatchingGroup(Set.of(),Set.of())).functions().contains(name))
             throw new IllegalArgumentException("unavailable Matching function");
         return executor;
@@ -229,8 +227,14 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         eligibilityCursors.keySet().retainAll(supplied.keySet());
         var deficits=new LinkedHashMap<String,Integer>();
         targets.forEach((scope,rows)->{
-            var page=page(scope,rows,requireEligibility(scope.workerGroupId(),scope.poolName()));
-            if(page!=null)deficits.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
+            var handler=requireEligibility(scope.workerGroupId(),scope.poolName());
+            if (scope.poolName().equals("country")) {
+                int missing=handler.deficits(scope.workerGroupId(),targetCounts(rows)).values().stream().mapToInt(Integer::intValue).sum();
+                if(missing>0)deficits.merge(scope.workerGroupId(),Math.min(storage.availableCapacity(),missing),Integer::sum);
+            } else {
+                var page=page(scope,rows,handler);
+                if(page!=null)deficits.merge(scope.workerGroupId(),page.deficit(),Integer::sum);
+            }
         });
         deficits.values().forEach(deficit->requestedDeficit+=Math.min(deficit,10_000));
         long now=clock.getAsLong();
@@ -265,14 +269,21 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
             var handler=requireEligibility(group,scope.poolName());
-            var page=page(scope,entry.getValue(),handler);
-            if(page==null)continue;
+            List<RefillTarget> selected;
+            RefillPage page=null;
+            if (scope.poolName().equals("country")) {
+                selected=entry.getValue();
+            } else {
+                page=page(scope,entry.getValue(),handler);
+                if(page==null)continue;
+                selected=page.queries();
+            }
             long now=clock.getAsLong();
             remaining.removeIf(id->held.get(id).expiresAtMillis()<=now);
             if(remaining.isEmpty())break;
-            queryCursors.put(scope,page.nextCursor());
+            if(page!=null)queryCursors.put(scope,page.nextCursor());
             // Each Pool commits its own admission. A later failure preserves earlier successes.
-            var accepted=handler.refill(group,targetCounts(page.queries()),
+            var accepted=handler.refill(group,targetCounts(selected),
                     remaining.stream().map(held::get).toList(),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Pool policy returned invalid admitted identities");
@@ -292,7 +303,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return switch (name) {
             case "proof-facts" -> 0;
             case "country" -> 1;
-            case "default" -> 2;
+            case "any" -> 2;
             case "messaging" -> 3;
             default -> 4;
         };
@@ -340,7 +351,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     }
 
     private String indexBase(String group) { return storage.indexBase(group); }
-    private String workerFactsKey(String group) { return storage.base()+":matching:worker:facts:"+group; }
+    private String workerFactsKey(String group) { return storage.workerFactsKey(group); }
     private String workerPlatformFactsKey(String group) { return storage.base()+":matching:worker:platform-properties:"+group; }
 
     @Override
@@ -412,20 +423,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         }
     }
 
-    private Map<String, Object> decodeObject(String raw) {
-        try {
-            return requireObject(mapper.readValue(
-                    raw,
-                    new TypeReference<Map<String, Object>>() {
-                    }
-            ));
-        } catch (JacksonException error) {
-            throw new IllegalArgumentException(
-                    "stored JSON is malformed",
-                    error
-            );
-        }
-    }
+    private Map<String, Object> decodeObject(String raw) { return MatchingStorage.decodeObject(raw); }
 
     private static Object canonicalJsonValue(Object value) {
         if (value instanceof Map<?, ?> mapping) {
@@ -470,22 +468,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             return canonicalJsonValue(value);
         }
         throw new IllegalArgumentException("value is not JSON-compatible");
-    }
-
-    private static Map<String, Object> requireObject(Object value) {
-        if (!(value instanceof Map<?, ?> mapping)) {
-            throw new IllegalArgumentException("value must be an object");
-        }
-        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        mapping.forEach((key, item) -> {
-            if (!(key instanceof String stringKey)) {
-                throw new IllegalArgumentException(
-                        "JSON object keys must be strings"
-                );
-            }
-            result.put(stringKey, item);
-        });
-        return Collections.unmodifiableMap(result);
     }
 
     private static List<String> boundedUnique(

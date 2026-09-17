@@ -14,7 +14,6 @@ import org.jspecify.annotations.Nullable;
 public interface WorkerMatchingCatalog extends com.xa.mass.kernel.assignment.WorkerMatching {
 
     int MAX_BATCH_SIZE = 100;
-    String DEFAULT_POOL_NAME = "default";
 
     /** Idempotent Server admission, without Redis reads or stock changes. */
     WorkerQuery normalizeQuery(String workerGroupId, WorkerQuery query);

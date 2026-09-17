@@ -86,7 +86,7 @@ class TaskDispatchProgressTest {
     }
 
     private static ObservedTask task(String id, String group) {
-        return new ObservedTask(new TaskDescriptor(id, group, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "50", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))), 101L);
+        return new ObservedTask(new TaskDescriptor(id, group, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "50", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))), 101L);
     }
 
     private static final class Rig {
@@ -106,7 +106,7 @@ class TaskDispatchProgressTest {
                 List<String> ids = call.getArgument(1);
                 var result = new LinkedHashMap<String, TaskItem>();
                 ids.forEach(id -> result.put(id, new TaskItem(id, "event", 0, Map.of(), 0, null,
-                        new WorkerQuery("worker.default", Map.of()))));
+                        new WorkerQuery("worker.any", Map.of()))));
                 return result;
             });
             when(selection.takeCandidates(anyString(), anyMap(), anySet())).thenAnswer(call -> {

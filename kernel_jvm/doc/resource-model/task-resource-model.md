@@ -23,8 +23,8 @@ all declarations. Kernel does not infer defaults, resolve Pools or interpret fie
 ## Cross-Owner Creation
 
 Server normalizes explicit supply through Matching before Kernel create. Ordinary
-Task omission means `[]`, explicit null fails. Managed Call registration constructs
-its own default/{} /100 or explicit configured override. Saved declarations are a
+Task omission means `[]`, explicit null fails. Managed Call registration also saves no supply unless its Group has explicit
+refill declarations configured. Saved declarations are a
 creation-time snapshot. Re-registration compares the full expected descriptor;
 normal lookup does not recompute current defaults.
 

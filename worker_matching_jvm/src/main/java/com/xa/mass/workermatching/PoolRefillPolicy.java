@@ -14,7 +14,7 @@ import java.util.Map;
 public interface PoolRefillPolicy {
     /** Idempotent query validation/normalization, without Redis reads or stock changes. */
     EligibilityQuery normalizeQuery(String workerGroupId, EligibilityQuery query);
-    /** Observed refill shortages, not reservations; at most 100 targets. Capacity may suppress refill. */
+    /** Observed refill shortages, not reservations; Country accepts up to 10,000 targets together; other policies at most 100. Capacity may suppress refill. */
     Map<EligibilityQuery, Integer> deficits(String workerGroupId, Map<EligibilityQuery, Integer> targets);
     /**
      * Qualifies at most 100 already-held identities and returns IDs actually admitted.

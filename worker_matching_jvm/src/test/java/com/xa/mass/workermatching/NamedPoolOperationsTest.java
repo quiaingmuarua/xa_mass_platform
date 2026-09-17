@@ -40,11 +40,21 @@ class NamedPoolOperationsTest {
         storage=new MatchingStorage(client,new RedisKeyspace("test_named_pool"),clock::get);
         rule=new CountingRule(storage); failingRule=new CountingRule(storage);
         var defaultStock=new CandidatePool(storage);
-        var defaults=new DefaultPoolPolicy(storage,defaultStock,Set.of());
+        var defaults=new AnyPoolPolicy(storage,defaultStock);
         catalog=new RedisWorkerMatchingCatalog(storage,
-                Map.of("default",defaults,"test.pool",rule,"zz.fail",failingRule),
-                Map.of("worker.default",PoolQueryFunctions.defaults(defaultStock,Set.of()),"test.pool",rule.functions(),"zz.fail",failingRule.functions()),
-                Map.of("g1",new MatchingGroup(Set.of("test.pool","zz.fail"),Set.of("test.pool","zz.fail")),"g2",new MatchingGroup(Set.of("test.pool"),Set.of("test.pool"))),Map.of());
+                Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule),
+                Map.of("worker.any",PoolQueryFunctions.any(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()),
+                configuredGroups(),Map.of());
+    }
+    private Map<String,MatchingGroup> configuredGroups() {
+        var groups=new LinkedHashMap<String,MatchingGroup>();
+        for(int i=0;i<100;i++) {
+            groups.put("g"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any")));
+            groups.put("group"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any")));
+        }
+        groups.put("g1",new MatchingGroup(Set.of("any","test.pool","zz.fail"),Set.of("worker.any","test.pool","zz.fail")));
+        groups.put("g2",new MatchingGroup(Set.of("any","test.pool"),Set.of("worker.any","test.pool")));
+        return groups;
     }
     @AfterEach void close() { catalog.close(); }
 
@@ -95,10 +105,11 @@ class NamedPoolOperationsTest {
     }
 
     @Test void overlappingQueriesShortagesAndRepeatedMessageIdsHaveOnlyCallLocalMeaning() {
-        var targets=List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 3));
+        var targets=List.of(pool(3,"US","CN"));
+        rule.facts.putAll(Map.of("one","US","two","CN","three","CN"));
         var held=offer("one","two","three"); assertEquals(3,catalog.refill("g1",targets,held));
-        var identity=new WorkerQuery("worker.default",Map.of("workerId",List.of("one")));
-        var any=new WorkerQuery("worker.default",Map.of());
+        var identity=new WorkerQuery("test.pool",Map.of("pool",List.of("US")));
+        var any=new WorkerQuery("test.pool",Map.of());
         var requests=new LinkedHashMap<String,WorkerQuery>();
         requests.put("id-first",identity); requests.put("any-first",any); requests.put("id-again",identity);
         requests.put("any-next",any); requests.put("unfilled",any);
@@ -106,6 +117,7 @@ class NamedPoolOperationsTest {
         assertEquals(List.of("id-first","any-first","any-next"),List.copyOf(result.keySet()));
         assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
         assertTrue(catalog.take("g1",requests).isEmpty());
+        rule.facts.put("four","CN");
         assertEquals(1,catalog.refill("g1",targets,offer("four")));
         assertEquals("four",catalog.take("g1",Map.of("id-first",any)).get("id-first").workerId());
         verifyNoInteractions(redis);
@@ -114,8 +126,8 @@ class NamedPoolOperationsTest {
     @Test void oneHundredMessagesCanShareOneNormalizedQuery() {
         var held=new ArrayList<HeldCandidate>(); var requests=new LinkedHashMap<String,WorkerQuery>();
         for(int i=0;i<100;i++) { held.add(new HeldCandidate("worker"+i,20+i,2000));
-            requests.put("message"+i,new WorkerQuery("worker.default",Map.of())); }
-        assertEquals(100,catalog.refill("g1",List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)),held));
+            requests.put("message"+i,new WorkerQuery("worker.any",Map.of())); }
+        assertEquals(100,catalog.refill("g1",List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)),held));
         var result=catalog.take("g1",requests);
         assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
         assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
@@ -162,14 +174,14 @@ class NamedPoolOperationsTest {
     }
 
     @Test void endingDemandRetainsSharedStockWhileEmptyRoundsStillExpireEntries() {
-        var supply = List.of(new RefillTarget("default", ANY, 2));
+        var supply = List.of(new RefillTarget("any", ANY, 2));
         assertEquals(2, catalog.refill("g1", supply, offer("first", "second")));
         assertTrue(catalog.groupsNeedingRefill(Map.of()).isEmpty());
-        var consumed = catalog.take("g1", Map.of("consumer", new WorkerQuery("worker.default", Map.of())));
+        var consumed = catalog.take("g1", Map.of("consumer", new WorkerQuery("worker.any", Map.of())));
         assertEquals("first", consumed.get("consumer").workerId());
         clock.set(2000);
         assertTrue(catalog.groupsNeedingRefill(Map.of()).isEmpty());
-        assertTrue(catalog.take("g1", Map.of("late", new WorkerQuery("worker.default", Map.of()))).isEmpty());
+        assertTrue(catalog.take("g1", Map.of("late", new WorkerQuery("worker.any", Map.of()))).isEmpty());
         verifyNoInteractions(redis);
     }
 
@@ -204,6 +216,9 @@ class NamedPoolOperationsTest {
         catalog.groupsNeedingRefill(Map.of("g1",rules));
         catalog.groupsNeedingRefill(Map.of("g1",rules));
         assertEquals(100,rule.observedTargets.size());
+        assertEquals(0,catalog.refill("g1",rules,List.of(new HeldCandidate("expired",20,0))));
+        catalog.groupsNeedingRefill(Map.of("g1",rules));
+        assertEquals(100,rule.observedTargets.size());
         assertEquals(0,catalog.refill("g1",rules,offer("missing")));
         assertEquals(100,rule.observedTargets.size());
         catalog.groupsNeedingRefill(Map.of("g1",rules));
@@ -223,10 +238,10 @@ class NamedPoolOperationsTest {
         assertTrue(catalog.groupsNeedingRefill(Map.of("g1",List.of())).isEmpty());
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(Map.of("g1",Collections.nCopies(10_001,pool(1,"US")))));
         var tooMany=new LinkedHashMap<String,List<RefillTarget>>();
-        for(int i=0;i<101;i++)tooMany.put("g"+i,List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
+        for(int i=0;i<101;i++)tooMany.put("g"+i,List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
         assertThrows(IllegalArgumentException.class,()->catalog.groupsNeedingRefill(tooMany));
         tooMany.remove("g100");
-        tooMany.put("g1",List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1), pool(1,"US")));
+        tooMany.put("g1",List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1), pool(1,"US")));
         assertEquals(100,catalog.groupsNeedingRefill(tooMany).size());
         assertTrue(rule.snapshots.isEmpty());
         assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
@@ -234,11 +249,11 @@ class NamedPoolOperationsTest {
     }
 
     @Test void declarationCeilingsAreAcceptedAndEquivalentTargetsUseMax() {
-        var rules=Collections.nCopies(10_000,new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1));
+        var rules=Collections.nCopies(10_000,new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1));
         assertEquals(Set.of("g1"),catalog.groupsNeedingRefill(Map.of("g1",rules)));
         assertEquals(1,catalog.refill("g1",rules,offer("first","second")));
         var groups=new LinkedHashMap<String,List<RefillTarget>>();
-        for(int i=0;i<100;i++)groups.put("group"+i,List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
+        for(int i=0;i<100;i++)groups.put("group"+i,List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
         assertEquals(100,catalog.groupsNeedingRefill(groups).size());
     }
 

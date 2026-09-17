@@ -65,7 +65,7 @@ class ScenarioWorkerProfileContractTest {
                     .refillByWorkerGroup();
             for (String group : List.of("scenario-string-utils-workers","scenario-phone-number-workers")) {
                 assertThat(defaults.get(group)).containsExactly(
-                        new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000));
+                        new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000));
             }
             assertThat(context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class

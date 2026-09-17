@@ -93,7 +93,7 @@ function resetDraft(): void {
   eventName.value = props.entry.workerGroup?.eventCodes[0] ?? "";
   payloadText.value = "{}";
   workerSelectorText.value = JSON.stringify(
-    { executorName: "worker.default", input: {} },
+    { executorName: "worker.any", input: {} },
     null,
     2
   );
@@ -344,8 +344,9 @@ async function scrollToLatest(): Promise<void> {
           :disabled="!availability.enabled || busy"
         />
         <small>
-          executorName 选择 Matching 函数；input 的格式由该函数定义。默认使用当前 Task
-          的补货 Rule 和空输入。
+          executorName 选择 Matching 函数；input 的格式由该函数定义。worker.any 示例需要
+          Group 启用 any Pool／worker.any，并由 Task 声明供给；指定 Worker 可用
+          workerId。
         </small>
       </label>
 

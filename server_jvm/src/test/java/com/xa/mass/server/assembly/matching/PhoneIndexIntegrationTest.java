@@ -41,7 +41,7 @@ class PhoneIndexIntegrationTest {
     private RedisWorkerMatchingCatalog create() {
         var storage = new MatchingStorage(client, keyspace);
         return com.xa.mass.workermatching.MatchingComposition.create(storage, Map.of(
-                "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("messaging"), Set.of("worker.phone","worker.messaging.available")),
+                "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("any","messaging"), Set.of("worker.any","worker.phone","worker.messaging.available")),
                 "other", new com.xa.mass.workermatching.MatchingGroup(Set.of(), Set.of("worker.phone"))));
     }
     @AfterEach void cleanup() {
@@ -133,9 +133,9 @@ class PhoneIndexIntegrationTest {
 
     @Test void mixedPoolPhoneAndIdentityKeepFirstAssociationWithoutConsumingTheIndex() {
         catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "+1")));
-        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
         var requests = new LinkedHashMap<String, WorkerQuery>();
-        requests.put("pool", new WorkerQuery("worker.default", Map.of()));
+        requests.put("pool", new WorkerQuery("worker.any", Map.of()));
         requests.put("phone", new WorkerQuery("worker.phone", "+1"));
         requests.put("identity", new WorkerQuery("workerId", "b"));
         requests.put("late-invalid", new WorkerQuery("worker.phone", 42));
@@ -169,14 +169,14 @@ class PhoneIndexIntegrationTest {
     }
 
     @Test void phoneReadFailureDoesNotRollBackAnEarlierPoolConsumption() throws Exception {
-        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
         redis.set(value("g", "corrupt"), "wrong-type");
         var requests = new LinkedHashMap<String, WorkerQuery>();
-        requests.put("pool", new WorkerQuery("worker.default", Map.of()));
+        requests.put("pool", new WorkerQuery("worker.any", Map.of()));
         requests.put("phone", new WorkerQuery("worker.phone", "corrupt"));
         requests.put("identity", new WorkerQuery("workerId", "a"));
         assertThatThrownBy(() -> catalog.take("g", requests)).isInstanceOf(RuntimeException.class);
-        assertThat(catalog.take("g", Map.of("next", new WorkerQuery("worker.default", Map.of())))).isEmpty();
+        assertThat(catalog.take("g", Map.of("next", new WorkerQuery("worker.any", Map.of())))).isEmpty();
         // A separate invocation is still independent; no identity hint or Pool replay was retained.
         assertThat(catalog.take("g", Map.of("identity", new WorkerQuery("workerId", "a"))))
                 .containsEntry("identity", new WorkerCandidate("a", 0));

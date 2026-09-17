@@ -21,7 +21,7 @@ controls acquisition, lease and serviceability eligibility.
 
 ```text
 Server creation
-  -> local Matching target resolution (explicit default or named Rule)
+  -> local Matching admission of optional Pool supply declarations
   -> complete Kernel Task descriptor; Item selector validated by Matching
 
 Kernel Main Scheduler

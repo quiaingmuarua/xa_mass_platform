@@ -97,12 +97,13 @@ def mixed_capabilities(run, inventory):
                  "extension.worker.string.base64.encode"]).issubset(events), "Mixed events are not installed")
     listener = wait_state(run, create(run, request="mixed-worker"), {"LISTENING"})
     require(listener["workerId"] == cn["workerId"], "SMS listener identity changed")
-    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "refill": [{"poolName": "default", "target": {}, "count": 100}]})["taskId"]
-    messages = [str(uuid.uuid4()) for _ in range(3)]
+    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "refill": [{"poolName": "country", "target": {}, "count": 100}]})["taskId"]
+    messages = [str(uuid.uuid4()) for _ in range(4)]
     selectors = [
-        {"executorName": "worker.default", "input": {"workerId": [cn["workerId"]]}},
+        {"executorName": "worker.country", "input": ["CN"]},
         {"executorName": "workerId", "input": cn["workerId"]},
         {"executorName": "worker.phone", "input": cn["phone"]},
+        {"executorName": "worker.country", "input": {}},
     ]
     http(run.url, f"/api/v1/tasks/{task}/items", [
         {"messageId": message, "eventCode": "extension.worker.string.md5",
@@ -114,7 +115,7 @@ def mixed_capabilities(run, inventory):
         nonlocal results
         results = http(run.url, f"/api/v1/tasks/{task}/results:load", messages)
         return all(results[message]["status"] == "succeeded" for message in messages)
-    run.wait_for(strings_observed, 30, "same Group targeted string results")
+    run.wait_for(strings_observed, 30, "same Group Pool and direct string results")
     expected = hashlib.md5(b"shared-sms-worker").hexdigest()
     require(all(json.loads(results[message]["opaqueResultPayload"])["md5"] == expected for message in messages),
             "String handler results mismatch")
@@ -126,7 +127,7 @@ def mixed_capabilities(run, inventory):
     return {"workerId": cn["workerId"], "targetedTaskId": task, "stringResults": len(results),
             "queryFunctions": [selector["executorName"] for selector in selectors],
             "smsObserved": True, "installedEvents": events,
-            "claim": "one actual Worker serves both Tasks; no fairness or capacity claim"}
+            "claim": "three CN-targeted queries share the listener Worker; Country ANY permits any Group country; no fairness or capacity claim"}
 
 
 def lifecycle(run):
@@ -242,7 +243,7 @@ def dynamic_properties(run, inventory):
     require([record["state"] for record in records] == ["ENTERED", "COMPLETED"]
             and all(record["labWorkerKey"] == cn["replicaKey"] for record in records),
             "Verification witness did not execute on the product Worker")
-    return {"passed": True, "adapterObserved": True, "matchingObserved": True, "countryIndexExecutorChanged": True,
+    return {"passed": True, "adapterObserved": True, "matchingObserved": True, "countryPoolExecutorChanged": True,
             "identitiesUnchanged": True, "hostRestartRestoredEdits": True, "oldListeningInterruptedLocally": True,
             "initialBatchPrepareObserved": True, "hotPrepareRequestDelta": 0,
             "composedVerificationCapabilityExecuted": True}
@@ -309,7 +310,7 @@ def functional(run):
     before = http(run.host, "/lab/v1/sms/metrics")["host"]["listeners"]
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_message,
          "eventCode": "extension.worker.sms.listen.start", "payload": payload, "ttlMillis": 10000,
-         "workerSelector": {"executorName": "worker.default", "input": {"workerId": [older["workerId"]]}}}], "waitTimeoutMillis": 1})
+         "workerSelector": {"executorName": "workerId", "input": older["workerId"]}}], "waitTimeoutMillis": 1})
     duplicate_result = {}
     def duplicate_observed():
         nonlocal duplicate_result

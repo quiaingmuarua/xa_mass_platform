@@ -73,7 +73,7 @@ Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验
 启动器固定启用 `preview`，同时装配 SMS 和 Messages。宿主的
 `server_boot_jvm/src/main/resources/application-preview.yaml` 是配置的唯一来源，
 发行任务将它复制到 `config/application-preview.yaml`。配置集中定义 Server、Redis、
-`products-websocket` Adapter 和 Endpoint，并为混合国家 Group `demo-sim` 启用现有场景索引。
+`products-websocket` Adapter 和 Endpoint，并为混合国家 Group `demo-sim` 启用 Country／Messaging Pool 及独立 Phone Index。
 根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
 不启用该 profile 时，不注册两个场景的 API、Group 或后台任务。静态页面仍可提供；控制台通过 catalog 状态隐藏未启用入口，直达页面显示未启用。
 启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
@@ -201,7 +201,7 @@ Host 页面始终开放通用库存、设备输入和启停控制，额外展示
 单条短信通过稳定文件坐标的 `:inputs`、`sms.receive` 输入到指定 Sim；可选 phone
 由 SMS Owner 在准入栅栏内核对，换号后的旧地址不在 Harness 中预先过滤。
 phone/country 热修改先持久化再更新本地快照，最后通过 SDK 上报；换号本地结束旧监听，不合成远端结束报告。
-功能验收独立读取 Adapter、Matching，验证新国家索引的实际执行者和 Host 重启后恢复。
+功能验收独立读取 Adapter、Matching，验证新国家桶的实际执行者和 Host 重启后恢复。
 停止号码关闭本地监听准入并清理 Reporter，不发送产品取消命令或合成结束 Report。
 重启保持身份和本轮去重记录，不恢复旧监听；原订单缺少结束证据时仍显示“结果未确认”。
 本地运行状态、实际 Adapter 网络证据和 Kernel 可调度性分别归各自 Owner；页面不能混同它们。
@@ -255,14 +255,14 @@ SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后
 不暴露 Reporter、不作为 Backend 的结果来源。
 
 功能场景还从实际 Worker 读取事件快照，再在 CN 同一号码保持监听期间，通过同 Group 的
-有限 Task 分别使用 Default ID Pool、`workerId` 和 `worker.phone` 查询执行字符串事件，随后
-验证短信结果。号码查询通过 Preview 实际启用的独立索引，SMS-only 库存没有 Messaging
+有限 Task 分别使用 Country CN Pool、`workerId` 和 `worker.phone` 定向查询执行字符串事件，
+并以独立的 Country ANY 查询验证通用字符串调用，随后验证短信结果。号码查询通过 Preview 实际启用的独立索引，SMS-only 库存没有 Messaging
 启用属性。该场景不阻断补货；无 Pool／无预先租约的证明归 Runtime Boundary。这只证明同一 Worker 承接两类
 Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身份稳定的重启、去重保留以及
 新监听成功；旧监听的本地 INTERRUPTED 与产品 UNCONFIRMED 分别记录，不计入正常流的状态不一致。
 
 功能场景随后热修改同一 Worker 的号码和国家，独立读取 Adapter 缓存、Matching 事实，并用
-后续实际接码 Worker 证明索引归属改变。Server 私有访问日志仅记录方法、路径和状态码，
+后续实际接码 Worker 证明号码索引与国家桶归属改变。Server 私有访问日志仅记录方法、路径和状态码，
 校验初始文件批量 Prepare 以及热修改期间 Prepare 调用增量为零。重新启动 Host 时复用同一
 库存与 scope，验证文件编辑、Worker 身份和新号码继续有效；不恢复旧监听或 Reporter。
 重启时显式组合 execution-witness 能力，验证同一个产品 Worker 仍能处理 SMS，并执行
@@ -284,7 +284,7 @@ functional、lifecycle 和 ZIP functional 分别使用 18400、18420、18440 作
 Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端口影响启动准入。
 保留现有 [Proof Selection](../../TESTING.md) 的平台规则。
 
-本场景证明有限产品与 country 索引闭环，不声明平台容量上限；不证明真实设备收信、
+本场景证明有限业务、Country Pool 与 Phone Index 闭环，不声明平台容量上限；不证明真实设备收信、
 app 索引、黑名单、可靠投递、租户隔离或业务订阅的重启恢复，也不扩大既有平台容量场景。
 
 归档检查比较 ZIP 中的全部前端文件与当前 `frontend/dist`（生成的诊断字典单独交付），
@@ -299,3 +299,8 @@ python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --roo
 CI 通过源码验收脚本加载新 ZIP 的启动器，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
 仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
 并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。
+
+Preview explicitly enables the Country Pool and worker.country. Its managed SMS
+Task supplies country/{} /100; listener creation queries the requested country.
+Cancellation uses the independent workerId function. Generic Preview probes use
+Country ANY, and directed probes use Identity; Preview does not enable an Any Pool.

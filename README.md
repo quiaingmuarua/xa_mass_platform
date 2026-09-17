@@ -75,9 +75,10 @@ producer, Binding and Group in one delivery reception use case before creating
 or replacing Matching-owned Worker facts. Every upstream observation replaces
 the complete Worker Map; independent Platform Properties management never
 patches that Map. Before the first valid observation, identity may exist without facts:
-Default Rule ANY/explicit IDs can use identity without facts; named Rules require
-indexed eligibility. Polling currently has no Properties reporting path and uses
-default identity selection for new Workers. Live facts update indexes without
+Independent `workerId` queries and explicitly supplied `worker.any` Pools can use
+identity without facts. Country uses Worker Facts and local country buckets;
+Messaging and Proof retain their indexes. Polling has no Properties reporting
+path and uses Identity or an explicitly supplied Any Pool. Live facts update enabled indexes without
 re-Prepare. Reporting is lossy.
 After actual Worker or Platform facts changes, Server requests best-effort
 candidate sealing through the Score Owner. Final exact transfer rejects invalidated holds without cache cleanup. Committed

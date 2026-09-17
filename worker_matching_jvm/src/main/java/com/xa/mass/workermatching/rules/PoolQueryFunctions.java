@@ -10,9 +10,9 @@ import static com.xa.mass.workermatching.rules.CandidatePool.*;
 /** Item interpretation over injected stock. Functions neither maintain nor create a Pool. */
 public final class PoolQueryFunctions {
     private PoolQueryFunctions() { }
-    public static QueryFunctions defaults(CandidatePool pool, Set<String> countryGroups) {
-        var enabled = Set.copyOf(countryGroups);
-        return create(pool, (g, i) -> normalizeDefault(g, i, enabled), PoolQueryFunctions::selectDefault);
+    public static QueryFunctions any(CandidatePool pool) {
+        return create(pool, (group, input) -> Collections.unmodifiableMap(RuleInputs.object(input, Set.of())),
+                (group, input) -> all());
     }
     public static QueryFunctions country(CandidatePool pool) {
         return create(pool, PoolQueryFunctions::normalizeCountry, PoolQueryFunctions::selectCountry);
@@ -28,31 +28,12 @@ public final class PoolQueryFunctions {
         Objects.requireNonNull(pool); Objects.requireNonNull(normalize); Objects.requireNonNull(select);
         return new QueryFunctions(normalize, (group, inputs) -> execute(pool, normalize, select, group, inputs));
     }
-    private static Object normalizeDefault(String group, Object input, Set<String> countryGroups) {
-        var values = RuleInputs.object(input, Set.of("workerId", "country"));
-        if (values.containsKey("workerId")) {
-            if (values.size() != 1) throw new IllegalArgumentException("workerId cannot combine with properties");
-            values.put("workerId", RuleInputs.strings(values.get("workerId")));
-        }
-        if (values.containsKey("country")) {
-            if (!countryGroups.contains(group)) throw new IllegalArgumentException("country index unavailable");
-            values.put("country", RuleInputs.countries(values.get("country")));
-        }
-        return Collections.unmodifiableMap(values);
-    }
-    private static Selection selectDefault(String group, Object input) {
-        var values = RuleInputs.object(input, Set.of("workerId", "country"));
-        if (values.isEmpty()) return all();
-        if (values.containsKey("workerId")) return identities(RuleInputs.strings(values.get("workerId")));
-        return range("country", RuleInputs.codes(values.get("country")));
-    }
-
     private static Object normalizeCountry(String group, Object input) {
         if (input instanceof Map<?, ?> map && map.isEmpty()) return Map.of();
         return RuleInputs.countries(input);
     }
     private static Selection selectCountry(String group, Object input) {
-        return input instanceof Map<?, ?> ? all() : range("country", RuleInputs.codes(input));
+        return input instanceof Map<?, ?> ? all() : range("country", RuleInputs.countries(input));
     }
 
     private static Object normalizeMessaging(String group, Object input) {

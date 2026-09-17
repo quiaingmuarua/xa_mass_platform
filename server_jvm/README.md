@@ -106,7 +106,7 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Server resolves named or default Rule targets locally before creating complete Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
+| Task create, approve, close and Task Call Item submission | Server validates explicit Pool supply locally before creating complete Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
@@ -180,8 +180,8 @@ or unregister functions. Matching owns resource/maintenance/function composition
 Server receives no predicate, index key, candidate selection or lease capability.
 
 Server normalizes declarations then creates Kernel metadata. No independent Matching
-write or rollback exists. Managed Call registration explicitly supplies default/{} /100;
-`xa.mass.task-rpc.refill-by-worker-group` can replace it, including with `[]`. Nonempty
+write or rollback exists. Managed Call registration saves `[]` unless
+`xa.mass.task-rpc.refill-by-worker-group` supplies explicit declarations. Nonempty
 configuration entries use complete JSON strings decoded as the same RefillTarget.
 Lab overrides remain 1000. Re-registration compares the complete expected descriptor;
 ordinary lookup reads saved declarations without resolving new defaults. Old Task
@@ -289,7 +289,8 @@ Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
 derives the absolute expiry. Finite Task append requires explicit `workerSelector`; a missing selector rejects that Item;
 managed Task Call requires an explicit Selector envelope. Pool functions interpret
-their own local inputs: worker.default accepts `{"workerId":["a","b"]}` in its stock;
+their own local inputs: worker.any accepts only `{}` with an explicitly enabled any Pool;
+workerId accepts one ID string independently of stock;
 worker.country accepts `["CN","US"]`; Messaging combines its supported conditions
 with AND. Values remain Group-scoped, and country codes are strict uppercase ASCII pairs.
 Items use `workerSelector: {executorName, input}`. The input is bounded immutable
@@ -431,7 +432,7 @@ assuming every non-2xx response means no execution occurred.
       "eventCode": "extension.worker.string.md5",
       "payload": {"value": "hello"},
       "ttlMillis": 30000,
-      "workerSelector": {"executorName":"worker.default","input":{}}
+      "workerSelector": {"executorName":"worker.any","input":{}}
     }
   ],
   "waitTimeoutMillis": 30000
@@ -470,7 +471,7 @@ coordinates, then projects Task and WorkerGroup descriptors through their
 bounded Owner reads. Rule names come directly from the Task descriptor, without
 a Matching lookup. This is stored configuration, not evidence that its Rule is
 currently available. Corrupt descriptors retain the existing 503 mapping; no
-default Rule substitution occurs. Views expose only the Owner-defined Score Band, not raw Score.
+fallback Pool substitution occurs. Views expose only the Owner-defined Score Band, not raw Score.
 A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
 meaning, and its order is not business priority or execution evidence.
@@ -543,10 +544,9 @@ Prepare success does not imply connectivity, scheduling availability or observed
 Properties. All Workers, including Polling, initially remain cold. Valid network
 evidence may later request activation; evidence loss has no replay guarantee. New Workers
 have no Matching facts until an admitted Adapter observation creates them;
-named Pool Rules require indexed eligibility. Default Pool ANY/IDs and direct
-workerId do not require these facts; property queries require index
-membership. Polling has no current Adapter Properties path, so new Polling
-Workers use default ANY/explicit selection. Existing stored facts remain readable
+Country requires valid country Facts, while Messaging/Proof use their indexes.
+Explicit Any Pool and direct workerId need no Facts. Polling has no current Adapter
+Properties path, so new Polling Workers use explicitly supplied Any or Identity. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never
 overwrites them, Platform Properties, an active Worker lease or PAUSE.
 
@@ -1138,7 +1138,7 @@ aggregate reaches `RUNNING`. Shutdown uses one shared deadline in the exact
 reverse order. A failed start rolls back every already-started Java
 application.
 
-The Runtime Boundary proof closes real Polling default-rule execution, WebSocket and Socket
+The Runtime Boundary proof closes real Polling execution through an explicit Any Pool, WebSocket and Socket
 Task paths. It proves that Prepare alone creates no Matching facts, Preview
 can expose an identity before Properties, and an admitted text-protocol report
 can create the first facts without another Prepare. Lost first and later

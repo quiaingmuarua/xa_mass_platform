@@ -272,7 +272,7 @@ class DefaultTaskCommandsTest {
                 Map.of("value", "abc"),
                 5,
                 10_000L,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
     }
 
@@ -280,7 +280,7 @@ class DefaultTaskCommandsTest {
         return new TaskDescriptor(taskId, "workers", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", Integer.toString(priority),
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static DefaultTaskLifecycleCommands lifecycle(

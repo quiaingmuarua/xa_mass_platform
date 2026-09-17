@@ -24,7 +24,7 @@ const draft = ref({
   eventCode: "",
   payloadKey: "value",
   refillText: "[]",
-  workerSelectorText: '{"executorName":"worker.default","input":{}}',
+  workerSelectorText: '{"executorName":"worker.any","input":{}}',
   priority: 50,
   maxRetryTimes: 3
 });
@@ -49,7 +49,7 @@ async function openCreate(): Promise<void> {
     eventCode: group?.eventCodes[0] ?? "",
     payloadKey: "value",
     refillText: "[]",
-    workerSelectorText: '{"executorName":"worker.default","input":{}}',
+    workerSelectorText: '{"executorName":"worker.any","input":{}}',
     priority: 50,
     maxRetryTimes: 3
   };
@@ -399,7 +399,10 @@ function formatBytes(value: number): string {
           </label>
           <label class="finite-task-form__wide"
             ><span>Worker Selector · JSON（必填）</span
-            ><textarea v-model="draft.workerSelectorText" rows="4" />
+            ><textarea v-model="draft.workerSelectorText" rows="4" /><small
+              >worker.any 需要显式启用 any Pool 和函数，并声明共享供给；workerId
+              可直接指定身份。</small
+            >
           </label>
           <el-alert
             v-if="draftError"

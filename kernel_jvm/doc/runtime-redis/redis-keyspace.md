@@ -47,16 +47,17 @@ Network evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 
 Matching Worker facts xa_mass:<scope>:matching:worker:facts:<workerGroupId>
 Matching Platform     xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
-Matching Rules        xa_mass:<scope>:matching:candidate:rules
-Country Rule index    xa_mass:<scope>:matching:worker:index:country:<workerGroupId>
+Matching indexes      xa_mass:<scope>:matching:worker:index:<encoded-group>:<namespace>
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>
 Result routing        xa_mass:<scope>:result:routing:<outcomeClass>
-Candidate workers     xa_mass:<scope>:dispatch:candidate:<taskId>:workers
 ```
 
 The structures and owner semantics behind these keys remain defined by their
-resource, scheduling, delivery, and runtime-shape documents.
+resource, scheduling, delivery, and runtime-shape documents. Matching index suffixes
+and Phone member sets are detailed in the [Matching Owner](../../../worker_matching_jvm/README.md#persistent-catalog).
+Pool candidates, including Country buckets, are process-local; no per-Task
+candidate or Country ZSET key participates in the current path.
 
 ## Profile And Proof Scopes
 

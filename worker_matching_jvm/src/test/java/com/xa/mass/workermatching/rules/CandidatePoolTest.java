@@ -76,7 +76,7 @@ class CandidatePoolTest {
     @Test void equalReinsertionAndUnrelatedChangesDoNotInvalidateOtherSelectedEntries() {
         pool.admit("g",List.of(row("a","CN",5000),row("b","US",5000)));
         var pending=pool.select("g",Map.of(all(),2));
-        pool.take("g",Map.of(identities(List.of("a")),1)); pool.admit("g",List.of(row("a","CN",5000)));
+        pool.take("g",Map.of(range("country",List.of("CN")),1)); pool.admit("g",List.of(row("a","CN",5000)));
         pool.admit("other",List.of(row("other","CN",5000)));
         assertEquals(List.of("b"),ids(pool.commit("g",pending).get(all())));
         assertEquals(List.of("a"),ids(pool.take("g",Map.of(all(),2)).get(all())));

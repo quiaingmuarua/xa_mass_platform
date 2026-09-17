@@ -410,7 +410,7 @@ class TaskRpcCallServiceTest {
                                 Map.of(),
                                 5,
                                 1_000L,
-                                new WorkerQuery("worker.default", Map.of(
+                                new WorkerQuery("worker.any", Map.of(
                                         "workerId",
                                         List.of("worker-b", "worker-a")
                                 ))
@@ -499,7 +499,7 @@ class TaskRpcCallServiceTest {
         return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskItemRequest item(
@@ -512,7 +512,7 @@ class TaskRpcCallServiceTest {
                 payload,
                 5,
                 1_000L,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
     }
 

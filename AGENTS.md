@@ -222,8 +222,8 @@ architectures.
   call's requests with candidates; it must not retain message IDs or own Item state.
   Main shares its already-read NORMAL Task descriptors with refill and dispatch.
   Matching contracts/storage must not accept Task IDs or retain Task configuration.
-  Default Pool identity selectors and the direct workerId function need no facts;
-  worker.default IDs consume stock while workerId returns caller-supplied identity. Pool functions constrain ANY and
+  Explicit Any Pool and direct workerId need no Facts; worker.any only accepts empty
+  input and consumes stock, while workerId returns caller-supplied identity. Pool functions constrain ANY and
   interpret their own business queries. Unavailable functions never fall back. Matching
   uses immutable fixed query functions and Pool maintenance composition. Pool strategies own local input interpretation,
   qualification and resource selection; CandidatePool owns mechanical range stock. Catalog coordination
@@ -231,7 +231,7 @@ architectures.
   index updates still prepare before writing in one bounded Lua operation.
   PoolRefillPolicy owns target normalization, deficits and refill; CandidatePool owns entries and views. Item execution uses fixed
   normalizeInput/execute function pairs, not storage objects as executors. Catalog owns target MAX merge,
-  bounded paging, messageId-to-candidate correlation and exclusion of IDs actually
+  bounded non-Country paging, messageId-to-candidate correlation and exclusion of IDs actually
   accepted by earlier Pools. TaskItem uses WorkerQuery(executorName, input);
   refill retains its existing string-list EligibilityQuery. Kernel and Pacer must
   not interpret local input fields. Target quantities use MAX; Pool consumption uses actual Item
@@ -251,7 +251,7 @@ architectures.
   fallback executor, dynamic registry or placeholder Index executor is allowed.
   Validate the complete batch before consumption; later function execution failure
   preserves earlier consumption. Item functions are independent of Task supply
-  declarations but must be Group-enabled (worker.default and workerId are universal) and cannot generate refill demand.
+  declarations but must be Group-enabled (only workerId is universal) and cannot generate refill demand.
   Direct worker.phone uses an independent Group property index without country or
   Messaging eligibility. Same-phone requests share a bounded random read with reverse
   membership validation; there is no busy-candidate rescan, Pool fallback or property-version guarantee.
@@ -259,6 +259,10 @@ architectures.
   capacity coordination stores budgets only. Earlier Pool admissions survive a later
   maintenance failure; the exception ends the remaining batch without rollback or replay.
   Each current maintenance policy validates and reads before its own bounded local commit.
+  Country uses one offered-ID Worker Facts HMGET and string country buckets, with
+  complete bounded target processing and no query cursor or Country ZSET. Other
+  index resources and target paging retain their own contracts. No Pool or managed
+  supply is implicitly enabled; Any must be explicitly configured.
   Pool counts use maintained range buckets; take visits selected ranges rather than
   copying/filtering the whole pool. Storage receives no business predicate. Expiry
   uses removable deadline order; all range references leave with the Entry, and

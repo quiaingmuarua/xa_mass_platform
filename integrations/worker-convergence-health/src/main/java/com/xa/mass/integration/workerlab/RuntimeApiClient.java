@@ -173,7 +173,7 @@ final class RuntimeApiClient {
                         "managed Task call Item requires workerSelector"
                 );
             }
-            encoded.add(Map.of("messageId", item.messageId(), "eventCode", item.eventCode(), "payload", item.payload(), "workerSelector", Map.of("executorName", "worker.default", "input", item.workerSelector())));
+            encoded.add(Map.of("messageId", item.messageId(), "eventCode", item.eventCode(), "payload", item.payload(), "workerSelector", item.workerSelector()));
         }
         JsonHttpClient.Response response = http.send(
                 "POST",
@@ -426,13 +426,11 @@ final class RuntimeApiClient {
             String messageId,
             String eventCode,
             Map<String, Object> payload,
-            Map<String, List<String>> workerSelector
+            Map<String, Object> workerSelector
     ) {
         TaskItem {
             payload = Map.copyOf(payload);
-            var captured = new LinkedHashMap<String, List<String>>();
-            workerSelector.forEach((binding, parameters) -> captured.put(binding, List.copyOf(parameters)));
-            workerSelector = Map.copyOf(captured);
+            workerSelector = Map.copyOf(workerSelector);
         }
     }
 

@@ -438,3 +438,11 @@ and report expiry separately; they are not performance or capacity evidence.
 Redis Owner retains qualification command budgets and zero-Redis Pool take.
 Runtime Boundary and Scenario Coexistence cover the new envelope through real
 Workers. Use new scopes; old direct-selector Items are deliberately unreadable.
+
+Matching Pool convergence is covered by the existing lanes: explicit Any without
+Facts, no-Pool Identity/Phone Tasks, Country union/overlapping watermarks and full
+bounded targets, one offered-ID Facts HMGET, local range take and strict candidate
+invalidation. Messaging/Proof paging and enabled-index atomic writes remain separate
+regressions. Country fixtures no longer rely on the retired Country ZSET. Convergence
+checkpoints use a single Identity target after stopping the backup; the independent
+Proof Pool witness retains qualification and strict-fence coverage.

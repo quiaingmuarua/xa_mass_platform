@@ -55,9 +55,25 @@ class DirectQueryFunctionsTest {
         }
     }
 
+    @Test void noPoolGroupRejectsAnyAndRetiredDefaultWithoutImplicitSupply() {
+        var client=mock(RedisClient.class);
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_explicit_any"));
+                var catalog=MatchingComposition.create(storage,Map.of())) {
+            assertEquals(List.of(),catalog.normalizeRefill("g",List.of()));
+            assertEquals(Set.of(),catalog.groupsNeedingRefill(Map.of("g",List.of())));
+            for(String pool:List.of("any","default"))
+                assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
+                        new com.xa.mass.kernel.assignment.RefillTarget(pool,new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),1))));
+            for(String function:List.of("worker.any","worker.default"))
+                assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g",new WorkerQuery(function,Map.of())));
+            assertEquals(new WorkerCandidate("w",0),catalog.take("g",Map.of("m",new WorkerQuery("workerId","w"))).get("m"));
+            assertEquals(10000,storage.availableCapacity());verifyNoInteractions(client);
+        }
+    }
+
     private RedisWorkerMatchingCatalog catalog(MatchingStorage storage) {
         return new RedisWorkerMatchingCatalog(storage,
-                Map.of("default", new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of())),
+                Map.of(),
                 Map.of("workerId", DirectQueryFunctions.identity(), "worker.phone", new DirectQueryFunctions(storage).phone()),
                 Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), Map.of());
     }

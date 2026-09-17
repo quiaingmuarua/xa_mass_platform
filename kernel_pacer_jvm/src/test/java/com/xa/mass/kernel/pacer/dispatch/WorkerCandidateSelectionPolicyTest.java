@@ -13,7 +13,7 @@ class WorkerCandidateSelectionPolicyTest {
     final WorkerResourceCatalog catalog=mock(WorkerResourceCatalog.class);
     final WorkerMatching matching=mock(WorkerMatching.class);
     final WorkerCandidateSelectionPolicy policy=new WorkerCandidateSelectionPolicy(catalog,matching);
-    final WorkerQuery any=new WorkerQuery("worker.default", Map.of());
+    final WorkerQuery any=new WorkerQuery("worker.any", Map.of());
 
     @Test void emptyStockDoesNotReadAddressesOrObtainNewHolds() {
         assertTrue(policy.takeCandidates("g",Map.of("m",any),new HashSet<>()).isEmpty());
@@ -22,8 +22,8 @@ class WorkerCandidateSelectionPolicyTest {
         verifyNoInteractions(catalog);
     }
     @Test void queriesAreForwardedOnceWithOriginalIdentityAndRepresentation() {
-        var first=new WorkerQuery("worker.default", Map.of("country",List.of("US","CN","US")));
-        var second=new WorkerQuery("worker.default", Map.of("country",List.of("CN","US")));
+        var first=new WorkerQuery("worker.country", List.of("US","CN","US"));
+        var second=new WorkerQuery("worker.country", List.of("CN","US"));
         var items=new LinkedHashMap<String,WorkerQuery>();
         items.put("one",first); items.put("two",second); items.put("three",first);
         assertTrue(policy.takeCandidates("g",items,new HashSet<>()).isEmpty());
@@ -32,7 +32,7 @@ class WorkerCandidateSelectionPolicyTest {
         verifyNoInteractions(catalog);
     }
     @Test void everySelectorKeepsItsExpectedFenceAndReadsAddressesInOneBatch() {
-        var ids=new WorkerQuery("worker.default", Map.of("workerId",List.of("target")));
+        var ids=new WorkerQuery("workerId", "target");
         var items=new LinkedHashMap<String,WorkerQuery>();
         items.put("a",any); items.put("b",ids); items.put("c",any);
         when(matching.take("g",items)).thenReturn(Map.of(

@@ -27,26 +27,26 @@ describe("finite Task input model", () => {
     expect(lines).toEqual(["one", "", "three"]);
     expect(
       materializeTaskItems("task-1", "string.md5", seeds, {
-        executorName: "worker.default",
+        executorName: "worker.any",
         input: {}
       })
     ).toEqual([
       {
         messageId: "task-1-00001",
         eventCode: "string.md5",
-        workerSelector: { executorName: "worker.default", input: {} },
+        workerSelector: { executorName: "worker.any", input: {} },
         payload: { value: "one" }
       },
       {
         messageId: "task-1-00002",
         eventCode: "string.md5",
-        workerSelector: { executorName: "worker.default", input: {} },
+        workerSelector: { executorName: "worker.any", input: {} },
         payload: { value: "" }
       },
       {
         messageId: "task-1-00003",
         eventCode: "string.md5",
-        workerSelector: { executorName: "worker.default", input: {} },
+        workerSelector: { executorName: "worker.any", input: {} },
         payload: { value: "three" }
       }
     ]);
@@ -92,7 +92,7 @@ describe("HttpFiniteTaskClient", () => {
       {
         messageId: "task-1-00001",
         eventCode: "event",
-        workerSelector: { executorName: "worker.default", input: {} },
+        workerSelector: { executorName: "worker.any", input: {} },
         payload: { value: "a" }
       }
     ]);
@@ -152,7 +152,7 @@ describe("HttpFiniteTaskClient", () => {
         {
           messageId: "message-1",
           eventCode: "event",
-          workerSelector: { executorName: "worker.default", input: {} },
+          workerSelector: { executorName: "worker.any", input: {} },
           payload: {}
         }
       ])
@@ -274,7 +274,7 @@ function executionRequest(contents: string) {
   return {
     workerGroupId: "scenario-string-utils-workers",
     eventCode: "extension.worker.string.md5",
-    workerSelector: { executorName: "worker.default", input: {} },
+    workerSelector: { executorName: "worker.any", input: {} },
     payloadKey: "value",
     file: textFile("seed.txt", contents),
     config: { priority: 50, maxRetryTimes: 3, refill: [] }

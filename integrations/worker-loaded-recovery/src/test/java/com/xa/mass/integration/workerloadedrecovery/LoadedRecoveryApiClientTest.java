@@ -39,6 +39,26 @@ class LoadedRecoveryApiClientTest {
                     )
             ));
 
+    @Test
+    void finiteTaskAndItemsDeclareAnySupplyAndConsumptionExplicitly() throws Exception {
+        var requests = new java.util.ArrayList<Object>();
+        server.createContext("/api/v1/tasks", exchange -> {
+            requests.add(Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
+            respond(exchange, 200, Map.of("taskId", "task-1"));
+        });
+        server.removeContext("/api/v1/tasks/task-1/items");
+        server.createContext("/api/v1/tasks/task-1/items", exchange -> {
+            requests.add(Jsons.parseArray(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
+            respond(exchange, 200, appendResponse.get());
+        });
+        assertThat(client.createTask("group-a")).isEqualTo("task-1");
+        client.appendItems("task-1", List.of(new LoadedRecoveryApiClient.TaskItem("message-1", "event", Map.of())));
+        assertThat(((Map<?, ?>) requests.get(0)).get("refill"))
+                .isEqualTo(List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000L)));
+        assertThat(((Map<?, ?>) ((List<?>) requests.get(1)).getFirst()).get("workerSelector"))
+                .isEqualTo(Map.of("executorName", "worker.any", "input", Map.of()));
+    }
+
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

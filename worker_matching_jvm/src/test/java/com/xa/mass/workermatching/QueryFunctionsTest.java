@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 
 class QueryFunctionsTest {
     RedisWorkerMatchingCatalog catalog(MatchingStorage storage, Map<String,QueryFunctions> functions) {
-        return new RedisWorkerMatchingCatalog(storage,Map.of("default",new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of())),
+        return new RedisWorkerMatchingCatalog(storage,Map.of(),
                 functions,Map.of("g",new MatchingGroup(Set.of(),functions.keySet())),Map.of());
     }
     @Test void scalarFunctionsNeedNeitherRefillPolicyNorPoolAndKeepCallLocalOrder() {
@@ -100,7 +100,7 @@ class QueryFunctionsTest {
         var client=mock(RedisClient.class);
         try(var storage=new MatchingStorage(client,new RedisKeyspace("test_map_function"));
                 var catalog=new RedisWorkerMatchingCatalog(storage,
-                        Map.of("default",new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of()),"map",rule),
+                        Map.of("map",rule),
                         Map.of("map",functions),Map.of("g",new MatchingGroup(Set.of("map"),Set.of("map"))),Map.of())) {
             var targets=List.of(new RefillTarget("map",new EligibilityQuery(Map.of()),1));
             assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));

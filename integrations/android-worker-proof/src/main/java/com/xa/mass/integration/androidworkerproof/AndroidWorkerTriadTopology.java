@@ -52,11 +52,11 @@ final class AndroidWorkerTriadTopology {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    static Map<String, List<String>> workerSelector(String workerId) {
+    static Map<String, Object> workerSelector(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must be non-blank");
         }
-        return Map.of("workerId", List.of(workerId));
+        return Map.of("executorName", "workerId", "input", workerId);
     }
 
     record WorkerAddress(

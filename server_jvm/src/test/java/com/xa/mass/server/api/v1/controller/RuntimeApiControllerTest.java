@@ -567,11 +567,11 @@ class RuntimeApiControllerTest {
     }
 
     @Test void itemQueryUsesRuleNormalizationBeforeStorage() throws Exception {
-        var normalized=new WorkerQuery("worker.default",Map.of("country",List.of("CN","US")));
+        var normalized=new WorkerQuery("worker.country", List.of("CN","US"));
         when(matchingCatalog.normalizeQuery(anyString(),any())).thenReturn(normalized);
         mockMvc.perform(post("/api/v1/tasks/task-1/items").contentType(MediaType.APPLICATION_JSON).content("""
                 [{"messageId":"message-1","eventCode":"event","payload":{},
-                  "workerSelector":{"executorName":"worker.default","input":{"country":["US","CN","CN"]}}}]
+                  "workerSelector":{"executorName":"worker.country","input":["US","CN","CN"]}}]
                 """)).andExpect(status().isOk());
         verify(taskRuntime).appendItems(eq("task-1"), org.mockito.ArgumentMatchers.argThat(items ->
                 items.size()==1 && normalized.equals(items.getFirst().workerSelector())));
@@ -624,7 +624,7 @@ class RuntimeApiControllerTest {
 
     @Test void rejectsMixedRulesAndIrrelevantCandidateCapacityBeforeOwners() throws Exception {
         for (String extra : List.of("\"ruleId\":\"worker.country\",\"allocationRule\":{}",
-                "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10", "\"ruleId\":\"worker.default\"", "\"refillTargets\":[]")) {
+                "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10", "\"ruleId\":\"worker.any\"", "\"refillTargets\":[]")) {
             mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
                     .content("{\"workerGroupId\":\"phone-tools\","+extra+"}"))
                     .andExpect(status().isBadRequest());
@@ -681,7 +681,7 @@ class RuntimeApiControllerTest {
                                     "eventCode": "telecom.phone.inspect",
                                     "payload": {"phoneNumber": "+14155552671"},
                                     "ttlMillis": 30000,
-                                    "workerSelector":{"executorName":"worker.default","input":{}}
+                                    "workerSelector":{"executorName":"worker.any","input":{}}
                                   }]
                                 """))
                 .andExpect(status().isOk())
@@ -768,7 +768,7 @@ class RuntimeApiControllerTest {
                         .content("""
                                 [
                                   {"messageId":"message-invalid","eventCode":"event","payload":{}},
-                                  {"messageId":"message-missing","eventCode":"event","payload":{},"workerSelector":{"executorName":"worker.default","input":{}}},
+                                  {"messageId":"message-missing","eventCode":"event","payload":{},"workerSelector":{"executorName":"worker.any","input":{}}},
                                   {"messageId":"message-retry","eventCode":"event","payload":{}}
                                 ]
                                 """))
@@ -960,7 +960,7 @@ class RuntimeApiControllerTest {
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
                                             "payload": {"phoneNumber": "+14155552671"},
-                                            "workerSelector": {"executorName":"worker.default","input":{}}
+                                            "workerSelector": {"executorName":"worker.any","input":{}}
                                           }],
                                           "waitTimeoutMillis": 1000
                                         }
@@ -1014,7 +1014,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {"executorName":"worker.default","input":{}}
+                                    "workerSelector": {"executorName":"worker.any","input":{}}
                                   }]
                                 }
                                 """))
@@ -1029,7 +1029,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-finite",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {"executorName":"worker.default","input":{}}
+                                    "workerSelector": {"executorName":"worker.any","input":{}}
                                   }]
                                 }
                                 """))
@@ -1070,7 +1070,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-2",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {"executorName":"worker.default","input":{}}
+                                    "workerSelector": {"executorName":"worker.any","input":{}}
                                   }]
                                 }
                                 """))
@@ -1100,7 +1100,7 @@ class RuntimeApiControllerTest {
                                     "messageId": "message-unregistered",
                                     "eventCode": "event",
                                     "payload": {},
-                                    "workerSelector": {"executorName":"worker.default","input":{}}
+                                    "workerSelector": {"executorName":"worker.any","input":{}}
                                   }]
                                 }
                                 """))
@@ -1389,6 +1389,6 @@ class RuntimeApiControllerTest {
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ) : Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ) : Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of());
     }
 }

@@ -34,7 +34,7 @@ final class AndroidWorkerTriadTopologyTest {
     @Test
     void targetsOneApplicationThroughItsServerWorkerIdentity() {
         assertEquals(
-                Map.of("workerId", List.of("worker-lab1")),
+                Map.of("executorName", "workerId", "input", "worker-lab1"),
                 AndroidWorkerTriadTopology.workerSelector(
                         "worker-lab1"
                 )

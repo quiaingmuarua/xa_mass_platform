@@ -27,11 +27,11 @@ class TaskDescriptorTest {
         assertThrows(UnsupportedOperationException.class, () -> target.target().query().clear());
         assertEquals(descriptor, descriptor("external.rule", List.of(target)));
         assertNotEquals(descriptor, descriptor("other.rule", List.of(target)));
-        assertNotEquals(descriptor, descriptor("external.rule", List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1))));
+        assertNotEquals(descriptor, descriptor("external.rule", List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1))));
     }
 
     @Test void requiresAnExplicitBoundedConfiguration() {
-        var target = new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1);
+        var target = new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1);
         for (String rule : new String[]{null, "", " "})
             assertThrows(IllegalArgumentException.class, () -> descriptor(rule, List.of(target)));
         assertThrows(NullPointerException.class, () -> descriptor("r", null));

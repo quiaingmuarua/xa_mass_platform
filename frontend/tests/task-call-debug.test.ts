@@ -89,8 +89,7 @@ describe("Task Call Debug request model", () => {
         workerGroupId: " group-a ",
         eventName: " extension.worker.custom ",
         payloadText: '  {"value":"hello"}  ',
-        workerSelectorText:
-          '{"executorName":"worker.default","input":{"workerId":["worker-a"]}}'
+        workerSelectorText: '{"executorName":"workerId","input":"worker-a"}'
       })
     );
 
@@ -100,8 +99,8 @@ describe("Task Call Debug request model", () => {
       eventName: "extension.worker.custom",
       payload: { value: "hello" },
       workerSelector: {
-        executorName: "worker.default",
-        input: { workerId: ["worker-a"] }
+        executorName: "workerId",
+        input: "worker-a"
       }
     });
     expect(validated.payloadText).toBe('  {"value":"hello"}  ');
@@ -200,8 +199,8 @@ describe("HttpTaskCallDebugClient", () => {
             payload: { value: "hello" },
             priority: 5,
             workerSelector: {
-              executorName: "worker.default",
-              input: { workerId: ["worker-a"] }
+              executorName: "workerId",
+              input: "worker-a"
             }
           }
         ],
@@ -341,7 +340,7 @@ describe("Task Call Debug browser-memory store", () => {
       messageId: "task-debug-1787644800123-1",
       state: "sending",
       payloadText: '{"value":"hello"}',
-      workerSelectorText: '{"executorName":"worker.default","input":{}}'
+      workerSelectorText: '{"executorName":"worker.any","input":{}}'
     });
 
     pending.resolve({
@@ -522,7 +521,7 @@ function entry(
       taskId: "task-1",
       workerGroupId: "group-a",
       idleDisposition: "PARK_WHEN_IDLE",
-      refill: [{ poolName: "default", target: {}, count: 100 }],
+      refill: [{ poolName: "any", target: {}, count: 100 }],
       config: {
         priority: "0",
         maxRetryTimes: "3"
@@ -538,7 +537,7 @@ function draft(overrides: Partial<TaskCallDebugDraft> = {}): TaskCallDebugDraft 
     workerGroupId: "group-a",
     eventName: "extension.worker.custom",
     payloadText: '{"value":"hello"}',
-    workerSelectorText: '{"executorName":"worker.default","input":{}}',
+    workerSelectorText: '{"executorName":"worker.any","input":{}}',
     waitTimeoutMillis: 3_000,
     ...overrides
   };
@@ -553,8 +552,8 @@ function clientRequest(
     eventName: "extension.worker.custom",
     payload: { value: "hello" },
     workerSelector: {
-      executorName: "worker.default",
-      input: { workerId: ["worker-a"] }
+      executorName: "workerId",
+      input: "worker-a"
     },
     waitTimeoutMillis: 3_000,
     ...overrides

@@ -24,7 +24,13 @@ final class RuleInputs {
         return text;
     }
     static List<String> countries(Object input) {
-        var result = strings(input); result.forEach(CountryIndex::code); return result;
+        var result = strings(input);
+        for (String value : result) if (!validCountry(value)) throw new IllegalArgumentException("country must match [A-Z]{2}");
+        return result;
+    }
+    static boolean validCountry(String value) {
+        return value.length() == 2 && value.charAt(0) >= 'A' && value.charAt(0) <= 'Z'
+                && value.charAt(1) >= 'A' && value.charAt(1) <= 'Z';
     }
     static List<String> codes(Object input) {
         return countries(input).stream().map(country -> Integer.toString(CountryIndex.code(country))).toList();

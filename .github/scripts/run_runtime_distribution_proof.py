@@ -158,7 +158,7 @@ def _managed_task_id(base_url: str, worker_group_id: str) -> str:
             and isinstance(worker_group, dict)
             and task.get("workerGroupId") == worker_group_id
             and worker_group.get("workerGroupId") == worker_group_id
-            and task.get("ruleId") == "worker.default"
+            and isinstance(task.get("refill"), list)
             and task.get("idleDisposition") == "PARK_WHEN_IDLE"
             and entry.get("taskId") == task.get("taskId")
         ):

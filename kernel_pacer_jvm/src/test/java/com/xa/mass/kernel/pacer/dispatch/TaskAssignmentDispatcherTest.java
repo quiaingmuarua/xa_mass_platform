@@ -306,7 +306,7 @@ class TaskAssignmentDispatcherTest {
         return new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "1"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static TaskItem item() {
@@ -321,7 +321,7 @@ class TaskAssignmentDispatcherTest {
                 Map.of("z", 2, "a", 1),
                 0,
                 null,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
     }
 

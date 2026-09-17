@@ -91,16 +91,8 @@ final class WorkerTaskFaultConvergence {
                     Math.min(120_000L, options.maximumWaitMillis())
             );
             checkpointArmed = true;
-            Map<String, Map<String, List<String>>> targetSelector = Map.of(
-                    STRING_GROUP,
-                    Map.of(
-                            "workerId",
-                            List.of(
-                                    requireWorkerId(identities, TARGET),
-                                    requireWorkerId(identities, BACKUP)
-                            )
-                    )
-            );
+            Map<String, Map<String, Object>> targetSelector = Map.of(
+                    STRING_GROUP, Map.of("executorName", "workerId", "input", requireWorkerId(identities, TARGET)));
             List<Batch> faultWave = workload.submitCheckpointWave(
                     "wave-2",
                     targetSelector,
@@ -200,14 +192,14 @@ final class WorkerTaskFaultConvergence {
         RuntimeApiClient runtime = options.runtimeClient();
         try {
             await(
-                    "target-remained-stopped",
+                    "backup-remained-stopped",
                     options.maximumWait(),
-                    () -> lab.worker(TARGET.groupId(), TARGET.labWorkerKey()),
+                    () -> lab.worker(BACKUP.groupId(), BACKUP.labWorkerKey()),
                     WorkerLabConvergenceSupport::isStopped
             );
-            List<WorkerRef> active = workersWithoutTarget();
+            List<WorkerRef> active = workersWithoutBackup();
             Map<WorkerRef, String> identities = awaitConnected(
-                    "backup-world-connected",
+                    "recovered-world-connected",
                     options,
                     active,
                     lab,
@@ -222,13 +214,13 @@ final class WorkerTaskFaultConvergence {
                     ),
                     "Worker identity changed across Worker Simulator recovery"
             ));
-            String backupWorkerId = identities.get(BACKUP);
-            require(backupWorkerId != null, "Backup Worker was not started");
+            String recoveredWorkerId = identities.get(TARGET);
+            require(state.targetWorkerId().equals(recoveredWorkerId), "Original target Worker was not restarted");
             awaitHot(
-                    "backup-hot",
+                    "target-hot",
                     options,
                     runtime,
-                    Map.of(BACKUP, backupWorkerId)
+                    Map.of(TARGET, recoveredWorkerId)
             );
 
             ConvergenceWorkload workload = new ConvergenceWorkload(
@@ -266,11 +258,11 @@ final class WorkerTaskFaultConvergence {
                     "Task-fault workload did not offer 3 fail Items"
             );
             state.recoveredBy(
-                    backupWorkerId,
+                    recoveredWorkerId,
                     workload.batches()
             ).save(phaseStatePath);
-            evidence.record("recovery", "backup-world-completed-work", Map.of(
-                    "backupWorkerId", backupWorkerId,
+            evidence.record("recovery", "same-identity-completed-work", Map.of(
+                    "recoveredWorkerId", recoveredWorkerId,
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
                     "offeredDelayItemCount", workload.offeredDelayItemCount(),
@@ -506,9 +498,9 @@ final class WorkerTaskFaultConvergence {
         return Map.copyOf(values);
     }
 
-    private static List<WorkerRef> workersWithoutTarget() {
+    private static List<WorkerRef> workersWithoutBackup() {
         return CONVERGENCE_WORKERS.stream()
-                .filter(worker -> !TARGET.equals(worker))
+                .filter(worker -> !BACKUP.equals(worker))
                 .toList();
     }
 

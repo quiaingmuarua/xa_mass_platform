@@ -68,7 +68,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   and Polling witnesses. Prepare establishes identity and cold registration
   without Matching facts; network evidence activates scheduling availability;
   text-protocol observations independently create facts, and Polling executes
-  default Rule without them. Preview can expose an identity before a baseline.
+  explicit Any Pool without them. Preview can expose an identity before a baseline.
   Actual Handlers return send success before reporting delivered/read/replied
   through all three transports; state queries, repeatable latest-reply reads
   and subsequent Item execution witness the continuous observation boundary.

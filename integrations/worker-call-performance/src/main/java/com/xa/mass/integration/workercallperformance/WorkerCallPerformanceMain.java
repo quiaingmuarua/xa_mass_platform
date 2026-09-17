@@ -221,11 +221,11 @@ public final class WorkerCallPerformanceMain {
     }
 
     private static String createBackground(CallApi api, String prefix) throws Exception {
-        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("workerGroupId", CallApi.GROUP, "priority", 50, "maxRetryTimes", 3)), "taskId");
+        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("workerGroupId", CallApi.GROUP, "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)), "priority", 50, "maxRetryTimes", 3)), "taskId");
         for (int offset = 0; offset < 50_000; offset += 100) {
             var items = new ArrayList<Map<String, Object>>();
             for (int i = offset; i < offset + 100; i++) items.add(Map.of("messageId", prefix + "-bg-" + i,
-                    "eventCode", "extension.worker.lab.delay", "payload", Map.of("delayMillis", 100), "ttlMillis", 600_000));
+                    "eventCode", "extension.worker.lab.delay", "payload", Map.of("delayMillis", 100), "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()), "ttlMillis", 600_000));
             var appended = api.post("/api/v1/tasks/" + task + "/items", items);
             if (!appended.keySet().equals(items.stream().map(i -> i.get("messageId")).collect(java.util.stream.Collectors.toSet()))
                     || appended.values().stream().anyMatch(v -> !"applied".equals(CallApi.object(v).get("status"))))

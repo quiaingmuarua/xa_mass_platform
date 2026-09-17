@@ -72,7 +72,7 @@ class RuleEligibilityTest {
         targets.forEach(target->result.put(target.target(),target.count()));
         return result;
     }
-    static RefillTarget pools(int count,String... values) { return new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("pool",List.of(values))), count); }
+    static RefillTarget pools(int count,String... values) { return new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("pool",List.of(values))), count); }
     static WorkerCandidate candidate(HeldCandidate held) { return new WorkerCandidate(held.workerId(),held.score()); }
     List<HeldCandidate> offers(int start,int count,String value) {
         var facts=new HashMap<>(rule.current);
@@ -136,7 +136,7 @@ class RuleEligibilityTest {
     }
     @Test void constrainedTargetsPrecedeAnyAndMembershipsArePreparedOnce() {
         var offered=offers(0,2,"US");rule.current=Map.of("w0","CN","w1","US");
-        assertEquals(List.of("w1"),rule.refill("g",targets(List.of(new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1));
+        assertEquals(List.of("w1"),rule.refill("g",targets(List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1));
         assertEquals(2,rule.evaluations);
     }
     @Test void hundredTargetsUseOneBoundedSourceRead() {
@@ -217,8 +217,8 @@ class RuleEligibilityTest {
         assertEquals(10,rule.deficits("g",targets(List.of(target))).get(target.target()));
     }
     @Test void processAndResidentGroupCapsAreSharedAcrossRuleOwnedPools() {
-        var defaults=new DefaultPoolPolicy(storage,new CandidatePool(storage),Set.of());
-        var any=new RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000);
+        var defaults=new AnyPoolPolicy(storage,new CandidatePool(storage));
+        var any=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000);
         for(int g=0;g<10;g++)for(int n=0;n<10;n++)
             assertEquals(100,defaults.refill("g"+g,targets(List.of(any)),offers(n*100,100,"US"),100).size());
         assertEquals(0,storage.availableCapacity());

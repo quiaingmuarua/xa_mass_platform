@@ -3,11 +3,11 @@ xa:
     worker-matching:
       groups:
         scenario-string-utils-workers:
-          pools: [proof-facts]
-          functions: [proof.worker.facts]
+          pools: [any, proof-facts]
+          functions: [worker.any, proof.worker.facts]
         scenario-phone-number-workers:
-          pools: [proof-facts]
-          functions: [proof.worker.facts]
+          pools: [any, proof-facts]
+          functions: [worker.any, proof.worker.facts]
     worker-assembly:
       group-config-json: |
         {

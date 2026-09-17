@@ -167,6 +167,7 @@ final class LoadedRecoveryApiClient {
                 "/api/v1/tasks",
                 Map.of(
                         "workerGroupId", workerGroupId,
+                        "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)),
                         "priority", 50,
                         "maxRetryTimes", 3
                 )
@@ -186,7 +187,8 @@ final class LoadedRecoveryApiClient {
             encoded.add(Map.of(
                     "messageId", item.messageId(),
                     "eventCode", item.eventCode(),
-                    "payload", item.payload()
+                    "payload", item.payload(),
+                    "workerSelector", Map.of("executorName", "worker.any", "input", Map.of())
             ));
         }
         LoadedRecoveryHttpClient.JsonResponse response = runtime.json(

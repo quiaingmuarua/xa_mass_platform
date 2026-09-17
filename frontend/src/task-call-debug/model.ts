@@ -124,7 +124,7 @@ export function parseWorkerSelector(text: string): WorkerQuery {
 
 function invalidWorkerSelector(): Error {
   return taskCallDebugConfigurationError(
-    'Worker Selector 需要 executorName 和非 null 的 JSON input，例如 {"executorName":"worker.default","input":{}}。' +
+    'Worker Selector 需要 executorName 和非 null 的 JSON input，例如 {"executorName":"worker.any","input":{}}。' +
       "input 每容器最多 100 项、容器深度最多 8、最多 64 KiB；局部参数由 Matching 函数校验。"
   );
 }

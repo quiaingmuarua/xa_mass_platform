@@ -3,7 +3,6 @@ package com.xa.mass.workermatching.rules;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import com.xa.mass.workermatching.rules.CandidatePool.SelectionKind;
 import static com.xa.mass.workermatching.rules.CandidatePool.*;
 import com.xa.mass.workermatching.PoolRefillPolicy;
 import java.util.*;
@@ -19,7 +18,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
     }
     protected abstract EligibilityQuery normalize(String group, EligibilityQuery query);
     protected abstract Selection target(String group, EligibilityQuery normalized);
-    /** Reads only offered identities; null qualification may be valid for Default identity admission. */
+    /** Reads only offered identities; null qualification may be valid for unconditional Any admission. */
     protected abstract Map<String, P> readQualifications(String group, List<String> offered);
     /** Null means ineligible; a non-null map assigns at most one bucket per view. */
     protected abstract @Nullable Map<String, String> memberships(String group, String workerId, @Nullable P qualification);
@@ -41,8 +40,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             Map<EligibilityQuery, Integer> targets, CandidatePool.Observation observation) {
         var result = new LinkedHashMap<EligibilityQuery, Integer>();
         selections.forEach((query, selection) -> {
-            int requested = selection.kind() == SelectionKind.IDS
-                    ? Math.min(targets.get(query), selection.values().size()) : targets.get(query);
+            int requested = targets.get(query);
             result.put(query, Math.max(0, requested - observation.counts().get(selection)));
         });
         return result;

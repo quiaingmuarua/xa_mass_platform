@@ -28,7 +28,7 @@ class MatchingPropertiesTest {
     @Test void explicitEmptyManagedSupplyAndMalformedDeclarationsStayDistinct() {
         runner.withPropertyValues("xa.mass.task-rpc.refill-by-worker-group.g=")
                 .run(context->{assertThat(context).hasNotFailed();assertThat(context.getBean(TaskRpcProperties.class).refillByWorkerGroup()).containsEntry("g",List.of());});
-        for(String bad:List.of("{\"poolName\":\"default\",\"count\":1}","{\"poolName\":\"default\",\"target\":{},\"count\":\"1\"}","{\"poolName\":\"default\",\"target\":{},\"count\":1,\"extra\":true}"))
+        for(String bad:List.of("{\"poolName\":\"any\",\"count\":1}","{\"poolName\":\"any\",\"target\":{},\"count\":\"1\"}","{\"poolName\":\"any\",\"target\":{},\"count\":1,\"extra\":true}"))
             runner.withPropertyValues("xa.mass.task-rpc.refill-by-worker-group.g[0]="+bad).run(context->assertThat(context).hasFailed());
     }
 

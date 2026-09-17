@@ -121,7 +121,7 @@ class AssignmentPacersTest {
                         Map.of(),
                         0,
                         999L,
-                        new WorkerQuery("worker.default", Map.of())
+                        new WorkerQuery("worker.any", Map.of())
                 )
         ));
 
@@ -184,7 +184,7 @@ class AssignmentPacersTest {
             TaskIdleDisposition idle,
             int priority) {
         return new ObservedTask(
-                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),
+                new TaskDescriptor(taskId, "group-1", idle, Map.of("priority", Integer.toString(priority), "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),
                 777_777_777L
         );
     }
@@ -200,8 +200,8 @@ class AssignmentPacersTest {
                 Map.of(),
                 0,
                 null,
-                new WorkerQuery("worker.default", targetWorkerIds.isEmpty()
-                        ? Map.of() : Map.of("workerId", targetWorkerIds))
+                targetWorkerIds.isEmpty() ? new WorkerQuery("worker.any", Map.of())
+                        : new WorkerQuery("workerId", targetWorkerIds.getFirst())
         );
     }
 

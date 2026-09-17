@@ -2,7 +2,7 @@
 
 Primary claim: offered online call load, observed completion, latency distributions
 and saturation behavior of the existing Task Call and caller-targeted Direct
-Call paths. Task Call also measures coexistence with one finite default Rule ANY Task.
+Call paths. Task Call also measures coexistence with one finite explicit Any Pool Task.
 Each suite's fixed Worker count is a measurement fixture, not another
 correctness, recovery or scale tier.
 
@@ -21,9 +21,14 @@ and the eight-case acceptance run under unchanged production configuration.
 It separates API response rate from successful calls and retains the 2k Task
 Result-closure failures that prevent enabling the new scheduled composition.
 
+Targeted Task calls use the independent `workerId` function and direct execution admission.
+Historical targeted-ID Pool measurements are not equivalent to this path; compare
+source fingerprints and query contracts before using an old result as a baseline.
+Finite background Tasks explicitly declare `any / {} / 1000` supply.
+
 ## RPC Mainline Diagnosis
 
-`--suite rpc-diagnosis` measures the primary `items:call` default Rule path and
+`--suite rpc-diagnosis` measures the primary `items:call` Any Pool path and
 uses Direct Call as a control for the shared HTTP/Transport path. It freezes
 production configuration, including the 100-Item per-Task check bound and the
 DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added.
@@ -40,7 +45,7 @@ DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added
 
 Every main case uses Ubuntu 24.04 with four logical CPUs, Java 21, Redis 7.4.10,
 one Group, 1,000 real connections in one Worker Simulator JVM and one WebSocket
-Adapter. Task calls share the Group's managed default Rule Task. Sorted known IDs,
+Adapter. Task calls share the Group's managed Task with explicit Any supply. Sorted known IDs,
 64-byte MD5 input, single-item requests, one-second HTTP wait, five-second client
 timeout and 4,096 in-flight bound match across the paths. Each case starts fresh,
 warms at 100/s for 20 seconds and closes warmup before continuous 120-second
@@ -66,7 +71,7 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
 ```
 
 The nightly manifest contains these seven main cases plus **only** the original
-`mixed-500`: 100 Workers, 30 seconds, 50,000 default Rule ANY Items, 100ms Handler,
+`mixed-500`: 100 Workers, 30 seconds, 50,000 explicit Any Pool Items, 100ms Handler,
 sharing the full Worker pool. This independent coexistence witness is not included in
 aligned path-cost ratios. The runner checks exact case membership and continues
 collecting remaining case evidence after a case failure. It never calls this
@@ -145,13 +150,13 @@ capability files are excluded from CI artifacts.
 | `any-1000` | 1,000 calls/s, ANY | None |
 | `any-2000` | 2,000 calls/s, ANY | None |
 | `targeted-500` | 500 calls/s, explicit Worker IDs in round-robin order | None |
-| `mixed-500` | 500 calls/s, ANY | One default Rule ANY Task, 50,000 Items, 100ms delay, full shared Worker pool |
+| `mixed-500` | 500 calls/s, ANY | One explicit Any Pool Task, 50,000 Items, 100ms delay, full shared Worker pool |
 
 Each case warms up at 100 calls/s for 20 seconds, observes successful warmup
 closure, then measures for 30 seconds. A call submits one Item with a fresh
 Message ID and a fixed 64-byte MD5 input. HTTP wait is 1 second, client timeout
 5 seconds and Item TTL 120 seconds. These are fixture values, not a production
-SLA. Calls use the registered Group's managed default Rule Task.
+SLA. Calls use the registered Group's managed Task with explicit Any supply.
 
 The background Task is fully seeded and approved once after warmup, and must
 produce a successful Result within 60 seconds. A bounded observer checks its
@@ -166,7 +171,7 @@ online Item must have a succeeded Result: an observed failed Result fails this
 coexistence case, even though it satisfies the other Task cases' measurement-only
 closure contract. There is no response-rate or latency threshold.
 
-Task fixture version 4 records the current default Rule/full-pool world and this
+Task fixture version 4 records the explicit Any/full-pool world and this
 successful coexistence closure oracle. The retired version-1 background used a
 50-candidate cache bound; comparisons across that cutover must not treat the
 competition conditions as identical. No cache or capacity bound is restored.

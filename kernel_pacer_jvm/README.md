@@ -93,9 +93,9 @@ refill Producer alone reads the due Group HOT head from the floor and exact-acqu
 1-second candidate leases before supplying successful fences to Matching. Acquisition
 advances the head without a within-Group offset; Group rotation remains independent.
 Matching qualifies those held IDs and retains their original deadlines.
-Dispatch consumes shared stock
-for every accepted selector, then exact-confirms, claims the Item and delivers.
-Only worker.default accepts explicit ID queries. Pacer does not load Rules,
+Dispatch forwards Item functions to Matching, then confirms the candidate, claims
+the Item and delivers. Pool candidates retain strict fences; Identity and Phone
+return identity hints for current-state execution admission. Pacer does not load Rules,
 Properties or interpret conditions.
 Package-private mechanisms protect exact Score fences and claim/Command ordering.
 Producers discover only resources under the Main Scheduler's root identities;

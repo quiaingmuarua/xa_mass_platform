@@ -13,7 +13,7 @@ abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetInde
 
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
         var expression = input.query();
-        if (expression.containsKey("workerId")) throw new IllegalArgumentException("workerId target requires the default Pool");
+        if (expression.containsKey("workerId")) throw new IllegalArgumentException("identity targeting is not a Pool target");
         var query = RuleQueries.normalize(input); criteria(query.query()); return query;
     }
     @Override protected Selection target(String group, EligibilityQuery query) {

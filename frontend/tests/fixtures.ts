@@ -24,7 +24,7 @@ export function task(taskId: string, workerGroupId: string): TaskView {
     taskId,
     workerGroupId,
     idleDisposition: "PARK_WHEN_IDLE",
-    refill: [{ poolName: "default", target: {}, count: 100 }],
+    refill: [{ poolName: "any", target: {}, count: 100 }],
     config: {
       priority: "0",
       maxRetryTimes: "3"

@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ListenerServiceTest {
-    @Test void mixedCountriesShareOneGroupAndTaskWithIndexedStartSelectors() {
+    @Test void mixedCountriesShareOneGroupAndTaskWithCountryPoolSelectors() {
         Fixture fixture = client();
         try (var service = fixture.service(new Time(), 10)) {
             for (String country : ListenerService.COUNTRIES) {
@@ -24,7 +24,7 @@ class ListenerServiceTest {
             verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
             for (String country : ListenerService.COUNTRIES) {
                 verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream()
-                        .anyMatch(item -> item.workerSelector().input().equals(Map.of("country", List.of(country))))));
+                        .anyMatch(item -> item.workerSelector().executorName().equals("worker.country") && item.workerSelector().input().equals(List.of(country)))));
             }
         }
     }

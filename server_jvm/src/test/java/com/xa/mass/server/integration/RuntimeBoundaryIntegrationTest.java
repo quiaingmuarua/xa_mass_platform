@@ -228,11 +228,19 @@ class RuntimeBoundaryIntegrationTest {
     @MockitoSpyBean
     private WorkerPreparationService preparationService;
 
-    private static String poolName(String function) { return switch(function) { case "worker.default" -> "default"; case "worker.country" -> "country"; case "worker.messaging.available" -> "messaging"; case "proof.worker.facts" -> "proof-facts"; default -> function; }; }
+    private static String poolName(String function) { return switch(function) { case "worker.any" -> "any"; case "worker.country" -> "country"; case "worker.messaging.available" -> "messaging"; case "proof.worker.facts" -> "proof-facts"; default -> function; }; }
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
+        for(String group:List.of("group-refill-b",SERVICEABILITY_WORKER_GROUP_ID)) {
+            registry.add("xa.mass.worker-matching.groups["+group+"].pools[0]",()->"any");
+            registry.add("xa.mass.worker-matching.groups["+group+"].functions[0]",()->"worker.any");
+        }
+        for(String group:List.of("country-index-websocket","country-index-socket")) {
+            registry.add("xa.mass.task-rpc.refill-by-worker-group["+group+"][0]",
+                    ()->"{\"poolName\":\"country\",\"target\":{},\"count\":100}");
+        }
         registry.add("xa.mass.task-rpc.refill-by-worker-group[direct-query-boundary]", () -> "");
         registry.add("xa.mass.worker-matching.groups[country-index-websocket].functions[0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.groups[country-index-websocket].pools[0]", () -> "country");
@@ -604,7 +612,9 @@ class RuntimeBoundaryIntegrationTest {
                     return score != null && hasPolarity(score, WorkerScorePolarity.HOT_ACQUIRE)
                             && timeMillis(score) < slotStart(System.currentTimeMillis());
                 });
-                assertThat(matchingCatalog.take(group, Map.of("pool", new com.xa.mass.kernel.assignment.WorkerQuery("worker.default", Map.of())))).isEmpty();
+                org.assertj.core.api.Assertions.assertThatThrownBy(() -> matchingCatalog.take(group,
+                        Map.of("pool", new com.xa.mass.kernel.assignment.WorkerQuery("worker.any", Map.of()))))
+                        .isInstanceOf(IllegalArgumentException.class);
                 var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of())));
                 assertThat(created.statusCode()).isEqualTo(200);
                 String task = JSON.readTree(created.body()).get("taskId").asText(), id = UUID.randomUUID().toString();
@@ -690,7 +700,7 @@ class RuntimeBoundaryIntegrationTest {
             var taskGroups=new LinkedHashMap<String,String>();
             for(int t=0;t<4;t++) {
                 String group=t==3?groupB:groupA;
-                String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.default";
+                String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.any";
                 Map<String,Object> query=t<2?Map.of("worker.country", List.of("CN")):Map.of();
                 var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
                 assertThat(response.statusCode()).isEqualTo(200);
@@ -814,7 +824,7 @@ class RuntimeBoundaryIntegrationTest {
         expectedByCountry.forEach((country, executor) -> {
             String messageId = UUID.randomUUID().toString();
             expected.put(messageId, executor);
-            items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.default", "input", Map.of("country", List.of(country)))));
+            items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.country", "input", List.of(country))));
         });
         var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of("items", items, "waitTimeoutMillis", 10000)));
         assertThat(response.statusCode()).isEqualTo(200);
@@ -935,7 +945,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
-    void defaultRuleClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
+    void explicitAnyPoolClosesThroughTheJavaPollingWorkerWithoutMatchingFacts()
             throws Exception {
         runWorkerGroupTaskCall(TransportProfile.POLLING);
     }
@@ -975,7 +985,7 @@ class RuntimeBoundaryIntegrationTest {
                                     ? WorkerTransportType.WEBSOCKET : WorkerTransportType.SOCKET);
             try {
                 var submitted = send("POST", "/api/v1/tasks/" + taskId + "/items:call",
-                        Jsons.toJson(Map.of("items", List.of(Map.of("messageId", messageId, "eventCode", TEST_EVENT_CODE, "payload", Map.of("value", "input"), "workerSelector", Map.of("executorName", "worker.default", "input", Map.of("workerId", List.of(prepared.workerId()))))), "waitTimeoutMillis", 1)));
+                        Jsons.toJson(Map.of("items", List.of(Map.of("messageId", messageId, "eventCode", TEST_EVENT_CODE, "payload", Map.of("value", "input"), "workerSelector", Map.of("executorName", "workerId", "input", prepared.workerId()))), "waitTimeoutMillis", 1)));
                 assertThat(submitted.statusCode()).isEqualTo(200);
                 assertThat(secondEntered.await(15, TimeUnit.SECONDS)).isTrue();
                 verify(taskEvidence, org.mockito.Mockito.atLeastOnce()).appendTaskEvidence(
@@ -1359,13 +1369,13 @@ class RuntimeBoundaryIntegrationTest {
                     ));
 
 
-            demandTaskId=createTask(workerGroupId,"worker.default");
+            demandTaskId=createTask(workerGroupId,"worker.any");
             demandTaskCreated = true;
             // Establish due work before approval; an approved empty finite Task can close immediately.
             appendItem(
                     demandTaskId,
                     "serviceability-demand-item-" + suffix,
-                    Map.of("executorName", "worker.default", "input", Map.of("workerId", List.of("missing-worker-"+suffix)))
+                    Map.of("executorName", "workerId", "input", "missing-worker-"+suffix)
             );
             awaitServiceabilitySnapshot(workerGroupId, workerId, demandTaskId);
         } finally {
@@ -1721,7 +1731,7 @@ class RuntimeBoundaryIntegrationTest {
                     && workerGroupId.equals(
                             workerGroup.get("workerGroupId").asText()
                     )
-                    && "default".equals(task.get("refill").get(0).get("poolName").asText())
+                    && task.get("refill").isEmpty()
                     && "PARK_WHEN_IDLE".equals(
                             task.get("idleDisposition").asText()
                     )
@@ -1821,7 +1831,7 @@ class RuntimeBoundaryIntegrationTest {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "payload": {"value": "input"},
-                            "workerSelector": {"executorName":"worker.default","input":{"workerId": ["%s"]}}
+                            "workerSelector": {"executorName":"workerId","input":"%s"}
                           }],
                           "waitTimeoutMillis": 10000
                         }

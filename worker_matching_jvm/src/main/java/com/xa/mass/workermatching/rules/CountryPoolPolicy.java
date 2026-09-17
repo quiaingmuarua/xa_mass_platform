@@ -1,15 +1,101 @@
 package com.xa.mass.workermatching.rules;
 
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.workermatching.PoolRefillPolicy;
 import java.util.*;
-import com.xa.mass.workermatching.rules.CandidatePool.Selection;
-import static com.xa.mass.workermatching.rules.CandidatePool.*;
 
-public final class CountryPoolPolicy extends PartitionedPoolPolicy {
-    public CountryPoolPolicy(MatchingStorage storage, CandidatePool pool) { super(storage,pool,"country"); }
-    public static MatchingStorage.IndexMutation index() {
-        return new MatchingStorage.IndexMutation("country",ZsetProjection.prepare("return country(w['country']), {}"));
+/** Country supply over bounded Facts reads and local counts; no source index or cursor. */
+public final class CountryPoolPolicy implements PoolRefillPolicy {
+    private final MatchingStorage storage;
+    private final CandidatePool pool;
+    public CountryPoolPolicy(MatchingStorage storage, CandidatePool pool) {
+        this.storage = Objects.requireNonNull(storage);
+        this.pool = Objects.requireNonNull(pool);
     }
-    @Override PartitionedZsetIndex.Criteria criteria(Map<String,List<String>> query) {
-        return countries(query,Set.of("worker.country"),"");
+    @Override public EligibilityQuery normalizeQuery(String group, EligibilityQuery query) {
+        identity(group); Objects.requireNonNull(query, "query");
+        if (query.query().isEmpty()) return query;
+        if (!query.query().keySet().equals(Set.of("worker.country")))
+            throw new IllegalArgumentException("country Pool only accepts worker.country");
+        return new EligibilityQuery(Map.of("worker.country", RuleInputs.countries(query.query().get("worker.country"))));
+    }
+    private Map<EligibilityQuery, List<String>> targets(String group, Map<EligibilityQuery, Integer> targets) {
+        identity(group); Objects.requireNonNull(targets, "targets");
+        if (targets.size() > 10_000) throw new IllegalArgumentException("at most 10,000 country targets");
+        var result = new LinkedHashMap<EligibilityQuery, List<String>>();
+        targets.forEach((query, count) -> {
+            if (count == null || count < 1 || count > 1000) throw new IllegalArgumentException("target count requires 1..1000");
+            result.put(query, normalizeQuery(group, query).query().getOrDefault("worker.country", List.of()));
+        });
+        return result;
+    }
+    private Map<EligibilityQuery, Integer> missing(Map<EligibilityQuery, List<String>> countries,
+            Map<EligibilityQuery, Integer> targets, CandidatePool.ViewObservation observed) {
+        var result = new LinkedHashMap<EligibilityQuery, Integer>();
+        countries.forEach((query, values) -> {
+            int size = values.isEmpty() ? observed.total()
+                    : values.stream().mapToInt(country -> observed.counts().getOrDefault(country, 0)).sum();
+            result.put(query, Math.max(0, targets.get(query) - size));
+        });
+        return result;
+    }
+    @Override public Map<EligibilityQuery, Integer> deficits(String group, Map<EligibilityQuery, Integer> targets) {
+        var countries = targets(group, targets);
+        var observed = pool.observeView(group, "country", List.of());
+        var result = missing(countries, targets, observed);
+        if (observed.room() == 0) result.replaceAll((query, count) -> 0);
+        return Collections.unmodifiableMap(result);
+    }
+    @Override public List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
+            List<HeldCandidate> offered, int maxAccepted) {
+        var countries = targets(group, targets);
+        Objects.requireNonNull(offered, "offered");
+        if (offered.size() > 100 || maxAccepted < 0 || maxAccepted > 100)
+            throw new IllegalArgumentException("at most 100 offers and maxAccepted in 0..100");
+        var ids = new LinkedHashSet<String>();
+        for (var held : offered) {
+            Objects.requireNonNull(held); identity(held.workerId());
+            if (!ids.add(held.workerId())) throw new IllegalArgumentException("held identities must be unique");
+        }
+        if (maxAccepted == 0 || offered.isEmpty() || countries.isEmpty()) return List.of();
+        var observed = pool.observeView(group, "country", ids);
+        var missing = missing(countries, targets, observed);
+        if (observed.room() == 0 || missing.values().stream().noneMatch(count -> count > 0)) return List.of();
+        long now = storage.now();
+        var live = offered.stream().filter(held -> held.expiresAtMillis() > now).toList();
+        if (live.isEmpty()) return List.of();
+        // Decode every returned Facts value before preparing or committing any entry.
+        var facts = storage.readWorkerFacts(group, live.stream().map(HeldCandidate::workerId).toList());
+        var prepared = new LinkedHashMap<String, CandidatePool.Admission>();
+        for (var held : live) {
+            Object value = facts.getOrDefault(held.workerId(), Map.of()).get("country");
+            if (value instanceof String country && RuleInputs.validCountry(country))
+                prepared.put(held.workerId(), new CandidatePool.Admission(held, Map.of("country", country)));
+        }
+        // Only invocation-local target references, never a second inventory or query cache.
+        var affected = new HashMap<String, List<EligibilityQuery>>();
+        var anyTargets = new ArrayList<EligibilityQuery>();
+        countries.forEach((query, values) -> {
+            if (values.isEmpty()) anyTargets.add(query);
+            else values.forEach(country -> affected.computeIfAbsent(country, ignored -> new ArrayList<>()).add(query));
+        });
+        var selected = new LinkedHashMap<String, CandidatePool.Admission>();
+        for (boolean any : List.of(false, true)) {
+            for (var entry : prepared.entrySet()) {
+                if (selected.size() == maxAccepted) break;
+                if (selected.containsKey(entry.getKey()) || observed.present().contains(entry.getKey())) continue;
+                var countryTargets = affected.getOrDefault(entry.getValue().views().get("country"), List.of());
+                var priority = any ? anyTargets : countryTargets;
+                if (priority.stream().noneMatch(query -> missing.get(query) > 0)) continue;
+                selected.put(entry.getKey(), entry.getValue());
+                for (var query : countryTargets) missing.compute(query, (ignored, count) -> count - 1);
+                for (var query : anyTargets) missing.compute(query, (ignored, count) -> count - 1);
+            }
+        }
+        return pool.admit(group, List.copyOf(selected.values()));
+    }
+    private static void identity(String value) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("non-blank identity required");
     }
 }

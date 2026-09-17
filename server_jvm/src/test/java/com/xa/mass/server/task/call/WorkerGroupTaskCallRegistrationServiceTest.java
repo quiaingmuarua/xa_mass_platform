@@ -122,7 +122,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of(saved.taskId(),saved));
         org.mockito.Mockito.clearInvocations(matching);
         when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
-                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 20)));
+                .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 20)));
         assertThat(service.requireRegisteredTaskId("phone-tools")).isEqualTo(saved.taskId());
         org.mockito.Mockito.verifyNoInteractions(matching);
         assertError(()->service.register("phone-tools"),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskCall.register");
@@ -142,7 +142,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         TaskDescriptor conflict = new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of());
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -261,7 +261,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         return new TaskDescriptor("scenario-rpc-phone-tools", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of());
     }
 
     private static void assertError(

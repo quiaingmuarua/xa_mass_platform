@@ -55,7 +55,7 @@ class ConvergenceWorkloadTest {
                     "wave-1",
                     Map.of(
                             WorkerLabConvergenceSupport.STRING_GROUP,
-                            Map.of("workerId", List.of("worker-b"))
+                            Map.of("executorName", "workerId", "input", "worker-b")
                     ),
                     null
             );
@@ -73,10 +73,7 @@ class ConvergenceWorkloadTest {
             assertBatch(requests.get(0), false);
             assertBatch(requests.get(1), true);
 
-            Map<String, List<String>> checkpointSelector = Map.of(
-                    "workerId",
-                    List.of("target", "backup")
-            );
+            Map<String, Object> checkpointSelector = Map.of("executorName", "workerId", "input", "target");
             workload.submitCheckpointWave(
                     "wave-2",
                     Map.of(
@@ -96,7 +93,7 @@ class ConvergenceWorkloadTest {
 
     private static void assertCheckpointBatch(
             Request request,
-            Map<String, List<String>> expectedSelector
+            Map<String, Object> expectedSelector
     ) {
         List<Object> items = JsonValues.array(
                 request.body().get("items"),
@@ -106,7 +103,7 @@ class ConvergenceWorkloadTest {
         items.forEach(raw -> assertThat(JsonValues.object(
                 JsonValues.object(raw, "item").get("workerSelector"),
                 "workerSelector"
-        )).isEqualTo(Map.of("executorName","worker.default","input",expectedSelector)));
+        )).isEqualTo(expectedSelector));
         Map<String, Object> first = JsonValues.object(items.get(0), "item");
         assertThat(first).containsEntry(
                 "eventCode",
@@ -165,14 +162,14 @@ class ConvergenceWorkloadTest {
                 "workerSelector"
         );
         if (stringGroup) {
-            assertThat(selector).isEqualTo(Map.of("executorName","worker.default","input",Map.of("workerId", List.of("worker-b"))));
+            assertThat(selector).isEqualTo(Map.of("executorName", "workerId", "input", "worker-b"));
         } else {
-            assertThat(selector).isEqualTo(Map.of("executorName","worker.default","input",Map.of()));
+            assertThat(selector).isEqualTo(Map.of("executorName","worker.any","input",Map.of()));
         }
         items.stream().skip(1).forEach(raw -> assertThat(JsonValues.object(
                 JsonValues.object(raw, "item").get("workerSelector"),
                 "workerSelector"
-        )).isEqualTo(Map.of("executorName","worker.default","input",Map.of())));
+        )).isEqualTo(Map.of("executorName","worker.any","input",Map.of())));
     }
 
     private static Map<String, Object> requestBody(HttpExchange exchange)

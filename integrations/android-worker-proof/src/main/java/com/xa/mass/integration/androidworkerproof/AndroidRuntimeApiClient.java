@@ -120,7 +120,7 @@ final class AndroidRuntimeApiClient {
     TaskCall callItem(
             String eventName,
             Map<String, Object> payload,
-            Map<String, List<String>> workerSelector,
+            Map<String, Object> workerSelector,
             long waitTimeoutMillis
     ) {
         return callItems(
@@ -145,7 +145,7 @@ final class AndroidRuntimeApiClient {
             item.put("messageId", messageId);
             item.put("eventCode", call.eventName());
             item.put("payload", call.payload());
-            item.put("workerSelector", Map.of("executorName","worker.default","input",call.workerSelector()));
+            item.put("workerSelector", call.workerSelector());
             items.add(Map.copyOf(item));
         }
         JsonHttpClient.Response response = http.send(
@@ -450,17 +450,14 @@ final class AndroidRuntimeApiClient {
     record TaskItemCall(
             String eventName,
             Map<String, Object> payload,
-            Map<String, List<String>> workerSelector
+            Map<String, Object> workerSelector
     ) {
         TaskItemCall {
             if (eventName == null || eventName.isBlank()) {
                 throw new IllegalArgumentException("eventName must be non-blank");
             }
             payload = Map.copyOf(Objects.requireNonNull(payload, "payload"));
-            var captured = new java.util.LinkedHashMap<String, List<String>>();
-            Objects.requireNonNull(workerSelector, "workerSelector")
-                    .forEach((binding, parameters) -> captured.put(binding, List.copyOf(parameters)));
-            workerSelector = Map.copyOf(captured);
+            workerSelector = Map.copyOf(Objects.requireNonNull(workerSelector, "workerSelector"));
         }
     }
 

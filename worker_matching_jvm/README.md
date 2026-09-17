@@ -62,17 +62,19 @@ Pool, target or Task configuration. Unknown/disabled Pools and invalid targets f
 
 Server stores the complete list in TaskDescriptor.refill. Ordinary Task creation
 omission means `[]`; explicit null and retired `ruleId/refillTargets` fields fail.
-Managed Call registration explicitly supplies default/{} /100, with overrides in
-`xa.mass.task-rpc.refill-by-worker-group`; an override of `[]` disables that supply.
+Managed Call registration also saves `[]` unless its Group explicitly configures
+`xa.mass.task-rpc.refill-by-worker-group`. An explicit `[]` requests no supply.
 Matching does not receive Task IDs or own Task lifecycle. The [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md)
 owns persistence, strict decoding and descriptor equality.
 
 Pacer concatenates declarations by Group and passes `groupsNeedingRefill(refillByGroup)`,
 then `refill(group, declarations, heldCandidates)` for acquired Groups. Matching selects
-Pool maintenance by resource name, normalizes targets, MAX-merges and pages them.
+Pool maintenance by resource name, normalizes targets and MAX-merges them. Country
+receives its complete bounded target set; Messaging and Proof keep target pages.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
-limit. Each policy operation receives at most 100 targets. Observation does not advance
-the target cursor; an actual refill attempt does.
+limit. Country receives up to 10,000 targets without a query cursor. Other policies
+receive at most 100 targets per page. Observation does not advance those cursors;
+an actual refill attempt does.
 
 Global expired-stock and inactive-cursor cleanup belongs to `groupsNeedingRefill`.
 The hint and later admission may observe different stock. Refill independently
@@ -136,7 +138,7 @@ or Item lifecycle. They need not implement a refill interface or use Pool storag
 
 | Current function name | Local input |
 | --- | --- |
-| `worker.default` | `{}`, `{"workerId":["w1"]}`, or enabled `{"country":["CN"]}`; IDs cannot combine with country |
+| `worker.any` | Only `{}`; explicitly enabled `any` Pool, no Facts required |
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
 | `worker.messaging.available` | `{}` or an object with optional `country` list and `phone` string; conditions intersect |
 | `proof.worker.facts` | String scalar fields `proofPool`, `proofTarget`, `proofEnabled`, or exclusive `convergenceSlot` |
@@ -145,9 +147,10 @@ or Item lifecycle. They need not implement a refill interface or use Pool storag
 
 Each Pool function rejects unknown local fields and preserves its previous qualification
 rules. Countries remain strict uppercase two-letter codes. Empty object means no
-additional condition within a Pool function; empty arrays are not ANY. Default Pool
-IDs and Messages phone queries still consume existing stock. SMS cancellation uses
-the separate workerId function; its listener creation continues using Pool queries.
+additional condition within a Pool function; empty arrays are not ANY. Messages
+phone queries consume existing stock. SMS listeners use Country Pool; cancellation
+uses the independent workerId function. The retired default function and ID-list
+choice have no aliases or replacement multi-ID function.
 
 ```json
 {"workerSelector":{"executorName":"worker.messaging.available","input":{"country":["CN"],"phone":"+8613800000000"}}}
@@ -168,9 +171,9 @@ stores `refill` with 0..100 declarations; each count is 1..1000. Item queries re
 WorkerQuery and must be explicit at both finite append and managed Call. They cannot
 generate, modify or imply Pool supply.
 
-Each maintenance call has at most 100 targets, offered candidates remain at most 100 unique
-IDs, and maxAccepted remains 0..100. Default identity targets saturate at their
-unique ID count. All structure and fallible qualification checks precede admission.
+Country maintenance receives up to 10,000 targets; other policies receive at most
+100 per call. Offered candidates remain at most 100 unique IDs and maxAccepted
+remains 0..100. All structure and fallible qualification checks precede admission.
 
 Task descriptors switch once to `refillJson`; recreate Tasks in a new scope. Old
 Rule/target fields, missing supply and corrupt entries fail reading. No dual read,
@@ -187,14 +190,41 @@ Conflicting names/resources fail assembly; there is no dynamic registry or execu
 
 | Pool | Maintenance |
 | --- | --- |
-| `default` | identity stock, optional country view; no Facts required for ANY/ID |
-| `country` | country eligibility |
+| `any` | Empty target only, unconditional held stock; no Facts or property views |
+| `country` | Valid Worker country Facts and local country buckets |
 | `messaging` | enabled messaging, country and phone views |
 | `proof-facts` | finite proof memberships |
 
-`default` Pool and functions `worker.default` / `workerId` are universally available.
-Other Pools/functions require explicit Group configuration; Pool-consuming functions
-require their corresponding resource. Existing consumer names and input semantics remain.
+Only `workerId` is universally available. Every Pool and Pool function requires
+explicit Group configuration; functions require their corresponding resource. A
+Group with no Pools can use Identity and an explicitly enabled Phone Index. No
+implicit Pool stock or managed supply is created.
+
+## Country Facts and Memory Buckets
+
+Country keeps one `country` membership string per Entry. Its ANY means any entry
+with a valid `[A-Z]{2}` Worker country; the `any` Pool does not require Facts.
+Single-country take visits one bucket; multi-country take merges only the selected
+buckets in original admission order. Removal and expiry remove every Entry reference
+and empty bucket; stock capacity is counted once.
+
+Country refill issues at most one Worker Facts HMGET for its live offered IDs,
+never Platform Facts, all-Worker scans or a public Catalog read. The shared stored
+object decoder rejects malformed JSON before any admission. Missing Facts and
+missing/invalid country values skip that Worker. Read failures admit nothing.
+All decoding and target interpretation occur outside the inventory lock.
+
+Targets retain string-list syntax. `CN+US / 100` means 100 combined entries, not
+100 per country. Equivalent normalized sets use MAX. Overlapping sets each count
+their matching entries, while capacity counts one Entry once. One bucket-count
+snapshot serves the entire target set; no Entry copying or per-target stock scan
+is needed. Constrained targets precede ANY, and each selected country updates all
+of its affected deficits. There is no Country target page, cursor or source ZSET.
+
+The old `country` index namespace is neither read, maintained, rebuilt nor deleted.
+Messaging and Proof keep their existing Redis indexes and paging; Phone Index
+remains independent. Facts and all remaining enabled indexes still update through
+one preflighted Lua. Use a fresh scope for Tasks and Items with the retired names.
 
 ## Identity and Phone Query Functions
 
@@ -270,12 +300,14 @@ xa:
     task-rpc:
       refill-by-worker-group:
         demo-sim:
-          - '{"poolName":"default","target":{},"count":100}'
+          - '{"poolName":"country","target":{},"count":100}'
 ```
 
 Managed supply uses complete JSON declaration strings so an explicit empty target
 survives Boot binding and missing target still fails the shared strict decoder.
-Lab managed Tasks explicitly request 1000; ordinary Tasks default to no supply.
+Lab explicitly enables any/worker.any and supplies 1000. Preview SMS supplies
+country/{} /100; Messages retains messaging supply. Unconfigured managed and
+ordinary Tasks save no supply.
 Phone Index depends on Group resource composition, never Task demand.
 
 ## Inventory and Refill Bounds
@@ -291,7 +323,8 @@ disabled Tasks supply no later demand; an in-flight round is not a lifecycle loc
 Pacer rotates Groups, at most 100 HOT candidates per Group and 1000 per round.
 A positive deficit enables a Group but never reduces its fixed HOT scan budget.
 
-Catalog rotates Pool policies and bounded query pages, including empty attempts. A maintenance policy
+Catalog rotates Pool policies; only non-Country policies use bounded query pages,
+including empty attempts. Country visits the full target set per attempt. A maintenance policy
 prioritizes constrained targets before ANY, incrementing all overlapping target
 counts for each selected candidate. Offered memberships are computed once before
 admission; range decisions remain local. Each Group batch passes only remaining
@@ -308,8 +341,8 @@ refill deficit, preserving the existing full-stock supply suppression. No operat
 extends a lease.
 
 Pacer computes the original deadline immediately before acquisition. Qualification
-time and inventory waiting consume that same second. Explicit Pool IDs only filter
-offered identities and stock; they never trigger a targeted HOT read. Rare targets
+time and inventory waiting consume that same second. Pool queries only consume
+held stock; they never trigger a targeted HOT read. Rare targets
 may wait longer under the fixed Group supply policy.
 
 Pool consumption is destructive. Misses, read failures, ambiguous acquisition and failed
@@ -383,8 +416,8 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 
 - Target resolution: local only, no Redis; Task configuration reads belong to Task Owner.
 - Group shortage observation: zero Redis commands; local target aggregation and
-  one global expiry sweep per round. Named refill independently repeats bounded
-  target normalization; only visited target pages reach Rule inventory operations.
+  one global expiry sweep per round. Country uses one country-count observation for
+  all targets; other policies receive only visited target pages.
 - Pool stock counts and take: zero Redis commands or facts reads.
 - Identity take: zero Redis commands. Nonempty Phone take: one read-only Lua for
   grouped exact phone values, returning at most 100 identities without a lease read.
@@ -393,7 +426,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   projection read per participating Handler. No successful acquisitions means no
   Matching call. One named Handler uses three client commands for up to 100 IDs.
   Zero-match batches also acquire leases; full stock skips observation and acquisition.
-- Default without a configured projection needs no projection read; it uses the same
+- Any needs no qualification read; it uses the same
   Pacer Group supply, never an explicit-ID observation path.
 - Final confirmation: one bounded Lua per transfer kind, with Redis TIME inside
   each operation. Current production Pool candidates all use exact transfer;
@@ -425,7 +458,7 @@ Items, including shared and different Rules within one Group. Runtime Boundary a
 Dynamic Matching witness real Worker execution; Call Performance separately
 measures mixed-workload behavior. See [TESTING](../TESTING.md).
 
-Runtime Boundary additionally blocks Group refill and proves Identity and Phone
+Runtime Boundary uses Tasks with empty supply and proves Identity and Phone
 queries executing due Workers through real delivery and Result observation. Redis
 Owner checks independent phone replacement, removal, shared numbers, corruption,
 concurrent writes and startup rebuilding, plus direct/Pool execution races.

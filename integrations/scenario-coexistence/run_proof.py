@@ -183,13 +183,13 @@ def functional(run):
     require(duplicate["sendAccepted"], "First identified reply rejected")
     _, duplicate = action(run, rows[0], "reply", "second", "duplicate-reply")
     require(duplicate["unchanged"] and not duplicate["sendAccepted"], "Reply operation was replayed")
-    # Execute the identical send through a real Worker using the shared default Rule Task.
+    # Execute the identical send through a real Worker using the shared managed Task via direct identity.
     task = next(c["taskId"] for c in sms_catalog["countries"] if c["id"] == "CN")
     payload = {k: rows[0][k] for k in ("campaignId", "messageId", "country", "recipientId", "body")}
     duplicate_id = str(uuid.uuid4())
     http(run.url, f"/api/v1/tasks/{task}/items:call", {"items": [{"messageId": duplicate_id,
         "eventCode": "extension.worker.message.send", "payload": payload, "ttlMillis": 10000,
-        "workerSelector": {"executorName": "worker.default", "input": {"workerId": [rows[0]["workerId"]]}}}], "waitTimeoutMillis": 1})
+        "workerSelector": {"executorName": "workerId", "input": rows[0]["workerId"]}}], "waitTimeoutMillis": 1})
     wait(run, lambda: http(run.url, f"/api/v1/tasks/{task}/results:load", [duplicate_id])[duplicate_id]["status"] == "succeeded", 20, "duplicate real execution")
     require(http(run.host, "/lab/v1/messages/metrics")["messages"] == 2, "Duplicate execution delivered another message")
     # Same Reporter must still target the original Item, not the duplicate execution Item.

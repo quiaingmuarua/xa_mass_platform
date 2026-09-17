@@ -159,13 +159,13 @@ class RuntimeApiClientTest {
                             "message-1",
                             "event.one",
                             Map.of(),
-                            Map.of()
+                            Map.of("executorName", "worker.any", "input", Map.of())
                     ),
                     new TaskItem(
                             "message-2",
                             "event.one",
                             Map.of(),
-                            Map.of("workerId", List.of("worker-1"))
+                            Map.of("executorName", "workerId", "input", "worker-1")
                     )
             ), 250L)).containsExactly(
                     Map.entry(

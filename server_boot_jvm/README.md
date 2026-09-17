@@ -164,3 +164,9 @@ Server tests and OpenAPI export use their explicit test fixtures, with disabled
 Pacers and unreachable Redis unless the real boundary proof supplies its own
 connection, unique scope and endpoints. Both archive verifiers reject application
 configuration in nested platform/Scenario libraries and reject test configuration.
+
+Matching resources are explicit per Group. The scenario-workers profile enables
+any/worker.any for both Lab Groups and preserves their 1000 managed watermarks.
+Preview enables country/messaging and phone lookup; SMS managed supply is
+country/{} /100. Groups without a task-rpc refill override save empty managed
+supply and may use Identity without a Pool.

@@ -198,10 +198,10 @@ In API mode, each readable `PARK_WHEN_IDLE` Task with a
 WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
 debug composer
 accepts an advisory Event Name, a JSON Object Payload, and an Item-level
-`workerSelector: {executorName, input}`. For `worker.default`, input may be `{}`,
-`{"workerId":["worker-a"]}` or `{"country":["CN","US"]}` where enabled.
-The default composer uses the Task's supply Rule name and empty object input;
-explicit functions need not equal that supply Rule. The browser validates the
+`workerSelector: {executorName, input}`. For `worker.any`, input must be `{}`; the Group must explicitly enable any/worker.any
+and a Task must supply that shared Pool. `workerId` takes one string without Pool
+demand; `worker.country` takes a country list or `{}` within its enabled Country Pool.
+The composer shows an explicit sample and never infers a function from Task supply. The browser validates the
 envelope and JSON bounds: non-null root, at most 100 members per container,
 container depth 8 and 64 KiB of serialized input. Matching owns local parameter
 semantics, normalization and Group enablement. Calls go

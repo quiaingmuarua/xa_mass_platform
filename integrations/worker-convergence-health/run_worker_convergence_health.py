@@ -211,7 +211,7 @@ def _run_scenario(
                     tuple(
                         worker
                         for worker in CONVERGENCE_WORKERS
-                        if worker != FAULT_TARGET
+                        if worker != FAULT_BACKUP
                     ),
                     (),
                 ),

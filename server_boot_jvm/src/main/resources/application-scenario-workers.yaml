@@ -1,11 +1,19 @@
 xa:
   mass:
+    worker-matching:
+      groups:
+        scenario-string-utils-workers:
+          pools: [any]
+          functions: [worker.any]
+        scenario-phone-number-workers:
+          pools: [any]
+          functions: [worker.any]
     task-rpc:
       refill-by-worker-group:
         scenario-string-utils-workers:
-          - '{"poolName":"default","target":{},"count":1000}'
+          - '{"poolName":"any","target":{},"count":1000}'
         scenario-phone-number-workers:
-          - '{"poolName":"default","target":{},"count":1000}'
+          - '{"poolName":"any","target":{},"count":1000}'
     task-item-outcomes:
       names:
         7: delivered

@@ -34,47 +34,29 @@ class PoolRefillPolicyTest {
             }
         }
     }
-    @Test void defaultFiniteIdsNeedNoFactsAndCountryIsExplicitlyEnabled() {
+    @Test void anyNeedsNoFactsAndRejectsIdentityAndCountryConditions() {
         var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_rule"),()->1000)) {
+        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_any"),()->1000)) {
             var stock=new CandidatePool(storage);
-            var rule=new DefaultPoolPolicy(storage,stock,Set.of("country"));
-            var function=PoolQueryFunctions.defaults(stock,Set.of("country"));
-            var target=rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("b","a","a"))));
+            var rule=new AnyPoolPolicy(storage,stock);
+            var function=PoolQueryFunctions.any(stock);
+            var target=new EligibilityQuery(Map.of());
             assertEquals(target,rule.normalizeQuery("g",target));
-            assertEquals(List.of("a","b"),target.query().get("workerId"));
-            assertEquals(2,rule.deficits("g",Map.of(target,100)).get(target));
-            assertEquals(List.of("a","b"),rule.refill("g",Map.of(target,100),List.of(
-                    new HeldCandidate("outside",1,2000),new HeldCandidate("a",2,2000),new HeldCandidate("b",3,2000)),100));
-            assertEquals(0,rule.deficits("g",Map.of(target,100)).get(target));
-            var selector=EligibilityQuery.parse(Map.of("workerId",List.of("a","b")));
-            assertEquals(2,function.execute().apply("g",Map.of("m1",selector.query(),"m2",selector.query())).size());
-            assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
-            assertDoesNotThrow(()->rule.normalizeQuery("country",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
-            verifyNoInteractions(client);
-        }
-    }
-    @Test void normalizedMatchesKeepOriginalInputKeysAndOperationOrder() {
-        var client=mock(RedisClient.class);
-        try(var storage=new MatchingStorage(client,new RedisKeyspace("test_query_keys"),()->1000)) {
-            var stock=new CandidatePool(storage);
-            var rule=new DefaultPoolPolicy(storage,stock,Set.of());
-            var function=PoolQueryFunctions.defaults(stock,Set.of());
-            var any=new EligibilityQuery(Map.of());
-            var supplied=new EligibilityQuery(Map.of("workerId",List.of("b","a","a")));
-            var targets=new LinkedHashMap<EligibilityQuery,Integer>();
-            targets.put(supplied,100); targets.put(any,3);
-            var deficits=rule.deficits("g",targets);
-            assertEquals(List.of(supplied,any),List.copyOf(deficits.keySet()));
-            assertEquals(2,deficits.get(supplied));
-            assertThrows(UnsupportedOperationException.class,deficits::clear);
-            rule.refill("g",targets,List.of(new HeldCandidate("a",11,2000),new HeldCandidate("b",12,2000)),100);
-            var limits=new LinkedHashMap<String,Object>(); limits.put("id",supplied.query()); limits.put("any",Map.of());
-            var taken=function.execute().apply("g",limits);
-            assertEquals(List.of("id","any"),List.copyOf(taken.keySet()));
-            assertEquals(2,taken.values().stream().map(h -> h.workerId()).distinct().count());
-            assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(any,0),List.of(),0));
-            assertThrows(IllegalArgumentException.class,()->rule.deficits("g",Map.of(any,1001)));
+            assertEquals(2,rule.deficits("g",Map.of(target,2)).get(target));
+            assertEquals(List.of("a","b"),rule.refill("g",Map.of(target,2),List.of(
+                    new HeldCandidate("a",2,2000),new HeldCandidate("b",3,2000)),100));
+            assertEquals(0,rule.deficits("g",Map.of(target,2)).get(target));
+            var requests=new LinkedHashMap<String,Object>();requests.put("first",Map.of());requests.put("second",Map.of());
+            var result=function.execute().apply("g",requests);
+            assertEquals(List.of("first","second"),List.copyOf(result.keySet()));
+            assertEquals(List.of("a","b"),result.values().stream().map(c->c.workerId()).toList());
+            assertThrows(UnsupportedOperationException.class,result::clear);
+            for(var fields:List.of(Map.of("workerId",List.of("a")),Map.of("worker.country",List.of("CN"))))
+                assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(fields)));
+            for(var input:List.of(Map.of("workerId",List.of("a")),Map.of("country",List.of("CN")),List.of("CN")))
+                assertThrows(IllegalArgumentException.class,()->function.normalizeInput().apply("g",input));
+            assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(target,0),List.of(),0));
+            assertThrows(IllegalArgumentException.class,()->rule.deficits("g",Map.of(target,1001)));
             verifyNoInteractions(client);
         }
     }

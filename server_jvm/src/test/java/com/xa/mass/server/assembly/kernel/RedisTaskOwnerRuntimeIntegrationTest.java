@@ -170,11 +170,11 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 .isInstanceOf(IllegalStateException.class).hasMessage("Task descriptor is corrupt");
         assertThat(redis.hgetall(key)).hasSize(3);
         redis.hset(key,original);
-        for(String bad:List.of("null","{}","[{\"poolName\":\"default\",\"target\":{},\"count\":0}]",
-                "[{\"poolName\":\"default\",\"target\":{},\"count\":1001}]","[{\"poolName\":\"default\",\"target\":{},\"count\":\"1\"}]",
-                "[{\"poolName\":\"default\",\"target\":{},\"count\":1.0}]","[{\"count\":1}]",
-                "[{\"poolName\":\"default\",\"target\":null,\"count\":1}]","[{\"poolName\":\"default\",\"target\":{\"worker.country\":[123]},\"count\":1}]",
-                "[{\"poolName\":\"default\",\"target\":{},\"count\":1,\"extra\":true}]","[null]")) {
+        for(String bad:List.of("null","{}","[{\"poolName\":\"any\",\"target\":{},\"count\":0}]",
+                "[{\"poolName\":\"any\",\"target\":{},\"count\":1001}]","[{\"poolName\":\"any\",\"target\":{},\"count\":\"1\"}]",
+                "[{\"poolName\":\"any\",\"target\":{},\"count\":1.0}]","[{\"count\":1}]",
+                "[{\"poolName\":\"any\",\"target\":null,\"count\":1}]","[{\"poolName\":\"any\",\"target\":{\"worker.country\":[123]},\"count\":1}]",
+                "[{\"poolName\":\"any\",\"target\":{},\"count\":1,\"extra\":true}]","[null]")) {
             redis.hset(key,"refillJson",bad);
             assertThatThrownBy(()->catalog.loadTaskAllocationDescriptors(List.of("invalid-descriptor")))
                     .isInstanceOf(IllegalStateException.class).hasMessage("Task descriptor is corrupt");
@@ -197,7 +197,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("phoneNumber", "+14155552671"),
                 0,
                 createdAt + 60_000,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
 
         assertThat(runtime.appendItems(
@@ -214,7 +214,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         + "\"eventCode\":\"telecom.phone.inspect\","
                         + "\"expireAtMillis\":" + (createdAt + 60_000) + ","
                         + "\"payload\":{\"phoneNumber\":\"+14155552671\"},"
-                        + "\"priority\":0,\"workerSelector\":{\"executorName\":\"worker.default\",\"input\":{}}}"
+                        + "\"priority\":0,\"workerSelector\":{\"executorName\":\"worker.any\",\"input\":{}}}"
         );
         double score = redis.zscore(
                 keyspace.base() + ":task:task-1:item_score",
@@ -282,7 +282,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of(),
                 0,
                 createdAt + 60_000,
-                new WorkerQuery("worker.default", Map.of("workerId", List.of("worker-b", "worker-a")))
+                new WorkerQuery("test.opaque", List.of("worker-b", "worker-a"))
         );
 
         assertThat(runtime.appendItems(
@@ -301,7 +301,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test void opaquePropertySelectorRoundTripsWithoutKernelInterpretation() {
         long now = redisTimeMillis();
-        var selector = new WorkerQuery("worker.default", Map.of("worker.test.region", List.of("east", "west")));
+        var selector = new WorkerQuery("test.opaque", Map.of("worker.test.region", List.of("east", "west")));
         var item = new TaskItem("indexed", "event", now, Map.of(), 0, now + 60_000, selector);
         storeTask("indexed-task");
         assertThat(runtime.appendItems("indexed-task", List.of(item)).get("indexed").status()).isEqualTo(TaskItemAppendStatus.APPENDED);
@@ -493,7 +493,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         Map.of(),
                         5,
                         redisTimeMillis() + 60_000,
-                        new WorkerQuery("worker.default", Map.of())
+                        new WorkerQuery("worker.any", Map.of())
                 ))
         ).get("message-1").status()).isEqualTo(
                 TaskItemAppendStatus.NOT_FOUND
@@ -540,7 +540,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "configJson", "{\"maxRetryTimes\":\"3\","
                         + ""
                         + "\"priority\":\"7\"}",
-                "refillJson", "[{\"poolName\":\"default\",\"target\":{},\"count\":100}]"
+                "refillJson", "[{\"poolName\":\"any\",\"target\":{},\"count\":100}]"
         ));
         var created = scoreCore.getScoreStates(
                 List.of("task-commands")
@@ -580,7 +580,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("value", "abc"),
                 5,
                 now + 60_000,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
         var submitted = callSubmission.submit(
                 "task-commands",
@@ -687,7 +687,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.of("value", "abc"),
                 5,
                 now + 60_000,
-                new WorkerQuery("worker.default", Map.of())
+                new WorkerQuery("worker.any", Map.of())
         );
 
         var submitted = new DefaultTaskCallItemSubmission(
@@ -1211,7 +1211,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 mock(TaskCreationService.class),
                 new TaskLifecycleService(lifecycle, catalog)
         );
-        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))));
+        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task").status()
@@ -1403,7 +1403,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void reappendPreservesTerminalAndLateSuccessAdvancesFailedWithoutReopeningTask() {
         runtime.createTask(descriptor("outcomes", 0));
         long now = redisTimeMillis();
-        var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, new WorkerQuery("worker.default", Map.of()));
+        var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, new WorkerQuery("worker.any", Map.of()));
         runtime.appendItems("outcomes", List.of(item));
         runtime.storeTaskItemFailedResults("outcomes", List.of("item"));
         itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), 5, 5_000));
@@ -1530,7 +1530,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("default", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static Map<String, String> config(int priority) {
@@ -1565,7 +1565,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         "{\"maxRetryTimes\":\"3\","
 
                                 + "\"priority\":\"0\"}",
-                        "refillJson", "[{\"poolName\":\"default\",\"target\":{},\"count\":100}]"
+                        "refillJson", "[{\"poolName\":\"any\",\"target\":{},\"count\":100}]"
                 )
         );
     }

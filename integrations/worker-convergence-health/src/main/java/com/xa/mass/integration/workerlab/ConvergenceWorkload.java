@@ -61,7 +61,7 @@ final class ConvergenceWorkload {
 
     List<Batch> submitWave(
             String wave,
-            Map<String, Map<String, List<String>>> selectorsByGroup,
+            Map<String, Map<String, Object>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
         return submitWave(wave, selectorsByGroup, checkpoint, false);
@@ -69,7 +69,7 @@ final class ConvergenceWorkload {
 
     List<Batch> submitCheckpointWave(
             String wave,
-            Map<String, Map<String, List<String>>> selectorsByGroup,
+            Map<String, Map<String, Object>> selectorsByGroup,
             Checkpoint checkpoint
     ) {
         java.util.Objects.requireNonNull(checkpoint, "checkpoint");
@@ -78,7 +78,7 @@ final class ConvergenceWorkload {
 
     private List<Batch> submitWave(
             String wave,
-            Map<String, Map<String, List<String>>> selectorsByGroup,
+            Map<String, Map<String, Object>> selectorsByGroup,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -94,7 +94,7 @@ final class ConvergenceWorkload {
                     group,
                     selectorsByGroup.getOrDefault(
                             group.groupId(),
-                            Map.of()
+                            Map.of("executorName", "worker.any", "input", Map.of())
                     ),
                     checkpoint,
                     applyRuleToWholeBatch
@@ -210,7 +210,7 @@ final class ConvergenceWorkload {
     private List<TaskItem> items(
             String wave,
             GroupWorkload group,
-            Map<String, List<String>> workerSelector,
+            Map<String, Object> workerSelector,
             Checkpoint checkpoint,
             boolean applyRuleToWholeBatch
     ) {
@@ -250,7 +250,7 @@ final class ConvergenceWorkload {
                     eventCode,
                     payload,
                     applyRuleToWholeBatch || index == 1
-                            ? workerSelector : Map.of()
+                            ? workerSelector : Map.of("executorName", "worker.any", "input", Map.of())
             ));
         }
         return List.copyOf(items);

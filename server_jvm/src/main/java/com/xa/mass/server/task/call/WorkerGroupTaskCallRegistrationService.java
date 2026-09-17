@@ -238,8 +238,7 @@ public final class WorkerGroupTaskCallRegistrationService {
             return new TaskDescriptor(
                     taskId(workerGroupId), workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
                     TASK_CONFIG, matching.normalizeRefill(workerGroupId, rpc.refillByWorkerGroup().getOrDefault(workerGroupId,
-                            List.of(new com.xa.mass.kernel.assignment.RefillTarget("default",
-                                    new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),100)))));
+                            List.of())));
         } catch (RuntimeException error) {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }

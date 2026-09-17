@@ -7,20 +7,18 @@ import java.util.*;
 
 /** Local inventory resource. Views partition entries; no business predicates or Redis calls. */
 public final class CandidatePool {
-    public enum SelectionKind { ALL, VIEW, IDS }
+    public enum SelectionKind { ALL, VIEW }
     public record Selection(SelectionKind kind, String view, List<String> values) {
         public Selection { values = List.copyOf(new TreeSet<>(values)); }
         boolean matches(String id, Map<String, String> memberships) {
             return switch (kind) {
                 case ALL -> true;
-                case IDS -> values.contains(id);
                 case VIEW -> memberships.containsKey(view) && values.contains(memberships.get(view));
             };
         }
     }
     public static Selection all() { return new Selection(SelectionKind.ALL, "", List.of()); }
     public static Selection range(String view, List<String> values) { return new Selection(SelectionKind.VIEW, view, values); }
-    public static Selection identities(List<String> ids) { return new Selection(SelectionKind.IDS, "", ids); }
 
     public CandidatePool(MatchingStorage storage) {
         this(storage::now, storage.budget);
@@ -51,6 +49,21 @@ public final class CandidatePool {
         long nextOrder;
     }
     record Observation(Map<Selection, Integer> counts, Set<String> present, int room) { }
+    record ViewObservation(Map<String, Integer> counts, int total, Set<String> present, int room) { }
+    /** One count snapshot of a view, without copying or visiting its entries. */
+    synchronized ViewObservation observeView(String group, String name, Collection<String> ids) {
+        expire(group);
+        Stock stock = groups.get(group);
+        var counts = new LinkedHashMap<String, Integer>();
+        if (stock != null) {
+            var view = stock.views.get(name);
+            if (view != null) view.forEach((value, bucket) -> { countBuckets++; counts.put(value, bucket.size()); });
+        }
+        var present = new LinkedHashSet<String>();
+        if (stock != null) for (String id : ids) if (stock.identities.containsKey(id)) present.add(id);
+        return new ViewObservation(Collections.unmodifiableMap(counts), stock == null ? 0 : stock.identities.size(),
+                Set.copyOf(present), budget.room(stock));
+    }
     record Visits(long countBuckets, long selectedEntries, long expiredEntries) { }
 
     private final java.util.function.LongSupplier clock;
@@ -77,11 +90,6 @@ public final class CandidatePool {
         if (stock == null) return 0;
         return switch (selection.kind()) {
             case ALL -> stock.identities.size();
-            case IDS -> {
-                int size = 0;
-                for (String id : selection.values()) { countBuckets++; if (stock.identities.containsKey(id)) size++; }
-                yield size;
-            }
             case VIEW -> {
                 int size = 0;
                 var view = stock.views.get(selection.view());
@@ -154,15 +162,6 @@ public final class CandidatePool {
         var result = new ArrayList<Iterator<Entry>>();
         switch (selection.kind()) {
             case ALL -> result.add(stock.all.values().iterator());
-            case IDS -> {
-                var entries = new ArrayList<Entry>();
-                for (String id : selection.values()) {
-                    var entry = stock.identities.get(id);
-                    if (entry != null) entries.add(entry);
-                }
-                entries.sort(Comparator.comparingLong(entry -> entry.order));
-                result.add(entries.iterator());
-            }
             case VIEW -> {
                 var view = stock.views.get(selection.view());
                 if (view != null) for (String value : selection.values()) {
