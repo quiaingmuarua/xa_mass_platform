@@ -25,11 +25,21 @@ public interface WorkerMatching {
      * Matching validates and normalizes the entire batch before consuming stock. Equivalent
      * queries share an allocation group in first-appearance order; IDs within it retain their
      * input order. Results retain input order, omit unfulfilled IDs and never repeat a Worker.
-     * IDs are invocation-local correlation only. Returned fences and deadlines are unchanged.
+     * IDs are invocation-local correlation only. A nonzero expected score is an exact fence;
+     * zero is an identity hint with no historical fence. Neither grants execution authority.
      * A valid empty batch does not access stock. Returns an immutable snapshot.
      */
-    Map<String, HeldCandidate> take(String workerGroupId, String ruleId,
+    Map<String, WorkerCandidate> take(String workerGroupId, String ruleId,
             Map<String, EligibilityQuery> queriesByMessageId);
+
+    /** Pacer selects current-state transfer for zero, exact transfer otherwise; the score stays opaque. */
+    record WorkerCandidate(String workerId, long expectedScore) {
+        public WorkerCandidate {
+            if (workerId == null || workerId.isBlank()) {
+                throw new IllegalArgumentException("workerId must be non-blank");
+            }
+        }
+    }
 
     /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */
     record HeldCandidate(String workerId, long score, long expiresAtMillis) { }

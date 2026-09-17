@@ -15,6 +15,7 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.RuleHandler;
 import com.xa.mass.workermatching.rules.*;
 import com.xa.mass.server.testsupport.BucketRuleHandler;
+import com.xa.mass.server.testsupport.IdentityHintRuleHandler;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import com.xa.mass.server.assembly.matching.MatchingRuleProperties;
@@ -97,10 +98,14 @@ class RuntimeBoundaryIntegrationTest {
         @Bean RedisRuleStorage matchingRuleStorage(RedisClient client,XaMassRedisProperties redis) {
             return new RedisRuleStorage(client,redis.keyspace(),Map.of(BucketRuleHandler.ID,BucketRuleHandler.indexes()),System::currentTimeMillis);
         }
-        @Bean Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules) {
+        @Bean IdentityHintRuleHandler identityHintRule(RedisRuleStorage storage) {
+            return new IdentityHintRuleHandler(storage);
+        }
+        @Bean Map<String,RuleHandler> matchingRuleHandlers(RedisRuleStorage storage,MatchingRuleProperties rules,
+                IdentityHintRuleHandler identityHintRule) {
             return Map.of("worker.default",new DefaultRuleHandler(storage,rules.workerGroups()),"worker.country",new CountryRuleHandler(storage),
                     "worker.messaging.available",new MessagingRuleHandler(storage),"proof.worker.facts",new ProofFactsRuleHandler(storage),
-                    BucketRuleHandler.ID,new BucketRuleHandler(storage));
+                    BucketRuleHandler.ID,new BucketRuleHandler(storage), IdentityHintRuleHandler.ID,identityHintRule);
         }
     }
 
@@ -164,6 +169,9 @@ class RuntimeBoundaryIntegrationTest {
     private WorkerScoreCore workerScores;
 
     @Autowired
+    private IdentityHintRuleHandler identityHintRule;
+
+    @Autowired
     private RedisClient redisWitnessClient;
     private io.lettuce.core.api.StatefulRedisConnection<String, String> redisWitness;
 
@@ -198,6 +206,7 @@ class RuntimeBoundaryIntegrationTest {
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-websocket][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[shared-eligibility-boundary][0]", () -> BucketRuleHandler.ID);
+        registry.add("xa.mass.worker-matching.rules.worker-groups[identity-hint-boundary][0]", () -> IdentityHintRuleHandler.ID);
         registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][0]", () -> "worker.country");
         registry.add("xa.mass.worker-matching.rules.worker-groups[group-refill-a][1]", () -> "worker.messaging.available");
         registry.add("xa.mass.worker-matching.rules.worker-groups[country-index-socket][0]", () -> "worker.country");
@@ -502,6 +511,47 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
+    void identityHintsTraverseRealMatchingDispatchWorkerAndResultWithoutHistoricalFence() throws Exception {
+        String group = "identity-hint-boundary", event = "extension.worker.identity.hint";
+        assertThat(send("POST", "/api/v1/worker-groups/" + group + ":register",
+                Jsons.toJson(Map.of("eventCodes", List.of(event)))).statusCode()).isEqualTo(200);
+        var host = new AtomicReference<JavaWorker>();
+        var handler = WorkerEventDefinition.extension("identity.hint", WorkerEventParameterResolvers.jsonMap(),
+                ignored -> Jsons.toJson(Map.of("executor", host.get().snapshot().workerId())));
+        try (var worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "hint-host",
+                WorkerTransportType.WEBSOCKET, () -> Map.of("fixture", "identity-hint"), List.of(handler),
+                WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()))) {
+            host.set(worker);
+            worker.start();
+            awaitCondition(() -> worker.snapshot().workerId() != null);
+            String workerId = worker.snapshot().workerId();
+            awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, Map.of("fixture", "identity-hint"));
+            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group,
+                    "ruleId", IdentityHintRuleHandler.ID, "refillTargets", List.of(Map.of("query", Map.of(), "count", 1)))));
+            assertThat(created.statusCode()).isEqualTo(200);
+            String task = JSON.readTree(created.body()).get("taskId").asText();
+            var ids = new ArrayList<String>();
+            var items = new ArrayList<Map<String, Object>>();
+            for (int i = 0; i < 3; i++) {
+                String id = UUID.randomUUID().toString();
+                ids.add(id);
+                items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of()));
+            }
+            assertThat(send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(items)).statusCode()).isEqualTo(200);
+            assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
+            awaitTaskExport(task);
+            var response = send("POST", "/api/v1/tasks/" + task + "/results:load", Jsons.toJson(ids));
+            assertThat(response.statusCode()).isEqualTo(200);
+            var results = JSON.readTree(response.body());
+            for (String id : ids) {
+                assertThat(results.get(id).get("status").asText()).isEqualTo("succeeded");
+                assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor", workerId);
+            }
+            assertThat(identityHintRule.hintsReturned()).isGreaterThanOrEqualTo(ids.size());
+        }
+    }
+
+    @Test
     void groupBatchesServeMultipleRulesAndSharedTasksThroughActualWorkers() throws Exception {
         String groupA="group-refill-a",groupB="group-refill-b",event="extension.worker.group.refill";
         for(String group:List.of(groupA,groupB))assertThat(send("POST","/api/v1/worker-groups/"+group+":register",
@@ -569,7 +619,7 @@ class RuntimeBoundaryIntegrationTest {
                 if(Set.of(groupA,groupB).contains(group)) {
                     supplied.add(group);
                     // Proof-only read: production still carries the fence without reading it back.
-                    var states=readWorkerFences(group,offered.stream().map(HeldCandidate::workerId).toList());
+                    var states=readWorkerFences(group,offered.stream().map(h -> h.workerId()).toList());
                     for(var held:offered) {
                         assertThat(identities.get(held.workerId())).containsEntry("group",group);
                         assertThat(states.get(held.workerId())).isEqualTo(held.score());

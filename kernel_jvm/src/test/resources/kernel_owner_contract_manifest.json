@@ -149,6 +149,7 @@
       "sample_registered_worker_ids",
       "seal_current_score_holds",
       "toggle_current_polarity",
+      "transfer_current_hot_score_leases",
       "transfer_observed_hot_score_leases"
     ]
   },
@@ -269,6 +270,10 @@
     "TaskItemOutcomeTarget": [
       "tag",
       "time_millis"
+    ],
+    "WorkerCandidate": [
+      "worker_id",
+      "expected_score"
     ],
     "HeldCandidate": [
       "worker_id",

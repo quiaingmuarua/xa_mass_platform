@@ -21,8 +21,9 @@ class DispatchMechanismBoundaryTest {
         String source = Files.readString(
                 ROOT.resolve("TaskAssignmentDispatcher.java")
         );
-        assertTrue(source.contains("worker.heldWorkerLeaseScore()"));
+        assertTrue(source.contains("worker.expectedScore()"));
         assertTrue(source.contains("transferObservedHotScoreLeases("));
+        assertTrue(source.contains("transferCurrentHotScoreLeases("));
         for (String parallelInput : List.of(
                 "itemsByMessageId",
                 "observedItemScores",
@@ -209,7 +210,7 @@ class DispatchMechanismBoundaryTest {
                 "TaskIdleSettlement",
                 "DispatchMainScheduler",
                 "DispatchProducerId",
-                "HeldWorkerCandidate",
+                "RoutedWorkerCandidate",
                 "ObservedTask"
         )) {
             Path file = ROOT.resolve(type + ".java");

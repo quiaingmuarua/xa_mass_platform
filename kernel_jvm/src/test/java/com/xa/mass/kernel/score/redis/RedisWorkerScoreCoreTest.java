@@ -122,11 +122,40 @@ class RedisWorkerScoreCoreTest {
             assertEquals(Map.of(), scores.transferObservedHotScoreLeases("g", Map.of(), 1_000, true));
             assertEquals(WorkerScoreTransitionStatus.INVALID,
                     scores.transferObservedHotScoreLeases("g", Map.of("w", 200L), -1, true).get("w").status());
+            assertEquals(WorkerScoreTransitionStatus.INVALID,
+                    scores.transferObservedHotScoreLeases("g", Map.of("w", 0L), -1, true).get("w").status());
+            assertEquals(WorkerScoreTransitionStatus.INVALID,
+                    scores.transferObservedHotScoreLeases("g", Map.of("w", 0L), 1_000, true).get("w").status());
+            assertEquals(WorkerScoreTransitionStatus.INVALID,
+                    scores.acquireObservedHotScoreLeases("g", Map.of("w", 0L), 1_000).get("w").status());
             assertThrows(IllegalArgumentException.class,
                     () -> scores.transferObservedHotScoreLeases("g", Map.of(" ", 200L), 1_000, true));
             assertThrows(IllegalArgumentException.class,
                     () -> scores.transferObservedHotScoreLeases("g", null, 1_000, true));
 
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
+    void currentTransferValidatesCompleteIdentityBatchBeforeRedisAccess() {
+        RedisClient client = RedisClient.create("redis://127.0.0.1:1");
+        try (var scores = new RedisWorkerScoreCore(client, new RedisKeyspace("test_worker_score_unit"))) {
+            assertEquals(Map.of(), scores.transferCurrentHotScoreLeases("g", List.of(), 1_000, true));
+            assertEquals(WorkerScoreTransitionStatus.INVALID,
+                    scores.transferCurrentHotScoreLeases("g", List.of("w"), -1, true).get("w").status());
+            assertThrows(IllegalArgumentException.class,
+                    () -> scores.transferCurrentHotScoreLeases("g", null, 1_000, true));
+            assertThrows(IllegalArgumentException.class,
+                    () -> scores.transferCurrentHotScoreLeases(" ", List.of("w"), 1_000, true));
+            for (String last : new String[]{null, " ", "w0"}) {
+                var ids = new java.util.ArrayList<String>();
+                for (int i = 0; i < 101; i++) ids.add("w" + i);
+                ids.add(last);
+                assertThrows(IllegalArgumentException.class,
+                        () -> scores.transferCurrentHotScoreLeases("g", ids, 1_000, true));
+            }
         } finally {
             client.shutdown();
         }

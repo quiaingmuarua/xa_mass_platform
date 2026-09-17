@@ -67,7 +67,7 @@ class RuleHandlerTest {
             var limits=new LinkedHashMap<EligibilityQuery,Integer>(); limits.put(supplied,1); limits.put(any,1);
             var taken=rule.take("g",limits);
             assertEquals(List.of(supplied,any),List.copyOf(taken.keySet()));
-            assertEquals(2,taken.values().stream().flatMap(List::stream).map(HeldCandidate::workerId).distinct().count());
+            assertEquals(2,taken.values().stream().flatMap(List::stream).map(h -> h.workerId()).distinct().count());
             assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(any,0),List.of(),0));
             assertThrows(IllegalArgumentException.class,()->rule.deficits("g",Map.of(any,1001)));
             verifyNoInteractions(client);

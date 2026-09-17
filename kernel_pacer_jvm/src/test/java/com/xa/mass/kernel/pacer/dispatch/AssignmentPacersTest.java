@@ -205,11 +205,11 @@ class AssignmentPacersTest {
         );
     }
 
-    private static HeldWorkerCandidate worker(
+    private static RoutedWorkerCandidate worker(
             String workerId,
             long score
     ) {
-        return new HeldWorkerCandidate(
+        return new RoutedWorkerCandidate(
                 workerId, "group-1", "adapter-1", score
         );
     }

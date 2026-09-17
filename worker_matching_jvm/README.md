@@ -88,8 +88,20 @@ actual number of requests. Catalog invokes `RuleHandler.take` once and associate
 each group's candidates with its message IDs in input order. The final Map follows
 the original input order, omits unfulfilled IDs and contains no repeated Worker.
 A valid empty batch returns without accessing stock; a late invalid query consumes
-nothing. Fences and deadlines are returned unchanged. Current Rules take locally
+nothing. The result is `WorkerCandidate(workerId, expectedScore)`: current Pool
+Rules return the original nonzero fence. `HeldCandidate` remains the refill and
+inventory value; its deadline is checked inside the Rule and does not cross the
+consumption boundary. Current Rules take locally
 without Redis access. The query-to-count Map remains internal to Matching.
+
+A Rule may explicitly return `expectedScore=0` as an identity hint. Catalog
+preserves that value without reading WorkerScore, filling in a fence or downgrading
+a nonzero expectation. Pacer consumes the zero sentinel to select Kernel's current-state
+transfer by IDs; nonzero fences go unchanged to its exact observed-score transfer.
+Kernel receives no optional-fence sentinel and atomically admits active soft HOT and seals
+the execution lease. This hint can compete for a later soft hold and carries no
+historical qualification guarantee. Production Rules all retain strict fences;
+the zero-mode Rule exists only in Runtime Boundary test assembly.
 
 Message IDs are call-local correlation keys. Matching neither stores them nor reads
 Items, deduplicates requests across calls or owns their lifecycle. Filtering an
@@ -106,7 +118,7 @@ contains exactly four operations:
 | `normalizeQuery(group, query)` | Idempotent validation/canonicalization shared by Item and target admission; no Redis read or stock mutation |
 | `deficits(group, targets)` | Immutable observed shortages, never reservations |
 | `refill(group, targets, offered, maxAccepted)` | Qualify and admit held candidates; return actual accepted Worker IDs |
-| `take(group, limits)` | Validate again and commit each still-current selected entry, returning original held fences |
+| `take(group, limits)` | Validate and consume candidates, returning identities and explicit expected fences; Pool Rules commit still-current, live entries with their original fences |
 
 Rule ID is associated with the instance at assembly; these methods have no Task ID.
 Group is a semantic coordinate. Redis keys, source scores, qualification values and
@@ -331,7 +343,9 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   Zero-match batches also acquire leases; full stock skips observation and acquisition.
 - Default without a configured projection needs no projection read; it uses the same
   Pacer Group supply, never an explicit-ID observation path.
-- Final confirmation: one bounded Lua, with its Redis TIME inside the operation.
+- Final confirmation: one bounded Lua per transfer kind, with Redis TIME inside
+  each operation. Current production Pool candidates all use exact transfer;
+  a mixed batch splits into exact and current-state calls without a shared transaction.
   Address, Item claim, publication and Result paths retain their separate costs.
 
 These are client command counts, not throughput promises. Matching logs aggregate

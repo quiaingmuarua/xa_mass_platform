@@ -109,7 +109,8 @@ They are measured independently from refill, not asserted as a latency promise.
 Only the package-private `TaskAssignmentDispatcher` constructs claimed Commands:
 
 ```text
-exact Worker transfer(seal=true) (soft original fence -> sealed execution fence)
+Pacer partitions exact fences / identity hints
+  -> Worker transferObservedHotScoreLeases / transferCurrentHotScoreLeases (seal=true)
   -> exact ACTIVE Item claim
   -> ResultContext carrying the returned execution fence
   -> Adapter-partitioned Worker mailbox
@@ -118,7 +119,16 @@ exact Worker transfer(seal=true) (soft original fence -> sealed execution fence)
 Pacer treats scores as opaque evidence. It cannot decode, construct or calculate
 coordinates. Only TRANSITIONED with a returned new fence proceeds to Item claim;
 NOOP, STALE and INVALID never authorize it, even if a result echoes a sealed
-current score. An exact-fence failure publishes no Command. A committed execution
+current score. `RoutedWorkerCandidate` carries `WorkerCandidate.expectedScore`
+alongside the verified Group and Endpoint. Pacer partitions the complete validated
+batch: nonzero fences go unchanged to `transferObservedHotScoreLeases`; zero hints
+become an identity list for `transferCurrentHotScoreLeases`. Kernel's exact input
+rejects zero, and its current-state input has no expected-score field. Empty
+partitions make no Owner call. The two calls are independent atomic batches;
+an exception after the first commits leaves those holds to expire, without Item
+claim, rollback, compensation or retry. Transfer rejection never falls back to
+the other operation. Neither the input expectation nor a Pool deadline can
+substitute for the returned execution fence. A committed execution
 is not revoked by later facts updates. Unused and publication-failed leases
 recover through existing expiry semantics.
 
@@ -127,6 +137,9 @@ It can only preserve or extend a soft deadline; unchanged time is NOOP. This
 Pacer adds no allocator, cached-candidate discovery or preemption loop. Matching
 may retain a fence after another caller transfers it; Dispatch's exact transfer
 rejects that old fence without refreshing it or taking a replacement.
+All production Pool Rules still return their original nonzero expectations. A
+test-only identity-hint Rule exercises the zero path through real Worker execution;
+it does not establish Locator behavior or a new allocator policy.
 
 Task Dispatch independently stores failed Result before requesting terminal tag
 5 for exhausted/expired Items, and owns pacing/idle close or park. Result routing

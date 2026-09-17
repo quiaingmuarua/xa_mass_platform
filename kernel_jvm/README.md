@@ -54,7 +54,8 @@ event Mechanisms select polarity and exact-release semantics. The
 [Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
 defines composition and command budgets. Worker Score encodes only polarity,
 time and mark. Active HOT mark=0 is a transferable soft hold; mark=1 is sealed.
-The Owner accepts opaque exact fences and a mechanical seal choice, without
+The Owner exposes separate observed-score and current-identity transfers, plus
+a mechanical seal choice, without
 recording seal reasons. Transfer keeps or extends the deadline, while pause
 atomically writes MAX,1. The numeric layout stays unchanged and no compatibility
 reader or migration is added; existing MAX,0 follows ordinary soft rules.

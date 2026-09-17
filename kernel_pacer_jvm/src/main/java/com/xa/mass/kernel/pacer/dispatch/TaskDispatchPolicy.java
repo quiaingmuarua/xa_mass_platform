@@ -156,7 +156,7 @@ final class TaskDispatchPolicy {
 
             try {
                 long selectedAt = DispatchStageEvent.start();
-                Map<String, HeldWorkerCandidate> assignments =
+                Map<String, RoutedWorkerCandidate> assignments =
                         assignments(
                                 task,
                                 claimableIds,
@@ -217,7 +217,7 @@ final class TaskDispatchPolicy {
         return List.copyOf(ordered.values());
     }
 
-    private Map<String, HeldWorkerCandidate> assignments(
+    private Map<String, RoutedWorkerCandidate> assignments(
             ObservedTask task,
             List<String> messageIds,
             Map<String, TaskItem> items,

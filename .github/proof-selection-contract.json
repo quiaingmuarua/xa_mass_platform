@@ -786,7 +786,30 @@
         "worker_convergence_health",
         "worker_dynamic_matching"
       ],
-      "reason": "The renamed bounded Matching port preserves the previous assignment-contract selection; message correlation moves into Matching without new proof lanes."
+      "reason": "Candidate handoff changes remain covered by existing bounded Matching, Score and runtime proofs."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/RoutedWorkerCandidate.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Renaming the routed candidate preserves the existing Dispatch proof selection, including Android and distribution."
+    },
+    {
+      "path": "server_jvm/src/test/java/com/xa/mass/server/testsupport/IdentityHintRuleHandler.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "The zero-expectation Rule is a Runtime Boundary fixture only, not a production Rule or profile."
     }
   ]
 }

@@ -138,8 +138,9 @@ Initial HOT acquisition happens before Matching reads eligibility.
 
 ## Candidate Validation
 
-Matching supplies bounded identity evidence with an original Score fence and
-deadline. Kernel validates Group/Binding, exact soft HOT transfer with seal=true and
+Matching supplies bounded identities and explicit optional expected Scores; Pool
+Rules retain original nonzero fences and keep expiry checks internal. Kernel validates
+Group/Binding, atomic soft HOT transfer with seal=true and
 round uniqueness before claiming an Item and publishing a Command.
 Matching cannot renew, acquire or reconstruct Score. Properties and sealing
 invalidation remain separate best-effort commits.
@@ -226,7 +227,7 @@ Known targets use direct encoding; changing only time preserves sign and mark:
 replace time:     sign(score) * (targetSlot * 2 + abs(score) % 2)
 toggle polarity:  -score
 acquisition:      requestedSlot * 2
-transfer:         max(observedSlot, requestedSlot) * 2 + (seal ? 1 : 0)
+transfer:         max(currentSlot, requestedSlot) * 2 + (seal ? 1 : 0)
 ```
 
 Public provider methods prepare parameters and combine private operations.
@@ -238,7 +239,8 @@ exact comparisons, execution-time checks and current-value changes.
 | Initialize absent | NX with a Java-prepared cold Score |
 | Exact replace | Read once, accept the original or its supplied exact counterpart, write target |
 | Due exact replace | Check requested target validity, exact fence and execution-time due |
-| Active exact replace | Check requested target validity, exact soft active HOT fence |
+| Observed soft transfer | Check requested target, exact fence and current soft active HOT; calculate target from current Score |
+| Current soft transfer | Read by ID, validate current soft active HOT and requested target; calculate target from current Score |
 | Due relative deferral | Exact fence, due and Redis-time relative target |
 | Current time advance and seal | Advance time and set mark=1 atomically, preserving sign |
 | Current seal | Set mark=1 atomically without creating a member |
@@ -247,8 +249,10 @@ exact comparisons, execution-time checks and current-value changes.
 Fixed scripts share exact read/compare, write-if-changed and batch-result
 functions, plus a fixed Redis TIME-to-milliseconds helper. Each time-dependent
 script samples TIME once. Acquisition passes one complete target per batch;
-transfer passes one requested time base per batch and complete targets per
-member. Both reject an expired requested time before checking exact fences.
+transfer passes one requested time base, the seal flag and either exact expected
+Scores or identities without score arguments. Lua
+computes each transfer target from its validated current Score. Both operations
+reject an expired requested time before reading and comparing member fences.
 Transfer has no PAUSE parameter or dedicated maximum-coordinate rejection.
 They do not interpret events, business modes or rule expressions.
 Ordinary same-value replacement returns NOOP. Completed HOT release maps an
@@ -375,14 +379,29 @@ acquireObservedHotScoreLeases accepts due HOT with either mark value and
 writes requestedSlot * 2, prepared and passed once per batch in Java.
 Redis execution time must still admit the requested future slot.
 
-transferObservedHotScoreLeases(group, observedScores, targetTimeMillis, seal)
-accepts only exact soft HOT in the current or future slot. Java prepares
-max(observedSlot, requestedSlot) * 2 + (seal ? 1 : 0); Lua still validates the
-requested slot itself against execution time. Transfer never shortens time.
+transferObservedHotScoreLeases(group, expectedScores, targetTimeMillis, seal)
+requires valid expected Scores and exact equality; zero is invalid. The separate
+transferCurrentHotScoreLeases(group, workerIds, targetTimeMillis, seal) has no
+expected-score argument. Both accept only valid soft HOT in the current or future
+slot. Redis reads current
+Score, checks state, calculates max(currentSlot, requestedSlot) * 2 + (seal ? 1 : 0)
+and writes inside one Lua. The requested slot itself must be strictly later than
+Redis execution time's slot. Transfer never shortens time or pre-reads Score.
 With seal=false, an unchanged target returns NOOP only after Redis time and
-exact checks. With seal=true, mark changes to 1 even when time stays unchanged,
+the selected operation's exact checks; NOOP grants no new exclusive authority. With seal=true, mark changes to 1 even when time stays unchanged,
 producing a new fence. Only an actual change returns TRANSITIONED; concurrent
-competitors using that old fence have at most one successful transfer.
+current-state/exact competitors have at most one successful sealing transfer.
+
+In current-state transfer, missing or valid ineligible state returns STALE. A corrupt current
+Score returns INVALID with no score payload and no mutation. Strict mode keeps
+its existing validation, result and error behavior. Pacer must not retry an exact
+failure through current-state transfer. Zero has no special meaning in either
+Kernel API or Lua; Pacer consumes Matching's sentinel before calling the selected
+operation. Acquire, release, polarity and recovery exact comparisons are unchanged.
+Both transfer methods validate the complete input before writes and split into
+at most 100 identities per Lua. Current-state IDs must be unique; empty inputs
+return empty results. Mixed Matching candidates require separate Pacer calls,
+with no transaction or rollback across them.
 
 Sealed HOT rejects transfer even with its latest exact fence. MAX,0 may return
 NOOP for a soft target or transition to MAX,1 for a sealed target. MAX,1 rejects
@@ -401,8 +420,8 @@ have no cross-owner transaction or repair guarantee.
 | --- | --- |
 | Registration | Missing -> cold RECOVERY, mark=0 |
 | Due HOT acquisition | Exact HOT -> future HOT, mark=0 |
-| Soft active HOT transfer, seal=false | Exact HOT -> same/later HOT, mark=0; unchanged is NOOP |
-| Soft active HOT transfer, seal=true | Exact HOT -> same/later HOT, mark=1 |
+| Soft active HOT transfer, seal=false | Exact observed or current HOT -> same/later HOT, mark=0; unchanged is NOOP |
+| Soft active HOT transfer, seal=true | Exact observed or current HOT -> same/later HOT, mark=1 |
 | Facts invalidation | Current legal coordinate -> same coordinate, mark=1 |
 | Eligible Serviceability check | Exact due HOT/RECOVERY -> RECOVERY at Redis now + delay |
 | Available evidence | Correct to HOT; refresh only an older past time; preserve mark |

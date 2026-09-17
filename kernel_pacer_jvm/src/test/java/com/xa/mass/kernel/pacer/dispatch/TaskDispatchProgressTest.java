@@ -116,7 +116,7 @@ class TaskDispatchProgressTest {
                 Set<String> roundWorkers = call.getArgument(3);
                 String worker = "worker-" + group;
                 if (!availableGroups.contains(group) || !roundWorkers.add(worker)) return Map.of();
-                return Map.of(selectors.keySet().iterator().next(), new HeldWorkerCandidate(worker, group, "adapter", 301L));
+                return Map.of(selectors.keySet().iterator().next(), new RoutedWorkerCandidate(worker, group, "adapter", 301L));
             });
             when(dispatcher.dispatch(any(), anyList(), anyLong())).thenAnswer(call -> {
                 ObservedTask task = call.getArgument(0);

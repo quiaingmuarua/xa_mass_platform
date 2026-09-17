@@ -98,6 +98,17 @@ own APPLIED-only ordering and best-effort response preservation. Runtime Boundar
 and Worker lanes remain downstream witnesses, not a facts/Score transaction or
 loss-repair guarantee.
 
+Observed-score and current-state transfer are Redis Owner claims: both contenders compete
+atomically for active soft HOT, targets never shorten the current deadline, and
+sealed, expired, missing or corrupt members do not gain execution leases. Exact
+transfer rejects zero; current-state transfer receives only identities. Pacer tests
+prove mixed-candidate partitioning, no strict-to-current fallback, partial-call
+failure without compensation, TRANSITIONED-only Item claim and the returned execution fence in
+ResultContext. Runtime Boundary adds a test-only identity-hint Rule using real
+Pool refill, Matching, Pacer, Worker execution and Result observation; production
+Rules remain strict. Identity hints may compete for a later soft hold and do not
+promise preservation of an earlier qualification decision.
+
 TaskItem generic terminal progression is a Redis Owner claim: tags 2..9,
 strict maximum-score writes, same-tag slot advancement, exact ACTIVE claim
 races, corrupt-score rejection, NX reappend, and the one-Lua/one-ZMSCORE batch

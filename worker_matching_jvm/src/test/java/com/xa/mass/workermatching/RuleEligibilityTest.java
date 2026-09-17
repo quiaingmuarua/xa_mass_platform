@@ -2,6 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
@@ -57,6 +58,7 @@ class RuleEligibilityTest {
         return result;
     }
     static RefillTarget pools(int count,String... values) { return new RefillTarget(Map.of("pool",List.of(values)),count); }
+    static WorkerCandidate candidate(HeldCandidate held) { return new WorkerCandidate(held.workerId(),held.score()); }
     List<HeldCandidate> offers(int start,int count,String value) {
         var facts=new HashMap<>(rule.current);
         var held=new ArrayList<HeldCandidate>();
@@ -83,8 +85,7 @@ class RuleEligibilityTest {
         var admitted=rule.refill("g",targets(List.of(pools(10,"US"),pools(10,"US","CN"))),offered,100);
         assertEquals(10,admitted.size()); assertEquals(1,rule.reads);
         var taken=rule.take("g",Map.of(ANY,100)).get(ANY);
-        assertEquals(offered,taken);
-        for(int i=0;i<taken.size();i++)assertSame(offered.get(i),taken.get(i));
+        assertEquals(offered.stream().map(RuleEligibilityTest::candidate).toList(),taken);
         assertTrue(rule.take("g",Map.of(ANY,100)).get(ANY).isEmpty());
         assertThrows(UnsupportedOperationException.class,admitted::clear);
     }
@@ -139,7 +140,7 @@ class RuleEligibilityTest {
             var a=executor.submit(()->rule.take("g",Map.of(ANY,100)).get(ANY));
             var b=executor.submit(()->rule.take("g",Map.of(ANY,100)).get(ANY));
             var all=new ArrayList<>(a.get(5,TimeUnit.SECONDS));all.addAll(b.get(5,TimeUnit.SECONDS));
-            assertEquals(100,all.size());assertEquals(100,all.stream().map(HeldCandidate::workerId).distinct().count());
+            assertEquals(100,all.size());assertEquals(100,all.stream().map(h -> h.workerId()).distinct().count());
         }
     }
     @Test void concurrentRefillsMayExceedAnObservedTargetWithoutReplanning() throws Exception {
@@ -175,12 +176,12 @@ class RuleEligibilityTest {
         rule.refill("g",targets(List.of(pools(2,"US"))),List.of(held),100);
         rule.refill("g",targets(List.of(pools(2,"US"))),List.of(new HeldCandidate("w0",999,9000)),100);
         assertTrue(rule.take("other",Map.of(ANY,1)).get(ANY).isEmpty());
-        assertSame(held,rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
+        assertEquals(candidate(held),rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
         rule.refill("g",targets(List.of(pools(1,"US"))),List.of(held),100); clock.set(6000);
         assertTrue(rule.take("g",Map.of(ANY,1)).get(ANY).isEmpty());
         var replacement=new HeldCandidate("w0",999,9000);
         assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),List.of(replacement),100));
-        assertSame(replacement,rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
+        assertEquals(candidate(replacement),rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
     }
     @Test void concurrentExpiryAndReplacementCannotReturnTheOldFence() throws Exception {
         populate(1);
@@ -201,7 +202,7 @@ class RuleEligibilityTest {
                 assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),List.of(replacement),100));
             } finally { release.countDown(); }
             assertTrue(take.get(5,TimeUnit.SECONDS).isEmpty(),"replacement belongs to the next take");
-            assertSame(replacement,rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
+            assertEquals(candidate(replacement),rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
             assertTrue(rule.take("g",Map.of(ANY,1)).get(ANY).isEmpty());
             assertEquals(10_000,storage.availableCapacity());
         }
@@ -216,11 +217,12 @@ class RuleEligibilityTest {
             HeldCandidate reinserted;
             try {
                 assertTrue(entered.await(5,TimeUnit.SECONDS));
-                reinserted=rule.take("g",Map.of(ANY,1)).get(ANY).getFirst();
+                var consumed=rule.take("g",Map.of(ANY,1)).get(ANY).getFirst();
+                reinserted=new HeldCandidate(consumed.workerId(),consumed.expectedScore(),6000);
                 assertEquals(List.of("w0"),rule.refill("g",Map.of(ANY,2),List.of(reinserted),100));
             } finally { release.countDown(); }
-            assertEquals(List.of("w1"),take.get(5,TimeUnit.SECONDS).stream().map(HeldCandidate::workerId).toList());
-            assertSame(reinserted,rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
+            assertEquals(List.of("w1"),take.get(5,TimeUnit.SECONDS).stream().map(h -> h.workerId()).toList());
+            assertEquals(candidate(reinserted),rule.take("g",Map.of(ANY,1)).get(ANY).getFirst());
             assertEquals(10_000,storage.availableCapacity());
         }
     }
@@ -239,7 +241,7 @@ class RuleEligibilityTest {
                 assertTrue(entered.await(5,TimeUnit.SECONDS));
                 assertEquals(List.of("w1"),rule.refill("other",Map.of(ANY,1),offers(1,1,"US"),100));
             } finally { release.countDown(); }
-            assertEquals(List.of("w0"),take.get(5,TimeUnit.SECONDS).stream().map(HeldCandidate::workerId).toList());
+            assertEquals(List.of("w0"),take.get(5,TimeUnit.SECONDS).stream().map(h -> h.workerId()).toList());
             assertEquals(1,matches.get(),"an unrelated mutation must not restart matching");
             assertEquals(1,rule.take("other",Map.of(ANY,1)).get(ANY).size());
         }

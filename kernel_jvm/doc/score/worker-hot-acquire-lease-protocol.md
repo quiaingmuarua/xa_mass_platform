@@ -32,7 +32,7 @@ NORMAL Task descriptors -> local Group deficits
   -> Pacer read-only due HOT head, including mark=0 and mark=1
   -> one Kernel exact acquisition, 1 second, soft mark=0 -> supplied successful fences
   -> Matching supplied-ID current projection and acceptance plan -> shared inventory
-  -> local take -> exact Worker transfer(seal=true), execution fence, mark=1
+  -> local take -> Worker transferObservedHotScoreLeases(seal=true), execution fence, mark=1
   -> exact Item claim -> Command -> ResultContext -> exact result disposition
 ```
 
@@ -59,14 +59,16 @@ empty; no cross-round bypass of those rows is promised. Concurrent Score changes
 remain subject to exact acquisition, without a same-round rescan or stable snapshot.
 
 Acquisition and transfer each check Redis TIME inside the same bounded Lua
-as exact comparison and write, once per at most 100 identities on a Group key.
+as admission and write, once per at most 100 identities on a Group key.
 No preceding time confirmation read is used. Existing 100ms semantics apply:
 acquisition requires slot < nowSlot, while active transfer allows equality.
 The requested target slot must be later than nowSlot, even if the observed
 lease already has a later deadline. Java prepares requestedSlot * 2 once per
-acquisition batch, or max(observedSlot, requestedSlot) * 2 + (seal ? 1 : 0) per transfer
-member. Lua receives the requested time base and compares against the Redis
-current time base, rejecting an expired request before exact comparison.
+batch. The two transfer scripts share active soft HOT validation and target
+calculation: max(currentScore, requestedBase) + seal. Observed-score transfer
+additionally requires exact equality; current-state transfer receives IDs only.
+It rejects an expired request before reading the member. No pre-transfer read is
+introduced, and a multi-chunk invocation adds no transaction or rollback.
 Transfer checks soft/active state without a PAUSE parameter or special rejection.
 Fixed entries share exact comparison and writing. The operations return
 individual results; Properties and other Owners remain independent commits.
@@ -93,12 +95,30 @@ coordinate. Once the stored slot is in the past, its existing evidence freshness
 check still applies. No evidence replay or broader probe scan is introduced.
 
 Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
-closure calls transferObservedHotScoreLeases with seal=true for supplied soft,
-active HOT fences. One CAS requires the entire original score, retains or extends
-its deadline, and sets mark=1.
+closure selects one of the two transfer operations with seal=true. Matching's consumption result
+contains workerId and an explicit expectedScore, without an inventory deadline.
+All current production Pool Rules return their original nonzero score: one CAS
+requires that entire score, retains or extends its deadline, and sets mark=1.
 Even a hold that already covers the requested deadline must transition: there
 is no successful NOOP. Sealed, expired, negative or stale observations cannot
 proceed to Item claim. One inventory fence can be consumed only once.
+
+An explicit expectedScore=0 is an identity hint consumed by Pacer. Pacer partitions
+the batch: nonzero fences go to transferObservedHotScoreLeases; hint IDs go to
+transferCurrentHotScoreLeases, without a score argument. Exact transfer rejects
+zero as invalid. Current-state Lua must find a valid, active soft HOT member
+before sealing; it can use a newer soft hold than an earlier
+qualification observed. This is instantaneous eligibility, not a guarantee that
+old qualification evidence remains valid. Missing/ineligible members return STALE;
+corrupt members return INVALID without echoing an undecodable score or repairing it.
+Two hint transfers, or a hint and a strict transfer, have at most one winner with
+seal=true. A strict failure never retries as a hint. The production Rule registry
+does not emit hints in this slice; Runtime Boundary owns the test-only end-to-end
+witness. Kernel never interprets zero as a wildcard or mode selector.
+Each nonempty partition uses its own bounded call. If the second call fails after
+the first commits, the first holds remain; no Items are claimed by that failed
+dispatch, no compensation or retry occurs, and the holds expire normally. The
+two calls and multi-chunk operations do not constitute one transaction.
 
 Only a TRANSITIONED confirmation with a returned score participates in the Item
 claim batch. Only claimed Items become Commands. The returned execution fence,
@@ -114,14 +134,15 @@ are maintained once in the
 ## Soft Transfer And Sealing
 
 For current/future HOT, mark=0 means a speculative soft hold that another
-caller with its exact score may transfer; mark=1 means a sealed hold that cannot
+caller may transfer through an observed-score or current-state operation; mark=1 means a sealed hold that cannot
 transfer. Kernel stores no seal reason. A future sealed hold can be an execution
 commit, a Properties invalidation or pause: observing it does not prove execution
 or authorize a caller to claim an Item.
 
-transferObservedHotScoreLeases(..., seal=false) retains soft status and uses the
-later of the observed and requested deadlines. If time is unchanged, Redis still
-checks exact, active and request-time conditions before returning NOOP; no new
+Both transfer operations with seal=false retain soft status and use the
+later of the current and requested deadlines. If time is unchanged, Redis still
+checks active and request-time conditions, plus exact equality for the observed-score
+operation, before returning NOOP; no new
 fence or successful transfer is implied. seal=true changes mark to 1 even at an
 unchanged deadline. Actual transfer invalidates the previous fence, including a
 copy still resident in Matching stock. That old copy cannot later commit execution
@@ -156,8 +177,8 @@ even if it follows the projection read; admission performs no second acquisition
 that could clear it. Facts and sealing are still independent: a projection-to-facts
 race or failed invalidation is not repaired by a version or transaction. Mark is
 not a Properties version, connection fact or write lock. Default
-identity selectors need no facts. Never fetch a newer score
-to rescue a stale candidate or clear an active execution hold. There is no
+identity selectors need no facts. Never fetch a newer score or retry through current-state transfer
+to rescue a strict stale candidate or clear an active execution hold. There is no
 per-Task Candidate Cache to invalidate or repair.
 
 ## Result Disposition

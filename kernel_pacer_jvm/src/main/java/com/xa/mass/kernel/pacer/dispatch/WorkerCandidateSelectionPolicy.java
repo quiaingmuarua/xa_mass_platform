@@ -21,7 +21,7 @@ final class WorkerCandidateSelectionPolicy {
         this.matching=Objects.requireNonNull(matching,"matching");
     }
 
-    Map<String,HeldWorkerCandidate> takeCandidates(String ruleId, String workerGroupId,
+    Map<String,RoutedWorkerCandidate> takeCandidates(String ruleId, String workerGroupId,
             Map<String,EligibilityQuery> selectors, Set<String> roundWorkerIds) {
         if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
         if (selectors.isEmpty()) return Map.of();
@@ -31,11 +31,11 @@ final class WorkerCandidateSelectionPolicy {
         selectors.keySet().forEach(id -> {
             var held=taken.get(id);
             if (held!=null && roundWorkerIds.add(held.workerId())) {
-                selected.put(id,held.workerId()); scores.put(held.workerId(),held.score());
+                selected.put(id,held.workerId()); scores.put(held.workerId(),held.expectedScore());
             }
         });
         var described=describeById(workerGroupId,scores);
-        var result=new LinkedHashMap<String,HeldWorkerCandidate>();
+        var result=new LinkedHashMap<String,RoutedWorkerCandidate>();
         selectors.keySet().forEach(item -> {
             String worker=selected.get(item);
             var candidate=worker==null ? null : described.get(worker);
@@ -44,25 +44,25 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private Map<String, HeldWorkerCandidate> describeById(
+    private Map<String, RoutedWorkerCandidate> describeById(
             String workerGroupId,
-            Map<String, Long> heldScores
+            Map<String, Long> expectedScores
     ) {
-        if (heldScores.isEmpty()) {
+        if (expectedScores.isEmpty()) {
             return Map.of();
         }
         Map<String, WorkerDescriptor> descriptors =
                 workerCatalog.getWorkerDescriptors(
-                        List.copyOf(heldScores.keySet())
+                        List.copyOf(expectedScores.keySet())
                 );
-        LinkedHashMap<String, HeldWorkerCandidate> result =
+        LinkedHashMap<String, RoutedWorkerCandidate> result =
                 new LinkedHashMap<>();
-        heldScores.forEach((workerId, heldScore) -> {
+        expectedScores.forEach((workerId, heldScore) -> {
             WorkerDescriptor descriptor = descriptors.get(workerId);
             if (descriptor != null
                     && workerGroupId.equals(descriptor.workerGroupId())
                     && workerId.equals(descriptor.workerId())) {
-                result.put(workerId, new HeldWorkerCandidate(
+                result.put(workerId, new RoutedWorkerCandidate(
                         descriptor.workerId(),
                         descriptor.workerGroupId(),
                         descriptor.endpointManagerId(),

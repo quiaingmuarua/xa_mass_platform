@@ -1,6 +1,7 @@
 package com.xa.mass.workermatching.rules;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.RuleHandler;
 import java.util.*;
@@ -116,7 +117,7 @@ public abstract class LocalCandidateRule<P> implements RuleHandler {
         }
     }
 
-    @Override public final Map<EligibilityQuery, List<HeldCandidate>> take(String group,
+    @Override public final Map<EligibilityQuery, List<WorkerCandidate>> take(String group,
             Map<EligibilityQuery, Integer> limits) {
         group(group); Objects.requireNonNull(limits);
         if (limits.size() > 100) throw new IllegalArgumentException("at most 100 selectors");
@@ -147,14 +148,14 @@ public abstract class LocalCandidateRule<P> implements RuleHandler {
             expire(group);
             var pool = pools.get(group);
             long commitTime = storage.now();
-            var taken = new LinkedHashMap<EligibilityQuery, List<HeldCandidate>>();
+            var taken = new LinkedHashMap<EligibilityQuery, List<WorkerCandidate>>();
             selected.forEach((selector, entries) -> {
-                var committed = new ArrayList<HeldCandidate>();
+                var committed = new ArrayList<WorkerCandidate>();
                 for (var entry : entries) {
                     var held = entry.held();
                     // Reference identity also rejects removal/reinsertion with an equal held value.
                     if (pool == null || pool.get(held.workerId()) != entry || held.expiresAtMillis() <= commitTime) continue;
-                    pool.remove(held.workerId()); committed.add(held);
+                    pool.remove(held.workerId()); committed.add(new WorkerCandidate(held.workerId(), held.score()));
                 }
                 taken.put(selector, List.copyOf(committed));
             });

@@ -1,13 +1,13 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-/** A routed Worker candidate carrying Kernel's exact held score. */
-record HeldWorkerCandidate(
+/** A routed Worker identity carrying an optional expected Kernel fence, not execution authority. */
+record RoutedWorkerCandidate(
         String workerId,
         String workerGroupId,
         String endpointManagerId,
-        long heldWorkerLeaseScore
+        long expectedScore
 ) {
-    HeldWorkerCandidate {
+    RoutedWorkerCandidate {
         requireNonBlank(workerId, "workerId");
         requireNonBlank(workerGroupId, "workerGroupId");
         requireNonBlank(endpointManagerId, "endpointManagerId");

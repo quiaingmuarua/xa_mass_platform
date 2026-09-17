@@ -236,7 +236,16 @@ architectures.
   refill queries use one string-list structure; Rules normalize all semantics, including
   Default identity queries. Target quantities use MAX; consumption uses actual Item
   counts inside Matching. Pacer submits one query per message ID and receives at most
-  one held candidate for it. Dropping an association must not transfer its candidate,
+  one WorkerCandidate for it. Consumption carries identity and an explicit expectedScore,
+  never the inventory deadline. Current production Pool Rules retain the original
+  nonzero fence. Zero is an explicit identity hint only at the Matching-to-Pacer
+  boundary. Pacer partitions candidates into observed-score and current-identity
+  batches, calling transferObservedHotScoreLeases or transferCurrentHotScoreLeases.
+  Kernel's exact input rejects zero; its current-state operation takes IDs only.
+  Pacer accepts only TRANSITIONED, and uses the returned
+  sealed execution fence for Command/ResultContext and exact Result release.
+  It must not retry a failed strict expectation through current-state transfer.
+  Dropping an association must not transfer its candidate,
   restore stock or trigger a replacement take. Do not restore operator objects or a separate Item selector protocol. Shared
   capacity coordination stores budgets only. Earlier Rule admissions survive a later
   Rule failure; the exception ends the remaining batch without rollback or replay.
@@ -314,8 +323,10 @@ kernel_jvm`.
   The raw read is bounded to 100 rows; corrupt scores are filtered without replacement
   scans, repair or an automatic-progress promise through a fully corrupt head.
   Acquisition accepts due mark=0/1 and establishes soft mark=0;
-  execution transfer requires exact soft active HOT fences and sets mark=1. Both check Redis time in CAS Lua.
-  Kernel exact-transfers soft candidates with seal=true
+  production Pool execution transfer requires exact soft active HOT fences and sets mark=1.
+  Identity hints use the separate current-state transfer. Both transfer entries check
+  Redis time and active soft state atomically; no zero sentinel reaches Kernel.
+  Kernel transfers soft candidates with seal=true
   and carries the returned execution fence into ResultContext. Properties writes
   invalidate through Score Owner. Unused/rejected holds expire without release
   compensation, periodic renewal or a pending lease registry. Do not add Item-triggered

@@ -27,7 +27,7 @@ final class TaskAssignmentDispatcher {
     record AssignmentAttempt(
             TaskItem item,
             long observedItemScore,
-            HeldWorkerCandidate worker
+            RoutedWorkerCandidate worker
     ) {
         AssignmentAttempt {
             Objects.requireNonNull(item, "item");
@@ -76,12 +76,13 @@ final class TaskAssignmentDispatcher {
         LinkedHashMap<String, AssignmentAttempt> attemptsByMessageId =
                 new LinkedHashMap<>();
         LinkedHashMap<String, Long> observedWorkers = new LinkedHashMap<>();
+        List<String> currentWorkers = new ArrayList<>();
         HashSet<String> workerIds = new HashSet<>();
         for (AssignmentAttempt attempt : attempts) {
             Objects.requireNonNull(attempt, "assignment attempt");
             TaskItem item = attempt.item();
             String messageId = item.messageId();
-            HeldWorkerCandidate worker = attempt.worker();
+            RoutedWorkerCandidate worker = attempt.worker();
             requireNonBlank(messageId, "messageId");
             if (attemptsByMessageId.putIfAbsent(messageId, attempt) != null) {
                 throw new IllegalArgumentException(
@@ -100,19 +101,26 @@ final class TaskAssignmentDispatcher {
                         "Assignments must be unique by workerId"
                 );
             }
-            observedWorkers.put(
-                    worker.workerId(),
-                    worker.heldWorkerLeaseScore()
-            );
+            if (worker.expectedScore() == 0) {
+                currentWorkers.add(worker.workerId());
+            } else {
+                observedWorkers.put(worker.workerId(), worker.expectedScore());
+            }
         }
 
         long confirmedAt = DispatchStageEvent.start();
-        Map<String, WorkerScoreTransitionResult> verified =
-                workerScores.transferObservedHotScoreLeases(
+        Map<String, WorkerScoreTransitionResult> verified = new LinkedHashMap<>();
+        if (!observedWorkers.isEmpty()) {
+            verified.putAll(workerScores.transferObservedHotScoreLeases(
                         task.descriptor().workerGroupId(),
                         observedWorkers,
                         claimUntilMillis, true
-                );
+                ));
+        }
+        if (!currentWorkers.isEmpty()) {
+            verified.putAll(workerScores.transferCurrentHotScoreLeases(
+                    task.descriptor().workerGroupId(), currentWorkers, claimUntilMillis, true));
+        }
         LinkedHashMap<String, Long> verifiedScores = new LinkedHashMap<>();
         verified.forEach((workerId, result) -> {
             if (result.score() != null
@@ -120,12 +128,12 @@ final class TaskAssignmentDispatcher {
                 verifiedScores.put(workerId, result.score());
             }
         });
-        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM", observedWorkers.size(), verifiedScores.size(), false);
-        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM_REJECTED", observedWorkers.size(), observedWorkers.size()-verifiedScores.size(), false);
+        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM", workerIds.size(), verifiedScores.size(), false);
+        DispatchStageEvent.batch(confirmedAt, "WORKER_CONFIRM_REJECTED", workerIds.size(), workerIds.size()-verifiedScores.size(), false);
 
         LinkedHashMap<String, Long> claimScores = new LinkedHashMap<>();
         attemptsByMessageId.forEach((messageId, attempt) -> {
-            HeldWorkerCandidate worker = attempt.worker();
+            RoutedWorkerCandidate worker = attempt.worker();
             if (verifiedScores.containsKey(worker.workerId())) {
                 claimScores.put(messageId, attempt.observedItemScore());
             }
@@ -151,7 +159,7 @@ final class TaskAssignmentDispatcher {
         LinkedHashMap<String, Map<String, DeliveryCommand>> byAdapter =
                 new LinkedHashMap<>();
         attemptsByMessageId.forEach((messageId, attempt) -> {
-            HeldWorkerCandidate worker = attempt.worker();
+            RoutedWorkerCandidate worker = attempt.worker();
             var claim = claims.get(messageId);
             Long workerLeaseScore = verifiedScores.get(worker.workerId());
             if (claim == null

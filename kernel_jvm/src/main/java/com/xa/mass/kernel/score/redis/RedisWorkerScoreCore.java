@@ -122,20 +122,45 @@ public final class RedisWorkerScoreCore
             end
             return results
             """;
-    private static final String TRANSFER_ACTIVE_SCRIPT = LEASE_CLOCK + """
-            local function transfer(id, observed, target)
-              if requested_base <= now_base then return {'invalid'} end
-              local current, rejected = read_exact(KEYS[1], id, observed)
-              if rejected then return rejected end
+    private static final String ACTIVE_TRANSFER_FUNCTION = LEASE_CLOCK + """
+            local seal = tonumber(ARGV[4])
+            local function transfer_active(id, current)
               if current % factor ~= 0 or current < now_base then
                 return {'stale', current}
               end
+              local target = math.max(requested_base, current) + seal
               return write_changed(KEYS[1], id, current, target)
             end
-            local results = {}
-            for i = 4, #ARGV, 3 do
-              append_result(results, ARGV[i], transfer(ARGV[i], tonumber(ARGV[i+1]), tonumber(ARGV[i+2])))
+            """;
+    private static final String TRANSFER_OBSERVED_SCRIPT = ACTIVE_TRANSFER_FUNCTION + """
+            local function transfer(id, expected)
+              if requested_base <= now_base then return {'invalid'} end
+              local current, rejected = read_exact(KEYS[1], id, expected)
+              if rejected then return rejected end
+              return transfer_active(id, current)
             end
+            local results = {}
+            for i = 5, #ARGV, 2 do
+              append_result(results, ARGV[i], transfer(ARGV[i], tonumber(ARGV[i+1])))
+            end
+            return results
+            """;
+    private static final String TRANSFER_CURRENT_SCRIPT = ACTIVE_TRANSFER_FUNCTION + """
+            local maximum = tonumber(ARGV[5])
+            local function transfer(id)
+              if requested_base <= now_base then return {'invalid'} end
+              local stored = redis.call('ZSCORE', KEYS[1], id)
+              if not stored then return {'stale'} end
+              local current = tonumber(stored)
+              if not current then return {'invalid'} end
+              local absolute = math.abs(current)
+              if absolute == 0 or absolute > maximum or absolute ~= math.floor(absolute) then
+                return {'invalid'}
+              end
+              return transfer_active(id, current)
+            end
+            local results = {}
+            for i = 6, #ARGV do append_result(results, ARGV[i], transfer(ARGV[i])) end
             return results
             """;
     private static final String DEFER_DUE_SCRIPT = EXACT_FUNCTIONS + REDIS_TIME_FUNCTION + """
@@ -456,17 +481,53 @@ public final class RedisWorkerScoreCore
     public Map<String, WorkerScoreTransitionResult>
             transferObservedHotScoreLeases(
                     String homeBucketId,
-                    Map<String, Long> observedScores,
+                    Map<String, Long> expectedScores,
                     long targetTimeMillis,
                     boolean seal
             ) {
         return updateObservedHotLeases(
                 homeBucketId,
-                observedScores,
+                expectedScores,
                 targetTimeMillis,
                 true,
                 seal
         );
+    }
+
+    @Override
+    public Map<String, WorkerScoreTransitionResult> transferCurrentHotScoreLeases(
+            String homeBucketId,
+            List<String> workerIds,
+            long targetTimeMillis,
+            boolean seal
+    ) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (workerIds == null) {
+            throw new IllegalArgumentException("workerIds must be present");
+        }
+        List<String> ordered = new ArrayList<>(workerIds);
+        ordered.forEach(id -> requireNonBlank(id, "workerId"));
+        if (new LinkedHashSet<>(ordered).size() != ordered.size()) {
+            throw new IllegalArgumentException("workerIds must be unique");
+        }
+        if (ordered.isEmpty()) {
+            return Map.of();
+        }
+        if (!validTimeMillis(targetTimeMillis)) {
+            return uniformResults(ordered, WorkerScoreTransitionStatus.INVALID);
+        }
+        long requestedBase = absoluteScore(targetTimeMillis / SLOT_MILLIS, SOFT_MARK);
+        LinkedHashMap<String, WorkerScoreTransitionResult> results = new LinkedHashMap<>();
+        for (int offset = 0; offset < ordered.size(); offset += MAX_SCORE_BATCH_SIZE) {
+            List<String> batch = ordered.subList(offset, Math.min(offset + MAX_SCORE_BATCH_SIZE, ordered.size()));
+            List<String> arguments = new ArrayList<>(5 + batch.size());
+            arguments.addAll(List.of(Long.toString(requestedBase), Long.toString(SLOT_MILLIS),
+                    Integer.toString(SLOT_FACTOR), Integer.toString(seal ? SEALED_MARK : SOFT_MARK),
+                    Long.toString(absoluteScore(MAX_TIME_SLOT, SEALED_MARK))));
+            arguments.addAll(batch);
+            results.putAll(executeBatch(homeBucketId, batch, TRANSFER_CURRENT_SCRIPT, arguments, "current_hot_leases"));
+        }
+        return results;
     }
 
     private Map<String, WorkerScoreTransitionResult> updateObservedHotLeases(
@@ -532,20 +593,19 @@ public final class RedisWorkerScoreCore
         long requestedBase = absoluteScore(targetTimeSlot, SOFT_MARK);
         for (int offset = 0; offset < ids.size(); offset += MAX_SCORE_BATCH_SIZE) {
             List<String> batch = ids.subList(offset, Math.min(offset + MAX_SCORE_BATCH_SIZE, ids.size()));
-            List<String> arguments = new ArrayList<>(3 + batch.size() * (transfer ? 3 : 2));
+            List<String> arguments = new ArrayList<>((transfer ? 4 : 3) + batch.size() * 2);
             arguments.addAll(List.of(Long.toString(requestedBase), Long.toString(SLOT_MILLIS),
                     Integer.toString(SLOT_FACTOR)));
+            if (transfer) {
+                arguments.add(Integer.toString(seal ? SEALED_MARK : SOFT_MARK));
+            }
             batch.forEach(id -> {
                 long observed = pending.get(id);
                 arguments.add(id);
                 arguments.add(Long.toString(observed));
-                if (transfer) {
-                    arguments.add(Long.toString(absoluteScore(
-                            Math.max(targetTimeSlot, observed / SLOT_FACTOR), seal ? SEALED_MARK : SOFT_MARK)));
-                }
             });
             transitioned.putAll(executeBatch(homeBucketId, batch,
-                    transfer ? TRANSFER_ACTIVE_SCRIPT : ACQUIRE_DUE_SCRIPT, arguments, "exact_hot_leases"));
+                    transfer ? TRANSFER_OBSERVED_SCRIPT : ACQUIRE_DUE_SCRIPT, arguments, "exact_hot_leases"));
         }
         return mergeOrderedResults(ordered.keySet(), immediate, transitioned);
     }

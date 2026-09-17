@@ -128,7 +128,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return requireEligibility(group,ruleId).normalizeQuery(group,Objects.requireNonNull(query,"query"));
     }
 
-    @Override public Map<String,HeldCandidate> take(String group,String ruleId,
+    @Override public Map<String,WorkerCandidate> take(String group,String ruleId,
             Map<String,EligibilityQuery> queriesByMessageId) {
         var handler=requireEligibility(group,ruleId);
         Objects.requireNonNull(queriesByMessageId,"queriesByMessageId");
@@ -147,12 +147,12 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         var limits=new LinkedHashMap<EligibilityQuery,Integer>();
         groups.forEach((query,ids)->limits.put(query,ids.size()));
         var taken=handler.take(group,limits);
-        var assigned=new LinkedHashMap<String,HeldCandidate>();
+        var assigned=new LinkedHashMap<String,WorkerCandidate>();
         groups.forEach((query,ids)->{
             var candidates=taken.getOrDefault(query,List.of());
             for(int i=0;i<Math.min(ids.size(),candidates.size());i++)assigned.put(ids.get(i),candidates.get(i));
         });
-        var result=new LinkedHashMap<String,HeldCandidate>();
+        var result=new LinkedHashMap<String,WorkerCandidate>();
         captured.keySet().forEach(id->{
             var candidate=assigned.get(id);
             if(candidate!=null)result.put(id,candidate);

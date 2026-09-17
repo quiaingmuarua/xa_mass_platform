@@ -1,6 +1,7 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.List;
 import java.util.Map;
@@ -28,8 +29,9 @@ public interface RuleHandler {
      * Validates and consumes at most 100 candidates across at most 100 queries.
      * No Worker may occur in more than one returned list, including overlapping queries.
      * Each consumed entry must still be current and live at commit. Concurrent changes can leave
-     * a short result; they do not require retrying selection within this call.
+     * a short result; they do not require retrying selection within this call. Pool Rules return
+     * their original nonzero fence; identity-hint Rules explicitly return zero instead.
      */
-    Map<EligibilityQuery, List<HeldCandidate>> take(String workerGroupId,
+    Map<EligibilityQuery, List<WorkerCandidate>> take(String workerGroupId,
             Map<EligibilityQuery, Integer> limits);
 }

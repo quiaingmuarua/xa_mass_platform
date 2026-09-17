@@ -2,6 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.rules.*;
@@ -49,7 +50,8 @@ class NamedPoolOperationsTest {
         when(handler.normalizeQuery("g1",raw)).thenReturn(normalized);
         when(handler.normalizeQuery("g1",normalized)).thenReturn(normalized);
         when(handler.normalizeQuery("g1",narrow)).thenReturn(narrow);
-        var supplied=offer("first","second","third");
+        var supplied=List.of(new WorkerCandidate("first", 0),
+                new WorkerCandidate("second", 42), new WorkerCandidate("third", 44));
         when(handler.take(eq("g1"),anyMap())).thenAnswer(call->{
             Map<EligibilityQuery,Integer> limits=call.getArgument(1);
             assertEquals(List.of(normalized,narrow),List.copyOf(limits.keySet()));
@@ -70,6 +72,13 @@ class NamedPoolOperationsTest {
             verify(handler,times(1)).take(eq("g1"),anyMap());
             verifyNoInteractions(redis);
         }
+    }
+
+    @Test void candidateRequiresIdentityButLeavesFenceInterpretationToScoreOwner() {
+        assertThrows(IllegalArgumentException.class, () -> new WorkerCandidate(" ", 0));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerCandidate(null, 10));
+        assertEquals(0, new WorkerCandidate("hint", 0).expectedScore());
+        assertEquals(-17, new WorkerCandidate("opaque", -17).expectedScore());
     }
 
     @Test void invalidWholeBatchLeavesStockUntouchedAndEmptyDoesNotTouchRule() {
@@ -111,7 +120,7 @@ class NamedPoolOperationsTest {
         requests.put("id-again",identity); requests.put("any-next",ANY); requests.put("unfilled",ANY);
         var result=catalog.take("g1","worker.default",requests);
         assertEquals(List.of("id-first","any-first","any-next"),List.copyOf(result.keySet()));
-        assertEquals(held,List.copyOf(result.values()));
+        assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
         assertTrue(catalog.take("g1","worker.default",requests).isEmpty());
         assertEquals(1,catalog.refill("g1",targets,offer("four")));
         assertEquals("four",catalog.take("g1","worker.default",Map.of("id-first",ANY)).get("id-first").workerId());
@@ -128,7 +137,7 @@ class NamedPoolOperationsTest {
         assertEquals(100,catalog.refill("g1",Map.of("worker.default",List.of(new RefillTarget(Map.of(),100))),held));
         var result=catalog.take("g1","worker.default",requests);
         assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
-        assertEquals(held,List.copyOf(result.values()));
+        assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
         verifyNoInteractions(redis);
     }
 
@@ -150,6 +159,7 @@ class NamedPoolOperationsTest {
     static RefillTarget pool(int count,String... values) {
         return new RefillTarget(Map.of("pool",List.of(values)),count);
     }
+    static WorkerCandidate candidate(HeldCandidate held) { return new WorkerCandidate(held.workerId(),held.score()); }
     static List<HeldCandidate> offer(String... ids) {
         return Arrays.stream(ids).map(id->new HeldCandidate(id,20,2000)).toList();
     }
@@ -166,9 +176,9 @@ class NamedPoolOperationsTest {
         assertEquals(2,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
         assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
         assertEquals(List.of("w1","w2"),takeItems(catalog,"g1","test.pool",ANY,2)
-                .stream().map(HeldCandidate::workerId).toList());
+                .stream().map(h -> h.workerId()).toList());
         assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",ANY,1)
-                .stream().map(HeldCandidate::workerId).toList());
+                .stream().map(h -> h.workerId()).toList());
         verifyNoInteractions(redis);
     }
 
@@ -248,7 +258,7 @@ class NamedPoolOperationsTest {
         assertEquals(1,catalog.refill("g1",Map.of("test.pool",List.of(pool(2,"US"))),
                 List.of(new HeldCandidate("old",20,1000),live)));
         assertEquals(List.of(List.of("live")),rule.snapshots);
-        assertSame(live,takeItems(catalog,"g1","test.pool",ANY,1).getFirst());
+        assertEquals(candidate(live),takeItems(catalog,"g1","test.pool",ANY,1).getFirst());
     }
 
     @Test void qualificationConsumesOriginalDeadline() {
@@ -266,7 +276,7 @@ class NamedPoolOperationsTest {
         var targets=Map.of("test.pool",List.of(pool(1,"US")),"zz.fail",List.of(pool(1,"CN")));
         assertThrows(IllegalStateException.class,()->catalog.refill("g1",targets,offer("us","cn")));
         assertEquals(List.of(List.of("us","cn")),rule.snapshots);
-        assertEquals(List.of("us"),takeItems(catalog,"g1","test.pool",ANY,1).stream().map(HeldCandidate::workerId).toList());
+        assertEquals(List.of("us"),takeItems(catalog,"g1","test.pool",ANY,1).stream().map(h -> h.workerId()).toList());
         assertTrue(takeItems(catalog,"g1","zz.fail",ANY,1).isEmpty());
     }
 
@@ -292,7 +302,7 @@ class NamedPoolOperationsTest {
             assertEquals(Set.of("g1"),other.groupsNeedingRefill(Map.of("g1",targets)));
             var held=offer("first","second");
             assertEquals(2,other.refill("g1",targets,held));
-            assertEquals(held,takeItems(other,"g1","map",ANY,2));
+            assertEquals(held.stream().map(NamedPoolOperationsTest::candidate).toList(),takeItems(other,"g1","map",ANY,2));
             verifyNoInteractions(redis);
         }
     }
@@ -315,23 +325,23 @@ class NamedPoolOperationsTest {
         }
         public synchronized List<String> refill(String group,Map<EligibilityQuery,Integer> targets,List<HeldCandidate> offered,int maxAccepted) {
             var missing=deficits(group,targets);
-            if(offered.size()>100 || maxAccepted<0 || maxAccepted>100 || offered.stream().map(HeldCandidate::workerId).distinct().count()!=offered.size())
+            if(offered.size()>100 || maxAccepted<0 || maxAccepted>100 || offered.stream().map(h -> h.workerId()).distinct().count()!=offered.size())
                 throw new IllegalArgumentException();
             int limit=Math.min(maxAccepted,missing.values().stream().mapToInt(Integer::intValue).max().orElse(0));
             var pool=groups.computeIfAbsent(group,k->new LinkedHashMap<>());var accepted=new ArrayList<String>();
             for(var candidate:offered)if(accepted.size()<limit && pool.putIfAbsent(candidate.workerId(),candidate)==null)accepted.add(candidate.workerId());
             return List.copyOf(accepted);
         }
-        public synchronized Map<EligibilityQuery,List<HeldCandidate>> take(String group,Map<EligibilityQuery,Integer> limits) {
+        public synchronized Map<EligibilityQuery,List<WorkerCandidate>> take(String group,Map<EligibilityQuery,Integer> limits) {
             if(limits.size()>100 || limits.values().stream().anyMatch(n->n<1 || n>100) || limits.values().stream().mapToInt(Integer::intValue).sum()>100)
                 throw new IllegalArgumentException();
             limits.keySet().forEach(selector->normalizeQuery(group,selector));
-            var result=new LinkedHashMap<EligibilityQuery,List<HeldCandidate>>();
+            var result=new LinkedHashMap<EligibilityQuery,List<WorkerCandidate>>();
             var pool=groups.getOrDefault(group,new LinkedHashMap<>());
             limits.forEach((selector,count)->{
                 var taken=new ArrayList<HeldCandidate>();var iterator=pool.values().iterator();
                 while(iterator.hasNext() && taken.size()<count) { taken.add(iterator.next());iterator.remove(); }
-                result.put(selector,List.copyOf(taken));
+                result.put(selector,taken.stream().map(NamedPoolOperationsTest::candidate).toList());
             });
             return Collections.unmodifiableMap(result);
         }
@@ -366,7 +376,7 @@ class NamedPoolOperationsTest {
     }
 
     /** Fixture for stock-volume proofs: submit distinct Items through the public correlation port. */
-    private static List<HeldCandidate> takeItems(com.xa.mass.kernel.assignment.WorkerMatching matching,
+    private static List<WorkerCandidate> takeItems(com.xa.mass.kernel.assignment.WorkerMatching matching,
             String group,String rule,EligibilityQuery query,int count) {
         var requests=new LinkedHashMap<String,EligibilityQuery>();
         for(int i=0;i<count;i++)requests.put("message-"+i,query);

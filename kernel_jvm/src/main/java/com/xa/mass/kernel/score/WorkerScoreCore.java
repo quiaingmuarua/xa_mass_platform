@@ -70,13 +70,29 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Transfers exact, active soft HOT holds, retaining or extending their deadlines.
+     * Exact-transfers observed active soft HOT holds, retaining or extending their deadlines.
+     * Every expected score must be valid and match exactly; zero is invalid.
      * Seal makes the resulting hold non-transferable. An unchanged soft target is NOOP
      * after Redis exact/time validation; only TRANSITIONED supplies a new fence.
      */
     Map<String, WorkerScoreTransitionResult> transferObservedHotScoreLeases(
             String homeBucketId,
-            Map<String, Long> observedScores,
+            Map<String, Long> expectedScores,
+            long targetTimeMillis,
+            boolean seal
+    );
+
+    /**
+     * Transfers current active soft HOT holds without a prior score observation. Reads,
+     * validates and retains or extends each current deadline atomically. Missing or ineligible
+     * members are STALE; corrupt scores are INVALID without a score payload. Never creates
+     * or repairs a member. Seal makes the resulting hold non-transferable; an unchanged
+     * soft target is NOOP, not new authority. IDs must be unique; empty input is a no-op.
+     * Both transfer operations process at most 100 Workers per Lua, without a batch transaction.
+     */
+    Map<String, WorkerScoreTransitionResult> transferCurrentHotScoreLeases(
+            String homeBucketId,
+            List<String> workerIds,
             long targetTimeMillis,
             boolean seal
     );
