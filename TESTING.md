@@ -12,6 +12,13 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
+For a mechanism walkthrough, use the
+[mainline code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers)
+before selecting a lane. The pointers identify representative assertions, not
+fresh run evidence. Docs Contract checks entrypoints, links and selected retired
+terms; semantic agreement still requires comparing prose with its Owner/caller
+and assertions.
+
 Deployment configuration proof lives in `server_boot_jvm`: the default, Lab,
 AgentForge and preview classpath configurations, explicit overrides and deployment
 overlays. `server_jvm` tests and OpenAPI export use independent test resources;
@@ -72,7 +79,7 @@ a prerequisite or Boundary Witness, not a second owner of that invariant.
 | Owner Test | Local algorithm, legal transition, strict contract or concurrency fence |
 | Boundary Proof | Encoding and behavior across adjacent owners or processes |
 | [Worker Correctness](integrations/worker-correctness/README.md) | Exact identity, route, live Properties without Prepare, extension, Result and restart closure |
-| [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) | Loaded Rule-index work follows live facts, with actual executor and Result witnesses |
+| [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) | Loaded Matching query execution follows live facts, with actual executor and Result witnesses |
 | [Worker Convergence Health](integrations/worker-convergence-health/README.md) | Named witness convergence after established state and process faults |
 | [Worker Loaded Capacity + Recovery Stability](integrations/worker-loaded-recovery/README.md) | Sustained work, repeated Server recovery and resource bounds |
 | [Android Worker](integrations/android-worker-proof/README.md) | Real Android lifecycle and fixed multi-process isolation |
@@ -435,6 +442,12 @@ Kernel query tests own immutable JSON bounds and strict decoding; Matching tests
 own whole-batch admission, scalar functions, function ordering, Group isolation,
 range counts and entry commit races. Range-access counters use a controlled clock
 and report expiry separately; they are not performance or capacity evidence.
+QueryFunction tests exercise direct strategy implementations: each input is normalized
+once per Matching take, all admission precedes execution, and one batch per function
+keeps message association and first-appearance selection order. The Catalog request
+budget rejects oversized inputs before a strategy runs; pure normalization never
+accesses injected resources. Shared Pool take and late-invalid-input tests retain
+their inventory and original-fence assertions.
 Redis Owner retains qualification command budgets and zero-Redis Pool take.
 Runtime Boundary and Scenario Coexistence cover the new envelope through real
 Workers. Use new scopes; old direct-selector Items are deliberately unreadable.

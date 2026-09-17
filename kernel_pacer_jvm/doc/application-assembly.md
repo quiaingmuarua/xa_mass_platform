@@ -66,9 +66,10 @@ WorkerServiceabilityRuntime
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
 Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
-Group/Pool targets with each acquired Group batch. Dispatch calls Matching by the
-Task's Group and Rule name, passing messageId-to-query Maps and receiving
-messageId-to-held-candidate Maps. Only Matching normalizes and groups queries;
+Group/Pool targets with each acquired Group batch. Dispatch calls Matching with the
+Task's Group and messageId-to-WorkerQuery Maps, receiving messageId-to-WorkerCandidate
+Maps. Each Item names its own function; candidates carry strict fences or identity
+hints. Only Matching normalizes and groups queries;
 Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
 Source indexes project facts independently; held inventory
 is replenished from Task-declared targets without inspecting Items.

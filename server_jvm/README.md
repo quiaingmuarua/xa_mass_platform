@@ -8,7 +8,7 @@ configured Server runtime host.
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
 - ordered writes and Runtime View composition over the independent
-  `worker_matching_jvm` facts/rule owner;
+  `worker_matching_jvm` facts, queries and Pool owner;
 - fixed Pacer preset selection, Spring lifecycle delegation and Health
   projection for the
   single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
@@ -29,7 +29,7 @@ for context tests and OpenAPI export. Server has no scenario dependency; scenari
 may consume only their approved service and DTO surface.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
-retry, recovery, Task finality, allocation-rule interpretation, Adapter
+retry, recovery, Task finality, query/eligibility interpretation, Adapter
 connection routing or Worker event execution. See the root
 [architecture entrypoint](../README.md).
 
@@ -71,9 +71,9 @@ Public API
   -> owner-local Java Redis provider
 
 WorkerMatchingAssembly
-  -> persistent Worker/Platform facts and fixed Rule Handlers
-  -> fixed named Rule Handler with bounded index queries
-  -> startup Rule-index rebuild; synchronous bounded named eligibility operations
+  -> shared Facts storage and enabled index resources; startup rebuild
+  -> fixed query functions and Pool maintenance over injected resources
+  -> one Catalog lifecycle; synchronous bounded admission/refill/take
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
@@ -286,21 +286,19 @@ Result. Export reads pages over time rather than an atomic snapshot; another
 export may therefore contain newer content.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
-optional priority and optional `ttlMillis`. Server stamps creation time and
-derives the absolute expiry. Finite Task append requires explicit `workerSelector`; a missing selector rejects that Item;
-managed Task Call requires an explicit Selector envelope. Pool functions interpret
-their own local inputs: worker.any accepts only `{}` with an explicitly enabled any Pool;
-workerId accepts one ID string independently of stock;
-worker.country accepts `["CN","US"]`; Messaging combines its supported conditions
-with AND. Values remain Group-scoped, and country codes are strict uppercase ASCII pairs.
-Items use `workerSelector: {executorName, input}`. The input is bounded immutable
-JSON interpreted only by the named Matching function. Finite append omission uses
-the descriptor's Rule name with empty object input; managed Call requires an
-explicit envelope. A function must be enabled for the Group and may differ from
-the Task's Pool supply declarations. Old direct selector Maps are rejected rather than converted
-to ANY; retained old Items are unreadable. See [Matching](../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)
-for local input shapes, bounds and Pool semantics. Refill declarations and Task
-creation remain unchanged.
+explicit `workerSelector: {executorName, input}`, optional priority and optional
+`ttlMillis`. Server stamps creation time and derives absolute expiry. A missing
+selector rejects that Item in finite append; managed Call validates the complete
+batch before writes. Neither path derives a query from Task supply declarations.
+See [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java)
+and [TaskCallSubmissionService](src/main/java/com/xa/mass/server/task/call/TaskCallSubmissionService.java).
+
+The bounded immutable input is interpreted only by the named Matching function.
+Functions must be available for the Group, independently of the Task's Pool
+supply declarations; `workerId` is universal. Old direct selector Maps are
+rejected rather than converted to ANY, and retained old Items are unreadable.
+The [Matching Owner](../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)
+defines current function names, local input shapes, bounds and Pool semantics.
 
 Direct queries use `{"executorName":"workerId","input":"w-123"}` or
 `{"executorName":"worker.phone","input":"+8613800000000"}`. Identity is available
@@ -468,9 +466,9 @@ cursor, total, stable order, or completeness meaning; unreadable sampled rows
 are counted and omitted from the returned views. Task Preview performs one
 descending `ZREVRANGE ... WITHSCORES` for the highest `1..1000` Task Score
 coordinates, then projects Task and WorkerGroup descriptors through their
-bounded Owner reads. Rule names come directly from the Task descriptor, without
-a Matching lookup. This is stored configuration, not evidence that its Rule is
-currently available. Corrupt descriptors retain the existing 503 mapping; no
+bounded Owner reads. Pool supply declarations come directly from the Task
+descriptor, without a Matching lookup. This is stored configuration, not evidence
+of current Pool stock or function availability. Corrupt descriptors retain the existing 503 mapping; no
 fallback Pool substitution occurs. Views expose only the Owner-defined Score Band, not raw Score.
 A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
@@ -763,13 +761,14 @@ startup and destroys already-created resources, including the Adapter host.
 
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) also consumes the
 existing finite `TaskCreationService` and `TaskLifecycleService`. Creation validates
-Group, Rules and numeric fields before writes. `appendFiniteTaskItems` validates
+Group, Pool supply declarations and numeric fields before writes. `appendFiniteTaskItems` validates
 every input and the 1..100 batch bound before owner operations; `loadTaskItemResults`
 allows 1..1000 nonblank IDs and `loadTaskItemStates` allows 1..100. Application calls
 preserve HTTP input constraints. Products may use the existing TaskCreateRequest
 alongside TaskItemRequest and Result types; no mirrored contracts or controller
-calls are introduced. Distribution owns optional profile combinations and shared
-Group declarations. Server has no Messages dependency or business state names.
+calls are introduced. Boot owns preview composition and shared Group declarations;
+distribution owns launching and packaging it. Server has no Messages dependency
+or business state names.
 
 ## Assembly Boundaries
 

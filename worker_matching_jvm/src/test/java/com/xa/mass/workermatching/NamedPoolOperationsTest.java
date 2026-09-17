@@ -1,9 +1,9 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.CandidatePool;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
@@ -50,7 +50,7 @@ class NamedPoolOperationsTest {
         rule=new CountingRule(clock::get,budget); failingRule=new CountingRule(clock::get,budget);
         var defaultStock=new CandidatePool(clock::get, budget);
         var defaults=new AnyPoolPolicy(clock::get, defaultStock);
-        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",PoolQueryFunctions.any(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups());
+        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new AnyQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups());
     }
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
@@ -307,7 +307,26 @@ class NamedPoolOperationsTest {
         final CandidatePool stock;
         CountingRule(java.util.function.LongSupplier clock, CandidateBudget budget) { this(clock,new CandidatePool(clock,budget)); }
         CountingRule(java.util.function.LongSupplier clock,CandidatePool stock) { super(clock,stock); this.stock=stock; }
-        QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
+        QueryFunction functions() {
+            return new QueryFunction() {
+                public Object normalizeInput(String group, Object input) { return normalizeLocalInput(group, input); }
+                public Map<String, WorkerCandidate> apply(String group, Map<String, Object> inputs) {
+                    var grouped = new LinkedHashMap<Selection, List<String>>();
+                    inputs.forEach((id, input) -> grouped.computeIfAbsent(select(group, input), ignored -> new ArrayList<>()).add(id));
+                    var limits = new LinkedHashMap<Selection, Integer>();
+                    grouped.forEach((selection, ids) -> limits.put(selection, ids.size()));
+                    var taken = stock.take(group, limits);
+                    var assigned = new HashMap<String, WorkerCandidate>();
+                    grouped.forEach((selection, ids) -> {
+                        var candidates = taken.get(selection);
+                        for (int i = 0; i < candidates.size(); i++) assigned.put(ids.get(i), candidates.get(i));
+                    });
+                    var result = new LinkedHashMap<String, WorkerCandidate>();
+                    inputs.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
+                    return Collections.unmodifiableMap(result);
+                }
+            };
+        }
         final Map<String,String> facts=new HashMap<>();
         final Set<EligibilityQuery> observedTargets=new LinkedHashSet<>();
         final List<List<String>> snapshots=new ArrayList<>();

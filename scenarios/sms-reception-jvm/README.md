@@ -5,8 +5,8 @@ Status: current business workload and simulator owner document.
 这是 XA Mass 的首个具有真实业务形态的系统验证载体，以接码预览版提供页面和 API。
 本模块是业务 Scenario，以普通 Spring Configuration 接入宿主；独立产品部署由后续实际需求决定。
 页面和产品 API 创建监听订单，
-Java Worker 模拟自有设备的 SIM，通过真实 Prepare、WebSocket、country Rule
-Task 和后续 Outcome 观察完成接码。只使用模拟短信，不连接真实短信供应商。
+Java Worker 模拟自有设备的 SIM，通过真实 Prepare、WebSocket、Country Pool 查询、
+Task 执行和后续 Outcome 观察完成接码。只使用模拟短信，不连接真实短信供应商。
 
 ## 验证目的与演进
 
@@ -120,13 +120,21 @@ SDK 按库存文件名＋行号使用 SCENARIO_LAB 批量准备身份；Properti
 Worker SDK 和 Adapter 的原有 HTTP/WebSocket 边界继续保留。
 
 ```text
-应用申请 -> 同一个托管 Task -> Server 有限提交服务 ({"worker.country":["CN"]})
+应用申请 -> 同一个托管 Task -> Server 有限提交服务
+  -> WorkerQuery("worker.country", ["CN"])
   -> Kernel 调度 -> Adapter -> 号码 Worker 建立监听
   -> 初始完整快照返回，命令完成并释放执行 lease
 Host 页面／验收脚本输入短信 -> Host 选择唯一获胜监听 -> 原 run 的 Reporter (tag 9)
   -> Adapter -> 平台 Result -> 产品批量读取应用服务 -> 接码页面
 取消意图 -> 观察实际 workerId -> 同一 Task 的定向取消命令 -> Host 裁决
 ```
+
+Preview 显式启用 country Pool 和 `worker.country` 函数。托管 Task 的供给声明是
+`RefillTarget("country", EligibilityQuery({}), 100)`；每个监听 Item 独立携带所请求国家，
+取消 Item 使用 `WorkerQuery("workerId", 实际Worker身份)`。输入构造见
+[ListenerService](src/main/java/com/xa/mass/scenario/sms/ListenerService.java)，
+固定组装见 [Preview 配置](../../server_boot_jvm/src/main/resources/application-preview.yaml)。
+Preview 不启用 Any Pool；通用探针消费 Country Pool，定向探针使用独立身份查询。
 
 监听只是 Host 业务状态，不持有 Kernel lease。初始执行成功只表明监听已建立。
 Backend 从 `succeeded` Result 的完整业务内容读取接码状态，不从 TaskItem terminal tag
@@ -276,7 +284,8 @@ Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身
 P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值。到期不算接码成功。
 
 当前验收写入产品目录的 `build/acceptance/`，仅 `summary.json`、`summary.md` 和安全归档检查用于 CI 汇总；
-private 日志不进入 CI 工件。业务验收脚本留在源码中，默认调用统一 Preview 的 `products="sms"` 装配。
+private 日志不进入 CI 工件。业务验收脚本留在源码中，调用统一 Preview 启动器，
+由验收脚本预先生成安装 SMS 能力的 Worker 库存；Server 的 preview 配置仍组装两个业务场景。
 `--root <解压后的统一 Preview 目录>` 加载 ZIP 内启动脚本、HTTP 客户端和真实产物，
 不回退到源码启动器，不在 ZIP 内构建。摘要记录实际加载的启动脚本指纹。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；
@@ -299,8 +308,3 @@ python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --roo
 CI 通过源码验收脚本加载新 ZIP 的启动器，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
 仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
 并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。
-
-Preview explicitly enables the Country Pool and worker.country. Its managed SMS
-Task supplies country/{} /100; listener creation queries the requested country.
-Cancellation uses the independent workerId function. Generic Preview probes use
-Country ANY, and directed probes use Identity; Preview does not enable an Any Pool.

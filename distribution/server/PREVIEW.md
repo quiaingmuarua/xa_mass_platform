@@ -57,7 +57,9 @@ exact generated `test_products_<UUID>` scope through SCAN/UNLINK.
 owns Server/Adapter/Endpoint coordinates. It is packaged in the Boot JAR and
 copied to source `build/preview/config` and archive `config` by the distribution. Preview
 enables both business libraries on one mixed-country `demo-sim` Group and Host
-Manager. SMS uses the country Rule index; Messages uses its messaging Rule.
+Manager. SMS queries shared country Pool stock; Messages uses the
+`worker.messaging.available` function over messaging Pool stock. Their Task
+supply declarations remain separate from Item queries.
 Both catalogs must initialize before the Host starts, then actual Adapter routes
 must be observed. This is the sole source/ZIP launcher; scenario modules retain
 their own APIs and acceptance oracles.

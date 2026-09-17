@@ -9,7 +9,7 @@ import java.util.Map;
  * Supply policy for one composition-time Pool. All operations are thread-safe and Group-isolated.
  * Results are immutable snapshots; result Maps retain the supplied keys and their iteration order.
  * Held scores are opaque Kernel fences, never index coordinates. Targets use counts 1..1000;
- * Consumption is independently composed through QueryFunctions.
+ * Consumption is independently composed through QueryFunction.
  */
 public interface PoolRefillPolicy {
     /** Idempotent query validation/normalization, without Redis reads or stock changes. */

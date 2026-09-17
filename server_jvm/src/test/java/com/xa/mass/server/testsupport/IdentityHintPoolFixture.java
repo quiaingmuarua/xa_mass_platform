@@ -1,5 +1,6 @@
 package com.xa.mass.server.testsupport;
 
+import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
@@ -7,7 +8,6 @@ import com.xa.mass.workermatching.PoolRefillPolicy;
 import com.xa.mass.workermatching.pool.CandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 
 import java.util.Set;
 import java.util.function.LongSupplier;
@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     public static final String ID = "proof.identity-hint";
     private final AnyPoolPolicy pool;
-    private final com.xa.mass.workermatching.QueryFunctions consumer;
+    private final com.xa.mass.workermatching.QueryFunction consumer;
     private final AtomicInteger hintsReturned = new AtomicInteger();
 
     private final CandidatePool stock;
@@ -29,7 +29,7 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     public IdentityHintPoolFixture(LongSupplier clock, CandidatePool stock) {
         this.stock = stock;
         pool = new AnyPoolPolicy(clock,stock);
-        consumer = PoolQueryFunctions.any(stock);
+        consumer = new AnyQueryFunction(stock);
     }
 
     public CandidatePool stock() { return stock; }
@@ -49,12 +49,17 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
         return pool.refill(group, targets, offered, maxAccepted);
     }
 
-    public com.xa.mass.workermatching.QueryFunctions queryFunctions() {
-        return new com.xa.mass.workermatching.QueryFunctions(consumer.normalizeInput(),(group,inputs)-> {
-            var result=new LinkedHashMap<String,WorkerCandidate>();
-            consumer.execute().apply(group,inputs).forEach((id,candidate)->result.put(id,new WorkerCandidate(candidate.workerId(),0)));
-            hintsReturned.addAndGet(result.size());
-            return Collections.unmodifiableMap(result);
-        });
+    public com.xa.mass.workermatching.QueryFunction queryFunction() {
+        return new com.xa.mass.workermatching.QueryFunction() {
+            public Object normalizeInput(String group, Object input) {
+                return consumer.normalizeInput(group, input);
+            }
+            public Map<String, WorkerCandidate> apply(String group, Map<String, Object> inputs) {
+                var result=new LinkedHashMap<String,WorkerCandidate>();
+                consumer.apply(group,inputs).forEach((id,candidate)->result.put(id,new WorkerCandidate(candidate.workerId(),0)));
+                hintsReturned.addAndGet(result.size());
+                return Collections.unmodifiableMap(result);
+            }
+        };
     }
 }

@@ -2,7 +2,7 @@
 
 Status: current Message Campaigns business owner.
 
-Messages 是有限消息触达业务，用来验证 Rule-index Task 的发送执行与 Task 结束后的持续业务观察。
+Messages 是有限消息触达业务，用来验证基于 messaging Pool 的发送执行与 Task 结束后的持续业务观察。
 与 [SMS Reception](../sms-reception-jvm/README.md) 共同运行时，两个场景使用同一 Server、Redis scope、
 Adapter 和真实 Worker 池；场景之间没有代码依赖。
 
@@ -16,7 +16,7 @@ Adapter 和真实 Worker 池；场景之间没有代码依赖。
 
 ```text
 POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
-  -> 创建有限 Rule-index Task -> 每次最多 100 Items -> 全部确认后批准
+  -> 创建声明 messaging Pool 供给的有限 Task -> 每次最多 100 Items -> 全部确认后批准
   -> Kernel / Matching -> 共用 Adapter -> 实际 Worker message.send
   -> 模拟通道创建唯一消息 -> SENT 执行 Result
 收件端 deliver / read / reply -> 本地事实 -> 原 Worker run 的 Reporter
@@ -25,10 +25,18 @@ POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
 
 一个收件人对应一个稳定 messageId 和 TaskItem；收件人地址与 Worker 身份无关。
 匹配规则始终包含 `worker.messaging.enabled = "true"`，可选的发送号码增加 `worker.phone` 等值条件。
-所有国家使用同一 Group。Task 绑定 `worker.messaging.available`：Handler 提前物化
-`messaging.enabled=true` 的 Worker；Item 使用 `{"worker.country":["CN"]}`，指定发送号码时增加
-`"worker.phone":["号码"]`，两个字段由 Rule 取交集。同一个规范化查询用于 Item 和补货目标，
-补货数量独立于查询。phone 由 Matching 查询分区索引，场景不选 Worker，也不配置候选容量。
+所有国家使用同一 Group。供给声明和 Item 查询分别构造，由 Matching 解释各自输入：
+
+| 用途 | 当前请求 |
+| --- | --- |
+| Task 的共享供给 | `RefillTarget("messaging", EligibilityQuery, 100)`；target 为 `{"worker.country":["CN"]}`，指定发送号码时增加 `"worker.phone":["号码"]` |
+| Item 的执行查询 | `WorkerQuery("worker.messaging.available", input)`；input 为 `{"country":["CN"]}`，指定发送号码时增加 `"phone":"号码"` |
+
+Messaging maintenance 按供给目标资格化 Pacer 已取得短租约的 Worker；Item 函数按条件交集
+消费共享 messaging Pool。这里的 phone 条件仍消费 Pool，与独立 `worker.phone` 身份查询
+不同。场景不选择 Worker、不读取索引；补货数量是目标，不能替代 Kernel 执行租约准入。
+调用顺序见 [CampaignService](src/main/java/com/xa/mass/scenario/messages/CampaignService.java)，
+输入与资源契约见 [Matching Owner](../../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)。
 
 ## API 与业务记录
 

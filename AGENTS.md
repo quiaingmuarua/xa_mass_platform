@@ -113,834 +113,390 @@ only when the task covers that behavior.
 
 ## Java Kernel
 
-[Current Kernel documents](doc/kernel/README.md) own mechanism narratives.
+[Kernel documents](doc/kernel/README.md) own the mechanisms; the
+[scheduling mainline](doc/kernel/scheduling-overview.md) owns cross-owner flow.
 
-- Task, TaskItem and Worker score truth remain independent.
-- TaskItem tag 1 is the only ACTIVE scheduling band; tags 2..9 are generic
-  TERMINAL outcomes: terminal for scheduling, not immutable business state.
-  Task scheduling lifecycle and Item outcome observation lifecycle are independent.
-  Do not gate valid observations on Task completion or closure while the Item is
-  retained; retention and business finality remain separate concerns.
-  Only strictly increasing scores may replace existing
-  members; terminal outcomes never reopen Item or Task scheduling. Server owns
-  business names and supplies execution outcome tags through Pacer assembly.
-  ACTIVE claims retain exact-score CAS. Result content remains independent of
-  these generic outcome transitions.
-- Score is a scheduling coordinate, not a resource write lock.
-- Dispatch Policy may call a mechanical owner directly when the bounded
-  decision and operation already belong to that owner. Add a finite internal
-  Mechanism only when one legal transition composes owners or must protect an
-  opaque exact fence; never add one merely to hide a direct call. Mechanisms
-  must not absorb priority, matching, deficit, retry cadence or lane lifecycle
-  policy. A set of Policy dependencies is not itself a Mechanism boundary.
-- Result Routing Policy owns evidence parsing, bounded grouping and semantic
-  event publication; Transport only carries evidence. Finite TaskItem, Worker
-  execution and Worker Serviceability Mechanism ports decide which legal
-  mechanical transitions implement each event. SUCCESS stores the TaskItem
-  Result before separately requesting `TERMINAL(tag=6)`; retryable FAILURE does
-  not write an Item Result or decide Item finality. Result HASH is observed
-  projection, while TaskItem Score is scheduling finality truth. The ordered Owner calls
-  are not atomic, and no current replay or repair contract guarantees
-  `Result.success => eventually TERMINAL(tag=6)`.
-  OUTCOME_OBSERVATION advances the existing Item Score before optionally storing
-  content and never touches Worker leases or reopens Task scheduling. State and
-  content retain independent maximum targets; Score NOOP can still admit newer
-  millisecond content within one slot. No ACK, replay or repair is implied.
-- DeliveryReport, JSON and lane identity stop at Result Policy boundaries.
-  Worker execution events receive correlated opaque `WorkerLeaseReference`
-  values rather than raw lease scores and must not infer connection polarity.
-  Adapter Route/delivery-expiry and internal Server Polling
-  evidence is consumed by Worker Serviceability policy in every preset and
-  its named event Mechanism.
-- All production Pacers run in `kernel_pacer_jvm` behind its finite
-  `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Do not add
-  a second Kernel host, Task business fallback, or alternate Pacer runtime.
-- Result and Dispatch Convergence each have one fixed production application.
-  Preserve their separate capacity and lifecycle ownership and the concurrency
-  limits in [Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md).
-  Dispatch has one bounded Redis-time Task observation. Its Main Scheduler
-  supplies complete root input to single-flight Producers; discovery beneath
-  that input must stay vertical. Claimed Commands may be constructed only by
-  the package-private exact assignment closure after Worker confirmation and Item
-  claim. Result lane scheduling belongs to
-  [Result Policy](kernel_pacer_jvm/doc/result/result-routing-scheduling.md).
-- Do not add another language implementation without a named migration slice,
-  one production owner and explicit proof of the cutover.
-
-The current scheduling scale contract is deliberately vertical:
-
-```text
-small bounded active Task set
-  -> each Task may contain many TaskItems
-  -> each finite WorkerGroup may contain many Workers
-```
-
-The liveness target is work-conserving convergence with bounded Task progress:
-
-- fully occupied compatible Workers that keep completing assigned work are
-  normal backpressure;
-- bounded scan, exact CAS and bounded index take may create short convergence
-  delay;
-- persistently due work plus persistently available compatible Workers that
-  still cannot form any assignment across repeated eligible rounds is a
-  scheduling liveness defect.
-- Within the Main-selected Task set, Dispatch tries unserved Tasks before
-  previously served peers, then least recently served first. Only actual Command
-  publication advances this process-local ordering hint; empty rounds do not.
-  Fixed Task order must not let one continuously ready Task monopolize returning
-  compatible capacity. This is not a throughput-share or completion-time promise.
-
-A full Task page alone does not classify the condition: check whether compatible
-Worker capacity is actually idle or repeatedly goes to the same competing Task.
-Keep the ordering hint bounded to the current Task batch, with no durable cursor,
-Worker reservation, new discovery or fairness queue. Massive active Task/WorkerGroup cardinality,
-multi-tenant fairness, sharding and SaaS-scale isolation are separate future
-architectures.
+- Keep Task, TaskItem and Worker Score truth independent. Scores are scheduling
+  coordinates, not resource write locks.
+- TaskItem ACTIVE is tag 1; tags 2..9 end scheduling while allowing monotonic
+  outcome observation. Preserve exact ACTIVE claims and strictly increasing
+  existing scores. Do not gate retained Item observations on Task completion or
+  closure, or reopen scheduling through a terminal observation.
+- Preserve independent Result content and Score finality. SUCCESS stores Result
+  before requesting finality; Dispatch stores failure before terminalizing an
+  exhausted/expired Item. Retryable FAILURE releases only the correlated Worker
+  lease. Observation advances Score before optional content and never changes
+  Worker leases. Read the [Result Owner](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
+  for independent maximum targets, corruption and partial-write semantics.
+  Do not imply an ACK, replay or unconditional Result-to-Score repair guarantee.
+- Result Policy owns parsing/grouping; finite TaskItem, Worker execution and
+  Serviceability events own legal mechanical transitions. DeliveryReport, JSON,
+  lane names and raw Worker lease scores must not cross those event ports.
+  Worker execution evidence must not infer connection polarity.
+- A Policy may call an existing mechanical owner directly. Add a finite internal
+  Mechanism only to compose a legal transition or protect an exact fence; keep
+  priority, matching, deficits, retry cadence and lifecycle in Policy.
+- Preserve the [vertical scale and liveness contract](doc/kernel/scheduling-overview.md#scale-and-liveness):
+  a bounded active Task set, many Items and finite Groups. Returning compatible
+  capacity must not remain monopolized by fixed Task order. Keep the ordering
+  hint bounded and process-local, with no reservation, durable cursor or fairness
+  queue. Neither a full Task page nor occupied Workers alone establishes starvation.
+- A second language implementation requires an authorized migration, one
+  production owner and explicit cutover proof.
 
 ## Kernel JVM
 
-[Mechanical Owners](kernel_jvm/README.md) own contracts, Score transitions and Redis shapes.
+[Mechanical Owners](kernel_jvm/README.md) define contracts, Score transitions
+and Redis shapes.
 
-`kernel_jvm/` is the more stable Java 21 mechanical-owner module.
+- Public operations remain caller-driven and bounded, with an explicit production
+  caller and focused proof. Missing operations fail with
+  `KernelOperationNotImplementedException`.
+- Redis operations stay in their owning package. Server connection/health code
+  must not own keys or bypass a mechanical contract.
+- Task Owner stores complete immutable descriptors and Item execution data.
+  `WorkerQuery`, `EligibilityQuery` and Pool supply declarations are passive
+  data here; Kernel must not interpret Matching fields or retain a second
+  Matching binding.
+- Semantic Result event implementations compose existing owners without new
+  Redis state or another truth path. Result reads do not infer Score finality,
+  and Score reads do not infer Result payload or business status.
+- Do not widen Task operations merely to broaden an API, or add dependencies
+  on Spring, HTTP, Pacer policy or another Kernel runtime.
 
-- Keep public mechanical contracts caller-driven and bounded. Semantic Result
-  event ports must have an explicit fixed Pacer caller and compose existing
-  mechanical owners without adding Redis state or a second truth path.
-- Missing operations fail with `KernelOperationNotImplementedException`.
-- Java Redis operations live in their owning module and package.
-- Server connection/health packages must not own Redis keys.
-- Candidate identity query contracts remain bounded here;
-  index storage belongs to Matching and loop code belongs to Pacer.
-- Task Owner stores only scheduling descriptors and Item execution data. It owns
-  shared immutable WorkerQuery consumption data and EligibilityQuery refill data without field interpretation. Matching
-  owns fixed query functions, Pool maintenance and property/index interpretation. Task descriptors own
-  optional Pool supply declarations as immutable configuration; Items independently name query functions.
-  Pacer depends only on WorkerMatching for Matching operations. It may forward
-  Group, Pool names, message IDs and immutable queries, but must not normalize or
-  semantically aggregate queries, depend on Matching implementations, interpret
-  business conditions or construct index coordinates. Matching may associate this
-  call's requests with candidates; it must not retain message IDs or own Item state.
-  Main shares its already-read NORMAL Task descriptors with refill and dispatch.
-  Matching contracts/storage must not accept Task IDs or retain Task configuration.
-  Explicit Any Pool and direct workerId need no Facts; worker.any only accepts empty
-  input and consumes stock, while workerId returns caller-supplied identity. Pool functions constrain ANY and
-  interpret their own business queries. Unavailable functions never fall back. Matching
-  uses immutable fixed query functions and Pool maintenance composition. Pool strategies own local input interpretation,
-  qualification and resource selection; CandidatePool owns mechanical range stock. Catalog coordination
-  must not receive their projections, predicates, physical keys or index encoding. Facts and enabled
-  index updates still prepare before writing in one bounded Lua operation.
-  Pool resources depend only on their clock and shared capacity budget. Index resources
-  own their physical definitions and reads; they must not depend on Pools, refill policies
-  or function names. Fixed composition injects existing resources into functions and
-  policies; neither creates its own storage. FactsIndexStore owns the shared Matching
-  connection, Facts persistence, atomic index writes and startup rebuild. Index upkeep
-  is independent of Task demand and Pool consumption, expiry or capacity. Server exposes
-  one Catalog lifecycle Bean, and failed startup closes Matching resources without
-  shutting down the Server-owned RedisClient. Keep package dependencies aligned with
-  the [Matching resource contract](worker_matching_jvm/README.md#fixed-resource-composition).
-  PoolRefillPolicy owns target normalization, deficits and refill; CandidatePool owns entries and views. Item execution uses fixed
-  normalizeInput/execute function pairs, not storage objects as executors. Catalog owns target MAX merge,
-  bounded non-Country paging, messageId-to-candidate correlation and exclusion of IDs actually
-  accepted by earlier Pools. TaskItem uses WorkerQuery(executorName, input);
-  refill retains its existing string-list EligibilityQuery. Kernel and Pacer must
-  not interpret local input fields. Target quantities use MAX; Pool consumption uses actual Item
-  counts inside Matching. Pacer submits one query per message ID and receives at most
-  one WorkerCandidate for it. Consumption carries identity and an explicit expectedScore,
-  never the inventory deadline. Current production Pool functions retain the original
-  nonzero fence. Zero is an explicit identity hint only at the Matching-to-Pacer
-  boundary. Pacer partitions candidates into observed-score and current-identity
-  batches, calling transferObservedHotScoreLeases or acquireCurrentHotScoreLeases.
-  Kernel's exact input rejects zero; current execution acquisition takes IDs only,
-  admits due HOT or active soft HOT and always seals without preempting active sealed holds.
-  Pacer accepts only TRANSITIONED, and uses the returned
-  sealed execution fence for Command/ResultContext and exact Result release.
-  It must not retry a failed strict expectation through current execution acquisition.
-  Dropping an association must not transfer its candidate,
-  restore stock or trigger a replacement take. No function-name prefix routing,
-  fallback executor, dynamic registry or placeholder Index executor is allowed.
-  Validate the complete batch before consumption; later function execution failure
-  preserves earlier consumption. Item functions are independent of Task supply
-  declarations but must be Group-enabled (only workerId is universal) and cannot generate refill demand.
-  Direct worker.phone uses an independent Group property index without country or
-  Messaging eligibility. Same-phone requests share a bounded random read with reverse
-  membership validation; there is no busy-candidate rescan, Pool fallback or property-version guarantee.
-  Direct functions are not Pool names and cannot be used as supply declarations. Shared
-  capacity coordination stores budgets only. Earlier Pool admissions survive a later
-  maintenance failure; the exception ends the remaining batch without rollback or replay.
-  Each current maintenance policy validates and reads before its own bounded local commit.
-  Country uses one offered-ID Worker Facts HMGET and string country buckets, with
-  complete bounded target processing and no query cursor or Country ZSET. Other
-  index resources and target paging retain their own contracts. No Pool or managed
-  supply is implicitly enabled; Any must be explicitly configured.
-  Pool counts use maintained range buckets; take visits selected ranges rather than
-  copying/filtering the whole pool. Storage receives no business predicate. Expiry
-  uses removable deadline order; all range references leave with the Entry, and
-  multiple references do not count as separately budgeted pools.
-  Candidate stock observations are not optimistic transactions: commit only current,
-  live entries and hard capacity; do not retry a whole selection on a pool revision.
-  Leave concurrent target/stock changes to later rounds rather than reserving deficits.
-  Facts/index atomic writes remain a separate one-Lua storage assembly contract.
-  Pacer alone discovers HOT IDs and issues
-  closed batches of already acquired 1-second candidate leases for Pool refill. **Pacer acquires
-  before Matching reads Pool eligibility:** qualification and stock waiting share the
-  original deadline. Matching retains the supplied fences without an acquisition
-  callback or inventory extension; Handlers have no lease capability. Kernel retains
-  all Score, confirmation and claim authority. Acquisition establishes a soft hold before the
-  projection read; later successful invalidation rejects that candidate at confirmation.
-  Facts and sealing remain separate best-effort commits, without property versions.
-  No per-Task Candidate Cache, Match Demand, Rule lifecycle or private reservation
-  participates. Pool Item queries consume inventory; direct queries locate identity
-  without stock. Neither may drive refill or acquire leases inside Matching.
-  Refill groups Main's ordinary descriptor declarations by Group and calls Matching by Pool name.
-  Matching merges targets and passes only visited bounded pages to Rules. Do not restore
-  executable Task views or refill closures. Server admission must not observe refill or maintain stock. Group demand is a hint, not a reservation; stock and
-  exact fences still decide admission and execution. Global expired-stock cleanup
-  occurs at Group shortage observation; scope access retains local expiry and atomic bounds.
+## Worker Matching JVM
 
-- TaskRuntime owns the self-describing Result projection and its
-  [storage contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
-  A success may replace an earlier failed Result; storing terminal failure
-  cannot replace any observed Result. An absent Result remains not observed.
-  Successful content shares its HASH field with tag and reported milliseconds:
-  higher tag wins, then strictly later milliseconds. Equal targets retain content,
-  and state-only observations never erase it. Corrupt records are not overwritten.
-  Do not add a companion classification key. Result reads must not infer
-  TaskItem finality; Score reads must not infer Result code or payload.
-- Finite Result semantic event ports live with the Task/Worker owners; their
-  default implementations may compose bounded mechanical operations but must
-  not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
-- Do not add Task score or owner behavior merely to broaden an API surface.
-- Add a provider operation only with an explicit production caller and scoped
-  owner proof.
+[Matching Owner](worker_matching_jvm/README.md), especially
+[resource composition](worker_matching_jvm/README.md#fixed-resource-composition),
+owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
+
+- Task supply declarations name Pools; Item `WorkerQuery` values independently
+  name fixed functions. Empty supply is valid. Functions cannot imply supply,
+  and direct Identity/Phone functions are not Pool names.
+- Pacer depends only on `WorkerMatching`. It forwards Group/Pool names, immutable
+  queries and call-local message IDs without normalizing fields, interpreting
+  business conditions, reading facts or constructing index coordinates.
+  Matching must not accept Task IDs, retain Task configuration/message IDs or
+  own Item lifecycle.
+- Functions own input interpretation and resource selection. Refill policies own
+  target normalization, deficits and qualification. CandidatePool owns mechanical
+  range stock; indexes own physical definitions and reads. Catalog coordinates
+  bounded calls and correlation without taking over those local mechanisms.
+- Register QueryFunction strategies directly with normalizeInput/apply methods.
+  Catalog admits the entire batch; apply uses admitted inputs without repeating
+  its request-budget checks. Keep resource invariants at their own boundary.
+- Fixed composition injects existing resources. Pool resources depend only on
+  their clock and shared capacity budget; indexes do not depend on Pools,
+  functions or refill policy. FactsIndexStore owns the shared connection, Facts,
+  atomic index writes and rebuild. Failed startup closes Matching resources,
+  never the Server-owned RedisClient.
+- Preserve full validation before consumption and the Owner's partial-success
+  contracts across functions/Pools. Earlier admissions or consumption survive a
+  later failure; do not add rollback, replay or whole-selection retries.
+- Pacer acquires candidate leases before Matching qualification. Matching accepts
+  only supplied held identities, preserves original fences/deadlines and cannot
+  discover replacements, acquire/renew leases or reserve deficits.
+- Pool candidates retain strict nonzero expectations. Zero is an identity hint
+  only at the Matching-to-Pacer boundary; no zero sentinel reaches Kernel.
+  Do not downgrade a failed strict expectation to current identity acquisition,
+  or restore/retake stock when a candidate association is dropped.
+- Facts and enabled indexes prepare before one bounded Lua write. Index upkeep
+  is independent of Task demand and Pool stock; Score invalidation is a separate
+  best-effort commit, not a property-version transaction.
+- Keep Any explicitly configured, Country on offered Facts/local buckets, and
+  Phone as an independent Group index. Query/capacity limits remain Owner-local.
+  Do not add dynamic registries, prefix routing, unavailable-function fallback,
+  per-Task stock, targeted refill or a Matching execution thread.
 
 ## Kernel Pacer JVM
 
-[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) and its linked Policy documents own current workflows.
+[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) and its linked
+Policy documents own workflow, capacity and lifecycle.
 
-`kernel_pacer_jvm/` is the Kernel-owned, faster-moving policy and lifecycle
-module. Its dependency direction is `server_jvm -> kernel_pacer_jvm ->
-kernel_jvm`.
-
-- `KernelPacerRuntime` is its only externally supported production entry.
-  The `result` and `dispatch` packages may each expose exactly one narrow
-  module-internal lifecycle bridge required by Java package visibility; no
-  module outside `kernel_pacer_jvm` may import either bridge.
-- It owns fixed Assignment, Result Routing and Worker Serviceability policy,
-  configuration interpretation, Pacer loops and their finite lifecycle.
-- Task Dispatch must store the failed Result marker before promoting an
-  exhausted or TTL-expired Item to `TERMINAL(tag=5)`; a failed write leaves the
-  score unchanged for a later round. Result FAILURE only releases the
-  correlated Worker lease. When late SUCCESS evidence is consumed it may
-  replace failed and request promotion of the existing score to
-  `TERMINAL(tag=6)`; destructive consumption and the separate Owner calls do not
-  provide unconditional eventual convergence.
-- [Candidate Selection](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-selection)
-  separates the fixed refill Producer from Task Dispatch. Main shares one immutable
-  NORMAL Task descriptor batch. Refill uses Task-declared shared targets and no Item reads;
-  dispatch forwards Item queries to Matching; Pool functions consume local stock,
-  while Identity/Phone functions return direct identity hints. For refill Pacer rotates Groups,
-  at most 100 HOT candidates per Group and 1000 per round, independent of deficit
-  count. Pool qualification cannot discover extra IDs or initiate targeted acquisition. It checks
-  supplied identities through Rule-owned operations and admits at most one Eligibility
-  per offered ID in that Group batch. Pacer exact-acquires the
-  observed Group batch before invoking Matching; only successful new fences are
-  offered. Matching admits them with their original 1-second deadline and never
-  renews them. **Refill observes the due head from the HOT floor each round; it
-  retains no within-Group offset.** Acquisition advances that head even for
-  unmatched Workers; expiry retains the newer Score. Group rotation is separate.
-  The raw read is bounded to 100 rows; corrupt scores are filtered without replacement
-  scans, repair or an automatic-progress promise through a fully corrupt head.
-  Acquisition accepts due mark=0/1 and establishes soft mark=0;
-  production Pool execution transfer requires exact soft active HOT fences and sets mark=1.
-  Identity hints use separate current execution acquisition, accepting due HOT with
-  either mark or active soft HOT. Both execution entries check Redis time atomically;
-  no zero sentinel reaches Kernel and active sealed holds cannot be preempted.
-  Kernel transfers soft candidates with seal=true
-  and carries the returned execution fence into ResultContext. Properties writes
-  invalidate through Score Owner. Unused/rejected holds expire without release
-  compensation, periodic renewal or a pending lease registry. Do not add Item-triggered
-  supply, per-Task stock or unavailable-Rule fallback.
-
-- Worker Serviceability reads the current bounded HOT/RECOVERY heads without
-  cross-round scan cursors or empty-range cooldowns. RECOVERY timeSlot is the next
-  eligible recheck time: Pacer supplies the delay and Score Owner uses Redis time
-  and exact CAS before any Probe offer. Connected evidence preserves future
-  coordinates; offer loss does not roll back a scheduled retry.
-- It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
-  deployment.
-- Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
-  reflection, ServiceLoader or a second external runtime entry.
-- Prove policy behavior through focused Pacer tests and Redis-sensitive
-  behavior through the stable owner ports.
+- `KernelPacerRuntime` is the only externally supported production entry.
+  Result and Dispatch may each expose one narrow module-internal lifecycle bridge;
+  other modules must not import those bridges or internal policy types.
+- Keep one fixed Result application and one fixed Dispatch application with
+  separate capacity and lifecycle ownership. Server adapts this runtime to
+  Spring; it does not host an alternative scheduler or Task fallback.
+- Main supplies the complete bounded Task/Group roots to single-flight Producers.
+  Busy Producers skip snapshots; discovery stays vertical beneath those roots.
+  Refill and dispatch share Main's already-read NORMAL descriptors.
+- Only the package-private assignment closure constructs claimed Commands, after
+  Worker execution admission and exact Item claim. Both strict transfer and
+  current identity acquisition must return TRANSITIONED; the returned sealed
+  fence is used for Command correlation and exact Result release.
+- Refill observes the due HOT head from the floor each round without a within-Group
+  offset; Group rotation is separate. Preserve the Owner's bounded raw read and
+  corrupt-head limits, original lease deadline and expiry without compensation.
+- Serviceability reads current HOT/RECOVERY heads without cross-round cursors or
+  cooldowns. Score Owner uses Redis time and exact CAS to schedule the next
+  recheck before Probe offer. Network evidence is consumed in every preset.
+- Pacer owns no Redis keys, Spring/HTTP/deployment or Matching implementations.
+  Do not add a SPI, dynamic registry, reflection, ServiceLoader, extra public
+  internal type or second external runtime.
 
 ## Server JVM
 
-[Server Owner](server_jvm/README.md) owns API, assembly and use-case details.
+[Server Owner](server_jvm/README.md) owns API, admission, use cases and resource
+assembly; [Server Boot](server_boot_jvm/README.md) owns main, packaging and
+production profiles.
 
-`server_jvm` is a Java library with importable `XaMassServerConfiguration`.
-Its Spring configuration owns client, Owner and platform lifecycle construction
-and destruction. Server Boot composition alone owns `XaMassServerApplication` and Boot packaging.
-Server production configuration contains no main or Boot application annotation.
-Server tests and OpenAPI export use a test-only platform Boot configuration;
-scenario composition tests belong to the executable, with no reverse dependency.
-All production application YAML belongs to the executable. Server tests use
-explicit test fixtures, never a copied or imported host configuration. Deployment
-profile and external-overlay tests follow the executable; binding tests stay here.
-
-`server_jvm/` controllers and services depend on `kernel_jvm` and
-`worker_matching_jvm` owner contracts; Spring assembly additionally depends
-only on the public `kernel_pacer_jvm` runtime entry. Provider selection belongs
-only to assembly.
-
-Server may own:
-
-- public API validation and error mapping;
-- bounded use-case orchestration;
-- Worker external Identity, local Endpoint defaults and Prepare orchestration;
-  Kernel WorkerResourceCatalog owns persistent Group/Endpoint Binding.
-- create-only WorkerGroup registration and bounded Runtime projections;
-- DIRECT_CALL admission and request correlation;
-- bounded Worker Serviceability request/result routing without score policy;
-- configured Adapter startup and create-only advisory WorkerGroup seeds.
-
-Server normalizes explicit Pool supply declarations through local Matching admission,
-then creates the complete Kernel Task descriptor. Ordinary omission means no supply;
-managed Call registration owns its explicit default and configured overrides. Both
-finite append and managed Call require an explicit WorkerQuery; finite rejection stays per Item. Matching resolution
-has no Redis or inventory side effect. Kernel stores configuration without Rule
-interpretation; no separate Matching binding, rollback or Task lookup is allowed.
-Worker Prepare resolves identity and asks Kernel to establish Binding and cold
-Score membership in separate, retryable stages. Valid network evidence requests
-activation best-effort in every Pacer preset; Prepare itself is not evidence.
-It must not create or refresh Matching Properties, including for new Workers.
-First and later Worker facts enter through the same Adapter observation and
-Server admission path. Delivery reception owns that complete bounded use case,
-including Binding validation and grouped Matching writes; it must not merge
-observations with old Worker facts. Platform Properties management is independent
-and cannot modify the Worker Properties Map. Runtime Views may expose identity before facts exist,
-but an empty display must never become a stored baseline or readiness claim.
-Server does not interpret Rules or select Workers.
-
-Within the versioned HTTP Contract, use a direct JSON scalar, collection or
-Map when that is the complete body. Add a named DTO only for a combined
-contract, an independently meaningful structured resource, a status result
-item or a cross-field invariant. Do not add generic envelopes, `SimpleRequest`
-or one-field status wrappers.
-
-`ActionOutcome` is the one shared mutation-effect item for APIs that genuinely
-share `applied | unchanged | rejected` semantics. Single-resource actions use
-only `applied` or `unchanged`; `rejected` carries the business code and message
-for an independently failed member of a batch. Whole-request failure still
-uses `ApiErrorResponse`. Do not turn `ActionOutcome` into a generic response
-envelope or force identity, observation, delivery or protocol results into it.
-
-Task `items:call` and `results:load` expose the shared
-`succeeded | failed | not_observed` Result view; only succeeded carries an
-opaque payload. This is a Result projection and must not be treated as
-TaskItem Score finality. Export remains finite-Task, terminal-only and
-success-only: it scans the unified owner pages and filters failed without
-reading Redis directly or adding failed/all modes.
-
-Server must not own:
-
-- Rule/Properties interpretation, candidate matching or Worker selection;
-- scheduling lease, Item claim, retry, recovery or Task finality;
-- Adapter queues, Channels or current route selection;
-- Worker business handlers or Worker lifecycle;
-- Redis bypass around an owner contract.
-
-DIRECT_CALL is a caller-targeted, best-effort Server use case. It does not
-observe or change Worker score and creates no Kernel mode or strong lock.
-Its only public call route is scoped by `adapterId`; an optional same-Group
-`workerId -> opaquePayload` map supplies Worker targets and per-target input,
-not a WorkerGroup authority.
-Follow the [Server Owner](server_jvm/README.md) for bounded consume ordering
-and Serviceability snapshot admission. Worker Direct Calls use the owner
-`offer` operation and cannot replace an occupied slot; authoritative TASK
-append may replace an unconsumed Direct Command.
-Adapter-local Commands route by `dst`; only Worker Command map keys carry
-workerId address meaning. Direct Call passes `messageType` and opaque payload
-through without an event whitelist; future API Session authorization remains a
-separate owner.
-
-Deployment profile contents and coordinates belong to
-[Server Boot configuration](server_boot_jvm/README.md#pages-and-configuration).
-Server retains configuration interpretation, validation and resource lifecycle.
+- Keep Server an importable Java configuration library. Controllers/services use
+  Owner contracts; only assembly selects providers and imports the public Pacer
+  runtime. Server owns no selection, lease, claim, retry, recovery, Task finality,
+  Adapter route/queue or Worker business/lifecycle state.
+- Boot owns the sole production main and all production YAML. Server tests and
+  OpenAPI use explicit test-only platform configuration. Scenario composition and
+  deployment overlay tests follow Boot, with no reverse dependency or copied host
+  configuration in Server tests.
+- Server normalizes supply and Item queries through local Matching admission,
+  then writes complete Kernel data. Admission cannot read inventory, create
+  refill demand, retain a separate binding or compensate through Matching.
+  Finite append rejection remains per Item.
+- Prepare coordinates external identity, persistent Kernel Binding and cold
+  Score membership in separate retryable stages. It must not create/refresh
+  Matching facts or establish readiness.
+- Delivery reception owns complete Properties admission: producer, Binding and
+  Group checks followed by grouped Matching writes. It must not merge observations
+  with old facts. Worker replacement and independent Platform Properties remain
+  separate. An empty Runtime display must not become a stored baseline.
+- Use scalar/collection/Map bodies when complete. Named DTOs require a structured
+  resource, combined contract, status item or cross-field invariant. Do not add
+  generic envelopes, SimpleRequest or one-field status wrappers.
+- Preserve `ActionOutcome` only for shared mutation-effect semantics; whole
+  request failures use ApiErrorResponse. Identity, observation and delivery
+  results retain their own contracts.
+- Task calls and Result reads share `succeeded | failed | not_observed`; only
+  succeeded carries opaque content. Export remains finite-Task, terminal-only
+  and success-only through Owner pages, with no Redis bypass or failed/all mode.
+- DIRECT_CALL remains Adapter-scoped, caller-targeted and best-effort, with
+  instance-local correlation and no Score observation/change or strong lock.
+  Worker targets use non-overwriting offer; TASK append may replace an unconsumed
+  Direct Command. Adapter-local routing uses dst, not map-key Worker identity.
+  Pass event names/payloads without a Server execution whitelist.
 
 ## Worker Delivery Contract
 
-[Delivery Contract](transport/worker-delivery-contract/README.md) owns protocol DTOs and encoding.
+[Delivery Contract](transport/worker-delivery-contract/README.md) and
+[Event Catalog](transport/EVENTS.md) own DTOs, encoding and event contracts.
 
-`transport/worker-delivery-contract/` is Java 11 compatible and transport
-neutral.
-
-- `DeliveryCommand` target identity remains outside the DTO.
-- `DeliveryReport` carries producer `src + sourceId`. Command messageType is
-  intent; Report messageType is an event contract, never a Command-name echo.
-  Required string diagnosticCode (including empty) is diagnostic only. Admission,
-  correlation and result lanes use exact event names plus producer/target.
-  Keep command results, delivery facts, observations and identity distinct;
-  Report names are not callable Handler capabilities.
-- SERVER identifies Server-owned Direct Call requests and replies; only SERVER
-  Reports may complete its waiter. SYSTEM identifies platform events, whose
-  message contract determines the semantic owner, not the HTTP host. The fixed
-  Adapter Properties observation enters Matching only after Server admission;
-  unknown SYSTEM events are rejected item-by-item and never complete Direct
-  Calls. Do not alias the two.
-- `forward` remains opaque until its downstream owner.
-- Do not add Server, Kernel, Redis, Netty, Android or scheduling dependencies.
-- Long-lived connections use an Adapter-directed identity Report followed by
-  direct Command/Report JSON; do not add a third connection envelope.
+- Keep the contract Java 11 compatible and transport-neutral, without Server,
+  Kernel, Redis, Netty, Android or scheduling dependencies.
+- DeliveryCommand target identity stays outside the DTO. Reports identify their
+  producer; event names and producer/target decide admission and correlation.
+  diagnosticCode remains diagnostic, never an event discriminator.
+- SERVER replies may complete Direct Call waiters; SYSTEM events enter their
+  named platform owner. Do not alias them or treat Report names as Handler
+  capabilities. Keep forward opaque until its downstream owner.
+- Long-lived connections use identity Report followed by direct Command/Report
+  JSON, without another connection envelope.
 
 ## Netty Adapter
 
-[Adapter Owner](transport/netty-adapter/README.md) owns production composition,
-queue bounds, cache rules and shutdown sequence.
+[Adapter Owner](transport/netty-adapter/README.md) owns the complete fixed
+composition, loop policies, caches, physical network and shutdown sequence.
 
-For implementation hardening, preserve the aggregate, fixed Process Manager,
-Command and Report Dispatchers, connection mechanism/route Registry, and
-complete physical Server boundaries. Apply the migration rule above when the
-user explicitly requests changing this owner cut.
-
-Rules:
-
-- The aggregate owns public lifecycle and network shutdown ordering.
-  `AdapterProcessManager` owns exactly two same-lifetime Dispatchers and
-  their shared join deadline; it is a fixed composition, not a dynamic list.
-- The Command Dispatcher owns the bounded retry Queue, resident thread,
-  stop intent, batch acquisition and retry policy.
-  `DeliveryCommandProcess` processes one batch once and owns no Queue,
-  thread, sleep, pending batch or lifecycle. Preserve retry/fresh-batch progress
-  through the [Command loop contract](transport/netty-adapter/README.md#command-consumption-loop).
-- `DeliveryReportDispatcher` owns four finite TASK, SERVER, SYSTEM and KERNEL
-  `LinkedBlockingQueue<DeliveryReport>` lanes, their non-blocking admission,
-  rotating homogeneous batches, destination failure policy, and exactly one
-  resident daemon platform thread. Queue count does not determine thread
-  count. The four lanes do not cross the Report owner boundary. SERVER, SYSTEM
-  and KERNEL admission-drop diagnostics must remain aggregated rather than
-  logging once per Report.
-- One process-scoped Adapter Factory owns the immutable Remote API facade and
-  codec used by every Adapter it creates. The facade owns the fixed Command
-  consume and Report append paths, wire JSON and method-specific status
-  semantics. Its process-shared
-  JDK HTTP client and explicit virtual-thread executor own raw HTTP resources
-  only and carry no Adapter configuration or lifecycle. Do not restore the
-  JDK client's default cached platform-thread executor.
-- One flat public Adapter config is the complete construction input. Server
-  binds it directly and checks only the matching Endpoint; the Factory
-  destructures it so internal owners receive only their own values. Do not
-  restore tagged Process lists, cache config wrappers, Server-side JSON schema
-  parsing, global singleton configuration or compatibility aliases.
-- Preserve the [Report loop contract](transport/netty-adapter/README.md#result-ingress-loop):
-  bounded per-lane admission, aggregate memory accounting, a physical TASK
-  retry reserve and bounded homogeneous batches through one append path.
-  TASK remote unavailability requeues the exact batch at the tail without a
-  retry count or deadline; SERVER, SYSTEM and KERNEL submission failures drop
-  their batch. Delivery may lose or duplicate evidence. Shutdown drops current
-  and queued Reports without a final synchronous flush.
-- Server rejects a mixed or unsupported Report batch before semantic Owner
-  side effects, then routes the homogeneous batch by `dst`. New Report classes
-  extend the Adapter lane and Server Owner switch, not the HTTP path.
-- Future Report concurrency may use only one bounded executor inside the
-  Report owner with explicit in-flight, retry-reserve and shutdown bounds; do
-  not create one thread or pool per Queue.
-- Connection mechanism owns identity interpretation, first verification,
-  current route use and valid Result ingress. Registry owns route truth.
-- First verification checks existing Kernel Binding and does not register or migrate
-  a Worker. First verification crosses only the injected single-item
-  `WorkerRouteVerifier` port. Its Server batch owner may coordinate a bounded
-  queue and bounded Binding reads, but neither side may expose
-  Channel or Route state through that port. Verification has no HTTP endpoint.
-- Registry keeps one atomic pending, connected or disconnected Route entry per
-  workerId; do not split route and verification facts across parallel Maps.
-- Only disconnected verification evidence may be TTL/capacity cached. Active
-  and pending routes cannot be evicted by cache policy. A Channel attribute
-  contains only the claimed workerId for callback correlation and never mirrors
-  verification truth. The independent
-  properties projection is capacity bounded, not time deleted. Its visibility
-  follows retained route verification evidence, coordinated only by the
-  connection mechanism.
-- Caffeine is connection-owner storage infrastructure only. Do not leak it to
-  Server, Process, Remote API or physical Network owners, and do not install a
-  loader, refresh, listener, scheduler or removal side effect.
-- Registry routes only by `workerId`; long-lived identity and Kernel-requested
-  Adapter snapshots do not add WorkerGroup state to the route owner.
-- Adapter-local Worker property observation is a separate projection cache;
-  it must not be folded into RouteEntry or stored as another Server/Kernel truth.
-  Publishing observations crosses SYSTEM and Server admission; Adapter must
-  not access Matching storage directly.
-- Worker Properties observation must come from the exact current verified
-  Channel. The fixed `properties.updated` and `properties.replaced` events carry
-  direct string KV Maps: update merges supplied keys into a full baseline;
-  replacement atomically replaces the Map, deleting omitted keys. Missing
-  baseline and invalid updates are local drops; empty strings are not deletions.
-  Explicit TASK/SERVER snapshot Results keep their wrapped query payload and
-  never write the cache. Keep cache content immutable
-  with owner-local fingerprint and observation metadata, without field versions.
-  After installation and current-Channel recheck, publish the complete Map once
-  through SYSTEM. Queue/HTTP failure leaves the cache intact and does not close
-  the Worker, retry, or create pending publication state. Server validates
-  Binding/Group and Matching owns full persistent replacement. Host publication
-  policy must not become a Core scheduler or an ACK/recovery prerequisite.
-- Connection snapshots read Route truth; properties snapshots pass through the
-  Route evidence gate and then read the properties cache. They have no atomic
-  join or shared version.
-- The inbound Handler only adapts Netty callbacks.
-- The physical Server owns listener, EventLoop, all child Channels, framing,
-  physical writes and close behavior.
-- Connection mechanism may retain `Channel` only as an address and must return
-  physical operations to the Server.
-- WebSocket and Socket share behavior tests, not a common lifecycle base.
-- Adapter does not read score, select Workers or reinterpret Task policy.
-- Adapter-local `platform.adapter.*` events use one immutable,
-  composition-time Handler map;
-  there is no runtime registration surface.
-- `platform.adapter.events.snapshot` reports that process-local immutable map;
-  it is observation evidence, not configuration or routing truth.
-- Only valid bound Worker TASK/SERVER/SYSTEM evidence follows the current destination
-  rules; invalid unbound input and TASK result backpressure may close the exact
-  connection.
-- Expired TASK delivery independently offers its correlated
-  `platform.adapter.command.delivery-failed` TASK Report (diagnostic 23002,
-  workerId and DEADLINE_EXCEEDED reason) and a
-  separate `platform.adapter.worker-delivery.expired` KERNEL Report to their
-  Report lanes; Transport does not interpret either as score policy and does
-  not promise cross-lane atomic admission.
-- Shutdown waits are owner-local and bounded. Do not reset spent deadlines or
-  add unbounded waits.
-- Do not add Session, protocol SPI, dynamic Process/lane registry, reflection,
-  ServiceLoader or an in-process Server shortcut.
-
-`transport/netty-adapter` must not depend on Server, Kernel, Spring, Redis or
-Pacer implementations. Server may depend only on its public finite factory and
-the `WorkerDeliveryAdapter` contract.
+- Preserve the aggregate, Process Manager, two same-lifetime Dispatchers,
+  connection mechanism/Registry and physical Servers. An authorized ownership
+  migration must update those contracts explicitly.
+- Command Dispatcher owns retry state, thread and policy; DeliveryCommandProcess
+  handles one batch once without queue, lifecycle or pending-batch state.
+  Preserve [retry/fresh-batch progress](transport/netty-adapter/README.md#command-consumption-loop).
+- Report Dispatcher owns all four finite lanes and one resident thread.
+  Preserve [Report admission and retry](transport/netty-adapter/README.md#result-ingress-loop),
+  including the TASK physical retry reserve, homogeneous batches, aggregated
+  drop diagnostics and destination-specific loss/duplication behavior.
+  Shutdown has no synchronous flush. Future concurrency stays in one bounded
+  Report-owned executor, not one executor/thread per lane.
+- Server rejects mixed/unsupported batches before semantic effects. New Report
+  classes extend lane/routing ownership without adding HTTP paths.
+- The process-scoped Factory owns a shared immutable Remote API facade/codec.
+  Its HTTP client uses an explicit virtual-thread executor for raw resources.
+  Keep flat public config, owner-local inputs and the finite factory boundary;
+  no singleton config, cached platform-thread fallback or in-process Server shortcut.
+- Connection mechanism owns identity verification and current-route use; Registry
+  owns one atomic Route entry per Worker. Verification checks existing Binding
+  through the injected single-item port, without registration, migration, HTTP
+  endpoint or Channel/Route leakage.
+- Only disconnected verification evidence is TTL/capacity cached. Active/pending
+  routes cannot be cache-evicted. Channel identity is callback correlation, not
+  copied verification truth. Registry contains no Group authority.
+- Keep Properties as a separate immutable projection, admitted only from the
+  current verified Channel. Follow the Owner's full-map update/replacement and
+  one-shot SYSTEM publication contract; failed publication leaves local state
+  without retry, pending state, remote ACK or connection closure.
+- Route/Properties snapshots have no atomic join or shared version. Caffeine stays
+  connection-local without loaders, refresh, listeners or removal side effects.
+- Physical Servers own listeners, EventLoops, child Channels, framing and writes;
+  connection code retains Channel only as an address. Inbound Handlers adapt
+  callbacks. WebSocket/Socket share behavior tests, not a lifecycle base.
+- Keep immutable Adapter-local event maps, exact current-connection ingress and
+  independent TASK/KERNEL expiry evidence. Transport never interprets Score.
+- Preserve owner-local bounded shutdown deadlines. Do not add Session, protocol
+  SPI, dynamic Process/lane registry, reflection or ServiceLoader.
+- Adapter implementations cannot depend on Server, Kernel, Spring, Redis or Pacer.
+  Server consumes only the finite factory and WorkerDeliveryAdapter contract.
 
 ## Worker Core And Platform Workers
 
-[Worker Core](transport/worker-core/README.md), [Java Worker](transport/java-worker/README.md) and [Android Worker](transport/android-worker/README.md) own their mechanisms.
+[Worker Core](transport/worker-core/README.md), [Java Worker](transport/java-worker/README.md)
+and [Android Worker](transport/android-worker/README.md) own their local mechanisms.
 
-`transport/worker-core` is Java 11 platform-neutral mechanism code.
-
-- Core depends only on the delivery contract.
-- A reporting Handler may retain its run-bound WorkerOutcomeReporter after
-  synchronous completion. Host owns association and cleanup; Core keeps no
-  reporter registry, queue, thread or retry. Non-TASK calls cannot report later
-  outcomes, and a closed run's Reporter cannot transfer to a new run.
-- Client owns networking and transparent reconnect.
-- Transport owns identity/Command/Result protocol and synchronous event
-  execution.
-- `WorkerRunController` owns only the `RUNNING/STOPPED` run lifecycle.
-- Follow the [Worker run contract](transport/worker-core/README.md#one-worker-run)
-  for complete Properties loading, single Prepare and optional Manager-prepared
-  starts. Core owns neither batch HTTP nor Host Properties aggregation.
-  [Server preparation](server_jvm/README.md#workergroup-and-worker-preparation)
-  owns Worker kind and identity policy; Core and Manager do not interpret it.
-  Workers must not persist or hint workerId. Worker kind selects a typed
-  registration-key algorithm, never a Redis key address; one Group retains one
-  identity Hash without algorithm aliasing. Transparent reconnect sends identity
-  without re-Prepare. Explicit Properties reports go through Adapter observation
-  and Server admission, never a direct Matching write or automatic Core
-  publication scheduler.
-- Core may use an injected Control Executor but creates and closes no thread,
-  Executor or Scheduler.
-- Active `stop()` revokes the current run before closing its Client outside
-  the run-state gate. The Java WebSocket Client does not wait for a Handler or
-  Transport callback. Stop during Prepare only discards that single-flight
-  Prepare result; it is not a paused Worker.
-- Worker owns no pause or delivery-admission state. Any future pause remains
-  Kernel scheduling truth and Adapter delivery or Route behavior.
-- One physical Client attempt preserves protocol callback order. Core adds no
-  cross-Attempt or cross-run Handler fence; a callback admitted before close
-  may finish after the run ends. Do not add Command queues, in-flight
-  registries or result caches.
-- Event definitions are keyed by full Event Name and assembled before the
-  Transport starts. Host code supplies short capability names through
-  `WorkerEventDefinition.extension(...)`; Command `src` is evidence rather
-  than a Handler lookup key.
-- Java and Android assemblies prepend the finite default Worker management
-  Definitions before Host extensions; Host code cannot replace their keys.
-- `platform.worker.events.snapshot` reports the immutable assembled Event Names;
-  it does not update WorkerGroup `eventCodes` or scheduling capability truth.
-- Compatible optional payload additions may retain an Event Name. Incompatible
-  input, output, semantics or side effects require a new name such as `.v2`;
-  do not add alias, wildcard, prefix or fallback dispatch.
-- Endpoint termination ends the current run; only an explicit Host `start()`
-  begins another preparation.
-
-`transport/java-worker` is Java 21 and owns JVM networking/platform resources.
-Its Manager Platform supplies virtual-thread executors for active OkHttp
-WebSocket readers and OkHttp's internal WebSocket TaskRunner, and sets
-Dispatcher capacity from the fixed replica count. The latter prevents a
-reconnect burst from expanding OkHttp's default unbounded platform-thread
-backend. Control and reconnect scheduling remain bounded ordinary threads. Do
-not move virtual threads, Dispatcher, OkHttp or connection capacity into Core.
-It exposes no OkHttp types. `transport/android-worker` owns Android networking and
-HandlerThread resources and must not depend on Java Worker. Neither may import
-Server, Kernel, Redis, score, Pacer or platform business handlers.
-
-Java Worker Manager may accept immutable per-replica extension Definitions at
-construction alongside Group-common Definitions. Both pass through the same
-reserved-default and duplicate Event Name checks. This adds no runtime Handler
-registration, identity inference, thread or Core API.
+- Core remains Java 11 and depends only on the delivery contract. Client owns
+  networking/reconnect; Transport owns protocol and synchronous Handler execution;
+  WorkerRunController owns RUNNING/STOPPED. RUNNING does not prove connectivity.
+- Follow the [run contract](transport/worker-core/README.md#one-worker-run):
+  single Prepare, complete Properties loading and explicit Host start/stop.
+  Worker identity/kind policy belongs to Server. Workers do not persist/hint
+  workerId; reconnect sends identity without re-Prepare.
+- Properties publish explicitly through Adapter/Server admission. Core owns no
+  aggregation, batch HTTP, publication scheduler, thread or executor lifecycle;
+  an injected Control Executor does not change that boundary.
+- Stop revokes the run before closing Client outside the state gate. It does not
+  wait for an admitted Handler/callback to finish. Prepare-time stop discards the
+  result; endpoint termination requires a later explicit Host start.
+- Do not add pause/admission state, cross-attempt/run Handler fences, Command
+  queues, in-flight registries or result caches.
+- Definitions are immutable and keyed by exact full Event Name. Host extensions
+  use the extension helper; platform defaults cannot be replaced. Event snapshots
+  observe installed Definitions, never WorkerGroup capability truth.
+  Incompatible contracts require a new name, without aliases/prefix/fallback dispatch.
+- A retained TASK Reporter belongs to its original run and opaque correlation.
+  Host owns association/cleanup. New runs cannot adopt it; Core owns no reporter
+  registry, replay, queue or retry. Non-TASK calls cannot report later outcomes.
+- Java owns JVM networking, virtual-thread/OkHttp capacity and platform resources;
+  Android owns its networking/HandlerThreads and cannot depend on Java Worker.
+  Neither leaks implementation types or imports Server, Kernel, Redis or policy.
+- Manager per-replica Definitions are immutable construction input and use the
+  same reserved-default/duplicate checks as Group-common Definitions.
 
 ## Scenario And Android Capabilities
 
-[Worker Simulator](worker_simulator_jvm/README.md) and [Android modules](xa-android/README.md) own inventory, capability and lifecycle details.
+[Worker Simulator](worker_simulator_jvm/README.md) owns inventory, device facts,
+capabilities and Host lifecycle; [Android](xa-android/README.md) owns device capabilities.
 
-`worker_simulator_jvm` is a finite standalone Java 21 Lab/SMS/Messages Worker Host, not a
-Kernel owner, Server profile, Adapter, production Worker platform or plugin
-system.
-
-- It may depend on Worker Core and Java Worker, not Kernel, Server, Adapter,
-  Redis, reflection or configurable class names.
-- Its only process input is `--config` (plus `--help`): one JSON owns
-  process coordinates, Group events/count/templates/reuse and the embedded startup
-  plan. Only Group selection is mandatory for built-in Groups; resolve omitted
-  fields to local defaults once, before Host assembly. Explicit templates replace
-  defaults in full; invalid explicit inputs must not fall back. Relative inventory
-  paths, including the default, resolve from that file. No CLI overrides,
-  implicit presets, separate capability or plan files belong in the Host.
-- It owns local capability definitions, persistent Lab files and one
-  `JavaWorkerManager` per configured non-empty WorkerGroup.
-- Preserve the [Lab inventory contract](worker_simulator_jvm/README.md#persistent-worker-lab)
-  for schema, string Properties, per-file and per-Group bounds and immutable
-  physical identity coordinates. `labWorkerKey` is Lab-local, not a universal
-  Worker identity field. Scenario uses the Server-owned `SCENARIO_LAB` Prepare
-  policy; ordinary Prepare remains available to other Java and Android Workers.
-- Batch Prepare holds no Manager lifecycle lock or cross-replica gate.
-  Concurrent requests may repeat the Server-owned idempotent Prepare for one
-  stopped replica, while its Controller still installs at most one run.
-  Scenario resolves a control target under its short inventory gate, then
-  performs Manager Prepare outside that gate so a slow control request cannot
-  block scheduled stops or Host shutdown from entering their own owners.
-- An optional embedded startup plan selects the initial finite Worker set and
-  startup-only scheduled stops. Validate the entire effective inventory, capability
-  requirements, number uniqueness and plan before committing generated Groups or
-  creating Managers. Group-local newEnvironment stages and validates replacement,
-  retains the old directory until installation succeeds, and attempts restoration
-  on failure; it does not reset Redis or Server identity. The plan does not contain
-  Properties, Worker IDs, Tasks or Kernel claims.
-- The String Lab command checkpoint is a bounded Scenario-only fault fixture.
-  It must not become a Worker Core hook, generic action DSL or production
-  lifecycle mechanism.
-- Its loopback Lab HTTP surface may atomically replace discovered Worker files,
-  explicitly start/stop one replica, and own nonpersistent scheduled stops.
-  Lab desired/runtime state is local observation, never Adapter or Kernel truth.
-  The Host binds this listener before starting outbound Worker connections and
-  begins serving only after initial startup completes, so the configured port
-  remains owned even when the loaded-recovery proof widens the OS ephemeral
-  port range.
-- Atomic Worker file replacement fails closed when the filesystem cannot honor
-  `ATOMIC_MOVE`. A start issued while the Manager's previous stop is still
-  converging is a conflict; callers observe `STOPPED` before retrying.
-- Every explicit Lab Worker start reopens its complete Properties file. There is no
-  watcher, automatic reconcile, dynamic inventory, or generic fault DSL.
-- Lab `:inputs` properties.update/replace may persist and explicitly publish through the
-  existing Manager during a running Worker run. Preserve immutable inventory
-  coordinates and file-only PUT semantics. Use one non-queuing per-Worker gate
-  across persistence/publication, including the file-only PUT; retain serialized
-  file writes and keep SDK sends outside the inventory monitor. Stop/shutdown
-  must not wait for publication. Local acceptance is not remote ACK; never
-  compensate, retry or add pending publication state.
-- Simulator device inputs use stable file coordinates and the existing device
-  Owners, never raw Command/Report injection. SMS checks an optional phone under
-  the selected Sim's gate before dedup; Messages checks the selected Sender and
-  preserves the original Reporter. Capability discovery is replica-local. HTTP,
-  console and CI share this path, without input queues or upstream ACK tracking.
-- Server Boot owns deployment profile coordinates; Server owns applying
-  create-only advisory WorkerGroup seeds through its existing services.
-- Lab, SMS and Messages share the file inventory, SCENARIO_LAB batch Prepare,
-  one immutable current Properties snapshot per record and common controls.
-  Group `events` selects compiled business and verification capabilities; an
-  empty list uses only the finite local Group defaults, not Server eventCodes.
-  Seed/count/templates initialize missing or explicitly rebuilt Group inventories;
-  otherwise reuse is exact, including an empty directory. Templates materialize
-  string Properties once and never become another runtime Provider.
-  Choice/range values derive independently from the fixed seed, Group, property
-  name and ordinal; no shared Random sequence or runtime random state is owned.
-  Preview uses seeded sampling, while exact product-proof quotas are materialized
-  by the existing proof inventory utility, not enforced by the random generator.
-  Preserve file coordinates when phone/country change. Persist before local
-  address updates, then publish outside inventory and business gates. No second
-  Provider, Host, Manager collection or plugin lifecycle belongs in a business package.
-- SMS stop closes number admission and clears active Reporters before SDK stop,
-  without waiting for network publication or emitting synthetic ending Reports.
-  Restart retains identity and process-wide dedup, never restores subscriptions
-  or transfers an old run's Reporter. Hot phone change locally interrupts old
-  SMS listeners without a synthetic Report; historical Messages keep their facts
-  and original Reporter. Construct business resources only for installed capabilities.
-- Server never depends on, constructs, starts or stops the Host. The root local
-  launcher and proof lanes own the two independent process lifecycles.
-- Existing Group directories are not seeded or repaired; missing configured
-  directories may receive checked defaults.
-- State/server and in-flight-loss convergence are independent Integration
-  scenarios. Their runner owns process failure and phase progression; the Host must
-  not infer Adapter connectivity or Kernel serviceability from local state.
-- The Lab is a mutation source and local witness, not a reconcile robot or
-  distributed consistency Owner. Each Harness action is issued once; the
-  Harness records whether its local effect was established and only then compares
-  independent Runtime projections. They must not retry, compensate, restore or
-  reshape the Lab merely to make a convergence assertion pass.
-
-Android capability modules own concrete immutable Definitions and Android data
-access. They must not receive Worker identity, Endpoint, Task, Client,
-Transport, Executor or Scheduler state. The demo Application is the assembly
-and lifecycle owner; its Activity only observes and issues explicit local
-controls. Demo-only `extension.worker.lab.delay` and `.fail` Definitions are
-finite Android proof fixtures, not Android Worker SDK APIs. Their local active
-Handler count establishes only a Lab mutation and must not be promoted to
-Adapter connectivity, Kernel state or schedulability.
+- Simulator is a standalone finite Java Worker Host. It may depend on Core/Java
+  Worker, never Server, Kernel, Adapter, Redis, reflection or configurable classes.
+  Server must not construct or manage the Host process.
+- Keep one complete `--config` process input and one Manager per nonempty Group.
+  Resolve defaults once; validate complete effective inventory, capabilities and
+  startup plan before commit/Manager creation. Invalid explicit input has no
+  fallback. Relative files resolve from config; no CLI overrides or parallel
+  configuration/provider system.
+- Follow [persistent Lab inventory](worker_simulator_jvm/README.md#persistent-worker-lab):
+  immutable physical coordinates, string Properties, exact reuse and checked
+  atomic replacement. Existing inventories are not automatically seeded/repaired.
+  Group replacement retains/restores the old directory on failed installation;
+  it never resets Server identity or Redis.
+- Batch Prepare and SDK calls run outside inventory/Manager lifecycle gates.
+  Explicit start reloads the complete file; restart during a converging stop
+  conflicts. No watcher, automatic reconcile or generic fault DSL.
+- Keep embedded plans finite and startup-local, without Tasks, Worker IDs,
+  Properties mutation or Kernel claims. Command checkpoints remain Lab-only
+  fixtures. Bind the loopback listener before outbound connections.
+- Device `:inputs` uses stable file coordinates and existing business owners,
+  never raw Command/Report injection. Preserve per-Worker serialization, persistence
+  before publication and SDK sends outside inventory/business gates. File-only
+  PUT remains distinct; stop must not wait for publication. Local acceptance
+  implies no remote ACK, retry or pending repair.
+- Lab/SMS/Messages share inventory, immutable current Properties and common
+  controls. Events select compiled capabilities; templates initialize files
+  once. Preview seeded sampling and proof-materialized quotas remain distinct.
+  Business packages add no second Provider, Host or Manager lifecycle.
+- Preserve original Reporter association and device-local deduplication.
+  Stop clears active Reporters before SDK stop without synthetic ending Reports.
+  Restart does not restore subscriptions or adopt old Reporters. Construct
+  business resources only for installed capabilities.
+- Lab state establishes local mutations only. Harnesses issue actions once,
+  establish their local effect, then compare independent Runtime projections.
+  They must not retry/repair the world to make convergence assertions pass.
+- Android capabilities own immutable Definitions and data access, without Worker
+  identity, Endpoint, Task, Client, Transport or scheduler state. Application owns
+  assembly/lifecycle; Activity observes and issues explicit controls. Demo delay/
+  failure handlers remain proof fixtures, not SDK or schedulability evidence.
 
 ## Integration And Frontend
 
-[Proof Registry](doc/testing/proof-registry.md) identifies Primary Owners; each Integration README owns its world, thresholds and complete scenario.
+[Proof Registry](doc/testing/proof-registry.md) identifies Primary Owners.
+Each linked Integration README owns its full workload, bounds, failure model,
+artifact limits and assertions; read that contract before changing the proof.
 
-- Integrations call public Runtime APIs and must not import Server, Kernel,
-  Adapter or Worker implementations.
-- [Android Worker Proof](integrations/android-worker-proof/README.md) owns real
-  Android assertions in Java. Its shell owns only external process choreography.
-  Device-local state establishes mutations; public Network, Scheduling, Direct
-  Call and Task observations independently establish system effects. Retry only
-  temporary HTTP observation failures; invalid contracts and identity drift
-  fail immediately. Never assert business Result payloads or promote disposable
-  Emulator controls into background-survival evidence. This lane is not a Java
-  Worker witness; new platform claims require an explicit scenario boundary.
-- One-shot Python proof runners may own process orchestration, but not database
-  protocols. Redis scope cleanup uses
-  `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a
-  lane-local RESP client. Unique `test_*` scope is the proof isolation
-  boundary; cleanup is best-effort local resource hygiene and must not replace
-  the proof outcome. GitHub jobs with disposable Redis Services explicitly
-  skip it. Keep one runner entrypoint per high-level proof lane rather than
-  hiding distinct failure sequences in a generic scenario runner.
-- Worker Convergence Health may combine the loopback Lab API with independent
-  Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
-  record identities and projected states but never business payload. Failed or
-  ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
-  exact Network and Scheduling observations page the bounded Runtime API.
-  Runtime Preview is only a per-Group sample, never fleet enumeration.
-  Each deterministic scenario stops mutation injection and evaluates the
-  actual observed local world instead of installing a preferred final world.
-  It uses managed batch calls as offered load and `results:load` only
-  for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
-  offered Items to succeed, count `FAILED` as a successful witness, poll
-  `results:export`, or broaden the separate Rule-bound Properties witness into
-  repeated topology claims owned by Runtime Boundary.
-- [Worker Loaded Recovery](integrations/worker-loaded-recovery/README.md) owns
-  sustained-load, repeated-recovery and resource-stability claims in its separate
-  nightly/manual Linux lane. Keep Runtime API observations bounded, retain Host
-  identity across Server failures, and export each terminal Task once. Mutations
-  require the scenario's established loaded-work preconditions. Connection
-  availability during work and connected/HOT convergence after drain are
-  different oracles; stopped identities must remain present and inactive.
-  Resource evidence must cover transient ceilings and stable drift. Do not
-  infer Task fairness, completion order, Handler concurrency, throughput,
-  latency or soak from this lane.
-- [Worker Call Performance](integrations/worker-call-performance/README.md) owns
-  offered-load, completion and latency evidence in its separate nightly/manual
-  workflow. Keep HTTP acceptance, successful Result observation, unknown
-  submission and generator limitations distinct. Fixed Worker counts are
-  fixtures, not extra proof levels. JVM Contracts owns only deterministic
-  Harness/runner tests; Redis Owner retains mailbox concurrency and command-cost
-  proof. Aggregate Redis diagnostics never replace public-API assertions.
-- Worker Correctness inputs are caller-owned local files. Its perfect-world
-  proof uses managed batch `items:call`, fixes exact Item statuses and treats
-  Result payload as opaque. The frontend separately turns lines into ordinary
-  finite TaskItems through public Task APIs; Server owns no Lab input/output
-  directory.
-- Worker Correctness live Properties mutations use Lab HTTP and the real
-  Worker Simulator/SDK connection before its existing Host restart phase. Java
-  observes Adapter/Server through public APIs; it must not call implementations
-  or inject Reports. The runner owns process identity, control-file and initial
-  Prepare/access-log audits. Fixed budgets and full snapshot oracles belong in
-  the Integration Owner document. Keep Lab Properties and private phase data
-  outside the CI artifact whitelist; local Harness success requires the runner
-  audit before it can become phase success.
-- [Worker Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns
-  loaded Rule-index execution under live Worker/Platform Properties changes.
-  Scenario's optional execution witness must capture the actual Group/replica
-  in the construction-time Handler closure; request tokens only correlate.
-  Keep its finite paginated journal explicit on overflow and outside artifacts.
-  Harness assertions use Lab and public Runtime APIs; runner audits establish
-  unchanged processes, control files and no new Prepare. Existing Owner proofs
-  retain seal/transfer races, separate commits and fault-delivery limits.
-- Frontend is read only for Runtime truth. Its finite Task file flow may create,
-  append, approve, and export only through public Task APIs and must not infer
-  scheduling state from elapsed time.
-  Its single-Worker Direct Debug action may invoke only the public
-  Adapter-scoped DIRECT_CALL API. That action remains caller-targeted and
-  best-effort; its response must not be promoted to schedulability, capability,
-  Worker identity or lifecycle truth.
-- `frontend/public/overview.htm` is a human projection. Current truth remains
-  in executable and owner documents.
-- `distribution/server` owns delivery and finite Preview process assembly. It
-  assembles the current Server, frontend and configuration. The Runtime ZIP
-  excludes the Worker Simulator; the Preview ZIP includes it. Neither variant
-  may add a fallback runtime owner, a second production mechanism or scheduling
-  behavior.
+- Integrations use public Runtime APIs without implementation imports or Report
+  injection. Device/Host state establishes local effects, not network/scheduling
+  truth. Runtime Preview samples must not become fleet enumeration.
+- Python runners own external processes, not database protocols. Use the shared
+  Redis cleanup utility with redis-py and exact test scopes; cleanup is hygiene
+  and cannot replace proof outcome. Disposable Redis jobs skip cleanup. Keep
+  each high-level failure sequence behind its own runner entrypoint.
+- [Worker Correctness](integrations/worker-correctness/README.md) owns managed-call
+  exact statuses, opaque Results and live Properties/Host restart. Runner audits
+  must establish process/control/Prepare conditions before accepting phase success.
+- [Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns loaded
+  query execution under live facts. Actual executor identity comes from the
+  construction-time Handler closure; request tokens only correlate. Keep finite
+  journal overflow explicit and private evidence outside artifacts.
+- [Convergence Health](integrations/worker-convergence-health/README.md) owns named
+  witnesses after established mutations. Unknown submission/NOT_OBSERVED is not
+  failure or success; do not require all offered load to succeed, count FAILED
+  as success, poll export or retry mutations to install a preferred world.
+- [Loaded Recovery](integrations/worker-loaded-recovery/README.md) and
+  [Call Performance](integrations/worker-call-performance/README.md) retain their
+  separate scheduled/manual claims. Preserve preconditions, bounded observations,
+  resource/latency evidence and explicit nonclaims; scale does not create proof.
+- [Android Proof](integrations/android-worker-proof/README.md) keeps assertions in
+  Java and external choreography in shell. Invalid contracts/identity drift fail
+  immediately; retry only permitted observation failures. Emulator controls
+  do not prove background survival or another Worker platform.
+- Frontend observes Runtime truth and uses public APIs for finite Task files and
+  Adapter-scoped Direct Debug. It cannot infer state from elapsed time or promote
+  Direct Call responses to identity, capability, lifecycle or schedulability.
+- The [human overview](frontend/public/overview.htm) projects the existing
+  architecture; retain its information architecture and navigation. Mechanism,
+  API, capacity and fixture details remain in Owner/proof documents.
+- Distribution consumes existing executables and SDKs. Runtime excludes Simulator;
+  Preview includes it. Neither adds fallback ownership or scheduling behavior.
 
 ## Business Scenario Composition
 
 [SMS Reception](scenarios/sms-reception-jvm/README.md) and
-[Message Campaigns](scenarios/message-campaigns-jvm/README.md) own realistic business
-workloads that validate XA Mass. Controllers, business state, strategies and
-observations belong to these Spring configuration libraries. Independent product
-deployment follows concrete business or operational needs.
+[Message Campaigns](scenarios/message-campaigns-jvm/README.md) own business API,
+finite state, idempotency and observation. Their device owners remain in
+[Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products).
 
-- Keep integration inexpensive. Prove actual execution, increase workload and
-  investigate observed failures before stabilizing shared call surfaces. Simulated
-  devices and inputs must traverse the real platform path. Never hide platform
-  defects through scenario-side scheduling or delivery repair, or count unconfirmed
-  outcomes as success. Return platform regressions to their owning proof.
-- Both scenarios depend only on approved `server_jvm` application services and
-  existing DTOs, including `WorkerQuery`, refill `EligibilityQuery` and `RefillTarget` value
-  contracts required by those APIs. These values grant no Kernel or Matching
-  operation access. Server has no scenario or executable dependency; scenarios have
-  no dependency on each other and create no Redis clients, Owners, Pacer or Adapter.
-  Never invoke Controllers, providers, scheduling policy, HTTP waiters or the
-  Direct Call registry from scenario code. Do not add a Runtime library, bridge,
-  mirrored DTO, generic scenario framework or speculative public SDK.
-- [Server Boot](server_boot_jvm/README.md) explicitly imports platform and
-  finite Console forwards. Its `preview` configuration imports both scenarios and
-  supplies one shared Group and complete event declaration. Scenario configuration
-  classes have no deployment profile of their own. Platform and preview are the
-  two business assembly states; the existing platform deployment presets remain.
-- Keep one platform resource set and a separate Worker Simulator process. Stop
-  scenario admission, submission and observation before platform resources, with
-  bounded waits. Failure of either scenario initialization cleans already-created
-  scenario and platform resources. Scenario shutdown never cleans the scope.
-- Approved calls comprise Group registration, bounded Task submission, finite Task
-  creation/append/approval and Result query with the existing Task/Result values.
-  Keep validation in those services. Business APIs and error handlers retain their
-  own namespace; no business-side fallback to platform HTTP is permitted.
-- The unified frontend serves `/sms` and `/messages` alongside Runtime. Keep data
-  and polling lifetimes independent. Preview gates APIs, registrations and jobs,
-  not shared assets. Catalog observation controls visibility without enabling
-  business; Public Mock Demo makes no scenario requests. Unknown API/asset paths
-  are not SPA routes.
-- Message Campaigns owns finite records, idempotency and receipt interpretation.
-  Validate complete input before Task creation, confirm every append before
-  approval, and expose uncertain submission without automatic recreation or retry.
-  Task scheduling finality does not stop retained Item observation. Preserve
-  complete snapshots and existing Outcome names.
-- The independent [Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products)
-  owns device inputs and first-Reporter association. Messages arise only through
-  actual `message.send`; committed local facts precede publication. Receipt hold/
-  release accepts existing receipt IDs, never arbitrary Reports. Stop clears
-  Reporters before SDK stop, and new runs cannot adopt old associations. Keep
-  existing finite capacities and the SMS matching/deduplication contract.
-- [Scenario Preview delivery](distribution/server/PREVIEW.md) owns the shared source
-  and ZIP launcher for one Server and one Host with both scenarios. The root local
-  entry delegates to that same implementation for `--profile preview`. Keep business
-  acceptance oracles external and load the packaged launcher without a checkout
-  fallback. Preview may package Host; the production Runtime ZIP may not.
-  [Scenario Coexistence](integrations/scenario-coexistence/README.md) remains a
-  business witness, with the fixed 1k workload explicit/manual and unchanged Proof
-  Gate identifiers. It does not replace mechanical Owner proof.
-- Matching still owns the fixed scenario/proof Rule implementations today. Keep
-  their projection/query pairing and atomic facts/index updates unchanged in this
-  composition migration; a future ownership adjustment needs its own callers and
-  evidence, not merely a Scenario directory rename.
+- Scenarios use approved Server application services and existing value contracts,
+  including query/refill DTOs. Values grant no Kernel/Matching operation access.
+  Scenarios do not depend on each other or create Redis clients, Owners, Pacer,
+  Adapter, HTTP waiters or Direct Call registries.
+- Do not invoke Controllers/providers/policy, duplicate validation or add HTTP
+  fallback, Runtime bridge/library, mirrored DTOs, generic scenario framework or
+  speculative SDK. Platform regressions return to the owning proof; do not hide
+  them with business scheduling/delivery repair or count uncertainty as success.
+- Boot explicitly imports both scenarios under preview with one shared Group and
+  event declaration. Scenario libraries own no deployment profile. Keep one
+  platform resource set and an independent Simulator process.
+- Constructors/configuration remain free of premature business startup. Stop
+  scenario admission/submission/observation before platform resources with bounded
+  waits; partial initialization cleans created resources. Scenario shutdown
+  never cleans the Redis scope.
+- Validate complete campaign input before creation and every append before
+  approval. Preserve uncertain submission without recreation/retry, complete
+  snapshots, existing Outcome names and observation after Task scheduling ends.
+- Messages arise only through actual message.send. Device facts commit before
+  publication; receipt hold/release accepts existing receipt IDs, never arbitrary
+  Reports. Keep SMS matching/deduplication and the original run's Reporter rules.
+- Preview gates business APIs, registration and jobs while sharing frontend assets.
+  SMS/Messages polling lifetimes remain independent. Catalog observation cannot
+  enable business; Mock Demo makes no scenario requests. Unknown API/assets are
+  not SPA routes.
+- [Preview delivery](distribution/server/PREVIEW.md) owns the sole source/ZIP
+  launcher; root preview delegates to it. Packaged acceptance has no checkout
+  fallback. [Coexistence](integrations/scenario-coexistence/README.md) remains a
+  business witness, with the large workload explicit/manual and no expansion of
+  mechanical proof claims or change to Proof Gate identifiers.
+- Fixed query functions, Pool maintenance and indexes remain Matching-owned.
+  Scenario composition does not authorize moving those owners or changing their
+  facts/index atomicity.
 
 ## Verification
 

@@ -3,10 +3,10 @@ package com.xa.mass.workermatching;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.CandidatePool;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -42,7 +42,26 @@ class RuleEligibilityTest {
         final CandidatePool stock;
         TestPoolPolicy() { this(new CandidatePool(RuleEligibilityTest.this.clock::get, budget)); }
         TestPoolPolicy(CandidatePool stock) { super(RuleEligibilityTest.this.clock::get,stock);this.stock=stock; }
-        QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
+        QueryFunction functions() {
+            return new QueryFunction() {
+                public Object normalizeInput(String group, Object input) { return normalizeLocalInput(group, input); }
+                public Map<String, WorkerCandidate> apply(String group, Map<String, Object> inputs) {
+                    var grouped = new LinkedHashMap<Selection, List<String>>();
+                    inputs.forEach((id, input) -> grouped.computeIfAbsent(select(group, input), ignored -> new ArrayList<>()).add(id));
+                    var limits = new LinkedHashMap<Selection, Integer>();
+                    grouped.forEach((selection, ids) -> limits.put(selection, ids.size()));
+                    var taken = stock.take(group, limits);
+                    var assigned = new HashMap<String, WorkerCandidate>();
+                    grouped.forEach((selection, ids) -> {
+                        var candidates = taken.get(selection);
+                        for (int i = 0; i < candidates.size(); i++) assigned.put(ids.get(i), candidates.get(i));
+                    });
+                    var result = new LinkedHashMap<String, WorkerCandidate>();
+                    inputs.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
+                    return Collections.unmodifiableMap(result);
+                }
+            };
+        }
         @Override protected EligibilityQuery normalize(String group,EligibilityQuery input) {
             var expression = input.query();
             if(!Set.of("pool").containsAll(expression.keySet()))throw new IllegalArgumentException("unsupported query");
@@ -74,7 +93,7 @@ class RuleEligibilityTest {
     static List<WorkerCandidate> consume(TestPoolPolicy rule,String group,Object input,int count) {
         var requests=new LinkedHashMap<String,Object>();
         for(int i=0;i<count;i++) requests.put("m"+i,input);
-        return List.copyOf(rule.functions().execute().apply(group,requests).values());
+        return List.copyOf(rule.functions().apply(group,requests).values());
     }
     static Map<EligibilityQuery,Integer> targets(List<RefillTarget> targets) {
         var result=new LinkedHashMap<EligibilityQuery,Integer>();
@@ -98,7 +117,7 @@ class RuleEligibilityTest {
         var deficits=rule.deficits("g",targets(targets));
         assertEquals(List.of(0,0),new ArrayList<>(deficits.values()));
         assertTrue(rule.refill("g",targets(targets),offers(50,1,"US"),100).isEmpty());
-        var taken=rule.functions().execute().apply("g",Map.of("message",Map.of()));
+        var taken=rule.functions().apply("g",Map.of("message",Map.of()));
         assertEquals(1,taken.size()); assertEquals(reads,rule.reads);
         assertThrows(UnsupportedOperationException.class,()->deficits.clear());
         assertThrows(UnsupportedOperationException.class,()->taken.clear());
@@ -128,10 +147,16 @@ class RuleEligibilityTest {
     }
     @Test void invalidInputDoesNotReadOrMutateExistingStock() {
         populate(2); int reads=rule.reads;
-        assertThrows(IllegalArgumentException.class,()->consume(rule,"g",Map.of(),101));
-        var inputs=new LinkedHashMap<String,Object>();
-        inputs.put("first",Map.of()); inputs.put("late",Map.of("unknown",List.of("x")));
-        assertThrows(IllegalArgumentException.class,()->rule.functions().execute().apply("g",inputs));
+        var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("pool", rule.stock), clock::get,
+                Map.of("pool", rule), Map.of("pool", rule.functions()),
+                Map.of("g", new MatchingGroup(Set.of("pool"), Set.of("pool"))));
+        var oversized = new LinkedHashMap<String, WorkerQuery>();
+        for (int i = 0; i < 101; i++) oversized.put("m" + i, new WorkerQuery("pool", Map.of()));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g",oversized));
+        var inputs=new LinkedHashMap<String,WorkerQuery>();
+        inputs.put("first",new WorkerQuery("pool",Map.of()));
+        inputs.put("late",new WorkerQuery("pool",Map.of("unknown",List.of("x"))));
+        assertThrows(IllegalArgumentException.class,()->catalog.take("g",inputs));
         var tooMany = new LinkedHashMap<EligibilityQuery,Integer>();
         for(int i=0;i<101;i++)tooMany.put(pools(1,"p"+i).target(),1);
         assertThrows(IllegalArgumentException.class,()->rule.deficits("g",tooMany));

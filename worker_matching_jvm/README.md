@@ -129,12 +129,21 @@ non-finite numbers are rejected. Every container allows at most 100 members,
 container depth is at most 8, and serialized input is at most 64 KiB. Kernel
 captures and stores this structure without interpreting names or local fields.
 
-The fixed [function pair](src/main/java/com/xa/mass/workermatching/QueryFunctions.java)
-provides `normalizeInput(group, input)` and
-`execute(group, inputsByMessageId)`. Normalization is pure local admission, with no
-Redis read or inventory mutation. Execution owns interpretation, equivalence and
-resource choice. Both must be thread-safe and Group-isolated; neither owns Task
-or Item lifecycle. They need not implement a refill interface or use Pool storage.
+Each fixed [QueryFunction](src/main/java/com/xa/mass/workermatching/QueryFunction.java)
+implements `normalizeInput(group, input)` and `apply(group, inputsByMessageId)`
+directly. Normalization is idempotent local admission without resource access.
+Catalog validates the complete batch before invoking any strategy, groups admitted
+inputs by function name and calls each strategy once. Apply receives normalized
+inputs and owns selection, equivalence and resource access; it does not repeat
+entry admission or the Catalog's consume-request budget check. Both methods must
+be thread-safe and Group-isolated; neither owns Task or Item lifecycle.
+
+Composition registers strategy instances with their existing Pool or Index.
+Adding a strategy over those resources requires its implementation, fixed
+registration and Group enablement, without changing Catalog, Kernel or Pacer.
+There is no Normalizer/Executor callback pair, strategy factory or required refill
+interface. The consume-request budget remains local to Catalog; resource operation
+limits and entry/expiry/capacity checks retain their independent owners.
 
 | Current function name | Local input |
 | --- | --- |
@@ -283,7 +292,10 @@ are not persisted and consume no Pool capacity. Phone observation and execution
 admission are separate commits, with no property version or enduring value guarantee.
 
 `PoolMaintenance` handles supply target interpretation, offered-ID qualification and membership calculation.
-`PoolQueryFunctions` independently interprets Item input over an injected resource.
+Each Pool QueryFunction independently interprets Item input over an injected resource.
+The package-private `PoolCandidates.take` helper groups already selected ranges
+and associates returned candidates with message IDs. It accepts data rather than
+normalization/selection callbacks and owns no resource or lifecycle.
 The internal `CandidatePool` is a concrete memory resource with no Redis or
 executor interface. It stores one identity Entry per Group/Pool, the original
 held candidate, admission order and finite view memberships. It never receives a
@@ -494,6 +506,6 @@ concurrent writes and startup rebuilding, plus direct/Pool execution races.
 
 Task configuration now lives in the Task descriptor. Recreate Tasks in a new scope;
 old descriptor formats are rejected, and old Matching data is neither read nor
-cleared. HTTP, existing facts/Rule index formats and Score encoding are unchanged;
+cleared. HTTP, existing facts/index formats and Score encoding are unchanged;
 the independent phone namespace is additional. Local stock
 is still lost on restart and outstanding holds expire.

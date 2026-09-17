@@ -1,8 +1,11 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.functions.PhoneQueryFunction;
+
+import com.xa.mass.workermatching.functions.IdentityQueryFunction;
+
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.index.PhoneIndex;
-import com.xa.mass.workermatching.functions.DirectQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
@@ -18,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class DirectQueryFunctionsTest {
+class DirectQueryFunctionTest {
     final CandidateBudget budget = new CandidateBudget();
     @Test void identityNeedsNoFactsStockOrRedisAndRetainsInvocationLocalCorrelation() {
         var client = mock(RedisClient.class);
@@ -78,6 +81,6 @@ class DirectQueryFunctionsTest {
     }
 
     private RedisWorkerMatchingCatalog catalog(FactsIndexStore storage) {
-        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", DirectQueryFunctions.identity(), "worker.phone", new DirectQueryFunctions(new PhoneIndex(storage::commands, storage.keyspace())).phone()), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))));
+        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new PhoneIndex(storage::commands, storage.keyspace()))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))));
     }
 }

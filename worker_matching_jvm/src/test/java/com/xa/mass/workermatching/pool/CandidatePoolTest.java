@@ -1,6 +1,9 @@
 package com.xa.mass.workermatching.pool;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
+import com.xa.mass.workermatching.functions.AnyQueryFunction;
+import com.xa.mass.workermatching.functions.CountryQueryFunction;
+import com.xa.mass.workermatching.QueryFunction;
+
 
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
@@ -22,22 +25,17 @@ class CandidatePoolTest {
     List<String> ids(List<WorkerCandidate> candidates) { return candidates.stream().map(WorkerCandidate::workerId).toList(); }
 
     @Test void distinctFunctionsShareOneResourceAndAllMembershipsDisappearTogether() {
-        var functions=Map.of(
-                "by-country",PoolQueryFunctions.create(pool,(g,input)-> {
-                    if (!(input instanceof String)) throw new IllegalArgumentException(); return input;
-                },(g,input)->range("country",List.of((String)input))),
-                "by-phone",PoolQueryFunctions.create(pool,(g,input)-> {
-                    if (!(input instanceof Map<?,?> map) || !(map.get("number") instanceof String)) throw new IllegalArgumentException(); return input;
-                },(g,input)->range("phone",List.of((String)((Map<?,?>)input).get("number")))));
+        Map<String, QueryFunction> functions=Map.of(
+                "by-country",new CountryQueryFunction(pool), "any",new AnyQueryFunction(pool));
         pool.admit("g",List.of(row("a","CN",5000)));
         assertEquals(9999,budget.available());
-        var first=functions.get("by-country").execute().apply("g",Map.of("country-request","CN"));
+        var first=functions.get("by-country").apply("g",Map.of("country-request",List.of("CN")));
         assertEquals("a",first.get("country-request").workerId());
-        assertTrue(functions.get("by-phone").execute().apply("g",Map.of("phone-request",Map.of("number","number-a"))).isEmpty());
+        assertTrue(functions.get("any").apply("g",Map.of("any-request",Map.of())).isEmpty());
         assertEquals(0,pool.viewBuckets("g")); assertEquals(10_000,budget.available());
         pool.admit("g",List.of(row("b","CN",5000)));
-        assertEquals("b",functions.get("by-phone").execute().apply("g",Map.of("phone-request",Map.of("number","number-b"))).get("phone-request").workerId());
-        assertTrue(functions.get("by-country").execute().apply("g",Map.of("country-request","CN")).isEmpty());
+        assertEquals("b",functions.get("any").apply("g",Map.of("any-request",Map.of())).get("any-request").workerId());
+        assertTrue(functions.get("by-country").apply("g",Map.of("country-request",List.of("CN"))).isEmpty());
         assertEquals(10_000,budget.available());
     }
 

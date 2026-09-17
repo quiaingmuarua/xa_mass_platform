@@ -228,9 +228,10 @@ No simulated input calls the Messages Backend or invents product Results.
 
 ## SMS Scenario
 
-Start the Server with its `sms-reception` profile first, then use a complete
-configuration based on [sms.json](config/sms.json) with the matching Runtime URL.
-Product startup registers one mixed-country `demo-sim` Group; the Host never
+Start the Server with its `preview` profile first, then use a complete
+configuration based on [sms.json](config/sms.json) with the matching Runtime URL,
+or use the shared [Preview launcher](../distribution/server/PREVIEW.md) for both
+scenarios and their Host. Preview registers one mixed-country `demo-sim` Group; the Host never
 registers Groups. The example generates CN/US/GB numbers deterministically.
 All configurations use the same filename plus physical-line identity and the
 existing `SCENARIO_LAB` batch Prepare. Product examples do not implicitly start
@@ -631,7 +632,7 @@ configured Adapter; each proof runner owns the Worker Host process:
   extension reachability, 100 final Results and identity reuse across a real
   Host restart;
 - [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
-  proves loaded Rule-index execution follows live Worker and Platform facts,
+  proves loaded Matching query execution follows live Worker and Platform facts,
   with actual replica witnesses and independent Result closure;
 - [`worker-convergence-health`](../integrations/worker-convergence-health/)
   owns two isolated 2x500 scenarios: deterministic Worker/Server state

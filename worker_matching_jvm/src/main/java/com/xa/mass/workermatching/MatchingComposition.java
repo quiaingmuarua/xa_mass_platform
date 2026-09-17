@@ -1,8 +1,12 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.functions.PhoneQueryFunction;
+import com.xa.mass.workermatching.functions.IdentityQueryFunction;
+import com.xa.mass.workermatching.functions.ProofFactsQueryFunction;
+import com.xa.mass.workermatching.functions.MessagingQueryFunction;
+import com.xa.mass.workermatching.functions.CountryQueryFunction;
+import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.functions.DirectQueryFunctions;
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.index.IndexMutation;
 import com.xa.mass.workermatching.index.MessagingIndex;
 import com.xa.mass.workermatching.index.PhoneIndex;
@@ -26,7 +30,7 @@ public final class MatchingComposition {
     private final Map<String, MatchingGroup> groups;
     private final Map<String, CandidatePool> pools;
     private final Map<String, PoolRefillPolicy> policies;
-    private final Map<String, QueryFunctions> functions;
+    private final Map<String, QueryFunction> functions;
 
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
         this.storage = Objects.requireNonNull(storage);
@@ -47,8 +51,8 @@ public final class MatchingComposition {
         });
         var pools = new LinkedHashMap<String, CandidatePool>();
         var policies = new LinkedHashMap<String, PoolRefillPolicy>();
-        var functions = new LinkedHashMap<String, QueryFunctions>();
-        functions.put("workerId", DirectQueryFunctions.identity());
+        var functions = new LinkedHashMap<String, QueryFunction>();
+        functions.put("workerId", new IdentityQueryFunction());
         for (String name : List.of("any", "country", "messaging", "proof-facts")) {
             if (!enabledPools.contains(name)) continue;
             var pool = new CandidatePool(clock, budget);
@@ -56,28 +60,28 @@ public final class MatchingComposition {
             switch (name) {
                 case "any" -> {
                     policies.put(name, new AnyPoolPolicy(clock, pool));
-                    functions.put("worker.any", PoolQueryFunctions.any(pool));
+                    functions.put("worker.any", new AnyQueryFunction(pool));
                 }
                 case "country" -> {
                     policies.put(name, new CountryPoolPolicy(clock, pool, storage::readWorkerFacts));
-                    functions.put("worker.country", PoolQueryFunctions.country(pool));
+                    functions.put("worker.country", new CountryQueryFunction(pool));
                 }
                 case "messaging" -> {
                     var index = new MessagingIndex(storage::commands, storage.keyspace());
                     policies.put(name, new MessagingPoolPolicy(clock, pool, index));
-                    functions.put("worker.messaging.available", PoolQueryFunctions.messaging(pool));
+                    functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
                 }
                 case "proof-facts" -> {
                     var index = new ProofFactsIndex(storage::commands, storage.keyspace());
                     policies.put(name, new ProofFactsPoolPolicy(clock, pool, index));
-                    functions.put("proof.worker.facts", PoolQueryFunctions.proofFacts(pool));
+                    functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
                 }
                 default -> throw new IllegalStateException("Unexpected built-in Pool");
             }
         }
         if (enabledFunctions.contains("worker.phone")) {
             var phone = new PhoneIndex(storage::commands, storage.keyspace());
-            functions.put("worker.phone", new DirectQueryFunctions(phone).phone());
+            functions.put("worker.phone", new PhoneQueryFunction(phone));
         }
         this.pools = Map.copyOf(pools);
         this.policies = Map.copyOf(policies);
@@ -100,7 +104,7 @@ public final class MatchingComposition {
     public Map<String, CandidatePool> pools() { return pools; }
     public CandidateBudget budget() { return budget; }
     public Map<String, PoolRefillPolicy> policies() { return policies; }
-    public Map<String, QueryFunctions> functions() { return functions; }
+    public Map<String, QueryFunction> functions() { return functions; }
 
     public RedisWorkerMatchingCatalog catalog() {
         return new RedisWorkerMatchingCatalog(storage, budget, pools, clock, policies, functions, groups);

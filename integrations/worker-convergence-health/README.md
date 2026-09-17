@@ -51,7 +51,7 @@ Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
 250-millisecond immediate observation window. Item one is the named valid
 witness, every tenth Item has deterministic invalid input, and String Items
 two and three are the delay and fail background work. Managed Any waves use explicit
-`worker.any` queries with empty input. A separate finite Rule-index Task owns the
+`worker.any` queries with empty input. A separate finite Pool-backed Task owns the
 Properties-matching witness with an explicit one-candidate refill target. The
 scenario profile supplies explicit `any / {} / 1000` declarations at Task creation;
 refill remains shared and independent of the current Item batch.
@@ -69,13 +69,13 @@ The phase order is:
    only those 499 Workers and close the wave.
 5. Complete waves two through five.
 6. Reconfirm the directed Worker is locally STOPPED, disconnected and scheduling
-   unavailable. Submit wave six and a separate finite Rule-index Task requiring
+   unavailable. Submit wave six and a separate finite Pool-backed Task requiring
    `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
    restart Runtime Server while retaining Worker Simulator.
 7. Require the other 999 stable identities to reconnect and become HOT while
    the directed Worker stays stopped. Replace its stopped-state slot and start
    it once. Require its original identity, canonical Property and connected/HOT
-   observations; close the Rule-index witness, wave six and final wave seven.
+   observations; close the Pool-backed witness, wave six and final wave seven.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
 witnesses. The workload also offers seven delay and seven fail Items. These are

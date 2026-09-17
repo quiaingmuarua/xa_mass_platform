@@ -1,12 +1,12 @@
 package com.xa.mass.server.testsupport;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.pool.CandidatePool;
 import com.xa.mass.workermatching.refill.PoolMaintenance;
 import com.xa.mass.workermatching.index.IndexMutation;
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
-import com.xa.mass.workermatching.QueryFunctions;
+import com.xa.mass.workermatching.QueryFunction;
 import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -48,7 +48,26 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
     public BucketPoolFixture(LongSupplier clock, FactsIndexStore storage, CandidatePool stock, boolean failSnapshot) {
         super(clock,stock); this.storage=storage; this.stock=stock; this.failSnapshot=failSnapshot;
     }
-    public QueryFunctions functions() { return PoolQueryFunctions.create(stock,this::normalizeLocalInput,this::select); }
+    public QueryFunction functions() {
+            return new QueryFunction() {
+                public Object normalizeInput(String group, Object input) { return normalizeLocalInput(group, input); }
+                public Map<String, WorkerCandidate> apply(String group, Map<String, Object> inputs) {
+                    var grouped = new LinkedHashMap<Selection, List<String>>();
+                    inputs.forEach((id, input) -> grouped.computeIfAbsent(select(group, input), ignored -> new ArrayList<>()).add(id));
+                    var limits = new LinkedHashMap<Selection, Integer>();
+                    grouped.forEach((selection, ids) -> limits.put(selection, ids.size()));
+                    var taken = stock.take(group, limits);
+                    var assigned = new HashMap<String, WorkerCandidate>();
+                    grouped.forEach((selection, ids) -> {
+                        var candidates = taken.get(selection);
+                        for (int i = 0; i < candidates.size(); i++) assigned.put(ids.get(i), candidates.get(i));
+                    });
+                    var result = new LinkedHashMap<String, WorkerCandidate>();
+                    inputs.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
+                    return Collections.unmodifiableMap(result);
+                }
+            };
+        }
     public static List<IndexMutation> indexes() {
         return List.of(new IndexMutation("test_buckets",PREPARE));
     }

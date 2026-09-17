@@ -12,7 +12,7 @@ kernel_pacer_jvm
   scheduling Policy, convergence loops and finite lifecycle
 
 worker_matching_jvm
-  Worker facts, fixed Rule Handlers and bounded identity evidence
+  Worker facts, fixed query functions, Pool maintenance and bounded identity evidence
 
 server_jvm
   Spring assembly and public Runtime API
@@ -26,15 +26,15 @@ endpoint-local handlers.
 
 ## Trust Order
 
-1. Java production Owner and Pacer code.
-2. Focused JVM tests and real Redis proofs.
-3. Current Owner documents linked below.
-4. Runtime Boundary and end-to-end acceptance proofs.
-5. Historical tags only as failure-mode evidence.
+Use production code and the owning tests to establish current behavior.
+[AGENTS](../../AGENTS.md#trust-order) defines the repository trust and change
+rules. Correct stale prose within scope; a code change requires authorization
+for that behavior. Historical evidence remains version-scoped.
 
-When code and a current document disagree, repair the document or the
-implementation in the same change. A historical snapshot is never current
-runtime truth.
+Start with [Scheduling Mainline](scheduling-overview.md), including its
+[production and proof pointers](scheduling-overview.md#production-and-proof-pointers),
+then [Worker Delivery Boundary](worker-delivery-dispatch.md). Use the index
+below for the affected transition, storage shape or lifecycle.
 
 ## Owner Documents
 
@@ -57,9 +57,8 @@ Policy and lifecycle documents:
 - [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md)
 - [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 - [Task Initialization](../../kernel_pacer_jvm/doc/dispatch/task-initialization-policy.md)
-- [Candidate Selection](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
 - [Task Dispatch](../../kernel_pacer_jvm/doc/dispatch/task-dispatch-pacer.md)
-- [Worker Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md): long-lived Recovery with a 15-second eligibility delay
+- [Worker Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 - [Result Convergence](../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
 
 Cross-module documents:
@@ -70,12 +69,6 @@ Cross-module documents:
 - [Proof Lanes](../../TESTING.md)
 
 ## Cross-Owner Reading
-
-Task execution and later outcome observations share the existing Result
-Convergence lifecycle. Kernel owns monotonic terminal progression and ordered
-Result storage; Server defines business names. Later observations update the
-same Item without reopening scheduling or releasing Worker leases. The Result
-Owner documents independent Score/content commits and their best-effort limits.
 
 [Scheduling Mainline](scheduling-overview.md) explains the independent Score
 owners, Matching handoff, Result evidence and vertical scale boundary.

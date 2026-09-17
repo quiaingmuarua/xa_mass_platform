@@ -24,11 +24,13 @@ import org.jspecify.annotations.Nullable;
 
 /** Matching owns facts, Pool supply admission, and finite Group index projections. */
 public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, AutoCloseable {
+    private static final int MAX_TAKE_REQUESTS = 100;
+
     private final FactsIndexStore storage;
     private final CandidateBudget budget;
     private final Map<String, CandidatePool> pools;
     private final Map<String,PoolRefillPolicy> handlers;
-    private final Map<String,QueryFunctions> executors;
+    private final Map<String,QueryFunction> executors;
     private final Map<String,MatchingGroup> groups;
     private record Scope(String workerGroupId,String poolName) { }
     private final LongSupplier clock;
@@ -39,7 +41,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     public RedisWorkerMatchingCatalog(FactsIndexStore storage, CandidateBudget budget,
             Map<String, CandidatePool> pools, LongSupplier clock,
-            Map<String,PoolRefillPolicy> poolPolicies, Map<String,QueryFunctions> queryFunctions,
+            Map<String,PoolRefillPolicy> poolPolicies, Map<String,QueryFunction> queryFunctions,
             Map<String,MatchingGroup> groups) {
         this.storage=Objects.requireNonNull(storage,"storage");
         this.budget=Objects.requireNonNull(budget,"budget");
@@ -78,7 +80,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return handler;
     }
 
-    private QueryFunctions requireExecutor(String group, String name) {
+    private QueryFunction requireExecutor(String group, String name) {
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var executor = executors.get(name);
         if (executor == null || !"workerId".equals(name)
@@ -90,13 +92,13 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     @Override public WorkerQuery normalizeQuery(String group, WorkerQuery query) {
         Objects.requireNonNull(query, "query");
         var function = requireExecutor(group, query.executorName());
-        return new WorkerQuery(query.executorName(), function.normalizeInput().apply(group, query.input()));
+        return new WorkerQuery(query.executorName(), function.normalizeInput(group, query.input()));
     }
 
     @Override public Map<String,WorkerCandidate> take(String group, Map<String,WorkerQuery> queriesByMessageId) {
         requireNonBlank(group, "workerGroupId");
         Objects.requireNonNull(queriesByMessageId, "queriesByMessageId");
-        if (queriesByMessageId.size() > 100) throw new IllegalArgumentException("at most 100 Item queries");
+        if (queriesByMessageId.size() > MAX_TAKE_REQUESTS) throw new IllegalArgumentException("at most " + MAX_TAKE_REQUESTS + " Item queries");
         var captured = new LinkedHashMap<String,WorkerQuery>();
         queriesByMessageId.forEach((id, query) -> {
             requireNonBlank(id, "messageId"); captured.put(id, Objects.requireNonNull(query, "query"));
@@ -110,7 +112,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         var assigned = new HashMap<String,WorkerCandidate>();
         var workers = new HashSet<String>();
         grouped.forEach((name, inputs) -> {
-            var result = Objects.requireNonNull(executors.get(name).execute().apply(group, Collections.unmodifiableMap(inputs)), "executor result");
+            var result = Objects.requireNonNull(executors.get(name).apply(group, Collections.unmodifiableMap(inputs)), "executor result");
             for (var row : result.entrySet()) {
                 if (!inputs.containsKey(row.getKey()) || row.getValue() == null)
                     throw new IllegalStateException("executor returned an unrequested or null candidate");

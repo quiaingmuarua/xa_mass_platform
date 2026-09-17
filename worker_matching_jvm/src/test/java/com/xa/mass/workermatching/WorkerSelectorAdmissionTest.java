@@ -1,9 +1,9 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.CandidatePool;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
@@ -39,7 +39,7 @@ class WorkerSelectorAdmissionTest {
             for(var query:List.of(Map.of("workerId",List.of("w")),Map.of("workerid",List.of("w")),
                     Map.of("country",List.of("CN")),Map.of("worker.country",List.of("cn"))))
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(query)));
-            assertThrows(IllegalArgumentException.class,()->PoolQueryFunctions.country(stock).execute().apply("g",Map.of("m",Map.of("workerId",List.of("w")))));
+            assertThrows(IllegalArgumentException.class,()->new CountryQueryFunction(stock).normalizeInput("g",Map.of("workerId",List.of("w"))));
             verifyNoInteractions(client);
         }
     }

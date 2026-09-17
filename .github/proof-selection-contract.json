@@ -171,7 +171,7 @@
       "reason": "Independent phone membership and bounded lookup affect all Server-backed Worker execution paths."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/DirectQueryFunctions.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/PhoneQueryFunction.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1007,7 +1007,7 @@
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/PoolQueryFunctions.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/CountryQueryFunction.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1068,6 +1068,21 @@
         "runtime_boundary"
       ],
       "reason": "Resource assembly and Redis behavior tests retain the existing contract lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/QueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Direct strategy admission and batched execution retain all Matching production proof lanes."
     }
   ]
 }

@@ -96,10 +96,15 @@ class MatchingResourceIntegrationTest {
             var direct = composition.functions().get("worker.phone");
             var functions = new LinkedHashMap<>(composition.functions());
             functions.put("worker.phone", direct);
-            functions.put("proof.phone", new QueryFunctions((g, input) -> {
-                if (!(input instanceof List<?> list) || list.size() != 1) throw new IllegalArgumentException("one phone required");
-                return direct.normalizeInput().apply(g, list.getFirst());
-            }, direct.execute()));
+            functions.put("proof.phone", new QueryFunction() {
+                public Object normalizeInput(String g, Object input) {
+                    if (!(input instanceof List<?> list) || list.size() != 1) throw new IllegalArgumentException("one phone required");
+                    return direct.normalizeInput(g, list.getFirst());
+                }
+                public Map<String, WorkerCandidate> apply(String g, Map<String, Object> inputs) {
+                    return direct.apply(g, inputs);
+                }
+            });
             try (var catalog = new RedisWorkerMatchingCatalog(store, composition.budget(), composition.pools(),
                     System::currentTimeMillis, composition.policies(), functions, groups)) {
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "number")));

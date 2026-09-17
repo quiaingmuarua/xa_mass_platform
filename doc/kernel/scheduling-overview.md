@@ -31,24 +31,42 @@ Kernel Main Scheduler
 
 Task dispatch
   -> due Items; TTL/exhaustion settlement
-  -> explicit Group + Rule name + query -> Rule-owned candidate stock
-  -> exact Worker confirmation -> exact Item claim -> Command
+  -> Group + messageId-to-WorkerQuery map -> fixed Matching query functions
+  -> Pool stock with original fences / direct identity hints
+  -> strict Worker transfer / current execution acquisition
+  -> exact Item claim -> Command
   -> ACTIVE recheck before exact Task close or idle park
 ```
 
 The Main Scheduler supplies every Producer's root Task/Group identities.
+Finite Tasks require explicit approval before INITIAL processing; managed Calls
+use their Group's registered reusable Task. Task lifecycle and descriptor storage
+belong to the [Task Owner](../../kernel_jvm/doc/resource-model/task-resource-model.md).
 Producers discover only vertical resources under those inputs. Busy Producers
 skip that snapshot; they do not accumulate a pending source queue. Assembly and
 lifecycle are defined in
 [Pacer Application Assembly](../../kernel_pacer_jvm/doc/application-assembly.md).
 
-Each Matching Rule owns qualification, deficits, admission and atomic consumption
-for its Group inventory; Catalog coordinates target merging and bounded batches.
-Pacer acquires candidate leases before Rule qualification. Kernel confirms the
-original fences, rejecting sealed or stale evidence. Unselected
-or rejected holds expire naturally. Pacer carries Rule names and ordinary data;
-it does not interpret business queries, read facts or construct index coordinates.
-See [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
+Task supply declarations name Pools and carry refill targets; Item queries name
+functions and carry function-local input. These are independent contracts.
+Matching's Catalog coordinates target merging and bounded calls. Refill policies
+own qualification and deficits; query functions interpret Item inputs; Pool
+resources own bounded stock. Index resources are maintained from facts
+independently of Pool demand. See the
+[Matching resource composition](../../worker_matching_jvm/README.md#fixed-resource-composition).
+
+For Pool supply, Pacer acquires short leases before Matching qualification.
+Matching retains the original fence and deadline. A Pool function consumes that
+stock, and Kernel confirms its exact soft fence before execution. Direct
+`workerId` and `worker.phone` functions require no Pool stock and return identity
+hints for a separate current-state execution acquisition. Both execution paths
+seal the admitted Worker hold; an active sealed hold cannot be preempted.
+A failed strict expectation never falls back to identity acquisition.
+
+Unselected or rejected holds expire naturally. Pacer carries names and immutable
+data without interpreting business queries, reading facts or constructing index
+coordinates. Item queries cannot create refill demand. See
+[Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
 
 ## Results And Recovery
 
@@ -122,3 +140,20 @@ Use [TESTING](../../TESTING.md) to select proof by claim. Focused policy tests
 establish decisions, Redis Owner tests establish atomic fences, and Runtime
 Boundary/system lanes establish their own finite cross-process relationships.
 A passing layer does not substitute for another layer's evidence.
+
+## Production And Proof Pointers
+
+Use these entrypoints to trace one handoff at a time. The listed tests expose
+representative assertions, not an exhaustive proof or a record of a successful
+run. [Proof Registry](../testing/proof-registry.md) owns claims and nonclaims;
+[TESTING](../../TESTING.md) owns commands and CI selection.
+
+| Handoff | Production entry | Representative assertion |
+| --- | --- | --- |
+| Task and Item admission | [TaskCreationService](../../server_jvm/src/main/java/com/xa/mass/server/task/TaskCreationService.java), [TaskDataService](../../server_jvm/src/main/java/com/xa/mass/server/task/TaskDataService.java) | [Redis Task Owner](../../server_jvm/src/test/java/com/xa/mass/server/assembly/kernel/RedisTaskOwnerRuntimeIntegrationTest.java): complete descriptors, passive Item queries and exact approval/initialization |
+| Fixed lifecycle and Main input | [KernelPacerRuntime](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java), [DispatchMainScheduler](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/DispatchMainScheduler.java) | [Runtime tests](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/KernelPacerRuntimeTest.java): fixed assembly, startup and shutdown; [module boundary](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/KernelPacerModuleBoundaryTest.java): supported runtime surface |
+| Leases before Pool qualification | [WorkerEligibilityRefillPolicy](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerEligibilityRefillPolicy.java), [Matching Catalog](../../worker_matching_jvm/src/main/java/com/xa/mass/workermatching/RedisWorkerMatchingCatalog.java) | [Refill policy tests](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/WorkerEligibilityRefillPolicyTest.java): only acquired candidates reach Matching; [Matching composition](../../worker_matching_jvm/src/test/java/com/xa/mass/workermatching/MatchingCompositionTest.java): shared resources and startup cleanup |
+| Candidate admission, Item claim, Command | [TaskAssignmentDispatcher](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/TaskAssignmentDispatcher.java) | [Assignment tests](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/TaskAssignmentDispatcherTest.java): strict/current partitioning, returned fences and partial-call failure; [Dispatch progress](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/TaskDispatchProgressTest.java): returning capacity across Tasks |
+| Result event to separate Owner operations | [TaskResultBatchPolicy](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/result/TaskResultBatchPolicy.java), [TaskItem events](../../kernel_jvm/src/main/java/com/xa/mass/kernel/task/DefaultTaskItemResultEvents.java) | [Event tests](../../kernel_jvm/src/test/java/com/xa/mass/kernel/task/DefaultTaskItemResultEventsTest.java): operation order and partial failure; [Redis Task Owner](../../server_jvm/src/test/java/com/xa/mass/server/assembly/kernel/RedisTaskOwnerRuntimeIntegrationTest.java): monotonic outcomes and independent content targets |
+| Worker serviceability and exact leases | [Serviceability policy](../../kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerServiceabilityDispatchPolicy.java) | [Policy tests](../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/WorkerServiceabilityDispatchPolicyTest.java): recheck before Probe; [Redis Worker Owner](../../server_jvm/src/test/java/com/xa/mass/kernel/score/redis/RedisWorkerOwnerRuntimeIntegrationTest.java): real Redis fences and admission |
+| Cross-owner execution | [Server delivery use case](../../server_jvm/src/main/java/com/xa/mass/server/delivery/application/WorkerDeliveryService.java) | [Runtime Boundary](../../server_jvm/src/test/java/com/xa/mass/server/integration/RuntimeBoundaryIntegrationTest.java): real execution including separate supply/consumption and direct queries; [Scenario Coexistence](../../integrations/scenario-coexistence/README.md): later business observations over shared Workers |

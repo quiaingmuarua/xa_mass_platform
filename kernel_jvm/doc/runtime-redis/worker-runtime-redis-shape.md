@@ -10,7 +10,7 @@ keys; Server and Pacer use mechanical contracts rather than bypassing them.
 ```text
 Kernel WorkerResourceCatalog  WorkerGroup directory and persistent Binding
 Kernel WorkerScoreCore        registered members and scheduling Score
-WorkerMatchingCatalog         Worker/Platform facts and Rules
+WorkerMatchingCatalog         Worker/Platform facts, indexes and fixed queries
 Server Identity               external typed registration coordinates
 Server Endpoint Directory     local defaults and ID -> URI; no Redis connection
 ```
@@ -44,10 +44,10 @@ accepted missing members. These stages commit separately and retry fills gaps.
 ## Matching Facts
 
 [Worker Matching](../../../worker_matching_jvm/README.md#persistent-catalog) owns
-Worker facts, independent Platform Properties and derived Rule indexes. Task Owner
-stores each Task's Rule name and resolved refill declarations in its descriptor;
-Matching has no Task-ID configuration store. Fixed Handlers have no persisted
-DSL definitions. Facts and their
+Worker facts, independent Platform Properties and enabled indexes. Task Owner
+stores optional Pool supply declarations in each descriptor and an explicit
+WorkerQuery in each Item; Matching has no Task-ID configuration store. Fixed
+functions and maintenance policies have no persisted DSL definitions. Facts and their
 enabled index projections update in one Matching Lua; Platform patch no longer
 uses a client pre-read/CAS retry loop.
 
@@ -110,7 +110,7 @@ independent `test_*` scopes and clean only their own exact prefix.
 [Server Prepare](../../../server_jvm/README.md#workergroup-and-worker-preparation)
 owns the ordered cross-owner use case. The
 [Matching catalog](../../../worker_matching_jvm/README.md#persistent-catalog)
-owns fact/Rule semantics, and the
+owns fact/query semantics, and the
 [Worker resource model](../resource-model/worker-resource-model.md) owns Kernel
 Binding and registration. Runtime views join independent Owner reads; they are neither new
 truth records nor atomic snapshots across these keys.
@@ -118,8 +118,8 @@ truth records nor atomic snapshots across these keys.
 ## Guardrails
 
 - Do not restore `worker:properties` or Properties inside Kernel metadata.
-- Do not place Rules in Kernel Task JSON.
-- Do not add Item Rule storage; Kernel TaskItems carry one selector,
+- Kernel Task JSON stores passive supply/query data, never executable policies.
+- Do not add a second Item query store; Kernel TaskItems carry one WorkerQuery,
   not Properties, derived query/ID mirrors or index scores.
 - Do not use identity ownership for Worker discovery.
 - Do not let Matching interpret Score or let Kernel interpret Properties.

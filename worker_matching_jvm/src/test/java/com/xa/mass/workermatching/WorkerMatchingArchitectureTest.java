@@ -14,9 +14,9 @@ class WorkerMatchingArchitectureTest {
 
     @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
         assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.",
-                ".functions.", ".refill.", "executorName", "QueryFunctions", "PoolRefillPolicy"));
+                ".functions.", ".refill.", "executorName", "QueryFunction", "PoolRefillPolicy"));
         assertPackageDependencies("index", List.of(".pool.", ".refill.", ".functions.",
-                "executorName", "QueryFunctions", "PoolRefillPolicy", "CandidateBudget"));
+                "executorName", "QueryFunction", "PoolRefillPolicy", "CandidateBudget"));
         assertPackageDependencies("storage", List.of(".pool.", ".refill.", ".functions.",
                 "executorName", "CandidateBudget", "CandidatePool"));
         assertPackageDependencies("functions", List.of(".refill.", ".storage.", "io.lettuce",

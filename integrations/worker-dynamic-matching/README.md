@@ -1,6 +1,6 @@
 # Worker Dynamic Matching
 
-Primary proof: continuous Rule-index work overlaps real Worker Properties
+Primary proof: continuous Matching query execution overlaps real Worker Properties
 changes, independently observed facts and actual execution on eligible replicas.
 This lane has its own claim and evidence; Correctness, Convergence Health and
 Loaded Recovery retain their existing claims.

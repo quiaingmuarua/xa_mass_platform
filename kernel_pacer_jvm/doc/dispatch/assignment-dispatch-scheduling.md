@@ -26,7 +26,7 @@ Hint reads do not advance their query cursors; actual refill attempts do. No inv
 executable preparation is required between those calls. Server admission does not
 observe shortages or maintain inventory.
 
-## Core Mechanism Change
+## Candidate Lease Boundary
 
 **For Pool refill, Pacer acquires a 1-second candidate lease before Matching reads projections.**
 Only successful new fences are supplied. Matching admits the qualified subset
@@ -174,21 +174,15 @@ lost Properties evidence eventually arrives. Matching resources and functions ne
 
 ### Serviceability And Verification Scope
 
-The `d148ed516` baseline passed Proof CI run `34928709726`, including the original
-task-fault and state scenarios. Earlier local failures do not describe that baseline
-as currently failing, and its green result does not validate the new lease ordering.
-The pre-Matching change requires its own unchanged-fixture proof results.
+Focused Pacer tests establish ordering and bounded policy. Redis Owner proof
+establishes lease fences and admission; Runtime Boundary and system proofs
+establish their named execution/failure claims. Follow the
+[mainline code/proof pointers](../../../doc/kernel/scheduling-overview.md#production-and-proof-pointers)
+and [TESTING](../../../TESTING.md) for current selection.
 
-On 2026-09-15, the pre-Matching worktree over `d148ed516` passed Windows-native
-Owner/Runtime Boundary, Worker Correctness, Dynamic Matching (150400 Items) and
-Convergence Health state verification against loopback Redis 7.4.10. The unchanged
-task-fault run failed its 300-second host-down scheduling assertion: 28 String
-Workers remained held-hot, excluding the checkpoint target and backup, which were
-already RECOVERY. Refill/admission continued while consumption stayed fixed; the
-run stopped before the restart/recovery phase. The initial disconnect evidence's
-delivery/rejection reason was not captured. This is a local failed acceptance,
-not a same-environment attribution to the new ordering. Linux Task Call/mixed A/B
-against the baseline remains unexecuted; no performance acceptance is claimed.
+The [2026-09-15 verification notes](../../../doc/archive/verification/2026-09-15-pre-matching-lease-proof.md)
+preserve version-scoped results and an unresolved failure observation. They are
+historical evidence, not a current pass/fail report or a production contract.
 
 Lease acquisition is not network evidence. The existing current-slot evidence
 boundary, observation-age checks and Serviceability probe strategy are unchanged.

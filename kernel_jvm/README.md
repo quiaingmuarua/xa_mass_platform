@@ -21,7 +21,7 @@ with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 
 Matching supplies bounded identities through the `WorkerMatching` port. Dispatch policy, result disposition,
 serviceability policy, Pacer loops and thread lifecycle belong to
-[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed Rule Handlers and constraint evaluation belong to
+[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed query functions, Pool maintenance and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
 TaskItems carry `WorkerQuery(executorName, input)`, a bounded immutable JSON
@@ -122,13 +122,7 @@ Build:
 ./gradlew :kernel_jvm:build
 ```
 
-Every Task descriptor stores optional Pool supply declarations. Empty supply is valid; Item functions remain explicit and independent. Main
-shares complete NORMAL descriptors for independent refill and dispatch.
-For Pool refill, Pacer issues closed batches with acquired 1-second leases. Each Matching Rule
-qualifies and admits only those identities with their original fence and deadline;
-it never requests an extension. Pool Item queries consume the Rule-owned Group inventory.
-Direct Identity/Phone queries require no Pool hold and return an identity hint;
-Kernel admits due HOT or active soft HOT into a sealed execution lease atomically.
-Active sealed holds cannot be preempted. Strict Pool candidates keep exact fencing.
-Kernel retains HOT, Score and exact confirmation/
-claim authority; no Task-private candidate cache or Item-triggered supply exists.
+Follow [Scheduling Mainline](../doc/kernel/scheduling-overview.md) for the
+caller sequence across Task supply, Item queries, exact execution admission and
+Result handling. The [HOT lease protocol](doc/score/worker-hot-acquire-lease-protocol.md)
+defines the two execution operations and their fences.

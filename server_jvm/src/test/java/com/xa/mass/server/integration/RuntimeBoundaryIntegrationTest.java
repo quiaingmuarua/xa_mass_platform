@@ -1,5 +1,6 @@
 package com.xa.mass.server.integration;
 
+import com.xa.mass.workermatching.functions.MessagingQueryFunction;
 import static org.mockito.ArgumentMatchers.anyString;
 
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
@@ -15,7 +16,6 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.*;
 import com.xa.mass.workermatching.pool.CandidatePool;
 
-import com.xa.mass.workermatching.functions.PoolQueryFunctions;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.server.testsupport.BucketPoolFixture;
 import com.xa.mass.server.testsupport.IdentityHintPoolFixture;
@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Map;
 import java.util.Set;
@@ -124,23 +125,29 @@ class RuntimeBoundaryIntegrationTest {
             var handlers=new LinkedHashMap<>(composition.policies());
             handlers.put(BucketPoolFixture.ID,bucket); handlers.put(IdentityHintPoolFixture.ID,identityHintRule);
             var functions=new LinkedHashMap<>(composition.functions());
-            functions.put(BucketPoolFixture.ID,bucket.functions()); functions.put(IdentityHintPoolFixture.ID,identityHintRule.queryFunctions());
-            var messaging = PoolQueryFunctions.messaging(composition.pools().get("messaging"));
-            functions.put("proof.messaging.country", new QueryFunctions((g,input)-> {
-                if (!(input instanceof String country)) throw new IllegalArgumentException("country string required");
-                messaging.normalizeInput().apply(g,Map.of("country",List.of(country))); return country;
-            }, (g,inputs)-> {
-                var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("country",List.of(input))));
-                return messaging.execute().apply(g,local);
-            }));
-            functions.put("proof.messaging.phones", new QueryFunctions((g,input)-> {
-                if (!(input instanceof List<?> phones) || phones.size()!=1 || !(phones.getFirst() instanceof String phone))
-                    throw new IllegalArgumentException("one phone required");
-                messaging.normalizeInput().apply(g,Map.of("phone",phone)); return List.of(phone);
-            }, (g,inputs)-> {
-                var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("phone",((List<?>)input).getFirst())));
-                return messaging.execute().apply(g,local);
-            }));
+            functions.put(BucketPoolFixture.ID,bucket.functions()); functions.put(IdentityHintPoolFixture.ID,identityHintRule.queryFunction());
+            var messaging = new MessagingQueryFunction(composition.pools().get("messaging"));
+            functions.put("proof.messaging.country", new QueryFunction() {
+                public Object normalizeInput(String g, Object input) {
+                    if (!(input instanceof String country)) throw new IllegalArgumentException("country string required");
+                    messaging.normalizeInput(g,Map.of("country",List.of(country))); return country;
+                }
+                public Map<String, WorkerMatching.WorkerCandidate> apply(String g, Map<String, Object> inputs) {
+                    var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("country",List.of(input))));
+                    return messaging.apply(g,local);
+                }
+            });
+            functions.put("proof.messaging.phones", new QueryFunction() {
+                public Object normalizeInput(String g, Object input) {
+                    if (!(input instanceof List<?> phones) || phones.size()!=1 || !(phones.getFirst() instanceof String phone))
+                        throw new IllegalArgumentException("one phone required");
+                    messaging.normalizeInput(g,Map.of("phone",phone)); return List.of(phone);
+                }
+                public Map<String, WorkerMatching.WorkerCandidate> apply(String g, Map<String, Object> inputs) {
+                    var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("phone",((List<?>)input).getFirst())));
+                    return messaging.apply(g,local);
+                }
+            });
             var catalog=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
                     System::currentTimeMillis,handlers,functions,rules.groups());
             try { storage.rebuildIndexes(); return catalog; }

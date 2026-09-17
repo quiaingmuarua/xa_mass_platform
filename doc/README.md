@@ -4,16 +4,26 @@ Status: current repository document index.
 
 ## Start Here
 
-1. [Repository Entry](../README.md) defines cross-module authority, dispatch
-   vocabulary and the TASK/DIRECT_CALL paths.
-2. [Java Kernel Authority](kernel/README.md) indexes the mechanical Owner,
-   scheduling Policy and cross-module Kernel documents.
-3. [Proof Lanes](../TESTING.md) defines what each deterministic, Redis-backed,
-   cross-process, Android and frontend lane proves.
-4. [Agent Handoff](../AGENTS.md) defines repository change rules and forbidden
-   boundary drift.
-5. [Human Architecture Overview](../frontend/public/overview.htm) is the visual
-   projection served by the frontend and Server.
+Follow the [Repository reading path](../README.md#reading-path): understand
+platform authority, scheduling and delivery before reading business scenarios.
+Use the [Human Architecture Overview](../frontend/public/overview.htm) as a
+visual projection of the same boundaries.
+
+| Document | Information it owns |
+| --- | --- |
+| [Repository Entry](../README.md) | Whole-project authority, main paths, module and deployment map |
+| [Scheduling Mainline](kernel/scheduling-overview.md) and [Delivery Boundary](kernel/worker-delivery-dispatch.md) | Cross-owner handoffs, failure boundaries and code/proof navigation |
+| Module README and linked Owner documents | Local mechanism, transitions, storage, configuration and lifecycle |
+| [Proof Registry](testing/proof-registry.md) | Primary proof, claim and deliberate nonclaims |
+| [TESTING](../TESTING.md) | Proof commands, prerequisites and CI selection |
+| Integration/scenario README | Complete workload, mutation sequence, thresholds and assertions |
+| [AGENTS](../AGENTS.md) | Change constraints and required Owner reading |
+
+Keep a mechanism's detailed definition with its Owner. Entry documents link to
+that definition and explain the handoff instead of repeating local parameters.
+When an entrypoint or contract changes, update its callers, Owner description
+and navigation together. A source pointer is a reading aid; only an executed
+proof provides a current validation result.
 
 ## Owner Documents
 
@@ -22,6 +32,7 @@ Status: current repository document index.
 - [Kernel Pacer policy](../kernel_pacer_jvm/README.md)
 - [Worker Matching owner](../worker_matching_jvm/README.md)
 - [Runtime API Server](../server_jvm/README.md)
+- [Server Boot and profiles](../server_boot_jvm/README.md)
 - [Transport](../transport/README.md)
 - [Transport Platform Event Catalog](../transport/EVENTS.md)
 - [Scenario Workers](../worker_simulator_jvm/README.md)
@@ -34,18 +45,24 @@ Status: current repository document index.
 - [Android Worker Proof](../integrations/android-worker-proof/README.md)
 - [Frontend](../frontend/README.md)
 - [SMS Reception business workload](../scenarios/sms-reception-jvm/README.md)
+- [Message Campaigns business workload](../scenarios/message-campaigns-jvm/README.md)
+- [Scenario Preview delivery](../distribution/server/PREVIEW.md)
+- [Scenario Coexistence](../integrations/scenario-coexistence/README.md)
 
 Module READMEs explain only their assembly, public entrypoints, local owner
 mechanism and verification.
 
 ## Historical Change Records
 
+- [Pre-Matching lease verification, 2026-09-15](archive/verification/2026-09-15-pre-matching-lease-proof.md)
+  preserves the named baseline/worktree results and their evidence limits.
 - [Task and Rule decoupling record](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/task-rule-decoupling-plan.md) records the
   earlier Matching-owned binding cutover and its version-scoped local proofs.
 - [Named Rule index cutover](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/named-rule-index-plan.md) records the first fixed
   Handler, direct index dispatch and version-scoped local proofs.
 
-Current binding/query and storage semantics belong to the [Matching Owner](../worker_matching_jvm/README.md).
+Current Pool supply, Item query and storage semantics belong to the
+[Matching Owner](../worker_matching_jvm/README.md).
 
 ## Historical Assets
 
