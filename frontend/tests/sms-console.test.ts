@@ -47,7 +47,8 @@ function installApi() {
   let status = "LISTENING";
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.startsWith("/api/v1/messages/")) return new Response("{}", { status: 404 });
+    if (url.startsWith("/api/v1/messages/") || url.startsWith("/api/v1/app-checks/"))
+      return new Response("{}", { status: 404 });
     let body: unknown;
     if (url.endsWith("/catalog")) body = { ...catalog, runId };
     else if (url.endsWith("/metrics")) body = { ...initialMetrics, runId };
@@ -170,7 +171,8 @@ describe("unified SMS console", () => {
       fetcher.mock.calls.every(
         ([url]) =>
           String(url).startsWith("/api/v1/sms/") ||
-          String(url) === "/api/v1/messages/catalog"
+          String(url) === "/api/v1/messages/catalog" ||
+          String(url) === "/api/v1/app-checks/catalog"
       )
     ).toBe(true);
     await router.push("/runtime/tasks");
@@ -306,7 +308,7 @@ describe("unified SMS console", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL) =>
-        String(input).startsWith("/api/v1/messages/")
+        String(input) !== "/api/v1/sms/catalog"
           ? Promise.resolve(new Response("{}", { status: 404 }))
           : new Promise<Response>((resolve) => {
               complete = resolve;

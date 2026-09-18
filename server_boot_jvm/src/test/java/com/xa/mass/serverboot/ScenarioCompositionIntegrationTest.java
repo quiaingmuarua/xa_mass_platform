@@ -96,13 +96,15 @@ class ScenarioCompositionIntegrationTest {
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
             for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/sms/listeners/", "/messages", "/messages/",
-                    "/messages/tasks/example", "/messages/tasks/example/")) {
+                    "/messages/tasks/example", "/messages/tasks/example/", "/app-checks", "/app-checks/",
+                    "/app-checks/tasks/example", "/app-checks/tasks/example/")) {
                 var response = get(client, base, page);
                 assertThat(response.statusCode()).as(page).isEqualTo(200);
                 assertThat(response.body()).isEqualTo(index);
             }
             for (String unknown : List.of("/messages/unknown", "/messages/assets/missing.js", "/messages/campaigns/id/extra",
-                    "/api/v1/messages/unknown", "/api/v1/sms/unknown", "/static/missing.js"))
+                    "/api/v1/messages/unknown", "/api/v1/sms/unknown", "/static/missing.js",
+                    "/app-checks/unknown", "/app-checks/tasks/example/extra", "/app-checks/assets/missing.js", "/api/v1/app-checks/unknown"))
                 assertThat(get(client, base, unknown).statusCode()).as(unknown).isEqualTo(404);
         } finally {
             if (!scope.matches("test_products_[0-9a-f]{32}")) throw new IllegalArgumentException("Unsafe scope");

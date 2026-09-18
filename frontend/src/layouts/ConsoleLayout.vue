@@ -13,8 +13,15 @@ import { useThemeStore } from "@/stores/theme";
 import { messageTaskSourceKey } from "@/message-campaigns/task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { ApiMessageTaskSource } from "@/message-campaigns/api-task-source";
+import { appCheckContextKey, createAppCheckContext } from "@/app-checks/context";
+import { ApiAppCheckTaskSource } from "@/app-checks/task-source";
+import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
+const appChecks = createAppCheckContext(
+  demo ? new MockAppCheckTaskSource() : new ApiAppCheckTaskSource()
+);
+provide(appCheckContextKey, appChecks);
 const sms = createSmsAvailability(demo);
 provide(smsAvailabilityKey, sms);
 const messages = createMessageAvailability(demo);
@@ -27,10 +34,12 @@ const mobileNavigation = ref(false);
 onMounted(() => {
   void sms.load();
   void messages.load();
+  void appChecks.load();
 });
 onBeforeUnmount(() => {
   sms.dispose();
   messages.dispose();
+  appChecks.dispose();
 });
 const theme = useThemeStore();
 const route = useRoute();

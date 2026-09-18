@@ -457,10 +457,14 @@ artifact limits and assertions; read that contract before changing the proof.
 - Frontend observes Runtime truth and uses public APIs for finite Task files and
   Adapter-scoped Direct Debug. It cannot infer state from elapsed time or promote
   Direct Call responses to identity, capability, lifecycle or schedulability.
-  Explicit Mock mode may provide local Messages Task interactions, visibly labeled
+  Explicit Mock mode may provide local Messages and App Checks Task interactions, visibly labeled
   as Mock and isolated behind the frontend data source. It makes no platform,
-  Messages, Lab or export requests and never serves as an API-error fallback.
+  Messages, App Checks, Lab or export requests and never serves as an API-error fallback.
   Mock receipt samples do not establish Task scheduling or execution truth.
+  App Checks preview verification is browser-local content recomputation over
+  actual result identities and retained configuration. It cannot establish
+  attempts, failed execution causes or whole-Task correctness; never write it
+  back as platform truth or derive whole-Task counts from a bounded preview.
 - The [human overview](frontend/public/overview.htm) projects the existing
   architecture; retain its information architecture and navigation. Mechanism,
   API, capacity and fixture details remain in Owner/proof documents.

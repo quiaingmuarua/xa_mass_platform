@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElForm, ElFormItem } from "element-plus";
 import "element-plus/theme-chalk/el-form.css";
 import "element-plus/theme-chalk/el-form-item.css";
-import { inspectRecipients, readRecipientFile } from "./model";
+import { inspectRecipients, readRecipientFile } from "@/files/phone-numbers";
 import {
   MessageTaskCreationUnconfirmed,
   type MessageCountry,

@@ -11,11 +11,14 @@ import {
 } from "@element-plus/icons-vue";
 import { useSmsAvailability } from "@/sms/availability";
 import { useMessageAvailability } from "@/message-campaigns/availability";
+import { useAppChecks } from "@/app-checks/context";
 const emit = defineEmits<{ navigate: [] }>();
 const route = useRoute();
 const sms = useSmsAvailability();
 const smsEnabled = computed(() => sms.state.value.status === "enabled");
 const messages = useMessageAvailability();
+const appChecks = useAppChecks();
+const appChecksEnabled = computed(() => appChecks.state.value.status === "enabled");
 const messagesEnabled = computed(() =>
   ["enabled", "demo"].includes(messages.state.value.status)
 );
@@ -36,7 +39,7 @@ const messagesEnabled = computed(() =>
       <el-icon><Tickets /></el-icon>
       <span>Tasks</span>
     </router-link>
-    <template v-if="smsEnabled || messagesEnabled">
+    <template v-if="smsEnabled || messagesEnabled || appChecksEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >SCENARIOS</span
       >
@@ -57,6 +60,15 @@ const messagesEnabled = computed(() =>
         :aria-current="route.path.startsWith('/messages') ? 'page' : undefined"
       >
         <el-icon><ChatDotRound /></el-icon><span>Messages</span>
+      </router-link>
+      <router-link
+        v-if="appChecksEnabled"
+        class="runtime-navigation__link"
+        to="/app-checks"
+        :class="{ 'router-link-active': route.path.startsWith('/app-checks') }"
+        :aria-current="route.path.startsWith('/app-checks') ? 'page' : undefined"
+      >
+        <el-icon><Tickets /></el-icon><span>应用注册查询</span>
       </router-link>
     </template>
     <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
@@ -91,6 +103,16 @@ const messagesEnabled = computed(() =>
     <p>Messages 可用性未确认</p>
     <el-button size="small" @click="messages.load(true)"
       >重试 Messages 可用性</el-button
+    >
+  </div>
+  <div
+    v-if="appChecks.state.value.status === 'unavailable'"
+    class="runtime-sidebar__note"
+    role="status"
+  >
+    <p>应用注册查询可用性未确认</p>
+    <el-button size="small" @click="appChecks.load(true)"
+      >重试应用注册查询可用性</el-button
     >
   </div>
 </template>

@@ -4,7 +4,8 @@ Status: current shared scenario launch and archive owner.
 
 This finite preview starts one Server and one Worker Simulator. SMS and Messages use
 one Redis scope, one WebSocket Adapter and the same Worker pool. App Checks adds
-two dedicated App Groups on that platform, with backend APIs only. It adds no product
+two dedicated App Groups on that platform, with its Task workspace at `/app-checks`.
+Its manual preview verification runs locally in the browser. It adds no product
 framework or platform owner. The production Runtime ZIP continues to exclude Host.
 
 From the checkout root, install Python prerequisites and launch:

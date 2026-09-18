@@ -11,7 +11,8 @@ public class ConsoleFrontendConfiguration implements WebMvcConfigurer {
     public void addViewControllers(ViewControllerRegistry registry) {
         for (String path : new String[]{"/sms", "/sms/", "/sms/listeners", "/sms/listeners/",
                 "/sms/metrics", "/sms/metrics/", "/messages", "/messages/",
-                "/messages/tasks/{taskId}", "/messages/tasks/{taskId}/"}) {
+                "/messages/tasks/{taskId}", "/messages/tasks/{taskId}/",
+                "/app-checks", "/app-checks/", "/app-checks/tasks/{taskId}", "/app-checks/tasks/{taskId}/"}) {
             registry.addViewController(path).setViewName("forward:/index.html");
         }
     }

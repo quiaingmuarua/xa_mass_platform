@@ -60,7 +60,9 @@ Routes:
 /sms/listeners
 /sms/metrics
 /messages
-/messages/tasks/:taskId     # explicit Mock mode in this slice
+/messages/tasks/:taskId
+/app-checks
+/app-checks/tasks/:taskId
 ```
 
 The same navigation is available in a drawer on narrow screens.
@@ -188,6 +190,44 @@ at most 1 MiB/1000 numbers, with BOM and LF/CRLF/CR, original line errors and du
 rejection; finite Task files retain their separate 10000-line limit. Lab interprets
 the submitted JSON body. Use [Scenario Preview](../distribution/server/PREVIEW.md)
 with `VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500` for real business execution.
+
+## App Checks Task workspace
+
+`/app-checks` and `/app-checks/tasks/:taskId` share one API/Mock workspace for the
+`app-checks` Project. Its independent Catalog probe controls navigation: 404 means
+not enabled, while network/5xx failures allow explicit retry. Boot serves the exact
+list/detail paths in both profiles; static delivery never enables a scenario.
+
+The list displays at most 100 Tasks with loaded-only search, App/state filters and
+preserved return position. Managed and missing-metadata Tasks remain visible.
+Creation selects an App and a number country, imports UTF-8 text (1 MiB, at most
+1000 numbers) or edits lines, then validates the simulation JSON. The pure phone
+file utilities are shared with Messages; finite Task files keep their 10000 limit.
+Range examples preserve delay. Display names use `check-{app}-{country}-{count}-`
+plus local submission time; Server supplies Task IDs and salt. Creation appends and
+automatically approves through the existing API. Unknown submissions retain the
+frozen draft and known Task link across drawer close/reopen, without retry.
+
+Details keep Task state, Item Score counts and Result content independent. Registered
+and unregistered answers both mean successful execution. Failed results carry no
+answer; content errors preserve the execution status. The table is a bounded preview
+of at most 100 Results, without pagination, export or whole-Task business totals.
+Reads happen on entry/manual refresh; errors preserve the known snapshot and late
+responses cannot overwrite another Task.
+
+Manual preview verification uses Web Crypto SHA-256 and BigInt, using saved salt,
+actual returned Worker, number, simulation and Group. It compares the answer and
+configured delay, with matched/mismatch/unavailable rows. Failures cannot be
+recomputed without their original executing identity. Verification makes no API
+calls, does not audit scheduling or attempts, and is discarded on a new snapshot.
+Unsupported Web Crypto disables the action without remote fallback.
+
+Explicit Mock provides the same flow, a fixed valid vector, intentional mismatches,
+failed/invalid/empty/truncated/missing-data and read-error samples. New Tasks live
+only in this console session, with no timer-driven fake execution. All Mock Catalog,
+create/read/refresh/verify operations make zero service requests. API never falls
+back to Mock. Browser acceptance exercises source and fresh Preview ZIP with real
+App Workers; existing backend failure/late-result/restart proofs remain in place.
 
 ## API Reference
 

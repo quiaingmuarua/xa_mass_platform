@@ -4,7 +4,9 @@ Status: current one-shot application check scenario owner.
 
 `app-checks` 是 Preview 的后端场景：同一国家的一批号码和一个模拟描述，创建
 `CLOSE_WHEN_IDLE` Task，追加 Items 后自动批准。`app-a` 使用 `app-a-sim`，
-`app-b` 使用 `app-b-sim`。国家只校验号码，不筛选 Worker 国家。本片没有前端。
+`app-b` 使用 `app-b-sim`。国家只校验号码，不筛选 Worker 国家。
+Console 的 `/app-checks` 页面直接使用以下 API；详情可通过
+`/app-checks/tasks/{taskId}` 打开，Server 重启后继续读取原 Task。
 
 **业务执行契约：已注册和未注册都属于执行成功；失败区间让真实 Handler 抛异常。**
 Kernel、Matching、Pacer、SDK、Adapter 的调度和执行机制没有变化，没有新增 Task
@@ -98,6 +100,24 @@ delay = min + value(domain="delay") mod (max - min + 1)
 相同实际 Worker 和输入可以复算；重试换 Worker 后结果可以变化。当前执行 claim
 为 5 秒，较长延迟可能重试并产生迟到结果。场景不续租，也不承诺只执行一次。
 最终 FAILED 本身不能证明 Handler 执行过，真实失败证明另有测试装配内的调用见证。
+
+## 页面与结果核对
+
+页面沿用任务列表、创建抽屉和详情。列表最多 100 条；号码文件为 UTF-8、最大 1 MiB，
+每行一个同国家号码、最多 1000 个。名称自动生成为
+`check-{appId}-{country}-{count}-{本地提交时间}`；Task ID 与 salt 仍由 Server 生成。
+支持四种范围示例，切换范围保留 delayMs；全部追加确认后自动批准。
+不确定提交保留草稿和已知 Task ID，不自动重建或重试。
+
+详情分别展示 Task 状态、Score 数量及最多 100 条 Result。未注册是执行成功；执行失败
+没有注册答案，业务解析错误不改判执行状态。列表和详情仅进入及手动刷新时读取；不增加
+分页、导出、自动观察或统计缓存。统计不能由预览行数推算。
+
+“核对当前预览”使用存量 salt、实际 workerId、号码和原模拟描述，按上面的 SHA-256
+协议在浏览器复算注册答案、Group 和模拟延迟。BigInt 保留无符号精度，模拟延迟不是
+端到端耗时。失败或资料缺失记录标为无法核对；不增加 API，不写回平台，不证明执行次数。
+新快照清除旧核对。Web Crypto 不可用时明确禁用，不进行远程代算。
+显式 Mock 与 API 共用页面，Mock 样例及本地创建无网络请求，不作为 API 失败回退。
 
 ## 装配与证明
 

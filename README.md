@@ -92,7 +92,8 @@ listening orders; Messages presents the messages Project's finite Tasks, with
 configuration in Task descriptors, counts observed from Item Scores and later
 receipts read from Results.
 App Checks uses two App Groups for finite, reproducible registered/unregistered
-lookups and actual Handler failures; it currently exposes backend APIs only.
+lookups and actual Handler failures. Its Task page imports numbers, observes execution
+and independently recomputes the bounded successful Result preview in the browser.
 The independent [Worker Simulator](worker_simulator_jvm/README.md) owns simulated
 device facts and executes through the real Worker SDK.
 

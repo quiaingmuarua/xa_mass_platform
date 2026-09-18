@@ -321,7 +321,7 @@ def main(arguments=None):
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         with Preview(args.count, args.port, sandbox_root=args.sandbox_root, seed=args.seed, app_count=args.app_count) as run:
-            print(f"Scenario Preview 0.1.0-preview: {run.url}/messages or /sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
+            print(f"Scenario Preview 0.1.0-preview: {run.url}/app-checks, /messages or /sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
             while True:
                 run.check()
                 time.sleep(1)

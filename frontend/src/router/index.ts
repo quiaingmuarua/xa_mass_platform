@@ -4,6 +4,7 @@ import RuntimeProvider from "@/layouts/RuntimeProvider.vue";
 
 const smsPage = () => import("@/sms/SmsPage.vue");
 const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
+const appChecksPage = () => import("@/app-checks/AppCheckPage.vue");
 export const consoleRoutes: RouteRecordRaw[] = [
   {
     path: "/",
@@ -44,6 +45,11 @@ export const consoleRoutes: RouteRecordRaw[] = [
         path,
         component: messagesPage,
         meta: { section: "Scenarios", title: "Messages" }
+      })),
+      ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
+        path,
+        component: appChecksPage,
+        meta: { section: "Scenarios", title: "应用注册查询" }
       }))
     ]
   },
@@ -66,6 +72,8 @@ export const router = createRouter({
   scrollBehavior: (to, from) => {
     // The Messages workspace restores its loaded-list position and focused row.
     if (to.path === "/messages" && from.path.startsWith("/messages/tasks/"))
+      return false;
+    if (to.path === "/app-checks" && from.path.startsWith("/app-checks/tasks/"))
       return false;
     return { left: 0, top: 0 };
   }

@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   inspectRecipients,
   MAX_RECIPIENT_FILE_BYTES,
-  readRecipientFile,
-  receiptLabel,
-  sendResultLabel
-} from "../src/message-campaigns/model";
+  readRecipientFile
+} from "../src/files/phone-numbers";
+import { receiptLabel, sendResultLabel } from "../src/message-campaigns/model";
 import { parseSeedLines } from "../src/task-management/model";
 
 const encoded = (text: string) => new TextEncoder().encode(text).buffer;

@@ -45,12 +45,13 @@ on this executable or the scenarios.
 
 ## Pages and configuration
 
-The shared Console keeps `/sms` and `/messages` with their existing finite page
+The shared Console keeps `/sms`, `/messages` and `/app-checks` with their finite page
 forwards in platform and preview instances. Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. Runtime/Reference and each business page keep separate data and
 polling lifetimes. Platform OpenAPI snapshots exclude scenarios; preview's live
-OpenAPI includes all three business namespaces. App Checks has no page or navigation.
+OpenAPI includes all three business namespaces. App Checks lists Tasks and serves
+`/app-checks/tasks/{taskId}` directly; page delivery does not enable its API.
 
 All production `application*.yaml` files live in this module's `src/main/resources`.
 The Server library supplies binding, validation and lifecycle implementation;
