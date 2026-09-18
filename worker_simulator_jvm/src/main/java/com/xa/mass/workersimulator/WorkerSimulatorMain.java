@@ -32,7 +32,8 @@ public final class WorkerSimulatorMain {
                     workers,
                     scheduledStops
             );
-            workers.start(startupPlan);
+            WorkerSimulatorControlServer boundControl = controlServer;
+            workers.start(startupPlan, boundControl::start);
             scheduleStartupStops(startupPlan, scheduledStops);
             WorkerSimulatorScheduledStops finalScheduledStops =
                     scheduledStops;
@@ -46,7 +47,6 @@ public final class WorkerSimulatorMain {
                     "worker-simulator-shutdown"
             );
             Runtime.getRuntime().addShutdownHook(shutdownHook);
-            controlServer.start();
             LOGGER.log(
                     System.Logger.Level.INFO,
                     "WORKER_SIMULATOR_READY control={0}/lab "

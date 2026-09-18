@@ -61,16 +61,21 @@ class WorkerSimulatorArchitectureBoundaryTest {
                 .doesNotContain("FileLock")
                 .doesNotContain("worker.lock")
                 .doesNotContain("WorkerIdentityStore")
-                .doesNotContain("java.net.http.HttpClient")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)
-                .containsOnlyOnce("new ThreadPoolExecutor(")
-                .containsOnlyOnce("new ArrayBlockingQueue<>(128)")
                 .containsOnlyOnce("HttpServer.create(")
                 .containsOnlyOnce("public static void main(")
                 .doesNotContain("Executors.newSingleThreadExecutor")
                 .doesNotContain("Executors.newCachedThreadPool");
+        // The sole business HTTP client only talks to the bound Lab listener; SDK still owns platform I/O.
+        assertThat(sources).containsOnlyOnce("HttpClient.newBuilder()");
+        String messages = Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java"));
+        assertThat(messages).contains("baseUri.resolve(\"/lab/v1/messages/send\")")
+                .contains("baseUri.resolve(\"/lab/v1/workers/\"")
+                .doesNotContain("/api/v1/");
+        assertThat(Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageLab.java")))
+                .doesNotContain("WorkerOutcomeReporter").doesNotContain(".report(");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")

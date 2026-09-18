@@ -433,9 +433,9 @@
   <footer id="sms-capacity">SMS Reception 0.1.0-preview · 仅模拟数据 · 重启开始新场景</footer>
 </main>
   <main class="sms-ui" id="messages-panel">
-    <section><h2>模拟收件箱</h2><p class="hint">只有 Worker 实际发送的消息才会出现在这里。选择消息后模拟送达、阅读与回复，结果在 Messages 工作台持续观察。</p>
+    <section><h2>Lab 收件箱</h2><p class="hint">Worker 通过 HTTP 发送，接收成功即生成送达。正文编排后续阅读、回复，也可手动操作。回调排队、HTTP 成功和 Worker 接受上报都不是平台提交确认；平台状态请在 Messages 工作台独立观察。</p>
       <p id="messages-error" role="status"></p>
-      <div class="table-wrap"><table><thead><tr><th>收件人</th><th>发送号码</th><th>正文</th><th>本地阶段</th><th>最新回复</th><th>操作</th></tr></thead><tbody id="messages-records"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>收件人</th><th>发送号码</th><th>正文</th><th>本地阶段</th><th>最新回复</th><th>计划与网络回执</th><th>操作</th></tr></thead><tbody id="messages-records"></tbody></table></div>
       <div class="pager"><button id="messages-prev">上一页</button><span id="messages-page"></span><button id="messages-next">下一页</button></div>
     </section>
   </main>
@@ -457,8 +457,13 @@
         for (const value of [item.recipientId, item.phone, item.body, item.status, item.reply || "—"]) {
           const td = document.createElement("td"); td.textContent = value; tr.append(td);
         }
+        const diagnostics = document.createElement("td"), details = document.createElement("details"), title = document.createElement("summary");
+        title.textContent = (item.plan.droppedLast ? "已随机省略最后一步 · " : "未随机省略 · ") + item.plan.retained.join(" → ");
+        const content = document.createElement("pre");
+        content.textContent = JSON.stringify({ plan: item.plan, receipts: item.receipts }, null, 2);
+        details.append(title, content); diagnostics.append(details); tr.append(diagnostics);
         const td = document.createElement("td");
-        for (const [action, label] of [["deliver", "送达"], ["read", "阅读"], ["reply", "选择回复"]]) {
+        for (const [action, label] of [["read", "阅读"], ["reply", "选择回复"]]) {
           const button = document.createElement("button"); button.textContent = label;
           button.onclick = () => {
             window.openMessageInput(item, "message." + action);

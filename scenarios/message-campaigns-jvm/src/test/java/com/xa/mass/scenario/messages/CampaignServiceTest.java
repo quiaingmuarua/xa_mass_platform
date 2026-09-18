@@ -30,7 +30,7 @@ class CampaignServiceTest {
         service.start(); return service;
     }
     Map<String, Object> input(int count) {
-        return Map.of("requestId", "request", "name", "campaign", "country", "CN", "body", "message",
+        return Map.of("requestId", "request", "name", "campaign", "country", "CN", "body", "{}",
                 "recipientIds", IntStream.range(0, count).mapToObj(i -> "recipient-" + i).toList(), "senderPhone", "+86123");
     }
     @Test void validatesWholeBatchBeforeAnyTaskAndChunksBeforeApproval() {
@@ -73,7 +73,7 @@ class CampaignServiceTest {
             var campaign = new CampaignService.Campaign(CampaignService.Specification.parse(input(1)), "demo-sim");
             var message = campaign.messages.getFirst();
             var snapshot = new LinkedHashMap<String, Object>(Map.of("campaignId", campaign.id, "messageId", message.id,
-                    "country", "CN", "recipientId", message.recipient, "body", "message", "phone", "+86123",
+                    "country", "CN", "recipientId", message.recipient, "body", "{}", "phone", "+86123",
                     "workerId", "worker", "status", "REPLIED", "observedAtMillis", 100L, "reply", "latest"));
             snapshot.put("replyRequestId", "reply");
             service.accept(campaign, message, TaskItemResultResponse.succeeded(Jsons.toJson(snapshot)));

@@ -126,6 +126,7 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
         }
         server.start();
         started = true;
+        if (workers.hasMessages()) workers.messageScenario().startHttp(baseUri());
     }
 
     URI baseUri() {
@@ -223,6 +224,7 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                 }
                 response = Map.of("acceptedCount", 1);
             } else response = switch (method + " " + path) {
+                case "POST send" -> messages.accept(readMessageBody(exchange));
                 case "GET health" -> workers.smsHealth();
                 case "GET inventory" -> messages.inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
                 case "GET records" -> messages.page(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));

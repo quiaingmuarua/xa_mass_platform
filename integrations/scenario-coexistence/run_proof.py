@@ -48,8 +48,8 @@ def wait(run, predicate, seconds, label):
     raise AssertionError("Timed out: " + label)
 
 
-def campaign(run, request="batch", count=2, country="CN", phone=None):
-    body = {"requestId": request, "name": request, "country": country, "body": "finite campaign proof",
+def campaign(run, request="batch", count=2, country="CN", phone=None, instructions=None):
+    body = {"requestId": request, "name": request, "country": country, "body": json.dumps(instructions or {}),
             "recipientIds": [f"{request}-recipient-{i}" for i in range(count)]}
     if phone:
         body["senderPhone"] = phone
@@ -64,7 +64,7 @@ def sent(run, value):
     value = wait(run, lambda: (v if (v := http(run.url, "/api/v1/messages/campaigns/" + value["id"]))
                              ["submission"] != "SUBMITTING" else None), 30, "campaign submission")
     require(value["submission"] == "SUBMITTED" and value["taskId"], "Submission was not confirmed")
-    rows = wait(run, lambda: (r if (r := campaign_messages(run, value)) and all(m["status"] == "SENT" for m in r) else None),
+    rows = wait(run, lambda: (r if (r := campaign_messages(run, value)) and all(m["status"] in ("SENT", "DELIVERED", "READ", "REPLIED") for m in r) else None),
                 30, "real Worker sends")
     return value, rows
 
@@ -74,7 +74,7 @@ def task_state(run, task):
     return next((e["scoreBand"] for e in entries if e["taskId"] == task), None)
 
 
-def observe_receipt(run, value, message, expected, started, reply=None):
+def observe_receipt(run, value, message, expected, started, reply=None, reply_request_id=None):
     deadline = min(started + 5, getattr(run, "phase_deadline", float("inf")))
     platform_ms = product_ms = None
     tag = {"SENT": 6, "DELIVERED": 7, "READ": 8, "REPLIED": 9}[expected]
@@ -86,12 +86,14 @@ def observe_receipt(run, value, message, expected, started, reply=None):
                 snapshot = json.loads(result["opaqueResultPayload"])
                 require(snapshot["messageId"] == message["id"] and snapshot["recipientId"] == message["recipientId"]
                         and snapshot["workerId"] == message["workerId"], "Platform business association changed")
-                if snapshot["status"] == expected and (reply is None or snapshot.get("reply") == reply):
+                if (snapshot["status"] == expected and (reply is None or snapshot.get("reply") == reply)
+                        and (reply_request_id is None or snapshot.get("replyRequestId") == reply_request_id)):
                     states = http(run.url, f'/api/v1/tasks/{value["taskId"]}/items:states', [message["id"]], timeout=2)
                     if states[message["id"]]["tag"] == tag and platform_ms is None:
                         platform_ms = (time.monotonic() - started) * 1000
             observed = next(m for m in campaign_messages(run, value) if m["id"] == message["id"])
-            if observed["status"] == expected and (reply is None or observed.get("reply") == reply) and product_ms is None:
+            if (observed["status"] == expected and (reply is None or observed.get("reply") == reply) and product_ms is None
+                    and (reply_request_id is None or observed.get("replyRequestId") == reply_request_id)):
                 product_ms = (time.monotonic() - started) * 1000
             if platform_ms is not None and product_ms is not None:
                 require(max(platform_ms, product_ms) <= 5000, "Receipt budget exceeded")
@@ -117,6 +119,40 @@ def action(run, message, name, text=None, request=None):
     return started, response
 
 
+
+def lab_message(run, message):
+    target = run.input_workers_by_id[message["workerId"]]
+    path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="")
+    return next(m for m in all_pages(run.host, path + ":messages") if m["messageId"] == message["id"])
+
+
+def delivered_id(run, message):
+    receipt = lab_message(run, message)["receipts"][0]
+    require(receipt["status"] == "DELIVERED", "First receipt must follow Lab acceptance")
+    return receipt["receiptId"]
+
+
+def release_delivered(run, message):
+    started = time.monotonic()
+    response = http(run.host, "/lab/v1/messages/receipts:release", {"receiptIds": [delivered_id(run, message)]})
+    require(response == {"offered": 1, "queued": 1}, "Delivered callback was not queued")
+    return started
+
+
+def callback_observed(run, message, receipt_id, accepted):
+    def completed():
+        receipt = next(r for r in lab_message(run, message)["receipts"] if r["receiptId"] == receipt_id)
+        return receipt if receipt["attempts"] else None
+    receipt = wait(run, completed, 5, "business callback completion")
+    if accepted:
+        require(receipt["reportAccepted"] is True and receipt["httpStatus"] == 200 and receipt["failure"] is None,
+                "Callback transport or Reporter acceptance failed")
+    else:
+        require(receipt["httpStatus"] == 404 and receipt["reportAccepted"] is None,
+                "Old association was not explicitly rejected by the Worker callback route")
+    return receipt
+
+
 def sms_create(run, request="shared-sms", country="CN", application="A"):
     return http(run.url, "/api/v1/sms/listeners", {"requestId": request, "country": country,
                 "applicationId": application, "listenSeconds": 60}, timeout=2)
@@ -136,6 +172,7 @@ def functional(run):
     inventory = all_pages(run.host, "/lab/v1/messages/inventory")
     require(len(inventory) == 12, "Expected 12 shared Workers")
     listener = sms_wait(run, sms_create(run), "LISTENING")
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     created, request = campaign(run, phone=listener["phone"])
     require(http(run.url, "/api/v1/messages/campaigns", request)["id"] == created["id"], "Campaign request was duplicated")
     try:
@@ -154,35 +191,38 @@ def functional(run):
     other = next(w for w in inventory if w["workerId"] != rows[0]["workerId"])
     other_path = "/lab/v1/workers/" + urllib.parse.quote(other["workerGroupId"], safe="") + "/" + urllib.parse.quote(other["replicaKey"], safe="")
     try:
-        http(run.host, other_path + ":inputs", {"eventName": "message.deliver", "payload": {"messageId": rows[0]["id"]}})
+        http(run.host, other_path + ":inputs", {"eventName": "message.read", "payload": {"messageId": rows[0]["id"]}})
         raise AssertionError("Cross-Worker receipt was accepted")
     except urllib.error.HTTPError as error:
         require(error.code == 404, "Expected message ownership rejection")
-    require(all(m["status"] == "SENT" for m in all_pages(run.host, worker_path + ":messages")),
+    require(all(m["status"] == "DELIVERED" for m in all_pages(run.host, worker_path + ":messages")),
             "Rejected cross-Worker input changed local records")
     require(all(m["status"] == "SENT" for m in campaign_messages(run, value)),
             "Rejected cross-Worker input changed product observations")
-    checkpoints = []
-    for name, status, text in [("deliver", "DELIVERED", None), ("read", "READ", None), ("reply", "REPLIED", "first"), ("reply", "REPLIED", "second")]:
+    # Generated before terminality, withheld on the wire until after terminality.
+    began = release_delivered(run, rows[0])
+    checkpoints = [observe_receipt(run, value, rows[0], "DELIVERED", began)]
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
+    for name, status, text in [("read", "READ", None), ("reply", "REPLIED", "first"), ("reply", "REPLIED", "second")]:
         began, receipt = action(run, rows[0], name, text)
-        require(receipt["sendAccepted"], "Normal receipt send not accepted")
+        require(receipt["callbackQueued"], "Normal callback was not queued")
         checkpoints.append(observe_receipt(run, value, rows[0], status, began, text))
         require(task_state(run, value["taskId"]) == "terminal", "Receipt reopened completed Task")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
-    ids = []
-    for name, text in [("deliver", None), ("read", None), ("reply", "old"), ("reply", "latest")]:
+    ids = [delivered_id(run, rows[1])]
+    for name, text in [("read", None), ("reply", "old"), ("reply", "latest")]:
         _, receipt = action(run, rows[1], name, text)
-        require(receipt["held"] and not receipt["sendAccepted"], "Receipt hold bypassed")
+        require(receipt["held"] and not receipt["callbackQueued"], "Receipt hold bypassed")
         ids.append(receipt["receiptId"])
     started = time.monotonic()
     released = http(run.host, "/lab/v1/messages/receipts:release", {"receiptIds": [ids[3], ids[3], ids[2], ids[1], ids[0]]})
-    require(released == {"published": 5, "sendAccepted": 5}, "Held receipt release not accepted")
+    require(released == {"offered": 5, "queued": 5}, "Held receipt release not accepted")
     checkpoints.append(observe_receipt(run, value, rows[1], "REPLIED", started, "latest"))
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
     _, duplicate = action(run, rows[0], "reply", "second", "duplicate-reply")
-    require(duplicate["sendAccepted"], "First identified reply rejected")
+    require(duplicate["callbackQueued"], "First identified reply callback was not queued")
     _, duplicate = action(run, rows[0], "reply", "second", "duplicate-reply")
-    require(duplicate["unchanged"] and not duplicate["sendAccepted"], "Reply operation was replayed")
+    require(duplicate["unchanged"] and not duplicate["callbackQueued"], "Reply operation was replayed")
     # Execute the identical send through a real Worker using the shared managed Task via direct identity.
     task = next(c["taskId"] for c in sms_catalog["countries"] if c["id"] == "CN")
     payload = {k: rows[0][k] for k in ("campaignId", "messageId", "country", "recipientId", "body")}
@@ -194,7 +234,7 @@ def functional(run):
     require(http(run.host, "/lab/v1/messages/metrics")["messages"] == 2, "Duplicate execution delivered another message")
     # Same Reporter must still target the original Item, not the duplicate execution Item.
     began, receipt = action(run, rows[0], "reply", "after-duplicate")
-    require(receipt["sendAccepted"], "Original Reporter lost")
+    require(receipt["callbackQueued"], "Original message callback was not queued")
     checkpoints.append(observe_receipt(run, value, rows[0], "REPLIED", began, "after-duplicate"))
     target = run.input_workers_by_id[listener["workerId"]]
     input_path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="") + ":inputs"
@@ -203,17 +243,33 @@ def functional(run):
     require(injected["status"] == "MATCHED", "Same Worker SMS did not match")
     received = sms_wait(run, listener, "RECEIVED")
     require(received["workerId"] == rows[0]["workerId"], "Cross-product identity mismatch")
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     closed, _ = campaign(run, "closed-batch", 1, phone=listener["phone"])
     closed, closed_rows = sent(run, closed)
     http(run.url, f'/api/v1/tasks/{closed["taskId"]}/close', {})
     wait(run, lambda: task_state(run, closed["taskId"]) == "terminal", 10, "explicit Task close")
-    for name, status, text in [("deliver", "DELIVERED", None), ("read", "READ", None), ("reply", "REPLIED", "closed-reply")]:
+    began = release_delivered(run, closed_rows[0])
+    checkpoints.append(observe_receipt(run, closed, closed_rows[0], "DELIVERED", began))
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
+    for name, status, text in [("read", "READ", None), ("reply", "REPLIED", "closed-reply")]:
         began, receipt = action(run, closed_rows[0], name, text)
-        require(receipt["sendAccepted"], "Closed Task receipt not accepted")
+        require(receipt["callbackQueued"], "Closed Task callback was not queued")
         checkpoints.append(observe_receipt(run, closed, closed_rows[0], status, began, text))
         require(task_state(run, closed["taskId"]) == "terminal", "Receipt reopened closed Task")
+    automatic, _ = campaign(run, "automatic", 1, phone=listener["phone"], instructions={
+        "receipts_status": ["read", "replied", "replied"], "delayMs": 200, "probability": 0, "text": "auto"})
+    automatic, automatic_rows = sent(run, automatic)
+    message = automatic_rows[0]
+    local = wait(run, lambda: (m if len((m := lab_message(run, message))["receipts"]) == 4
+                              and all(r["attempts"] and r["reportAccepted"] for r in m["receipts"]) else None), 5, "automatic HTTP callbacks")
+    require(local["plan"]["completedSteps"] == 3 and not local["plan"]["droppedLast"], "Automatic plan mismatch")
+    checkpoints.append(observe_receipt(run, automatic, message, "REPLIED", time.monotonic(), "auto", local["replyRequestId"]))
+    results_path = f'/api/v1/tasks/{automatic["taskId"]}/results:load'
+    first = http(run.url, results_path, [message["id"]])[message["id"]]
+    require(http(run.url, results_path, [message["id"]])[message["id"]] == first, "Reading deleted latest content")
+    require(json.loads(first["opaqueResultPayload"])["replyRequestId"] == local["replyRequestId"], "Latest auto reply was not retained")
     return {"passed": True, "workers": 12, "sharedWorkerId": listener["workerId"], "smsReceived": True,
-            "messages": 3, "checkpoints": checkpoints, "requestIdempotency": True, "duplicateExecution": True,
+            "messages": 4, "automaticHttpReceipts": 4, "checkpoints": checkpoints, "requestIdempotency": True, "duplicateExecution": True,
             "reorderedAndDuplicateReceipts": True, "completedAndClosedTasksRemainTerminal": True,
             "hostMetrics": http(run.host, "/lab/v1/messages/metrics")}
 
@@ -221,24 +277,27 @@ def functional(run):
 def lifecycle(run):
     run.phase_deadline = time.monotonic() + 180
     listener = sms_wait(run, sms_create(run), "LISTENING")
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     value, _ = campaign(run, "old-run", 1, phone=listener["phone"])
     value, rows = sent(run, value)
     target = next(w for w in all_pages(run.host, "/lab/v1/messages/inventory") if w["workerId"] == rows[0]["workerId"])
     control = f'/lab/v1/messages/workers/{target["workerGroupId"]}/{target["replicaKey"]}'
     http(run.host, control + ":stop", {})
-    _, receipt = action(run, rows[0], "deliver")
-    require(not receipt["sendAccepted"], "Stopped run accepted receipt")
+    receipt_id = delivered_id(run, rows[0])
+    release_delivered(run, rows[0])
+    callback_observed(run, rows[0], receipt_id, False)
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
     http(run.host, control + ":start", {})
     wait(run, run.connected, 30, "Worker restart")
     _, receipt = action(run, rows[0], "read")
-    require(not receipt["sendAccepted"], "New run adopted old Reporter")
+    callback_observed(run, rows[0], receipt["receiptId"], False)
     _, receipt = action(run, rows[0], "reply", "old-run-local-only")
-    require(not receipt["sendAccepted"], "Old reply entered new run")
+    callback_observed(run, rows[0], receipt["receiptId"], False)
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     fresh, _ = campaign(run, "new-run", 1, phone=target["phone"])
     fresh, fresh_rows = sent(run, fresh)
     require(fresh_rows[0]["workerId"] == rows[0]["workerId"], "Restart changed Worker identity")
-    began, receipt = action(run, fresh_rows[0], "deliver")
-    require(receipt["sendAccepted"], "New run did not report its own message")
+    began = release_delivered(run, fresh_rows[0])
     checkpoint = observe_receipt(run, fresh, fresh_rows[0], "DELIVERED", began)
     require(campaign_messages(run, value)[0]["status"] == "SENT", "Product fabricated outcome for old run")
     old_result = http(run.url, f'/api/v1/tasks/{value["taskId"]}/results:load', [rows[0]["id"]])[rows[0]["id"]]
@@ -306,12 +365,13 @@ def load_1k(run):
 
     def recipient_actions(message):
         try:
-            for name, text in [("deliver", None), ("read", None), ("reply", "first reply"), ("reply", "latest reply")]:
+            # Delivery is an acceptance fact; only the three subsequent actions are manual.
+            for name, text in [("read", None), ("reply", "first reply"), ("reply", "latest reply")]:
                 if stop.is_set():
                     return
                 began, result = action(run, {"id": message["messageId"], "workerId": message["workerId"]}, name, text,
                                         request=message["messageId"] + "-" + str(text))
-                require(result["sendAccepted"] and not result["unchanged"], "Load receipt not accepted")
+                require(result["callbackQueued"] and not result["unchanged"], "Load action did not create and queue a callback")
                 with lock:
                     action_latencies.append((time.monotonic() - began) * 1000)
         except Exception as error:
@@ -374,12 +434,14 @@ def load_1k(run):
             peak["hostActiveSms"] = max(peak["hostActiveSms"], http(run.host, "/lab/v1/sms/metrics")["host"]["activeListeners"])
             return messages["statuses"].get("REPLIED", 0) == total and sum(sms["statuses"].get(s, 0) for s in ("RECEIVED", "EXPIRED")) == total
         wait(run, converged, 120, "1k complete business observations")
-        wait(run, lambda: len(action_latencies) == total * 4, 120, "all recipient actions complete")
+        wait(run, lambda: len(action_latencies) == total * 3, 120, "all manual recipient actions complete")
         http(run.host, "/lab/v1/sms/traffic/stop", {})
         require(len(action_latencies) == total * 4 and len(receipts_scheduled) == total, "Not every message got all recipient actions")
         channel = all_pages(run.host, "/lab/v1/messages/records")
         actual = {m["messageId"]: m for m in channel}
         require(len(channel) == len(actual) == total, "Channel delivery identities differ")
+        require(all(len(m["receipts"]) == 4 and m["receipts"][0]["status"] == "DELIVERED" for m in channel),
+                "Expected actual delivery plus read and two reply facts for every message")
         compared = []
         for value in campaigns:
             def latest_observed():

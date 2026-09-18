@@ -18,8 +18,9 @@ Adapter 和真实 Worker 池；场景之间没有代码依赖。
 POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
   -> 创建声明 messaging Pool 供给的有限 Task -> 每次最多 100 Items -> 全部确认后批准
   -> Kernel / Matching -> 共用 Adapter -> 实际 Worker message.send
-  -> 模拟通道创建唯一消息 -> SENT 执行 Result
-收件端 deliver / read / reply -> 本地事实 -> 原 Worker run 的 Reporter
+  -> Worker HTTP 调用 Lab -> 唯一接收记录与 SENT 执行 Result
+Lab 接收生成 delivered；正文计划或人工 read / reply -> 本地事实
+  -> HTTP 回调 Worker -> 原 Worker run 的 Reporter
   -> 原 TaskItem 的 Outcome / Result -> 一个轮转观察循环 -> Messages 页面
 ```
 
@@ -57,7 +58,7 @@ Messaging maintenance 按供给目标资格化 Pacer 已取得短租约的 Worke
 任何创建、追加或批准失败/结果不明，保留原业务身份和已知 Task 身份，不重新创建 Task、不自动重发。
 可能已有部分 Items，甚至批准已发生；未确认批次仍查询已知 Task，显示实际观察。
 
-`SENT` 是模拟通道已由实际 Handler 受理的完整快照；7/8/9 分别用于 `DELIVERED / READ / REPLIED`。
+`SENT` 是实际 Handler 经 HTTP 获得 Lab 首次受理的完整快照；7/8/9 分别用于 `DELIVERED / READ / REPLIED`。
 快照包含 campaignId/messageId/recipientId/country/body/workerId/phone/status/observedAtMillis；回复增加
 reply 与 replyRequestId。允许首次读到后续阶段，同阶段只接受更晚时间，旧阶段或旧回复不能覆盖新内容。
 产品不改实例级 Outcome 名称，不把 `Result=succeeded` 一律当送达。未观察到回执不推断未读或到期。
@@ -74,6 +75,20 @@ Backend 与 Host 各最多保留 50 批、50,000 条消息。Backend 用两个�
 收件动作和 Reporter 关联。Backend 和测试输入不能直接创建收件记录。后续回执由业务动作产生，
 不是任意 Report 注入。停止 Worker 清理 Reporter；重启可继续本地阅读/回复旧消息，但不能更新旧 Item。
 本版无第三方通道、聊天历史、重启恢复、回执 ACK、可靠补偿或跨进程幂等。
+
+本次明确采用 Preview 正文协议例外：保留 `extension.worker.message.send` 及五字段形状，
+`body` 切换为 JSON 指令字符串。旧普通文本不再解释，不修改现存 Task 数据。例如：
+
+```json
+{"receipts_status":["read","replied"],"delayMs":[1000,4000],"probability":0.5,"text":"收到了"}
+```
+
+Lab 严格校验并保存确定性计划。delivered 来自实际接收且不可配置；probability 只可能删除
+最后一个后续动作；重复发送返回首次 SENT，不重放计划。完整字段、容量和故障契约见 Simulator Owner。
+Messages 页面提供示例及 JSON 语法检查，原样提交 body，Server 不重复解释 Lab 指令。
+发送与回执都经真实 HTTP，但 Lab 与 Worker 仍共用 Host 进程和 loopback Listener。
+Lab 的 callbackQueued、HTTP 结果和 Reporter 接受值都不能代替平台 Score 与 Result 观察。
+文件导入、收件国家与发送国家分离、ANY、导出体验及 Campaign 持久化留给下一片。
 
 统一前端在 `frontend/src/message-campaigns/`，页面为 `/messages`、`/messages/campaigns/{id}`、
 `/messages/metrics`。与 SMS 分别观察 catalog，标签保留输入，离开产品停止轮询并中止请求。

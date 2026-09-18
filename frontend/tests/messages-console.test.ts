@@ -47,7 +47,7 @@ const campaign = {
   requestId: "request",
   name: "Proof",
   country: "CN",
-  body: "body",
+  body: "{}",
   messageCount: 45,
   submission: "SUBMITTED",
   statuses: { SENT: 45 }
@@ -134,12 +134,32 @@ function input(host: Element, label: string, value: string) {
 }
 async function fill(host: Element) {
   input(host, "批次名称", "Proof");
-  input(host, "消息正文", "body");
+  input(host, "消息正文", "{}");
   input(host, "收件人", "recipient-1\nrecipient-2");
   await settle();
 }
 
 describe("Messages console", () => {
+  it("rejects malformed JSON locally and sends the edited body verbatim", async () => {
+    const { fetcher } = installApi();
+    const { host } = await mount();
+    await fill(host);
+    input(host, "消息正文", "not json");
+    await settle();
+    const button = host.querySelector<HTMLButtonElement>(
+      '[data-testid="campaign-form"] button[type="submit"]'
+    )!;
+    expect(button.disabled).toBe(true);
+    expect(host.textContent).toContain("正文不是合法 JSON");
+    const body =
+      '{ "receipts_status": ["replied"], "text": "reply", "probability": 1 }';
+    input(host, "消息正文", body);
+    await settle();
+    button.click();
+    await settle();
+    const sent = fetcher.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(sent?.[1]?.body)).body).toBe(body);
+  });
   it.each([
     "/messages",
     "/messages/",

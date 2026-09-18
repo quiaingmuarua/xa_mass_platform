@@ -35,6 +35,14 @@ class ProofAssertionsTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "association"):
                 proof.observe_receipt(SimpleNamespace(url="server"), {"taskId": "task"}, message, "REPLIED", proof.time.monotonic(), "latest")
 
+    def test_equal_reply_text_cannot_satisfy_a_newer_reply_identity(self):
+        message, snapshot, http = self.fixture()
+        message["replyRequestId"] = snapshot["replyRequestId"] = "older"
+        with patch.object(proof, "http", side_effect=http), patch.object(proof, "campaign_messages", return_value=[message]), \
+                patch.object(proof.time, "monotonic", side_effect=[0, 5.1]), patch.object(proof.time, "sleep"):
+            with self.assertRaisesRegex(AssertionError, "did not converge"):
+                proof.observe_receipt(SimpleNamespace(url="server"), {"taskId": "task"}, message, "REPLIED", 0, "latest", "newest")
+
     def test_both_observation_times_must_fit_original_budget(self):
         message, _, http = self.fixture()
         with patch.object(proof, "http", side_effect=http), patch.object(proof, "campaign_messages", return_value=[message]), \

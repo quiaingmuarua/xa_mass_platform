@@ -26,7 +26,7 @@ const availability = useMessageAvailability();
 const form = reactive({
   name: "",
   country: "CN",
-  body: "",
+  body: '{\n  "receipts_status": ["read", "replied"],\n  "delayMs": [1000, 4000],\n  "probability": 0.5,\n  "text": "收到了"\n}',
   recipients: "",
   senderPhone: ""
 });
@@ -60,10 +60,21 @@ const recipients = computed(() =>
     .map((s) => s.trim())
     .filter(Boolean)
 );
+const bodyError = computed(() => {
+  try {
+    const value = JSON.parse(form.body);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? ""
+      : "正文必须是 JSON 对象";
+  } catch {
+    return "正文不是合法 JSON";
+  }
+});
 const canSubmit = computed(
   () =>
     form.name.trim() &&
     form.body.trim() &&
+    !bodyError.value &&
     recipients.value.length > 0 &&
     recipients.value.length <= 1000 &&
     new Set(recipients.value).size === recipients.value.length
@@ -303,14 +314,16 @@ onBeforeUnmount(() => {
             /></el-form-item>
           </div>
           <div class="messages-fields">
-            <el-form-item label="消息正文"
+            <el-form-item label="消息正文（Lab JSON 指令）"
               ><el-input
                 v-model="form.body"
                 type="textarea"
-                :rows="4"
+                :rows="8"
                 maxlength="4096"
                 aria-label="消息正文"
-            /></el-form-item>
+              />
+              <p v-if="bodyError" role="alert">{{ bodyError }}</p>
+            </el-form-item>
             <el-form-item :label="`收件人（每行一个，${recipients.length}/1000）`"
               ><el-input
                 v-model="form.recipients"
@@ -320,6 +333,11 @@ onBeforeUnmount(() => {
                 placeholder="user-001&#10;user-002"
             /></el-form-item>
           </div>
+          <p class="muted">
+            Lab 接收成功即生成 delivered。receipts_status 可选 read、replied（可多次）；
+            delayMs 是每步延迟或随机区间；probability 是仅省略最后一步的概率。 text
+            是回复内容。使用 {} 只自动送达，后续可在 Lab 手动阅读、回复。
+          </p>
           <el-button
             native-type="submit"
             type="primary"

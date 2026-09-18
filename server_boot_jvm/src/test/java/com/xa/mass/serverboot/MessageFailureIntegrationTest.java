@@ -33,7 +33,7 @@ import static org.mockito.Mockito.*;
 class MessageFailureIntegrationTest {
     @Test @Timeout(90)
     void newerBusinessReceiptSurvivesLateSynchronousExecutionResult() throws Exception {
-        try (var fixture = new Fixture(false); var channel = new MessageScenario()) {
+        try (var fixture = new Fixture(false); var channel = new MessageScenario(); var lab = new LabHttp(channel)) {
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
             var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
@@ -50,9 +50,8 @@ class MessageFailureIntegrationTest {
                 assertThat(executed.await(20, TimeUnit.SECONDS)).isTrue();
                 var local = (Map<?, ?>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
                 String id = (String) local.get("messageId");
-                assertThat(channel.act(sender, id, "deliver", Map.of())).containsEntry("sendAccepted", true);
-                assertThat(channel.act(sender, id, "read", Map.of())).containsEntry("sendAccepted", true);
-                assertThat(channel.act(sender, id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("sendAccepted", true);
+                assertThat(channel.act(sender, id, "read", Map.of())).containsEntry("callbackQueued", true);
+                assertThat(channel.act(sender, id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("callbackQueued", true);
                 var observed = fixture.awaitCampaign(campaign, "REPLIED");
                 String task = (String) observed.get("taskId");
                 assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);
@@ -87,6 +86,27 @@ class MessageFailureIntegrationTest {
             var rows = (List<?>) fixture.get("/api/v1/messages/campaigns/" + first.get("id") + "/messages").get("items");
             assertThat(rows).allMatch(row -> "NOT_OBSERVED".equals(((Map<?, ?>) row).get("status")));
         }
+    }
+
+    /** Actual receiving service and callback HTTP, independent of platform HTTP. */
+    static final class LabHttp implements AutoCloseable {
+        final com.sun.net.httpserver.HttpServer server;
+        final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        LabHttp(MessageScenario channel) throws Exception {
+            server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.setExecutor(executor);
+            server.createContext("/", exchange -> {
+                try {
+                    var body = Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                    var result = exchange.getRequestURI().getPath().endsWith("/send") ? channel.accept(body)
+                            : channel.receive("demo-sim", "one", (Map<String,Object>)body.get("payload"));
+                    byte[] encoded = Jsons.toJson(result).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, encoded.length); exchange.getResponseBody().write(encoded);
+                } finally { exchange.close(); }
+            });
+            server.start(); channel.startHttp(URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
+        }
+        public void close() { server.stop(0); executor.shutdownNow(); }
     }
 
     @Configuration(proxyBeanMethods = false)
@@ -129,7 +149,7 @@ class MessageFailureIntegrationTest {
         Map<String, Object> create(int size) throws Exception {
             assertThat(post("/api/v1/tasks/blocked/items:call", List.of()).statusCode()).isEqualTo(503);
             assertThat(post("/api/v1/tasks/blocked/results:load", List.of("blocked")).statusCode()).isEqualTo(503);
-            var result = post("/api/v1/messages/campaigns", Map.of("requestId", "request", "name", "proof", "country", "CN", "body", "message",
+            var result = post("/api/v1/messages/campaigns", Map.of("requestId", "request", "name", "proof", "country", "CN", "body", "{}",
                     "recipientIds", IntStream.range(0, size).mapToObj(i -> "recipient-" + i).toList()));
             assertThat(result.statusCode()).isEqualTo(202); return Jsons.parseObject(result.body());
         }

@@ -72,7 +72,7 @@ public final class WorkerSimulator implements AutoCloseable {
         );
         lab = new WorkerSimulatorLab(sandboxRoot);
         sms = configs.stream().anyMatch(WorkerSimulator::usesSms) ? new SmsScenario() : null;
-        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario() : null;
+        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario(seed) : null;
         this.groupManagerFactory = groupManagerFactory == null ? this::createManager : groupManagerFactory;
         this.commandCheckpoints = Objects.requireNonNull(
                 commandCheckpoints,
@@ -114,6 +114,10 @@ public final class WorkerSimulator implements AutoCloseable {
     }
 
     synchronized void start(WorkerSimulatorStartupPlan startupPlan) {
+        start(startupPlan, () -> {});
+    }
+
+    synchronized void start(WorkerSimulatorStartupPlan startupPlan, Runnable startBusinessHttp) {
         Objects.requireNonNull(startupPlan, "startupPlan");
         if (closed) {
             throw new IllegalStateException("Worker Simulator is closed");
@@ -124,8 +128,9 @@ public final class WorkerSimulator implements AutoCloseable {
 
         try {
             List<PreparedGroup> preparedGroups = prepareGroups(startupPlan);
+            createManagers(preparedGroups);
+            startBusinessHttp.run();
             if (!preparedGroups.isEmpty()) {
-                createManagers(preparedGroups);
                 List<WorkerSimulatorCoordinate> initialWorkers =
                         resolveInitialWorkers(startupPlan);
                 RuntimeException startFailure = startWorkers(initialWorkers);
@@ -317,7 +322,6 @@ public final class WorkerSimulator implements AutoCloseable {
             inputs.add(inputDescription("sms.receive", "收到短信", Map.of("text", "[A] 123456")));
         }
         if (replica.sender != null) {
-            inputs.add(inputDescription("message.deliver", "消息送达", Map.of("messageId", "")));
             inputs.add(inputDescription("message.read", "消息已读", Map.of("messageId", "")));
             inputs.add(inputDescription("message.reply", "消息回复", Map.of("messageId", "", "text", "")));
         }
@@ -330,6 +334,8 @@ public final class WorkerSimulator implements AutoCloseable {
 
     Map<String, Object> simulateInput(String workerGroupId, String labWorkerKey,
             String eventName, Map<String, Object> payload) {
+        // An original correlation is sufficient during startup; do not wait on the Host READY gate.
+        if (eventName.equals("message.receipt")) return messageScenario().receive(workerGroupId, labWorkerKey, payload);
         PreparedReplica replica;
         synchronized (this) {
             ensureControllable();
@@ -347,7 +353,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 String phone = payload.containsKey("phone") ? ListeningRegistry.string(payload, "phone") : null;
                 yield sms.registry.receive(replica.sim, phone, id, MessageScenario.text(payload, "text", 1024));
             }
-            case "message.deliver", "message.read", "message.reply" -> {
+            case "message.read", "message.reply" -> {
                 if (replica.sender == null) throw new IllegalArgumentException("Worker has no Messages capability");
                 boolean reply = eventName.equals("message.reply");
                 requireInputFields(payload, reply ? Set.of("messageId", "text") : Set.of("messageId"),

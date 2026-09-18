@@ -489,6 +489,12 @@ finite state, idempotency and observation. Their device owners remain in
 - Validate complete campaign input before creation and every append before
   approval. Preserve uncertain submission without recreation/retry, complete
   snapshots, existing Outcome names and observation after Task scheduling ends.
+- Preview Messages explicitly retains `extension.worker.message.send` while its
+  body switches to Lab JSON instructions in this authorized slice; no text
+  fallback or v2 alias. Other event version constraints remain in force.
+  Lab owns receive facts/plans and uses actual HTTP callbacks; only the original
+  Worker association owns Reporter calls. Delivered follows acceptance, never
+  manual input. Callback admission is not a platform ACK.
 - Messages arise only through actual message.send. Device facts commit before
   publication; receipt hold/release accepts existing receipt IDs, never arbitrary
   Reports. Keep SMS matching/deduplication and the original run's Reporter rules.

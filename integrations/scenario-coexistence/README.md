@@ -23,7 +23,9 @@ the country Pool; Messages consumes messaging Pool stock with country constraint
 A real SMS listener supplies the number
 for a campaign's additional phone condition; both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
-terminal before deliver/read/reply; another Task is explicitly closed first.
+terminal before releasing the automatically generated delivered receipt (hold is
+enabled before send), then before manual read/reply; another Task is explicitly
+closed first. Lab already records DELIVERED while the platform retains SENT during hold.
 Each receipt is checked independently through Result, Item Score and product
 projection. No cross-owner atomicity is inferred. Normal checkpoints allow 5 seconds
 from the business request to both platform and product observations; temporary
@@ -36,6 +38,14 @@ duplicated using existing receipt IDs. Continuous replies retain latest content.
 An actual repeated Worker execution returns the original message and retains its
 first Reporter. Worker stop/start retains local records but cannot transfer the old
 Reporter; old product observations remain unchanged while the new run works.
+An additional message runs automatic read and two replies through actual HTTP.
+Their text is identical, so the oracle waits for the latest reply operation ID,
+not merely REPLIED or equal text. Repeated Result reads must retain that content.
+Manual callbackQueued only proves local queue admission; platform observations
+remain independent. Lifecycle rejection is checked after HTTP callback completion.
+Host tests also block callback HTTP, exercise early callbacks, lost send responses,
+queue saturation and startup readiness; the retired direct Reporter path cannot
+pass those tests.
 
 `scenarioCompositionIntegrationTest` complements the process runner: platform/preview assembly asserts one resource set, API/Group/job gating and exact Console
 forwards. Its fault fixtures use real Server services/Redis for an append whose
@@ -49,7 +59,11 @@ Focused product/Host tests own input, capacity, publication and local conflict r
 CN/US/GB = 700/200/100. SMS offers 200 applications/second for 60 seconds (12,000),
 while Messages creates twelve 1,000-recipient campaigns at five-second intervals.
 Finite SMS input runs at 300/second for at most 135 seconds. Every actually sent
-message receives delivery, read and two replies through the Host recipient API.
+message receives automatic delivery from HTTP acceptance, then read and two replies
+through the Host recipient API. There are still four committed receipt facts per
+message; manual request latency now measures three actions. This protocol change
+makes that latency sample incomparable with the old four-manual-action workload;
+this slice makes no new load-performance claim.
 The generators are bounded; persistent per-thread HTTP connections avoid measuring
 ephemeral-port exhaustion as product performance. Mutations have no automatic retry.
 
