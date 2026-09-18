@@ -258,7 +258,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response created = http.send(
                 "POST",
                 "/api/v1/tasks",
-                Map.of("workerGroupId", workerGroupId, "refill", List.of(Map.of("poolName","proof-facts","target", workerSelector, "count", 1)), "priority", 50, "maxRetryTimes", 3)
+                Map.of("projectId", "scenario-workers", "workerGroupId", workerGroupId, "refill", List.of(Map.of("poolName","proof-facts","target", workerSelector, "count", 1)), "priority", 50, "maxRetryTimes", 3)
         );
         requireStatus(created, 200, "create Rule witness Task");
         String taskId = JsonValues.requiredString(created.body(), "taskId");
@@ -303,11 +303,15 @@ final class RuntimeApiClient {
         return new RuleWitness(taskId, messageId);
     }
 
-    static String managedTaskId(String workerGroupId) {
-        if (workerGroupId == null || workerGroupId.isBlank()) {
-            throw new IllegalArgumentException("workerGroupId must be non-blank");
+    private Map<String, Object> managedTasks;
+
+    synchronized String managedTaskId(String workerGroupId) {
+        if (managedTasks == null) {
+            var response = http.send("GET", "/api/v1/projects/scenario-workers", null);
+            requireStatus(response, 200, "read configured Project");
+            managedTasks = JsonValues.object(response.body().get("managedTaskIds"), "managedTaskIds");
         }
-        return "scenario-rpc-" + workerGroupId;
+        return JsonValues.requiredString(managedTasks, workerGroupId);
     }
 
     private Map<String, String> observeStates(

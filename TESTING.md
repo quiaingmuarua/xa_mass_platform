@@ -133,6 +133,14 @@ Result/Score commit boundary; they do not claim replay or loss repair.
 
 ## Selection Decision
 
+Project topology binding and startup order belong to Server/Boot tests. Redis
+Owner proves descriptor/project-directory atomic writes, first-creation timestamps,
+concurrent Project isolation, bounded ordering/truncation and corrupt-data rejection.
+Project data is passive in Kernel tests; it requires no profile or Spring context.
+Runtime clients resolve the configured Project/Group managed Task mapping once
+before workload admission. Fixture migration preserves existing Worker counts,
+Items, timeouts and execution assertions; Group registration alone creates no Task.
+
 Task configuration and index proof belongs to Redis Owner: complete create-only
 descriptors, concurrent configuration integrity and strict corruption rejection,
 one-Lua facts/index updates, independent Worker/Platform writes and startup

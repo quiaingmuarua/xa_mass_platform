@@ -9,6 +9,8 @@ import {
   Warning
 } from "@element-plus/icons-vue";
 
+import ProjectTasksPanel from "@/components/ProjectTasksPanel.vue";
+import type { Project } from "@/task-management/projects";
 import FiniteTaskManagement from "@/components/FiniteTaskManagement.vue";
 import JsonBlock from "@/components/JsonBlock.vue";
 import TaskCallDebug from "@/components/TaskCallDebug.vue";
@@ -29,6 +31,7 @@ type FiniteTaskWorkbench = { openTaskById(taskId: string): void };
 const store = useRuntimeViewerStore();
 const taskManagement = useTaskManagementStore();
 const config = useRuntimeViewerConfig();
+const project = ref<Project>();
 const searchText = ref("");
 const selectedEntry = ref<TaskRuntimePreviewEntry>();
 const detailsOpen = ref(false);
@@ -191,6 +194,11 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
       </template>
     </el-alert>
 
+    <ProjectTasksPanel
+      :base-url="config.apiBaseUrl"
+      :disabled="config.mode === 'mock'"
+      @selected="project = $event"
+    />
     <section class="worker-panel" aria-label="Task Runtime Preview">
       <div class="finite-task-toolbar task-preview-toolbar">
         <div>
@@ -442,6 +450,7 @@ function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
     >
       <FiniteTaskManagement
         ref="finiteWorkbench"
+        :project="project"
         @task-changed="refreshAfterFiniteTaskChange"
       />
     </el-drawer>

@@ -48,7 +48,7 @@ Worker 增至 1,000 个连接，并不会改变这个单 Task 的批量与节奏
 
 对应的可执行证明是
 [DispatchBudgetTest](../../../kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/DispatchBudgetTest.java)
-和 [同 Group 注册复用测试](../../../server_jvm/src/test/java/com/xa/mass/server/task/call/WorkerGroupTaskCallRegistrationServiceTest.java)。
+和 [Project 初始化复用测试（原 Group 注册复用证明已迁入）](../../../server_jvm/src/test/java/com/xa/mass/server/project/ProjectTaskInitializerTest.java)。
 
 只要单轮存在非零处理成本，这个单 Task 的持续检查预算就低于 1,000/s。
 降低轮内成本仍有价值，但若未来要求单 Task 持续完成 1k～2k 次正确 RPC/s，

@@ -1,5 +1,9 @@
 xa:
   mass:
+    project-assembly:
+      projects:
+        - project-id: scenario-workers
+          worker-group-ids: [scenario-phone-number-workers, scenario-string-utils-workers]
     worker-matching:
       groups:
         scenario-string-utils-workers:

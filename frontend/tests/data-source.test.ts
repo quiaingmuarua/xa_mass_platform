@@ -69,7 +69,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     } as unknown as AxiosInstance);
 
     await expect(source.previewTasks(100)).resolves.toMatchObject({
-      entries: [{ taskId: "scenario-rpc-group-a" }]
+      entries: [{ taskId: "test-managed-group-a" }]
     });
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0]?.[0]).toBe("/v1/runtime-view/tasks:preview");

@@ -25,6 +25,7 @@ final class CallApi implements AutoCloseable {
     CallApi(String runtime, String lab) { this.runtime = runtime; this.lab = lab; }
 
     Map<String, Object> post(String path, Object body) throws Exception { return json(runtime + path, body); }
+    Map<String, Object> get(String path) throws Exception { return json(runtime + path, null); }
     Map<String, Object> workers() throws Exception { return json(lab + "/lab/v1/workers", null); }
 
     private Map<String, Object> json(String url, Object body) throws Exception {

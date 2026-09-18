@@ -62,6 +62,8 @@ export function createTaskManagementStore(
         );
       }
 
+      if (!request.projectId.trim())
+        return fail(finiteTaskConfigurationError("Select a Project."));
       const group = workerGroup(request.workerGroupId);
       const payloadKey = request.payloadKey.trim();
       if (group === undefined) {
@@ -123,12 +125,14 @@ export function createTaskManagementStore(
       activeTaskId.value = "creating";
       try {
         const created = await client.createTask({
+          projectId: request.projectId,
           workerGroupId: request.workerGroupId,
           ...request.config
         });
         const now = new Date().toISOString();
         const task: FiniteTaskSession = {
           taskId: created.taskId,
+          projectId: request.projectId,
           workerGroupId: request.workerGroupId,
           eventCode: request.eventCode,
           workerSelectorText: JSON.stringify(request.workerSelector),

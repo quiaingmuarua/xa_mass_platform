@@ -23,6 +23,7 @@ export function task(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
     workerGroupId,
+    projectId: "test-project",
     idleDisposition: "PARK_WHEN_IDLE",
     refill: [{ poolName: "any", target: {}, count: 100 }],
     config: {
@@ -41,7 +42,7 @@ export function taskPreviewEntry(
     scoreBand?: TaskScoreBand;
   } = {}
 ): TaskRuntimePreviewEntry {
-  const taskId = options.taskId ?? `scenario-rpc-${workerGroupId}`;
+  const taskId = options.taskId ?? `test-managed-${workerGroupId}`;
   return {
     taskId,
     scoreBand: options.scoreBand ?? "running_visible",

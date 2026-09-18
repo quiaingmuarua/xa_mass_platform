@@ -160,3 +160,9 @@ stay with their respective Owners.
 [human architecture overview](frontend/public/overview.htm) is a visual
 projection of these boundaries. Current code and named proof evidence take
 precedence over summaries and historical tags.
+
+Task browsing and creation use profile-declared Projects. Each configured
+Project/WorkerGroup pair has a managed Call Task; ordinary Tasks are finite.
+Projects do not partition Kernel scheduling or Matching stock. See the
+[Server Project contract](server_jvm/README.md#profile-projects-and-managed-tasks)
+and [profile composition](server_boot_jvm/README.md#project-topology).

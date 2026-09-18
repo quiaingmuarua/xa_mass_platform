@@ -3,7 +3,7 @@ package com.xa.mass.scenario.messages;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.*;
 import com.xa.mass.server.task.*;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.*;
 import java.util.concurrent.*;
@@ -25,8 +25,8 @@ class CampaignServiceTest {
             return result;
         });
         when(data.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of());
-        var service = new CampaignService(mock(WorkerGroupRegistrationService.class), creation, data, lifecycle,
-                "demo-sim", List.of("extension.worker.message.send"));
+        var service = new CampaignService(mock(ProjectDirectory.class), creation, data, lifecycle,
+                "demo-sim");
         service.start(); return service;
     }
     Map<String, Object> input(int count) {

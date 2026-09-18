@@ -182,3 +182,13 @@ cached-app freezer and reboots the disposable Emulator so all three Lab
 processes remain executable during the fixed topology proof. This is
 test-environment control, not a background-liveness mechanism. Physical-device
 vendor policy and background execution remain manual proofs.
+
+## Project fixture
+
+The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
+replace the Project list, retaining the original managed Task count. Managed Call
+clients read `GET /api/v1/projects/scenario-workers` once during preparation and
+reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
+side effects. Finite creation requests include projectId. Existing workload,
+fault, deadline and outcome assertions are unchanged; no query is added to a
+performance measurement window.

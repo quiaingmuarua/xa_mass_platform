@@ -8,7 +8,7 @@ Adapter 和真实 Worker 池；场景之间没有代码依赖。
 
 ## 依赖与执行
 
-`message-campaigns-jvm -> server_jvm` 只消费 `WorkerGroupRegistrationService`、`TaskCreationService`、
+`message-campaigns-jvm -> server_jvm` 只消费 `ProjectDirectory`、`TaskCreationService`、
 `TaskDataService`、`TaskLifecycleService` 及现有 Task 契约。产品不调用 Controller，不经过平台 HTTP
 等待器，不创建 Redis、Kernel Owner、Pacer 或 Adapter。本模块没有部署 profile，由宿主 `preview` 配置与 SMS 一起导入。
 [Spring 宿主](../../server_boot_jvm/README.md) 提供唯一混合 Group `demo-sim` 与完整业务/共享事件声明。
@@ -92,3 +92,11 @@ python integrations/scenario-coexistence/run_proof.py --scenario load-1k
 [Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 拥有普通 CI 的 12 Worker 闭环和显式
 1000 Worker 固定负载。组合证明验证平台／preview 两种装配、共享资源、实际部分提交和迟到执行结果；真实进程
 runner 只使用业务 API、公开 Runtime API 和 Lab 输入。平台通用单调性仍归原 Redis/Runtime Boundary 证明。
+
+## Project ownership
+
+The preview profile declares `messages` and its supported Groups. Runtime startup
+prepares Groups and Project managed Tasks before scenario startup. This scenario
+only reads the Project directory; it never registers a Group or Project.
+Campaigns create finite Tasks with `projectId=messages`. Catalog exposes this ID
+for the Console's on-demand, manually refreshed Project Task window.

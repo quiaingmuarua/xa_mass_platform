@@ -31,7 +31,7 @@ public class WorkerGroupRegistrationController {
     }
 
     @Operation(
-            summary = "Register a WorkerGroup and ensure its managed Task"
+            summary = "Register a WorkerGroup"
     )
     @ApiResponses({
             @ApiResponse(
@@ -50,7 +50,7 @@ public class WorkerGroupRegistrationController {
             ),
             @ApiResponse(
                     responseCode = "503",
-                    description = "WorkerGroup or managed Task Owner is unavailable",
+                    description = "WorkerGroup Owner is unavailable",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
@@ -69,7 +69,6 @@ public class WorkerGroupRegistrationController {
                 );
         return new WorkerGroupRegisterResponse(
                 registration.workerGroupId(),
-                registration.taskId(),
                 registration.status()
         );
     }

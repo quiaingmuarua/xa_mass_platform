@@ -10,4 +10,16 @@ public interface TaskResourceCatalog {
     Map<String, @Nullable TaskDescriptor> loadTaskAllocationDescriptors(
             List<String> taskIds
     );
+
+    /** First-created order, newest first; closed Tasks remain in the directory. */
+    default ProjectTaskPage listProjectTasks(String projectId, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException(
+                "TaskResourceCatalog", "listProjectTasks");
+    }
+
+    record ProjectTaskEntry(String taskId, long createdAtMillis) {}
+
+    record ProjectTaskPage(List<ProjectTaskEntry> tasks, boolean truncated) {
+        public ProjectTaskPage { tasks = List.copyOf(tasks); }
+    }
 }

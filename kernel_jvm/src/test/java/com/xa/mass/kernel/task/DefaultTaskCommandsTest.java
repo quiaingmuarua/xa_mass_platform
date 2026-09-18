@@ -277,7 +277,7 @@ class DefaultTaskCommandsTest {
     }
 
     private static TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(taskId, "workers", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+        return new TaskDescriptor(taskId, "test-project", "workers", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", Integer.toString(priority),
                         "maxRetryTimes", "3"
                 ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));

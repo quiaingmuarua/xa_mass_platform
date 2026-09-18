@@ -92,7 +92,8 @@ Worker Delivery
   -> DeliveryCommand / DeliveryReport owner runtime
 
 Configured deployment
-  -> register advisory WorkerGroups with their Task Calls
+  -> initialize configured WorkerGroups
+  -> prepare Project/Group managed Task Calls
   -> start Adapter Manager
   -> become ready without starting any Worker process
 ```
@@ -162,7 +163,7 @@ profile selector:
 POST /api/v1/tasks
 ```
 
-The request names one registered WorkerGroup. Server generates task-{UUID}.
+The request requires a profile-declared `projectId` and one of its registered WorkerGroups. Server generates task-{UUID}.
 Optional `refill` supplies 0..100 `{poolName,target,count}` declarations. Omission
 means `[]`; explicit null, retired `ruleId/refillTargets`, unavailable Pools and
 invalid targets fail. Counts are 1..1000. Matching normalizes and MAX-merges equal
@@ -171,7 +172,7 @@ immutable list. These watermarks are shared supply hints, never Task-private quo
 Priority defaults to 50 and retry budget to 3; finite Tasks use CLOSE_WHEN_IDLE.
 
 ```json
-{"workerGroupId":"country-workers","refill":[{"poolName":"country","target":{"worker.country":["CN"]},"count":100}],"priority":50,"maxRetryTimes":3}
+{"projectId":"example","workerGroupId":"country-workers","refill":[{"poolName":"country","target":{"worker.country":["CN"]},"count":100}],"priority":50,"maxRetryTimes":3}
 ```
 
 An empty-supply Task can use Identity, Phone or stock supplied by another Task.
@@ -187,45 +188,45 @@ Lab overrides remain 1000. Re-registration compares the complete expected descri
 ordinary lookup reads saved declarations without resolving new defaults. Old Task
 layouts require a new scope; no migration, cleanup or dual reading is provided.
 
-Every registered WorkerGroup also owns exactly one managed, approved
-`PARK_WHEN_IDLE` Task. Registration returns its Task ID:
+### Profile Projects and managed Tasks
+
+**Ownership change:** managed Task provisioning belongs to configured Project/Group
+pairs, not WorkerGroup registration. A Group may serve several Projects, each with
+its own stable `PARK_WHEN_IDLE` Task. Public Task creation always uses
+`CLOSE_WHEN_IDLE`. Project membership is passive Kernel data; all Tasks still share
+one Task Score key and the same Pacer. Pool/refill composition is unchanged.
+
+`xa.mass.project-assembly.projects` is an immutable list of `{project-id,
+worker-group-ids}` declarations. IDs are unique and each Group list is nonempty and
+unique. There is no Project registration, update or deletion API, Redis registry,
+dynamic Group association or default Project. Boot profiles own production values.
+
+Startup initializes configured WorkerGroups, prepares and approves each Project's
+managed Tasks, then starts Adapter ingress and scenarios. An absent Group or
+conflicting Task fails startup. Completed stages survive failure; the next startup
+uses the same coordinates and does not reset existing Scores, Items or creation
+time. Managed IDs encode both UTF-8 coordinates independently with
+Base64URL without padding, separated by a dot after `project-rpc-`. Clients consume
+the returned mapping rather than calculating IDs.
 
 ```text
+GET /api/v1/projects/{projectId}
+GET /api/v1/projects/{projectId}/tasks?limit=100
 POST /api/v1/worker-groups/{workerGroupId}:register
 ```
 
-```json
-{
-  "workerGroupId": "scenario-string-utils-workers",
-  "taskId": "scenario-rpc-scenario-string-utils-workers",
-  "status": "registered"
-}
-```
+Project lookup returns `projectId` and `managedTaskIds` (Group ID to Task ID), without
+initializing anything. Group registration returns only `workerGroupId` and
+`registered | already_registered`; it never creates Tasks.
 
-The registration request contains only the Group declaration and no public
-Task configuration. Success guarantees both the exact Group descriptor and the
-exact derived Task plus approval. It returns `already_registered` only when
-both already exist; repeating an exact legacy Group declaration backfills a
-missing Task Call and returns `registered`. Group descriptor drift or derived
-Task descriptor drift returns conflict. Re-registration always returns the
-same Task ID. Callers use that response value and must not derive the naming
-formula. A diagnostic caller that no longer has the registration response may
-inspect the bounded Task Runtime window:
-
-```text
-POST /api/v1/runtime-view/tasks:preview
-```
-
-The request selects the highest `1..1000` Task Score coordinates. Runtime View
-then performs one bounded Task descriptor read and one bounded WorkerGroup
-descriptor read, preserving Task Score Owner order. A caller may select an
-expected Managed Task only by exact Group, allocation mechanism and idle
-disposition. The window is unstable and incomplete, so it is an observation
-surface rather than a guaranteed point lookup or registration repair path.
-Group create, Task create and approval remain separate owner operations, not
-one transaction. If Task provisioning fails after Group creation, the Group
-remains and the request fails; retrying the exact Group declaration re-reads
-owner truth and converges the interrupted registration.
+Project Task listing reads the Task Owner's project ZSET, newest first, with
+`limit=1..1000` (default 100) and a one-member lookahead for `truncated`. It has no
+cursor or total. Rows contain `taskId`, `createdAtMillis`, nullable `task` and nullable
+`scoreBand`; a missing projection stays null and corruption is an Owner failure.
+The operation reads descriptors and decoded Score states, never Results or the
+global preview. Closed Tasks remain in the directory; same-millisecond ordering is
+Redis reverse member order. These independent reads are not an atomic scheduling
+snapshot. The global Score Preview remains a separate diagnostic surface.
 
 All public Task data operations are Task-ID-addressed:
 
@@ -750,7 +751,7 @@ Delivery rejection still uses the same
 `404`, `409` or `422` response.
 
 The [SMS business module](../scenarios/sms-reception-jvm/README.md) depends on the
-approved Group registration, Task submission and Task data services here.
+the configured Project directory, Task submission and Task data services here.
 Server Boot composition imports its configuration beside Server configuration in the same
 context. Only `sms-reception` enables its API, jobs and Group registration.
 The unified console shares the Server origin; distribution owns its SMS page

@@ -214,11 +214,14 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(results);
     }
 
-    private static String managedTaskId(String workerGroupId) {
-        if (workerGroupId == null || workerGroupId.isBlank()) {
-            throw new IllegalArgumentException("workerGroupId must be non-blank");
+    private Map<String, Object> managedTasks;
+
+    private synchronized String managedTaskId(String workerGroupId) {
+        if (managedTasks == null) {
+            managedTasks = objectMap(request("GET", "/api/v1/projects/scenario-workers", null,
+                    "project.read").get("managedTaskIds"), "managedTaskIds");
         }
-        return "scenario-rpc-" + workerGroupId;
+        return requiredString(managedTasks, workerGroupId);
     }
 
     private DirectCallOutcome decodeDirectCall(Map<String, Object> response) {
@@ -256,14 +259,16 @@ final class RuntimeApiClient {
             Object body,
             String operation
     ) {
+        return request("POST", path, body, operation);
+    }
+
+    private Map<String, Object> request(String method, String path, Object body, String operation) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        Jsons.toJson(body),
-                        StandardCharsets.UTF_8
-                ))
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8))
                 .build();
         try {
             HttpResponse<String> response = http.send(

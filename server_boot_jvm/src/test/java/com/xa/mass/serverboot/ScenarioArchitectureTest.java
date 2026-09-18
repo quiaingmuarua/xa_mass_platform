@@ -11,11 +11,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ScenarioArchitectureTest {
     @Test void scenariosUseOnlyTheirExistingServerApplicationCapabilities() throws Exception {
         var allowed = Map.of(
-                "sms-reception-jvm", Set.of("worker.group.WorkerGroupRegistrationService",
+                "sms-reception-jvm", Set.of("project.ProjectDirectory",
                         "task.call.TaskCallSubmissionService", "task.TaskDataService",
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",
                         "api.v1.contract.task.TaskItemResultStatus"),
-                "message-campaigns-jvm", Set.of("worker.group.WorkerGroupRegistrationService",
+                "message-campaigns-jvm", Set.of("project.ProjectDirectory",
                         "task.TaskCreationService", "task.TaskDataService", "task.TaskLifecycleService",
                         "api.v1.contract.task.TaskCreateRequest", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskItemResultStatus"));

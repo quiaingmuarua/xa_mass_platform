@@ -168,7 +168,9 @@ final class AndroidRuntimeApiClientTest {
                 StandardCharsets.UTF_8
         );
         Map<String, Object> response;
-        if (path.endsWith("workers:network-observe")) {
+        if (path.equals("/api/v1/projects/scenario-workers")) {
+            response = Map.of("projectId", "scenario-workers", "managedTaskIds", Map.of(AndroidWorkerProofConstants.WORKER_GROUP_ID, "managed-android"));
+        } else if (path.endsWith("workers:network-observe")) {
             assertEquals(
                     List.of("worker-1"),
                     Jsons.parseArray(encodedRequest)

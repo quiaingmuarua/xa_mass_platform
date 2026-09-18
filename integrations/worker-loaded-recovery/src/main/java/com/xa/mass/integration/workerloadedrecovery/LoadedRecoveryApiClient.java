@@ -166,7 +166,7 @@ final class LoadedRecoveryApiClient {
                 "POST",
                 "/api/v1/tasks",
                 Map.of(
-                        "workerGroupId", workerGroupId,
+                        "projectId", "scenario-workers", "workerGroupId", workerGroupId,
                         "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)),
                         "priority", 50,
                         "maxRetryTimes", 3

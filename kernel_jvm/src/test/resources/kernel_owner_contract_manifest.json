@@ -90,6 +90,7 @@
       "rewrite_observed_item_scores"
     ],
     "TaskResourceCatalog": [
+      "list_project_tasks",
       "load_task_allocation_descriptors"
     ],
     "TaskRuntime": [
@@ -177,8 +178,11 @@
       "status",
       "reason"
     ],
+    "ProjectTaskEntry": ["task_id", "created_at_millis"],
+    "ProjectTaskPage": ["tasks", "truncated"],
     "TaskDescriptor": [
       "task_id",
+      "project_id",
       "worker_group_id",
       "idle_disposition",
       "config",

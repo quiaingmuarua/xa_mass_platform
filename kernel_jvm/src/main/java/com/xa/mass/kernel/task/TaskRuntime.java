@@ -130,6 +130,7 @@ public interface TaskRuntime {
 
     record TaskDescriptor(
             String taskId,
+            String projectId,
             String workerGroupId,
             TaskIdleDisposition idleDisposition,
             Map<String, String> config,
@@ -137,6 +138,9 @@ public interface TaskRuntime {
     ) {
         public TaskDescriptor {
             requireNonBlank(taskId, "taskId");
+            if (projectId == null || projectId.isBlank()) {
+                throw new IllegalArgumentException("projectId must be non-blank");
+            }
             requireNonBlank(workerGroupId, "workerGroupId");
             refill = List.copyOf(Objects.requireNonNull(refill, "refill"));
             if (refill.size() > 100) throw new IllegalArgumentException("refill allows at most 100 declarations");

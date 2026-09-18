@@ -399,8 +399,15 @@ final class AndroidRuntimeApiClient {
         );
     }
 
-    private static String managedTaskId() {
-        return "scenario-rpc-" + AndroidWorkerProofConstants.WORKER_GROUP_ID;
+    private Map<String, Object> managedTasks;
+
+    private synchronized String managedTaskId() {
+        if (managedTasks == null) {
+            var response = http.send("GET", "/api/v1/projects/scenario-workers", null, "project.read");
+            requireStatus(response, 200, "read configured Project");
+            managedTasks = JsonValues.object(response.body().get("managedTaskIds"), "managedTaskIds");
+        }
+        return JsonValues.requiredString(managedTasks, AndroidWorkerProofConstants.WORKER_GROUP_ID);
     }
 
     private static String segment(String value) {

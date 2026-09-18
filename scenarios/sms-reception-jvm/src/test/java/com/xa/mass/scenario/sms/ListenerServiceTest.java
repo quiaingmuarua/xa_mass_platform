@@ -1,7 +1,7 @@
 package com.xa.mass.scenario.sms;
 
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
@@ -21,7 +21,7 @@ class ListenerServiceTest {
                 request.put("country", country);
                 service.create(request);
             }
-            verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
+            verify(fixture.registrations, times(1)).requireManagedTaskId(eq("sms"), eq("demo-sim"));
             for (String country : ListenerService.COUNTRIES) {
                 verify(fixture.submissions, timeout(2000)).submit(eq("task-sim"), argThat(items -> items.stream()
                         .anyMatch(item -> item.workerSelector().executorName().equals("worker.country") && item.workerSelector().input().equals(List.of(country)))));
@@ -38,15 +38,11 @@ class ListenerServiceTest {
         return Map.of("requestId", request, "applicationId", "A", "country", "CN", "listenSeconds", 60);
     }
     static class Fixture {
-        final WorkerGroupRegistrationService registrations = mock(WorkerGroupRegistrationService.class);
+        final ProjectDirectory registrations = mock(ProjectDirectory.class);
         final TaskCallSubmissionService submissions = mock(TaskCallSubmissionService.class);
         final TaskDataService results = mock(TaskDataService.class);
         Fixture() {
-            when(registrations.register(anyString(), anyMap(), anyList())).thenAnswer(i -> {
-                String group = i.getArgument(0);
-                return new WorkerGroupRegistrationService.Registration(group,
-                        "task-sim", "registered");
-            });
+            when(registrations.requireManagedTaskId("sms", "demo-sim")).thenReturn("task-sim");
             when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of());
         }
         ListenerService service(Clock time, int limit) {
@@ -134,11 +130,11 @@ class ListenerServiceTest {
         verifyNoInteractions(fixture.registrations, fixture.submissions, fixture.results);
         assertThat(service.isRunning()).isFalse();
         assertThatThrownBy(() -> service.create(input("before-start"))).isInstanceOf(ListenerService.ProductError.class);
-        when(fixture.registrations.register(eq("demo-sim"), anyMap(), anyList()))
+        when(fixture.registrations.requireManagedTaskId(eq("sms"), eq("demo-sim")))
                 .thenThrow(new IllegalStateException("registration unavailable"));
         assertThatThrownBy(service::start).hasMessage("registration unavailable");
         assertThat(service.isRunning()).isFalse();
-        verify(fixture.registrations, times(1)).register(eq("demo-sim"), anyMap(), anyList());
+        verify(fixture.registrations, times(1)).requireManagedTaskId(eq("sms"), eq("demo-sim"));
         assertThatThrownBy(service::start).hasMessageContaining("closed");
         service.close();
     }

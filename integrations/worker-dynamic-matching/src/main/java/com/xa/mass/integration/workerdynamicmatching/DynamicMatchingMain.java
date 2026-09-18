@@ -208,7 +208,7 @@ public final class DynamicMatchingMain {
 
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
-        var response = runtime.call("POST", "/api/v1/tasks", Map.of("workerGroupId", group, "priority", witness ? 10 : 50, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","proof-facts","target", rule, "count", 100))), false);
+        var response = runtime.call("POST", "/api/v1/tasks", Map.of("projectId", "scenario-workers", "workerGroupId", group, "priority", witness ? 10 : 50, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","proof-facts","target", rule, "count", 100))), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {

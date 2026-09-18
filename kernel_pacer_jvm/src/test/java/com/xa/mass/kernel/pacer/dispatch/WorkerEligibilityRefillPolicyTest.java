@@ -19,7 +19,7 @@ class WorkerEligibilityRefillPolicyTest {
     final List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks=tasks(List.of("g"));
     static List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks(List<String> groups) {
         return groups.stream().map(group -> new com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor(
-                "task-"+group,group,com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
+                "task-"+group, "test-project",group,com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority","0","maxRetryTimes","1"),
                 List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)))).toList();
     }

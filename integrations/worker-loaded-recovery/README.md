@@ -152,3 +152,13 @@ The same command runs in `.github/workflows/worker-loaded-recovery.yml`; this
 high-cost proof is intentionally outside the ordinary pull-request gate. It is
 expected to finish in roughly 15-30 minutes and exits as soon as its four
 stages pass; the 60-minute Workflow timeout is only a failure ceiling.
+
+## Project fixture
+
+The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
+replace the Project list, retaining the original managed Task count. Managed Call
+clients read `GET /api/v1/projects/scenario-workers` once during preparation and
+reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
+side effects. Finite creation requests include projectId. Existing workload,
+fault, deadline and outcome assertions are unchanged; no query is added to a
+performance measurement window.

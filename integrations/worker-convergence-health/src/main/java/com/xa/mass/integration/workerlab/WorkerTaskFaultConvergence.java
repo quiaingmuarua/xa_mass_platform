@@ -303,7 +303,7 @@ final class WorkerTaskFaultConvergence {
             );
             require(
                     runtime.loadResultStatuses(
-                            RuntimeApiClient.managedTaskId(STRING_GROUP),
+                            runtime.managedTaskId(STRING_GROUP),
                             List.of(state.checkpointMessageId())
                     ).get(state.checkpointMessageId())
                             == RuntimeApiClient.CallStatus.SUCCEEDED,

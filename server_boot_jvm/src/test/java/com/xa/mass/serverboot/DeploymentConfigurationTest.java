@@ -31,7 +31,7 @@ class DeploymentConfigurationTest {
     @EnableConfigurationProperties({KernelPacerProperties.class, XaMassRedisProperties.class,
             ServerWorkerAssemblyProperties.class, ServerWorkerDeliveryAdapterProperties.class,
             WorkerEndpointDirectory.class, TaskRpcProperties.class, DirectCallProperties.class,
-            TaskItemOutcomeProperties.class})
+            TaskItemOutcomeProperties.class, com.xa.mass.server.project.ProjectAssemblyProperties.class})
     @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class BoundConfiguration {}
 
@@ -88,7 +88,8 @@ class DeploymentConfigurationTest {
                         assertThat(groups).contains("scenario-phone-number-workers", "scenario-string-utils-workers", "android-demo-workers");
                         assertThat(context.getBean(TaskItemOutcomeProperties.class).names())
                                 .containsEntry(7, "delivered").containsEntry(8, "read").containsEntry(9, "replied");
-                    } else assertThat(groups).isEqualTo("{}");
+                    } else if (profile.equals("preview")) assertThat(groups).contains("demo-sim", "extension.worker.message.send");
+                    else assertThat(groups).isEqualTo("{}");
                 });
     }
 
@@ -142,6 +143,18 @@ class DeploymentConfigurationTest {
                     assertThat(adapter.listenPort()).isEqualTo(18183);
                     assertThat(adapter.commandRetryCapacity()).isEqualTo(1000);
                 });
+    }
+
+    @Test void deploymentProjectListReplacesInheritedTopology() {
+        configuration("scenario-workers", Map.of()).withPropertyValues(
+                "xa.mass.project-assembly.projects[0].project-id=proof",
+                "xa.mass.project-assembly.projects[0].worker-group-ids[0]=one-group").run(context -> {
+            assertThat(context).hasNotFailed();
+            var projects = context.getBean(com.xa.mass.server.project.ProjectAssemblyProperties.class).projects();
+            assertThat(projects).hasSize(1);
+            assertThat(projects.getFirst().projectId()).isEqualTo("proof");
+            assertThat(projects.getFirst().workerGroupIds()).containsExactly("one-group");
+        });
     }
 
     @ParameterizedTest

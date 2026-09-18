@@ -23,9 +23,10 @@ Preview enables the independent `worker.phone` query for `demo-sim`, alongside i
 existing Pool Rules. Direct `workerId` is available in every Group; Matching owns
 the [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 
-`PreviewConfiguration` supplies the common `demo-sim` Group and complete String,
-SMS and Messages event declarations. Each scenario consumes the same declaration
-through existing Server registration services. A declaration is not evidence
+`application-preview.yaml` declares the common `demo-sim` Group, its complete
+String/SMS/Messages events and the `sms` and `messages` Projects. Server prepares
+Groups and Project managed Tasks before Adapter startup. Scenarios consume the
+immutable Project directory; they no longer register Groups. A declaration is not evidence
 that the real Worker installed those handlers.
 
 The scenario libraries consume only their approved Server services and DTOs;
@@ -71,8 +72,8 @@ create a second maintained default configuration.
 
 The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
 Scenario WorkerGroup declarations and the advisory external Android demo
-Group. Registering those three declarations automatically provisions all three
-Task Calls. Server readiness does not depend on a Worker Host. The root
+Group. Its `scenario-workers` Project references all three Groups and startup provisions
+three independent managed Task Calls. Server readiness does not depend on a Worker Host. The root
 `run_local_runtime.py` defaults to this Profile, starts Server first and starts
 the standalone JVM Host only after readiness. Its finite vertical Worker proof
 is owned by
@@ -170,3 +171,22 @@ any/worker.any for both Lab Groups and preserves their 1000 managed watermarks.
 Preview enables country/messaging and phone lookup; SMS managed supply is
 country/{} /100. Groups without a task-rpc refill override save empty managed
 supply and may use Identity without a Pool.
+
+## Project topology
+
+Production profiles declare `xa.mass.project-assembly.projects` as a list:
+
+```yaml
+xa:
+  mass:
+    project-assembly:
+      projects:
+        - project-id: messages
+          worker-group-ids: [demo-sim]
+```
+
+List overlays replace the whole topology. A proof or deployment replacing the Group
+manifest must also explicitly replace the Project list with its exact Groups.
+Default and AgentForge have empty Project lists; downstream deployments provide
+Groups and Projects before startup when managed Calls are required. An external
+Group registration alone creates no Task. Projects have no mutation API.

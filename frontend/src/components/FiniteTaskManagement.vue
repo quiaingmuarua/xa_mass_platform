@@ -9,6 +9,8 @@ import type { FiniteTaskSession, FiniteTaskStage } from "@/task-management/types
 
 import { refillSchema } from "@/runtime-viewer/schemas";
 import { parseWorkerSelector } from "@/task-call-debug/model";
+import type { Project } from "@/task-management/projects";
+const props = defineProps<{ project?: Project }>();
 const draftError = ref<string>();
 
 const runtimeStore = useRuntimeViewerStore();
@@ -29,7 +31,11 @@ const draft = ref({
   maxRetryTimes: 3
 });
 
-const availableGroups = computed(() => runtimeStore.workerGroups);
+const availableGroups = computed(() =>
+  runtimeStore.workerGroups.filter(
+    (group) => props.project?.managedTaskIds[group.workerGroupId] !== undefined
+  )
+);
 const draftGroup = computed(() =>
   availableGroups.value.find(
     (group) => group.workerGroupId === draft.value.workerGroupId
@@ -81,6 +87,7 @@ async function createAndAppend(): Promise<void> {
     return;
   }
   const task = await taskStore.createAndAppend({
+    projectId: props.project?.projectId ?? "",
     workerGroupId: draft.value.workerGroupId,
     eventCode: draft.value.eventCode,
     workerSelector,
@@ -152,6 +159,7 @@ function formatBytes(value: number): string {
 
 <template>
   <div class="finite-task-workbench" data-testid="finite-task-workbench">
+    <p>Project: {{ project?.projectId ?? "请先加载 Project" }}</p>
     <div class="task-metric-grid task-metric-grid--finite" aria-label="有限 Task 指标">
       <MetricCard
         label="Created"

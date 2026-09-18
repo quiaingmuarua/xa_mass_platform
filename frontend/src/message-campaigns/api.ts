@@ -34,6 +34,7 @@ export async function api<T>(
   return response.json() as Promise<T>;
 }
 const catalogSchema = z.object({
+  projectId: z.string().min(1),
   runId: z.string().min(1),
   version: z.string().min(1),
   countries: z

@@ -49,17 +49,27 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private static final int ITEM_PRIORITY_STEP_MILLIS = 100;
     private static final String CREATE_DESCRIPTOR_SCRIPT = """
             local key = KEYS[1]
+            local descriptorType = redis.call("TYPE", key).ok
+            local indexType = redis.call("TYPE", KEYS[2]).ok
+            if (descriptorType ~= "none" and descriptorType ~= "hash")
+                or (indexType ~= "none" and indexType ~= "zset") then
+              return redis.error_reply("Task descriptor or project directory has invalid type")
+            end
             if redis.call("EXISTS", key) == 1 then
               return 0
             end
+            local now = redis.call("TIME")
+            local createdAt = now[1] * 1000 + math.floor(now[2] / 1000)
             redis.call(
               "HSET",
               key,
               "workerGroupId", ARGV[1],
               "idleDisposition", ARGV[2],
               "configJson", ARGV[3],
-              "refillJson", ARGV[4]
+              "refillJson", ARGV[4],
+              "projectId", ARGV[5]
             )
+            redis.call("ZADD", KEYS[2], "NX", createdAt, ARGV[6])
             return 1
             """;
     private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
@@ -291,6 +301,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 new TreeMap<>(descriptor.config())
         );
         Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("projectId", descriptor.projectId());
         fields.put("workerGroupId", descriptor.workerGroupId());
         fields.put(
                 "idleDisposition",
@@ -308,11 +319,14 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         Long result = commands().eval(
                 CREATE_DESCRIPTOR_SCRIPT,
                 ScriptOutputType.INTEGER,
-                new String[]{taskDescriptorKey(taskId)},
+                new String[]{taskDescriptorKey(taskId),
+                        keyspace.base() + ":task:project:" + fields.get("projectId")},
                 fields.get("workerGroupId"),
                 fields.get("idleDisposition"),
                 fields.get("configJson"),
-                fields.get("refillJson")
+                fields.get("refillJson"),
+                fields.get("projectId"),
+                taskId
         );
         return result != null && result == 1L;
     }

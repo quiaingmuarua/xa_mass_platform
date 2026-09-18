@@ -12,7 +12,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,12 +24,11 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     public static final List<String> COUNTRIES = List.of("CN", "US", "GB");
     public static final int MAX_CAMPAIGNS = 50, MAX_MESSAGES = 50_000;
     private static final Map<String, Integer> STAGES = Map.of("SENT", 6, "DELIVERED", 7, "READ", 8, "REPLIED", 9);
-    private final WorkerGroupRegistrationService registrations;
+    private final ProjectDirectory projects;
     private final TaskCreationService creation;
     private final TaskDataService data;
     private final TaskLifecycleService lifecycle;
     private final String workerGroupId;
-    private final List<String> events;
     private final Object gate = new Object();
     private final Map<String, Campaign> campaigns = new LinkedHashMap<>();
     private final Map<String, Campaign> requests = new HashMap<>();
@@ -41,20 +40,19 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
     private boolean closed;
     private int messageCount, nextCampaign;
 
-    public CampaignService(WorkerGroupRegistrationService registrations, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId,
-            List<String> events) {
+    public CampaignService(ProjectDirectory projects, TaskCreationService creation,
+            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId) {
         if (workerGroupId == null || workerGroupId.isBlank())
             throw new IllegalArgumentException("Expected WorkerGroup");
-        this.registrations = registrations; this.creation = creation; this.data = data; this.lifecycle = lifecycle;
-        this.workerGroupId = workerGroupId; this.events = List.copyOf(events);
+        this.projects = projects; this.creation = creation; this.data = data; this.lifecycle = lifecycle;
+        this.workerGroupId = workerGroupId;
     }
 
     @Override public synchronized void start() {
         if (running) return;
         if (closed) throw new IllegalStateException("Messages run closed");
         try {
-            registrations.register(workerGroupId, Map.of(), events);
+            projects.requireManagedTaskId("messages", workerGroupId);
             submitter = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(8));
             observer = Executors.newSingleThreadScheduledExecutor();
             running = true;
@@ -68,7 +66,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
+        return Map.of("projectId", "messages", "runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
                 .map(c -> Map.of("id", c, "workerGroupId", workerGroupId)).toList(),
                 "limits", Map.of("campaigns", MAX_CAMPAIGNS, "messages", MAX_MESSAGES, "recipientsPerCampaign", 1000));
     }
@@ -104,7 +102,7 @@ public final class CampaignService implements SmartLifecycle, AutoCloseable {
             fields.put("worker.country",List.of(campaign.specification.country()));
             if (campaign.specification.senderPhone()!=null) fields.put("worker.phone",List.of(campaign.specification.senderPhone()));
             var query=new EligibilityQuery(fields);
-            campaign.taskId=creation.create(new TaskCreateRequest(campaign.group, 50, 3, List.of(RefillTarget.of("messaging", query, 100)))).taskId();
+            campaign.taskId=creation.create(new TaskCreateRequest("messages", campaign.group, 50, 3, List.of(RefillTarget.of("messaging", query, 100)))).taskId();
             var input = new LinkedHashMap<String, Object>();
             input.put("country", List.of(campaign.specification.country()));
             if (campaign.specification.senderPhone() != null) input.put("phone", campaign.specification.senderPhone());

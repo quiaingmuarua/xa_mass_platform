@@ -92,7 +92,7 @@ class TaskIdleSettlementTest {
 
     private static ObservedTask dueTask() {
         return new ObservedTask(
-                new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+                new TaskDescriptor("task-1", "test-project", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                                 "priority", "0",
                                 "maxRetryTimes", "1"
                         ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))),

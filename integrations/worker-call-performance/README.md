@@ -156,7 +156,7 @@ Each case warms up at 100 calls/s for 20 seconds, observes successful warmup
 closure, then measures for 30 seconds. A call submits one Item with a fresh
 Message ID and a fixed 64-byte MD5 input. HTTP wait is 1 second, client timeout
 5 seconds and Item TTL 120 seconds. These are fixture values, not a production
-SLA. Calls use the registered Group's managed Task with explicit Any supply.
+SLA. Calls use the configured Project/Group managed Task with explicit Any supply.
 
 The background Task is fully seeded and approved once after warmup, and must
 produce a successful Result within 60 seconds. A bounded observer checks its
@@ -432,3 +432,13 @@ cases with JFR off. The new eight-case RPC mainline `--suite nightly` is a manua
 acceptance target; enable it only after its fixed acceptance conditions pass.
 Historical Direct replay, JFR, candidate comparisons and same-version repetitions remain manual.
 No extra proof lane or PR QPS gate is introduced. Safe artifacts remain seven days.
+
+## Project fixture
+
+The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
+replace the Project list, retaining the original managed Task count. Managed Call
+clients read `GET /api/v1/projects/scenario-workers` once during preparation and
+reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
+side effects. Finite creation requests include projectId. Existing workload,
+fault, deadline and outcome assertions are unchanged; no query is added to a
+performance measurement window.

@@ -50,6 +50,7 @@ class RuntimeApiClientTest {
                 new InetSocketAddress("127.0.0.1", 0),
                 0
         );
+        server.createContext("/api/v1/projects/scenario-workers", exchange -> respond(exchange, Map.of("projectId", "scenario-workers", "managedTaskIds", Map.of("group-1", "managed-call"))));
         server.createContext("/api/v1/tasks", exchange -> {
             path.set(exchange.getRequestURI().getPath());
             requestBody.set(readBody(exchange));
@@ -76,7 +77,7 @@ class RuntimeApiClientTest {
                     new TaskItem("message-3", "event.three", Map.of())
             ), 500L));
             assertEquals(
-                    "/api/v1/tasks/scenario-rpc-group-1/items:call"
+                    "/api/v1/tasks/managed-call/items:call"
                     , path.get());
             assertEquals(500L, requestBody.get().get("waitTimeoutMillis"));
             List<?> items = assertInstanceOf(

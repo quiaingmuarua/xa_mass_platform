@@ -3,7 +3,7 @@ package com.xa.mass.scenario.sms;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
@@ -26,11 +26,10 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
             "B", List.of(Map.of("id", "B-code", "priority", 100, "kind", "CODE", "prefix", "[B] ")),
             "C", List.of(Map.of("id", "C-any", "priority", 0, "kind", "ANY")));
     private static final Set<String> TERMINAL = Set.of("RECEIVED", "CANCELLED", "EXPIRED", "REJECTED", "INTERRUPTED");
-    private final WorkerGroupRegistrationService registrations;
+    private final ProjectDirectory projects;
     private final TaskCallSubmissionService submissions;
     private final TaskDataService results;
     private final String workerGroupId;
-    private final List<String> events;
     private final boolean scheduleObservation;
     private volatile boolean running;
     private boolean closed;
@@ -52,30 +51,28 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
     private final String runId = UUID.randomUUID().toString();
     private int nextCommandCountry;
 
-    public ListenerService(WorkerGroupRegistrationService registrations,
+    public ListenerService(ProjectDirectory projects,
             TaskCallSubmissionService submissions, TaskDataService results) {
-        this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true);
+        this(projects, submissions, results, Clock.systemUTC(), CAPACITY, true);
     }
-    public ListenerService(WorkerGroupRegistrationService registrations,
+    public ListenerService(ProjectDirectory projects,
             TaskCallSubmissionService submissions, TaskDataService results,
-            String workerGroupId, List<String> events) {
-        this(registrations, submissions, results, Clock.systemUTC(), CAPACITY, true, workerGroupId, events);
+            String workerGroupId) {
+        this(projects, submissions, results, Clock.systemUTC(), CAPACITY, true, workerGroupId);
     }
-    ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
+    ListenerService(ProjectDirectory projects, TaskCallSubmissionService submissions,
             TaskDataService results, Clock clock, int limit, boolean scheduleObservation) {
-        this(registrations, submissions, results, clock, limit, scheduleObservation,
-                "demo-sim",
-                List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel"));
+        this(projects, submissions, results, clock, limit, scheduleObservation,
+                "demo-sim");
     }
-    private ListenerService(WorkerGroupRegistrationService registrations, TaskCallSubmissionService submissions,
+    private ListenerService(ProjectDirectory projects, TaskCallSubmissionService submissions,
             TaskDataService results, Clock clock, int limit, boolean scheduleObservation,
-            String workerGroupId, List<String> events) {
-        this.registrations = registrations;
+            String workerGroupId) {
+        this.projects = projects;
         this.submissions = submissions;
         this.results = results;
         if (workerGroupId == null || workerGroupId.isBlank()) throw new IllegalArgumentException("WorkerGroup is required");
         this.workerGroupId = workerGroupId;
-        this.events = List.copyOf(events);
         this.clock = clock;
         this.limit = limit;
         this.scheduleObservation = scheduleObservation;
@@ -85,7 +82,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
         if (running) return;
         if (closed) throw new IllegalStateException("Product run is closed");
         try {
-            taskId = registrations.register(workerGroupId, Map.of(), events).taskId();
+            taskId = projects.requireManagedTaskId("sms", workerGroupId);
             commands = Executors.newFixedThreadPool(8);
             commandPump = Executors.newSingleThreadScheduledExecutor();
             observer = Executors.newSingleThreadScheduledExecutor();
@@ -106,7 +103,7 @@ public final class ListenerService implements AutoCloseable, SmartLifecycle {
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("version", "0.1.0-preview", "runId", runId, "applications", List.of(
+        return Map.of("projectId", "sms", "version", "0.1.0-preview", "runId", runId, "applications", List.of(
                 Map.of("id", "A", "name", "应用 A · 验证码", "templates", TEMPLATES.get("A")),
                 Map.of("id", "B", "name", "应用 B · 验证码", "templates", TEMPLATES.get("B")),
                 Map.of("id", "C", "name", "应用 C · 全匹配", "templates", TEMPLATES.get("C"))),

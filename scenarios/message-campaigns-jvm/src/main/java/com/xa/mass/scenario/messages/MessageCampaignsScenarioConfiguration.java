@@ -3,7 +3,7 @@ package com.xa.mass.scenario.messages;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.*;
@@ -12,10 +12,9 @@ import org.springframework.context.annotation.*;
 @Import(MessageController.class)
 public class MessageCampaignsScenarioConfiguration {
     @Bean(destroyMethod = "close")
-    CampaignService campaigns(WorkerGroupRegistrationService registrations, TaskCreationService creation,
+    CampaignService campaigns(ProjectDirectory projects, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle,
-            @Qualifier("scenarioWorkerGroup") String workerGroupId,
-            @Qualifier("scenarioWorkerEvents") List<String> events) {
-        return new CampaignService(registrations, creation, data, lifecycle, workerGroupId, events);
+            @Qualifier("scenarioWorkerGroup") String workerGroupId) {
+        return new CampaignService(projects, creation, data, lifecycle, workerGroupId);
     }
 }

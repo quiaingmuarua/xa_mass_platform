@@ -137,3 +137,13 @@ and private correlation mappings are excluded from uploaded artifacts.
 Auxiliary checks: `:integrations:worker-dynamic-matching:test`, Python
 `unittest discover -s integrations/worker-dynamic-matching -p 'test_*.py'`,
 Java Manager tests and Worker Simulator tests. These do not replace the real runner.
+
+## Project fixture
+
+The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
+replace the Project list, retaining the original managed Task count. Managed Call
+clients read `GET /api/v1/projects/scenario-workers` once during preparation and
+reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
+side effects. Finite creation requests include projectId. Existing workload,
+fault, deadline and outcome assertions are unchanged; no query is added to a
+performance measurement window.

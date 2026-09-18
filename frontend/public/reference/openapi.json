@@ -114,6 +114,55 @@
         "maxProperties" : 100,
         "type" : "object"
       },
+      "Entry" : {
+        "properties" : {
+          "createdAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "scoreBand" : {
+            "type" : "string"
+          },
+          "task" : {
+            "$ref" : "#/components/schemas/TaskView"
+          },
+          "taskId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProjectTasks" : {
+        "properties" : {
+          "projectId" : {
+            "type" : "string"
+          },
+          "tasks" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Entry"
+            },
+            "type" : "array"
+          },
+          "truncated" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "ProjectView" : {
+        "properties" : {
+          "managedTaskIds" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "projectId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "RefillTarget" : {
         "additionalProperties" : false,
         "description" : "Shared Pool supply declaration. Equal normalized targets in a Group/Pool merge by MAX; target is required, including an explicit empty object. This is not a Task-private quota.",
@@ -150,6 +199,10 @@
             "minimum" : 0,
             "type" : "integer"
           },
+          "projectId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
           "refill" : {
             "description" : "Optional Pool waterline declarations; omission means no supply. Equal targets in the same Group/Pool merge by MAX, never private quotas.",
             "items" : {
@@ -164,7 +217,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "workerGroupId" ],
+        "required" : [ "projectId", "workerGroupId" ],
         "type" : "object"
       },
       "TaskCreateResponse" : {
@@ -311,6 +364,9 @@
           "idleDisposition" : {
             "type" : "string"
           },
+          "projectId" : {
+            "type" : "string"
+          },
           "refill" : {
             "items" : {
               "$ref" : "#/components/schemas/RefillTarget"
@@ -416,9 +472,6 @@
       "WorkerGroupRegisterResponse" : {
         "properties" : {
           "status" : {
-            "type" : "string"
-          },
-          "taskId" : {
             "type" : "string"
           },
           "workerGroupId" : {
@@ -642,6 +695,109 @@
   },
   "openapi" : "3.1.0",
   "paths" : {
+    "/api/v1/projects/{projectId}" : {
+      "get" : {
+        "operationId" : "get",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProjectView"
+                }
+              }
+            },
+            "description" : "Configured Project"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Project or limit is invalid"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is unavailable"
+          }
+        },
+        "summary" : "Read a configured Project and its managed Task coordinates",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/projects/{projectId}/tasks" : {
+      "get" : {
+        "operationId" : "tasks",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 100,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProjectTasks"
+                }
+              }
+            },
+            "description" : "Project Task window"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Project or limit is invalid"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is unavailable"
+          }
+        },
+        "summary" : "Read newest Project Tasks, without pagination or Result reads",
+        "tags" : [ "Tasks" ]
+      }
+    },
     "/api/v1/runtime-view/endpoint-managers/{endpointManagerId}/workers:network-observe" : {
       "post" : {
         "operationId" : "observeWorkerNetwork",
@@ -2115,10 +2271,10 @@
                 }
               }
             },
-            "description" : "WorkerGroup or managed Task Owner is unavailable"
+            "description" : "WorkerGroup Owner is unavailable"
           }
         },
-        "summary" : "Register a WorkerGroup and ensure its managed Task",
+        "summary" : "Register a WorkerGroup",
         "tags" : [ "Worker Resources" ]
       }
     }

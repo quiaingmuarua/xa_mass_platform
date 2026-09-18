@@ -50,6 +50,8 @@ SERVER_FLAGS = {
     "xa.mass.task-rpc.initial-probe-interval-millis": "50",
     "xa.mass.task-rpc.normal-probe-interval-millis": "100",
     "xa.mass.task-rpc.long-probe-interval-millis": "250",
+    "xa.mass.project-assembly.projects[0].project-id": "scenario-workers",
+    "xa.mass.project-assembly.projects[0].worker-group-ids[0]": GROUP,
     "xa.mass.worker-assembly.group-config-json": json.dumps({GROUP: {
         "attributes": {"capability": "string-utils"},
         "eventCodes": ["extension.worker.string.md5", "extension.worker.lab.delay"]}}),

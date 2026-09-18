@@ -6,7 +6,6 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.RegistrationResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,20 +17,15 @@ public final class WorkerGroupRegistrationService {
     private static final String OPERATION = "workerGroup.register";
 
     private final WorkerResourceCatalog workerCatalog;
-    private final WorkerGroupTaskCallRegistrationService taskCallRegistrations;
 
     public WorkerGroupRegistrationService(
-            WorkerResourceCatalog workerCatalog,
-            WorkerGroupTaskCallRegistrationService taskCallRegistrations
+            WorkerResourceCatalog workerCatalog
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
         );
-        this.taskCallRegistrations = Objects.requireNonNull(
-                taskCallRegistrations,
-                "taskCallRegistrations"
-        );
+
     }
 
     public Registration register(
@@ -77,12 +71,9 @@ public final class WorkerGroupRegistrationService {
                     null
             );
         };
-        WorkerGroupTaskCallRegistrationService.Registration taskCall =
-                taskCallRegistrations.register(workerGroupId);
         return new Registration(
                 workerGroupId,
-                taskCall.taskId(),
-                groupRegistered || taskCall.newlyRegistered()
+                groupRegistered
                         ? "registered"
                         : "already_registered"
         );
@@ -131,7 +122,6 @@ public final class WorkerGroupRegistrationService {
 
     public record Registration(
             String workerGroupId,
-            String taskId,
             String status
     ) {
     }

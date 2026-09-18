@@ -97,7 +97,7 @@ def mixed_capabilities(run, inventory):
                  "extension.worker.string.base64.encode"]).issubset(events), "Mixed events are not installed")
     listener = wait_state(run, create(run, request="mixed-worker"), {"LISTENING"})
     require(listener["workerId"] == cn["workerId"], "SMS listener identity changed")
-    task = http(run.url, "/api/v1/tasks", {"workerGroupId": "demo-sim", "refill": [{"poolName": "country", "target": {}, "count": 100}]})["taskId"]
+    task = http(run.url, "/api/v1/tasks", {"projectId": "sms", "workerGroupId": "demo-sim", "refill": [{"poolName": "country", "target": {}, "count": 100}]})["taskId"]
     messages = [str(uuid.uuid4()) for _ in range(4)]
     selectors = [
         {"executorName": "worker.country", "input": ["CN"]},

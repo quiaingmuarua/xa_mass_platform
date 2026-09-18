@@ -28,6 +28,10 @@ class ConvergenceWorkloadTest {
                 new InetSocketAddress("127.0.0.1", 0),
                 0
         );
+        server.createContext("/api/v1/projects/scenario-workers", exchange -> respondJson(exchange, Map.of(
+                "projectId", "scenario-workers", "managedTaskIds", Map.of(
+                        WorkerLabConvergenceSupport.PHONE_GROUP, "managed-phone",
+                        WorkerLabConvergenceSupport.STRING_GROUP, "managed-string"))));
         server.createContext("/api/v1/tasks", exchange -> {
             Map<String, Object> body = requestBody(exchange);
             requests.add(new Request(exchange.getRequestURI().getPath(), body));

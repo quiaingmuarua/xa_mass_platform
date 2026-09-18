@@ -19,6 +19,8 @@ spring:
 
 xa:
   mass:
+    project-assembly:
+      projects: []
     kernel-pacer:
       enabled: ${XA_MASS_KERNEL_PACER_ENABLED:true}
       preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}

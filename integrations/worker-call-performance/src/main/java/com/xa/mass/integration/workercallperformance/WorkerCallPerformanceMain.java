@@ -65,7 +65,8 @@ public final class WorkerCallPerformanceMain {
                     "eventCodes", List.of("extension.worker.string.md5", "extension.worker.lab.delay")));
             if (!CallApi.GROUP.equals(registration.get("workerGroupId")))
                 throw new CallLoad.ProtocolFailure("Registration Group changed");
-            String task = CallApi.string(registration, "taskId");
+            var project = api.get("/api/v1/projects/scenario-workers");
+            String task = CallApi.string(CallApi.object(project.get("managedTaskIds")), CallApi.GROUP);
             summary.put("taskId", task);
             summary.put("workerIds", ids);
             String prefix = UUID.randomUUID().toString();
@@ -221,7 +222,7 @@ public final class WorkerCallPerformanceMain {
     }
 
     private static String createBackground(CallApi api, String prefix) throws Exception {
-        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("workerGroupId", CallApi.GROUP, "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)), "priority", 50, "maxRetryTimes", 3)), "taskId");
+        String task = CallApi.string(api.post("/api/v1/tasks", Map.of("projectId", "scenario-workers", "workerGroupId", CallApi.GROUP, "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)), "priority", 50, "maxRetryTimes", 3)), "taskId");
         for (int offset = 0; offset < 50_000; offset += 100) {
             var items = new ArrayList<Map<String, Object>>();
             for (int i = offset; i < offset + 100; i++) items.add(Map.of("messageId", prefix + "-bg-" + i,

@@ -19,15 +19,15 @@ public enum ServerErrorCode {
     ),
     TASK_CALL_NOT_REGISTERED(
             12005,
-            "WorkerGroup Task Call is not provisioned"
+            "Project Task Call is not provisioned"
     ),
     TASK_CALL_REGISTRATION_CONFLICT(
             12006,
-            "WorkerGroup Task Call provisioning conflicts with current state"
+            "Project Task Call provisioning conflicts with current state"
     ),
     TASK_CALL_REGISTRATION_UNAVAILABLE(
             12007,
-            "WorkerGroup Task Call provisioning is unavailable"
+            "Project Task Call provisioning is unavailable"
     ),
     TASK_OPERATION_NOT_SUPPORTED(
             12008,

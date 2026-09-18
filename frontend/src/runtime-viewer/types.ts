@@ -42,6 +42,7 @@ export interface RefillTarget {
 
 export interface TaskView {
   taskId: string;
+  projectId: string;
   workerGroupId: string;
   idleDisposition: "CLOSE_WHEN_IDLE" | "PARK_WHEN_IDLE";
   refill: RefillTarget[];

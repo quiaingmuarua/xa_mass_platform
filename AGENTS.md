@@ -155,6 +155,8 @@ and Redis shapes.
 - Redis operations stay in their owning package. Server connection/health code
   must not own keys or bypass a mechanical contract.
 - Task Owner stores complete immutable descriptors and Item execution data.
+  Every Task has a passive projectId; descriptor creation and the first-created
+  project index commit together. Global Task Score scheduling stays independent.
   `WorkerQuery`, `EligibilityQuery` and Pool supply declarations are passive
   data here; Kernel must not interpret Matching fields or retain a second
   Matching binding.
@@ -254,6 +256,10 @@ production profiles.
   then writes complete Kernel data. Admission cannot read inventory, create
   refill demand, retain a separate binding or compensate through Matching.
   Finite append rejection remains per Item.
+- Profile Project declarations are immutable Server admission. Startup prepares
+  Groups, then Project/Group managed PARK Tasks, before Adapter/scenario startup.
+  External Group registration creates no Task; ordinary Task creation is CLOSE.
+  Project reads never initialize resources.
 - Prepare coordinates external identity, persistent Kernel Binding and cold
   Score membership in separate retryable stages. It must not create/refresh
   Matching facts or establish readiness.
@@ -473,7 +479,8 @@ finite state, idempotency and observation. Their device owners remain in
   speculative SDK. Platform regressions return to the owning proof; do not hide
   them with business scheduling/delivery repair or count uncertainty as success.
 - Boot explicitly imports both scenarios under preview with one shared Group and
-  event declaration. Scenario libraries own no deployment profile. Keep one
+  event declaration, and separate configured sms/messages Projects. Scenarios
+  consume the prepared Project directory without Group registration. Scenario libraries own no deployment profile. Keep one
   platform resource set and an independent Simulator process.
 - Constructors/configuration remain free of premature business startup. Stop
   scenario admission/submission/observation before platform resources with bounded

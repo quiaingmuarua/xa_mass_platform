@@ -5,7 +5,7 @@ import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.scenario.sms.ListenerService;
 import com.xa.mass.scenario.messages.CampaignService;
 import com.xa.mass.serverboot.PreviewConfiguration;
@@ -25,7 +25,7 @@ class ScenarioLifecycleTest {
     @ParameterizedTest
     @ValueSource(ints = {0, 1, 2})
     void bothScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
-        var registrations = mock(WorkerGroupRegistrationService.class);
+        var registrations = mock(ProjectDirectory.class);
         var submissions = mock(TaskCallSubmissionService.class);
         var results = mock(TaskDataService.class);
         var creation = mock(TaskCreationService.class);
@@ -33,7 +33,7 @@ class ScenarioLifecycleTest {
         var adapters = mock(WorkerDeliveryAdapterManager.class);
         var verifier = mock(WorkerRouteVerificationBatcher.class);
         var initializer = mock(ServerWorkerGroupInitializer.class);
-        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, adapters, verifier);
+        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, mock(com.xa.mass.server.project.ProjectTaskInitializer.class), adapters, verifier);
         var registrationCount = new AtomicInteger();
         List<String> events = new CopyOnWriteArrayList<>();
         List<SmartLifecycle> scenarios = new CopyOnWriteArrayList<>();
@@ -46,7 +46,7 @@ class ScenarioLifecycleTest {
                     return bean;
                 }
             });
-            context.registerBean(WorkerGroupRegistrationService.class, () -> registrations);
+            context.registerBean(ProjectDirectory.class, () -> registrations);
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
             context.registerBean(TaskDataService.class, () -> results);
             context.registerBean(TaskCreationService.class, () -> creation);
@@ -56,14 +56,14 @@ class ScenarioLifecycleTest {
             context.register(PreviewConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
             when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(java.util.Map.of());
-            when(registrations.register(anyString(), anyMap(), anyList())).thenAnswer(call -> {
+            when(registrations.requireManagedTaskId(anyString(), anyString())).thenAnswer(call -> {
                 assertThat(platform.isRunning()).isTrue();
                 events.add("register");
                 if (registrationCount.incrementAndGet() == failedRegistration)
                     throw new IllegalStateException("registration unavailable");
-                String id = call.getArgument(0);
+                String id = call.getArgument(1);
                 assertThat(id).isEqualTo("demo-sim");
-                return new WorkerGroupRegistrationService.Registration(id, "task-" + id, "registered");
+                return "task-" + id;
             });
             doAnswer(call -> {
                 assertThat(scenarios).hasSize(2).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());

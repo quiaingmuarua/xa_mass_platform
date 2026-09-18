@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TaskDescriptorTest {
     private static TaskDescriptor descriptor(String rule, List<RefillTarget> targets) {
-        return new TaskDescriptor("task", "group", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), targets == null ? null : targets.stream().map(t -> new RefillTarget(rule,t.target(),t.count())).toList());
+        return new TaskDescriptor("task", "test-project", "group", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), targets == null ? null : targets.stream().map(t -> new RefillTarget(rule,t.target(),t.count())).toList());
     }
 
     @Test void capturesTargetsWithoutInterpretingOrNormalizingRuleParameters() {
@@ -28,6 +28,15 @@ class TaskDescriptorTest {
         assertEquals(descriptor, descriptor("external.rule", List.of(target)));
         assertNotEquals(descriptor, descriptor("other.rule", List.of(target)));
         assertNotEquals(descriptor, descriptor("external.rule", List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1))));
+    }
+
+    @Test void projectIsRequiredPassiveDataWithoutAProjectRegistry() {
+        for (String project : new String[]{null, "", " "}) {
+            assertThrows(IllegalArgumentException.class, () -> new TaskDescriptor(
+                    "task", project, "group", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                    Map.of("priority", "0", "maxRetryTimes", "1"), List.of()));
+        }
+        assertEquals("test-project", descriptor("r", List.of()).projectId());
     }
 
     @Test void requiresAnExplicitBoundedConfiguration() {

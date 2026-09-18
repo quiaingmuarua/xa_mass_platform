@@ -83,6 +83,7 @@ describe("HttpFiniteTaskClient", () => {
     } as unknown as AxiosInstance);
 
     await client.createTask({
+      projectId: "test-project",
       workerGroupId: "group-1",
       priority: 50,
       refill: [],
@@ -272,6 +273,7 @@ function catalog(mode: "api" | "mock") {
 
 function executionRequest(contents: string) {
   return {
+    projectId: "test-project",
     workerGroupId: "scenario-string-utils-workers",
     eventCode: "extension.worker.string.md5",
     workerSelector: { executorName: "worker.any", input: {} },

@@ -64,6 +64,8 @@ class KernelOwnerContractManifestTest {
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
+            Map.entry("ProjectTaskEntry", TaskResourceCatalog.ProjectTaskEntry.class),
+            Map.entry("ProjectTaskPage", TaskResourceCatalog.ProjectTaskPage.class),
             Map.entry("HeldCandidate", WorkerMatching.HeldCandidate.class),
             Map.entry("WorkerCandidate", WorkerMatching.WorkerCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),

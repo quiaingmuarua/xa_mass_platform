@@ -44,19 +44,20 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
 
 const mockTasks: TaskView[] = [
   mockTask(
-    "scenario-rpc-scenario-phone-number-workers",
+    "demo-managed-scenario-phone-number-workers",
     "scenario-phone-number-workers"
   ),
   mockTask(
-    "scenario-rpc-scenario-string-utils-workers",
+    "demo-managed-scenario-string-utils-workers",
     "scenario-string-utils-workers"
   ),
-  mockTask("scenario-rpc-android-demo-workers", "android-demo-workers")
+  mockTask("demo-managed-android-demo-workers", "android-demo-workers")
 ];
 
 function mockTask(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
+    projectId: "demo",
     workerGroupId,
     idleDisposition: "PARK_WHEN_IDLE",
     refill: [{ poolName: "any", target: {}, count: 100 }],
@@ -77,6 +78,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[0]!,
         taskId: "mock-finite-awaiting-review",
+        projectId: "demo",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[0]!
@@ -87,6 +89,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-initial",
+        projectId: "demo",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!
@@ -103,6 +106,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-closed",
+        projectId: "demo",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!

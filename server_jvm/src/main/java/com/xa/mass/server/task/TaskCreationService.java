@@ -7,6 +7,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
+import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
@@ -24,12 +25,14 @@ public final class TaskCreationService {
     private final WorkerMatchingCatalog matchingCatalog;
     private final TaskRuntime taskRuntime;
     private final TaskIdGenerator taskIds;
+    private final ProjectDirectory projects;
 
     public TaskCreationService(
             WorkerResourceCatalog workerCatalog,
             WorkerMatchingCatalog matchingCatalog,
             TaskRuntime taskRuntime,
-            TaskIdGenerator taskIds
+            TaskIdGenerator taskIds,
+            ProjectDirectory projects
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -41,6 +44,7 @@ public final class TaskCreationService {
         );
         this.taskRuntime = Objects.requireNonNull(taskRuntime, "taskRuntime");
         this.taskIds = Objects.requireNonNull(taskIds, "taskIds");
+        this.projects = Objects.requireNonNull(projects, "projects");
     }
 
     public TaskCreateResponse create(TaskCreateRequest request) {
@@ -49,6 +53,7 @@ public final class TaskCreationService {
                 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
         }
+        projects.requireManagedTaskId(request.projectId(), request.workerGroupId());
         requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
         List<RefillTarget> targets = resolveTargets(request);
@@ -57,6 +62,7 @@ public final class TaskCreationService {
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
+                request.projectId(),
                 request.workerGroupId(),
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config,

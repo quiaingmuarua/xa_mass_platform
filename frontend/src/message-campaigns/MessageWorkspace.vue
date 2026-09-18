@@ -16,6 +16,7 @@ import {
   type Metrics,
   type Page
 } from "./api";
+import ProjectTasksPanel from "@/components/ProjectTasksPanel.vue";
 import { useMessageAvailability } from "./availability";
 
 const props = defineProps<{ catalog: Catalog }>();
@@ -191,6 +192,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="messages-workspace">
+    <ProjectTasksPanel :project-id="catalog.projectId" base-url="/api" />
     <header class="messages-intro">
       <div>
         <p class="eyebrow">MESSAGE CAMPAIGNS</p>
@@ -276,7 +278,11 @@ onBeforeUnmount(() => {
     <template v-else>
       <section class="messages-card">
         <h2>创建发送批次</h2>
-        <el-form label-position="top" @submit.prevent="createCampaign">
+        <el-form
+          data-testid="campaign-form"
+          label-position="top"
+          @submit.prevent="createCampaign"
+        >
           <div class="messages-fields">
             <el-form-item label="批次名称"
               ><el-input v-model="form.name" maxlength="128" aria-label="批次名称"

@@ -67,7 +67,7 @@ import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.call.TaskRpcProperties;
 import com.xa.mass.server.task.call.TaskRpcWaitRegistry;
 import com.xa.mass.server.task.result.TaskResultsExportService;
-import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
+import com.xa.mass.server.project.ProjectTaskInitializer;
 import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerRegistrationResult;
 import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
@@ -176,7 +176,7 @@ class RuntimeApiControllerTest {
                         TaskApprovalStatus.APPROVED,
                         null
                 ));
-        when(taskLifecycle.approveTask("scenario-rpc-phone-tools"))
+        when(taskLifecycle.approveTask("project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM"))
                 .thenReturn(new TaskApprovalResult(
                         TaskApprovalStatus.ALREADY_APPROVED,
                         null
@@ -268,13 +268,14 @@ class RuntimeApiControllerTest {
                 new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, matchingCatalog),
                 taskRuntime, taskRpcRegistry, rpcProperties
         );
-        WorkerGroupTaskCallRegistrationService registrations =
-                new WorkerGroupTaskCallRegistrationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()));
+        var projects = new com.xa.mass.server.project.ProjectDirectory(
+                new com.xa.mass.server.project.ProjectAssemblyProperties(List.of(
+                        new com.xa.mass.server.project.ProjectAssemblyProperties.Project("test-project", List.of("phone-tools", "missing-group", "missing")))));
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
                 matchingCatalog,
                 taskRuntime,
-                new TaskIdGenerator()
+                new TaskIdGenerator(), projects
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
@@ -282,8 +283,7 @@ class RuntimeApiControllerTest {
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
-                                        workerCatalog,
-                                        registrations
+                                        workerCatalog
                                 )
                         ),
                         new WorkerPreparationController(
@@ -325,9 +325,7 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "request-1"))
                 .andExpect(jsonPath("$.workerGroupId").value("phone-tools"))
-                .andExpect(jsonPath("$.taskId").value(
-                        "scenario-rpc-phone-tools"
-                ))
+                .andExpect(jsonPath("$.taskId").doesNotExist())
                 .andExpect(jsonPath("$.status").value("registered"));
 
         mockMvc.perform(post(
@@ -510,15 +508,27 @@ class RuntimeApiControllerTest {
     }
 
 
+    @Test void projectAdmissionAndPublicCloseDispositionAreMandatory() throws Exception {
+        for (String body : List.of(
+                "{\"workerGroupId\":\"phone-tools\"}",
+                "{\"projectId\":\"absent\",\"workerGroupId\":\"phone-tools\"}",
+                "{\"projectId\":\"test-project\",\"workerGroupId\":\"unclaimed\"}",
+                "{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"idleDisposition\":\"PARK_WHEN_IDLE\"}")) {
+            mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+    }
+
     @Test void createsExplicitSupplyAndEmptySupplyTasksWithoutCandidateCapacity() throws Exception {
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\"}"))
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
                 .andExpect(status().isOk());
         var descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime, org.mockito.Mockito.times(3)).createTask(descriptors.capture());
@@ -534,7 +544,7 @@ class RuntimeApiControllerTest {
         when(matchingCatalog.normalizeRefill(anyString(),anyList()))
                 .thenReturn(List.of(new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN","US"))), 20)));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content("""
-                {"workerGroupId":"phone-tools",
+                {"projectId":"test-project", "workerGroupId":"phone-tools",
                  "refill":[{"poolName":"country","target":{"worker.country":["US","CN","US"]},"count":20}]}
                 """)).andExpect(status().isOk());
         verify(matchingCatalog).normalizeRefill(eq("phone-tools"),eq(List.of(
@@ -551,7 +561,7 @@ class RuntimeApiControllerTest {
         when(matchingCatalog.normalizeRefill(eq("phone-tools"),any()))
                 .thenThrow(new IllegalArgumentException("unsupported refill parameters"));
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isBadRequest());
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
         verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(),anyList(),anyList());
@@ -615,7 +625,7 @@ class RuntimeApiControllerTest {
                 "[{\"conditions\":{\"worker.country\":[\"CN\"]},\"count\":1}]",
                 "[{\"query\":{\"worker.country\":{\"op\":\"eq\",\"values\":[\"CN\"]}},\"count\":1}]")) {
             mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"workerGroupId\":\"phone-tools\",\"refill\":"+targets+"}"))
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":"+targets+"}"))
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
@@ -626,7 +636,7 @@ class RuntimeApiControllerTest {
         for (String extra : List.of("\"ruleId\":\"worker.country\",\"allocationRule\":{}",
                 "\"ruleId\":\"worker.country\",\"maximumCandidateWorkers\":1", "\"maximumCandidateWorkers\":10", "\"ruleId\":\"worker.any\"", "\"refillTargets\":[]")) {
             mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"workerGroupId\":\"phone-tools\","+extra+"}"))
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\","+extra+"}"))
                     .andExpect(status().isBadRequest());
         }
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
@@ -639,7 +649,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId": "phone-tools"
+                                  "projectId":"test-project", "workerGroupId": "phone-tools"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -801,7 +811,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId": "phone-tools",
+                                  "projectId":"test-project", "workerGroupId": "phone-tools",
                                   "priority": 100
                                 }
                                 """))
@@ -824,7 +834,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"missing"
+                                  "projectId":"test-project", "workerGroupId":"missing"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -846,7 +856,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"phone-tools"
+                                  "projectId":"test-project", "workerGroupId":"phone-tools"
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())
@@ -869,7 +879,7 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "workerGroupId":"phone-tools"
+                                  "projectId":"test-project", "workerGroupId":"phone-tools"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -892,7 +902,7 @@ class RuntimeApiControllerTest {
     @Test
     void managedTaskRejectsLifecycleAndAppendButAllowsResultLoad()
             throws Exception {
-        String taskId = "scenario-rpc-phone-tools";
+        String taskId = "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM";
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/approve", taskId))
                 .andExpect(status().isBadRequest())
@@ -943,15 +953,14 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workerGroupId")
                         .value("phone-tools"))
-                .andExpect(jsonPath("$.taskId")
-                        .value("scenario-rpc-phone-tools"))
+                .andExpect(jsonPath("$.taskId").doesNotExist())
                 .andExpect(jsonPath("$.status")
                         .value("registered"));
 
         MvcResult async = mockMvc.perform(
                         post(
                                 "/api/v1/tasks/"
-                                        + "scenario-rpc-phone-tools/items:call"
+                                        + "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/items:call"
                         )
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -984,7 +993,7 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post(
                                 "/api/v1/tasks/"
-                                        + "scenario-rpc-phone-tools/"
+                                        + "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/"
                                         + "results:load"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
@@ -997,7 +1006,7 @@ class RuntimeApiControllerTest {
                 ).value("{\"valid\":true}"));
 
         verify(taskRuntime, times(2)).loadTaskItemResults(
-                "scenario-rpc-phone-tools",
+                "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM",
                 List.of("message-1")
         );
         verify(taskRuntime, org.mockito.Mockito.never())
@@ -1045,7 +1054,7 @@ class RuntimeApiControllerTest {
                 "{\"workerId\":[1]}", "{\"workerId\":[true]}", "{\"workerId\":[null]}",
                 "{\"workerId\":[{}]}", "{\"workerId\":[[\"worker\"]]}",
                 "{\" \":[\"x\"]}")) {
-            mockMvc.perform(post("/api/v1/tasks/scenario-rpc-phone-tools/items:call")
+            mockMvc.perform(post("/api/v1/tasks/project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/items:call")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"items":[{"messageId":"id","eventCode":"event","payload":{},
@@ -1061,7 +1070,7 @@ class RuntimeApiControllerTest {
             throws Exception {
         MvcResult pending = mockMvc.perform(post(
                                 "/api/v1/tasks/"
-                                        + "scenario-rpc-phone-tools/items:call"
+                                        + "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/items:call"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -1118,7 +1127,7 @@ class RuntimeApiControllerTest {
     void legacyItemAllocationRuleIsRejected() throws Exception {
         mockMvc.perform(post(
                                 "/api/v1/tasks/"
-                                        + "scenario-rpc-phone-tools/items:call"
+                                        + "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/items:call"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -1383,8 +1392,8 @@ class RuntimeApiControllerTest {
     }
 
     private static TaskDescriptor descriptor(String taskId) {
-        boolean scenarioRpc = taskId.startsWith("scenario-rpc-");
-        return new TaskDescriptor(taskId, "phone-tools", scenarioRpc
+        boolean scenarioRpc = taskId.startsWith("project-rpc-");
+        return new TaskDescriptor(taskId, "test-project", "phone-tools", scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",

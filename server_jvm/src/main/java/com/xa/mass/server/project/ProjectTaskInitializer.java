@@ -1,6 +1,5 @@
-package com.xa.mass.server.task.call;
+package com.xa.mass.server.project;
 
-import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
@@ -17,18 +16,19 @@ import com.xa.mass.server.error.ServerException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.xa.mass.server.task.call.TaskRpcProperties;
+import org.springframework.stereotype.Service;
 
 @Service
-public final class WorkerGroupTaskCallRegistrationService {
+public final class ProjectTaskInitializer {
 
-    private static final String TASK_ID_PREFIX = "scenario-rpc-";
-    private static final String REGISTER_OPERATION = "taskCall.register";
-    private static final String RESOLVE_OPERATION = "taskCall.resolve";
+    private static final String REGISTER_OPERATION = "project.initialize";
     private static final Map<String, String> TASK_CONFIG = Map.of(
             "priority", "0",
             "maxRetryTimes", "3"
     );
 
+    private final ProjectDirectory projects;
     private final WorkerResourceCatalog workerCatalog;
     private final TaskResourceCatalog taskCatalog;
     private final TaskRuntime taskRuntime;
@@ -36,16 +36,18 @@ public final class WorkerGroupTaskCallRegistrationService {
     private final TaskRpcProperties rpc;
     private final TaskLifecycleCommands taskLifecycle;
 
-    public WorkerGroupTaskCallRegistrationService(
+    public ProjectTaskInitializer(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
             TaskRuntime taskRuntime,
             TaskLifecycleCommands taskLifecycle,
             WorkerMatchingCatalog matching,
-            TaskRpcProperties rpc
+            TaskRpcProperties rpc,
+            ProjectDirectory projects
     ) {
-        this.rpc = Objects.requireNonNull(rpc,"rpc");
-        this.matching = Objects.requireNonNull(matching,"matching");
+        this.projects = Objects.requireNonNull(projects, "projects");
+        this.rpc = Objects.requireNonNull(rpc, "rpc");
+        this.matching = Objects.requireNonNull(matching, "matching");
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
@@ -58,9 +60,18 @@ public final class WorkerGroupTaskCallRegistrationService {
         );
     }
 
-    public Registration register(String workerGroupId) {
+    public void initialize() {
+        for (var project : projects.projects().values()) {
+            for (String group : project.managedTaskIds().keySet()) {
+                prepare(project.projectId(), group);
+            }
+        }
+    }
+
+    public Registration prepare(String projectId, String workerGroupId) {
+        projects.requireManagedTaskId(projectId, workerGroupId);
         requireWorkerGroup(workerGroupId, REGISTER_OPERATION);
-        TaskDescriptor expected = descriptor(workerGroupId);
+        TaskDescriptor expected = descriptor(projectId, workerGroupId);
         TaskDescriptor existing = loadDescriptor(
                 expected.taskId(),
                 REGISTER_OPERATION
@@ -129,35 +140,6 @@ public final class WorkerGroupTaskCallRegistrationService {
                     null
             );
         };
-    }
-
-    public String requireRegisteredTaskId(String workerGroupId) {
-        requireWorkerGroup(workerGroupId, RESOLVE_OPERATION);
-        String taskId = taskId(workerGroupId);
-        TaskDescriptor existing = loadDescriptor(
-                taskId,
-                RESOLVE_OPERATION
-        );
-        if (existing == null) {
-            throw failure(
-                    ServerErrorCode.TASK_CALL_NOT_REGISTERED,
-                    RESOLVE_OPERATION,
-                    null,
-                    null
-            );
-        }
-        if (!existing.taskId().equals(taskId) || !existing.workerGroupId().equals(workerGroupId)
-                || existing.idleDisposition() != TaskIdleDisposition.PARK_WHEN_IDLE
-                || !existing.config().equals(TASK_CONFIG)) {
-            throw failure(ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT, RESOLVE_OPERATION,
-                    "derived Task descriptor conflicts with registration", null);
-        }
-        return taskId;
-    }
-
-    public static String taskId(String workerGroupId) {
-        requireNonBlank(workerGroupId);
-        return TASK_ID_PREFIX + workerGroupId;
     }
 
     private TaskCreationResult create(TaskDescriptor descriptor) {
@@ -233,10 +215,10 @@ public final class WorkerGroupTaskCallRegistrationService {
         }
     }
 
-    private TaskDescriptor descriptor(String workerGroupId) {
+    private TaskDescriptor descriptor(String projectId, String workerGroupId) {
         try {
             return new TaskDescriptor(
-                    taskId(workerGroupId), workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
+                    projects.requireManagedTaskId(projectId, workerGroupId), projectId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
                     TASK_CONFIG, matching.normalizeRefill(workerGroupId, rpc.refillByWorkerGroup().getOrDefault(workerGroupId,
                             List.of())));
         } catch (RuntimeException error) {

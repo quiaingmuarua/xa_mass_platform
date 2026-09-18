@@ -166,7 +166,10 @@ def main() -> int:
                          for group in (STRING_GROUP, PHONE_GROUP)},
     }), encoding="utf-8")
     config = private / "server.properties"
-    config.write_text("xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n" + "".join(
+    config.write_text("xa.mass.project-assembly.projects[0].project-id=scenario-workers\n"
+        + f"xa.mass.project-assembly.projects[0].worker-group-ids[0]={STRING_GROUP}\n"
+        + f"xa.mass.project-assembly.projects[0].worker-group-ids[1]={PHONE_GROUP}\n"
+        + "xa.mass.worker-assembly.group-config-json=" + json.dumps(assembly) + "\n" + "".join(
         f"xa.mass.worker-matching.groups.{group}.pools[0]=any\n"
         f"xa.mass.worker-matching.groups.{group}.pools[1]=proof-facts\n"
         f"xa.mass.worker-matching.groups.{group}.functions[0]=worker.any\n"

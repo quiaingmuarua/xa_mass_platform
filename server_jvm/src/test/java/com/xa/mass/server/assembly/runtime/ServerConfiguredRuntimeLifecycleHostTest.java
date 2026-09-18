@@ -29,9 +29,10 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         WorkerRouteVerificationBatcher routeBatcher = mock(
                 WorkerRouteVerificationBatcher.class
         );
+        var projects = mock(com.xa.mass.server.project.ProjectTaskInitializer.class);
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer,
+                        groupInitializer, projects,
                         adapterManager,
                         routeBatcher
                 );
@@ -41,8 +42,9 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         host.stop();
         host.stop();
 
-        InOrder order = inOrder(groupInitializer, routeBatcher, adapterManager);
+        InOrder order = inOrder(groupInitializer, projects, routeBatcher, adapterManager);
         order.verify(groupInitializer).initialize();
+        order.verify(projects).initialize();
         order.verify(routeBatcher).start();
         order.verify(adapterManager).start();
         order.verify(routeBatcher).stopIngress();
@@ -75,7 +77,7 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         doThrow(failure).when(adapterManager).start();
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer,
+                        groupInitializer, mock(com.xa.mass.server.project.ProjectTaskInitializer.class),
                         adapterManager,
                         routeBatcher
                 );
@@ -107,7 +109,7 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         doThrow(failure).when(groupInitializer).initialize();
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer,
+                        groupInitializer, mock(com.xa.mass.server.project.ProjectTaskInitializer.class),
                         adapterManager,
                         routeBatcher
                 );

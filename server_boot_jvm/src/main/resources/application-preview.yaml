@@ -3,6 +3,12 @@ server:
   port: ${PREVIEW_SERVER_PORT:18500}
 xa:
   mass:
+    project-assembly:
+      projects:
+        - project-id: sms
+          worker-group-ids: [demo-sim]
+        - project-id: messages
+          worker-group-ids: [demo-sim]
     task-rpc:
       refill-by-worker-group:
         demo-sim:
@@ -19,7 +25,20 @@ xa:
       url: ${XA_MASS_REDIS_URL:redis://127.0.0.1:6379/15}
       scope: ${XA_MASS_REDIS_SCOPE}
     worker-assembly:
-      group-config-json: '{}'
+      group-config-json: |
+        {
+          "demo-sim": {
+            "attributes": {},
+            "eventCodes": [
+              "extension.worker.string.md5",
+              "extension.worker.string.sha1",
+              "extension.worker.string.base64.encode",
+              "extension.worker.sms.listen.start",
+              "extension.worker.sms.listen.cancel",
+              "extension.worker.message.send"
+            ]
+          }
+        }
     worker-delivery:
       adapter:
         remote-base-url: http://127.0.0.1:${PREVIEW_SERVER_PORT:18500}

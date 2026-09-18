@@ -27,6 +27,7 @@ class ScenarioWorkerProfileContractTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
+                    .withBean(com.xa.mass.server.project.ProjectTaskInitializer.class, () -> mock(com.xa.mass.server.project.ProjectTaskInitializer.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,
                             ServerWorkerAssemblyConfiguration.class,

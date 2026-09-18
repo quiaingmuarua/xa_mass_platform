@@ -38,61 +38,69 @@ class DispatchConvergenceLifecycleTest {
                 enabledServiceability()
         );
         stubProjectedBatch(fixture);
-        CountDownLatch rounds = new CountDownLatch(3);
+        CountDownLatch rounds = new CountDownLatch(4);
+        CountDownLatch finishRound = new CountDownLatch(1);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
         AtomicReference<List<String>> dispatchedTasks = new AtomicReference<>();
         AtomicReference<List<String>> serviceabilityGroups =
                 new AtomicReference<>();
         doAnswer(ignored -> {
-            complete(rounds, allVirtual);
+            complete(rounds, allVirtual, finishRound);
             return null;
         }).when(fixture.initialization).initialize(any());
         doAnswer(invocation -> {
             List<ObservedTask> tasks = invocation.getArgument(0);
             dispatchedTasks.set(taskIds(tasks));
-            return complete(rounds, allVirtual);
+            return complete(rounds, allVirtual, finishRound);
         }).when(fixture.dispatch).dispatchTasks(any());
         doAnswer(invocation -> {
             List<String> groups = invocation.getArgument(0);
             serviceabilityGroups.set(groups);
-            return complete(rounds, allVirtual);
+            return complete(rounds, allVirtual, finishRound);
         }).when(fixture.serviceability).dispatchProbes(
                 any(), any()
         );
 
+        doAnswer(ignored -> complete(rounds, allVirtual, finishRound))
+                .when(fixture.refill).refill(any(), any());
+
         fixture.runtime.start();
+        try {
+            assertTrue(rounds.await(2, TimeUnit.SECONDS));
+            assertTrue(allVirtual.get());
+            verify(fixture.taskScores).acquireSchedulingTasks(100);
+            verify(fixture.taskScores).filterInitialTaskScores(any());
+            verify(fixture.initialization).initialize(Map.of(
+                    "task-initial", 100L
+            ));
+            verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
+                    "task-first",
+                    "task-second",
+                    "task-repeat-group",
+                    "task-invalid"
+            ));
+            assertEquals(
+                    List.of(
+                            "task-first",
+                            "task-second",
+                            "task-repeat-group"
+                    ),
+                    dispatchedTasks.get()
+            );
+            assertEquals(
+                    List.of("group-1", "group-2"),
+                    serviceabilityGroups.get()
+            );
+            assertTrue(fixture.runtime.isRunning());
+            assertThrows(IllegalStateException.class, () ->
+                    fixture.runtime.start()
+            );
 
-        assertTrue(rounds.await(2, TimeUnit.SECONDS));
-        assertTrue(allVirtual.get());
-        verify(fixture.taskScores).acquireSchedulingTasks(100);
-        verify(fixture.taskScores).filterInitialTaskScores(any());
-        verify(fixture.initialization).initialize(Map.of(
-                "task-initial", 100L
-        ));
-        verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
-                "task-first",
-                "task-second",
-                "task-repeat-group",
-                "task-invalid"
-        ));
-        assertEquals(
-                List.of(
-                        "task-first",
-                        "task-second",
-                        "task-repeat-group"
-                ),
-                dispatchedTasks.get()
-        );
-        assertEquals(
-                List.of("group-1", "group-2"),
-                serviceabilityGroups.get()
-        );
-        assertTrue(fixture.runtime.isRunning());
-        assertThrows(IllegalStateException.class, () ->
-                fixture.runtime.start()
-        );
-
-        fixture.runtime.stop(2_000);
+        } finally {
+            // The first round stays in flight through the assertions; shutdown interrupts it.
+            fixture.runtime.stop(2_000);
+            finishRound.countDown();
+        }
         fixture.runtime.stop(2_000);
         assertEquals("STOPPED", fixture.runtime.state());
     }
@@ -189,10 +197,16 @@ class DispatchConvergenceLifecycleTest {
 
     private static int complete(
             CountDownLatch rounds,
-            AtomicBoolean allVirtual
+            AtomicBoolean allVirtual,
+            CountDownLatch finishRound
     ) {
         allVirtual.compareAndSet(true, Thread.currentThread().isVirtual());
         rounds.countDown();
+        try {
+            finishRound.await();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+        }
         return 0;
     }
 
@@ -226,7 +240,7 @@ class DispatchConvergenceLifecycleTest {
             String taskId,
             String workerGroupId
     ) {
-        return new TaskDescriptor(taskId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+        return new TaskDescriptor(taskId, "test-project", workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
     }
 
     private static Fixture fixture(
@@ -242,6 +256,7 @@ class DispatchConvergenceLifecycleTest {
         WorkerServiceabilityDispatchPolicy serviceability = mock(
                 WorkerServiceabilityDispatchPolicy.class
         );
+        WorkerEligibilityRefillPolicy refill = mock(WorkerEligibilityRefillPolicy.class);
         return new Fixture(
                 new DispatchConvergenceRuntime(
                         new DispatchMainScheduler(
@@ -249,7 +264,7 @@ class DispatchConvergenceLifecycleTest {
                                 taskCatalog,
                                 initialization,
                                 dispatch,
-                                mock(WorkerEligibilityRefillPolicy.class),
+                                refill,
                                 serviceabilityConfig == null
                                         ? null
                                         : serviceability,
@@ -261,7 +276,8 @@ class DispatchConvergenceLifecycleTest {
                 taskCatalog,
                 initialization,
                 dispatch,
-                serviceability
+                serviceability,
+                refill
         );
     }
 
@@ -355,7 +371,8 @@ class DispatchConvergenceLifecycleTest {
             TaskResourceCatalog taskCatalog,
             TaskInitializationPolicy initialization,
             TaskDispatchPolicy dispatch,
-            WorkerServiceabilityDispatchPolicy serviceability
+            WorkerServiceabilityDispatchPolicy serviceability,
+            WorkerEligibilityRefillPolicy refill
     ) {
     }
 }

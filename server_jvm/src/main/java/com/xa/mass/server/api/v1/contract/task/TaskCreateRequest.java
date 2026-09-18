@@ -15,6 +15,7 @@ import java.util.Map;
 import tools.jackson.databind.JsonNode;
 
 public record TaskCreateRequest(
+        @NotBlank String projectId,
         @NotBlank String workerGroupId,
         @Min(0) @Max(99) Integer priority,
         @Min(0) @Max(98) Integer maxRetryTimes,
@@ -31,13 +32,14 @@ public record TaskCreateRequest(
     /** Preserve existing scalar binding while distinguishing omitted supply from explicit null. */
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     public static TaskCreateRequest fromJson(
+            @JsonProperty("projectId") String projectId,
             @JsonProperty("workerGroupId") String workerGroupId,
             @JsonProperty("priority") Integer priority,
             @JsonProperty("maxRetryTimes") Integer maxRetryTimes,
             @JsonProperty("refill") JsonNode refill
     ) {
         if (refill == null) {
-            return new TaskCreateRequest(workerGroupId, priority, maxRetryTimes, List.of());
+            return new TaskCreateRequest(projectId, workerGroupId, priority, maxRetryTimes, List.of());
         }
         if (!refill.isArray()) {
             throw new IllegalArgumentException("refill must be a list");
@@ -50,7 +52,7 @@ public record TaskCreateRequest(
             var value = (Map<String, Object>) fields;
             return RefillTarget.parse(value);
         }).toList();
-        return new TaskCreateRequest(workerGroupId, priority, maxRetryTimes, declarations);
+        return new TaskCreateRequest(projectId, workerGroupId, priority, maxRetryTimes, declarations);
     }
 
     @JsonAnySetter

@@ -1,6 +1,5 @@
 package com.xa.mass.serverboot;
 
-import java.util.List;
 import com.xa.mass.scenario.sms.SmsScenarioConfiguration;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -18,10 +17,4 @@ public class PreviewConfiguration {
         return "demo-sim";
     }
 
-    @Bean("scenarioWorkerEvents")
-    List<String> workerEvents() {
-        return List.of("extension.worker.string.md5", "extension.worker.string.sha1",
-                "extension.worker.string.base64.encode", "extension.worker.sms.listen.start",
-                "extension.worker.sms.listen.cancel", "extension.worker.message.send");
-    }
 }

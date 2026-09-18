@@ -9,7 +9,7 @@ stores optional Pool supply declarations. Kernel validates immutable structure;
 Matching interprets targets, qualifications and resource access without Task IDs.
 
 ```text
-TaskDescriptor = taskId, workerGroupId, idleDisposition, config, refill
+TaskDescriptor = taskId, projectId, workerGroupId, idleDisposition, config, refill
 RefillTarget = poolName, target, count
 TaskItem = messageId, eventCode, createdAtMillis, payload, priority,
            expireAtMillis, workerSelector
@@ -28,7 +28,18 @@ refill declarations configured. Saved declarations are a
 creation-time snapshot. Re-registration compares the full expected descriptor;
 normal lookup does not recompute current defaults.
 
-Descriptor creation is create-only in one Lua. Score initialization and descriptor
+Descriptor creation is create-only in one Lua. The same Lua preflights descriptor
+HASH and project ZSET types, reads Redis TIME and writes the descriptor plus
+`xa_mass:<scope>:task:project:<projectId>` membership (`taskId -> creation millis`)
+with NX. Existing creation times never refresh. The directory retains closed Tasks.
+`listProjectTasks(projectId,limit)` returns newest first with 1..1000 rows and a
+one-member truncation lookahead. Missing projections remain independently missing;
+corrupt directory values fail, with no cleanup or repair.
+
+**Ownership change:** every Task has a nonblank passive Project coordinate. Server
+admits profile declarations and provisions managed Project/Group pairs; Kernel
+neither loads profiles nor verifies Project existence. The global `task:score` and
+all scheduling/Pool ownership remain unchanged. Score initialization and descriptor
 writing retain separate commit and retry boundaries; they are not one transaction.
 There is no separate Matching binding or configuration store.
 
@@ -62,7 +73,7 @@ independently of Task closure. Stock invalidation never reopens scheduling.
 
 ## Redis Shape
 
-The existing descriptor HASH has exactly `workerGroupId`, `idleDisposition`,
+The descriptor HASH has exactly `projectId`, `workerGroupId`, `idleDisposition`,
 `configJson`, `refillJson`, written together by the create-only Lua. refillJson is an
 array of `{poolName,target,count}`; an empty array is valid. Missing fields, retired
 ruleId/refillTargetsJson, invalid targets/counts and corrupt JSON fail reading.

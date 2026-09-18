@@ -64,6 +64,18 @@ class ScenarioCompositionIntegrationTest {
                         .contains("workerGroupId=demo-sim");
                 if (messages) assertThat(context.getBean(CampaignService.class).catalog().get("countries").toString())
                         .contains("workerGroupId=demo-sim");
+                var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
+                String smsTask = directory.requireManagedTaskId("sms", "demo-sim");
+                String messagesTask = directory.requireManagedTaskId("messages", "demo-sim");
+                assertThat(smsTask).isNotEqualTo(messagesTask);
+                for (String project : List.of("sms", "messages")) {
+                    var projectResponse = get(client, base, "/api/v1/projects/" + project);
+                    assertThat(projectResponse.statusCode()).isEqualTo(200);
+                    assertThat(projectResponse.body()).contains("managedTaskIds", directory.requireManagedTaskId(project, "demo-sim"));
+                    var listResponse = get(client, base, "/api/v1/projects/" + project + "/tasks?limit=1");
+                    assertThat(listResponse.statusCode()).isEqualTo(200);
+                    assertThat(listResponse.body()).contains("\"projectId\":\"" + project + "\"", "\"truncated\":false", "PARK_WHEN_IDLE");
+                }
             } else assertThat(group).isNull();
             assertThat(get(client, base, "/api/v1/sms/catalog").statusCode()).isEqualTo(sms ? 200 : 404);
             assertThat(get(client, base, "/api/v1/messages/catalog").statusCode()).isEqualTo(messages ? 200 : 404);

@@ -107,10 +107,10 @@ Worker 与 Adapter 均指向同一 Server，默认端口 18500。场景服务调
 每个 scope 仅允许一个启用 Pacer 的 Server；本版不支持多实例订单幂等或重启恢复。
 
 场景生命周期在平台装配之后消费宿主提供的唯一 `demo-sim` Group 与完整事件声明，并取得托管 Task ID。
-两个场景幂等消费同一声明。构造器没有注册或线程启动副作用；任一注册失败使整个启动失败，不补注册。
+宿主先初始化 Group 和 Project managed Tasks，两个场景只读取已配置资源。构造器没有资源准备或线程启动副作用；宿主准备失败即终止本次启动。
 关闭时先拒绝两个场景的新命令、停止提交与观察任务，再关闭平台资源；SMS 线程共用最多 5 秒的关闭预算，不刷新或重放队列。
 
-产品直接调用 `WorkerGroupRegistrationService`、`TaskCallSubmissionService` 和
+产品直接调用 `ProjectDirectory`、`TaskCallSubmissionService` 和
 `TaskDataService`。提交入口校验完整批次，包括会被同 ID 覆盖的输入；Result 读取也保留数量
 和字段约束。复用现有 Task 请求与 Result 类型，不调用 Controller，不读取 Redis 或调度实现。
 平台 HTTP Call 复用同一提交服务，独立保留原有即时查询和异步等待。
@@ -252,8 +252,8 @@ git diff --check
 ```
 
 发行模块的组合证明创建真实 Server 上下文，主动阻断平台 Task 提交／Result 查询 HTTP 路由，
-SMS 仍通过宿主应用服务和真实 Java Worker 完成注册、执行及后续观察。该证明检查共享资源仅一份，
-三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 SMS profile 时，SMS API 不存在，统一页面呈现未启用状态；两个产品均未启用时才不注册混合 Group。
+SMS 通过宿主 Project 目录取得 managed Task，再通过应用服务和真实 Java Worker 完成执行及后续观察。该证明检查共享资源仅一份，
+三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 SMS profile 时，SMS API 不存在，统一页面呈现未启用状态；平台 profile 不声明混合 Group 或业务 Project。
 单元测试另外覆盖构造无副作用、失败启动清理、产品先于平台停止、退出拒绝和依赖边界。
 
 功能 world 为每国家 1 个真实连接的 Java Worker。依次验证无监听、A/B/C 共号、优先级、
@@ -308,3 +308,10 @@ python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --roo
 CI 通过源码验收脚本加载新 ZIP 的启动器，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
 仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
 并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。
+
+## Project ownership
+
+The preview profile declares `sms` and its supported Groups. Runtime startup
+prepares Groups and Project managed Tasks before scenario startup. This scenario
+only reads the Project directory; it never registers a Group or Project.
+Listeners use the Project/Group managed Task.

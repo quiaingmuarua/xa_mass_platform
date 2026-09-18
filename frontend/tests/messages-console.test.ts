@@ -33,6 +33,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 const catalog = {
+  projectId: "messages",
   runId: "one",
   version: "0.1.0-preview",
   countries: ["CN", "US", "GB"].map((id) => ({
@@ -169,7 +170,11 @@ describe("Messages console", () => {
     expect(
       host.querySelector<HTMLInputElement>('input[aria-label="批次名称"]')?.value
     ).toBe("Proof");
-    host.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    host
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="campaign-form"] button[type="submit"]'
+      )!
+      .click();
     await settle();
     expect(router.currentRoute.value.path).toBe("/messages/campaigns/batch");
     expect(host.textContent).toContain("已发送");
@@ -200,7 +205,7 @@ describe("Messages console", () => {
         fetcher.mockRejectedValueOnce(new TypeError("connection closed"));
       else fetcher.mockResolvedValueOnce(new Response("{}"));
       host
-        .querySelector("form")!
+        .querySelector('[data-testid="campaign-form"]')!
         .dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
       await settle();
       expect(host.textContent).toContain("申请结果未确认");
@@ -235,7 +240,7 @@ describe("Messages console", () => {
       );
     });
     host
-      .querySelector("form")!
+      .querySelector('[data-testid="campaign-form"]')!
       .dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
     await settle();
     await router.push("/reference/error-codes");

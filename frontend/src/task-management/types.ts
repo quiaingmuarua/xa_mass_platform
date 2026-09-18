@@ -20,6 +20,7 @@ export interface FiniteTaskSeedItem {
 
 export interface FiniteTaskSession {
   taskId: string;
+  projectId: string;
   workerGroupId: string;
   eventCode: string;
   workerSelectorText: string;
@@ -35,6 +36,7 @@ export interface FiniteTaskSession {
 }
 
 export interface CreateFiniteTaskExecutionRequest {
+  projectId: string;
   workerGroupId: string;
   eventCode: string;
   workerSelector: WorkerQuery;
@@ -44,6 +46,7 @@ export interface CreateFiniteTaskExecutionRequest {
 }
 
 export interface TaskCreateApiRequest extends FiniteTaskConfig {
+  projectId: string;
   workerGroupId: string;
 }
 

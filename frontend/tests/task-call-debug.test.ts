@@ -520,6 +520,7 @@ function entry(
     task: {
       taskId: "task-1",
       workerGroupId: "group-a",
+      projectId: "test-project",
       idleDisposition: "PARK_WHEN_IDLE",
       refill: [{ poolName: "any", target: {}, count: 100 }],
       config: {

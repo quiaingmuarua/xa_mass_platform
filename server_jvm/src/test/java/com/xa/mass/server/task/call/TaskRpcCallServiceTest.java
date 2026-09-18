@@ -496,7 +496,7 @@ class TaskRpcCallServiceTest {
     }
 
     private static TaskDescriptor callableDescriptor(String taskId) {
-        return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+        return new TaskDescriptor(taskId, "test-project", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
                 ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));

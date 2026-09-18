@@ -1,7 +1,7 @@
 package com.xa.mass.server;
 
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
-import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
+import com.xa.mass.server.project.ProjectTaskInitializer;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
@@ -147,7 +147,7 @@ class ServerArchitectureBoundaryTest {
                             "delivery",
                             "error",
                             "frontend",
-                            "operation",
+                            "operation", "project",
                             "runtimeview",
                             "task",
                             "worker"
@@ -185,7 +185,7 @@ class ServerArchitectureBoundaryTest {
                     );
         }
 
-        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(10L);
+        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(11L);
         assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
                 .isRegularFile();
         assertThat(CONTRACTS.resolve("ActionOutcome.java"))
@@ -397,7 +397,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("WorkerScoreCore")
                 .doesNotContain("RedisTaskScoreBandCore")
-                .doesNotContain("WorkerGroupTaskCallRegistrationService")
+                .doesNotContain("ProjectTaskInitializer")
                 .doesNotContain("DirectCallRegistry")
                 .doesNotContain("WorkerRouteRegistry")
                 .doesNotContain("NettyWorkerServer")

@@ -6,7 +6,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus;
 
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
-import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
+import com.xa.mass.server.project.ProjectDirectory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -20,11 +20,11 @@ import static org.mockito.Mockito.*;
 
 class SmsProfileTest {
     @Test void platformWithoutScenarioImportRegistersNoBusinessOrGroups() {
-        var registrations = mock(WorkerGroupRegistrationService.class);
+        var registrations = mock(ProjectDirectory.class);
         var submissions = mock(TaskCallSubmissionService.class);
         var results = mock(TaskDataService.class);
         try (var context = new AnnotationConfigApplicationContext()) {
-            context.registerBean(WorkerGroupRegistrationService.class, () -> registrations);
+            context.registerBean(ProjectDirectory.class, () -> registrations);
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
             context.registerBean(TaskDataService.class, () -> results);
             context.refresh();
@@ -35,15 +35,15 @@ class SmsProfileTest {
     }
 
     @Test void explicitImportStartsTheScenarioWithoutAnEnvironmentProfile() {
-        var registrations = mock(WorkerGroupRegistrationService.class);
+        var registrations = mock(ProjectDirectory.class);
         var submissions = mock(TaskCallSubmissionService.class);
         var results = mock(TaskDataService.class);
         var events = List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel");
-        when(registrations.register("demo-sim", Map.of(), events))
-                .thenReturn(new WorkerGroupRegistrationService.Registration("demo-sim", "managed", "registered"));
+        when(registrations.requireManagedTaskId("sms", "demo-sim"))
+                .thenReturn("managed");
         ListenerService service;
         try (var context = new AnnotationConfigApplicationContext()) {
-            context.registerBean(WorkerGroupRegistrationService.class, () -> registrations);
+            context.registerBean(ProjectDirectory.class, () -> registrations);
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
             context.registerBean(TaskDataService.class, () -> results);
             context.registerBean("scenarioWorkerGroup", String.class, () -> "demo-sim");
@@ -53,7 +53,7 @@ class SmsProfileTest {
             service = context.getBean(ListenerService.class);
             assertThat(service.isRunning()).isTrue();
             assertThat(context.getBeansOfType(SmsController.class)).hasSize(1);
-            verify(registrations).register("demo-sim", Map.of(), events);
+            verify(registrations).requireManagedTaskId("sms", "demo-sim");
         }
         assertThat(service.isRunning()).isFalse();
     }
@@ -62,7 +62,7 @@ class SmsProfileTest {
         assertThat(Files.readString(Path.of("build.gradle")))
                 .contains("implementation project(':server_jvm')", "id 'java-library'")
                 .doesNotContain("id 'org.springframework.boot'", "project(':distribution:", "project(':server_boot_jvm')");
-        Set<String> allowed = Set.of("com.xa.mass.server.worker.group.WorkerGroupRegistrationService",
+        Set<String> allowed = Set.of("com.xa.mass.server.project.ProjectDirectory",
                 "com.xa.mass.server.task.call.TaskCallSubmissionService", "com.xa.mass.server.task.TaskDataService",
                 "com.xa.mass.server.api.v1.contract.task.TaskItemRequest",
                 "com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse",

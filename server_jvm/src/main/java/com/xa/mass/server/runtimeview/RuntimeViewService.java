@@ -348,6 +348,7 @@ public final class RuntimeViewService {
     private static TaskView toView(TaskDescriptor descriptor) {
         return new TaskView(
                 descriptor.taskId(),
+                descriptor.projectId(),
                 descriptor.workerGroupId(),
                 descriptor.idleDisposition().name(),
                 descriptor.refill(),

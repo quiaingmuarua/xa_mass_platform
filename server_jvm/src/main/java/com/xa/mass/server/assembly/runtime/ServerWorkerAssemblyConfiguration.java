@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ServerWorkerAssemblyProperties.class)
+@EnableConfigurationProperties({ServerWorkerAssemblyProperties.class, com.xa.mass.server.project.ProjectAssemblyProperties.class})
 public class ServerWorkerAssemblyConfiguration {
 
     @Bean
@@ -37,11 +37,13 @@ public class ServerWorkerAssemblyConfiguration {
     ServerConfiguredRuntimeLifecycleHost
     serverConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
+            com.xa.mass.server.project.ProjectTaskInitializer projectInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
         return new ServerConfiguredRuntimeLifecycleHost(
                 groupInitializer,
+                projectInitializer,
                 adapterManager,
                 routeVerificationBatcher
         );

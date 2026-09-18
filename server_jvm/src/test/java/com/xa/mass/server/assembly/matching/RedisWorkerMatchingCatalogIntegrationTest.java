@@ -125,7 +125,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         return declareTask(task,"g",rule,null);
     }
     private TaskDescriptor declareTask(String task,String group,String rule,List<RefillTarget> targets) {
-        var descriptor = new TaskDescriptor(task, group, TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), catalog.normalizeRefill(group, (targets==null?List.of(new RefillTarget(poolName(rule),ANY,100)):targets.stream().map(t->new RefillTarget(poolName(rule),t.target(),t.count())).toList())));
+        var descriptor = new TaskDescriptor(task, "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), catalog.normalizeRefill(group, (targets==null?List.of(new RefillTarget(poolName(rule),ANY,100)):targets.stream().map(t->new RefillTarget(poolName(rule),t.target(),t.count())).toList())));
         declarations.put(task,descriptor); itemFunctions.put(task,rule);
         return descriptor;
     }
@@ -216,7 +216,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     @Test void bucketCorruptionFailsBeforeFactsOrAnotherIndexWrite() {
         useBucketRule(false);catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red","country","CN")));
         String key=keyspace.base()+":matching:worker:index:Zw:test_buckets";
-        String set=redis.scan(io.lettuce.core.ScanCursor.INITIAL,new io.lettuce.core.ScanArgs().match(key+":bucket:*").limit(100)).getKeys().getFirst();
+        var cursor=io.lettuce.core.ScanCursor.INITIAL;
+        var buckets=new java.util.ArrayList<String>();
+        do {
+            var page=redis.scan(cursor,new io.lettuce.core.ScanArgs().match(key+":bucket:*").limit(100));
+            buckets.addAll(page.getKeys()); cursor=page;
+        } while(!cursor.isFinished());
+        assertThat(buckets).hasSize(1);
+        String set=buckets.getFirst();
         redis.unlink(set);redis.set(set,"corrupt"); Double country=redis.zscore(indexKey(),"w");
         assertThatThrownBy(()->catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","blue","country","US")))).isInstanceOf(RuntimeException.class);
         assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").workerProperties()).containsEntry("testBucket","red");
@@ -837,7 +844,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             selected.upsertWorkerFactsBatch(special, Map.of("a", Map.of("country", "CN")));
             neighbor.upsertWorkerFactsBatch(special + ":other", Map.of("b", Map.of("country", "US")));
             stores.get(selected).rebuildIndexes();
-            var query = new TaskDescriptor("neighbor", special+":other", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), neighbor.normalizeRefill(special+":other", List.of(new RefillTarget("country",ANY,100))));
+            var query = new TaskDescriptor("neighbor", "test-project", special+":other", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), neighbor.normalizeRefill(special+":other", List.of(new RefillTarget("country",ANY,100))));
             hot(special+":other",List.of("b"));
             refillDeclarations(neighbor,special+":other",Map.of("neighbor",query),100);
             assertThat(takeItems(neighbor,query.workerGroupId(),"worker.country",Map.of(),1)).extracting(h -> h.workerId()).containsExactly("b");

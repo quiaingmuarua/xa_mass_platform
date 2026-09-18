@@ -88,7 +88,6 @@ class ServerWorkerGroupInitializerTest {
         )).thenThrow(failure).thenReturn(
                 new WorkerGroupRegistrationService.Registration(
                         "group",
-                        "scenario-rpc-group",
                         "registered"
                 )
         );

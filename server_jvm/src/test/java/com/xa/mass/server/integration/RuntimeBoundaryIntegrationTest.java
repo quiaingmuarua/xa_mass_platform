@@ -251,6 +251,27 @@ class RuntimeBoundaryIntegrationTest {
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        var groups = new LinkedHashMap<String, Object>();
+        groups.put("country-index-websocket", Map.of("eventCodes", List.of("extension.worker.country.executor")));
+        groups.put("country-index-socket", Map.of("eventCodes", List.of("extension.worker.country.executor")));
+        groups.put("shared-eligibility-boundary", Map.of("eventCodes", List.of("extension.worker.shared.executor")));
+        groups.put("identity-hint-boundary", Map.of("eventCodes", List.of("extension.worker.identity.hint")));
+        groups.put("direct-query-boundary", Map.of("eventCodes", List.of("extension.worker.direct.query")));
+        groups.put("shared-pool-functions", Map.of("eventCodes", List.of("extension.worker.pool.share")));
+        for (String group : List.of("group-refill-a", "group-refill-b"))
+            groups.put(group, Map.of("eventCodes", List.of("extension.worker.group.refill")));
+        for (String group : List.of("property-tools-boundary", SERVICEABILITY_WORKER_GROUP_ID))
+            groups.put(group, Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
+        for (var profile : TransportProfile.values()) {
+            for (String prefix : List.of("task-call-tools-", "tracked-", "failure-event-"))
+                groups.put(prefix + profile.name(), Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
+        }
+        registry.add("xa.mass.worker-assembly.group-config-json", () -> Jsons.toJson(groups));
+        registry.add("xa.mass.project-assembly.projects[0].project-id", () -> "boundary");
+        int groupIndex = 0;
+        for (String group : groups.keySet()) {
+            registry.add("xa.mass.project-assembly.projects[0].worker-group-ids[" + groupIndex++ + "]", () -> group);
+        }
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
         for(String group:List.of("group-refill-b",SERVICEABILITY_WORKER_GROUP_ID)) {
             registry.add("xa.mass.worker-matching.groups["+group+"].pools[0]",()->"any");
@@ -473,7 +494,7 @@ class RuntimeBoundaryIntegrationTest {
             var registration = send("POST", "/api/v1/worker-groups/" + group + ":register",
                     "{\"eventCodes\":[\"extension.worker.country.executor\"]}");
             assertThat(registration.statusCode()).isEqualTo(200);
-            String taskId = JSON.readTree(registration.body()).get("taskId").asText();
+            String taskId = managedTaskId(group);
             var firstProperties = new AtomicReference<>(Map.of("country", "CN", "host", "first"));
             var secondProperties = new AtomicReference<>(Map.of("country", "US", "host", "second"));
             var firstRef = new AtomicReference<JavaWorker>();
@@ -533,10 +554,10 @@ class RuntimeBoundaryIntegrationTest {
             awaitCondition(() -> worker.snapshot().workerId()!=null);
             String workerId=worker.snapshot().workerId();
             awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,Map.of("testBucket", "red"));
-            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("workerId", List.of(workerId)), "count", 1))))).statusCode()).isEqualTo(400);
+            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("workerId", List.of(workerId)), "count", 1))))).statusCode()).isEqualTo(400);
             var tasks=new LinkedHashMap<String,List<String>>();
             for(int t=0;t<2;t++) {
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("test.bucket", List.of("red")), "count", t+1)))));
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("test.bucket", List.of("red")), "count", t+1)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 String rejectedId=UUID.randomUUID().toString();
@@ -585,7 +606,7 @@ class RuntimeBoundaryIntegrationTest {
             awaitCondition(() -> worker.snapshot().workerId() != null);
             String workerId = worker.snapshot().workerId();
             awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, Map.of("fixture", "identity-hint"));
-            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",IdentityHintPoolFixture.ID,"target", Map.of(), "count", 1)))));
+            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",IdentityHintPoolFixture.ID,"target", Map.of(), "count", 1)))));
             assertThat(created.statusCode()).isEqualTo(200);
             String task = JSON.readTree(created.body()).get("taskId").asText();
             var ids = new ArrayList<String>();
@@ -633,7 +654,7 @@ class RuntimeBoundaryIntegrationTest {
                 org.assertj.core.api.Assertions.assertThatThrownBy(() -> matchingCatalog.take(group,
                         Map.of("pool", new com.xa.mass.kernel.assignment.WorkerQuery("worker.any", Map.of()))))
                         .isInstanceOf(IllegalArgumentException.class);
-                var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of())));
+                var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of())));
                 assertThat(created.statusCode()).isEqualTo(200);
                 String task = JSON.readTree(created.body()).get("taskId").asText(), id = UUID.randomUUID().toString();
                 var item = Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", function, "input", function.equals("workerId") ? workerId : phone));
@@ -663,7 +684,7 @@ class RuntimeBoundaryIntegrationTest {
                 ()->facts,List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
             host.set(worker);worker.start();awaitCondition(()->worker.snapshot().workerId()!=null);
             String workerId=worker.snapshot().workerId();awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,facts);
-            var supplied=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"refill",List.of(Map.of("poolName","messaging","target",Map.of(),"count",1)))));
+            var supplied=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of(Map.of("poolName","messaging","target",Map.of(),"count",1)))));
             String supplier=JSON.readTree(supplied.body()).get("taskId").asText();
             // An unresolved identity keeps the supplier active while its demand drives stock.
             String pending=UUID.randomUUID().toString();
@@ -671,7 +692,7 @@ class RuntimeBoundaryIntegrationTest {
                     "payload",Map.of(),"workerSelector",Map.of("executorName","workerId","input","absent-worker"))))).statusCode()).isEqualTo(200);
             assertThat(send("POST","/api/v1/tasks/"+supplier+"/approve",null).statusCode()).isEqualTo(200);
             for(String function:List.of("proof.messaging.country","proof.messaging.phones")) {
-                var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId",group,"refill",List.of())));
+                var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of())));
                 String task=JSON.readTree(consumer.body()).get("taskId").asText(), id=UUID.randomUUID().toString();
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(task)).get(task).refill()).isEmpty();
                 Object input=function.endsWith("country")?"CN":List.of(phone);
@@ -720,7 +741,7 @@ class RuntimeBoundaryIntegrationTest {
                 String group=t==3?groupB:groupA;
                 String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.any";
                 Map<String,Object> query=t<2?Map.of("worker.country", List.of("CN")):Map.of();
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 taskGroups.put(task,group);taskRules.put(task,rule);
@@ -800,7 +821,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private String createIndexedTask(String group) throws Exception {
-        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("workerGroupId", group, "refill", List.of(Map.of("poolName","country","target", Map.of("worker.country", List.of("CN")), "count", 1)))));
+        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName","country","target", Map.of("worker.country", List.of("CN")), "count", 1)))));
         assertThat(created.statusCode()).isEqualTo(200);
         return JSON.readTree(created.body()).get("taskId").asText();
     }
@@ -971,13 +992,13 @@ class RuntimeBoundaryIntegrationTest {
     void workerCommandFailureDoesNotFinalizeTheItemOnAnyTransport() throws Exception {
         for (TransportProfile profile : TransportProfile.values()) {
             String suffix = UUID.randomUUID().toString();
-            String group = "failure-event-" + suffix;
+            String group = "failure-event-" + profile.name();
             String key = "worker-" + suffix;
             String messageId = "item-" + suffix;
             var registered = send("POST", "/api/v1/worker-groups/" + group + ":register",
                     Jsons.toJson(Map.of("eventCodes", List.of(TEST_EVENT_CODE))));
             assertThat(registered.statusCode()).isEqualTo(200);
-            String taskId = JSON.readTree(registered.body()).get("taskId").asText();
+            String taskId = managedTaskId(group);
             var prepared = prepareWorker(group, key, profile, Map.of());
             AtomicInteger executions = new AtomicInteger();
             CountDownLatch secondEntered = new CountDownLatch(1);
@@ -1633,12 +1654,12 @@ class RuntimeBoundaryIntegrationTest {
     @Test
     void trackedObservationsCloseThroughActualWorkersAndExistingQueryApis() throws Exception {
         for (TransportProfile profile : TransportProfile.values()) {
-            String group = "tracked-" + UUID.randomUUID();
+            String group = "tracked-" + profile.name();
             String clientKey = "tracked-worker";
             var registered = send("POST", "/api/v1/worker-groups/" + group + ":register",
                     Jsons.toJson(Map.of("eventCodes", List.of(TEST_EVENT_CODE))));
             assertThat(registered.statusCode()).isEqualTo(200);
-            String taskId = JSON.readTree(registered.body()).get("taskId").asText();
+            String taskId = managedTaskId(group);
             var prepared = prepareWorker(group, clientKey, profile, Map.of("runtime", "tracked"));
             AtomicReference<WorkerOutcomeReporter> retained = new AtomicReference<>();
             List<WorkerEventDefinition<?>> definitions = List.of(WorkerEventDefinition.extension(
@@ -1706,11 +1727,17 @@ class RuntimeBoundaryIntegrationTest {
         throw new AssertionError("TRACKED Item did not reach tag " + tag);
     }
 
+    private String managedTaskId(String group) throws Exception {
+        var response = send("GET", "/api/v1/projects/boundary", null);
+        assertThat(response.statusCode()).isEqualTo(200);
+        return JSON.readTree(response.body()).path("managedTaskIds").path(group).asText();
+    }
+
     private void runWorkerGroupTaskCall(
             TransportProfile transportProfile
     ) throws Exception {
         String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "task-call-tools-" + suffix;
+        String workerGroupId = "task-call-tools-" + transportProfile.name();
         String clientWorkerKey = "task-call-worker-" + suffix;
 
         HttpResponse<String> registration = send(
@@ -1723,10 +1750,9 @@ class RuntimeBoundaryIntegrationTest {
                         """.formatted(TEST_EVENT_CODE)
         );
         assertThat(registration.statusCode()).isEqualTo(200);
-        assertThat(registration.body()).contains("\"status\":\"registered\"");
-        String taskId = JSON.readTree(registration.body())
-                .get("taskId")
-                .asText();
+        assertThat(registration.body()).contains("\"status\":\"already_registered\"");
+        assertThat(JSON.readTree(registration.body()).has("taskId")).isFalse();
+        String taskId = managedTaskId(workerGroupId);
         assertThat(taskId).isNotBlank();
         HttpResponse<String> taskPreview = send(
                 "POST",
@@ -1813,9 +1839,8 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(repeatedRegistration.statusCode()).isEqualTo(200);
             assertThat(repeatedRegistration.body())
                     .contains("\"status\":\"already_registered\"");
-            assertThat(JSON.readTree(repeatedRegistration.body())
-                    .get("taskId")
-                    .asText()).isEqualTo(taskId);
+            assertThat(JSON.readTree(repeatedRegistration.body()).has("taskId")).isFalse();
+            assertThat(managedTaskId(workerGroupId)).isEqualTo(taskId);
             HttpResponse<String> managedClose = send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/close",
@@ -2161,6 +2186,7 @@ class RuntimeBoundaryIntegrationTest {
                 "/api/v1/tasks",
                 """
                 {
+                  "projectId": "boundary",
                   "workerGroupId": "%s",
                   "refill": [{"poolName":"%s","target":{},"count":100}],
                   "priority": 0,
