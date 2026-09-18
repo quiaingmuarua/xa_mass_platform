@@ -766,7 +766,9 @@ Group, Pool supply declarations and numeric fields before writes. `appendFiniteT
 every input and the 1..100 batch bound before owner operations; `loadTaskItemResults`
 allows 1..1000 nonblank IDs and `loadTaskItemStates` allows 1..100. Application calls
 preserve HTTP input constraints. Products may use the existing TaskCreateRequest
-alongside TaskItemRequest and Result types; no mirrored contracts or controller
+and TaskCreateResponse alongside TaskItemRequest and Result types;
+[App Checks](../scenarios/app-checks-jvm/README.md) reuses TaskCreateResponse for
+its completed creation result. No mirrored contracts or controller
 calls are introduced. Boot owns preview composition and shared Group declarations;
 distribution owns launching and packaging it. Server has no Messages dependency
 or business state names.
