@@ -469,8 +469,9 @@ artifact limits and assertions; read that contract before changing the proof.
 
 ## Business Scenario Composition
 
-[SMS Reception](scenarios/sms-reception-jvm/README.md) and
-[Message Campaigns](scenarios/message-campaigns-jvm/README.md) own business API,
+[SMS Reception](scenarios/sms-reception-jvm/README.md),
+[Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
+[App Checks](scenarios/app-checks-jvm/README.md) own business API,
 finite state, idempotency and observation. Their device owners remain in
 [Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products).
 
@@ -482,14 +483,19 @@ finite state, idempotency and observation. Their device owners remain in
   fallback, Runtime bridge/library, mirrored DTOs, generic scenario framework or
   speculative SDK. Platform regressions return to the owning proof; do not hide
   them with business scheduling/delivery repair or count uncertainty as success.
-- Boot explicitly imports both scenarios under preview with one shared Group and
-  event declaration, and separate configured sms/messages Projects. Scenarios
+- Boot explicitly imports these scenarios under preview. SMS/Messages share one
+  Group and event declaration with separate sms/messages Projects; app-checks
+  uses two App Groups and its configured Project. Scenarios
   consume the prepared Project directory without Group registration. Scenario libraries own no deployment profile. Keep one
   platform resource set and an independent Simulator process.
 - Constructors/configuration remain free of premature business startup. Stop
   scenario admission/submission/observation before platform resources with bounded
   waits; partial initialization cleans created resources. Scenario shutdown
   never cleans the Redis scope.
+- App Checks keeps simulation in a stateless synchronous Handler. Capture actual
+  Worker identity, then hash and delay; unregistered is execution success and the
+  failure range throws. Keep retries and late results in existing platform owners.
+  No business Result cache, extra lease, Reporter or production attempt journal.
 - Messages reads Task-owned display data, Item Score quantities and Result content
   on request. It owns only current-run submission deduplication, with synchronous
   bounded creation/append/approval; no Campaign Result cache or statistics loop.

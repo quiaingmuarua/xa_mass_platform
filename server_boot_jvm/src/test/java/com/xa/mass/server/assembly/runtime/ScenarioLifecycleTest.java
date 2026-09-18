@@ -8,6 +8,7 @@ import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.scenario.sms.ListenerService;
 import com.xa.mass.scenario.messages.MessageTaskService;
+import com.xa.mass.scenario.appchecks.AppCheckTaskService;
 import com.xa.mass.serverboot.PreviewConfiguration;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import java.util.List;
@@ -23,8 +24,8 @@ import static org.mockito.Mockito.*;
 
 class ScenarioLifecycleTest {
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
-    void bothScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
+    @ValueSource(ints = {0, 1, 2, 3, 4})
+    void allScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
         var registrations = mock(ProjectDirectory.class);
         var submissions = mock(TaskCallSubmissionService.class);
         var results = mock(TaskDataService.class);
@@ -41,7 +42,7 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                 @Override public Object postProcessAfterInitialization(Object bean, String name) {
-                    if (bean instanceof ListenerService || bean instanceof MessageTaskService)
+                    if (bean instanceof ListenerService || bean instanceof MessageTaskService || bean instanceof AppCheckTaskService)
                         scenarios.add((SmartLifecycle) bean);
                     return bean;
                 }
@@ -64,11 +65,13 @@ class ScenarioLifecycleTest {
                 if (registrationCount.incrementAndGet() == failedRegistration)
                     throw new IllegalStateException("registration unavailable");
                 String id = call.getArgument(1);
-                assertThat(id).isEqualTo("demo-sim");
+                String project = call.getArgument(0);
+                if (project.equals("app-checks")) assertThat(id).isIn("app-a-sim", "app-b-sim");
+                else assertThat(id).isEqualTo("demo-sim");
                 return "task-" + id;
             });
             doAnswer(call -> {
-                assertThat(scenarios).hasSize(2).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());
+                assertThat(scenarios).hasSize(3).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());
                 events.add("platform-close");
                 return null;
             }).when(adapters).close();
@@ -76,7 +79,7 @@ class ScenarioLifecycleTest {
                 assertThatThrownBy(context::refresh).hasRootCauseMessage("registration unavailable");
             } else {
                 context.refresh();
-                assertThat(scenarios).hasSize(2).allSatisfy(scenario -> {
+                assertThat(scenarios).hasSize(3).allSatisfy(scenario -> {
                     assertThat(scenario.isRunning()).isTrue();
                     assertThat(scenario.getPhase()).isGreaterThan(platform.getPhase());
                 });
@@ -89,7 +92,7 @@ class ScenarioLifecycleTest {
         }
         assertThat(events.getFirst()).isEqualTo("platform-start");
         assertThat(events.getLast()).isEqualTo("platform-close");
-        assertThat(registrationCount).hasValue(failedRegistration == 0 ? 2 : failedRegistration);
+        assertThat(registrationCount).hasValue(failedRegistration == 0 ? 4 : failedRegistration);
         verify(adapters).close();
         verify(verifier).close();
     }

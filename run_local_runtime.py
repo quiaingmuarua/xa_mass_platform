@@ -36,13 +36,13 @@ def parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespac
         choices=SUPPORTED_PROFILES,
         default=DEFAULT_PROFILE,
     )
-    for option in ("count", "seed", "port", "sandbox-root"):
+    for option in ("count", "app-count", "seed", "port", "sandbox-root"):
         parser.add_argument("--" + option, help="Preview only; uses the Preview default when omitted")
     args = parser.parse_args(arguments)
     if args.profile != "preview" and any(
-        getattr(args, name) is not None for name in ("count", "seed", "port", "sandbox_root")
+        getattr(args, name) is not None for name in ("count", "app_count", "seed", "port", "sandbox_root")
     ):
-        parser.error("--count, --seed, --port and --sandbox-root require --profile preview")
+        parser.error("--count, --app-count, --seed, --port and --sandbox-root require --profile preview")
     return args
 
 
@@ -270,7 +270,7 @@ def main(
     profile = args.profile
     if profile == "preview":
         forwarded = ["--build"]
-        for name in ("count", "seed", "port", "sandbox_root"):
+        for name in ("count", "app_count", "seed", "port", "sandbox_root"):
             value = getattr(args, name)
             if value is not None:
                 forwarded.extend(["--" + name.replace("_", "-"), value])

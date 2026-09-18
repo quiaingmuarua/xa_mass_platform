@@ -20,6 +20,7 @@ import run_local_runtime
 class PreviewLifecycleTest(unittest.TestCase):
     def test_both_entrypoints_reject_invalid_parameters_before_build_or_processes(self):
         for arguments in (["--count", "0"], ["--seed", "9223372036854775808"],
+                          ["--app-count", "-1"], ["--app-count", "15001"],
                           ["--port", "0"], ["--port", "65532"], ["--count", "bad"],
                           ["--sandbox-root", "data/unrelated"]):
             for root_entry in (False, True):
@@ -48,7 +49,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                 else:
                     self.assertEqual(0, run_preview.main([]))
                     build_mock.assert_not_called()
-                factory.assert_called_once_with(60, 18500, sandbox_root=None, seed=0)
+                factory.assert_called_once_with(60, 18500, sandbox_root=None, seed=0, app_count=20)
                 factory.return_value.__exit__.assert_called_once()
 
     def test_partial_start_failure_stops_owned_process_before_scope_cleanup(self):
@@ -151,8 +152,8 @@ class PreviewLifecycleTest(unittest.TestCase):
         self.assertIn(":distribution:server:stagePreviewHost", command)
 
     def test_source_and_zip_compositions_use_two_jvms_and_one_server_address(self):
-        for packaged in (False, True):
-            with self.subTest(packaged=packaged), tempfile.TemporaryDirectory() as directory:
+        for packaged, app_count in ((False, 20), (True, 20), (False, 0), (True, 0)):
+            with self.subTest(packaged=packaged, app_count=app_count), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 if not packaged:
                     (root / "build.gradle").touch()
@@ -165,7 +166,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                                 host_lib.parent / "config")
                 (server_lib / "xa-mass-server-jvm-test.jar").write_bytes(b"fixture")
                 (host_lib / "host.jar").write_bytes(b"fixture")
-                run = Preview(root=root, port=18410, seed=712)
+                run = Preview(root=root, port=18410, seed=712, app_count=app_count)
                 client = Mock()
                 client.info.return_value = {"redis_version": "7.4.10"}
                 client.scan_iter.return_value = []
@@ -196,6 +197,12 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertEqual(True, "extension.worker.sms.listen.start" in group["events"])
                     self.assertEqual(True, "extension.worker.message.send" in group["events"])
                     self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
+                    for group_id in ("app-a-sim", "app-b-sim"):
+                        if app_count:
+                            self.assertEqual(app_count, config["workerGroups"][group_id]["count"])
+                            self.assertEqual(["extension.worker.app.registration.check"], config["workerGroups"][group_id]["events"])
+                        else:
+                            self.assertNotIn(group_id, config["workerGroups"])
                     record = json.loads((run.output / "run.json").read_text())
                     self.assertEqual((60, 712), (record["count"], record["seed"]))
                     self.assertNotIn("counts", record)
@@ -204,12 +211,23 @@ class PreviewLifecycleTest(unittest.TestCase):
 
     def test_readiness_uses_discovered_inventory_not_initialization_counts(self):
         run = Preview(count=1000, sandbox_root=Path("test/data/scenario-workers"))
-        with patch("run_preview.http", return_value={"started": True, "prepared": 3, "numbers": 3}):
+        with patch("run_preview.http", return_value={"workers": [
+            {"workerGroupId": group, "workerId": group + "-id", "runtimeState": "RUNNING"}
+            for group in ("demo-sim", "app-a-sim", "app-b-sim")
+        ]}) as get:
             self.assertTrue(run.host_ready())
-        with patch("run_preview.http", return_value={"started": True, "prepared": 0, "numbers": 0}):
+            get.assert_called_once_with(run.host, "/lab/v1/workers")
+        with patch("run_preview.http", return_value={"workers": []}):
             self.assertTrue(run.host_ready())
-        with patch("run_preview.http", return_value={"started": True, "prepared": 2, "numbers": 3}):
+        with patch("run_preview.http", return_value={"workers": [{"workerGroupId": "app-a-sim", "workerId": None, "runtimeState": "STOPPED"}]}):
             self.assertFalse(run.host_ready())
+
+    def test_app_count_has_its_own_host_group_bound(self):
+        self.assertEqual(0, Preview(app_count=0).app_count)
+        self.assertEqual(2, Preview(app_count=2).app_count)
+        for value in (-1, 15001, True, 1.5):
+            with self.assertRaisesRegex(ValueError, "app-count"):
+                Preview(app_count=value)
 
     def test_inventory_reads_bounded_pages_and_checks_progress(self):
         with patch("run_preview.http", side_effect=[

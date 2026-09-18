@@ -771,6 +771,10 @@ public final class WorkerSimulator implements AutoCloseable {
         AtomicReference<JavaWorkerManager> managerReference = new AtomicReference<>();
         for (PreparedReplica replica : preparedGroup.replicas()) {
             List<WorkerEventDefinition<?>> extensions = new ArrayList<>();
+            if (config.events().contains(com.xa.mass.workersimulator.appchecks.AppRegistrationCheck.EVENT)) {
+                extensions.add(com.xa.mass.workersimulator.appchecks.AppRegistrationCheck.definition(
+                        config.workerGroupId(), () -> managerReference.get().snapshot(replica.replicaKey()).workerId()));
+            }
             if (usesSms(config)) {
                 replica.sim = sms.registry.addSim(config.workerGroupId(), replica.replicaKey(), replica::properties,
                         () -> managerReference.get().snapshot(replica.replicaKey()).workerId(),
@@ -922,7 +926,8 @@ public final class WorkerSimulator implements AutoCloseable {
             List<WorkerEventDefinition<?>> definitionExtensions =
                     new ArrayList<>();
             for (String eventCode : config.events()) {
-                if (Set.of(WorkerSimulatorExecutionWitnesses.EVENT, SmsScenario.START_EVENT,
+                if (Set.of(com.xa.mass.workersimulator.appchecks.AppRegistrationCheck.EVENT,
+                        WorkerSimulatorExecutionWitnesses.EVENT, SmsScenario.START_EVENT,
                         SmsScenario.CANCEL_EVENT, MessageScenario.SEND_EVENT).contains(eventCode)) {
                     continue; // This finite capability is bound to each actual replica at construction.
                 }

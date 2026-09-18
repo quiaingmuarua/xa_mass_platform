@@ -3,6 +3,18 @@
   "sandboxRoot": "./data/scenario-workers",
   "controlPort": 18086,
   "workerGroups": {
+    "app-a-sim": {
+      "events": ["extension.worker.app.registration.check"],
+      "count": 20,
+      "propertiesTemplate": {"runtime": "java", "simulated": "true", "application": "app-a"},
+      "newEnvironment": false
+    },
+    "app-b-sim": {
+      "events": ["extension.worker.app.registration.check"],
+      "count": 20,
+      "propertiesTemplate": {"runtime": "java", "simulated": "true", "application": "app-b"},
+      "newEnvironment": false
+    },
     "demo-sim": {
       "events": [
         "extension.worker.string.md5",

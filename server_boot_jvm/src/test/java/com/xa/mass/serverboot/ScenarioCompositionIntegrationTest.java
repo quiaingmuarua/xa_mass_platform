@@ -4,6 +4,7 @@ import com.xa.mass.scenario.sms.SmsScenarioConfiguration;
 import com.xa.mass.scenario.sms.ListenerService;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import com.xa.mass.scenario.messages.MessageTaskService;
+import com.xa.mass.scenario.appchecks.AppCheckTaskService;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -53,6 +54,14 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(context.getBeansOfType(owner)).as("one shared %s", owner.getSimpleName()).hasSize(1);
             assertThat(context.getBeansOfType(ListenerService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
+            assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
+            if (preview) {
+                assertThat(context.getBean(AppCheckTaskService.class).isRunning()).isTrue();
+                var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));
+                assertThat(groups.values()).doesNotContainNull();
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("app-checks", "app-a-sim"))
+                        .isNotEqualTo(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("app-checks", "app-b-sim"));
+            }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
             if (sms) assertThat(context.getBean(ListenerService.class).isRunning()).isTrue();
@@ -79,9 +88,11 @@ class ScenarioCompositionIntegrationTest {
             } else assertThat(group).isNull();
             assertThat(get(client, base, "/api/v1/sms/catalog").statusCode()).isEqualTo(sms ? 200 : 404);
             assertThat(get(client, base, "/api/v1/messages/catalog").statusCode()).isEqualTo(messages ? 200 : 404);
+            assertThat(get(client, base, "/api/v1/app-checks/catalog").statusCode()).isEqualTo(preview ? 200 : 404);
             String openapi = get(client, base, "/v3/api-docs").body();
             assertThat(openapi.contains("/api/v1/sms/catalog")).isEqualTo(preview);
             assertThat(openapi.contains("/api/v1/messages/catalog")).isEqualTo(preview);
+            assertThat(openapi.contains("/api/v1/app-checks/catalog")).isEqualTo(preview);
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
             for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/sms/listeners/", "/messages", "/messages/",

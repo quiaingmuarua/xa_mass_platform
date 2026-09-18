@@ -47,6 +47,7 @@ class PreviewArchiveTest(unittest.TestCase):
             if scenario_configuration:
                 scenario_entries[scenario_configuration] = b"stale"
             bundle.writestr("BOOT-INF/lib/xa-mass-message-campaigns-test.jar", library(scenario_entries))
+            bundle.writestr("BOOT-INF/lib/xa-mass-app-checks-test.jar", library(scenario_entries))
             server_entries = {"Server.class": b"platform"}
             if dependency_configuration:
                 server_entries[dependency_configuration] = b"stale"
@@ -72,7 +73,7 @@ class PreviewArchiveTest(unittest.TestCase):
             if asset.is_file():
                 files["frontend/dist/" + asset.relative_to(self.frontend).as_posix()] = asset.read_bytes()
         files["preview-manifest.json"] = json.dumps({
-            "scenarios": ["sms", "messages"], "processModel": ["server", "host"], "gitCommit": "a" * 40,
+            "scenarios": ["sms", "messages", "app-checks"], "processModel": ["server", "host"], "gitCommit": "a" * 40,
             "sha256": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
         }).encode()
         with zipfile.ZipFile(path, "w") as bundle:

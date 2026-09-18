@@ -38,7 +38,8 @@ and the three-Worker real path through the composed Server and separate Host.
 The fixed 1,000-Worker product workload is an explicit local acceptance command;
 it does not replace or expand the platform proof lanes below.
 
-The SMS Preview workflow uses the shared Distribution launcher with both scenarios enabled and only SMS workload submitted.
+The SMS Preview workflow uses the shared Distribution launcher with the preview
+scenarios enabled, app_count=0 and only SMS workload submitted.
 It compares the unified Scenario Preview archive against the current frontend build,
 then runs the source SMS acceptance oracle against a fresh extraction's launcher
 and artifacts without a Node or Gradle build step. Launcher lifecycle and archive
@@ -50,6 +51,12 @@ python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario function
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
 ```
+
+[App Checks](scenarios/app-checks-jvm/README.md#装配与证明) extends the same finite
+scenario lane with four App Workers, hash-based one-shot outcomes, actual Handler
+exceptions and independent result recomputation. Boot proves bounded preview and
+Server restart reads. Its runner runs source and fresh Preview ZIP without frontend
+changes or a new performance workload; SMS/Messages retain app_count=0 fixtures.
 
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) adds a selected
 Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the

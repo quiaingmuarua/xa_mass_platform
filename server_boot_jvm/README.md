@@ -15,8 +15,9 @@ composition; `server_jvm` retains the complete platform implementation.
 
 Ordinary platform profiles load no business Scenario Controllers, registrations or
 jobs; platform profiles may still supply their own advisory Group seeds. The existing `scenario-workers` and `agentforge` profiles retain
-their platform behavior. `preview` imports both [SMS Reception](../scenarios/sms-reception-jvm/README.md)
-and [Message Campaigns](../scenarios/message-campaigns-jvm/README.md). There is one
+their platform behavior. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
+[Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
+[App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
 
 Preview enables the independent `worker.phone` query for `demo-sim`, alongside its
@@ -24,15 +25,17 @@ existing Pool Rules. Direct `workerId` is available in every Group; Matching own
 the [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 
 `application-preview.yaml` declares the common `demo-sim` Group, its complete
-String/SMS/Messages events and the `sms` and `messages` Projects. Server prepares
-Groups and Project managed Tasks before Adapter startup. Scenarios consume the
+String/SMS/Messages events and the `sms` and `messages` Projects. It also declares
+the `app-checks` Project with `app-a-sim` and `app-b-sim`; each App Group
+enables `any` Pool, `worker.any` and `extension.worker.app.registration.check`.
+Server prepares Groups and Project managed Tasks before Adapter startup. Scenarios consume the
 immutable Project directory; they no longer register Groups. A declaration is not evidence
 that the real Worker installed those handlers.
 
 The scenario libraries consume only their approved Server services and DTOs;
 they neither depend on each other nor create platform Owners. Each starts after
-the platform lifecycle is ready. Failure of either startup fails the whole
-context. Both stop admission, submission and observation before platform
+the platform lifecycle is ready. Failure of any scenario startup fails the whole
+context. Scenarios stop admission, submission and observation before platform
 resources close, including after partial initialization. Shutdown stays bounded
 and scenarios never clean a Redis scope.
 
@@ -47,7 +50,7 @@ forwards in platform and preview instances. Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. Runtime/Reference and each business page keep separate data and
 polling lifetimes. Platform OpenAPI snapshots exclude scenarios; preview's live
-OpenAPI includes both business namespaces.
+OpenAPI includes all three business namespaces. App Checks has no page or navigation.
 
 All production `application*.yaml` files live in this module's `src/main/resources`.
 The Server library supplies binding, validation and lifecycle implementation;
@@ -60,12 +63,12 @@ standard environment, command-line and `spring.config.additional-location` input
 | Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds |
 | `scenario-workers` | `application-scenario-workers.yaml` over the base | Server 18082, Adapter 18083, scope `profile_scenario_workers`, SCENARIO_LAB and three advisory Groups |
 | `agentforge` | `application-agentforge.yaml` over the base | Server 18182, Adapter 18183, scope `profile_agentforge`, DEFAULT and no Group seeds |
-| `preview` | `application-preview.yaml` over the base | Server 18500, Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and both business Scenarios |
+| `preview` | `application-preview.yaml` over the base | Server 18500, Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
 
 The preview profile is also copied into [Scenario Preview](../distribution/server/PREVIEW.md)
 from this source. Archive checks require its external copy to match the packaged
 host resource. The launcher starts the independent Simulator after Server health,
-both catalogs and actual Worker routes are verified. External overrides do not
+all catalogs and actual Worker routes are verified. External overrides do not
 create a second maintained default configuration.
 
 ## Run

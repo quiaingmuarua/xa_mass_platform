@@ -211,6 +211,12 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 ## product_coexistence
 
 - **Primary owner:** [Scenario Coexistence](../../integrations/scenario-coexistence/README.md).
+- **Additional finite scenario:** [App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明)
+  owns hash-based registered/unregistered/exception outcomes on two App Groups.
+  Four real App Workers prove Group correlation and independent recomputation;
+  Boot also witnesses actual throwing Handler calls, late success, bounded Result
+  preview and Server restart reads. Source and fresh ZIP use the same public API oracle.
+  This makes no exact-distribution, fixed-executor or single-execution claim.
 - **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
   set and neutral Group declarations; finite message execution and later recipient
   observations remain correlated after Task completion or explicit closure.
@@ -236,7 +242,8 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   listening and later-outcome business witnesses. Archive checks compare the
   current unified assets and reject embedded SMS assets. The source SMS oracle
   loads the shared Preview's packaged launcher from a fresh extraction and submits
-  only SMS workload with both scenarios enabled, without a build step or a fallback to the checkout launcher. Launch
+  only SMS workload with the Preview scenarios enabled and App Workers excluded,
+  without a build step or a fallback to the checkout launcher. Launch
   lifecycle and archive checks belong to Distribution; business witnesses stay here.
 - **Deliberate nonclaims:** Mock SMS execution, product authentication, business
   persistence across restart or new platform scheduling/capacity guarantees.

@@ -458,7 +458,7 @@ def main():
     result = {"passed": False, "scenario": args.scenario}
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
     materialize_inventory(sandbox_root, product_worker_world(counts, messages=False))
-    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private",
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", app_count=0,
                           sandbox_root=sandbox_root)
     try:
         with run:

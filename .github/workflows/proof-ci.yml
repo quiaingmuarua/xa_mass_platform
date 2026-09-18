@@ -104,6 +104,7 @@ jobs:
           :server_boot_jvm:build
           :scenarios:sms-reception-jvm:build
           :scenarios:message-campaigns-jvm:build
+          :scenarios:app-checks-jvm:build
           :integrations:worker-correctness:build
           :integrations:worker-dynamic-matching:build
           :integrations:worker-convergence-health:build

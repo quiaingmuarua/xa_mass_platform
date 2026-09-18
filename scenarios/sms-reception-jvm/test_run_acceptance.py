@@ -29,10 +29,10 @@ def http(*args):
 def all_pages(*args):
     return []
 class Preview:
-    def __init__(self, count, port, root, output, sandbox_root):
+    def __init__(self, count, port, root, output, sandbox_root, app_count):
         self.artifacts, self.peaks = {}, {}
         self.url, self.host = "backend", "host"
-        Path(root, "launch.json").write_text(json.dumps({"count": count, "scenarios": ["sms", "messages"], "sandboxRoot": str(sandbox_root)}))
+        Path(root, "launch.json").write_text(json.dumps({"count": count, "appCount": app_count, "scenarios": ["sms", "messages", "app-checks"], "sandboxRoot": str(sandbox_root)}))
     def __enter__(self):
         return self
     def __exit__(self, *_):
@@ -51,7 +51,8 @@ class Preview:
             self.assertEqual(0, stopped.exception.code)
             launch = json.loads((root / "launch.json").read_text())
             self.assertEqual(3, launch["count"])
-            self.assertEqual(["sms", "messages"], launch["scenarios"])
+            self.assertEqual(["sms", "messages", "app-checks"], launch["scenarios"])
+            self.assertEqual(0, launch["appCount"])
             inventory = Path(launch["sandboxRoot"])
             self.assertEqual(root / "proof/private", inventory.parents[2])
             self.assertTrue(inventory.parents[1].name.startswith("inventory-"))

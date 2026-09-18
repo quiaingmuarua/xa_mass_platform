@@ -84,16 +84,19 @@ to production code, exact admission and representative proof.
 
 ## Active Surfaces
 
-[SMS Reception](scenarios/sms-reception-jvm/README.md) and
-[Message Campaigns](scenarios/message-campaigns-jvm/README.md) are independent
+[SMS Reception](scenarios/sms-reception-jvm/README.md),
+[Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
+[App Checks](scenarios/app-checks-jvm/README.md) are independent
 Spring configuration libraries consuming Server application services. SMS owns
 listening orders; Messages presents the messages Project's finite Tasks, with
 configuration in Task descriptors, counts observed from Item Scores and later
 receipts read from Results.
+App Checks uses two App Groups for finite, reproducible registered/unregistered
+lookups and actual Handler failures; it currently exposes backend APIs only.
 The independent [Worker Simulator](worker_simulator_jvm/README.md) owns simulated
 device facts and executes through the real Worker SDK.
 
-[Server Boot](server_boot_jvm/README.md) enables both scenarios in `preview`,
+[Server Boot](server_boot_jvm/README.md) enables these scenarios in `preview`,
 sharing one platform resource set. The [Preview launcher](distribution/server/PREVIEW.md)
 starts Server and Simulator as separate processes; the
 [coexistence proof](integrations/scenario-coexistence/README.md) checks their
@@ -134,7 +137,7 @@ artifacts and public APIs instead of copying source modules.
 
 For local work, `python run_local_runtime.py` builds the frontend and starts
 the Scenario Lab. `--profile agentforge` selects the clean Server/Adapter
-preset without Worker Simulator. `--profile preview` builds and starts both business
+preset without Worker Simulator. `--profile preview` builds and starts the business
 scenarios and their shared Simulator through the [Preview launcher](distribution/server/PREVIEW.md).
 Profile coordinates and commands are documented
 by [Server](server_jvm/README.md#run) and [distribution](distribution/server/README.md).

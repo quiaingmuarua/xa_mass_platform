@@ -549,7 +549,7 @@ def main():
     counts = (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
     materialize_inventory(sandbox_root, product_worker_world(counts))
-    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root)
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=0)
     result = {"passed": False}
     started = time.monotonic()
     try:

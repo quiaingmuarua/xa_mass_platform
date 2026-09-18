@@ -31,7 +31,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
 
     def test_preview_options_are_rejected_for_other_profiles(self) -> None:
         for profile in ("scenario-workers", "agentforge"):
-            for option in ("count", "seed", "port", "sandbox-root"):
+            for option in ("count", "app-count", "seed", "port", "sandbox-root"):
                 with self.subTest(profile=profile, option=option), redirect_stderr(io.StringIO()), \
                         self.assertRaises(SystemExit) as error, patch.object(launcher, "build_frontend") as build:
                     launcher.main(["--profile", profile, "--" + option, "3"])
@@ -45,9 +45,9 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
                 patch.object(launcher, "build_frontend") as frontend, \
                 patch.object(launcher, "build_runtime_processes") as runtime, \
                 patch.object(launcher, "start_server") as server:
-            self.assertEqual(0, launcher.main(["--profile", "preview", "--count", "3", "--seed", "712",
+            self.assertEqual(0, launcher.main(["--profile", "preview", "--count", "3", "--app-count", "0", "--seed", "712",
                     "--port", "18600", "--sandbox-root", "existing/data/scenario-workers"]))
-            preview.main.assert_called_once_with(["--build", "--count", "3", "--seed", "712",
+            preview.main.assert_called_once_with(["--build", "--count", "3", "--app-count", "0", "--seed", "712",
                     "--port", "18600", "--sandbox-root", "existing/data/scenario-workers"])
             frontend.assert_not_called()
             runtime.assert_not_called()

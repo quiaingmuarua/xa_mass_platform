@@ -3,7 +3,8 @@
 Status: current shared scenario launch and archive owner.
 
 This finite preview starts one Server and one Worker Simulator. SMS and Messages use
-one Redis scope, one WebSocket Adapter and the same Worker pool. It adds no product
+one Redis scope, one WebSocket Adapter and the same Worker pool. App Checks adds
+two dedicated App Groups on that platform, with backend APIs only. It adds no product
 framework or platform owner. The production Runtime ZIP continues to exclude Host.
 
 From the checkout root, install Python prerequisites and launch:
@@ -19,16 +20,23 @@ Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or st
 `XA_MASS_REDIS_URL` defaults to `redis://127.0.0.1:6379/15`.
 
 The root command builds once through the Preview task graph and calls this same
-launcher in-process. Its `--count`, `--seed`, `--port` and `--sandbox-root` options
+launcher in-process. Its `--count`, `--app-count`, `--seed`, `--port` and `--sandbox-root` options
 are Preview-only; the default Lab and AgentForge launch behavior is unchanged.
 
 The fixed `preview` profile serves Messages at `http://127.0.0.1:18500/messages`,
 SMS at `/sms`, Runtime at `/runtime/workers`, and the Host at `http://127.0.0.1:18504/lab`.
-Both business scenarios are enabled together. `--count 100 --seed 712`
-initializes a reproducible random population: defaults are 60 total Workers and
+All three business scenarios are enabled together. `--count 100 --seed 712`
+initializes a reproducible random demo-sim population: defaults are 60 demo Workers and
 seed 0. Count accepts 1..10,000; seed is a signed 64-bit integer. Country choices
 have equal weight, not exact quotas or guaranteed small-sample coverage.
 The previous country-count argument is removed rather than reinterpreted.
+`--app-count` defaults to 20 per App Group (100 total Workers with other defaults).
+It accepts 0..15000, the existing Host Group bound. Zero removes both App Groups
+from this run's Host configuration, even if those inventory directories already
+exist. It neither deletes inventory nor removes the profile's Groups or APIs.
+App Workers install only `extension.worker.app.registration.check`; `--count`
+continues to control only demo-sim. Readiness observes all configured inventory
+through the generic Lab Worker endpoint and verifies their actual Adapter routes.
 Inventory persists at `<preview-root>/data/scenario-workers` (the source default
 is `distribution/server/data/scenario-workers`); `--sandbox-root`
 selects another root with that suffix. Existing Group directories, including empty
@@ -40,13 +48,14 @@ The launcher selects a complete Simulator example, writes the final Runtime URL,
 absolute inventory path, port, events, count, seed and template into one
 `worker-simulator.json` in its run directory, and passes only `--config` to Main.
 The launcher never evaluates templates or corrects sampled country counts.
-`run.json` records count, seed and fixed `scenarios: ["sms", "messages"]`, not a
+`run.json` records count, appCount, seed and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
 promised country distribution. The Host uses the existing combined capability
 configuration; no Simulator runtime mode selects business deployment.
 SMS and coexistence CI pre-materialize exact 1/1/1, 4/4/4 or 700/200/100 inventories
 using the shared proof inventory utility before starting this launcher. Their
 original coordinates, load thresholds and independent oracles remain unchanged;
-the same inventory is reused for Host restarts. No seed search or quota repair is used.
+the same inventory is reused for Host restarts. They explicitly use app_count=0,
+retaining the original topology. No seed search or quota repair is used.
 Existing inventories and historical run evidence are not migrated, scanned or
 deleted when consolidating distribution code; pass `--sandbox-root` to reuse one.
 `--port` accepts 1..65531 and sets Server base, Adapter +3 and Host +4. Occupied ports fail without
@@ -56,11 +65,12 @@ exact generated `test_products_<UUID>` scope through SCAN/UNLINK.
 [The executable profile](../../server_boot_jvm/src/main/resources/application-preview.yaml)
 owns Server/Adapter/Endpoint coordinates. It is packaged in the Boot JAR and
 copied to source `build/preview/config` and archive `config` by the distribution. Preview
-enables both business libraries on one mixed-country `demo-sim` Group and Host
-Manager. SMS queries shared country Pool stock; Messages uses the
+enables all three business libraries. SMS/Messages share one mixed-country
+`demo-sim` Group and Host Manager. App Checks uses one Manager per App Group.
+SMS queries shared country Pool stock; Messages uses the
 `worker.messaging.available` function over messaging Pool stock. Their Task
 supply declarations remain separate from Item queries.
-Both catalogs must initialize before the Host starts, then actual Adapter routes
+All catalogs must initialize before the Host starts, then actual Adapter routes
 must be observed. This is the sole source/ZIP launcher; scenario modules retain
 their own APIs and acceptance oracles.
 Archive verification checks all four host profiles, excludes application configuration
@@ -105,7 +115,10 @@ python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario function
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --root <extracted-directory>
 ```
 
-Acceptance scripts and run evidence stay outside the ZIP. Launch lifecycle and
+App Checks has a separate [finite acceptance oracle](../../scenarios/app-checks-jvm/README.md#装配与证明),
+used against both source staging and a fresh ZIP. It does not alter the SMS or
+Messages workload assertions. Acceptance scripts and run evidence stay outside the ZIP.
+Launch lifecycle and
 archive checks belong here; run them with
 `.\gradlew.bat :distribution:server:previewLauncherTest`, which also runs the root
 launcher tests. The preview verifier is `src/test/python/verify_preview_archive.py`.

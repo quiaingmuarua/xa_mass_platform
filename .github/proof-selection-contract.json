@@ -575,6 +575,16 @@
       "reason": "The executable owns finite Console page forwards in enabled and ordinary instances."
     },
     {
+      "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckTaskService.java",
+      "lanes": ["jvm_contracts", "product_coexistence", "runtime_distribution"],
+      "reason": "One-shot Task composition needs finite real Worker execution and packaged scenario assembly."
+    },
+    {
+      "path": "scenarios/app-checks-jvm/run_acceptance.py",
+      "lanes": ["jvm_contracts", "product_coexistence"],
+      "reason": "Source and ZIP app-checks oracles run in the existing finite scenario lane."
+    },
+    {
       "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java",
       "lanes": [
         "jvm_contracts",
@@ -596,7 +606,7 @@
         "worker_correctness",
         "worker_dynamic_matching"
       ],
-      "reason": "The preview configuration declares one Group and enables both scenarios on one platform."
+      "reason": "The preview configuration declares the shared demo Group and two App Groups and enables all scenarios on one platform."
     },
     {
       "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java",

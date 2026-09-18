@@ -6,6 +6,12 @@ the real Java Worker SDK. Lab, [SMS](../scenarios/sms-reception-jvm/README.md) a
 same file inventory, Properties, Managers and controls; scenario is a use case,
 not a separate kind of Worker.
 It has one process entry, one loopback control server and one HTML console.
+The [App Checks](../scenarios/app-checks-jvm/README.md) capability adds stateless
+one-shot lookup Handlers on `app-a-sim` and `app-b-sim` in Preview. Each per-replica
+definition captures the actual identity at execution entry; request input cannot
+choose its executor. It uses the existing Handler thread for deterministic delay,
+then returns registered/unregistered or throws the existing execution exception.
+No business lifecycle, callback, queue, Reporter or result cache is installed.
 The Lab uses the checked-in `scenario-workers` Server profile. It is not
 a Kernel owner, privileged Server extension, Adapter, production Worker
 platform, or plugin SPI. Server has no compile-time or lifecycle dependency on

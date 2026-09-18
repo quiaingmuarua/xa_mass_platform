@@ -28,6 +28,7 @@ REQUIRED_DOCS = {
     "server_boot_jvm/README.md": "Status: current",
     "scenarios/sms-reception-jvm/README.md": "Status: current",
     "scenarios/message-campaigns-jvm/README.md": "Status: current",
+    "scenarios/app-checks-jvm/README.md": "Status: current",
     "transport/README.md": "Status: repository-local",
 }
 REQUIRED_ROOT_LINKS = {

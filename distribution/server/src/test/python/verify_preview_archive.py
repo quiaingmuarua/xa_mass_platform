@@ -29,7 +29,7 @@ def verify(archive, frontend):
         if not required <= files.keys():
             raise ValueError("Incomplete Preview entrypoints")
         manifest = json.loads(files["preview-manifest.json"])
-        if manifest["scenarios"] != ["sms", "messages"] or manifest["processModel"] != ["server", "host"]:
+        if manifest["scenarios"] != ["sms", "messages", "app-checks"] or manifest["processModel"] != ["server", "host"]:
             raise ValueError("Wrong default composition")
         if len(manifest["gitCommit"]) != 40:
             raise ValueError("Missing build identity")
@@ -66,6 +66,8 @@ def verify(archive, frontend):
                 raise ValueError("Server embeds a separate frontend or Worker Simulator")
             if not any("xa-mass-message-campaigns-" in name for name in entries):
                 raise ValueError("Messages backend absent")
+            if not any("xa-mass-app-checks-" in name for name in entries):
+                raise ValueError("App checks backend absent")
     return {"passed": True, "archiveSha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
             "fingerprintedFiles": len(manifest["sha256"]), "unifiedFrontendFiles": len(actual),
             "gitCommit": manifest["gitCommit"], "scenarios": manifest["scenarios"]}

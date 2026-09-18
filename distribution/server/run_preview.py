@@ -84,11 +84,13 @@ def build():
                     "--console=plain"], cwd=repo, check=True)
 
 
-def validate_parameters(count, seed, port, sandbox_root=None):
+def validate_parameters(count, seed, port, sandbox_root=None, app_count=20):
     if type(count) is not int or not 1 <= count <= 10_000:
         raise ValueError("count must be an integer between 1 and 10000")
     if type(seed) is not int or not -(2**63) <= seed < 2**63:
         raise ValueError("seed must be a signed 64-bit integer")
+    if type(app_count) is not int or not 0 <= app_count <= 15_000:
+        raise ValueError("app-count must be an integer between 0 and the Host Group limit of 15000")
     if type(port) is not int or not 1 <= port <= 65_531:
         raise ValueError("port must be an integer between 1 and 65531 (Adapter +3 and Host +4)")
     if sandbox_root is not None and Path(*Path(sandbox_root).resolve().parts[-2:]) != Path("data/scenario-workers"):
@@ -96,13 +98,14 @@ def validate_parameters(count, seed, port, sandbox_root=None):
 
 
 class Preview:
-    def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None, sandbox_root=None, seed=0):
-        validate_parameters(count, seed, port, sandbox_root)
+    def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None, sandbox_root=None, seed=0, app_count=20):
+        validate_parameters(count, seed, port, sandbox_root, app_count)
         self.root = Path(root).resolve()
         self.sandbox_root = Path(sandbox_root or self.root / "data" / "scenario-workers").resolve()
         self.count = count
+        self.app_count = app_count
         self.seed = seed
-        self.scenarios = ("sms", "messages")
+        self.scenarios = ("sms", "messages", "app-checks")
         self.adapter = "products-websocket"
         self.lab = "/lab/v1/sms"
         self.port = port
@@ -183,6 +186,12 @@ class Preview:
                              seed=self.seed)
         group = worker_config["workerGroups"]["demo-sim"]
         group["count"] = self.count
+        for app_group in ("app-a-sim", "app-b-sim"):
+            if self.app_count == 0:
+                # Exclude the Group entirely: count=0 must not reopen a retained inventory.
+                worker_config["workerGroups"].pop(app_group)
+            else:
+                worker_config["workerGroups"][app_group]["count"] = self.app_count
         self.worker_config_path.write_text(json.dumps(worker_config, indent=2) + "\n", encoding="utf-8")
         self.launch("host", options + ["-Xmx1g", "-cp", str(host_lib / "*"),
                     "com.xa.mass.workersimulator.WorkerSimulatorMain",
@@ -190,16 +199,17 @@ class Preview:
         self.wait_for(self.host_ready, 90, "Host identities")
         self.wait_for(self.connected, 60, "verified WebSocket routes")
         (self.output / "run.json").write_text(json.dumps({"scope": self.scope, "url": self.url, "host": self.host,
-                "count": self.count, "seed": self.seed, "sandboxRoot": str(self.sandbox_root), "scenarios": self.scenarios, "artifacts": self.artifacts,
+                "count": self.count, "appCount": self.app_count, "seed": self.seed, "sandboxRoot": str(self.sandbox_root), "scenarios": self.scenarios, "artifacts": self.artifacts,
                 "pids": {k: p.pid for k, p in self.processes.items()}}, indent=2), encoding="utf-8")
         return self
 
     def host_ready(self):
-        health = http(self.host, self.lab + "/health")
-        return health.get("started") is True and health.get("prepared") == health.get("numbers")
+        # This endpoint is admitted only after Host startup and covers every configured Group.
+        inventory = http(self.host, "/lab/v1/workers")["workers"]
+        return all(worker.get("workerId") and worker.get("runtimeState") == "RUNNING" for worker in inventory)
 
     def connected(self):
-        inventory = all_pages(self.host, self.lab + "/inventory")
+        inventory = http(self.host, "/lab/v1/workers")["workers"]
         for offset in range(0, len(inventory), 100):
             ids = [sim["workerId"] for sim in inventory[offset:offset + 100]]
             response = http(self.url, f"/api/v1/runtime-view/endpoint-managers/{self.adapter}/workers:network-observe", ids)
@@ -291,13 +301,14 @@ class Preview:
 def parse_arguments(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", action="store_true")
-    parser.add_argument("--count", type=int, default=60, help="Total Workers to initialize (1..10000); not a country quota")
+    parser.add_argument("--count", type=int, default=60, help="demo-sim Workers to initialize (1..10000); not a country quota")
+    parser.add_argument("--app-count", type=int, default=20, help="Workers per App Group (0..15000); zero excludes both App Groups")
     parser.add_argument("--seed", type=int, default=0, help="Signed 64-bit initialization seed; existing inventory is reused")
     parser.add_argument("--sandbox-root", type=Path, help="Persistent inventory root ending in data/scenario-workers")
     parser.add_argument("--port", type=int, default=18500, help="Server base port; Adapter +3 and Host +4")
     args = parser.parse_args(arguments)
     try:
-        validate_parameters(args.count, args.seed, args.port, args.sandbox_root)
+        validate_parameters(args.count, args.seed, args.port, args.sandbox_root, args.app_count)
     except ValueError as error:
         parser.error(str(error))
     return args
@@ -309,7 +320,7 @@ def main(arguments=None):
         build()
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
-        with Preview(args.count, args.port, sandbox_root=args.sandbox_root, seed=args.seed) as run:
+        with Preview(args.count, args.port, sandbox_root=args.sandbox_root, seed=args.seed, app_count=args.app_count) as run:
             print(f"Scenario Preview 0.1.0-preview: {run.url}/messages or /sms\nSimulator: {run.host}/lab\nPress Ctrl+C to end this run.", flush=True)
             while True:
                 run.check()

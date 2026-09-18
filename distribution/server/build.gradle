@@ -282,7 +282,7 @@ tasks.register('previewManifest') {
         files['requirements.txt'] = hash(file('requirements-preview.txt'))
         fileTree(previewDirectory.get().dir('config').asFile).files.each { files['config/' + it.name] = hash(it) }
         def manifest = [version: previewVersion, platformVersion: runtimeVersion,
-                gitCommit: gitCommit.get(), includesWorktree: true, scenarios: ['sms', 'messages'],
+                gitCommit: gitCommit.get(), includesWorktree: true, scenarios: ['sms', 'messages', 'app-checks'],
                 processModel: ['server', 'host'], sha256: files.sort()]
         output.get().asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n'
     }

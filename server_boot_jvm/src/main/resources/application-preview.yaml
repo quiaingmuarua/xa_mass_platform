@@ -9,6 +9,8 @@ xa:
           worker-group-ids: [demo-sim]
         - project-id: messages
           worker-group-ids: [demo-sim]
+        - project-id: app-checks
+          worker-group-ids: [app-a-sim, app-b-sim]
     task-rpc:
       refill-by-worker-group:
         demo-sim:
@@ -18,6 +20,12 @@ xa:
         demo-sim:
           pools: [country, messaging]
           functions: [worker.country, worker.messaging.available, worker.phone]
+        app-a-sim:
+          pools: [any]
+          functions: [worker.any]
+        app-b-sim:
+          pools: [any]
+          functions: [worker.any]
     kernel-pacer:
       enabled: true
       preset: DEFAULT
@@ -27,6 +35,14 @@ xa:
     worker-assembly:
       group-config-json: |
         {
+          "app-a-sim": {
+            "attributes": {},
+            "eventCodes": ["extension.worker.app.registration.check"]
+          },
+          "app-b-sim": {
+            "attributes": {},
+            "eventCodes": ["extension.worker.app.registration.check"]
+          },
           "demo-sim": {
             "attributes": {},
             "eventCodes": [

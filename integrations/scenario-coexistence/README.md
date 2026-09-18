@@ -18,7 +18,11 @@ The proof neither searches for a suitable seed nor repairs sampled quotas.
 
 ## Small functional and lifecycle world
 
-The mixed `demo-sim` Group has four Workers per country (12 total). SMS uses
+The mixed `demo-sim` Group has four Workers per country (12 total). The existing
+fixture uses `app_count=0`: new Preview App Groups have no Workers
+in this proof. Their independent one-shot witness belongs to
+[App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明), run in the same CI lane.
+SMS uses
 the country Pool; Messages consumes messaging Pool stock with country constraints.
 A real SMS listener supplies the number
 for a campaign's additional phone condition; both execute on the same Worker and the SMS
