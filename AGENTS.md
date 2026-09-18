@@ -457,6 +457,10 @@ artifact limits and assertions; read that contract before changing the proof.
 - Frontend observes Runtime truth and uses public APIs for finite Task files and
   Adapter-scoped Direct Debug. It cannot infer state from elapsed time or promote
   Direct Call responses to identity, capability, lifecycle or schedulability.
+  Explicit Mock mode may provide local Messages Task interactions, visibly labeled
+  as Mock and isolated behind the frontend data source. It makes no platform,
+  Messages, Lab or export requests and never serves as an API-error fallback.
+  Mock receipt samples do not establish Task scheduling or execution truth.
 - The [human overview](frontend/public/overview.htm) projects the existing
   architecture; retain its information architecture and navigation. Mechanism,
   API, capacity and fixture details remain in Owner/proof documents.
@@ -486,7 +490,12 @@ finite state, idempotency and observation. Their device owners remain in
   scenario admission/submission/observation before platform resources with bounded
   waits; partial initialization cleans created resources. Scenario shutdown
   never cleans the Redis scope.
-- Validate complete campaign input before creation and every append before
+- Messages reads Task-owned display data, Item Score quantities and Result content
+  on request. It owns only current-run submission deduplication, with synchronous
+  bounded creation/append/approval; no Campaign Result cache or statistics loop.
+  Preserve known generated Task IDs on uncertain writes. Task display fields are
+  passive immutable metadata, never scheduling inputs or persisted counters.
+- Validate complete message Task input before creation and every append before
   approval. Preserve uncertain submission without recreation/retry, complete
   snapshots, existing Outcome names and observation after Task scheduling ends.
 - Preview Messages explicitly retains `extension.worker.message.send` while its
@@ -499,7 +508,7 @@ finite state, idempotency and observation. Their device owners remain in
   publication; receipt hold/release accepts existing receipt IDs, never arbitrary
   Reports. Keep SMS matching/deduplication and the original run's Reporter rules.
 - Preview gates business APIs, registration and jobs while sharing frontend assets.
-  SMS/Messages polling lifetimes remain independent. Catalog observation cannot
+  SMS observation and request-driven Messages reads remain independent. Catalog observation cannot
   enable business; Mock Demo makes no scenario requests. Unknown API/assets are
   not SPA routes.
 - [Preview delivery](distribution/server/PREVIEW.md) owns the sole source/ZIP

@@ -9,7 +9,7 @@ stores optional Pool supply declarations. Kernel validates immutable structure;
 Matching interprets targets, qualifications and resource access without Task IDs.
 
 ```text
-TaskDescriptor = taskId, projectId, workerGroupId, idleDisposition, config, refill
+TaskDescriptor = taskId, projectId, workerGroupId, idleDisposition, config, refill, name?, metadata
 RefillTarget = poolName, target, count
 TaskItem = messageId, eventCode, createdAtMillis, payload, priority,
            expireAtMillis, workerSelector
@@ -19,6 +19,11 @@ Task config contains exactly string `priority` and `maxRetryTimes`. Supply allow
 0..100 declarations, each with nonblank poolName, required EligibilityQuery target
 and count 1..1000. Empty target is `{}`; empty refill is no supply. Equality includes
 all declarations. Kernel does not infer defaults, resolve Pools or interpret fields.
+
+Optional name (nonblank, at most 128 characters) and metadata (at most 32 string
+entries, nonblank keys up to 128 characters and values up to 4096) are immutable
+application display data. Kernel never interprets business fields or stores counts
+in them. Missing display fields mean unknown/empty, with no read-time write.
 
 ## Cross-Owner Creation
 
@@ -33,7 +38,8 @@ HASH and project ZSET types, reads Redis TIME and writes the descriptor plus
 `xa_mass:<scope>:task:project:<projectId>` membership (`taskId -> creation millis`)
 with NX. Existing creation times never refresh. The directory retains closed Tasks.
 `listProjectTasks(projectId,limit)` returns newest first with 1..1000 rows and a
-one-member truncation lookahead. Missing projections remain independently missing;
+one-member truncation lookahead. getProjectTask(projectId,taskId) uses one ZSCORE
+for point membership and the same first-created timestamp, without list scanning. Missing projections remain independently missing;
 corrupt directory values fail, with no cleanup or repair.
 
 **Ownership change:** every Task has a nonblank passive Project coordinate. Server
@@ -74,8 +80,9 @@ independently of Task closure. Stock invalidation never reopens scheduling.
 ## Redis Shape
 
 The descriptor HASH has exactly `projectId`, `workerGroupId`, `idleDisposition`,
-`configJson`, `refillJson`, written together by the create-only Lua. refillJson is an
-array of `{poolName,target,count}`; an empty array is valid. Missing fields, retired
+`configJson`, `refillJson`, `metadataJson`, plus optional `name`, written together by the create-only Lua. refillJson is an
+array of `{poolName,target,count}`, with an empty refill array allowed.
+metadataJson encodes only a string Map (absent means empty). Missing required scheduling fields, retired
 ruleId/refillTargetsJson, invalid targets/counts and corrupt JSON fail reading.
 No old Matching HASH is consulted and no default is substituted.
 

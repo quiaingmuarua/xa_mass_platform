@@ -134,9 +134,19 @@ public interface TaskRuntime {
             String workerGroupId,
             TaskIdleDisposition idleDisposition,
             Map<String, String> config,
-            List<RefillTarget> refill
+            List<RefillTarget> refill,
+            @Nullable String name,
+            Map<String, String> metadata
     ) {
         public TaskDescriptor {
+            if (name != null && (name.isBlank() || name.length() > 128)) {
+                throw new IllegalArgumentException("Task name must contain 1..128 characters");
+            }
+            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+            if (metadata.size() > 32 || metadata.entrySet().stream().anyMatch(entry ->
+                    entry.getKey().isBlank() || entry.getKey().length() > 128 || entry.getValue().length() > 4096)) {
+                throw new IllegalArgumentException("Task metadata exceeds its string field bounds");
+            }
             requireNonBlank(taskId, "taskId");
             if (projectId == null || projectId.isBlank()) {
                 throw new IllegalArgumentException("projectId must be non-blank");

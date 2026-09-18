@@ -67,6 +67,15 @@ public interface TaskItemScoreBandCore {
             List<String> messageIds
     );
 
+    /** At most 100 Tasks; counts stored ranges without reading Items or Results. */
+    default Map<String, TaskItemScoreCounts> observeItemScoreCounts(List<String> taskIds) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskItemScoreBandCore", "observeItemScoreCounts");
+    }
+
+    record TaskItemScoreCounts(long total, Map<Integer, Long> countsByTag) {
+        public TaskItemScoreCounts { countsByTag = Map.copyOf(countsByTag); }
+    }
+
     enum TaskItemScoreBand {
         ACTIVE("active"),
         TERMINAL("terminal");

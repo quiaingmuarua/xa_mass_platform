@@ -220,7 +220,7 @@ public final class ProjectTaskInitializer {
             return new TaskDescriptor(
                     projects.requireManagedTaskId(projectId, workerGroupId), projectId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
                     TASK_CONFIG, matching.normalizeRefill(workerGroupId, rpc.refillByWorkerGroup().getOrDefault(workerGroupId,
-                            List.of())));
+                            List.of())), null, java.util.Map.of());
         } catch (RuntimeException error) {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }

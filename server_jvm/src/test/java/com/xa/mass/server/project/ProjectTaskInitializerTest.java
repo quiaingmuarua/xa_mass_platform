@@ -143,7 +143,7 @@ class ProjectTaskInitializerTest {
         TaskDescriptor conflict = new TaskDescriptor(projects().requireManagedTaskId("test-project", "phone-tools"), "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                ), java.util.List.of());
+                ), java.util.List.of(), null, java.util.Map.of());
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -286,7 +286,7 @@ class ProjectTaskInitializerTest {
         return new TaskDescriptor(projects().requireManagedTaskId("test-project", "phone-tools"), "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of());
+                ), java.util.List.of(), null, java.util.Map.of());
     }
 
     private static void assertError(

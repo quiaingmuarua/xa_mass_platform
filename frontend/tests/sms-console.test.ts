@@ -329,7 +329,8 @@ describe("unified SMS console", () => {
     expect(host.querySelector('[data-testid="source-badge"]')?.textContent).toContain(
       "Mock source"
     );
-    expect(host.textContent).not.toContain("SCENARIOS");
+    expect(host.querySelector('aside a[href="/sms"]')).toBeNull();
+    expect(host.querySelector('aside a[href="/messages"]')).not.toBeNull();
     await router.push("/sms/listeners");
     await settle();
     await vi.advanceTimersByTimeAsync(10_000);

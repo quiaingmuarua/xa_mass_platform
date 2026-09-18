@@ -1,117 +1,131 @@
-# Message Campaigns 0.1.0-preview
+# Messages Task Management
 
-Status: current Message Campaigns business owner.
+Status: current Messages business owner.
 
-Messages 是有限消息触达业务，用来验证基于 messaging Pool 的发送执行与 Task 结束后的持续业务观察。
-与 [SMS Reception](../sms-reception-jvm/README.md) 共同运行时，两个场景使用同一 Server、Redis scope、
-Adapter 和真实 Worker 池；场景之间没有代码依赖。
+Messages 是 `messages` Project 下有限 Task 的业务视图。与
+[SMS Reception](../sms-reception-jvm/README.md) 共享平台、Adapter 和真实 Worker。
 
-## 依赖与执行
+## 归属与流程变化
 
-`message-campaigns-jvm -> server_jvm` 只消费 `ProjectDirectory`、`TaskCreationService`、
-`TaskDataService`、`TaskLifecycleService` 及现有 Task 契约。产品不调用 Controller，不经过平台 HTTP
-等待器，不创建 Redis、Kernel Owner、Pacer 或 Adapter。本模块没有部署 profile，由宿主 `preview` 配置与 SMS 一起导入。
-[Spring 宿主](../../server_boot_jvm/README.md) 提供唯一混合 Group `demo-sim` 与完整业务/共享事件声明。
-统一 preview 使用 `demo-sim`；两个场景幂等消费同一 Group 声明。
+**本片将创建改为请求内完成，读取改为按请求观测。** 原 Campaign 提交队列、全量结果
+观察循环、业务结果缓存和 metrics API 已移除。Kernel 调度、Matching、lease、claim、
+TRACKED 与 Worker/Lab 协议没有改变。
+
+| 信息 | 唯一来源 |
+| --- | --- |
+| 名称、业务配置 | Task descriptor 的 name/metadata |
+| 创建时间、任务列表 | Project Task ZSET |
+| 调度状态 | Task Score |
+| 数量 | Item Score 区间观测 |
+| 号码、执行参数 | TaskItem |
+| 执行结果、回执、最新回复 | Result |
+
+场景通过 Server 的 ProjectDirectory、ProjectTaskQueryService、TaskCreationService、
+TaskDataService 和 TaskLifecycleService 组合读取与写入，不直接访问 Redis 或调度 Owner。
+实现见 [MessageTaskService](src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java)。
 
 ```text
-POST campaign -> 整批校验和本轮 requestId 幂等 -> 有界提交队列
-  -> 创建声明 messaging Pool 供给的有限 Task -> 每次最多 100 Items -> 全部确认后批准
-  -> Kernel / Matching -> 共用 Adapter -> 实际 Worker message.send
-  -> Worker HTTP 调用 Lab -> 唯一接收记录与 SENT 执行 Result
-Lab 接收生成 delivered；正文计划或人工 read / reply -> 本地事实
-  -> HTTP 回调 Worker -> 原 Worker run 的 Reporter
-  -> 原 TaskItem 的 Outcome / Result -> 一个轮转观察循环 -> Messages 页面
+完整校验 → requestId 幂等/容量准入 → Server 生成 Task ID
+  → 创建 CLOSE Task → 每批至多 100 Items → 全部确认 → 自动批准 → HTTP 201
+Worker message.send → HTTP 调用 Lab → SENT 执行结果
+Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Reporter
+  → 既有 Item Score / Result Owner
+列表或详情请求 → 读取 Task / Score / Item / Result
 ```
 
-一个收件人对应一个稳定 messageId 和 TaskItem；收件人地址与 Worker 身份无关。
-匹配规则始终包含 `worker.messaging.enabled = "true"`，可选的发送号码增加 `worker.phone` 等值条件。
-所有国家使用同一 Group。供给声明和 Item 查询分别构造，由 Matching 解释各自输入：
-
-| 用途 | 当前请求 |
-| --- | --- |
-| Task 的共享供给 | `RefillTarget("messaging", EligibilityQuery, 100)`；target 为 `{"worker.country":["CN"]}`，指定发送号码时增加 `"worker.phone":["号码"]` |
-| Item 的执行查询 | `WorkerQuery("worker.messaging.available", input)`；input 为 `{"country":["CN"]}`，指定发送号码时增加 `"phone":"号码"` |
-
-Messaging maintenance 按供给目标资格化 Pacer 已取得短租约的 Worker；Item 函数按条件交集
-消费共享 messaging Pool。这里的 phone 条件仍消费 Pool，与独立 `worker.phone` 身份查询
-不同。场景不选择 Worker、不读取索引；补货数量是目标，不能替代 Kernel 执行租约准入。
-调用顺序见 [CampaignService](src/main/java/com/xa/mass/scenario/messages/CampaignService.java)，
-输入与资源契约见 [Matching Owner](../../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)。
-
-## API 与业务记录
+## API 与业务输入
 
 | API | 契约 |
 | --- | --- |
-| `GET /api/v1/messages/catalog` | runId、版本、支持的 CN/US/GB（均指向 `demo-sim`）和容量；仅作为可用性观察 |
-| `POST /api/v1/messages/campaigns` | `requestId,name,country,body,recipientIds`，可选 `senderPhone`；HTTP 202 返回本地批次 |
-| `GET /api/v1/messages/campaigns` | 批次分页，offset 默认 0，limit 默认 30、范围 1..1000 |
-| `GET /api/v1/messages/campaigns/{id}` | 提交状态、Task 身份、消息数、分阶段统计 |
-| `GET /api/v1/messages/campaigns/{id}/messages` | 消息分页、实际 Worker/号码和最新完整快照 |
-| `GET /api/v1/messages/metrics` | 本轮提交、观察、失败、队列和延迟统计 |
+| `GET /api/v1/messages/catalog` | Project、runId、版本、国家及受理上限，只有可用性含义 |
+| `POST /api/v1/messages/tasks` | 同步完成提交与自动批准，201 返回 `{taskId}` |
+| `GET /api/v1/messages/tasks?limit=100` | 创建时间倒序，1..100 个 Task，带 truncated，不分页 |
+| `GET /api/v1/messages/tasks/{taskId}` | 项目内 Task、数量及最多 100 条 Result 预览 |
 
-每批 1..1000 个唯一收件人。requestId/name/recipientId/senderPhone 最长 128 字符，正文最长 4096。
-空白发送号码表示平台选择。整批参数先校验；相同 requestId 与内容返回原批次，内容不同返回 409。
-国家不合法、重复收件人和未知字段返回 400；本轮容量或提交队列耗尽返回 429。
+```json
+{"requestId":"cross-country","name":"msg-US-CN-2-example","recipientCountry":"CN","senderCountry":"US","body":"{}","recipientIds":["+8613800000001","+8613800000002"]}
+```
 
-受理不代表发送完成。提交状态为 `SUBMITTING / SUBMITTED / SUBMISSION_UNCONFIRMED`。
-任何创建、追加或批准失败/结果不明，保留原业务身份和已知 Task 身份，不重新创建 Task、不自动重发。
-可能已有部分 Items，甚至批准已发生；未确认批次仍查询已知 Task，显示实际观察。
+每次 1..1000 个号码，去首尾空白、禁止重复；国际号码为 + 加 2..15 位数字，首位非零，
+CN/US/GB 分别要求 +86/+1/+44 且前缀后有号码。此检查不证明号码存在或真实国家归属。
+requestId/name/senderPhone 最长 128 字符，body 最长 4096，必须为 JSON 对象字符串。
+Lab 独占具体指令语义；Server 不重复解释步骤、概率和随机延迟。
 
-`SENT` 是实际 Handler 经 HTTP 获得 Lab 首次受理的完整快照；7/8/9 分别用于 `DELIVERED / READ / REPLIED`。
-快照包含 campaignId/messageId/recipientId/country/body/workerId/phone/status/observedAtMillis；回复增加
-reply 与 replyRequestId。允许首次读到后续阶段，同阶段只接受更晚时间，旧阶段或旧回复不能覆盖新内容。
-产品不改实例级 Outcome 名称，不把 `Result=succeeded` 一律当送达。未观察到回执不推断未读或到期。
-发送结果齐全后仍轮转读取原 Items；Task 自动完成或显式关闭不结束业务观察。
+**收件国家与发送国家独立。** senderCountry 省略/null 为 ANY；可选 senderPhone 与国家取交集。
+Task 声明 messaging Pool 供给：worker.country/worker.phone；Item 使用
+worker.messaging.available(country/phone)。ANY 同时省略两处国家，仍要求 messaging.enabled。
+全部通过既有 Matching 资格与 Kernel 派发，不新增定向获取。
 
-Backend 与 Host 各最多保留 50 批、50,000 条消息。Backend 用两个提交执行线程、有界 8 项等待队列，
-一个每 100ms 轮转的观察循环；每轮一个 Task、最多 1000 个 Result ID。无每消息线程或持久化。
-关闭先拒绝新业务，再在共享 5 秒预算内停止提交和观察；不会替业务重试或清理平台 scope。
-指标为本轮有限记录的观察延迟分位数，不是生产 SLA。
+name 是前端生成的显示名称；Task ID 始终由 Server 生成。metadata 保存 scenario=messages、
+recipientCountry、可选 senderCountry/senderPhone 和 body。不保存号码列表或统计。
+原 Command/Result 的 campaignId 字段使用 Task ID，country 仍表示收件国家。
+
+## 幂等、容量与失败
+
+当前进程保留最多 50 个提交、50000 个收件项的规范化请求及完成结果；同时最多两个新提交。
+满时在副作用前返回 429。相同 requestId/内容共享同一次提交与结果，不同内容返回 409。
+没有后台提交队列、执行线程或结果观察器。规范化号码和 null/省略 senderCountry 参与幂等。
+
+创建、追加或批准结果不明返回 503 和已知 taskId；TaskCreationUnconfirmedException 保留已生成
+身份。不会重新创建、自动重试、删除部分数据或恢复中断提交。全部追加确认后才批准。
+关闭先停止新准入，并用共享 5 秒预算等待当前提交；不清理 Redis scope。
+幂等不跨重启；重启后 Task 配置、Score 和 Result 仍可按 ID 读取，无需重建 Campaign。
+
+## 数量与结果读取
+
+TaskDataService 使用 Item Score Owner 的 observeItemScoreCounts，最多 100 个 Task，
+每 Task 一次只读 Lua 的 ZCARD 和九次 ZCOUNT，批量发送。无 Result 读取、成员扫描或计数保存。
+发送总数=成员总数；已发送=6..9；送达=7..9；已读=8..9；已回复=9；当前失败=5。
+SENT 不计送达，7→8→9 不重复计数，5→6 可减少失败。部分追加的发送总数可能小于输入数。
+读取失败不以零替代；区间计数不是逐成员完整性审计。
+
+Result 预览只有一次 HSCAN COUNT 100，响应截取最多 100 个唯一 ID，再批量读取这些 Items。
+COUNT 是提示：原页超出 100 或游标未结束均标 truncated，不补扫、不公开游标。
+成功与失败都保留；无法解析或关联不符的内容单列 contentError，保持原执行 resultStatus。
+缺少 Item/业务信息仍保留结果行。列表也保留 managed Task 与缺少业务元数据的 Task；
+只有明确的消息 Task 才解释发送配置与数量。详情点查项目索引，不从列表前 100 条寻找。
+
+数量、调度状态和内容独立读取，没有共同快照；Score 推进但内容未更新时不互相修复。
+Task 结束后仍可 read/reply，Result 查询不删除最新内容；上层不据预览行数计算完成率。
 
 ## 模拟收件端与交付
 
-[Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有模拟通道、消息去重、
-收件动作和 Reporter 关联。Backend 和测试输入不能直接创建收件记录。后续回执由业务动作产生，
-不是任意 Report 注入。停止 Worker 清理 Reporter；重启可继续本地阅读/回复旧消息，但不能更新旧 Item。
-本版无第三方通道、聊天历史、重启恢复、回执 ACK、可靠补偿或跨进程幂等。
+[Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有接收事实、
+去重、计划和原 run Reporter 关联。Lab 与 Worker 同进程，但发送/回调都经过实际 HTTP。
+delivered 只来自接收；read/reply 可来自 JSON 计划或人工动作；回调排队不表示平台 ACK。
+Preview 保留 extension.worker.message.send 的授权协议例外，不支持旧普通文本或 v2 别名。
+例如 body 为 `{"receipts_status":["read","replied"],"probability":0.5,"text":"收到了"}`。
+计划及 Reporter 不跨 Host 重启恢复，Server 重启可读存量 Task 不等于恢复 Host 计划。
 
-本次明确采用 Preview 正文协议例外：保留 `extension.worker.message.send` 及五字段形状，
-`body` 切换为 JSON 指令字符串。旧普通文本不再解释，不修改现存 Task 数据。例如：
+## 页面
 
-```json
-{"receipts_status":["read","replied"],"delayMs":[1000,4000],"probability":0.5,"text":"收到了"}
-```
+`/messages` 和 `/messages/tasks/{taskId}` 共用 MessageTaskSource 下的 API/Mock 组件。
+API 不回退 Mock；Mock 明确标识且零网络请求。创建抽屉保留草稿，成功清空并进入详情，
+未确认时保留输入和已知 Task 链接，不自动重试。前端生成显示名称，不生成真实 Task ID。
+进入页面/手动刷新才读取，无统计定时器；错误保留已知数据。
 
-Lab 严格校验并保存确定性计划。delivered 来自实际接收且不可配置；probability 只可能删除
-最后一个后续动作；重复发送返回首次 SENT，不重放计划。完整字段、容量和故障契约见 Simulator Owner。
-Messages 页面提供示例及 JSON 语法检查，原样提交 body，Server 不重复解释 Lab 指令。
-发送与回执都经真实 HTTP，但 Lab 与 Worker 仍共用 Host 进程和 loopback Listener。
-Lab 的 callbackQueued、HTTP 结果和 Reporter 接受值都不能代替平台 Score 与 Result 观察。
-文件导入、收件国家与发送国家分离、ANY、导出体验及 Campaign 持久化留给下一片。
-
-统一前端在 `frontend/src/message-campaigns/`，页面为 `/messages`、`/messages/campaigns/{id}`、
-`/messages/metrics`。与 SMS 分别观察 catalog，标签保留输入，离开产品停止轮询并中止请求。
-源码与 ZIP 均使用 [Scenario Preview](../../distribution/server/PREVIEW.md) 的同一个启动入口，固定启用两个业务场景。
+UTF-8 文件限 1 MiB/1000 号码，支持 BOM、LF/CRLF/CR，浏览器读取，错误保留原草稿及行号。
+有限 Task 的通用 10000 行工具保持独立限制。本页面没有分页或导出入口；平台原有成功
+Result JSONL 导出能力不变。Campaign 持久化、独立统计存储和自动修复不在本 Owner 内。
 
 ## 检查与验收
 
 ```powershell
-.\gradlew.bat :scenarios:message-campaigns-jvm:test :worker_simulator_jvm:test
+.\gradlew.bat :scenarios:message-campaigns-jvm:test :server_boot_jvm:test
+.\gradlew.bat :server_jvm:redisOwnerIntegrationTest :server_jvm:runtimeBoundaryIntegrationTest
 .\gradlew.bat :server_boot_jvm:scenarioCompositionIntegrationTest
 python integrations/scenario-coexistence/run_proof.py --build --scenario functional
 python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
-python integrations/scenario-coexistence/run_proof.py --scenario load-1k
 ```
 
-[Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 拥有普通 CI 的 12 Worker 闭环和显式
-1000 Worker 固定负载。组合证明验证平台／preview 两种装配、共享资源、实际部分提交和迟到执行结果；真实进程
-runner 只使用业务 API、公开 Runtime API 和 Lab 输入。平台通用单调性仍归原 Redis/Runtime Boundary 证明。
+[Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 验证实际 Worker 的跨国/ANY、
+终态后连续回执、共享 SMS、旧 run 隔离及打包执行。超过 100 个结果使用已知 Item ID 经
+results:load 核对，不恢复 UI 分页。固定 1000 Worker 负载保持显式选择，不作本片性能宣称。
+Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命令预算；Boot 证明真实部分
+追加未确认、迟到执行结果及 Server 重启后直接读取配置和最新回复。
 
 ## Project ownership
 
-The preview profile declares `messages` and its supported Groups. Runtime startup
-prepares Groups and Project managed Tasks before scenario startup. This scenario
-only reads the Project directory; it never registers a Group or Project.
-Campaigns create finite Tasks with `projectId=messages`. Catalog exposes this ID
-for the Console's on-demand, manually refreshed Project Task window.
+Preview profile 声明 messages 及支持的 Group。启动先准备 Group 和 Project managed Task。
+场景只消费目录，不注册 Group/Project；所有新消息任务使用 projectId=messages。
+无需迁移或清理业务数据；新增展示字段缺失表示未知，读取不会补写。

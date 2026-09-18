@@ -1,5 +1,6 @@
 import type { WorkerQuery } from "@/task-call-debug/types";
 import type { FiniteTaskSeedItem, FiniteTaskStage, TaskItemApiRequest } from "./types";
+import { decodeUtf8, splitTextLines } from "@/files/text";
 
 export const MAX_TASK_SEED_BYTES = 1024 * 1024;
 export const MAX_TASK_SEED_LINES = 10_000;
@@ -15,16 +16,7 @@ export function stageLabel(stage: FiniteTaskStage): string {
 }
 
 export function parseSeedLines(content: ArrayBuffer): string[] {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(content);
-  } catch {
-    throw new Error("The input file must be valid UTF-8 text.");
-  }
-  if (text.length === 0) return [];
-
-  const lines = text.split(/\r\n|\n|\r/);
-  if (/\r\n$|\n$|\r$/.test(text)) lines.pop();
+  const lines = splitTextLines(decodeUtf8(content));
   if (lines.length > MAX_TASK_SEED_LINES) {
     throw new Error(`The input file must not exceed ${MAX_TASK_SEED_LINES} lines.`);
   }

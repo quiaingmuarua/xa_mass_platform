@@ -54,7 +54,6 @@ final class MessageLab implements AutoCloseable {
                 duplicates++; return previous.response();
             }
             MessageInstructions instructions = MessageInstructions.parse((String) request.get("body"), seed, id);
-            if (!sender.get("country").equals(request.get("country"))) throw new IllegalArgumentException("Wrong sender country");
             if (messages.size() == MessageScenario.MAX_MESSAGES
                     || !campaigns.containsKey(campaign) && campaigns.size() == MessageScenario.MAX_CAMPAIGNS)
                 throw new IllegalStateException("Message channel capacity exhausted");

@@ -25,7 +25,7 @@ class AcceptanceOracleTest(unittest.TestCase):
 from pathlib import Path
 import json
 def http(*args):
-    return {"packagedHttp": True, "campaigns": 0, "messages": 0}
+    return {"packagedHttp": True, "tasks": [{"managed": True}], "messages": 0}
 def all_pages(*args):
     return []
 class Preview:
@@ -65,11 +65,11 @@ class Preview:
 
     def test_sms_only_workload_rejects_unsolicited_messages_records(self):
         run = SimpleNamespace(url="backend", host="host")
-        with patch("run_acceptance.http", side_effect=[{"campaigns": 0, "messages": 0}, {"messages": 0}]):
+        with patch("run_acceptance.http", side_effect=[{"tasks": [{"managed": True}]}, {"messages": 0}]):
             self.assertEqual(0, run_acceptance.require_idle_messages(run)["hostMessages"])
-        for backend, host in (({"campaigns": 1, "messages": 0}, {"messages": 0}),
-                              ({"campaigns": 0, "messages": 1}, {"messages": 0}),
-                              ({"campaigns": 0, "messages": 0}, {"messages": 1})):
+        for backend, host in (({"tasks": [{"managed": False, "sendTotal": 0}]}, {"messages": 0}),
+                              ({"tasks": [{"managed": False, "sendTotal": 1}]}, {"messages": 0}),
+                              ({"tasks": [{"managed": True}]}, {"messages": 1})):
             with patch("run_acceptance.http", side_effect=[backend, host]):
                 with self.assertRaisesRegex(AssertionError, "Messages business records"):
                     run_acceptance.require_idle_messages(run)

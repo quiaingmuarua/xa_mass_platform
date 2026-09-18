@@ -16,7 +16,9 @@ const route = useRoute();
 const sms = useSmsAvailability();
 const smsEnabled = computed(() => sms.state.value.status === "enabled");
 const messages = useMessageAvailability();
-const messagesEnabled = computed(() => messages.state.value.status === "enabled");
+const messagesEnabled = computed(() =>
+  ["enabled", "demo"].includes(messages.state.value.status)
+);
 </script>
 
 <template>

@@ -19,6 +19,11 @@ public interface TaskResourceCatalog {
 
     record ProjectTaskEntry(String taskId, long createdAtMillis) {}
 
+    /** Point lookup in the first-created project directory, independent of list windows. */
+    default @Nullable ProjectTaskEntry getProjectTask(String projectId, String taskId) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskResourceCatalog", "getProjectTask");
+    }
+
     record ProjectTaskPage(List<ProjectTaskEntry> tasks, boolean truncated) {
         public ProjectTaskPage { tasks = List.copyOf(tasks); }
     }

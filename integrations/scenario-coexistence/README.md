@@ -47,7 +47,16 @@ Host tests also block callback HTTP, exercise early callbacks, lost send respons
 queue saturation and startup readiness; the retired direct Reporter path cannot
 pass those tests.
 
-`scenarioCompositionIntegrationTest` complements the process runner: platform/preview assembly asserts one resource set, API/Group/job gating and exact Console
+Campaign preparation uses deterministic international recipient numbers and
+independent recipientCountry/senderCountry fields. The functional world also
+sends the same CN recipient list through a US-constrained query and an ANY
+Messaging query, checking actual Worker identity and Lab reception. ANY does not
+promise distribution among countries. Terminal export first observes held SENT
+content, then later replies, and can be repeated after a new reply. Exported
+payloads remain private; only pass/fail witnesses enter the summary. The world
+remains 12 Workers and the existing 180-second phase/5-second checkpoint budgets.
+
+`scenarioCompositionIntegrationTest` complements the process runner: platform/preview assembly asserts one resource set, API/Group/lifecycle gating and exact Console
 forwards. Its fault fixtures use real Server services/Redis for an append whose
 confirmation is lost, and a real Worker handler whose synchronous completion is
 held while recipient actions publish newer content. They verify no approval or
@@ -71,7 +80,7 @@ After scheduled producers stop, convergence allows at most 120 seconds. All 12,0
 SMS applications must establish, then agree with Host received/expired records;
 an expired valid window is not fabricated SMS success. All 12,000 messages must be
 sent and match their latest replies and associations; channel identities must be
-unique. Evidence reports actual rates, percentile latency, queue observations,
+unique. Evidence reports actual rates, percentile latency, quantity observations,
 errors, fingerprints and two JVM resource peaks. This fixed fixture proves neither
 capacity limits, per-Task fairness, nor reliable receipt delivery under failure.
 An early producer/recipient failure retains its safe stage, exception type and
@@ -95,3 +104,16 @@ monotonic Owner behavior remains owned by Redis Owner and Runtime Boundary.
 Every invocation selects a fresh private inventory directory, even when reusing
 an explicit output location. Host restarts within that invocation reuse its same
 inventory; the interactive Preview instead keeps its persistent inventory.
+
+## Task management read boundary
+
+Preparation now posts /api/v1/messages/tasks synchronously (create, append,
+automatic approval) and retains the returned Server Task ID. Small worlds verify
+the bounded Messages detail against independent Item states and Results. Large
+worlds discover only actually executed message IDs from Lab, then use public
+results:load in batches of 100; missing Results still fail the complete witness.
+The UI's 100-row preview is never promoted to a full-task count. Quantities come
+from the Task list's Score observations. The retired Campaign cache, asynchronous
+submission queue and Messages metrics API are not proof inputs. The existing
+three manual actions plus automatic delivered still require four committed receipt
+facts per message. Boot also restarts Server and reads the same saved Task and reply.

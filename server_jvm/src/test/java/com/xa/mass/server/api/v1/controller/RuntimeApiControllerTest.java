@@ -540,6 +540,29 @@ class RuntimeApiControllerTest {
         verify(matchingCatalog, org.mockito.Mockito.times(2)).normalizeRefill(eq("phone-tools"),eq(List.of()));
     }
 
+    @Test void taskDisplayFieldsReachTheDescriptorWithoutChangingSchedulingConfig() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON).content("""
+                {"projectId":"test-project", "workerGroupId":"phone-tools", "name":"message task",
+                 "metadata":{"scenario":"messages","body":"{}"}}
+                """)).andExpect(status().isOk());
+        var descriptor = ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(descriptor.capture());
+        assertThat(descriptor.getValue().name()).isEqualTo("message task");
+        assertThat(descriptor.getValue().metadata()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("scenario", "messages", "body", "{}"));
+        assertThat(descriptor.getValue().config()).containsOnlyKeys("priority", "maxRetryTimes");
+    }
+
+    @Test void malformedDisplayFieldsAreRejectedBeforeTaskCreation() throws Exception {
+        for (String display : List.of("\"name\":\" \"", "\"metadata\":[]", "\"metadata\":{\"body\":123}",
+                "\"metadata\":{\"body\":null}", "\"metadata\":{\"\":\"value\"}")) {
+            mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"," + display + "}"))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+    }
+
     @Test void resolvedRefillTargetsArePersistedInTaskDescriptor() throws Exception {
         when(matchingCatalog.normalizeRefill(anyString(),anyList()))
                 .thenReturn(List.of(new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN","US"))), 20)));
@@ -852,7 +875,7 @@ class RuntimeApiControllerTest {
                 )
         );
 
-        mockMvc.perform(post("/api/v1/tasks")
+        MvcResult response = mockMvc.perform(post("/api/v1/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -863,7 +886,31 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.code").value(12003))
                 .andExpect(jsonPath("$.message")
                         .value("Task Owner is unavailable"))
-                .andExpect(jsonPath("$.taskId").doesNotExist());
+                .andExpect(jsonPath("$.taskId").doesNotExist())
+                .andReturn();
+        assertCreationCorrelation(response);
+    }
+
+    @Test
+    void taskCreateRetainsGeneratedIdentityWhenOwnerResponseIsLost() throws Exception {
+        when(taskRuntime.createTask(any())).thenThrow(new IllegalStateException("response lost"));
+        MvcResult response = mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"projectId":"test-project", "workerGroupId":"phone-tools"}
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andReturn();
+        assertCreationCorrelation(response);
+    }
+
+    private void assertCreationCorrelation(MvcResult response) {
+        var descriptor = ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(descriptor.capture());
+        assertThat(response.getResolvedException())
+                .isInstanceOf(com.xa.mass.server.task.TaskCreationUnconfirmedException.class);
+        var failure = (com.xa.mass.server.task.TaskCreationUnconfirmedException) response.getResolvedException();
+        assertThat(failure.taskId()).isEqualTo(descriptor.getValue().taskId()).isNotBlank();
     }
 
     @Test
@@ -1398,6 +1445,6 @@ class RuntimeApiControllerTest {
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ) : Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of());
+                ) : Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(), null, java.util.Map.of());
     }
 }

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TaskDescriptorTest {
     private static TaskDescriptor descriptor(String rule, List<RefillTarget> targets) {
-        return new TaskDescriptor("task", "test-project", "group", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), targets == null ? null : targets.stream().map(t -> new RefillTarget(rule,t.target(),t.count())).toList());
+        return new TaskDescriptor("task", "test-project", "group", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), targets == null ? null : targets.stream().map(t -> new RefillTarget(rule,t.target(),t.count())).toList(), null, java.util.Map.of());
     }
 
     @Test void capturesTargetsWithoutInterpretingOrNormalizingRuleParameters() {
@@ -34,7 +34,7 @@ class TaskDescriptorTest {
         for (String project : new String[]{null, "", " "}) {
             assertThrows(IllegalArgumentException.class, () -> new TaskDescriptor(
                     "task", project, "group", TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                    Map.of("priority", "0", "maxRetryTimes", "1"), List.of()));
+                    Map.of("priority", "0", "maxRetryTimes", "1"), List.of(), null, java.util.Map.of()));
         }
         assertEquals("test-project", descriptor("r", List.of()).projectId());
     }

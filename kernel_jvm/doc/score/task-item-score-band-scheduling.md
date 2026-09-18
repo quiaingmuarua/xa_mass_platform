@@ -628,3 +628,14 @@ one `ZMSCORE`.
   and suffix rule. No caller constructs raw target scores.
 - Do not add event-name branches when the score-band tag/timeSlot/suffix rules
   already express the transition.
+
+## Bounded quantity observation
+
+observeItemScoreCounts accepts at most 100 caller-supplied Task IDs, deduplicated
+in input order. Each Task uses one read-only Lua containing ZCARD and nine ZCOUNT
+ranges for tags 1..9; commands are sent in a batch. Score encoding stays in this
+Owner. Empty keys return zero; infrastructure failures propagate. There is no
+member scan, Result read, Redis TIME, persisted counter or repair. Counts within
+one Task share the operation; different Tasks and Result content do not share a
+snapshot. Range counting is not a per-member corruption audit. Server applications
+interpret the tag totals; this operation changes no scheduling state.

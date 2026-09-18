@@ -28,7 +28,7 @@ class ProjectTaskQueryServiceTest {
                 List.of(new ProjectTaskEntry("b", 20), new ProjectTaskEntry("a", 10)), true));
         when(tasks.loadTaskAllocationDescriptors(List.of("b", "a"))).thenReturn(Map.of("b",
                 new TaskDescriptor("b", "p", "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                        Map.of("priority", "0", "maxRetryTimes", "3"), List.of())));
+                        Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, java.util.Map.of())));
         when(scores.getScoreStates(List.of("b", "a"))).thenReturn(Map.of("b",
                 new TaskScoreState("b", -1, TaskScoreBand.TERMINAL, null, null)));
         var response = service.list("p", 2);
@@ -50,5 +50,21 @@ class ProjectTaskQueryServiceTest {
         when(tasks.listProjectTasks("p", 100)).thenThrow(new IllegalStateException("corrupt"));
         assertThatThrownBy(() -> service.list("p", 100)).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_DATA_UNAVAILABLE));
+    }
+
+    @Test void detailUsesMembershipPointReadAndRejectsOtherProjectsBeforeScoreReads() {
+        var descriptor = new TaskDescriptor("old-task", "p", "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), "name", Map.of("body", "{}"));
+        when(tasks.loadTaskAllocationDescriptors(List.of("old-task"))).thenReturn(Map.of("old-task", descriptor));
+        when(tasks.getProjectTask("p", "old-task")).thenReturn(new ProjectTaskEntry("old-task", 123));
+        assertThat(service.get("p", "old-task").createdAtMillis()).isEqualTo(123);
+        verify(tasks, never()).listProjectTasks(anyString(), anyInt());
+        clearInvocations(scores);
+        when(tasks.loadTaskAllocationDescriptors(List.of("other-task"))).thenReturn(Map.of("other-task",
+                new TaskDescriptor("other-task", "other", "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                        descriptor.config(), List.of(), null, Map.of())));
+        assertThatThrownBy(() -> service.get("p", "other-task")).isInstanceOfSatisfying(ServerException.class,
+                e -> assertThat(e.errorCode()).isEqualTo(ServerErrorCode.TASK_NOT_FOUND));
+        verifyNoInteractions(scores);
     }
 }

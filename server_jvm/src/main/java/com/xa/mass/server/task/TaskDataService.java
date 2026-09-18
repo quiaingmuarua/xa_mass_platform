@@ -200,6 +200,32 @@ public final class TaskDataService {
         }
     }
 
+    /** Admitted project roots are supplied by the calling query service. */
+    public Map<String, TaskItemScoreBandCore.TaskItemScoreCounts> observeItemScoreCounts(List<String> taskIds) {
+        try { return itemScores.observeItemScoreCounts(taskIds); }
+        catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.observeCounts", null, error);
+        }
+    }
+
+    public ResultPreview previewTaskResults(String taskId) {
+        try {
+            requireQueryableTask(taskId, "taskData.previewResults");
+            var page = taskRuntime.scanTaskItemResults(taskId, "0", 100);
+            var ids = page.results().keySet().stream().limit(100).toList();
+            var items = ids.isEmpty() ? Map.<String, TaskItem>of() : taskRuntime.loadTaskItems(taskId, ids);
+            var results = TaskItemResultResponse.fromObservedResults(ids, page.results());
+            return new ResultPreview(ids.stream().map(id -> new ResultEntry(id, items.get(id), results.get(id))).toList(),
+                    !"0".equals(page.nextCursor()) || page.results().size() > 100);
+        } catch (ServerException error) { throw error;
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.previewResults", null, error);
+        }
+    }
+
+    public record ResultEntry(String messageId, @org.jspecify.annotations.Nullable TaskItem item, TaskItemResultResponse result) {}
+    public record ResultPreview(List<ResultEntry> results, boolean truncated) {}
+
     private void requireQueryableTask(String taskId, String operation) {
         TaskDescriptor descriptor = taskCatalog
                 .loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);

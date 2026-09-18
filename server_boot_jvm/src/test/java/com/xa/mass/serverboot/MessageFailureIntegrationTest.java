@@ -34,6 +34,7 @@ class MessageFailureIntegrationTest {
     @Test @Timeout(90)
     void newerBusinessReceiptSurvivesLateSynchronousExecutionResult() throws Exception {
         try (var fixture = new Fixture(false); var channel = new MessageScenario(); var lab = new LabHttp(channel)) {
+            channel.hold(true);
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
             var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
@@ -50,6 +51,11 @@ class MessageFailureIntegrationTest {
                 assertThat(executed.await(20, TimeUnit.SECONDS)).isTrue();
                 var local = (Map<?, ?>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
                 String id = (String) local.get("messageId");
+                var submitting = campaign;
+                var earlyExport = fixture.post("/api/v1/tasks/" + submitting.get("taskId") + "/results:export", Map.of());
+                assertThat(earlyExport.statusCode()).isEqualTo(400);
+                assertThat(((Number) Jsons.parseObject(earlyExport.body()).get("code")).intValue()).isEqualTo(12010);
+                channel.hold(false);
                 assertThat(channel.act(sender, id, "read", Map.of())).containsEntry("callbackQueued", true);
                 assertThat(channel.act(sender, id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("callbackQueued", true);
                 var observed = fixture.awaitCampaign(campaign, "REPLIED");
@@ -69,6 +75,12 @@ class MessageFailureIntegrationTest {
                     assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);
                     Thread.sleep(50);
                 } while (System.nanoTime() < until);
+                fixture.restart();
+                var retained = fixture.get("/api/v1/messages/tasks/" + task);
+                assertThat((Map<String,Object>) retained.get("task")).containsEntry("name", "proof")
+                        .containsEntry("body", "{}").containsEntry("sendTotal", 1L).containsEntry("repliedCount", 1L);
+                assertThat((List<Map<String,Object>>) retained.get("results")).anySatisfy(row ->
+                        assertThat(row).containsEntry("messageId", id).containsEntry("status", "REPLIED").containsEntry("reply", "newer content"));
             } finally { finishSend.countDown(); }
         }
     }
@@ -77,14 +89,16 @@ class MessageFailureIntegrationTest {
     void partialRealAppendRetainsTaskAndUnconfirmedSubmissionWithoutApproval() throws Exception {
         try (var fixture = new Fixture(true)) {
             var first = fixture.create(101);
-            var unknown = fixture.awaitSubmission(first, "SUBMISSION_UNCONFIRMED");
+            var unknown = first;
             assertThat(unknown.get("taskId")).isNotNull();
-            assertThat(fixture.create(101)).containsEntry("id", first.get("id")).containsEntry("taskId", unknown.get("taskId"));
+            assertThat(fixture.create(101)).containsEntry("taskId", unknown.get("taskId"));
             var service = fixture.context.getBean(TaskDataService.class);
             verify(service, times(2)).appendFiniteTaskItems(eq((String) unknown.get("taskId")), anyList());
             verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(anyString());
-            var rows = (List<?>) fixture.get("/api/v1/messages/campaigns/" + first.get("id") + "/messages").get("items");
-            assertThat(rows).allMatch(row -> "NOT_OBSERVED".equals(((Map<?, ?>) row).get("status")));
+            var detail = fixture.get("/api/v1/messages/tasks/" + first.get("taskId"));
+            assertThat((List<?>) detail.get("results")).isEmpty();
+            assertThat((Map<String,Object>) detail.get("task")).containsEntry("sendTotal", 101L)
+                    .containsEntry("state", "pre_review").containsEntry("deliveredCount", 0L);
         }
     }
 
@@ -133,39 +147,38 @@ class MessageFailureIntegrationTest {
         final String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         final URI base;
-        final ConfigurableApplicationContext context;
+        ConfigurableApplicationContext context;
+        SpringApplication application;
+        String[] arguments;
+        final boolean failure;
         Fixture(boolean failure) throws Exception {
+            this.failure = failure;
             int port = port(), adapter = port(); base = URI.create("http://127.0.0.1:" + port);
             var classes = new ArrayList<Class<?>>(List.of(ServerBootConfiguration.class, SmsCompositionIntegrationTest.BlockTaskHttp.class));
             if (failure) classes.add(UncertainAppend.class);
             var app = new SpringApplication(classes.toArray(Class<?>[]::new)); app.setRegisterShutdownHook(false);
-            context = app.run("--spring.profiles.active=preview", "--server.port=" + port,
+            application = app;
+            arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
-                    "--logging.level.root=ERROR");
+                    "--logging.level.root=ERROR"};
+            context = application.run(arguments);
         }
+        void restart() { context.close(); context = application.run(arguments); }
         Map<String, Object> create(int size) throws Exception {
             assertThat(post("/api/v1/tasks/blocked/items:call", List.of()).statusCode()).isEqualTo(503);
             assertThat(post("/api/v1/tasks/blocked/results:load", List.of("blocked")).statusCode()).isEqualTo(503);
-            var result = post("/api/v1/messages/campaigns", Map.of("requestId", "request", "name", "proof", "country", "CN", "body", "{}",
-                    "recipientIds", IntStream.range(0, size).mapToObj(i -> "recipient-" + i).toList()));
-            assertThat(result.statusCode()).isEqualTo(202); return Jsons.parseObject(result.body());
+            var result = post("/api/v1/messages/tasks", Map.of("requestId", "request", "name", "proof", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}",
+                    "recipientIds", IntStream.range(0, size).mapToObj(i -> "+861380000" + String.format("%04d", i)).toList()));
+            assertThat(result.statusCode()).isEqualTo(failure ? 503 : 201); return Jsons.parseObject(result.body());
         }
-        Map<String, Object> awaitSubmission(Map<String, Object> campaign, String expected) throws Exception {
-            long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            Map<String, Object> value;
-            do { value = get("/api/v1/messages/campaigns/" + campaign.get("id"));
-                if (expected.equals(value.get("submission"))) return value;
-                Thread.sleep(20);
-            } while (System.nanoTime() < until);
-            throw new AssertionError("Submission not observed");
-        }
-        Map<String, Object> awaitCampaign(Map<String, Object> campaign, String expected) throws Exception {
+        Map<String, Object> awaitCampaign(Map<String, Object> task, String expected) throws Exception {
             long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            do { var value = get("/api/v1/messages/campaigns/" + campaign.get("id"));
-                if (((Map<?, ?>) value.get("statuses")).containsKey(expected)) return value;
+            do { var value = get("/api/v1/messages/tasks/" + task.get("taskId"));
+                if (((List<?>) value.get("results")).stream().anyMatch(row -> expected.equals(((Map<?,?>)row).get("status"))))
+                    return (Map<String,Object>) value.get("task");
                 Thread.sleep(20);
             } while (System.nanoTime() < until);
             throw new AssertionError("Receipt not observed");

@@ -355,7 +355,7 @@ public final class RuntimeViewService {
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
                 )
-        );
+        , descriptor.name(), descriptor.metadata());
     }
 
     private static WorkerView toView(

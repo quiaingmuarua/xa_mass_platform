@@ -214,6 +214,11 @@ body string now contains JSON instructions, with no ordinary-text fallback:
 
 Body remains bounded to 4096 characters. Lab rejects malformed JSON, unknown or
 duplicate fields, wrong types and invalid sequences before acceptance.
+The message's `country` is the recipient country, independent of the actual
+Sender's country. Cross-country sends are accepted. A campaign retains one
+recipient country; dedup still compares the complete message and retains its
+first actual Sender and callback. Sender selection remains the existing
+Messaging query/Kernel path, never a Lab decision.
 `receipts_status` defaults to `[]`, at most 16 read/replied steps. Read can occur
 once, before replies; direct and repeated replies are legal. `delayMs` defaults
 to `[1000,4000]`: an integer or inclusive integer range within 0..60000.

@@ -38,6 +38,24 @@ class MessageScenarioTest {
         }
     }
 
+    @Test void crossCountrySendAndReceiptKeepRecipientCountryAndActualSender() throws Exception {
+        try (var f = new Network()) {
+            var worker = f.host.addSender("group", "us", () -> Map.of("phone", "+12025550123", "country", "US"), () -> "us-worker", () -> "RUNNING");
+            var reports = new CopyOnWriteArrayList<Map<String, Object>>();
+            var request = new LinkedHashMap<>(send("cross-country")); request.put("recipientId", "+8613800000001");
+            var sent = f.host.send(worker, request, (tag, time, payload) -> { reports.add(Jsons.parseObject(payload)); return true; });
+            assertThat(sent).containsEntry("country", "CN").containsEntry("phone", "+12025550123").containsEntry("workerId", "us-worker");
+            await(() -> reports.size() == 1);
+            f.host.act(worker, "cross-country", "reply", Map.of("requestId", "reply", "text", "cross-country reply"));
+            await(() -> reports.size() == 2);
+            assertThat(reports).allSatisfy(report -> assertThat(report).containsEntry("country", "CN")
+                    .containsEntry("recipientId", "+8613800000001").containsEntry("workerId", "us-worker"));
+            assertThat(f.sends).hasValue(1); assertThat(f.callbacks).hasValue(2);
+            var conflicting = new LinkedHashMap<>(request); conflicting.put("messageId", "other"); conflicting.put("country", "GB");
+            assertThatThrownBy(() -> f.host.send(worker, conflicting, WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("conflict");
+        }
+    }
+
     @Test void blockedNetworkCannotBeReplacedByALocalReporterCall() throws Exception {
         try (var f = new Network()) {
             var worker = sender(f.host, "one"); var reports = new AtomicInteger();

@@ -429,11 +429,12 @@ def concurrency(run):
 
 
 def require_idle_messages(run):
-    backend = http(run.url, "/api/v1/messages/metrics")
+    backend = http(run.url, "/api/v1/messages/tasks?limit=100")
     host = http(run.host, "/lab/v1/messages/metrics")
-    require(backend["campaigns"] == 0 and backend["messages"] == 0 and host["messages"] == 0,
+    require(all(task.get("managed") for task in backend["tasks"]) and host["messages"] == 0,
             "SMS-only workload created Messages business records")
-    return {"campaigns": backend["campaigns"], "backendMessages": backend["messages"],
+    return {"messageTasks": sum(not task.get("managed") for task in backend["tasks"]),
+            "backendMessages": sum(task.get("sendTotal", 0) for task in backend["tasks"]),
             "hostMessages": host["messages"]}
 
 

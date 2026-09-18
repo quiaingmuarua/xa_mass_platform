@@ -3,7 +3,7 @@ package com.xa.mass.serverboot;
 import com.xa.mass.scenario.sms.SmsScenarioConfiguration;
 import com.xa.mass.scenario.sms.ListenerService;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
-import com.xa.mass.scenario.messages.CampaignService;
+import com.xa.mass.scenario.messages.MessageTaskService;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -52,17 +52,17 @@ class ScenarioCompositionIntegrationTest {
                     TaskRuntime.class, TaskResourceCatalog.class, WorkerResourceCatalog.class, WorkerScoreCore.class))
                 assertThat(context.getBeansOfType(owner)).as("one shared %s", owner.getSimpleName()).hasSize(1);
             assertThat(context.getBeansOfType(ListenerService.class)).hasSize(sms ? 1 : 0);
-            assertThat(context.getBeansOfType(CampaignService.class)).hasSize(messages ? 1 : 0);
+            assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
             if (sms) assertThat(context.getBean(ListenerService.class).isRunning()).isTrue();
-            if (messages) assertThat(context.getBean(CampaignService.class).isRunning()).isTrue();
+            if (messages) assertThat(context.getBean(MessageTaskService.class).isRunning()).isTrue();
             var group = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             if (sms || messages) {
                 assertThat(group).isNotNull();
                 if (sms) assertThat(context.getBean(ListenerService.class).catalog().get("countries").toString())
                         .contains("workerGroupId=demo-sim");
-                if (messages) assertThat(context.getBean(CampaignService.class).catalog().get("countries").toString())
+                if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("countries").toString())
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
                 String smsTask = directory.requireManagedTaskId("sms", "demo-sim");
@@ -85,7 +85,7 @@ class ScenarioCompositionIntegrationTest {
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
             for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/sms/listeners/", "/messages", "/messages/",
-                    "/messages/metrics", "/messages/metrics/", "/messages/campaigns/example", "/messages/campaigns/example/")) {
+                    "/messages/tasks/example", "/messages/tasks/example/")) {
                 var response = get(client, base, page);
                 assertThat(response.statusCode()).as(page).isEqualTo(200);
                 assertThat(response.body()).isEqualTo(index);

@@ -55,27 +55,31 @@ public final class TaskCreationService {
         }
         projects.requireManagedTaskId(request.projectId(), request.workerGroupId());
         requireWorkerGroup(request.workerGroupId());
-        String taskId = taskIds.nextTaskId();
         List<RefillTarget> targets = resolveTargets(request);
+        String taskId = taskIds.nextTaskId();
         var config = new java.util.LinkedHashMap<String, String>();
         config.put("priority", Integer.toString(request.priority()));
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));
-        TaskDescriptor descriptor = new TaskDescriptor(
+        TaskDescriptor descriptor;
+        try {
+            descriptor = new TaskDescriptor(
                 taskId,
                 request.projectId(),
                 request.workerGroupId(),
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config,
-                targets
-        );
+                targets, request.name(), request.metadata());
+        } catch (IllegalArgumentException error) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, null, error);
+        }
         TaskCreationResult result;
         try {
             result = taskRuntime.createTask(descriptor);
         } catch (RuntimeException error) {
-            throw unavailable(error);
+            throw new TaskCreationUnconfirmedException(taskId, error);
         }
         if (result == null) {
-            throw unavailable(null);
+            throw new TaskCreationUnconfirmedException(taskId, null);
         }
         return switch (result.status()) {
             case CREATED -> new TaskCreateResponse(taskId);
@@ -91,7 +95,7 @@ public final class TaskCreationService {
                     null,
                     null
             );
-            case RETRYABLE -> throw unavailable(null);
+            case RETRYABLE -> throw new TaskCreationUnconfirmedException(taskId, null);
         };
     }
 

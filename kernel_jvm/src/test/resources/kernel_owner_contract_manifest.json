@@ -86,10 +86,12 @@
       "has_active_items",
       "has_due_active_items",
       "initialize_item_scores",
+      "observe_item_score_counts",
       "promote_item_outcomes",
       "rewrite_observed_item_scores"
     ],
     "TaskResourceCatalog": [
+      "get_project_task",
       "list_project_tasks",
       "load_task_allocation_descriptors"
     ],
@@ -179,6 +181,7 @@
       "reason"
     ],
     "ProjectTaskEntry": ["task_id", "created_at_millis"],
+    "TaskItemScoreCounts": ["total", "counts_by_tag"],
     "ProjectTaskPage": ["tasks", "truncated"],
     "TaskDescriptor": [
       "task_id",
@@ -186,7 +189,9 @@
       "worker_group_id",
       "idle_disposition",
       "config",
-      "refill"
+      "refill",
+      "name",
+      "metadata"
     ],
     "TaskItem": [
       "message_id",

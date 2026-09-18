@@ -67,8 +67,10 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "idleDisposition", ARGV[2],
               "configJson", ARGV[3],
               "refillJson", ARGV[4],
-              "projectId", ARGV[5]
+              "projectId", ARGV[5],
+              "metadataJson", ARGV[7]
             )
+            if ARGV[8] ~= '' then redis.call('HSET', key, 'name', ARGV[8]) end
             redis.call("ZADD", KEYS[2], "NX", createdAt, ARGV[6])
             return 1
             """;
@@ -309,6 +311,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         );
         fields.put("configJson", configJson);
         fields.put("refillJson", mapper.writeValueAsString(descriptor.refill()));
+        fields.put("metadataJson", mapper.writeValueAsString(new TreeMap<>(descriptor.metadata())));
+        if (descriptor.name() != null) fields.put("name", descriptor.name());
         return fields;
     }
 
@@ -326,7 +330,9 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 fields.get("configJson"),
                 fields.get("refillJson"),
                 fields.get("projectId"),
-                taskId
+                taskId,
+                fields.get("metadataJson"),
+                fields.getOrDefault("name", "")
         );
         return result != null && result == 1L;
     }

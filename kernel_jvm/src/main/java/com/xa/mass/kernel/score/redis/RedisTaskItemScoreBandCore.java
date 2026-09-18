@@ -21,6 +21,13 @@ public final class RedisTaskItemScoreBandCore
         implements TaskItemScoreBandCore, AutoCloseable {
 
     private static final int MAX_RETRY_TIMES = 98;
+    private static final String OBSERVE_COUNTS_SCRIPT = """
+            local counts = {redis.call('ZCARD', KEYS[1])}
+            for tag = 1, 9 do
+              counts[#counts + 1] = redis.call('ZCOUNT', KEYS[1], ARGV[tag * 2 - 1], ARGV[tag * 2])
+            end
+            return counts
+            """;
     private static final String CAS_UPDATE_SCRIPT = """
             local key = KEYS[1]
             local message_id = ARGV[1]
@@ -82,6 +89,34 @@ public final class RedisTaskItemScoreBandCore
                 keyspace,
                 "keyspace"
         );
+    }
+
+    @Override
+    public Map<String, TaskItemScoreCounts> observeItemScoreCounts(List<String> taskIds) {
+        if (taskIds == null || taskIds.size() > 100 || taskIds.stream().anyMatch(RedisTaskItemScoreBandCore::isBlank)) {
+            throw new IllegalArgumentException("Expected at most 100 non-blank Task IDs");
+        }
+        if (taskIds.isEmpty()) return Map.of();
+        var ids = List.copyOf(new LinkedHashSet<>(taskIds));
+        var ranges = new ArrayList<String>(18);
+        for (int tag = 1; tag <= 9; tag++) {
+            ranges.add(Long.toString(tag * TAG_FACTOR));
+            ranges.add("(" + ((tag + 1) * TAG_FACTOR));
+        }
+        var async = connection().async();
+        var pending = new ArrayList<RedisFuture<List<Long>>>();
+        for (String id : ids) {
+            pending.add(async.eval(OBSERVE_COUNTS_SCRIPT, ScriptOutputType.MULTI,
+                    new String[]{scoreKey(id)}, ranges.toArray(String[]::new)));
+        }
+        var results = new LinkedHashMap<String, TaskItemScoreCounts>();
+        for (int i = 0; i < ids.size(); i++) {
+            var counts = pending.get(i).toCompletableFuture().join();
+            var tags = new LinkedHashMap<Integer, Long>();
+            for (int tag = 1; tag <= 9; tag++) tags.put(tag, counts.get(tag));
+            results.put(ids.get(i), new TaskItemScoreCounts(counts.getFirst(), tags));
+        }
+        return java.util.Collections.unmodifiableMap(results);
     }
 
     @Override

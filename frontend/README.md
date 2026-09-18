@@ -42,7 +42,7 @@ Gradle build directory. Mock mode does not fabricate a dictionary.
 
 The public Vercel deployment is built with `pnpm build:demo` and therefore uses
 that explicit Mock mode. It is a current UI and architecture demonstration, not
-a hosted XA Mass Runtime: mutating Task and Direct Debug actions remain disabled,
+a hosted XA Mass Runtime: platform Task and Direct Debug mutations remain disabled,
 and no request is proxied to a local or remote Server. Real Runtime data is
 served only by the frontend bundled with the Server Runtime on the same origin.
 The public `/api-reference` (and Vercel-only `/scalar` alias) renders the
@@ -59,6 +59,8 @@ Routes:
 /sms
 /sms/listeners
 /sms/metrics
+/messages
+/messages/tasks/:taskId     # explicit Mock mode in this slice
 ```
 
 The same navigation is available in a drawer on narrow screens.
@@ -96,7 +98,7 @@ resubmitting business commands. SMS uses only same-origin `/api/v1/sms/*` calls.
 The existing platform theme preference is used; no SMS theme store remains.
 Runtime configuration errors do not prevent SMS or Reference pages from loading.
 
-Public Mock Demo hides SCENARIOS / SMS, makes no SMS requests, and explains that
+Public Mock Demo hides the SMS entry, makes no SMS requests, and explains that
 SMS is unsupported on direct visits. An ordinary Server without SMS serves the
 same console pages but their catalog check reports the feature as disabled.
 The Boot executable owns the finite page forwards, including trailing slashes; unknown
@@ -111,22 +113,81 @@ separate SMS frontend.
 
 ## Messages business pages
 
-`src/message-campaigns/` owns campaign creation, detail/message pagination and
-metrics under `/messages`, `/messages/campaigns/{id}`, `/messages/metrics` (also
-trailing slashes). The [Messages Owner](../scenarios/message-campaigns-jvm/README.md)
-defines business states. `SENT` never implies delivery, read or reply; a missing
-receipt remains unobserved. The newest full reply is displayed without chat history.
+### Task workspace in explicit Mock mode
 
-ConsoleLayout provides independent SMS and Messages catalog observations, each
-with one five-second request, no background discovery and manual retry after an
-unconfirmed failure. One unavailable scenario cannot block the other. Only enabled
-entries appear in SCENARIOS; Mock Demo hides both and performs no scenario calls.
-Runtime initialization stays in RuntimeProvider. Messages routes load lazily,
-retain forms across scenario tabs, abort pending work on exit and never replay an
-uncertain creation. A changed runId reloads catalog and discards old local selection.
-The same theme, mobile navigation, Vite proxy and unified production build apply.
-Use [Scenario Preview](../distribution/server/PREVIEW.md) for simultaneous
-business development (`VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500`).
+`/messages` presents the `messages` Project's Tasks; `/messages/tasks/:taskId`
+presents one Task and its bounded Result preview. Creation uses a business drawer
+for the fixed message.send event, retaining the existing phone-file and country
+validation. It does not expose generic event, Matching or refill configuration.
+The Task list is newest-first, capped at 100 without pagination. Search and state
+filters apply only to that loaded window; returning from detail preserves them,
+the scroll position and focused row. Missing business metadata retains the Task,
+and managed Tasks have a separate type marker.
+
+The list and detail show observed enqueued send total and delivered-success count. Delivery
+success counts each message once across DELIVERED, READ and REPLIED; SENT alone
+is displayed as sent, not delivery success. Mock supplies whole-Task counts
+independently of the 100-Result preview; unknown counts remain absent. The
+create action says "创建并开始发送" and explains automatic approval after complete
+Item submission. This UI has no manual review action or waiting-for-review sample.
+New Tasks receive an automatic display name of
+`msg-{senderCountry|ANY}-{recipientCountry}-{count}-{YYYYMMDD}-{HHmmss}`;
+the timestamp is the local submission time. Country/recipient edits update the
+name preview. This display name is not a Task ID or an idempotency key: the data
+source still supplies the Task ID, and real IDs remain Server-owned.
+
+The detail preview contains at most 100 produced Results, including failures,
+with no pagination, export or whole-Task completion percentage. A Task's scheduling
+state, observed execution result and later receipt are distinct. Terminal scheduling
+does not stop receipts. Results are a bounded sample with no promised latest/file
+order. Read failures retain known data; empty Results do not imply failure.
+
+All new view access goes through `MessageTaskSource`, a frontend view boundary,
+with explicit ApiMessageTaskSource and MockMessageTaskSource implementations.
+API uses /api/v1/messages/tasks; Task identity is Server-owned. Mock labels its
+pages and drawer and makes no platform, Messages, Lab or export requests. Samples and locally created
+Tasks last for the console session; a full reload resets them. Closing creation
+retains the draft; success clears it and opens detail. Submission is single-flight,
+and an unconfirmed outcome cannot trigger an automatic retry.
+
+The fixed samples include cross-country sends, ANY, missing metadata, failures,
+empty and truncated Results. Refreshing `msg-follow-up` advances its receipt from
+SENT to READ to REPLIED while its Task remains terminal; refreshing
+`msg-read-error` fails on its second read and recovers on the third. These are
+deterministic UI samples, with no timers or simulated background scheduler.
+
+```powershell
+cd frontend
+pnpm dev:mock --host 127.0.0.1 --port 18501
+```
+
+Open `http://127.0.0.1:18501/messages` in Mock mode. API uses the same list,
+drawer and `/messages/tasks/{taskId}` detail, including direct reload through the
+Server page forward. The old Campaign and metrics pages have been removed.
+API failure never switches data source. Catalog gates availability independently
+of SMS; Mock hides SMS and never calls catalog.
+
+API lists at most 100 Project Tasks with a truncation notice, loaded-only filters
+and manual refresh. Name/configuration come from Task, creation time from its
+Project directory, Task state from Task Score, and quantities from Item Score.
+Send total is the current ZSET member count; sent=6..9, delivered=7..9, read=8..9,
+replied=9, failed=5. Counts never derive from preview rows or a client cache.
+The detail shows at most 100 produced Results, including failures and content
+parse errors. It promises neither latest/file order nor a common snapshot with
+Score counts. Task terminality does not stop observation of subsequent receipts.
+
+API creation completes append and automatic approval before returning taskId.
+Unconfirmed submission preserves the draft and offers a known Task link, without
+automatic retry. Enter/refresh are the only Task reads; there is no background
+statistics polling. Known data survives read errors. No pagination or export
+control is shown; the platform export endpoint remains unchanged.
+
+Recipient country and sender range are independent (CN and ANY defaults).
+An optional sender phone adds an intersecting condition. UTF-8 files remain local,
+at most 1 MiB/1000 numbers, with BOM and LF/CRLF/CR, original line errors and duplicate
+rejection; finite Task files retain their separate 10000-line limit. Lab interprets
+the submitted JSON body. Use [Scenario Preview](../distribution/server/PREVIEW.md)
+with `VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500` for real business execution.
 
 ## API Reference
 

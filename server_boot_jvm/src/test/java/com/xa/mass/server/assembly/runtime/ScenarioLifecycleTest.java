@@ -7,7 +7,7 @@ import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.scenario.sms.ListenerService;
-import com.xa.mass.scenario.messages.CampaignService;
+import com.xa.mass.scenario.messages.MessageTaskService;
 import com.xa.mass.serverboot.PreviewConfiguration;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import java.util.List;
@@ -41,12 +41,14 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                 @Override public Object postProcessAfterInitialization(Object bean, String name) {
-                    if (bean instanceof ListenerService || bean instanceof CampaignService)
+                    if (bean instanceof ListenerService || bean instanceof MessageTaskService)
                         scenarios.add((SmartLifecycle) bean);
                     return bean;
                 }
             });
             context.registerBean(ProjectDirectory.class, () -> registrations);
+            context.registerBean(com.xa.mass.server.project.ProjectTaskQueryService.class,
+                    () -> mock(com.xa.mass.server.project.ProjectTaskQueryService.class));
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
             context.registerBean(TaskDataService.class, () -> results);
             context.registerBean(TaskCreationService.class, () -> creation);

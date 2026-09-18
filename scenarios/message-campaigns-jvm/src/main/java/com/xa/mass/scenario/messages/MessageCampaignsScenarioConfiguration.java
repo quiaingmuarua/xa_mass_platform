@@ -12,9 +12,9 @@ import org.springframework.context.annotation.*;
 @Import(MessageController.class)
 public class MessageCampaignsScenarioConfiguration {
     @Bean(destroyMethod = "close")
-    CampaignService campaigns(ProjectDirectory projects, TaskCreationService creation,
+    MessageTaskService messageTasks(ProjectDirectory projects, com.xa.mass.server.project.ProjectTaskQueryService queries, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle,
             @Qualifier("scenarioWorkerGroup") String workerGroupId) {
-        return new CampaignService(projects, creation, data, lifecycle, workerGroupId);
+        return new MessageTaskService(projects, queries, creation, data, lifecycle, workerGroupId);
     }
 }

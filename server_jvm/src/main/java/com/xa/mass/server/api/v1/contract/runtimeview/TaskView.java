@@ -9,6 +9,8 @@ public record TaskView(
         String workerGroupId,
         String idleDisposition,
         java.util.List<com.xa.mass.kernel.assignment.RefillTarget> refill,
-        Map<String, String> config
+        Map<String, String> config,
+        @Nullable String name,
+        Map<String, String> metadata
 ) {
 }

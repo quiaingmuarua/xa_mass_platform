@@ -575,7 +575,7 @@
       "reason": "The executable owns finite Console page forwards in enabled and ordinary instances."
     },
     {
-      "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/CampaignService.java",
+      "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java",
       "lanes": [
         "jvm_contracts",
         "product_coexistence",
@@ -610,7 +610,7 @@
       "reason": "Real send deduplication and recipient actions require Host tests and product process witnesses."
     },
     {
-      "path": "frontend/src/message-campaigns/MessageWorkspace.vue",
+      "path": "frontend/src/message-campaigns/MessageTaskWorkspace.vue",
       "lanes": [
         "frontend",
         "product_coexistence",

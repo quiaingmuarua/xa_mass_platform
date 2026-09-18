@@ -714,7 +714,7 @@ class RuntimeViewControllerTest {
         when(taskScores.previewScoreStates(1000)).thenReturn(ids.stream()
                 .map(id -> scoreState(id, TaskScoreBand.RUNNING_VISIBLE)).toList());
         when(taskCatalog.loadTaskAllocationDescriptors(ids)).thenReturn(ids.stream()
-                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "test-project", "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100))))));
+                .collect(Collectors.toMap(id -> id, id -> new TaskDescriptor(id, "test-project", "group-a", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()))));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("group-a")))
                 .thenReturn(groupLookup("group-a"));
 
@@ -907,7 +907,7 @@ class RuntimeViewControllerTest {
         return new TaskDescriptor(taskId, "test-project", workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
     }
 
     private static TaskScoreState scoreState(

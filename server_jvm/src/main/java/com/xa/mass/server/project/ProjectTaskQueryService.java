@@ -39,7 +39,7 @@ public final class ProjectTaskQueryService {
                 var state = states.get(entry.taskId());
                 return new Entry(entry.taskId(), entry.createdAtMillis(), descriptor == null ? null :
                         new TaskView(descriptor.taskId(), descriptor.projectId(), descriptor.workerGroupId(),
-                                descriptor.idleDisposition().name(), descriptor.refill(), descriptor.config()),
+                                descriptor.idleDisposition().name(), descriptor.refill(), descriptor.config(), descriptor.name(), descriptor.metadata()),
                         state == null ? null : state.isInitial() ? "running-initial" : state.band().wireValue());
             }).toList();
             return new ProjectTasks(projectId, rows, page.truncated());
@@ -49,5 +49,24 @@ public final class ProjectTaskQueryService {
     }
 
     public record ProjectTasks(String projectId, List<Entry> tasks, boolean truncated) {}
+
+    public Entry get(String projectId, String taskId) {
+        projects.require(projectId);
+        try {
+            var descriptor = tasks.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+            if (descriptor == null || !projectId.equals(descriptor.projectId()))
+                throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "project.getTask", null, null);
+            var entry = tasks.getProjectTask(projectId, taskId);
+            if (entry == null) throw new IllegalStateException("Task project membership is missing");
+            var state = scores.getScoreStates(List.of(taskId)).get(taskId);
+            return new Entry(taskId, entry.createdAtMillis(), new TaskView(descriptor.taskId(), descriptor.projectId(),
+                    descriptor.workerGroupId(), descriptor.idleDisposition().name(), descriptor.refill(), descriptor.config(),
+                    descriptor.name(), descriptor.metadata()),
+                    state == null ? null : state.isInitial() ? "running-initial" : state.band().wireValue());
+        } catch (ServerException error) { throw error;
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "project.getTask", null, error);
+        }
+    }
     public record Entry(String taskId, long createdAtMillis, @Nullable TaskView task, @Nullable String scoreBand) {}
 }

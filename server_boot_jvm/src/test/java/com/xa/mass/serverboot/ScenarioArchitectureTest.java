@@ -16,6 +16,7 @@ class ScenarioArchitectureTest {
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",
                         "api.v1.contract.task.TaskItemResultStatus"),
                 "message-campaigns-jvm", Set.of("project.ProjectDirectory",
+                        "project.ProjectTaskQueryService", "task.TaskCreationUnconfirmedException",
                         "task.TaskCreationService", "task.TaskDataService", "task.TaskLifecycleService",
                         "api.v1.contract.task.TaskCreateRequest", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskItemResultStatus"));

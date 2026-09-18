@@ -240,7 +240,7 @@ class DispatchConvergenceLifecycleTest {
             String taskId,
             String workerGroupId
     ) {
-        return new TaskDescriptor(taskId, "test-project", workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)));
+        return new TaskDescriptor(taskId, "test-project", workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
     }
 
     private static Fixture fixture(

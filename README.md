@@ -87,7 +87,9 @@ to production code, exact admission and representative proof.
 [SMS Reception](scenarios/sms-reception-jvm/README.md) and
 [Message Campaigns](scenarios/message-campaigns-jvm/README.md) are independent
 Spring configuration libraries consuming Server application services. SMS owns
-listening orders; Messages owns finite campaigns and later receipt observation.
+listening orders; Messages presents the messages Project's finite Tasks, with
+configuration in Task descriptors, counts observed from Item Scores and later
+receipts read from Results.
 The independent [Worker Simulator](worker_simulator_jvm/README.md) owns simulated
 device facts and executes through the real Worker SDK.
 

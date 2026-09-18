@@ -2,7 +2,7 @@ package com.xa.mass.server.error;
 
 import java.util.Objects;
 
-public final class ServerException extends RuntimeException {
+public class ServerException extends RuntimeException {
 
     private final ServerErrorCode errorCode;
     private final String operation;

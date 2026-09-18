@@ -10,12 +10,19 @@ import {
   messageAvailabilityKey
 } from "@/message-campaigns/availability";
 import { useThemeStore } from "@/stores/theme";
+import { messageTaskSourceKey } from "@/message-campaigns/task-source";
+import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
+import { ApiMessageTaskSource } from "@/message-campaigns/api-task-source";
 
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
 const sms = createSmsAvailability(demo);
 provide(smsAvailabilityKey, sms);
 const messages = createMessageAvailability(demo);
 provide(messageAvailabilityKey, messages);
+provide(
+  messageTaskSourceKey,
+  demo ? new MockMessageTaskSource() : new ApiMessageTaskSource()
+);
 const mobileNavigation = ref(false);
 onMounted(() => {
   void sms.load();
@@ -111,7 +118,7 @@ onMounted(() => theme.apply());
           <span
             class="source-badge"
             :class="{
-              'source-badge--mock': runtimePage && demo
+              'source-badge--mock': !referencePage && demo
             }"
             data-testid="source-badge"
           >

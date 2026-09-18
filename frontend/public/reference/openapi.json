@@ -193,6 +193,17 @@
             "minimum" : 0,
             "type" : "integer"
           },
+          "metadata" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          },
           "priority" : {
             "format" : "int32",
             "maximum" : 99,
@@ -362,6 +373,15 @@
             "type" : "object"
           },
           "idleDisposition" : {
+            "type" : "string"
+          },
+          "metadata" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
             "type" : "string"
           },
           "projectId" : {

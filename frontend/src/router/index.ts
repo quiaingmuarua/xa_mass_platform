@@ -40,7 +40,7 @@ export const consoleRoutes: RouteRecordRaw[] = [
         component: smsPage,
         meta: { section: "Scenarios", title: "SMS" }
       })),
-      ...["messages", "messages/campaigns/:id", "messages/metrics"].map((path) => ({
+      ...["messages", "messages/tasks/:taskId"].map((path) => ({
         path,
         component: messagesPage,
         meta: { section: "Scenarios", title: "Messages" }
@@ -63,7 +63,12 @@ export const consoleRoutes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(),
   routes: consoleRoutes,
-  scrollBehavior: () => ({ left: 0, top: 0 })
+  scrollBehavior: (to, from) => {
+    // The Messages workspace restores its loaded-list position and focused row.
+    if (to.path === "/messages" && from.path.startsWith("/messages/tasks/"))
+      return false;
+    return { left: 0, top: 0 };
+  }
 });
 router.afterEach((to) => {
   document.title = `${String(to.meta.title ?? "页面未找到")} · XA Mass`;

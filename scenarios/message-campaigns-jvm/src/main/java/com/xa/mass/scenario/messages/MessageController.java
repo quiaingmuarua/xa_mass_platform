@@ -7,21 +7,18 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/messages")
 public class MessageController {
-    private final CampaignService campaigns;
-    MessageController(CampaignService campaigns) { this.campaigns = campaigns; }
-    @GetMapping("/catalog") public Object catalog() { return campaigns.catalog(); }
-    @PostMapping("/campaigns") public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.accepted().body(campaigns.create(body));
+    private final MessageTaskService tasks;
+    MessageController(MessageTaskService tasks) { this.tasks = tasks; }
+    @GetMapping("/catalog") public Object catalog() { return tasks.catalog(); }
+    @PostMapping("/tasks") public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.status(201).body(tasks.create(body));
     }
-    @GetMapping("/campaigns") public Object page(@RequestParam(defaultValue = "0") int offset,
-            @RequestParam(defaultValue = "30") int limit) { return campaigns.page(offset, limit); }
-    @GetMapping("/campaigns/{id}") public Object get(@PathVariable String id) { return campaigns.get(id); }
-    @GetMapping("/campaigns/{id}/messages") public Object messages(@PathVariable String id,
-            @RequestParam(defaultValue = "0") int offset, @RequestParam(defaultValue = "30") int limit) {
-        return campaigns.messages(id, offset, limit);
-    }
-    @GetMapping("/metrics") public Object metrics() { return campaigns.metrics(); }
-    @ExceptionHandler(CampaignService.ProductError.class) ResponseEntity<?> error(CampaignService.ProductError error) {
-        return ResponseEntity.status(error.status).body(Map.of("message", error.getMessage()));
+    @GetMapping("/tasks") public Object list(@RequestParam(defaultValue = "100") int limit) { return tasks.list(limit); }
+    @GetMapping("/tasks/{taskId}") public Object get(@PathVariable String taskId) { return tasks.get(taskId); }
+    @ExceptionHandler(MessageTaskService.ProductError.class) ResponseEntity<?> error(MessageTaskService.ProductError error) {
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("message", error.getMessage());
+        if (error.taskId != null) body.put("taskId", error.taskId);
+        return ResponseEntity.status(error.status).body(body);
     }
 }

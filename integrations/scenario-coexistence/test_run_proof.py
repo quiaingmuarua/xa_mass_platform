@@ -7,6 +7,17 @@ import run_proof as proof
 
 
 class ProofAssertionsTest(unittest.TestCase):
+    def test_campaign_countries_are_independent_and_numbers_are_repeatable(self):
+        with patch.object(proof, "http", return_value={"id": "campaign"}):
+            _, cross = proof.campaign(SimpleNamespace(url="server"), country="US", recipient_country="CN")
+            _, any_sender = proof.campaign(SimpleNamespace(url="server"), country=None, recipient_country="CN")
+        self.assertEqual("CN", cross["recipientCountry"])
+        self.assertEqual("US", cross["senderCountry"])
+        self.assertIsNone(any_sender["senderCountry"])
+        self.assertEqual(cross["recipientIds"], any_sender["recipientIds"])
+        self.assertTrue(all(number.startswith("+86") and number[1:].isdigit() for number in cross["recipientIds"]))
+        self.assertNotIn("country", cross)
+
     def test_recipient_input_uses_the_original_worker_coordinate(self):
         run = SimpleNamespace(host="host", input_workers_by_id={"worker": {
             "workerGroupId": "demo-sim", "replicaKey": "workers-000.jsonl:2"}})

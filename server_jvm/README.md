@@ -1165,3 +1165,16 @@ Command/evidence timing and Score transition traces, never opaque content.
 
 The canonical proof ownership, prerequisites and CI lane selection are in
 [`TESTING.md`](../TESTING.md).
+
+## Task-backed Messages reads
+
+TaskCreateRequest and TaskView include optional name and immutable string-map
+metadata, stored by Task Owner with the descriptor, outside scheduling config.
+TaskCreationUnconfirmedException carries the generated identity when creation
+commit is unknown. Messages uses ProjectTaskQueryService for list/point reads,
+TaskDataService for Item Score quantities and bounded Result previews, and the
+existing creation/append/approval services synchronously. No Redis access or
+business scheduling moves to the scenario. Preview is one HSCAN COUNT 100 then
+at most 100 Item reads; counts are Owner ZCARD/ZCOUNT observations. These surfaces
+have independent snapshots and retain existing data-error/503 semantics. Business
+tag names and aggregation belong to the Messages Owner, not Server's generic API.
