@@ -34,24 +34,22 @@ Adapter delivery deadline.
 
 ## HOT Eligibility Epoch
 
-When periodic Serviceability is configured, `KernelPacerRuntime` mints one immutable,
-millisecond `hotEligibilityFloorMillis` for that process instance. Only the
-Score Owner converts it to the current encoding's slot boundary. Restarting
-the loops on the same Application does not change it; a new Kernel process has
-a new epoch.
+Runtime samples one immutable millisecond activation floor in every preset.
+The event Mechanism receives it for CONNECTED activation; only Score Owner aligns
+it. Reusing the Runtime keeps the value, while a new Runtime receives a new floor.
+Serviceability-enabled presets also pass it to Assignment refill and candidate
+recycling. DEFAULT has no Assignment scan floor and no periodic Probe, while
+still consuming network evidence. Direct execution gets no extra floor condition.
 
 ```text
-0 .. floor       pre-epoch HOT; excluded from Assignment and probed
-floor .. now     ordinary due HOT candidates
-now .. future    lease or hold
-PAUSE_TIME       pause hold
+below floor      excluded from floor-enabled refill/recycle; Probe may activate
+floor .. now     ordinary due HOT or candidate generation
+current/future   not acquirable; execution/recheck hold or PAUSE
 ```
 
-Assignment passes the floor to both broad and explicit HOT reads. When
-periodic Serviceability is absent it passes `null`, preserving the original `MIN_BASE`
-range. New Workers start at the fixed negative cold coordinate outside all
-these scan ranges. A later valid network observation refreshes the time for HOT
-activation; registration does not consult current time.
+Registration uses the fixed negative cold coordinate. Valid CONNECTED can promote
+a past time below floor to floor only when its evidence reaches floor. It does not
+refresh times already at/above floor. Current/future coordinates remain unchanged.
 
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
@@ -189,8 +187,8 @@ An empty read is retried on the next normal Producer round. The Task score batch
 is never mutated or held by Serviceability.
 
 Removing the former Score-state point read saves one ZMSCORE per non-empty
-candidate Group. HOT observation remains one range command; RECOVERY remains
-one TIME followed by one range command. Deferral remains one EVAL, with one
+candidate Group. HOT now reads two mark ranges; RECOVERY retains
+one TIME followed by two mark ranges. Owner merges and truncates the raw rows. Deferral remains one EVAL, with one
 internal TIME and one common target time base. Serviceability range reads keep
 their existing exception for fractional Scores; Refill instead omits corrupt
 rows within its raw-row budget. Neither path fetches replacement rows.
@@ -202,9 +200,9 @@ covers normal Producer scheduling and Adapter/Result handoff, with no scan
 cooldown. Focused Pacer tests prove next-round discovery and fixed eligibility delay;
 Redis Owner tests prove time boundaries, equal-score head progress and exact CAS.
 
-Worker Score stores only polarity, time and mark. The soft/sealed migration
-retains this numeric layout and treats existing MAX,0 as soft. No compatibility
-reader, migration tool or data cleanup is included; proofs use fresh test scopes.
+Worker Score uses separate high-mark ranges for ordinary/execution and candidate
+coordinates. Relative deferral writes mark=0. This layout requires a new scope;
+no compatibility reader, migration tool or data cleanup is included.
 This change does not add a reconciler or janitor. Future offline cleanup requires
 separate network evidence; nextRecheckAt advances on checks and cannot measure
 offline age.
@@ -291,50 +289,33 @@ missing Scores, release leases, clear mark or undo PAUSE.
 ## Score Convergence
 
 `DefaultWorkerServiceabilityEvents` checks Binding Endpoint and Group, then calls
-`rewriteCurrentPolarityWithinTimeFence` with the supplied evidence times, target
-polarity and explicit `refreshPastTime` flag. The Network Evidence
-policy cannot read a Worker score or select a concrete score mutation. The
-finite event interface is not a generic EventBus.
-
-The target is fixed by the semantic event:
+`rewriteCurrentPolarityWithinTimeFence` with evidence times, target polarity and
+mechanical minimum time. The policy does not read/decode Worker Score.
 
 ```text
-CONNECTED or valid Polling observation         -> HOT, refreshPastTime=true
-DISCONNECTED / delivery expired / Probe miss  -> RECOVERY, refreshPastTime=false
+CONNECTED or valid Polling observation        -> HOT, minimum=startup floor
+DISCONNECTED / delivery expired / Probe miss -> RECOVERY, minimum=0
 ```
 
-**Core evidence boundary change:** a stored Score in the current 100ms slot
-accepts validated Evidence just as a future coordinate does. This aligns with
-active lease confirmation, which still permits that current slot. Only past
-stored coordinates require Evidence from the same or a later slot. The rule
-applies to HOT and RECOVERY, including a current-slot probe coordinate.
-Valid Evidence always preserves mark.
-Unavailable Evidence changes only the Score sign. Available Evidence also
-advances an older past-slot coordinate to its Evidence slot, so a reconnect
-observed after Server startup crosses that process's HOT eligibility floor
-without depending on a separate Probe round. A current/future coordinate or PAUSE keeps its
-exact time coordinate and is never shortened by Evidence. This includes a future
-Serviceability recheck: CONNECTED can restore HOT polarity while assignment still
-waits for that retained coordinate to become due. Score alone does not distinguish
-that wait from an execution lease, and evidence never releases either early.
+Current/future stored coordinates accept valid evidence and preserve time. Past
+coordinates accept only evidence from the same or a later slot. All network
+corrections preserve mark. CONNECTED promotes only a past coordinate below floor,
+and only if evidence reaches floor, to exactly floor. DISCONNECTED changes sign
+only. Current, future and PAUSE time remain unchanged. A future recheck restored
+to HOT must still become strictly due before candidateization or execution.
 
-This accepts delayed observations within the current slot and does not establish
-strict network event ordering. Score time also represents leases and probe
-checks; it is not an independent network timestamp. Source/Binding validation,
-the default 30-second evidence age limit, lane capacity and probe scheduling
-are unchanged. No extra read, queue, replay or compensation scan is introduced.
+The Runtime supplies one activation floor to the event Mechanism even in DEFAULT;
+the Result policy does not calculate it. Score time is not a network event version.
+The existing source/Binding checks, 30-second evidence-age limit and best-effort
+arrival order remain. An older report can be rejected after a newer past Score;
+no replay, global offline guarantee or extra queue is added.
 
-Next-check time and excluded-Endpoint cold parking are Dispatch concerns.
-The Result path does not calculate the process floor or schedule rechecks; it refreshes a past coordinate from the accepted connection timestamp
-and preserves a current/future coordinate.
-A newer past-slot Score still rejects older Evidence as `STALE`; reports that
-arrive after a lease's slot can therefore remain unapplied under best-effort
-semantics.
-Repeated acquisition of unused Matching stock may keep advancing that HOT
-coordinate after a rejected report, keeping it outside the stale-HOT Probe
-range. Stock that is never consumed receives no Command and therefore need not
-produce delivery-expiry Evidence. The current-slot repair does not establish
-eventual unavailability for this combination.
+Serviceability reads both high-mark time ranges, at most limit raw rows each,
+merges by logical time and truncates to limit before conversion. HOT uses two
+range commands; RECOVERY retains its external TIME plus two ranges. Corrupt
+fractional rows keep the existing exception behavior and consume raw budget.
+Candidate recycling and Probe deferral compete with exact CAS; no priority
+coordination is added. Refill alone still produces no network evidence.
 
 ## Server And Adapter Boundary
 

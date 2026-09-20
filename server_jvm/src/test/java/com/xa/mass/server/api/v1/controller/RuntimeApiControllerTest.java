@@ -587,7 +587,7 @@ class RuntimeApiControllerTest {
                 .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isBadRequest());
         verify(taskRuntime,org.mockito.Mockito.never()).createTask(any());
-        verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(),anyList(),anyList());
+        verify(matchingCatalog,org.mockito.Mockito.never()).refill(anyString(), anyList(), anyMap());
     }
 
     @Test void missingSelectorRejectsOnlyThatFiniteItem() throws Exception {

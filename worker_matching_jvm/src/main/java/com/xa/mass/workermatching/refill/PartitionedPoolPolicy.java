@@ -3,7 +3,6 @@ package com.xa.mass.workermatching.refill;
 import com.xa.mass.workermatching.pool.CandidatePool;
 import com.xa.mass.workermatching.index.PartitionedZsetIndex;
 import com.xa.mass.workermatching.index.CountryIndex;
-import java.util.function.LongSupplier;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import java.util.*;
@@ -14,8 +13,8 @@ import static com.xa.mass.workermatching.pool.CandidatePool.*;
 abstract class PartitionedPoolPolicy extends PoolMaintenance<PartitionedZsetIndex.Projection> {
     protected record Criteria(String partition, String kind, List<String> values) {}
     private final PartitionedZsetIndex index;
-    PartitionedPoolPolicy(LongSupplier clock, CandidatePool pool, PartitionedZsetIndex index) {
-        super(clock, pool); this.index = Objects.requireNonNull(index);
+    PartitionedPoolPolicy(CandidatePool pool, PartitionedZsetIndex index) {
+        super(pool); this.index = Objects.requireNonNull(index);
     }
     abstract Criteria criteria(Map<String, List<String>> query);
 

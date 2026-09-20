@@ -15,18 +15,17 @@ dynamic property index configuration are not implemented.
 
 ## Owner Boundary
 
-Pacer synchronously calls Matching from its existing independent refill and dispatch
-Producers. For Pool supply it observes the Group HOT head and exact-acquires 1-second candidate
-leases before a maintenance policy reads eligibility. Only successful new fences are offered.
-Matching processing and stock waiting share the original deadline; unmatched leases
-expire naturally. Kernel/Pacer retains all Score, confirmation and claim authority.
+Pacer calls Matching from its existing refill and dispatch Producers. Refill
+exact-candidateizes due ordinary HOT before qualification, preserving Worker time.
+Matching receives opaque generation fences and starts its own 60-second TTL at
+actual admission. Only TaskItem assignment creates an execution lease.
 
 | Stage | Authority and fence |
 | --- | --- |
-| Supply | Pacer reads a bounded Group HOT head and exact-acquires soft leases |
-| Qualification and admission | Each Pool policy reads only offered IDs and retains admitted candidates with the original fences and deadlines |
-| Coordination | Catalog excludes IDs actually accepted by an earlier Pool from later Pools in that Group batch |
-| Execution | Kernel exact-transfers a Pool fence or atomically acquires a current identity; only the returned sealed fence permits Item claim |
+| Supply | Pacer observes mark=0 HOT and exact-candidateizes; aged mark=1 is independently recycled |
+| Qualification/admission | Each Pool reads offered identities, retains their fences and establishes local TTL |
+| Coordination | Several Pools may accept the same generation; total budget counts actual entries |
+| Execution | Kernel exact-acquires a due Pool fence or current due identity; only its new execution fence permits Item claim |
 
 **Cross-Pool failure contract:** Pool A's successful refill remains committed if
 Pool B's maintenance subsequently fails. The exception ends the remaining batch and reaches the
@@ -38,15 +37,15 @@ This partial-success contract is independent of atomic Facts/index writes below.
 ```text
 Worker / Platform facts -> one Lua -> enabled Matching indexes
 NORMAL Task descriptors -> Group/Pool target MAX -> maintenance deficits
-  -> Pacer HOT head -> Kernel exact 1-second lease -> offered held IDs
+  -> Pacer HOT head -> Kernel exact candidateize -> offered generation fences
   -> qualification and admission -> shared Pool resource
 messageId -> WorkerQuery(executorName, input) -> fixed function table
   -> strategy interpretation/grouping -> Pool range take / identity / phone index
   -> messageId -> WorkerCandidate -> current address
-  -> Kernel strict transfer / current execution acquire -> exact Item claim -> Command
+  -> Kernel strict observed / current execution acquire -> exact Item claim -> Command
 ```
 
-Maintenance policies receive opaque held fences, never a lease acquisition capability. They cannot
+Maintenance policies receive opaque candidate fences, never a lease acquisition capability. They cannot
 discover replacement IDs, renew holds, decode Kernel scores or claim Items.
 Pacer carries Pool supply names, Group coordinates, correlation IDs and immutable query data
 through `WorkerMatching`. It does not normalize or semantically group queries,
@@ -68,7 +67,7 @@ Matching does not receive Task IDs or own Task lifecycle. The [Task Owner](../ke
 owns persistence, strict decoding and descriptor equality.
 
 Pacer concatenates declarations by Group and passes `groupsNeedingRefill(refillByGroup)`,
-then `refill(group, declarations, heldCandidates)` for acquired Groups. Matching selects
+then `refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
 Pool maintenance by resource name, normalizes targets and MAX-merges them. Country
 receives its complete bounded target set; Messaging and Proof keep target pages.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
@@ -101,17 +100,17 @@ An empty batch touches no inventory. Late invalid input consumes nothing. A late
 execution exception ends the call without rolling back earlier consumption.
 
 `WorkerCandidate(workerId, expectedScore)` carries no inventory deadline. All
-production Pool strategies return their original nonzero fence. `HeldCandidate`
-remains the refill/inventory value, and storage checks its original deadline.
+production Pool strategies return their original nonzero fence. Refill takes a
+Map of opaque fences; storage creates and checks its own admission TTL.
 Current Pool take reads no Redis or Facts. Function results are candidates only;
 Kernel retains execution admission.
 
 Identity and Phone functions return `expectedScore=0` as an identity hint. Catalog
 preserves that value without reading WorkerScore, filling in a fence or downgrading
 a nonzero expectation. Pacer consumes zero to call `acquireCurrentHotScoreLeases`
-by IDs; nonzero fences go unchanged to exact observed-score transfer. Kernel receives
-no sentinel. Current acquisition admits due HOT with either mark or active soft HOT
-and always seals the execution lease; it rejects active sealed HOT and RECOVERY.
+by IDs; nonzero fences go unchanged to exact observed acquisition. Kernel receives
+no sentinel. Both paths require strictly due HOT with either mark and write a
+mark=0 execution deadline. Current/future HOT and RECOVERY cannot be acquired.
 It requires no earlier Pool refill. The hint carries no historical qualification
 guarantee. Pool strategies continue to return strict fences.
 
@@ -172,7 +171,7 @@ now owns only the refill side:
 | --- | --- |
 | `normalizeQuery(group, query)` | Idempotent target admission; no Redis read or inventory mutation |
 | `deficits(group, targets)` | Immutable observed shortages, never reservations |
-| `refill(group, targets, offered, maxAccepted)` | Qualify held IDs and return actual admissions with original fences/deadlines |
+| `refill(group, targets, offered, maxAccepted)` | Qualify supplied IDs and return actual admissions with opaque fences and local TTL |
 
 `EligibilityQuery` remains the quantity-free string-list structure for supply.
 `RefillTarget(poolName,target,count)` carries the resource name and quantity. TaskDescriptor
@@ -187,7 +186,8 @@ remains 0..100. All structure and fallible qualification checks precede admissio
 Task descriptors switch once to `refillJson`; recreate Tasks in a new scope. Old
 Rule/target fields, missing supply and corrupt entries fail reading. No dual read,
 conversion, default supply, migration or cleanup is provided. Existing WorkerQuery
-Item encoding, Facts, index keys and Score fences remain unchanged.
+Item encoding, Facts and index keys remain unchanged. Worker Score cutover
+separately requires a new scope for the high-mark layout.
 
 ## Fixed Resource Composition
 
@@ -201,7 +201,7 @@ or executorType, and composition does not create a Pool or policy for Identity/P
 | --- | --- |
 | `functions` | Local input interpretation, resource access and candidate correlation |
 | `pool` | CandidatePool entries, range views, deadlines and CandidateBudget |
-| `refill` | Target interpretation, held-ID qualification and membership calculation |
+| `refill` | Target interpretation, supplied-ID qualification and membership calculation |
 | `index` | Phone, Messaging and Proof resource definitions, reads and mutation Lua |
 | `storage` | Facts encoding, persistence, atomic index-write assembly, rebuild and Redis connection |
 
@@ -227,7 +227,7 @@ no per-index connections, constructor-started threads or background repair tasks
 
 | Pool | Maintenance |
 | --- | --- |
-| `any` | Empty target only, unconditional held stock; no Facts or property views |
+| `any` | Empty target only, unconditional candidate stock; no Facts or property views |
 | `country` | Valid Worker country Facts and local country buckets |
 | `messaging` | enabled messaging, country and phone views |
 | `proof-facts` | finite proof memberships |
@@ -297,8 +297,8 @@ The package-private `PoolCandidates.take` helper groups already selected ranges
 and associates returned candidates with message IDs. It accepts data rather than
 normalization/selection callbacks and owns no resource or lifecycle.
 The internal `CandidatePool` is a concrete memory resource with no Redis or
-executor interface. It stores one identity Entry per Group/Pool, the original
-held candidate, admission order and finite view memberships. It never receives a
+executor interface. It stores one identity Entry per Group/Pool, the opaque
+candidate fence, local TTL, admission order and finite view memberships. It never receives a
 business predicate callback.
 
 - An identity map provides exact stock lookup. Country buckets and bucket entries
@@ -325,7 +325,7 @@ apply. Later rounds converge; targets do not reserve stock or extend leases.
 Facts and all enabled indexes prepare before any write in one Lua, independently
 of the local refill/consume failure contracts. Index queries do not consume members;
 Pool consumption, expiry and capacity changes do not remove property indexes.
-Properties sealing remains a separate commit and never edits Pool entries directly.
+Properties time invalidation remains a separate commit and never edits Pool entries directly.
 The test-only [Bucket Pool fixture](../server_jvm/src/test/java/com/xa/mass/server/testsupport/BucketPoolFixture.java)
 retains its SET/HASH source and real Worker proof. Separate test functions accept
 string/integer inputs without implementing Pool maintenance or owning Pool stock.
@@ -355,7 +355,7 @@ Phone Index depends on Group resource composition, never Task demand.
 
 Current Pools retain candidates only in this process: at most 100 resident
 Group/Pool pools, 1000 entries per pool and 10000 in total. Each entry carries
-its identity, range memberships, admission order, original opaque fence and deadline.
+its identity, range memberships, admission order, opaque generation fence and local TTL deadline.
 Tasks have no reserved share. Restart discards all stock without adoption.
 
 The single-flight refill Producer uses Main-selected NORMAL RUNNING Tasks, with
@@ -368,33 +368,36 @@ Catalog rotates Pool policies; only non-Country policies use bounded query pages
 including empty attempts. Country visits the full target set per attempt. A maintenance policy
 prioritizes constrained targets before ANY, incrementing all overlapping target
 counts for each selected candidate. Offered memberships are computed once before
-admission; range decisions remain local. Each Group batch passes only remaining
-IDs to later Pools; an actual acceptance, not a count estimate, removes an offer.
+admission; range decisions remain local. Each Group batch may offer the same
+fences to later Pools. The 100-entry call budget counts actual admissions, including
+replacement of an existing identity, and does not promise to fill every Pool.
 
 Global lazy expiry runs once at Group shortage observation by invoking current resource-owned
 pool cleanup. It does not store a second inventory. Group access expires only its
 own pool; diagnostics and capacity reads do not sweep unrelated pools. Admission
-uses observed shortages and rechecks each entry's original deadline and shared
+uses observed shortages and establishes each entry's local TTL and rechecks shared
 hard capacity at commit, without revalidating the whole inventory.
 Other expiry may release capacity after the round's budget was observed, so a
 round may conservatively underfill. A Pool with no available capacity reports zero
-refill deficit, preserving the existing full-stock supply suppression. No operation
-extends a lease.
+refill deficit, preserving the existing full-stock supply suppression. Duplicate same-fence admission does not extend TTL.
 
-Pacer computes the original deadline immediately before acquisition. Qualification
-time and inventory waiting consume that same second. Pool queries only consume
-held stock; they never trigger a targeted HOT read. Rare targets
-may wait longer under the fixed Group supply policy.
+Pool TTL starts at actual admission and is 60 seconds, independent of the Worker
+generation time and Pacer's separate candidate age threshold. Same Worker/fence
+supply is a duplicate: it neither consumes admission budget nor extends TTL.
+A new generation is qualified again and replaces its old entry and views even
+when storage is full. Replacement uses the same capacity unit but consumes this
+call's processing budget. A changed generation which no longer matches removes
+the old entry. Stale selection references cannot consume a replacement.
 
-Pool consumption is destructive. Misses, read failures, ambiguous acquisition and failed
-admission leave any held Kernel lease to expire; there is no compensation release,
-renewal, reinsertion, replay or pending registry. Unobserved mark changes may
-temporarily overcount stock; final execution transfer still requires the exact
-soft active HOT fence and Redis time. Another caller may transfer a cached soft
-fence before its original deadline. Matching keeps its original fence and expiry;
-it neither renews nor repairs that entry. Subsequent execution transfer rejects
-the stale fence. No allocator or cache scan is added here. Already-held candidates
-are not a readiness assertion, and a sealed score does not prove execution.
+Pool consumption is destructive. TTL only governs stock take; once taken, a
+candidate carries no TTL and is checked only against current exact/due Score
+conditions. Matching does not renew or repair cached fences. Properties or another
+assignment can invalidate a cached fence; Dispatch rejects it without fallback.
+No match, capacity refusal, failed admission, ambiguous response and process loss
+leave committed candidates for Pacer's normal bounded recycling, not rollback.
+Pool queries never trigger targeted HOT reads; rare predicates may wait. Direct
+queries can independently acquire due Workers without stock. No allocator or
+rule-change sweep is added.
 
 ## Persistent Catalog
 
@@ -435,16 +438,20 @@ memberships. There is no Java pre-read/CAS loop. Worker and Platform writes cann
 lose each other's independent changes. Missing eligibility removes memberships.
 Unexpected/corrupt stored data fails; it is not converted to empty eligible facts.
 
-Server separately asks Worker Score Owner to invalidate candidate eligibility
-after APPLIED facts writes. Facts/index and sealing are different Owner commits;
-there is no cross-owner transaction, guaranteed retry or repair. Acquisition creates
-the soft hold before Matching reads current Pool projections. Matching never unseals it:
-successful sealing after acquisition invalidates that candidate's fence,
-including when it follows the projection read. Facts may still change between
-projection and invalidation/transfer; mark is not a facts version and does not
-make the independent commits atomic. Already committed execution is
-not revoked by later facts observations. The seal operation continues marking all
-existing valid scores, including due and recovery scores; it is not lease-only.
+Server separately asks Worker Score Owner to advance past times after APPLIED
+facts writes. Past HOT atomically becomes mark=0 at Redis current time; past
+non-cold RECOVERY retains mark when advancing. Both preserve polarity; cold
+RECOVERY and current/future holds do not change. The cold exception preserves
+initial network activation.
+If invalidation wins first, the old Pool fence fails execution acquisition.
+If assignment wins first, the execution hold and its result association survive.
+Facts/index and Score remain separate commits: there is no property-version
+transaction, guaranteed retry or repair. Candidate qualification happens after
+candidateize, so invalidation after that point cannot be cleared by a second
+admission mutation. Changed past HOT returns to the ordinary lane with a new
+generation; subsequent qualification cannot revive the old fence. After the
+current slot passes, normal Refill may supply it without waiting for candidate
+recycling. Group roots, deficits and round budgets still govern admission.
 
 Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
@@ -462,42 +469,34 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Pool stock counts and take: zero Redis commands or facts reads.
 - Identity take: zero Redis commands. Nonempty Phone take: one read-only Lua for
   grouped exact phone values, returning at most 100 identities without a lease read.
-- Each nonempty eligible Group batch: one read-only HOT head Lua (TIME and
-  ZRANGE BYSCORE LIMIT 0 limit inside), then one candidate-acquisition Lua, followed by at most one
-  projection read per participating Handler. No successful acquisitions means no
-  Matching call. One named Handler uses three client commands for up to 100 IDs.
-  Zero-match batches also acquire leases; full stock skips observation and acquisition.
-- Any needs no qualification read; it uses the same
-  Pacer Group supply, never an explicit-ID observation path.
-- Final confirmation: one bounded Lua per transfer kind, with Redis TIME inside
-  each operation. Current production Pool candidates all use exact transfer;
-  a mixed batch splits into exact and current-state calls without a shared transaction.
-  Address, Item claim, publication and Result paths retain their separate costs.
+- Refill recycling: one read-only candidate-head Lua per selected Group and one
+  exact recycle Lua for a nonempty batch, even without supply shortage. It has a
+  separate 100-per-Group/1000-per-round budget and shares existing Group rotation.
+- Each Group needing supply: one mark=0 due-head Lua, one exact candidateize Lua,
+  then at most one projection read per participating policy. No successful
+  candidateization means no Matching call. Full stock skips this supply path.
+- Any needs no qualification read and never discovers substitute IDs.
+- Final execution: one bounded Lua per nonempty strict/current partition, each
+  with Redis TIME. Only strictly due HOT can gain execution. Address, Item claim,
+  publication and Result paths retain their separate costs.
 
-These are client command counts, not throughput promises. Matching logs aggregate
-shortfall, resident/admitted stock, consumption, unused expiry and capacity limits. Pacer records observed counts and acquisition success/rejection;
-offered now means successfully leased, not an unheld observation. Existing
-Pacer stage evidence separates refill observation, first acquisition, confirmation rejection and
-dispatch. `INITIAL_HOLD` retains attempted `batchSize` and successful `count`;
-their difference counts rejected candidates only when `failed=false`. A failed
-call is unconfirmed, not proof of lease rejection. No management API or diagnostics thread is added.
+These are command budgets, not throughput promises. Diagnostics report actual
+stock, admissions, consumption, expiry and capacity. Pacer's CANDIDATEIZE stage
+retains attempted batchSize and transitioned count; a failed call is ambiguous,
+not proof that every member was rejected. No diagnostics thread is added.
 
-Candidate failures do not add a prerequisite to Item expiry/exhaustion/idle settlement. Refill infrastructure failure reaches its Producer backoff; partial
-holds expire. Pool misses never query a source or acquire a new hold; direct lookup
-misses never scan alternatives or retry busy identities. Restart
-loses local inventory and rebuilds it through ordinary refill without adoption,
-ACK, replay or a repair scan.
+Candidate failures do not gate Item expiry, exhaustion or idle settlement. Pool
+misses do not query a source or acquire a lease. Direct misses do not retry another
+identity. Restart loses stock; Main-supplied Groups recover generations through
+normal candidate recycling and refill, without adoption or replay.
 
-Focused tests cover interpretation, overlapping stock, bounded predicate evaluation,
-Group target paging, cross-Rule partial success, local expiry and concurrency. Redis
-Owner proves head observation and acquisition-driven progress, closed supplied batches, acquisition before
-projection (including unmatched candidates), shared target MAX, soft acquisition,
-execution fence invalidation, commit-time expiry and command order/counts. Controlled
-Matching clocks prove that processing time consumes the original lease deadline.
-Runtime Boundary adds six actual Workers in two Groups serving four Tasks and 800
-Items, including shared and different Rules within one Group. Runtime Boundary and
-Dynamic Matching witness real Worker execution; Call Performance separately
-measures mixed-workload behavior. See [TESTING](../TESTING.md).
+Focused tests cover qualification, target paging, shared Pool supply, replacement
+at capacity, unchanged-fence TTL, stale Entry references and cross-Pool partial
+success. Redis Owner proves candidateize-before-projection, no substitute discovery,
+Properties/assignment ordering, equal-score head progress, execution races and
+command budgets. Controlled Pool clocks establish admission-time TTL. Runtime
+Boundary and Dynamic Matching retain their workload and real execution witnesses;
+Call Performance retains its separate measurement claim. See [TESTING](../TESTING.md).
 
 Runtime Boundary uses Tasks with empty supply and proves Identity and Phone
 queries executing due Workers through real delivery and Result observation. Redis
@@ -506,6 +505,6 @@ concurrent writes and startup rebuilding, plus direct/Pool execution races.
 
 Task configuration now lives in the Task descriptor. Recreate Tasks in a new scope;
 old descriptor formats are rejected, and old Matching data is neither read nor
-cleared. HTTP, existing facts/index formats and Score encoding are unchanged;
-the independent phone namespace is additional. Local stock
-is still lost on restart and outstanding holds expire.
+cleared. HTTP and existing facts/index formats are unchanged. Worker Score uses
+the high-mark layout in a new scope, without compatibility decoding. Local stock
+is lost on restart; candidate recycling and execution expiry have separate roles.

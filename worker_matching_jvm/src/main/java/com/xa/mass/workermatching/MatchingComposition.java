@@ -59,21 +59,21 @@ public final class MatchingComposition {
             pools.put(name, pool);
             switch (name) {
                 case "any" -> {
-                    policies.put(name, new AnyPoolPolicy(clock, pool));
+                    policies.put(name, new AnyPoolPolicy(pool));
                     functions.put("worker.any", new AnyQueryFunction(pool));
                 }
                 case "country" -> {
-                    policies.put(name, new CountryPoolPolicy(clock, pool, storage::readWorkerFacts));
+                    policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
                     functions.put("worker.country", new CountryQueryFunction(pool));
                 }
                 case "messaging" -> {
                     var index = new MessagingIndex(storage::commands, storage.keyspace());
-                    policies.put(name, new MessagingPoolPolicy(clock, pool, index));
+                    policies.put(name, new MessagingPoolPolicy(pool, index));
                     functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
                 }
                 case "proof-facts" -> {
                     var index = new ProofFactsIndex(storage::commands, storage.keyspace());
-                    policies.put(name, new ProofFactsPoolPolicy(clock, pool, index));
+                    policies.put(name, new ProofFactsPoolPolicy(pool, index));
                     functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
                 }
                 default -> throw new IllegalStateException("Unexpected built-in Pool");

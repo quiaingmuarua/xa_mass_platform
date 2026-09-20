@@ -15,10 +15,12 @@ public final class DefaultWorkerServiceabilityEvents
 
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerScoreCore workerScores;
+    private final long activationFloorMillis;
 
     public DefaultWorkerServiceabilityEvents(
             WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScores
+            WorkerScoreCore workerScores,
+            long activationFloorMillis
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -28,6 +30,10 @@ public final class DefaultWorkerServiceabilityEvents
                 workerScores,
                 "workerScores"
         );
+        if (activationFloorMillis <= 0) {
+            throw new IllegalArgumentException("activationFloorMillis must be positive");
+        }
+        this.activationFloorMillis = activationFloorMillis;
     }
 
     @Override
@@ -99,7 +105,8 @@ public final class DefaultWorkerServiceabilityEvents
                 workerScores.rewriteCurrentPolarityWithinTimeFence(
                         workerGroupId,
                         chunk,
-                        targetPolarity, targetPolarity == WorkerScorePolarity.HOT_ACQUIRE
+                        targetPolarity,
+                        targetPolarity == WorkerScorePolarity.HOT_ACQUIRE ? activationFloorMillis : 0
                 );
             }
         });

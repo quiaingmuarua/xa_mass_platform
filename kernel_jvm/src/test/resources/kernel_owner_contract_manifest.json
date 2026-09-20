@@ -138,22 +138,24 @@
     "WorkerScoreCore": [
       "acquire_current_hot_score_leases",
       "acquire_observed_hot_score_leases",
+      "advance_past_score_times_to_now",
+      "candidateize_observed_hot_scores",
       "defer_observed_to_recovery",
       "initialize_registered_scores",
       "observe_due_hot_score_candidates",
+      "observe_hot_candidate_scores_before",
       "observe_hot_candidates_before",
       "observe_recovery_recheck_candidates",
       "observe_scheduling_states",
       "park_observed_recovery_score",
       "pause_scheduling",
+      "recycle_observed_hot_candidates",
       "release_observed_hot_score_holds",
       "release_score_holds",
       "resume_scheduling",
       "rewrite_current_polarity_within_time_fence",
       "sample_registered_worker_ids",
-      "seal_current_score_holds",
-      "toggle_current_polarity",
-      "transfer_observed_hot_score_leases"
+      "toggle_current_polarity"
     ]
   },
   "dtos": {
@@ -283,11 +285,6 @@
     "WorkerCandidate": [
       "worker_id",
       "expected_score"
-    ],
-    "HeldCandidate": [
-      "worker_id",
-      "score",
-      "expires_at_millis"
     ],
     "WorkerSchedulingObservation": [
       "read_at_millis",

@@ -119,7 +119,8 @@ public final class KernelPacerRuntime {
                         ),
                         new DefaultWorkerServiceabilityEvents(
                                 workerCatalog,
-                                workerScores
+                                workerScores,
+                                policy.activationFloorMillis()
                         ),
                         serviceability
                 );

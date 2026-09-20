@@ -173,14 +173,14 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 Object result = call.callRealMethod();
                 record("EXACT_CONFIRM input=" + observed, result);
                 return result;
-            }).when(scores).transferObservedHotScoreLeases(eq(GROUP), anyMap(), anyLong(), org.mockito.ArgumentMatchers.eq(true));
+            }).when(scores).acquireObservedHotScoreLeases(eq(GROUP), anyMap(), anyLong());
             doAnswer(call -> {
                 Map<String, WorkerScoreTransitionResult> result =
                         (Map<String, WorkerScoreTransitionResult>) call.callRealMethod();
                 record("NETWORK_SCORE target=" + call.getArgument(2) + " observed=" + call.getArgument(1), result);
                 if (call.getArgument(2) == RECOVERY_RECHECK) applied.set(result.get(workerId));
                 return result;
-            }).when(scores).rewriteCurrentPolarityWithinTimeFence(eq(GROUP), anyMap(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+            }).when(scores).rewriteCurrentPolarityWithinTimeFence(eq(GROUP), anyMap(), any(), org.mockito.ArgumentMatchers.anyLong());
             doAnswer(call -> {
                 Object result = call.callRealMethod();
                 record("SUCCESS_RELEASE input=" + call.getArgument(1), result);
@@ -212,8 +212,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             assertThat(delivered).isNotEmpty();
             assertThat(invoked).hasValue(0);
             assertThat(scores.observeDueHotScoreCandidates(GROUP, null, 100)).isEmpty();
-            assertThat(scores.transferObservedHotScoreLeases(GROUP, Map.of(workerId, candidateFence.get()),
-                    System.currentTimeMillis() + 1_000, true).get(workerId).status()).isEqualTo(STALE);
+            assertThat(scores.acquireObservedHotScoreLeases(GROUP, Map.of(workerId, candidateFence.get()), System.currentTimeMillis() + 1_000).get(workerId).status()).isEqualTo(STALE);
             verify(serviceability, never()).offerProbeRequests(anyString(), anyList());
 
             worker.start();

@@ -202,24 +202,25 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     }
 
     @Override public int refill(String group,List<RefillTarget> declarations,
-            List<HeldCandidate> offered) {
+            Map<String, Long> offered) {
         requireNonBlank(group,"workerGroupId");
         Objects.requireNonNull(offered,"offeredCandidates");
-        if(offered.size()>100)throw new IllegalArgumentException("at most 100 held Workers");
-        var held=new LinkedHashMap<String,HeldCandidate>();
-        for(var candidate:offered) {
-            Objects.requireNonNull(candidate,"heldCandidate"); requireNonBlank(candidate.workerId(),"Worker ID");
-            if(held.putIfAbsent(candidate.workerId(),candidate)!=null)throw new IllegalArgumentException("held Worker IDs must be unique");
-        }
+        if(offered.size()>100)throw new IllegalArgumentException("at most 100 candidate Workers");
+        var candidates=new LinkedHashMap<String,Long>();
+        offered.forEach((id, score) -> {
+            requireNonBlank(id,"Worker ID");
+            if(score == null || score == 0)throw new IllegalArgumentException("strict candidate required");
+            candidates.put(id,score);
+        });
         var scopes=targets(Map.of(group,declarations)).entrySet().stream()
                 .sorted(java.util.Comparator.<Map.Entry<Scope,List<RefillTarget>>>comparingInt(
                         entry -> poolOrder(entry.getKey().poolName()))
                         .thenComparing(entry -> entry.getKey().poolName())).toList();
-        var remaining=new LinkedHashSet<>(held.keySet());
+        var remaining=new LinkedHashSet<>(candidates.keySet());
         if(remaining.isEmpty() || scopes.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
-        int room=Math.min(100,budget.available()), added=0;
+        int room=100, added=0;
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<room;n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
@@ -230,19 +231,25 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
                 selected=entry.getValue();
             } else {
                 page=page(scope,entry.getValue(),handler);
-                if(page==null)continue;
+                if(page==null) {
+                    int cursor=Math.floorMod(queryCursors.getOrDefault(scope,0),entry.getValue().size());
+                    var selectedRows=new ArrayList<RefillTarget>();
+                    for(int i=0;i<Math.min(100,entry.getValue().size());i++)
+                        selectedRows.add(entry.getValue().get((cursor+i)%entry.getValue().size()));
+                    page=new RefillPage(List.copyOf(selectedRows),(cursor+selectedRows.size())%entry.getValue().size(),0);
+                }
                 selected=page.queries();
             }
-            long now=clock.getAsLong();
-            remaining.removeIf(id->held.get(id).expiresAtMillis()<=now);
             if(remaining.isEmpty())break;
             if(page!=null)queryCursors.put(scope,page.nextCursor());
             // Each Pool commits its own admission. A later failure preserves earlier successes.
-            var accepted=handler.refill(group,targetCounts(selected),
-                    remaining.stream().map(held::get).toList(),room-added);
+            var batch=new LinkedHashMap<String,Long>();
+            remaining.forEach(id->batch.put(id,candidates.get(id)));
+            var accepted=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Pool policy returned invalid admitted identities");
-            remaining.removeAll(accepted); added+=accepted.size();
+            // A generation may qualify in several Pools; budget counts actual entries.
+            added+=accepted.size();
         }
         return added;
     }

@@ -2,7 +2,7 @@ package com.xa.mass.kernel.score.redis;
 
 import static com.xa.mass.kernel.score.WorkerScoreCore.*;
 
-/** Compact score arithmetic. Callers retain their operation-specific validation. */
+/** Candidate lane and generation arithmetic, private to the Score Owner. */
 final class WorkerScoreEncoding {
     static final long ZERO_SCORE = 0;
     static final long MIN_BASE = 1;
@@ -13,9 +13,9 @@ final class WorkerScoreEncoding {
     static final long MIN_TIME_MILLIS = 0;
     static final long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
     static final long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
-    static final int SOFT_MARK = 0;
-    static final int SEALED_MARK = 1;
-    static final int SLOT_FACTOR = 2;
+    static final int ORDINARY_MARK = 0;
+    static final int CANDIDATE_MARK = 1;
+    static final long MARK_BASE = MAX_TIME_SLOT + 1;
     static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
 
     private WorkerScoreEncoding() {
@@ -44,14 +44,14 @@ final class WorkerScoreEncoding {
     }
 
     static long replaceTime(long score, long targetSlot) {
-        return Long.signum(score) * (targetSlot * SLOT_FACTOR + Math.abs(score) % SLOT_FACTOR);
+        return Long.signum(score) * (Math.abs(score) / MARK_BASE * MARK_BASE + targetSlot);
     }
 
     static long absoluteScore(
             long timeSlot,
             int mark
     ) {
-        return timeSlot * SLOT_FACTOR + mark;
+        return mark * MARK_BASE + timeSlot;
     }
 
     static boolean validTimeMillis(long timeMillis) {
@@ -68,9 +68,9 @@ final class WorkerScoreEncoding {
             throw new IllegalStateException("Worker score is invalid");
         }
         long absolute = Math.abs(score);
-        long timeSlot = absolute / SLOT_FACTOR;
-        int mark = Math.toIntExact(absolute % SLOT_FACTOR);
-        if (timeSlot > MAX_TIME_SLOT) {
+        long timeSlot = absolute % MARK_BASE;
+        long mark = absolute / MARK_BASE;
+        if (mark > CANDIDATE_MARK) {
             throw new IllegalStateException("Worker score is invalid");
         }
         return new WorkerScoreState(
@@ -80,7 +80,7 @@ final class WorkerScoreEncoding {
                         ? WorkerScorePolarity.HOT_ACQUIRE
                         : WorkerScorePolarity.RECOVERY_RECHECK,
                 timeSlot * SLOT_MILLIS,
-                mark
+                (int) mark
         );
     }
 

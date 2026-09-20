@@ -2,14 +2,13 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.workermatching.pool.CandidatePool;
 import com.xa.mass.workermatching.index.ProofFactsIndex;
-import java.util.function.LongSupplier;
 
 import java.util.*;
 import static com.xa.mass.workermatching.pool.CandidatePool.*;
 
 /** Installed only in explicitly configured proof Groups. */
 public final class ProofFactsPoolPolicy extends PartitionedPoolPolicy {
-    public ProofFactsPoolPolicy(LongSupplier clock, CandidatePool pool, ProofFactsIndex index) { super(clock,pool,index); }
+    public ProofFactsPoolPolicy(CandidatePool pool, ProofFactsIndex index) { super(pool,index); }
     @Override Criteria criteria(Map<String,List<String>> query) {
         if(query.isEmpty())return new Criteria("","any",List.of());
         if(query.keySet().equals(Set.of("worker.convergenceSlot")))

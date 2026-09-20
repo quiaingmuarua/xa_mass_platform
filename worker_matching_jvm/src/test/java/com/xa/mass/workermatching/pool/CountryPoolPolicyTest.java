@@ -31,7 +31,7 @@ class CountryPoolPolicyTest {
     final AtomicLong clock=new AtomicLong(1000);
     final FactsIndexStore storage=new FactsIndexStore(client, new RedisKeyspace("test_country_buckets"), Map.of());
     final CandidatePool pool=new CandidatePool(clock::get, budget);
-    final CountryPoolPolicy policy=new CountryPoolPolicy(clock::get, pool, storage::readWorkerFacts);
+    final CountryPoolPolicy policy=new CountryPoolPolicy(pool, storage::readWorkerFacts);
     final Map<String,String> facts=new HashMap<>();
     final List<List<String>> reads=new ArrayList<>();
     final EligibilityQuery any=new EligibilityQuery(Map.of());
@@ -49,8 +49,8 @@ class CountryPoolPolicyTest {
     }
     @AfterEach void close() { storage.close(); }
     EligibilityQuery country(String... values) { return new EligibilityQuery(Map.of("worker.country",List.of(values))); }
-    List<HeldCandidate> offers(String... ids) {
-        return Arrays.stream(ids).map(id->new HeldCandidate(id,20,2000)).toList();
+    Map<String, Long> offers(String... ids) {
+        return Arrays.stream(ids).collect(java.util.stream.Collectors.toMap(id -> id, id -> 20L, (a,b) -> {throw new IllegalArgumentException("duplicate");}, LinkedHashMap::new));
     }
     void facts(String id,String country) { facts.put(id,"{\"country\":\""+country+"\"}"); }
     @Test void unionTargetsOverlapWithoutBecomingPerCountryQuotasAndConstrainedPrecedesAny() {
@@ -88,7 +88,7 @@ class CountryPoolPolicyTest {
             assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));
-            verify(traced).refill(eq("g"),argThat(map->map.size()==200),anyList(),eq(100));
+            verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(100));
             assertEquals(1,reads.size());
             long before=pool.visits().countBuckets();
             policy.deficits("g",targets.stream().collect(java.util.stream.Collectors.toMap(RefillTarget::target,RefillTarget::count)));
@@ -102,16 +102,17 @@ class CountryPoolPolicyTest {
         assertThrows(IllegalArgumentException.class,()->policy.refill("g",Map.of(any,100),offers("valid","corrupt"),100));
         assertEquals(10000,budget.available());assertEquals(0,pool.viewBuckets("g"));
         assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100));
-        clock.set(2000); assertTrue(new CountryQueryFunction(pool).apply("g",Map.of("m",Map.of())).isEmpty());
+        clock.set(61000); assertTrue(new CountryQueryFunction(pool).apply("g",Map.of("m",Map.of())).isEmpty());
         assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,budget.available());
     }
-    @Test void readFailureAndTimeSpentReadingCannotCreateEntriesOrRenewDeadline() {
+    @Test void readFailureDoesNotAdmitAndSuccessfulAdmissionStartsLocalTtl() {
         when(redis.hmget(anyString(),any(String[].class))).thenThrow(new IllegalStateException("read failed"));
         assertThrows(IllegalStateException.class,()->policy.refill("g",Map.of(any,1),offers("w"),1));
         assertEquals(10000,budget.available());
         doAnswer(call->{clock.set(2000);return List.of(KeyValue.just("w","{\"country\":\"CN\"}"));})
                 .when(redis).hmget(anyString(),any(String[].class));
-        assertTrue(policy.refill("g",Map.of(any,1),offers("w"),1).isEmpty());
+        assertEquals(List.of("w"),policy.refill("g",Map.of(any,1),offers("w"),1));
+        clock.set(62_000); pool.expireAll();
         assertEquals(10000,budget.available());
     }
     @Test void multiCountryTakeKeepsAdmissionOrderAndDoesNotVisitUnrelatedEntries() {

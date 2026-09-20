@@ -30,13 +30,13 @@ API -> Server asks Matching to validate optional Pool supply and explicit Item q
 
 POOL SUPPLY (independent of Item dispatch)
 Main's NORMAL Task descriptors -> Pacer groups supply declarations
-    -> Pacer acquires short candidate leases before Matching qualification
-    -> Matching admits qualified candidates into shared Group/Pool stock
+    -> Pacer candidateizes due Workers and recycles aged generations
+    -> Matching qualifies shared generation fences into Pools with local TTL
 
 ITEM DISPATCH
 Main's NORMAL Task descriptors -> due Items -> Matching executes each Item's query
-    -> Pool functions consume held stock; Identity/Phone functions return identity hints
-    -> Kernel exact-transfers Pool fences or directly acquires current Worker execution holds
+    -> Pool functions consume candidate stock; Identity/Phone functions return identity hints
+    -> Kernel exact-acquires Pool fences or directly acquires due Worker execution holds
     -> Kernel claims the Item and publishes a Command
     -> Server -> Adapter/point delivery -> Worker -> Result evidence
     -> Server routes TASK evidence -> Kernel Result convergence

@@ -89,7 +89,7 @@ Single/nightly execution has a 45-minute budget; three repetitions have 120
 minutes, including setup and cleanup. Measurements are not shortened to fit.
 
 Default-off Owner JFR adds submission/activation, Item HASH and Score
-initialization, Dispatch round/check/deferral, refill/initial-hold and
+initialization, Dispatch round/check/deferral, refill/candidateize and
 confirmation-rejection batches, candidate/confirm/claim/publish,
 TASK Result consume/process/store/release and Task RPC admission/probe/observation
 stages. It uses existing arguments and returned counts, never another Redis

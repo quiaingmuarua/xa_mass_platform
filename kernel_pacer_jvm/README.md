@@ -62,7 +62,8 @@ producer scheduling and startup/rollback; keep those values there.
 
 Main reads Task state and descriptors once for its bounded round. Producers do
 not accumulate pending snapshots or discover outside those roots. Refill obtains
-candidate leases before Matching qualification; Item dispatch independently
+candidate generations before Matching qualification and independently recycles
+old candidates; Item dispatch independently
 uses fixed Matching functions and verifies candidates before exact claim and
 Command publication. Matching owns query interpretation and resources; Pacer
 owns policy and correlation.

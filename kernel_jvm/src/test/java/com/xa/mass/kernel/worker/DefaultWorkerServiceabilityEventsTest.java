@@ -26,7 +26,7 @@ class DefaultWorkerServiceabilityEventsTest {
                                 List.of("connected", "route", "probe"),
                                 null
                         ),
-                        recordingScore(calls, null)
+                        recordingScore(calls, null), 40_000L
                 );
 
         events.onAvailable(Map.of("connected", new NetworkObservation("adapter-1", 49_001L)));
@@ -54,7 +54,7 @@ class DefaultWorkerServiceabilityEventsTest {
         DefaultWorkerServiceabilityEvents events =
                 new DefaultWorkerServiceabilityEvents(
                         catalog(workers, lookupChunks),
-                        recordingScore(new ArrayList<>(), scoreChunks)
+                        recordingScore(new ArrayList<>(), scoreChunks), 40_000L
                 );
 
         events.onAvailable(evidence);
@@ -67,7 +67,7 @@ class DefaultWorkerServiceabilityEventsTest {
     void missingBindingOrWrongEndpointDoesNotReachScores() {
         List<String> calls = new ArrayList<>();
         var events = new DefaultWorkerServiceabilityEvents(
-                catalog(List.of("known"), null), recordingScore(calls, null));
+                catalog(List.of("known"), null), recordingScore(calls, null), 40_000L);
         events.onAvailable(Map.of("known", new NetworkObservation("wrong", 49_000L),
                 "missing", new NetworkObservation("adapter-1", 49_000L)));
         events.onRouteUnavailable(Map.of("known", new NetworkObservation("wrong", 49_001L)));
@@ -125,7 +125,7 @@ class DefaultWorkerServiceabilityEventsTest {
                             (Map<String, Long>) args[1];
                     WorkerScorePolarity target =
                             (WorkerScorePolarity) args[2];
-                    assertEquals(target == WorkerScorePolarity.HOT_ACQUIRE, args[3]);
+                    assertEquals(target == WorkerScorePolarity.HOT_ACQUIRE ? 40_000L : 0L, args[3]);
                     if (chunkSizes != null) {
                         chunkSizes.add(evidence.size());
                     }

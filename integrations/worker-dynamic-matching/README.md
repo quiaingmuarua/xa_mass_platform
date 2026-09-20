@@ -94,13 +94,18 @@ fleet. A dedicated reader checks both Groups every 200 ms. Bootstrap requires
 facts for all 1,000 Workers. Every property checkpoint requires the latest Map
 for every changed identity within the same five-second budget. Lab file checks use four
 bounded concurrent readers and still verify every Worker record. Result polling
-starts only after a Task is approved.
+starts only after a Task is approved. Positive witness waits also read their own
+at-most-100 pending Result identities directly, so the background reader's large
+Task pages cannot delay a witness observation. Both successful Results and completed
+execution witnesses must still be observed within the original 60-second window;
+a read finishing after the deadline cannot turn a timeout into success. This uses
+the existing waiting thread, without another reader thread or changed workload.
 
 Actual executors of witness Items must be among the 100 targets. Stable A/B
 Workers cannot execute the opposite background rule, and no execution crosses
 Groups. Previously confirmed background executions on mutable Workers may
 continue through a change. Runtime Properties do not define an atomic scheduling
-cutover. Seal/transfer ordering remains a Redis Owner proof.
+cutover. Generation invalidation/execution acquisition ordering remains a Redis Owner proof.
 
 Property checkpoints allow five seconds from the last mutation send to both
 observations. Each HTTP request is bounded by two seconds and Adapter Direct

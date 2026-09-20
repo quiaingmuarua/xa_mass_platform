@@ -28,29 +28,24 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** atomic owner operations preserve scores, resources, identities,
   bindings and result transitions against real Redis. Worker registration adds
   cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
-  client-command cost oracles. Candidate invalidation proves one-command seal
-  batches, exact execution transfer, preserved execution release fences
-  and soft reacquisition after expiry. Current-slot network evidence
-  preserves Worker lease coordinates and
-  mark, with both polarity orders, exact confirmation races and one-command
-  100-Worker batches. Soft transfer preserves or extends the deadline and validates
-  NOOP in Redis; sealed holds reject transfer. A cached original fence cannot
-  commit execution or release another caller's transferred hold. MAX,0 follows
-  ordinary soft rules and pause atomically writes MAX,1. Relative targets may
-  equal MAX but never exceed it. Past-slot freshness and evidence preservation remain separate
-  oracles. Repeated head observations plus acquisition reach equal-score Workers
-  without skipping the intervening batch; expired leases keep their newer positions.
-  Serviceability holds use Redis execution time plus caller-supplied delay;
-  both HOT and RECOVERY reach 250 equal-score members in 100/100/50 batches.
-  Due-slot/cold boundaries, coordinates older than 24 hours, future-evidence preservation
-  and concurrent exact holds are Owner oracles; Pacer tests own fixed recheck delays,
-  continued checks beyond the former attempt limit and next-round discovery.
-  Corrupt scores are filtered within the raw read limit, without replacement reads
-  or an automatic bypass guarantee through a fully corrupt head.
-  Pacer acquisition precedes projection: supplied candidates are already held,
-  even if they do not match. Command-order assertions distinguish that path from
-  qualification-before-acquisition; original deadlines, natural expiry and later
-  sealing invalidation retain their independent oracles. TaskItem outcome proof covers
+  client-command cost oracles. Candidate generation proofs establish high-mark
+  encoding, exact candidateize without time renewal, bounded aged recycling,
+  four 250-member heads advancing 100/100/50 and current-slot exclusions.
+  Properties advances past HOT time and clears candidate mark; requalification
+  needs no aged recycle and cannot restore the old fence. An execution-first
+  future hold survives; RECOVERY mark and cold-registration protection remain.
+  Shared Pool and Direct callers have one execution-acquisition winner and stale
+  stock cannot release it. Pool tests fix admission TTL, duplicate non-renewal,
+  full-capacity replacement and old selection protection. Current-slot network
+  evidence preserves time/mark; CONNECTED only promotes below-floor past time to
+  floor and rejects pre-floor activation. Pause writes MAX/0; relative targets
+  accept MAX and reject larger slots. Recovery keeps unlimited age/attempts and
+  Redis-relative delay; Pacer owns timing and budget policy. Refill filters corrupt
+  raw rows, while Serviceability retains strict fractional conversion; neither
+  supplements a bounded head. Serviceability merges two mark ranges before final
+  raw-budget truncation. Candidateize precedes qualification, with no substitute
+  discovery. Facts/index writes and generation invalidation remain independent.
+  TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
   promotion/state reads. Server state-query counting excludes Result reads.
@@ -104,7 +99,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   witnesses stay unexecuted, eligible witnesses execute on actual target
   replicas, and all submitted Results close with completed execution witnesses
   without new Prepare or process/Worker restart.
-- **Deliberate nonclaims:** atomic facts/Score cutover, exact seal/transfer
+- **Deliberate nonclaims:** atomic facts/Score cutover, exact invalidation/acquisition
   ordering, cancellation of confirmed work, exactly-once execution, reliable
   SYSTEM replay, fault recovery, Task fairness, throughput, latency SLA or soak.
 - **Contract:** [Complete scenario](../../integrations/worker-dynamic-matching/README.md).

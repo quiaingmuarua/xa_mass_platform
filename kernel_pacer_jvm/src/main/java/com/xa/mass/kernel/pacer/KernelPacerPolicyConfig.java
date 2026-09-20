@@ -8,23 +8,17 @@ import java.util.function.LongSupplier;
  * Root policy facts shared by both convergence packages.
  *
  * <p>Each package owns its concrete preset values. The root owns only the
- * selected finite preset and the single HOT eligibility floor shared by
- * Serviceability Dispatch and Assignment.</p>
+ * selected finite preset and one activation floor. Network evidence uses it in
+ * every preset; only scanning presets apply it to Serviceability and Refill.</p>
  */
 record KernelPacerPolicyConfig(
         PolicyPreset preset,
-        long hotEligibilityFloorMillis
+        long activationFloorMillis
 ) {
 
     KernelPacerPolicyConfig {
         Objects.requireNonNull(preset, "preset");
-        if (serviceabilityEnabled(preset)) {
-            requireFloor(hotEligibilityFloorMillis);
-        } else if (hotEligibilityFloorMillis != 0) {
-            throw new IllegalArgumentException(
-                    "disabled Serviceability must not carry a HOT floor"
-            );
-        }
+        requireFloor(activationFloorMillis);
     }
 
     static KernelPacerPolicyConfig forPreset(PolicyPreset preset) {
@@ -37,15 +31,16 @@ record KernelPacerPolicyConfig(
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
-        if (!serviceabilityEnabled(preset)) {
-            return new KernelPacerPolicyConfig(preset, 0);
-        }
         long floor = currentTimeMillis.getAsLong();
         return new KernelPacerPolicyConfig(preset, floor);
     }
 
     boolean serviceabilityEnabled() {
         return serviceabilityEnabled(preset);
+    }
+
+    long hotEligibilityFloorMillis() {
+        return serviceabilityEnabled() ? activationFloorMillis : 0;
     }
 
     private static boolean serviceabilityEnabled(PolicyPreset preset) {

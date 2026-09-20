@@ -33,7 +33,7 @@ Task dispatch
   -> due Items; TTL/exhaustion settlement
   -> Group + messageId-to-WorkerQuery map -> fixed Matching query functions
   -> Pool stock with original fences / direct identity hints
-  -> strict Worker transfer / current execution acquisition
+  -> strict observed / current execution acquisition
   -> exact Item claim -> Command
   -> ACTIVE recheck before exact Task close or idle park
 ```
@@ -55,15 +55,16 @@ resources own bounded stock. Index resources are maintained from facts
 independently of Pool demand. See the
 [Matching resource composition](../../worker_matching_jvm/README.md#fixed-resource-composition).
 
-For Pool supply, Pacer acquires short leases before Matching qualification.
-Matching retains the original fence and deadline. A Pool function consumes that
-stock, and Kernel confirms its exact soft fence before execution. Direct
-`workerId` and `worker.phone` functions require no Pool stock and return identity
-hints for a separate current-state execution acquisition. Both execution paths
-seal the admitted Worker hold; an active sealed hold cannot be preempted.
-A failed strict expectation never falls back to identity acquisition.
+For Pool supply, Pacer candidateizes due ordinary HOT without advancing time.
+Matching retains that generation with its own admission TTL and may share it
+across Pools. Pacer separately recycles aged generations. A Pool function consumes
+stock; Kernel exact-acquires its due fence for execution. Direct workerId/worker.phone
+functions return identity hints for atomic current due acquisition. Both write a
+new execution fence; current/future holds cannot be preempted. Strict failure
+never falls back to identity acquisition. Rejected/unmatched candidates await
+bounded recycling, while unused local stock expires independently.
 
-Unselected or rejected holds expire naturally. Pacer carries names and immutable
+Pacer carries names and immutable
 data without interpreting business queries, reading facts or constructing index
 coordinates. Item queries cannot create refill demand. See
 [Assignment and Dispatch](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md).
@@ -95,7 +96,7 @@ owns parsing, grouping and semantic publication;
 [Result storage](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
 owns the projection format and interruption windows. The
 [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
-owns the opaque fence across initial hold, assignment and release.
+owns the opaque fence across candidate generation, assignment and release.
 
 Optional [Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 combines bounded demanded-Group probes and Adapter evidence. Dispatch advances

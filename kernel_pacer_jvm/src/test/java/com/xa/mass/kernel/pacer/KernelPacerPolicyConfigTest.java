@@ -13,14 +13,15 @@ import org.junit.jupiter.api.Test;
 class KernelPacerPolicyConfigTest {
 
     @Test
-    void defaultPresetDoesNotMintAServiceabilityFloor() {
+    void defaultPresetSamplesNetworkFloorWithoutEnablingScans() {
         AtomicInteger clockReads = new AtomicInteger();
         KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
                 PolicyPreset.DEFAULT,
                 clockReads::incrementAndGet
         );
 
-        assertEquals(0, clockReads.get());
+        assertEquals(1, clockReads.get());
+        assertEquals(1, config.activationFloorMillis());
         assertEquals(PolicyPreset.DEFAULT, config.preset());
         assertFalse(config.serviceabilityEnabled());
         assertEquals(0, config.hotEligibilityFloorMillis());
@@ -69,7 +70,7 @@ class KernelPacerPolicyConfigTest {
                 IllegalArgumentException.class,
                 () -> new KernelPacerPolicyConfig(
                         PolicyPreset.DEFAULT,
-                        1
+                        0
                 )
         );
     }

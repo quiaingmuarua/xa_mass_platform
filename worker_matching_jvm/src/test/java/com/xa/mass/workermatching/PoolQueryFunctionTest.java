@@ -1,6 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -38,9 +37,9 @@ class PoolQueryFunctionTest {
         var budget = new CandidateBudget();
         var pool = spy(new CandidatePool(() -> 1000, budget));
         pool.admit("g", List.of(
-                new CandidatePool.Admission(new HeldCandidate("cn1", 11, 2000), Map.of("country", "CN")),
-                new CandidatePool.Admission(new HeldCandidate("us", 12, 2000), Map.of("country", "US")),
-                new CandidatePool.Admission(new HeldCandidate("cn2", 13, 2000), Map.of("country", "CN"))));
+                new CandidatePool.Admission("cn1", (long) (11), Map.of("country", "CN")),
+                new CandidatePool.Admission("us", (long) (12), Map.of("country", "US")),
+                new CandidatePool.Admission("cn2", (long) (13), Map.of("country", "CN"))));
         var function = spy(new CountryQueryFunction(pool));
         var client = mock(RedisClient.class);
         try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_strategy_order"), Map.of());
@@ -65,7 +64,7 @@ class PoolQueryFunctionTest {
     @Test void entryBudgetAndLateInvalidInputAreRejectedBeforeAnyPoolConsumption() {
         var budget = new CandidateBudget();
         var pool = new CandidatePool(() -> 1000, budget);
-        pool.admit("g", List.of(new CandidatePool.Admission(new HeldCandidate("w", 19, 2000), Map.of("country", "CN"))));
+        pool.admit("g", List.of(new CandidatePool.Admission("w", (long) (19), Map.of("country", "CN"))));
         var identity = spy(new IdentityQueryFunction());
         try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_strategy_admission"), Map.of());
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,

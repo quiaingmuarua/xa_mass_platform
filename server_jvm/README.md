@@ -306,8 +306,8 @@ Direct queries use `{"executorName":"workerId","input":"w-123"}` or
 in all Groups; Phone requires explicit Group enablement and indexes the exact
 Worker Properties phone without Messaging conditions. Neither requires Pool stock.
 Matching returns identity hints, Pacer verifies Binding/Group, and Kernel atomically
-acquires execution from due HOT or an active soft hold. Active sealed holds cannot
-be preempted. Server neither reads Score nor selects an alternative on failure.
+acquires execution from strictly due HOT with either mark. Current/future holds
+cannot be preempted. Server neither reads Score nor selects an alternative on failure.
 
 Submission normalizes without consuming candidates. Finite invalid members retain
 per-member rejection; managed calls validate every original query, including
@@ -342,7 +342,7 @@ passes messageId-to-query Maps for the fixed function table to normalize, execut
 and correlate.
 Catalog startup rebuilds configured
 derived indexes before the bean is exposed. Matching owns the country range and
-take time; Kernel retains hold, exact soft-to-sealed transfer and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
+take time; Kernel retains candidate generation, due execution acquisition and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 
 `results:load` accepts a direct JSON array and returns one state object for
 every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
@@ -963,20 +963,21 @@ An APPLIED Platform patch requests the same Score invalidation with one Worker.
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
 identity, Binding and Worker records remain intact. Subsequent refill rounds read
-the new facts. Invalidation calls sealCurrentScoreHolds, preserving current
-polarity and deadline while setting mark=1; missing scores are not created. Existing Candidate
-entries remain until consumption or expiry, but their old fences cannot pass
-execution transfer after invalidation. Scheduling is not explicitly awakened.
+the new facts. Invalidation calls advancePastScoreTimesToNow. Past HOT atomically
+advances to Redis execution time with mark=0; past non-cold RECOVERY advances while
+retaining mark. Both preserve polarity.
+Cold RECOVERY, current/future holds and missing members are not changed. The cold
+exception preserves pending initial network activation. Cached old fences fail
+strict execution acquisition after a successful generation change. Scheduling is
+not explicitly awakened; normal Refill can observe invalidated HOT after the
+current slot passes, without waiting for candidate recycling.
 
-Facts commit before Score invalidation. A confirmation can win in between;
-already confirmed assignments continue. Invalidation failure keeps the
-successful facts response and produces one aggregate diagnostic per Group
-batch. A retry returning UNCHANGED does not replay invalidation. Existing hold
-and Cache expiry bound stale candidates; no ACK, outbox, retry or background
-repair is added. Execution transfer already seals the hold with mark=1,
-so later Properties writes preserve the execution fence used for result release.
-Kernel does not record why a hold is sealed; neither Server nor Matching infers
-an execution commit from a sealed score. Dispatch requires its own TRANSITIONED result.
+Facts commit before Score invalidation. Execution acquisition can win in between;
+its future hold then survives invalidation and keeps its result-release fence.
+Invalidation failure preserves the successful facts response and emits an aggregate
+diagnostic. An UNCHANGED retry does not replay invalidation. There is no ACK,
+outbox, property-version transaction or background repair. Dispatch requires its
+own TRANSITIONED execution acquisition, never an inferred state observation.
 See the [HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 for exact transitions and coordinated upgrade behavior.
 
@@ -1123,7 +1124,8 @@ cannot hide an unintended connection during assembly.
 
 `xa.mass.redis` is the single production source for the Redis URL and scope.
 `kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT
-eligibility floor for each Serviceability-enabled Runtime assembly. Server
+activation floor for every Runtime assembly. DEFAULT uses it for network activation
+without enabling Assignment scan floor or periodic Probe. Server
 passes only the selected preset, shutdown timeout and owner dependencies; it
 does not interpret scheduling policy. `SERVICEABILITY_DEFAULT` provides normal
 production cadence with Serviceability enabled. Runtime Boundary uses a unique

@@ -54,13 +54,13 @@ Worker Score uses package-private encoding arithmetic and fixed atomic Redis
 operations inside its existing provider. Pacer supplies recheck delay; Worker
 event Mechanisms select polarity and exact-release semantics. The
 [Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
-defines composition and command budgets. Worker Score encodes only polarity,
-time and mark. Active HOT mark=0 is a transferable soft hold; mark=1 is sealed.
-The Owner exposes separate observed-score and current-identity transfers, plus
-a mechanical seal choice, without
-recording seal reasons. Transfer keeps or extends the deadline, while pause
-atomically writes MAX,1. The numeric layout stays unchanged and no compatibility
-reader or migration is added; existing MAX,0 follows ordinary soft rules.
+defines composition and command budgets. High-mark Worker Score separates
+ordinary/execution time from candidate generation. Candidate admission preserves
+time; strict or current due acquisition establishes mark=0 execution leases.
+Properties advances past time and clears HOT candidate mark, while retaining
+RECOVERY mark and leaving current/future holds unchanged. Pause writes MAX,0, and
+CONNECTED only promotes below-floor past time to startup floor. The new encoding
+requires a new scope; no compatibility decoder or migration is added.
 
 ## Production Call Closure
 

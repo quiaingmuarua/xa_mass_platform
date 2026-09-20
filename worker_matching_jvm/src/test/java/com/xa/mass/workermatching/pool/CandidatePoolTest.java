@@ -5,7 +5,6 @@ import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.QueryFunction;
 
 
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import java.util.*;
 import java.util.concurrent.*;
@@ -18,11 +17,37 @@ class CandidatePoolTest {
     final AtomicLong clock=new AtomicLong(1000);
     final CandidateBudget budget=new CandidateBudget();
     final CandidatePool pool=new CandidatePool(clock::get,budget);
-    CandidatePool.Admission row(String id,String country,long deadline) {
-        return new CandidatePool.Admission(new HeldCandidate(id,17,deadline),
-                Map.of("country",country,"phone","number-"+id,"country-phone",country+"/number-"+id));
+    CandidatePool.Admission row(String id,String country,long score) {
+        return new CandidatePool.Admission(id, score, Map.of("country",country,"phone","number-"+id,"country-phone",country+"/number-"+id));
     }
     List<String> ids(List<WorkerCandidate> candidates) { return candidates.stream().map(WorkerCandidate::workerId).toList(); }
+
+    @Test void duplicateFenceDoesNotExtendTtlAndReplacementCannotBeConsumedByOldSelection() {
+        pool.admit("g", List.of(row("w", "CN", 17)));
+        clock.set(60_000);
+        assertEquals(List.of(), pool.admit("g", List.of(row("w", "CN", 17))));
+        clock.set(61_000);
+        assertTrue(pool.take("g", Map.of(all(), 1)).get(all()).isEmpty());
+        pool.admit("g", List.of(row("w", "CN", 18)));
+        var oldSelection = pool.select("g", Map.of(all(), 1));
+        assertEquals(List.of("w"), pool.admit("g", List.of(row("w", "US", 19))));
+        assertTrue(pool.commit("g", oldSelection).get(all()).isEmpty());
+        assertTrue(pool.take("g", Map.of(range("country", List.of("CN")), 1)).get(range("country", List.of("CN"))).isEmpty());
+        assertEquals(new WorkerCandidate("w", 19), pool.take("g", Map.of(all(), 1)).get(all()).getFirst());
+    }
+
+    @Test void fullProcessAndPoolStillReplaceExistingIdentitiesWithoutExtraCapacity() {
+        for (int g = 0; g < 10; g++) {
+            var rows = new ArrayList<Admission>();
+            for (int i = 0; i < 1000; i++) rows.add(row("w" + i, "CN", 20));
+            pool.admit("g" + g, rows);
+        }
+        assertEquals(0, budget.available());
+        assertEquals(List.of("w0"), pool.admit("g0", List.of(row("new", "US", 21), row("w0", "US", 21))));
+        assertEquals(0, budget.available());
+        assertEquals(new WorkerCandidate("w0", 21), pool.take("g0", Map.of(range("country", List.of("US")), 1))
+                .get(range("country", List.of("US"))).getFirst());
+    }
 
     @Test void distinctFunctionsShareOneResourceAndAllMembershipsDisappearTogether() {
         Map<String, QueryFunction> functions=Map.of(
@@ -42,16 +67,16 @@ class CandidatePoolTest {
     @Test void countsAndSelectionVisitOnlyRequestedRangesAndExpiryHasIndependentAccounting() {
         var entries=new ArrayList<CandidatePool.Admission>();
         for(int i=0;i<1000;i++) entries.add(row("w"+i,i<990?"US":"CN",i==0?1100:5000));
-        pool.admit("g",entries); var cn=range("country",List.of("CN"));
+        pool.admit("g",entries.subList(0,1)); clock.set(1100); pool.admit("g",entries.subList(1,entries.size())); var cn=range("country",List.of("CN"));
         assertEquals(10,pool.observe("g",List.of(cn),List.of()).counts().get(cn));
         assertEquals(1,pool.visits().countBuckets());
         assertEquals(List.of("w990"),ids(pool.take("g",Map.of(cn,1)).get(cn)));
         assertEquals(1,pool.visits().selectedEntries()); assertEquals(0,pool.visits().expiredEntries());
-        clock.set(1100);
+        clock.set(61000);
         assertEquals(9,pool.observe("g",List.of(cn),List.of()).counts().get(cn));
         assertEquals(1,pool.visits().expiredEntries()); assertEquals(1,pool.visits().selectedEntries());
         assertEquals(9002,budget.available());
-        clock.set(5000); pool.expireAll();
+        clock.set(61100); pool.expireAll();
         assertEquals(0,pool.viewBuckets("g")); assertEquals(10_000,budget.available());
     }
 

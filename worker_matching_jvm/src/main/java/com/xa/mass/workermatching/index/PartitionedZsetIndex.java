@@ -63,7 +63,7 @@ public abstract class PartitionedZsetIndex {
         this.commands=Objects.requireNonNull(commands); this.keyspace=Objects.requireNonNull(keyspace); this.namespace=namespace;
     }
 
-    /** Recheck membership and obtain the entire query projection after acquisition established the initial soft hold. */
+    /** Recheck membership and obtain the entire query projection after Pacer established the candidate generation. */
     public Map<String,Projection> snapshot(String group, List<String> ids) {
         if (ids.isEmpty()) return Map.of();
         if (ids.size()>100) throw new IllegalArgumentException("at most 100 identities");

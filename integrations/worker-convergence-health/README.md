@@ -128,8 +128,8 @@ DSL or automatic compensation.
 **Acceptance change:** Host-down establishes the physical outage, not an all-Worker
 scheduling barrier. The wave-two String Items target only the checkpoint pair,
 while the Task's ANY refill target can retain other Workers. An unused offline
-candidate may repeatedly expire and be refilled without any actual Adapter
-delivery. Its refreshed Score also stays outside the old-HOT probe range.
+candidate may be recycled and refilled without any actual Adapter delivery.
+Those coordinate advances may keep it outside the old-HOT probe range.
 Neither that residual HOT state nor an unavailable diagnostic sample blocks the
 restart. The checkpoint, recovery work and retained Result witnesses remain
 mandatory; the 1,000-Worker topology, Item counts and existing time bounds remain.
@@ -145,9 +145,9 @@ release, without recording payload content. This is a healthy subsequent handoff
 witness, not a guarantee under continuing evidence loss.
 
 The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
-current-slot evidence may correct polarity while preserving the confirmable
-lease coordinate and mark. It also checks past-slot rejection, PAUSE,
-arrival order, exact confirmation races and bounded command cost. This process
+current-slot evidence may correct polarity while preserving the stored
+coordinate and mark. Execution acquisition itself requires strictly past time. It also checks past-slot rejection, PAUSE,
+arrival order, exact execution acquisition races and bounded command cost. This process
 proof does not force evidence into a particular slot or establish reliable replay.
 Owner/Pacer proofs also cover Recovery beyond the former attempt and 24-hour limits;
 the default 15-second eligibility delay is not a Probe execution deadline.

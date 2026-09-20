@@ -50,7 +50,7 @@ class RedisWorkerScoreCoreTest {
                     scoreCore.rewriteCurrentPolarityWithinTimeFence(
                             "group-1",
                             Map.of("worker-1", 0L),
-                            WorkerScorePolarity.HOT_ACQUIRE, true
+                            WorkerScorePolarity.HOT_ACQUIRE, System.currentTimeMillis()
                     ).get("worker-1").status()
             );
         } finally {
@@ -74,7 +74,7 @@ class RedisWorkerScoreCoreTest {
                 assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of(), delay));
             }
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scoreCore.deferObservedToRecovery("g", Map.of("cold", -2L), 1_000)
+                    scoreCore.deferObservedToRecovery("g", Map.of("cold", -1L), 1_000)
                             .get("cold").status());
             assertEquals(Map.of(), scoreCore.deferObservedToRecovery("g", Map.of(), 1_000));
             var tooMany = new java.util.LinkedHashMap<String, Long>();
@@ -102,14 +102,14 @@ class RedisWorkerScoreCoreTest {
                     List.<String>of(), List.of("w", "w"), List.of(" "),
                     java.util.stream.IntStream.range(0, 101).mapToObj(i -> "w" + i).toList())) {
                 assertThrows(IllegalArgumentException.class,
-                        () -> scoreCore.sealCurrentScoreHolds("group-1", ids));
+                        () -> scoreCore.advancePastScoreTimesToNow("group-1", ids));
                 assertThrows(IllegalArgumentException.class,
                         () -> scoreCore.observeSchedulingStates("group-1", ids));
             }
             assertThrows(IllegalArgumentException.class,
-                    () -> scoreCore.sealCurrentScoreHolds("group-1", null));
+                    () -> scoreCore.advancePastScoreTimesToNow("group-1", null));
             assertThrows(IllegalArgumentException.class,
-                    () -> scoreCore.sealCurrentScoreHolds(" ", List.of("w")));
+                    () -> scoreCore.advancePastScoreTimesToNow(" ", List.of("w")));
         } finally {
             redisClient.shutdown();
         }
@@ -119,19 +119,19 @@ class RedisWorkerScoreCoreTest {
     void activeConfirmationValidatesInputsBeforeRedisAccess() {
         RedisClient client = RedisClient.create("redis://127.0.0.1:1");
         try (var scores = new RedisWorkerScoreCore(client, new RedisKeyspace("test_worker_score_unit"))) {
-            assertEquals(Map.of(), scores.transferObservedHotScoreLeases("g", Map.of(), 1_000, true));
+            assertEquals(Map.of(), scores.acquireObservedHotScoreLeases("g", Map.of(), 1_000));
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scores.transferObservedHotScoreLeases("g", Map.of("w", 200L), -1, true).get("w").status());
+                    scores.acquireObservedHotScoreLeases("g", Map.of("w", 200L), -1).get("w").status());
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scores.transferObservedHotScoreLeases("g", Map.of("w", 0L), -1, true).get("w").status());
+                    scores.acquireObservedHotScoreLeases("g", Map.of("w", 0L), -1).get("w").status());
             assertEquals(WorkerScoreTransitionStatus.INVALID,
-                    scores.transferObservedHotScoreLeases("g", Map.of("w", 0L), 1_000, true).get("w").status());
+                    scores.acquireObservedHotScoreLeases("g", Map.of("w", 0L), 1_000).get("w").status());
             assertEquals(WorkerScoreTransitionStatus.INVALID,
                     scores.acquireObservedHotScoreLeases("g", Map.of("w", 0L), 1_000).get("w").status());
             assertThrows(IllegalArgumentException.class,
-                    () -> scores.transferObservedHotScoreLeases("g", Map.of(" ", 200L), 1_000, true));
+                    () -> scores.acquireObservedHotScoreLeases("g", Map.of(" ", 200L), 1_000));
             assertThrows(IllegalArgumentException.class,
-                    () -> scores.transferObservedHotScoreLeases("g", null, 1_000, true));
+                    () -> scores.acquireObservedHotScoreLeases("g", null, 1_000));
 
         } finally {
             client.shutdown();

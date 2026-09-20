@@ -32,7 +32,7 @@ class WorkerSelectorAdmissionTest {
         var client=mock(RedisClient.class);
         try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
             var stock=new CandidatePool(System::currentTimeMillis, budget);
-            var rule=new CountryPoolPolicy(System::currentTimeMillis, stock, storage::readWorkerFacts);
+            var rule=new CountryPoolPolicy(stock, storage::readWorkerFacts);
             assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             assertThrows(IllegalArgumentException.class,()->EligibilityQuery.parse(Map.of("worker.country",Map.of("op","in","values",List.of("CN")))));
             assertDoesNotThrow(()->rule.normalizeQuery("g",EligibilityQuery.parse(Map.of("worker.country",List.of("CN")))));

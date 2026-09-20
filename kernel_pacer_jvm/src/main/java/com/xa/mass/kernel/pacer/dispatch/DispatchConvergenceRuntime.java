@@ -70,7 +70,9 @@ public final class DispatchConvergenceRuntime {
                 : serviceabilityConfig.hotEligibilityFloorMillis();
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(workerCatalog, workerMatching);
-        WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores,workerMatching,assignmentHotFloor);
+        WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores, workerMatching, assignmentHotFloor,
+                preset == PolicyPreset.RUNTIME_BOUNDARY_PROOF ? 10 : WorkerEligibilityRefillPolicy.CANDIDATE_RECYCLE_AFTER_MILLIS,
+                System::currentTimeMillis);
         TaskInitializationPolicy initialization =
                 new TaskInitializationPolicy(
                         itemScores,

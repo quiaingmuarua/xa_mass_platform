@@ -195,9 +195,10 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
 - Preserve full validation before consumption and the Owner's partial-success
   contracts across functions/Pools. Earlier admissions or consumption survive a
   later failure; do not add rollback, replay or whole-selection retries.
-- Pacer acquires candidate leases before Matching qualification. Matching accepts
-  only supplied held identities, preserves original fences/deadlines and cannot
-  discover replacements, acquire/renew leases or reserve deficits.
+- Pacer candidateizes due ordinary HOT before Matching qualification. Matching
+  accepts only supplied generation fences, starts local admission TTL and may
+  share a fence across Pools. It cannot discover substitutes or acquire/renew
+  execution leases. Aged candidate recycling stays in the existing Refill Producer.
 - Pool candidates retain strict nonzero expectations. Zero is an identity hint
   only at the Matching-to-Pacer boundary; no zero sentinel reaches Kernel.
   Do not downgrade a failed strict expectation to current identity acquisition,
@@ -225,12 +226,13 @@ Policy documents own workflow, capacity and lifecycle.
   Busy Producers skip snapshots; discovery stays vertical beneath those roots.
   Refill and dispatch share Main's already-read NORMAL descriptors.
 - Only the package-private assignment closure constructs claimed Commands, after
-  Worker execution admission and exact Item claim. Both strict transfer and
-  current identity acquisition must return TRANSITIONED; the returned sealed
+  Worker execution admission and exact Item claim. Both strict observed and
+  current identity acquisition require due HOT and TRANSITIONED; the returned execution
   fence is used for Command correlation and exact Result release.
-- Refill observes the due HOT head from the floor each round without a within-Group
-  offset; Group rotation is separate. Preserve the Owner's bounded raw read and
-  corrupt-head limits, original lease deadline and expiry without compensation.
+- Refill observes the due ordinary HOT head from the floor without a within-Group
+  offset. Candidateization preserves generation; independent bounded recycling
+  advances old candidate time. Preserve raw-row/corrupt-head budgets and Group
+  rotation. Pool TTL governs take only; failures do not compensate Score writes.
 - Serviceability reads current HOT/RECOVERY heads without cross-round cursors or
   cooldowns. Score Owner uses Redis time and exact CAS to schedule the next
   recheck before Probe offer. Network evidence is consumed in every preset.

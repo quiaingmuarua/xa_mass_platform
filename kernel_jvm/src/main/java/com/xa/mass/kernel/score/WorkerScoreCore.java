@@ -20,16 +20,16 @@ public interface WorkerScoreCore {
             List<String> workerIds
     );
 
-    /** Atomically advances to the maximum time and seals, retaining polarity. */
+    /** Atomically writes the maximum time and mark=0, retaining polarity. */
     WorkerSchedulingChangeStatus pauseScheduling(String homeBucketId, String workerId);
 
     WorkerSchedulingChangeStatus resumeScheduling(String homeBucketId, String workerId);
 
     /**
-     * Reads the head of the current due HOT range, including either mark value.
+     * Reads the head of the current due HOT range, with mark=0.
      * Returns an immutable map in ascending score/member order. Limit is 1..100 raw rows;
      * corrupt rows are omitted without scanning replacements or changing stored scores.
-     * Successful acquisition moves candidates out of this range; observation alone does not.
+     * Successful candidateization moves candidates out of this range; observation alone does not.
      */
     Map<String, Long> observeDueHotScoreCandidates(
             String workerGroupId,
@@ -62,33 +62,29 @@ public interface WorkerScoreCore {
             int limit
     );
 
-    /** Exact-acquires due HOT with either mark and establishes a new soft hold. */
+    /** Exact-acquires strictly due HOT with either mark into a mark=0 execution hold. */
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
             String homeBucketId,
             Map<String, Long> observedScores,
             long targetTimeMillis
     );
 
-    /**
-     * Exact-transfers observed active soft HOT holds, retaining or extending their deadlines.
-     * Every expected score must be valid and match exactly; zero is invalid.
-     * Seal makes the resulting hold non-transferable. An unchanged soft target is NOOP
-     * after Redis exact/time validation; only TRANSITIONED supplies a new fence.
-     */
-    Map<String, WorkerScoreTransitionResult> transferObservedHotScoreLeases(
-            String homeBucketId,
-            Map<String, Long> expectedScores,
-            long targetTimeMillis,
-            boolean seal
-    );
+    /** Exact due HOT mark=0 becomes candidate mark=1 without changing generation. */
+    Map<String, WorkerScoreTransitionResult> candidateizeObservedHotScores(
+            String homeBucketId, Map<String, Long> observedScores);
+
+    /** Ascending bounded raw mark=1 head, within the floor and exclusive cutoff. */
+    Map<String, Long> observeHotCandidateScoresBefore(
+            String homeBucketId, @Nullable Long floorMillis, long cutoffMillis, int limit);
+
+    /** Exact due HOT mark=1 becomes ordinary HOT at Redis execution time. */
+    Map<String, WorkerScoreTransitionResult> recycleObservedHotCandidates(
+            String homeBucketId, Map<String, Long> observedScores);
 
     /**
-     * Acquires sealed execution leases from current due HOT (either mark) or active soft HOT.
-     * Reads, validates and retains or extends each deadline atomically, without a prior score
-     * observation. Active sealed, RECOVERY or missing members are STALE; corrupt scores are
-     * INVALID without a score payload. Never creates or repairs a member. Success always
-     * transitions to a sealed fence; there is no soft/NOOP mode. IDs must be unique; empty
-     * input is a no-op. Each Lua processes at most 100 Workers, without a batch transaction.
+     * Atomically acquires current strictly due HOT, either mark, into mark=0 execution holds.
+     * Current/future, RECOVERY and missing members are STALE; corrupt values are INVALID.
+     * Empty input is a no-op. Each Lua processes at most 100 unique IDs without pre-reading.
      */
     Map<String, WorkerScoreTransitionResult> acquireCurrentHotScoreLeases(
             String homeBucketId,
@@ -96,8 +92,12 @@ public interface WorkerScoreCore {
             long targetTimeMillis
     );
 
-    /** Seals current coordinates for 1..100 unique IDs without changing time or polarity. */
-    Map<String, WorkerScoreTransitionResult> sealCurrentScoreHolds(
+    /**
+     * Advances past times except cold RECOVERY to Redis now for 1..100 unique IDs.
+     * Clears the HOT candidate mark; preserves RECOVERY mark and both polarities.
+     * Current/future coordinates are unchanged.
+     */
+    Map<String, WorkerScoreTransitionResult> advancePastScoreTimesToNow(
             String homeBucketId,
             List<String> workerIds
     );
@@ -119,15 +119,16 @@ public interface WorkerScoreCore {
 
     /**
      * Corrects current polarity when the stored slot is current/future or no later than
-     * the supplied slot. Optional refresh advances only a strictly older past slot;
-     * mark is always retained.
+     * the supplied slot. A minimum time advances only past coordinates below that
+     * minimum when the supplied evidence reaches it. Zero disables the advance.
+     * Mark is always retained.
      */
     Map<String, WorkerScoreTransitionResult>
             rewriteCurrentPolarityWithinTimeFence(
                     String homeBucketId,
                     Map<String, Long> suppliedTimeMillisByWorkerId,
                     WorkerScorePolarity targetPolarity,
-                    boolean refreshPastTime
+                    long minimumTimeMillis
             );
 
     /** Exact-replaces a RECOVERY observation at the fixed cold slot, preserving mark. */

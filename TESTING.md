@@ -105,25 +105,18 @@ for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
 cold Prepare followed by verified connection or Polling activation. These proofs
 do not promise activation after lost evidence or atomic Binding/Score commits.
 
-Properties/Candidate invalidation is a Redis Owner claim: one bounded seal
-command, exact execution transfer, both invalidation/transfer orders,
-execution-fence release and subsequent soft acquisition. Server tests
-own APPLIED-only ordering and best-effort response preservation. Runtime Boundary
-and Worker lanes remain downstream witnesses, not a facts/Score transaction or
-loss-repair guarantee.
+Properties/Candidate invalidation is a Redis Owner claim: one Redis-timed batch
+advances past generation without changing mark, exact execution acquisition
+rejects old fences, and execution-first ordering preserves future result fences.
+Server tests own APPLIED-only best-effort invalidation. Facts and Score remain
+separate commits without guaranteed repair.
 
-Observed-score transfer and current execution acquisition are Redis Owner claims:
-both compete atomically for active soft HOT, and the latter also accepts due HOT
-with either mark without an initial hold. Targets never shorten deadlines; active
-sealed, RECOVERY, missing or corrupt members cannot gain execution leases. Exact
-transfer rejects zero; current acquisition receives only identities and always seals. Pacer tests
-prove mixed-candidate partitioning, no strict-to-current fallback, partial-call
-failure without compensation, TRANSITIONED-only Item claim and the returned execution fence in
-ResultContext. Runtime Boundary retains the strict Pool and test-only identity-hint
-Pool witnesses, and ordinary empty-supply Tasks to prove production workerId and
-worker.phone execution from due Workers with neither Pool entries nor prior soft
-holds. Production Pool Rules remain strict. Identity hints may compete for a later soft hold and do not
-promise preservation of an earlier qualification decision.
+Observed and current execution acquisition compete for strictly due HOT with
+either mark. Current/future HOT, RECOVERY, missing and corrupt members cannot gain
+execution. Pacer tests prove strict/current partitioning, no fallback, partial-call
+failure without compensation and TRANSITIONED-only claim using the returned fence.
+Runtime Boundary retains Pool, identity-hint and ordinary empty-supply witnesses.
+Direct lookup needs no candidate hold and cannot preempt an active execution lease.
 
 TaskItem generic terminal progression is a Redis Owner claim: tags 2..9,
 strict maximum-score writes, same-tag slot advancement, exact ACTIVE claim
@@ -419,34 +412,29 @@ throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
 remain protocol/Runtime Boundary claims; the convergence health world does not
 repeat them. Physical Android device behavior remains a separate manual proof.
 
-### Pacer Acquisition Before Rule Qualification
+### Candidate Generation Before Rule Qualification
 
-Pacer supplies only successfully acquired candidate leases. Redis Owner offers A
-while another B remains indexed and proves Rules cannot discover B. No-match and
-qualification failures leave the already acquired lease to expire. Multiple Rules
-share that closed Group batch; actual admitted IDs prevent cross-Rule duplicates.
-Earlier Rule admissions survive a later Rule failure.
+Pacer supplies only successful candidateized fences. Redis Owner offers A while
+B remains indexed and proves Matching cannot discover B. Unmatched candidates,
+capacity failure, failed projection and lost returns recover through normal
+bounded recycling, with no compensation or replay. Several Pools may share the
+same fence; actual entries count against the call budget. Earlier Pool admission
+survives a later Pool failure.
 
-Worker Score proof checks bounded HOT-head observation and acquisition-driven
-progress, soft acquisition, competing transfers and sealed rejection. It proves
-non-shortening soft transfer, fully validated NOOP, sealing without extension,
-request expiry before exact, and one actual transfer winner. MAX,0 follows soft
-rules; pause atomically writes MAX,1, which rejects transfer because sealed.
-Relative deferral accepts MAX and rejects larger targets. A cached original
-Matching fence survives another caller's transfer but cannot execute or release
-the replacement hold. Pacer proves only its own TRANSITIONED result can claim.
-Stale, sealed and expired fences are rejected, including delayed submission.
-Matching's controlled clock proves that qualification and stock waiting consume
-the original deadline. Facts/index atomicity remains separate from sealing invalidation
-and from cross-Rule partial success. Runtime Boundary runs two sharing Tasks through
-a SET/HASH Rule and real Workers. Dynamic Matching and Scenario Coexistence retain
-their workload and business oracles; these checks do not claim capacity improvement.
+Owner proof covers high-mark encoding, strict current-slot exclusion, Properties
+ordering, network floor activation, pause MAX/0, relative deferral and one execution
+winner across Pool/Direct callers. Ordinary candidate, aged candidate, Serviceability
+HOT and Recovery heads each reach 250 equal-score members in 100/100/50 batches.
+Stale stock cannot claim or release a newer hold. Local Pool tests prove admission-
+time TTL, duplicate non-renewal, replacement at full capacity and stale selection
+protection. TTL limits take, not already-taken exact acquisition. Runtime Boundary
+and Dynamic Matching retain their existing workload and time limits.
 
 ### Network Evidence At The Current Lease Slot
 
 Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
-while preserving time and mark, consistent with exact lease transfer.
-Redis-timed cases cover both evidence/confirmation orders, concurrent CAS,
+while preserving time and mark; execution acquisition still requires strictly past time.
+Redis-timed cases cover evidence and execution ordering, concurrent CAS,
 100-Worker command cost, PAUSE and unchanged past-slot freshness rejection.
 Only a missed timing window may be resampled; a wrong in-window result fails.
 Worker Convergence Health retains its original outage fixture and timeout;

@@ -1,262 +1,163 @@
 # Worker HOT_ACQUIRE Lease Protocol
 
-Status: active Java Kernel HOT lease mechanism contract.
+Status: active Java Kernel candidate-generation and execution-lease contract.
 
-This document owns the opaque Worker fence across initial hold, assignment and
-result disposition. [Worker Score](worker-score-band-scheduling.md) owns its
-encoding, primitive validation and atomic transitions; this protocol adds no
-reservation store, attempt lifecycle or lease registry.
+[Worker Score](worker-score-band-scheduling.md) owns encoding and atomic rules.
+This protocol owns opaque fence handoff; it adds no reservation store, attempt
+registry or Matching acquisition callback.
 
 ## One Worker Slot
 
-One WorkerId is one scheduler-visible execution slot with one Score. A physical
-executor with parallel capacity exposes multiple logical WorkerIds. One lease
-carries one TaskItem and one DeliveryCommand; business batching stays inside
-that Item's payload. Never release a fence after publication to simulate early
-slot reuse or assign independent Items behind the same Worker lease.
+One WorkerId is one scheduler-visible execution slot. Physical parallel capacity
+uses separate WorkerIds. One execution lease correlates one TaskItem and one
+DeliveryCommand; business batching belongs inside its payload. Publication does
+not permit early release to simulate slot reuse.
 
-## Core Mechanism Change: Lease Before Matching
+## Candidate Generation Before Matching
 
-**For Pool refill, Pacer acquires the 1-second candidate lease before Matching reads eligibility.**
-It supplies only the successful fences from a closed Group observation batch.
-Matching qualifies those IDs and retains their original fences and deadlines;
-processing and inventory waiting share the same second. Unmatched candidates also
-hold that short lease until expiry. Kernel supply authority, Score encoding and
-exact execution confirmation remain. There is no Matching acquisition callback,
-5-second inventory lease or inventory renewal operation.
-
-## Acquisition And Handoff
+**Pool admission changes the candidate mark without advancing Worker time. Only
+TaskItem assignment creates a future execution lease.**
 
 ```text
-NORMAL Task descriptors -> local Group deficits
-  -> Pacer read-only due HOT head, including mark=0 and mark=1
-  -> one Kernel exact acquisition, 1 second, soft mark=0 -> supplied successful fences
-  -> Matching supplied-ID current projection and acceptance plan -> shared inventory
-  -> local take -> Worker transferObservedHotScoreLeases(seal=true), execution fence, mark=1
-  -> exact Item claim -> Command -> ResultContext -> exact result disposition
+Main Group roots and NORMAL Task supply declarations
+  -> Refill: recycle bounded old candidate generations, even without deficits
+  -> if supply needed: observe due HOT mark=0 head
+  -> exact candidateize HOT 0/T to HOT 1/T
+  -> Matching qualifies supplied identities and caches the returned fence
+  -> Pool take or direct identity/property query
+  -> strict observed acquisition or atomic current identity acquisition
+  -> HOT 0/executionDeadline -> exact Item claim -> Command -> ResultContext
 ```
 
-The Score Owner establishes a soft hold when exact-acquiring a due HOT
-observation. Both observed mark values are legal; the entire score must still
-match. Concurrent callers using the same observation have at most one winner.
-An occupied, paused, negative, missing or changed score cannot be acquired.
-Pacer computes the target as its current time plus 1 second immediately before
-that Group's acquisition call. Only TRANSITIONED results with new fences are
-offered. Matching cannot reset the deadline, renew the lease or acquire a substitute.
-It filters expired offers before projection and again before stock insertion.
+Candidateize accepts only exact due ordinary HOT. Its T stays unchanged and may
+be old; it is a generation coordinate, not an admission timestamp. Pacer attempts
+at most 100 candidates per Group and 1000 per round. A separate equal-sized budget
+recycles old mark=1 into HOT 0/RedisNow. Recycling advances generation to invalidate
+old fences and prevent the same old head from immediately recycling again.
+Both reads honor Assignment's optional startup floor, Group rotation and raw-row
+budgets. No Worker cursor or new thread exists.
 
-**Core scheduling change: refill always observes the due head from the optional
-HOT floor, in ascending Score/member order, without a within-Group offset.** One
-read-only Lua uses Redis TIME and ZRANGE BYSCORE LIMIT 0 limit WITHSCORES. Acquisition
-moves successful candidates out of the due range before Matching, including those
-that will not match. Expiry retains their newer Score, so older unacquired Workers
-remain ahead. Observation alone does not advance the head. Group rotation remains
-Pacer policy. Serviceability independently reads bounded heads and advances next-check times.
+Default candidate age and Pool local TTL are each 60 seconds, owned separately.
+Pool TTL starts at actual admission, not from T. Repeated supply of the same
+Worker/fence neither counts again nor extends TTL. A requalified new fence replaces
+the old entry/views even at full storage capacity; a changed fence which no longer
+matches removes the old entry. Stale local selection references cannot consume a
+later replacement. Expired entries cannot be taken; a previously taken candidate
+is governed only by final exact and due checks, not by the local TTL.
 
-Limit is 1..100 raw rows. The immutable result omits corrupt scores without fetching
-replacements, repairing data or changing its order. A fully corrupt head returns
-empty; no cross-round bypass of those rows is promised. Concurrent Score changes
-remain subject to exact acquisition, without a same-round rescan or stable snapshot.
+One generation may populate several Pools. Each Pool independently qualifies and
+expires it. Catalog rotates Pool attempts and counts actual accepted entries
+against its 100-entry call budget; it does not promise all Pools fill in one call.
+Matching reads no Worker Score and cannot renew, acquire, decode or substitute a
+Worker. It receives Map<workerId, opaqueScore>, with no Worker lease deadline.
 
-Acquisition and transfer each check Redis TIME inside the same bounded Lua
-as admission and write, once per at most 100 identities on a Group key.
-No preceding time confirmation read is used. Existing 100ms semantics apply:
-observed candidate acquisition requires slot < nowSlot, while strict active transfer
-allows equality. Direct execution acquisition also admits current/future soft HOT.
-The requested target slot must be later than nowSlot, even if the observed
-lease already has a later deadline. Java prepares requestedSlot * 2 once per
-batch. Observed-score transfer requires exact equality and active soft HOT, then
-calculates max(currentScore, requestedBase) + seal. Current execution acquisition
-receives IDs only, accepts due HOT with either mark or active soft HOT, and always
-seals max(currentSlot, requestedSlot). It cannot preempt an active sealed hold.
-It rejects an expired request before reading the member. No pre-transfer read is
-introduced, and a multi-chunk invocation adds no transaction or rollback.
-Transfer checks soft/active state without a PAUSE parameter or special rejection.
-Only observed operations require exact comparison; current acquisition reads the
-present member inside its write Lua. The operations return
-individual results; Properties and other Owners remain independent commits.
+No match, capacity refusal, qualification failure, process loss or an ambiguous
+return leaves a compensation obligation. The committed mark=1 eventually qualifies
+for normal bounded recycling. This depends on Main continuing to supply its Group;
+no global discovery or unlimited fairness guarantee is added.
 
-Pool queries only consume successfully acquired inventory. Counts and Pool take read no
-Worker Score. No match or projection failure leaves the already acquired hold to
-expire. Ambiguous acquisition, failed insertion and unused inventory also leave holds to
-expire; there is no periodic renewal, compensation release or restart adoption.
+## Execution Before Claim
 
-## Confirmation Before Claim
+At Redis execution time both operations require strictly past HOT, either mark.
+Current/future HOT and RECOVERY are ineligible. The requested deadline itself must
+be strictly future. Acquisition changes time and writes mark=0 in one atomic step.
+It cannot take over an already active execution lease or PAUSE.
 
-**Core evidence boundary change:** a Score in the current 100ms slot, as well as
-a future slot, accepts validated network evidence to correct its polarity.
-This matches the current-slot lease confirmation boundary. Evidence preserves
-the time coordinate and mark; it cannot release a lease or undo PAUSE.
-A disconnect committed before confirmation makes the original HOT fence stale
-unless subsequent available evidence changes the polarity again. If confirmation
-wins first, a later disconnect preserves its execution fence's magnitude and
-mark bit; the existing exact result disposition still applies.
+Pool functions return their nonzero candidate fence in WorkerCandidate. Pacer
+returns it unchanged to acquireObservedHotScoreLeases. Identity/Phone functions
+return expectedScore=0 hints, consumed by Pacer and sent as IDs to the separate
+acquireCurrentHotScoreLeases operation. Kernel has no zero wildcard. Both operations
+sample TIME once per bounded Lua, without pre-reading or conflict retry.
+A strict candidate failure never falls back to current acquisition or another take.
 
-This is best-effort observation, not strict network ordering. An older valid
-report may change polarity within the current slot, including a RECOVERY check
-coordinate. Once the stored slot is in the past, its existing evidence freshness
-check still applies. No evidence replay or broader probe scan is introduced.
+Shared Pool copies and Direct assignment compete for one execution slot. Only
+TRANSITIONED with a returned fence authorizes Item claim; merely reading a future
+coordinate, or receiving a rejection that echoes one, confers no authority.
+The returned execution fence enters ResultContext. Old Pool copies cannot commit
+execution or release that new hold. A later independent failure does not roll back
+an earlier acquisition; each nonempty partition and each split batch remains its
+own atomic call. If Item claim or Command publication fails, execution expiry
+restores scheduling eligibility without compensation.
 
-Task Dispatch obtains endpoint-bearing candidates, then its exact assignment
-closure selects strict transfer with seal=true or current execution acquisition. Matching's consumption result
-contains workerId and an explicit expectedScore, without an inventory deadline.
-All current production Pool Rules return their original nonzero score: one CAS
-requires that entire score, retains or extends its deadline, and sets mark=1.
-Even a hold that already covers the requested deadline must transition: there
-is no successful NOOP. Sealed, expired, negative or stale observations cannot
-proceed to Item claim. One inventory fence can be consumed only once.
+## Properties And Network Evidence
 
-An explicit expectedScore=0 is an identity hint consumed by Pacer. Pacer partitions
-the batch: nonzero fences go to transferObservedHotScoreLeases; hint IDs go to
-acquireCurrentHotScoreLeases, without a score or seal argument. Exact transfer rejects
-zero as invalid. Current-state Lua admits either due HOT (mark 0 or 1) or current/future
-soft HOT, and always writes a sealed execution fence. It can use a newer soft hold
-than an earlier qualification observed, or a due Worker with no Pool entry or prior
-hold. This is instantaneous eligibility, not a guarantee that
-old qualification evidence remains valid. Missing/ineligible members return STALE;
-corrupt members return INVALID without echoing an undecodable score or repairing it.
-Two direct acquisitions, or a direct acquisition and a strict transfer, have at
-most one current execution winner. A strict failure never retries as a hint.
-Production Identity and Phone functions emit hints; Runtime Boundary blocks their
-Group refill to prove execution without prior inventory or soft holds. A direct
-winner invalidates a previously cached Pool fence naturally; no cache deletion is
-required. Kernel never interprets zero as a wildcard or mode selector.
-Each nonempty partition uses its own bounded call. If the second call fails after
-the first commits, the first holds remain; no Items are claimed by that failed
-dispatch, no compensation or retry occurs, and the holds expire normally. The
-two calls and multi-chunk operations do not constitute one transaction.
+Properties writes remain separate commits from Score invalidation. After APPLIED
+Worker or Platform facts, Server best-effort calls advancePastScoreTimesToNow once
+per Group. Past HOT atomically becomes mark=0 at Redis current time. Past non-cold
+RECOVERY advances time while retaining its mark; polarity is preserved in both
+cases. Cold RECOVERY, current, future and PAUSE coordinates are NOOP.
+The cold exception keeps initial Properties from invalidating a pending CONNECTED
+event before activation. An UNCHANGED facts retry does not replay
+invalidation; failed invalidation keeps the successful facts result and diagnostic.
 
-Only a TRANSITIONED confirmation with a returned score participates in the Item
-claim batch. Only claimed Items become Commands. The returned execution fence,
-not the initial held score, is encoded into ResultContext and carried opaquely
-by delivery. Item claim or Command append failure does not compensate-release
-the Worker: independent lease and claim expiry restore scheduling eligibility.
+If invalidation wins first, an old Pool fence fails exact acquisition. If execution
+acquisition wins first, the future hold and result correlation survive Properties.
+Same-slot repeated invalidation cannot recreate an acquirable old fence, because
+candidateize and assignment require strictly past time. Invalidation advances
+generation as it clears HOT mark, so requalification cannot restore the old Pool
+fence. After the current slot passes, normal Refill can observe the ordinary HOT
+without waiting for age-based recycling; Group roots, deficits and budgets still
+govern Pool admission. Direct assignment can independently acquire a due Worker.
 
-Policy may retain, associate, exact-compare and return raw Score evidence but
-must not decode or calculate it. Primitive preconditions and status results
-are maintained once in the
-[Score primitive contract](worker-score-band-scheduling.md#score-primitives).
+Network evidence corrects polarity without changing mark. Current/future slots
+accept validated evidence and retain time. Past coordinates retain their evidence
+freshness check. CONNECTED only promotes coordinates below startup floor to that
+floor, provided evidence reaches it; DISCONNECTED never advances time. Thus future
+execution/recheck coordinates and PAUSE survive reconnect. Network evidence is not
+a reliable ordered log, and execution evidence never infers connection polarity.
 
-## Soft Transfer And Sealing
+## Release And Result Association
 
-For current/future HOT, mark=0 means a speculative soft hold that another
-caller may transfer exactly or acquire for execution by identity; mark=1 means a sealed hold that cannot
-transfer. Kernel stores no seal reason. A future sealed hold can be an execution
-commit, a Properties invalidation or pause: observing it does not prove execution
-or authorize a caller to claim an Item.
+Only the original signed fence authorizes ordinary release. Completed HOT release
+additionally accepts its precise negative counterpart, allowing a disconnect after
+execution acquisition without inventing another lease. Release retains mark and
+samples time as specified by the [Score primitives](worker-score-band-scheduling.md#score-primitives).
+No broader coordinate match or late result may release a newer generation/hold.
 
-Both transfer operations with seal=false retain soft status and use the
-later of the current and requested deadlines. If time is unchanged, Redis still
-checks active and request-time conditions, plus exact equality for the observed-score
-operation, before returning NOOP; no new
-fence or successful transfer is implied. seal=true changes mark to 1 even at an
-unchanged deadline. Actual transfer invalidates the previous fence, including a
-copy still resident in Matching stock. That old copy cannot later commit execution
-or release the new hold. Matching need not repair or remove it synchronously.
-The interface is available for future callers; this change adds no allocator,
-cache scan, preemption policy or scheduling loop.
+Execution events compose existing owners. Retryable failure releases only the
+correlated Worker hold; SUCCESS stores Result before requesting TaskItem finality.
+TaskItem movement, Result content and Worker release remain independent commits.
+No missing context is reconstructed, and expiry cannot repair a lost Result or
+provide replay/ACK guarantees. See the [Result Owner](../runtime-redis/task-result-runtime-redis-shape.md).
 
-Pause atomically writes MAX,1 while preserving polarity. MAX,0 follows ordinary
-soft rules: soft transfer is NOOP; sealing transfer changes it to MAX,1. MAX,1
-rejects transfer because sealed. PAUSED remains an observation name only. Explicit
-exact release/resume may shorten time; transfer may never shorten it.
+## Pause And Recovery
 
-Server requests sealCurrentScoreHolds once per bounded Group after APPLIED Worker or
-Platform facts writes. The operation preserves sign and deadline and does
-not create missing members. An already confirmed execution fence is mark=1,
-so subsequent Properties invalidation is a NOOP and preserves result release.
+Pause atomically writes MAX time and mark=0 while preserving polarity. Repeated
+pause is unchanged. Resume reads once and exact-releases the original paused
+coordinate; deletion or change produces conflict without retry.
 
-Facts and Score commit independently. Confirmation may win between the facts
-write and invalidation; already confirmed work continues. Invalidation failure
-keeps the successful facts response and emits an aggregate diagnostic, with no
-replay guarantee. An UNCHANGED retry does not repeat invalidation. Old held
-scores remain bounded by their existing deadlines.
-
-Seal invalidation marks every existing valid score, including due and recovery
-coordinates; it is not restricted to active leases. Release preserves mark and
-expiry does not rewrite it. Due scans therefore include both marks. New exact
-initial HOT acquisition establishes soft mark=0 regardless of the expired mark.
-
-For Pool qualification, Pacer establishes the soft hold before Matching reads current membership. After
-acquisition, successful sealing rejects that candidate at execution transfer,
-even if it follows the projection read; admission performs no second acquisition
-that could clear it. Facts and sealing are still independent: a projection-to-facts
-race or failed invalidation is not repaired by a version or transaction. Mark is
-not a Properties version, connection fact or write lock. Default
-identity selectors need no facts. Direct Phone lookup is an independent property
-observation and has no promise that its condition remains true through execution.
-Never fetch a newer score or retry through current execution acquisition
-to rescue a strict stale candidate or clear an active execution hold. There is no
-per-Task Candidate Cache to invalidate or repair.
-
-## Result Disposition
-
-[Result Policy](../../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md)
-parses the returned context and publishes bounded semantic events. It does not
-call WorkerScoreCore directly. The Worker execution event Owner unwraps the
-opaque WorkerLeaseReference and applies `releaseObservedHotScoreHolds` for success,
-or the signed-exact `releaseScoreHolds` for failure. Java prepares release targets
-and the optional exact counterpart; both use the same exact replacement primitive.
-
-The release accepts only the exact returned HOT lease or its exact
-sign-flipped RECOVERY counterpart. The latter may be restored and released
-atomically by the Score Owner. No newer or otherwise changed fence is released.
-This mechanical counterpart rule is not an inference that the Worker is online.
-Adapter evidence classification remains with the independent Serviceability
-policy and its dedicated event port.
-
-Worker success/failure and trusted Adapter pre-execution rejection submit their
-own lease evidence. There is no cross-class winner registry. Conflicting
-logical outcomes do not justify a guessed mutation; duplicate or late evidence
-must still satisfy the exact Owner fence. Result disposition is independent of
-TaskItem movement and cannot prove that all preceding Owner calls completed.
+Serviceability retains HOT-first, then Recovery only after an empty raw HOT result.
+Successful exact deferral writes RECOVERY mark=0 at Redis now + delay before Probe
+offer. The 15-second delay is next eligibility, not guaranteed execution time.
+Offer failure never rolls it back. Candidate recycling and Probe checks may compete
+through exact CAS; no priority coordination is added. Excluded Endpoints retain the
+existing two-step HOT toggle then cold park, without Probe or resource deletion.
 
 ## Failure Boundaries
 
-| Stage | Failure | Existing behavior |
-| --- | --- | --- |
-| First acquisition | CAS lost | Do not supply the Worker to Matching |
-| Qualification | no match or projection failure | No new stock; acquired leases expire naturally |
-| First acquisition | response loss or insertion failure | Only returned new fences enter stock; committed holds expire |
-| Strict execution transfer | sealed, expired, negative, stale or missing candidate | Do not claim the Item; no fallback acquisition |
-| Direct execution acquisition | active sealed, negative, missing or corrupt member | Do not claim the Item; no replacement lookup |
-| Claim/publication | claim lost, append failed or result ambiguous | No compensation; independent fences expire |
-| Delivery | destructive consume or process/send loss | UNKNOWN is not trusted pre-execution rejection |
-| Result | missing or malformed context | No guessed mutation; expiry restores eligibility only |
-| Result | duplicate, late or conflicting fence | Only an exact applicable Owner transition can change Score |
+| Stage | Outcome |
+| --- | --- |
+| Candidate CAS lost | No offer to Matching |
+| Qualification/capacity/return lost | Committed generation waits for bounded recycling |
+| Pool TTL expires | Cannot take inventory; no Score rewrite |
+| Strict or current execution rejected | No Item claim, fallback, replacement take or refresh |
+| Claim/publication interrupted | No compensation; independent expiry remains |
+| Delivery lost | UNKNOWN is not trusted pre-execution rejection |
+| Result missing, late or duplicate | Only the exact applicable fence can change Worker Score |
 
-The [delivery boundary](../../../doc/kernel/worker-delivery-dispatch.md) owns
-network failure windows; the
-[Result storage contract](../runtime-redis/task-result-runtime-redis-shape.md)
-owns the independent storage/finality interruption windows. Lease expiry does
-not replay evidence or repair a stored Result's separate finality transition.
+The [delivery boundary](../../../doc/kernel/worker-delivery-dispatch.md) and
+[Serviceability policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+retain their separate authorities. Pool presence and HELD_HOT do not prove network
+availability or that a particular caller successfully acquired execution.
 
-## Serviceability Boundary
+## Deployment And Observation
 
-HOT and RECOVERY are Kernel scheduling eligibility, not physical connection
-state. The [Serviceability Policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
-interprets Adapter evidence and probe results through its dedicated time-fenced
-operation. It must not be collapsed into Task result lease disposition.
-Recheck timing and excluded-Endpoint cold parking belong to that policy; no generic
-Session, Attempt or Worker reservation owner is introduced here.
+Scores remain opaque to Pacer, Matching, Server and Transport. Scheduling state
+classification, pause and resume remain Kernel operations; HTTP fields, state
+names and error codes do not change.
 
-## Deployment
-
-HTTP, Binding, Redis keys and the numeric Score layout are unchanged. The low bit
-now expresses soft/sealed semantics. This change supplies no compatibility
-reader, migration or automatic cleanup. Old MAX,0 has no extra pause protection;
-new pause always writes MAX,1. Local inventory is discarded on process restart.
-
-## Caller Observation Boundary
-
-Candidate Maps and transition results carry opaque Score fences. Decoded time,
-mark, polarity values and slot arithmetic stay inside the Score Owner. Pacer
-supplies raw millisecond floors/deadlines; Owner alignment preserves the existing
-ranges and execution-time lease checks. Matching retains the original supplied
-Score and deadline without interpreting either as a new coordinate.
-
-Operator pause/resume and the six-state scheduling observation also belong to
-WorkerScoreCore. Their Server surface maps semantic results only; it cannot use
-HELD_HOT or PAUSED as evidence that a particular caller successfully transferred
-a fence. CONNECTED preserves current/future time and mark: restored soft HOT can
-transfer; restored sealed HOT cannot.
+The high-mark encoding requires a new Redis scope. No compatibility reader,
+migration, version marker or automatic cleanup is provided. Local Pool stock is
+process-local and discarded on restart; bounded recycling recovers retained
+candidate generations in Groups supplied by Main. No allocator or rule-change
+sweep is part of this mechanism.

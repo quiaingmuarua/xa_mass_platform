@@ -38,14 +38,12 @@ Server passes the selected preset to `KernelPacerRuntime.assemble(...)`; it
 does not inspect lane policy. There is no production Pacer JSON, dynamic lane
 registry, or per-field Server override.
 
-Every preset consumes Network Evidence. When periodic Serviceability is enabled,
-Runtime samples one millisecond `hotEligibilityFloorMillis`; the Score Owner
-alone converts it to an encoding slot. Serviceability Dispatch and refill initial
-acquisition receive the same immutable value. Network Evidence requests an
-availability transition and does not receive the floor. The floor is not stored in Redis or exposed
-through Health or Runtime APIs. Serviceability may widen only its own bounded
-HOT discovery up to the stale-HOT cutoff derived from its separate HOT stale threshold;
-Refill continues to use the immutable floor.
+Every preset consumes Network Evidence. Runtime samples one immutable millisecond
+activation floor and supplies it to the event Mechanism for bounded CONNECTED
+activation. Serviceability-enabled presets also use that value for refill and
+candidate recycling. DEFAULT keeps no Assignment scan floor or periodic Probe.
+Score Owner alone aligns time. The floor is not stored in Redis or exposed by an
+API, and restart of the same Runtime loops does not resample it.
 
 ## Mechanical Owners
 
@@ -66,12 +64,12 @@ WorkerServiceabilityRuntime
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
 Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
-Group/Pool targets with each acquired Group batch. Dispatch calls Matching with the
+Group/Pool targets with each candidateized Group batch. Dispatch calls Matching with the
 Task's Group and messageId-to-WorkerQuery Maps, receiving messageId-to-WorkerCandidate
 Maps. Each Item names its own function; candidates carry strict fences or identity
 hints. Only Matching normalizes and groups queries;
 Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
-Source indexes project facts independently; held inventory
+Source indexes project facts independently; candidate inventory
 is replenished from Task-declared targets without inspecting Items.
 
 The module direction remains:
@@ -146,7 +144,7 @@ Producer, latest-due Item ordering and completion-relative backoff are unchanged
 this is additional checking headroom, not Item fairness or an all-load SLA.
 
 Default-off `xa.mass.TaskDispatch` and `xa.mass.TaskResult` JFR events observe
-existing refill/refill-observation/initial-hold/round/check/candidate/confirmation-rejection/claim/publish
+existing refill/refill-observation/candidateize/round/check/candidate/confirmation-rejection/claim/publish
 and Result consume/process/release
 calls. Counts describe attempts or batches, not unique completed Items. Owner-local
 events add no registry, queue, Redis operation or Score interpretation; sampled
@@ -157,8 +155,8 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | NORMAL Task descriptors | Group shortage observation, Pacer Group head observations and 1-second candidate acquisition, then Matching acceptance using the same fences; no Item read |
-| TASK_DISPATCH | NORMAL RUNNING descriptors | consume inventory, confirm execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
+| ELIGIBILITY_REFILL | NORMAL Task descriptors | Group shortage observation, independent aged-candidate recycle, due-head candidateization and Matching admission; no Item read |
+| TASK_DISPATCH | NORMAL RUNNING descriptors | consume inventory, acquire execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
 Main shares the already-read NORMAL Task descriptors. Matching performs only
@@ -254,16 +252,18 @@ empty raw HOT result in that Group. Range observations go directly through Bindi
 validation to the exact write; no Score-state point read is used. Pacer supplies
 opaque observed Scores and one fixed batch delay to `deferObservedToRecovery`;
 Score Owner writes the next eligible recheck time using Redis time before the Probe offer.
-HOT keeps one range command, RECOVERY keeps TIME plus one range command, and
-deferral keeps one EVAL. Each non-empty candidate Group saves the former ZMSCORE. There are
+HOT reads two mark ranges, RECOVERY keeps TIME plus two ranges; each is bounded
+by limit, then merged and truncated to limit raw rows. Deferral keeps one EVAL;
+there is no Score-state point read. There are
 no per-Group scan cursors or empty-range restart timers. Recheck delay defaults to
 15 seconds, independently of the 60-second HOT stale threshold. This delay does
 not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff; cold
 parking is reserved for excluded Endpoints. No cleanup thread is installed. CONNECTED evidence keeps a
-future recheck coordinate and mark. Restored soft HOT may transfer; sealed HOT
-cannot. Current Refill still reads only due HOT, so this does not add a supply
-path or an allocator.
-The event Mechanism chooses target polarity and past-time refresh for the mechanical
+future recheck coordinate and mark. Execution must await strict due eligibility.
+Candidateize and recycling use separate 100-per-Group/1000-per-round budgets on
+the existing Refill Producer. Candidate age is 60 seconds in production/Scenario
+Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds.
+The event Mechanism chooses target polarity and minimum activation time for the mechanical
 Score operation. Provider construction and close ownership stay unchanged; the
 package-private encoding helper has no separate lifecycle or assembly.
 

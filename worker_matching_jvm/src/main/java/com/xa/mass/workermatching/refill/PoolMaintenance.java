@@ -1,10 +1,8 @@
 package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.workermatching.pool.CandidatePool;
-import java.util.function.LongSupplier;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.workermatching.pool.CandidatePool.Selection;
 import static com.xa.mass.workermatching.pool.CandidatePool.*;
 import com.xa.mass.workermatching.PoolRefillPolicy;
@@ -13,10 +11,8 @@ import org.jspecify.annotations.Nullable;
 
 /** Existing Pool strategy support. Inventory is a separate range resource, never a predicate scan. */
 public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
-    protected final LongSupplier clock;
     private final CandidatePool pool;
-    protected PoolMaintenance(LongSupplier clock, CandidatePool pool) {
-        this.clock = Objects.requireNonNull(clock);
+    protected PoolMaintenance(CandidatePool pool) {
         this.pool = Objects.requireNonNull(pool);
     }
     protected abstract EligibilityQuery normalize(String group, EligibilityQuery query);
@@ -56,38 +52,44 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         return Collections.unmodifiableMap(result);
     }
     @Override public final List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
-            List<HeldCandidate> offered, int maxAccepted) {
+            Map<String, Long> offered, int maxAccepted) {
         var selections = targets(group, targets);
         Objects.requireNonNull(offered);
         if (offered.size() > 100 || maxAccepted < 0 || maxAccepted > 100)
             throw new IllegalArgumentException("at most 100 offers and maxAccepted in 0..100");
-        var ids = new LinkedHashSet<String>();
-        for (var held : offered) {
-            Objects.requireNonNull(held); identity(held.workerId());
-            if (!ids.add(held.workerId())) throw new IllegalArgumentException("held identities must be unique");
-        }
+        offered.forEach((id, score) -> {
+            identity(id);
+            if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required");
+        });
         if (maxAccepted == 0 || offered.isEmpty() || selections.isEmpty()) return List.of();
-        var observation = pool.observe(group, selections.values(), ids);
-        if (observation.room() == 0) return List.of();
+        var observation = pool.observe(group, selections.values(), offered.keySet());
         var missing = missing(selections, targets, observation);
-        if (missing.values().stream().noneMatch(value -> value > 0)) return List.of();
-        long now = clock.getAsLong();
-        var live = offered.stream().filter(held -> held.expiresAtMillis() > now).toList();
-        if (live.isEmpty()) return List.of();
-        var values = readQualifications(group, live.stream().map(HeldCandidate::workerId).toList());
-        if (!new HashSet<>(live.stream().map(HeldCandidate::workerId).toList()).containsAll(values.keySet()))
+        boolean replacement = offered.entrySet().stream().anyMatch(entry ->
+                observation.present().containsKey(entry.getKey()) && !observation.present().get(entry.getKey()).equals(entry.getValue()));
+        if (!replacement && (observation.room() == 0 || missing.values().stream().noneMatch(count -> count > 0))) return List.of();
+        var values = readQualifications(group, List.copyOf(offered.keySet()));
+        if (!offered.keySet().containsAll(values.keySet()))
             throw new IllegalStateException("Pool policy read an unoffered identity");
-        // All fallible business interpretation finishes before the resource commits any entry.
+        // Finish all fallible interpretation before replacing or removing any stock.
         var prepared = new LinkedHashMap<String, CandidatePool.Admission>();
-        for (var held : live) {
-            var views = memberships(group, held.workerId(), values.get(held.workerId()));
-            if (views != null) prepared.put(held.workerId(), new CandidatePool.Admission(held, views));
-        }
+        offered.forEach((id, score) -> {
+            var views = memberships(group, id, values.get(id));
+            if (views != null && selections.values().stream().anyMatch(selection -> selection.matches(id, views))) {
+                prepared.put(id, new CandidatePool.Admission(id, score, views));
+            }
+        });
+        pool.discardChanged(group, offered, prepared.keySet());
         var selected = new LinkedHashMap<String, CandidatePool.Admission>();
+        // Requalification of an existing identity is independent of storage headroom or deficits.
+        for (var entry : prepared.entrySet()) {
+            if (selected.size() == maxAccepted) break;
+            Long old = observation.present().get(entry.getKey());
+            if (old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
+        }
         for (boolean any : List.of(false, true)) {
             for (var entry : prepared.entrySet()) {
                 if (selected.size() == maxAccepted) break;
-                if (selected.containsKey(entry.getKey()) || observation.present().contains(entry.getKey())) continue;
+                if (selected.containsKey(entry.getKey()) || observation.present().containsKey(entry.getKey())) continue;
                 boolean needed = false;
                 for (var query : selections.entrySet()) {
                     if (query.getKey().query().isEmpty() == any && missing.get(query.getKey()) > 0

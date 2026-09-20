@@ -13,12 +13,12 @@ public interface WorkerMatching {
     Set<String> groupsNeedingRefill(Map<String, List<RefillTarget>> refillByGroup);
 
     /**
-     * Qualifies at most 100 unique candidates already leased by Pacer for this Group.
-     * Does not require an earlier shortage observation. Preserves opaque fences and deadlines;
+     * Qualifies at most 100 unique candidate generations supplied by Pacer for this Group.
+     * Does not require an earlier shortage observation. Preserves opaque fences and uses local inventory TTL;
      * later Rule failure does not undo earlier admissions. Target bounds match the observation.
      */
     int refill(String workerGroupId, List<RefillTarget> declarations,
-            List<HeldCandidate> offeredCandidates);
+            Map<String, Long> candidateScores);
 
     /**
      * Bounded candidate lookup for at most 100 nonblank message IDs, one candidate per ID.
@@ -34,7 +34,7 @@ public interface WorkerMatching {
     Map<String, WorkerCandidate> take(String workerGroupId,
             Map<String, WorkerQuery> queriesByMessageId);
 
-    /** Pacer selects current-state execution acquisition for zero, exact transfer otherwise; scores stay opaque. */
+    /** Pacer selects current-state execution acquisition for zero, exact due acquisition otherwise; scores stay opaque. */
     record WorkerCandidate(String workerId, long expectedScore) {
         public WorkerCandidate {
             if (workerId == null || workerId.isBlank()) {
@@ -43,6 +43,4 @@ public interface WorkerMatching {
         }
     }
 
-    /** Score is an opaque exact fence; expiry is only a local inventory cleanup deadline. */
-    record HeldCandidate(String workerId, long score, long expiresAtMillis) { }
 }

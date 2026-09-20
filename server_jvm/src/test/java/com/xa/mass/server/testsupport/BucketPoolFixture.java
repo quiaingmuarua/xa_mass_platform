@@ -46,7 +46,7 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
     private final CandidatePool stock;
     private final FactsIndexStore storage;
     public BucketPoolFixture(LongSupplier clock, FactsIndexStore storage, CandidatePool stock, boolean failSnapshot) {
-        super(clock,stock); this.storage=storage; this.stock=stock; this.failSnapshot=failSnapshot;
+        super(stock); this.storage=storage; this.stock=stock; this.failSnapshot=failSnapshot;
     }
     public QueryFunction functions() {
             return new QueryFunction() {

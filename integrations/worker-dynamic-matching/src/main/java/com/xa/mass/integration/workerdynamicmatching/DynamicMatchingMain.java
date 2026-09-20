@@ -261,7 +261,11 @@ public final class DynamicMatchingMain {
 
     private void succeeded(Task t) throws Exception {
         until(Math.min(dynamicDeadline, t.eligibleSince + TimeUnit.SECONDS.toNanos(60)),
-                () -> t.complete() && t.completed.containsAll(t.tokens), "witness-" + t.label);
+                () -> {
+                    // A witness has 100 IDs; background Result pages must not delay its observation.
+                    readResults(t);
+                    return t.complete() && t.completed.containsAll(t.tokens);
+                }, "witness-" + t.label);
         checkpoints.add(Map.of("stage", t.label, "succeeded", t.succeeded.size(), "attempts", t.entries.get(), "executorsSha256", digest(t.executors.stream().sorted().toList()), "executorCheck", true, "eligibleToCompletionMillis", millisSince(t.eligibleSince)));
     }
 

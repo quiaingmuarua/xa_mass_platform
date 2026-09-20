@@ -7,7 +7,6 @@ import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
@@ -41,7 +40,7 @@ class RuleEligibilityTest {
         List<String> readIds=List.of();
         final CandidatePool stock;
         TestPoolPolicy() { this(new CandidatePool(RuleEligibilityTest.this.clock::get, budget)); }
-        TestPoolPolicy(CandidatePool stock) { super(RuleEligibilityTest.this.clock::get,stock);this.stock=stock; }
+        TestPoolPolicy(CandidatePool stock) { super(stock);this.stock=stock; }
         QueryFunction functions() {
             return new QueryFunction() {
                 public Object normalizeInput(String group, Object input) { return normalizeLocalInput(group, input); }
@@ -101,12 +100,12 @@ class RuleEligibilityTest {
         return result;
     }
     static RefillTarget pools(int count,String... values) { return new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("pool",List.of(values))), count); }
-    static WorkerCandidate candidate(HeldCandidate held) { return new WorkerCandidate(held.workerId(),held.score()); }
-    List<HeldCandidate> offers(int start,int count,String value) {
+    static WorkerCandidate candidate(Map.Entry<String, Long> held) { return new WorkerCandidate(held.getKey(),held.getValue()); }
+    Map<String, Long> offers(int start,int count,String value) {
         var facts=new HashMap<>(rule.current);
-        var held=new ArrayList<HeldCandidate>();
-        for(int i=start;i<start+count;i++) { facts.put("w"+i,value); held.add(new HeldCandidate("w"+i,100+i,6000)); }
-        rule.current=Map.copyOf(facts); return List.copyOf(held);
+        var held=new LinkedHashMap<String, Long>();
+        for(int i=start;i<start+count;i++) { facts.put("w"+i,value); held.put("w"+i, (long) (100+i)); }
+        rule.current=Map.copyOf(facts); return Collections.unmodifiableMap(held);
     }
     void populate(int count) {
         for(int i=0;i<count;i+=100)rule.refill("g",targets(List.of(pools(count,"US"))),offers(i,Math.min(100,count-i),"US"),100);
@@ -127,7 +126,7 @@ class RuleEligibilityTest {
         var admitted=rule.refill("g",targets(List.of(pools(10,"US"),pools(10,"US","CN"))),offered,100);
         assertEquals(10,admitted.size()); assertEquals(1,rule.reads);
         var taken=consume(rule,"g",Map.of(),100);
-        assertEquals(offered.stream().map(RuleEligibilityTest::candidate).toList(),taken);
+        assertEquals(offered.entrySet().stream().map(RuleEligibilityTest::candidate).toList(),taken);
         assertTrue(consume(rule,"g",Map.of(),100).isEmpty());
         assertThrows(UnsupportedOperationException.class,admitted::clear);
     }
@@ -160,9 +159,9 @@ class RuleEligibilityTest {
         var tooMany = new LinkedHashMap<EligibilityQuery,Integer>();
         for(int i=0;i<101;i++)tooMany.put(pools(1,"p"+i).target(),1);
         assertThrows(IllegalArgumentException.class,()->rule.deficits("g",tooMany));
-        assertThrows(IllegalArgumentException.class,()->rule.refill("g",tooMany,List.of(),100));
+        assertThrows(IllegalArgumentException.class,()->rule.refill("g", tooMany, Map.of(), 100));
         var offered=offers(3,1,"US");
-        assertThrows(IllegalArgumentException.class,()->rule.refill("g",targets(List.of(pools(3,"US"))),List.of(offered.getFirst(),offered.getFirst()),100));
+        assertThrows(IllegalArgumentException.class,()->rule.refill("g",targets(List.of(pools(3,"US"))),Map.of("invalid", 0L),100));
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",targets(List.of(pools(3,"US"))),offered,101));
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(ANY,3),offered,-1));
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(ANY,3),offers(10,101,"US"),100));
@@ -205,7 +204,7 @@ class RuleEligibilityTest {
         assertEquals(9000,budget.available());
         assertEquals(0,rule.deficits("g",Map.of(ANY,1000)).get(ANY));
     }
-    private List<String> refillTogether(int target,List<HeldCandidate> first,List<HeldCandidate> second) throws Exception {
+    private List<String> refillTogether(int target,Map<String, Long> first,Map<String, Long> second) throws Exception {
         var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
         rule.beforeRead=()->{entered.countDown();await(release);};
         try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
@@ -217,16 +216,16 @@ class RuleEligibilityTest {
             return accepted;
         } finally { rule.beforeRead=()->{}; }
     }
-    @Test void groupIsolationAndExpiryDoNotRenewOrReplaceAnActiveFence() {
-        var held=offers(0,1,"US").getFirst();
-        rule.refill("g",targets(List.of(pools(2,"US"))),List.of(held),100);
-        rule.refill("g",targets(List.of(pools(2,"US"))),List.of(new HeldCandidate("w0",999,9000)),100);
+    @Test void groupIsolationReplacementAndLocalExpiry() {
+        var held=offers(0,1,"US").entrySet().iterator().next();
+        rule.refill("g",targets(List.of(pools(2,"US"))),Map.ofEntries(held),100);
+        rule.refill("g",targets(List.of(pools(2,"US"))),Map.ofEntries(Map.entry("w0", (long) (999))),100);
         assertTrue(consume(rule,"other",Map.of(),1).isEmpty());
-        assertEquals(candidate(held),consume(rule,"g",Map.of(),1).getFirst());
-        rule.refill("g",targets(List.of(pools(1,"US"))),List.of(held),100); clock.set(6000);
+        assertEquals(new WorkerCandidate("w0",999),consume(rule,"g",Map.of(),1).getFirst());
+        rule.refill("g",targets(List.of(pools(1,"US"))),Map.ofEntries(held),100); clock.set(61000);
         assertTrue(consume(rule,"g",Map.of(),1).isEmpty());
-        var replacement=new HeldCandidate("w0",999,9000);
-        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),List.of(replacement),100));
+        var replacement=Map.entry("w0", (long) (999));
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),Map.ofEntries(replacement),100));
         assertEquals(candidate(replacement),consume(rule,"g",Map.of(),1).getFirst());
     }
 
@@ -234,10 +233,11 @@ class RuleEligibilityTest {
         try { assertTrue(latch.await(5,TimeUnit.SECONDS)); }
         catch(InterruptedException error) { Thread.currentThread().interrupt();throw new AssertionError(error); }
     }
-    @Test void timeSpentReadingConsumesOriginalLease() {
-        rule.beforeRead=()->clock.set(6000);
-        assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).isEmpty());
-        assertTrue(consume(rule,"g",Map.of(),1).isEmpty());
+    @Test void localTtlStartsAfterQualification() {
+        rule.beforeRead=()->clock.set(61000);
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100));
+        clock.set(120_999);
+        assertEquals(1,consume(rule,"g",Map.of(),1).size());
     }
     @Test void fullGroupDoesNotReadOrAcquireForAnotherTargetUntilExpiry() {
         populate(1000); int reads=rule.reads;
@@ -245,22 +245,22 @@ class RuleEligibilityTest {
         assertEquals(0,rule.deficits("g",targets(List.of(target))).get(target.target()));
         assertTrue(rule.refill("g",targets(List.of(target)),offers(1000,1,"CN"),100).isEmpty());
         assertEquals(reads,rule.reads);
-        clock.set(6000);
+        clock.set(61000);
         assertEquals(10,rule.deficits("g",targets(List.of(target))).get(target.target()));
     }
     @Test void processAndResidentGroupCapsAreSharedAcrossRuleOwnedPools() {
         var defaultStock=new CandidatePool(clock::get, budget);
-        var defaults=new AnyPoolPolicy(clock::get, defaultStock);
+        var defaults=new AnyPoolPolicy(defaultStock);
         var any=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000);
         for(int g=0;g<10;g++)for(int n=0;n<10;n++)
             assertEquals(100,defaults.refill("g"+g,targets(List.of(any)),offers(n*100,100,"US"),100).size());
         assertEquals(0,budget.available());
         assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).isEmpty());
-        clock.set(6000);
+        clock.set(61000);
         assertEquals(0,budget.available(),"unrelated expiry requires global shortage-observation cleanup");
         defaultStock.expireAll(); rule.stock.expireAll(); assertEquals(10_000,budget.available());
-        for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).size());
-        assertTrue(defaults.refill("other",targets(List.of(any)),List.of(new HeldCandidate("w",1,9000)),100).isEmpty());
+        for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).size());
+        assertTrue(defaults.refill("other",targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).isEmpty());
     }
     @Test void blockedSourceReadDoesNotHoldCandidateGate() throws Exception {
         populate(1);

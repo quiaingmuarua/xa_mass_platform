@@ -261,7 +261,7 @@ class WorkerDeliveryServiceTest {
         when(matchingCatalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value"))))
                 .thenReturn(Map.of("w", new MutationResult(MutationStatus.APPLIED)),
                         Map.of("w", new MutationResult(MutationStatus.UNCHANGED)));
-        when(scores.sealCurrentScoreHolds("g", List.of("w"))).thenThrow(new IllegalStateException("unavailable"));
+        when(scores.advancePastScoreTimesToNow("g", List.of("w"))).thenThrow(new IllegalStateException("unavailable"));
         var reports = List.of(propertiesReport("adapter-1", "w", Map.of("key", "value")));
         for (int i = 0; i < 2; i++) {
             assertThat(service.appendAdapterReports("adapter-1", reports))
@@ -269,7 +269,7 @@ class WorkerDeliveryServiceTest {
         }
         var order = inOrder(matchingCatalog, scores);
         order.verify(matchingCatalog).upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value")));
-        order.verify(scores).sealCurrentScoreHolds("g", List.of("w"));
+        order.verify(scores).advancePastScoreTimesToNow("g", List.of("w"));
         order.verify(matchingCatalog).upsertWorkerFactsBatch("g", Map.of("w", Map.of("key", "value")));
         verifyNoMoreInteractions(scores);
     }

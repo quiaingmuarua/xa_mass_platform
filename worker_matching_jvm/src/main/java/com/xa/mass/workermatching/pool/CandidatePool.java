@@ -1,6 +1,5 @@
 package com.xa.mass.workermatching.pool;
 
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 
 import java.util.*;
@@ -20,15 +19,20 @@ public final class CandidatePool {
     public static Selection all() { return new Selection(SelectionKind.ALL, "", List.of()); }
     public static Selection range(String view, List<String> values) { return new Selection(SelectionKind.VIEW, view, values); }
 
-    public record Admission(HeldCandidate held, Map<String, String> views) {
-        public Admission { views = Map.copyOf(views); }
+    public record Admission(String workerId, long score, Map<String, String> views) {
+        public Admission {
+            if (workerId == null || workerId.isBlank() || score == 0) throw new IllegalArgumentException("strict candidate required");
+            views = Map.copyOf(views);
+        }
     }
     static final class Entry {
-        final HeldCandidate held;
+        final String workerId;
+        final long score, expiresAtMillis;
         final Map<String, String> views;
         final long order;
-        Entry(Admission admission, long order) {
-            held = admission.held(); views = admission.views(); this.order = order;
+        Entry(Admission admission, long order, long expiresAtMillis) {
+            workerId = admission.workerId(); score = admission.score();
+            this.expiresAtMillis = expiresAtMillis; views = admission.views(); this.order = order;
         }
     }
     private record Expiry(long deadline, long order) implements Comparable<Expiry> {
@@ -44,8 +48,8 @@ public final class CandidatePool {
         final NavigableMap<Expiry, Entry> expiry = new TreeMap<>();
         long nextOrder;
     }
-    public record Observation(Map<Selection, Integer> counts, Set<String> present, int room) { }
-    public record ViewObservation(Map<String, Integer> counts, int total, Set<String> present, int room) { }
+    public record Observation(Map<Selection, Integer> counts, Map<String, Long> present, int room) { }
+    public record ViewObservation(Map<String, Integer> counts, int total, Map<String, Long> present, int room) { }
     /** One count snapshot of a view, without copying or visiting its entries. */
     public synchronized ViewObservation observeView(String group, String name, Collection<String> ids) {
         expire(group);
@@ -55,13 +59,14 @@ public final class CandidatePool {
             var view = stock.views.get(name);
             if (view != null) view.forEach((value, bucket) -> { countBuckets++; counts.put(value, bucket.size()); });
         }
-        var present = new LinkedHashSet<String>();
-        if (stock != null) for (String id : ids) if (stock.identities.containsKey(id)) present.add(id);
+        var present = new LinkedHashMap<String, Long>();
+        if (stock != null) for (String id : ids) if (stock.identities.containsKey(id)) present.put(id, stock.identities.get(id).score);
         return new ViewObservation(Collections.unmodifiableMap(counts), stock == null ? 0 : stock.identities.size(),
-                Set.copyOf(present), budget.room(stock));
+                Map.copyOf(present), budget.room(stock));
     }
     record Visits(long countBuckets, long selectedEntries, long expiredEntries) { }
 
+    static final long CANDIDATE_TTL_MILLIS = 60_000;
     private final java.util.function.LongSupplier clock;
     private final CandidateBudget budget;
     private final Map<String, Stock> groups = new HashMap<>();
@@ -77,9 +82,9 @@ public final class CandidatePool {
         Stock stock = groups.get(group);
         var counts = new LinkedHashMap<Selection, Integer>();
         for (var selection : selections) counts.put(selection, count(stock, selection));
-        var present = new LinkedHashSet<String>();
-        if (stock != null) for (String id : ids) if (stock.identities.containsKey(id)) present.add(id);
-        return new Observation(Collections.unmodifiableMap(counts), Set.copyOf(present), budget.room(stock));
+        var present = new LinkedHashMap<String, Long>();
+        if (stock != null) for (String id : ids) if (stock.identities.containsKey(id)) present.put(id, stock.identities.get(id).score);
+        return new Observation(Collections.unmodifiableMap(counts), Map.copyOf(present), budget.room(stock));
     }
 
     private int count(Stock stock, Selection selection) {
@@ -104,20 +109,25 @@ public final class CandidatePool {
         expire(group);
         Stock existing = groups.get(group);
         Stock stock = existing == null ? new Stock() : existing;
-        long now = clock.getAsLong();
+        long expiresAtMillis = Math.addExact(clock.getAsLong(), CANDIDATE_TTL_MILLIS);
         var accepted = new ArrayList<String>();
         for (Admission admission : selected) {
-            HeldCandidate held = admission.held();
-            if (held.expiresAtMillis() <= now || stock.identities.containsKey(held.workerId())) continue;
-            if (!budget.acquire(stock)) break;
-            Entry entry = new Entry(admission, stock.nextOrder++);
-            stock.identities.put(held.workerId(), entry);
+            String id = admission.workerId();
+            Entry previous = stock.identities.get(id);
+            if (previous != null && previous.score == admission.score()) continue;
+            if (previous == null) {
+                if (!budget.acquire(stock)) continue;
+            } else {
+                removeIndexes(stock, previous);
+            }
+            Entry entry = new Entry(admission, stock.nextOrder++, expiresAtMillis);
+            stock.identities.put(id, entry);
             stock.all.put(entry.order, entry);
-            stock.expiry.put(new Expiry(held.expiresAtMillis(), entry.order), entry);
+            stock.expiry.put(new Expiry(entry.expiresAtMillis, entry.order), entry);
             entry.views.forEach((view, value) -> stock.views.computeIfAbsent(view, ignored -> new TreeMap<>())
                     .computeIfAbsent(value, ignored -> new TreeMap<>()).put(entry.order, entry));
             groups.put(group, stock);
-            accepted.add(held.workerId());
+            accepted.add(id);
         }
         return List.copyOf(accepted);
     }
@@ -143,7 +153,7 @@ public final class CandidatePool {
                 }
                 while (!heads.isEmpty() && rows.size() < request.getValue()) {
                     Head head = heads.remove();
-                    if (seen.add(head.entry().held.workerId())) rows.add(head.entry());
+                    if (seen.add(head.entry().workerId)) rows.add(head.entry());
                     if (rows.size() < request.getValue() && head.remaining().hasNext()) {
                         selectedEntries++; heads.add(new Head(head.remaining().next(), head.remaining()));
                     }
@@ -177,10 +187,10 @@ public final class CandidatePool {
         for (var row : selected.entrySet()) {
             var committed = new ArrayList<WorkerCandidate>();
             for (Entry entry : row.getValue()) {
-                if (stock == null || stock.identities.get(entry.held.workerId()) != entry
-                        || entry.held.expiresAtMillis() <= now) continue;
+                if (stock == null || stock.identities.get(entry.workerId) != entry
+                        || entry.expiresAtMillis <= now) continue;
                 remove(stock, entry, false);
-                committed.add(new WorkerCandidate(entry.held.workerId(), entry.held.score()));
+                committed.add(new WorkerCandidate(entry.workerId, entry.score));
             }
             result.put(row.getKey(), List.copyOf(committed));
         }
@@ -188,16 +198,31 @@ public final class CandidatePool {
         return Collections.unmodifiableMap(result);
     }
 
+    /** A new unqualified generation removes only an older fence, never an equal offer. */
+    public synchronized void discardChanged(String group, Map<String, Long> offered, Set<String> qualified) {
+        Stock stock = groups.get(group);
+        if (stock == null) return;
+        offered.forEach((id, score) -> {
+            Entry previous = stock.identities.get(id);
+            if (previous != null && previous.score != score && !qualified.contains(id)) remove(stock, previous, false);
+        });
+        if (stock.identities.isEmpty()) groups.remove(group);
+    }
+
     private void remove(Stock stock, Entry entry, boolean expiration) {
-        stock.identities.remove(entry.held.workerId()); stock.all.remove(entry.order);
-        stock.expiry.remove(new Expiry(entry.held.expiresAtMillis(), entry.order));
+        removeIndexes(stock, entry);
+        budget.release(stock, 1, expiration);
+    }
+
+    private void removeIndexes(Stock stock, Entry entry) {
+        stock.identities.remove(entry.workerId); stock.all.remove(entry.order);
+        stock.expiry.remove(new Expiry(entry.expiresAtMillis, entry.order));
         entry.views.forEach((name, value) -> {
             var view = stock.views.get(name); var bucket = view.get(value);
             bucket.remove(entry.order);
             if (bucket.isEmpty()) view.remove(value);
             if (view.isEmpty()) stock.views.remove(name);
         });
-        budget.release(stock, 1, expiration);
     }
 
     private void expire(String group) {

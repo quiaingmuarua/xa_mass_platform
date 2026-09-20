@@ -22,7 +22,7 @@ class DispatchMechanismBoundaryTest {
                 ROOT.resolve("TaskAssignmentDispatcher.java")
         );
         assertTrue(source.contains("worker.expectedScore()"));
-        assertTrue(source.contains("transferObservedHotScoreLeases("));
+        assertTrue(source.contains("acquireObservedHotScoreLeases("));
         assertTrue(source.contains("acquireCurrentHotScoreLeases("));
         for (String parallelInput : List.of(
                 "itemsByMessageId",
@@ -175,7 +175,8 @@ class DispatchMechanismBoundaryTest {
         assertFalse(selection.contains("computeIfAbsent"));
         String refill=Files.readString(ROOT.resolve("WorkerEligibilityRefillPolicy.java"));
         assertTrue(refill.contains("observeDueHotScoreCandidates"));
-        assertTrue(refill.contains("acquireObservedHotScoreLeases"));
+        assertTrue(refill.contains("candidateizeObservedHotScores"));
+        assertTrue(refill.contains("recycleObservedHotCandidates"));
     }
 
     @Test

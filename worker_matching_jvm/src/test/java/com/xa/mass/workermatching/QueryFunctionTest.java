@@ -126,7 +126,7 @@ class QueryFunctionTest {
     }
 
     @Test void independentMapStockCanShareRefillAndNamedConsumptionWithoutUsingPoolResource() {
-        var held = new LinkedHashMap<String, HeldCandidate>();
+        var held = new LinkedHashMap<String, Long>();
         PoolRefillPolicy rule = new PoolRefillPolicy() {
             public EligibilityQuery normalizeQuery(String g, EligibilityQuery q) {
                 if (!q.query().isEmpty()) throw new IllegalArgumentException(); return q;
@@ -135,9 +135,9 @@ class QueryFunctionTest {
                 var result = new LinkedHashMap<EligibilityQuery, Integer>();
                 targets.forEach((q, n) -> result.put(q, Math.max(0, n - held.size()))); return Map.copyOf(result);
             }
-            public synchronized List<String> refill(String g, Map<EligibilityQuery, Integer> targets, List<HeldCandidate> offered, int limit) {
+            public synchronized List<String> refill(String g, Map<EligibilityQuery, Integer> targets, Map<String, Long> offered, int limit) {
                 var result = new ArrayList<String>();
-                for (var entry : offered) if (result.size() < limit && held.putIfAbsent(entry.workerId(), entry) == null) result.add(entry.workerId());
+                for (var entry : offered.entrySet()) if (result.size() < limit && held.putIfAbsent(entry.getKey(), entry.getValue()) == null) result.add(entry.getKey());
                 return List.copyOf(result);
             }
         };
@@ -148,10 +148,10 @@ class QueryFunctionTest {
             public Map<String, WorkerCandidate> apply(String g, Map<String, Object> inputs) {
                 var result = new LinkedHashMap<String, WorkerCandidate>();
                 synchronized (rule) {
-                    var iterator = held.values().iterator();
+                    var iterator = held.entrySet().iterator();
                     for (String id : inputs.keySet()) if (iterator.hasNext()) {
                         var candidate = iterator.next(); iterator.remove();
-                        result.put(id, new WorkerCandidate(candidate.workerId(), candidate.score()));
+                        result.put(id, new WorkerCandidate(candidate.getKey(), candidate.getValue()));
                     }
                 }
                 return Collections.unmodifiableMap(result);
@@ -163,7 +163,7 @@ class QueryFunctionTest {
                         Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))))) {
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Set.of("g"), catalog.groupsNeedingRefill(Map.of("g", targets)));
-            assertEquals(1, catalog.refill("g", targets, List.of(new HeldCandidate("w", 44, System.currentTimeMillis() + 1000))));
+            assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));
             assertEquals(new WorkerCandidate("w", 44), catalog.take("g", Map.of("m", new WorkerQuery("map", Map.of()))).get("m"));
             verifyNoInteractions(client);
         }

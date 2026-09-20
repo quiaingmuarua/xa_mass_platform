@@ -111,10 +111,10 @@ final class TaskAssignmentDispatcher {
         long confirmedAt = DispatchStageEvent.start();
         Map<String, WorkerScoreTransitionResult> verified = new LinkedHashMap<>();
         if (!observedWorkers.isEmpty()) {
-            verified.putAll(workerScores.transferObservedHotScoreLeases(
+            verified.putAll(workerScores.acquireObservedHotScoreLeases(
                         task.descriptor().workerGroupId(),
                         observedWorkers,
-                        claimUntilMillis, true
+                        claimUntilMillis
                 ));
         }
         if (!currentWorkers.isEmpty()) {

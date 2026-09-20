@@ -50,7 +50,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import java.util.Map;
@@ -216,6 +215,9 @@ class RuntimeBoundaryIntegrationTest {
     private WorkerScoreCore workerScores;
 
     @Autowired
+    private TaskItemScoreBandCore itemScoreWitness;
+
+    @Autowired
     private IdentityHintPoolFixture identityHintRule;
 
     @Autowired
@@ -378,7 +380,7 @@ class RuntimeBoundaryIntegrationTest {
                     var times = new LinkedHashMap<String, Long>();
                     ids.forEach(id -> times.put(id, System.currentTimeMillis() + 60_000));
                     workerScores.rewriteCurrentPolarityWithinTimeFence(groupId, times,
-                            WorkerScorePolarity.RECOVERY_RECHECK, true);
+                            WorkerScorePolarity.RECOVERY_RECHECK, System.currentTimeMillis());
                 }
                 var before = readWorkerFences(groupId, ids);
                 assertThat(send("POST", route + "-batch", JSON.writeValueAsString(requests)).body())
@@ -432,15 +434,18 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(worker.reportProperties()).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
                 URI endpoint = worker.snapshot().endpointUri();
+                awaitCondition(() -> workerScores.observeSchedulingStates(groupId, List.of(workerId))
+                        .statesByWorkerId().get(workerId) == WorkerScoreCore.SchedulingState.HOT_SCORE_OVERDUE);
                 long holdUntil = System.currentTimeMillis() + 60_000;
                 long observed = readWorkerFences(groupId, List.of(workerId)).get(workerId);
-                workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil);
+                assertThat(workerScores.acquireObservedHotScoreLeases(groupId, Map.of(workerId, observed), holdUntil)
+                        .get(workerId).status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
                 long held = readWorkerFences(groupId, List.of(workerId)).get(workerId);
 
                 host.set(Map.of("network.type", "cellular", "ssid", "lab"));
                 assertThat(worker.reportProperties(Map.of("network.type", "cellular"))).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
-                assertThat(mark(readWorkerFences(groupId,List.of(workerId)).get(workerId))).isEqualTo(1);
+                assertThat(readWorkerFences(groupId,List.of(workerId)).get(workerId)).isEqualTo(held);
 
                 // Re-Prepare cannot replace the observed baseline with stale startup input.
                 var scoreBeforePrepare = readWorkerFences(groupId, List.of(workerId));
@@ -668,7 +673,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(result.get("status").asText()).isEqualTo("succeeded");
                 assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText())).containsEntry("executor", workerId);
             }
-            verify(matchingCatalog, org.mockito.Mockito.never()).refill(eq(group), anyList(), anyList());
+            verify(matchingCatalog, org.mockito.Mockito.never()).refill(eq(group), anyList(), anyMap());
         }
     }
 
@@ -707,7 +712,7 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(send("POST","/api/v1/tasks/"+supplier+"/close",null).statusCode()).isEqualTo(200);
             assertThat(matchingCatalog.normalizeQuery(group,new com.xa.mass.kernel.assignment.WorkerQuery("proof.messaging.country","CN")).input()).isEqualTo("CN");
             // Closing supply neither unregisters functions nor forces a stock clear.
-            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).refill(eq(group),anyList(),anyList());
+            verify(matchingCatalog,org.mockito.Mockito.atLeastOnce()).refill(eq(group), anyList(), anyMap());
         }
     }
 
@@ -773,19 +778,19 @@ class RuntimeBoundaryIntegrationTest {
             }).when(matchingCatalog).groupsNeedingRefill(anyMap());
             doAnswer(call->{
                 String group=call.getArgument(0);
-                List<HeldCandidate> offered=call.getArgument(2);
+                Map<String, Long> offered=call.getArgument(2);
                 if(Set.of(groupA,groupB).contains(group)) {
                     supplied.add(group);
                     // Proof-only read: production still carries the fence without reading it back.
-                    var states=readWorkerFences(group,offered.stream().map(h -> h.workerId()).toList());
-                    for(var held:offered) {
-                        assertThat(identities.get(held.workerId())).containsEntry("group",group);
-                        assertThat(states.get(held.workerId())).isEqualTo(held.score());
-                        assertThat(mark(states.get(held.workerId()))).isZero();
+                    var states=readWorkerFences(group,List.copyOf(offered.keySet()));
+                    for(var held:offered.entrySet()) {
+                        assertThat(identities.get(held.getKey())).containsEntry("group",group);
+                        assertThat(states.get(held.getKey())).isEqualTo(held.getValue());
+                        assertThat(mark(states.get(held.getKey()))).isEqualTo(1);
                     }
                 }
                 return call.callRealMethod();
-            }).when(matchingCatalog).refill(anyString(),anyList(),anyList());
+            }).when(matchingCatalog).refill(anyString(), anyList(), anyMap());
             for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
             var pending=new LinkedHashMap<String,List<String>>();tasks.forEach((task,ids)->pending.put(task,new ArrayList<>(ids)));
             long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
@@ -809,13 +814,26 @@ class RuntimeBoundaryIntegrationTest {
                 }
                 if(!pending.isEmpty())Thread.sleep(50);
             }
+            if (!pending.isEmpty()) {
+                for (var row : pending.entrySet()) {
+                    String group = taskGroups.get(row.getKey());
+                    var ids = identities.entrySet().stream().filter(e -> group.equals(e.getValue().get("group")))
+                            .map(Map.Entry::getKey).toList();
+                    System.getLogger(getClass().getName()).log(System.Logger.Level.WARNING,
+                            "Bounded refill witness did not converge: now=" + System.currentTimeMillis()
+                            + " function=" + taskRules.get(row.getKey())
+                            + " workerFences=" + readWorkerFences(group, ids)
+                            + " items=" + itemScoreWitness.getItemScoreStates(row.getKey(), row.getValue().subList(0, Math.min(100, row.getValue().size())))
+                            + " runtime=" + kernelPacerAssembly.snapshot());
+                }
+            }
             assertThat(pending).as("all 800 Items close with qualified actual executors").isEmpty();
             assertThat(multiRuleRoot.get()).isTrue();assertThat(multiGroupRoot.get()).isTrue();
             assertThat(supplied).containsExactlyInAnyOrder(groupA,groupB);
             for(String task:tasks.keySet())awaitTaskExport(task);
         } finally {
             doCallRealMethod().when(matchingCatalog).groupsNeedingRefill(anyMap());
-            doCallRealMethod().when(matchingCatalog).refill(anyString(),anyList(),anyList());
+            doCallRealMethod().when(matchingCatalog).refill(anyString(), anyList(), anyMap());
             for(var worker:workers)worker.close();
         }
     }
@@ -1384,7 +1402,6 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(timeMillis(disconnected))
                     .isGreaterThanOrEqualTo(timeMillis(connected));
 
-            long reconnectEvidenceFloor = slotStart(System.currentTimeMillis());
             reconnected = startWorker(
                     workerGroupId,
                     clientWorkerKey,
@@ -1400,10 +1417,7 @@ class RuntimeBoundaryIntegrationTest {
                     WorkerScorePolarity.HOT_ACQUIRE
             );
             assertThat(timeMillis(restored))
-                    .isGreaterThanOrEqualTo(Math.max(
-                            timeMillis(disconnected),
-                            reconnectEvidenceFloor
-                    ));
+                    .isEqualTo(timeMillis(disconnected));
 
             demandTaskId=createTask(workerGroupId,"worker.any");
             demandTaskCreated = true;

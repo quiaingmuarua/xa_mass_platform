@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.testsupport.RedisTestScope;
@@ -71,16 +70,16 @@ class MatchingResourceIntegrationTest {
                 catalog.upsertWorkerFactsBatch("g", Map.of("w0", Map.of("phone", "number")));
                 var target = List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1_000));
                 for (int batch = 0; batch < 10; batch++) {
-                    var held = new ArrayList<HeldCandidate>();
-                    for (int i = batch * 100; i < (batch + 1) * 100; i++) held.add(new HeldCandidate("w" + i, 123, 2_000));
+                    var held = new LinkedHashMap<String, Long>();
+                    for (int i = batch * 100; i < (batch + 1) * 100; i++) held.put("w" + i, (long) (123));
                     assertThat(catalog.refill("g", target, held)).isEqualTo(100);
                 }
-                assertThat(catalog.refill("g", target, List.of(new HeldCandidate("overflow", 123, 2_000)))).isZero();
+                assertThat(catalog.refill("g", target, Map.ofEntries(Map.entry("overflow", (long) (123))))).isZero();
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
                 assertThat(catalog.take("g", Map.of("pool", new WorkerQuery("worker.any", Map.of()))))
                         .containsEntry("pool", new WorkerCandidate("w0", 123));
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
-                clock.set(2_001);
+                clock.set(61_001);
                 assertThat(catalog.groupsNeedingRefill(Map.of())).isEmpty();
                 assertThat(composition.budget().available()).isEqualTo(10_000);
                 assertThat(catalog.take("g", Map.of("pool", new WorkerQuery("worker.any", Map.of())))).isEmpty();

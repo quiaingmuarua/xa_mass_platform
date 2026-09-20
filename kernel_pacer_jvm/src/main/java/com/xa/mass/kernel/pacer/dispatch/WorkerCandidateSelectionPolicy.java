@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Dispatch consumes Matching inventory and resolves current addresses; it never obtains initial holds. */
+/** Dispatch consumes Matching inventory and resolves current addresses; candidateization belongs to the separate Refill Producer. */
 final class WorkerCandidateSelectionPolicy {
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerMatching matching;

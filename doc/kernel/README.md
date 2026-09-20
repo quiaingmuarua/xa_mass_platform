@@ -44,7 +44,7 @@ Mechanical Owner documents:
 - [Worker Resource Model](../../kernel_jvm/doc/resource-model/worker-resource-model.md)
 - [Task Score](../../kernel_jvm/doc/score/task-score-band-scheduling.md)
 - [TaskItem Score](../../kernel_jvm/doc/score/task-item-score-band-scheduling.md)
-- [Worker Score](../../kernel_jvm/doc/score/worker-score-band-scheduling.md): private polarity/time/mark encoding, soft/sealed transfer, scheduling controls and fixed atomic operations
+- [Worker Score](../../kernel_jvm/doc/score/worker-score-band-scheduling.md): private high-mark encoding, candidate generations, execution acquisition and scheduling controls
 - [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 - [Redis Keyspace](../../kernel_jvm/doc/runtime-redis/redis-keyspace.md)
 - [Task Evidence And Result Redis Shape](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)

@@ -38,7 +38,7 @@ public final class WorkerScoreRedisFixture {
         return millis / WorkerScoreEncoding.SLOT_MILLIS * WorkerScoreEncoding.SLOT_MILLIS;
     }
 
-    public static long dueMarkedScore(long millis) {
-        return WorkerScoreEncoding.absoluteScore(millis / WorkerScoreEncoding.SLOT_MILLIS - 100, 1);
+    public static long dueOrdinaryScore(long millis) {
+        return WorkerScoreEncoding.absoluteScore(millis / WorkerScoreEncoding.SLOT_MILLIS - 100, 0);
     }
 }

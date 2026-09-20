@@ -2,7 +2,6 @@ package com.xa.mass.server.testsupport;
 
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.PoolRefillPolicy;
 import com.xa.mass.workermatching.pool.CandidatePool;
@@ -28,7 +27,7 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
 
     public IdentityHintPoolFixture(LongSupplier clock, CandidatePool stock) {
         this.stock = stock;
-        pool = new AnyPoolPolicy(clock,stock);
+        pool = new AnyPoolPolicy(stock);
         consumer = new AnyQueryFunction(stock);
     }
 
@@ -45,7 +44,7 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     }
 
     @Override public List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
-            List<HeldCandidate> offered, int maxAccepted) {
+            Map<String, Long> offered, int maxAccepted) {
         return pool.refill(group, targets, offered, maxAccepted);
     }
 

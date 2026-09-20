@@ -58,15 +58,16 @@ before writing. Supply does not constrain the Item function or confer query righ
 
 Main shares immutable NORMAL Task descriptors. Refill concatenates declarations by
 Group; Matching chooses Pools, normalizes and MAX-merges targets, and pages bounded
-operations. Pacer acquires candidate leases before eligibility reads. Stock retains
-the original fence and deadline. With no demand, maintenance still reaps expired
-stock and inactive cursors, but no refill HOT read/acquire occurs.
+operations. Pacer candidateizes before eligibility reads, preserving Worker time.
+Stock keeps the opaque generation and a local admission TTL. Without demand,
+maintenance expires stock/cursors and Pacer may recycle old candidates in Main
+Groups, but it does not perform ordinary HOT supply reads/candidateization.
 
 Dispatch forwards explicit Group and messageId-to-WorkerQuery data. Matching returns
 at most one candidate per Item. Query interpretation and grouping stay in Matching;
 Kernel owns execution admission and Item claim. Pool results use original nonzero
 fences; identity/index hints use zero only at Pacer, selecting Kernel's distinct
-current-state acquisition method. Command and ResultContext use the new sealed fence.
+current-state acquisition method. Command and ResultContext use the new execution fence.
 
 Tasks share Group/Pool stock without quotas. Closing a supplier stops subsequent
 supply hints, without clearing inventory or revoking another Task's query. Item

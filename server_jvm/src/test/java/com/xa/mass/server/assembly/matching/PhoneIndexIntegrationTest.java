@@ -132,7 +132,7 @@ class PhoneIndexIntegrationTest {
 
     @Test void mixedPoolPhoneAndIdentityKeepFirstAssociationWithoutConsumingTheIndex() {
         catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "+1")));
-        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), Map.ofEntries(Map.entry("a", (long) (123))))).isEqualTo(1);
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("pool", new WorkerQuery("worker.any", Map.of()));
         requests.put("phone", new WorkerQuery("worker.phone", "+1"));
@@ -168,7 +168,7 @@ class PhoneIndexIntegrationTest {
     }
 
     @Test void phoneReadFailureDoesNotRollBackAnEarlierPoolConsumption() throws Exception {
-        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), List.of(new com.xa.mass.kernel.assignment.WorkerMatching.HeldCandidate("a", 123, System.currentTimeMillis() + 60_000)))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), Map.ofEntries(Map.entry("a", (long) (123))))).isEqualTo(1);
         redis.set(value("g", "corrupt"), "wrong-type");
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("pool", new WorkerQuery("worker.any", Map.of()));

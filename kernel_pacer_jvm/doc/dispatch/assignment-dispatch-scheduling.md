@@ -4,187 +4,137 @@ Status: active Java Kernel Dispatch Convergence contract.
 
 Detailed owners: [Initialization](task-initialization-policy.md),
 [Task Dispatch](task-dispatch-pacer.md), [Matching](../../../worker_matching_jvm/README.md),
-[Worker hold protocol](../../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
+[Worker protocol](../../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 and [Delivery](../../../doc/kernel/worker-delivery-dispatch.md).
 
 ## Authority
 
-One Main Scheduler supplies complete bounded input to fixed single-flight
-initialization, Eligibility refill, Task dispatch and optional Serviceability
-Producers. It shares complete immutable NORMAL Task descriptors, including optional Pool
-supply declarations, without another Matching lookup. TaskItems use
-Pool stock or fixed direct identity queries;
-they never generate refill demand or a matching job.
+Main supplies complete bounded Group roots and immutable NORMAL Task descriptors
+to fixed single-flight Producers. Task supply declarations name Pools; Item queries
+independently name functions. Items never generate refill demand. Pacer forwards
+opaque queries and scores without interpreting facts, indexes or coordinates.
 
-The refill Producer concatenates declarations by Group and calls Matching's
-`groupsNeedingRefill` before acquiring held candidates. Pacer intersects the hint
-with Main's Group roots and retains its rotation and supply budgets. It then calls
-`refill(group, declarations, held)` directly. Matching resolves names on each call,
-merges targets using MAX and preserves Pool rotation. Country processes complete
-bounded targets against memory bucket counts; other Pools retain target paging.
-Hint reads do not advance their query cursors; actual refill attempts do. No inventory snapshot or
-executable preparation is required between those calls. Server admission does not
-observe shortages or maintain inventory.
+Matching normalizes declarations and merges equivalent targets using MAX.
+`groupsNeedingRefill` observes local shortages; observations do not advance target
+pages. Actual refill attempts retain Pool/target rotation. Country uses its complete
+bounded target set; other policies retain bounded target pages. Server admission
+has no inventory observation or maintenance authority.
 
-## Candidate Lease Boundary
+## Candidate Generation Boundary
 
-**For Pool refill, Pacer acquires a 1-second candidate lease before Matching reads projections.**
-Only successful new fences are supplied. Matching admits the qualified subset
-using those same fences and original deadlines; processing and stock waiting share
-the second. Unmatched leases expire naturally. Execution confirmation remains a
-separate exact transition. Unconditional Any requires explicit Pool/function
-enablement and declared supply. Redis-time validation remains inside each lease CAS.
-Matching has no acquisition callback or inventory renewal capability.
+**Refill candidateizes due ordinary HOT without changing its time. Assignment
+alone establishes a future execution lease.** Matching receives only successful
+candidate fences as Map<workerId, Long>, not held-lease DTOs or deadlines.
+
+The 50ms completion-relative Refill Producer shares Main's Group rotation:
+
+1. Observe a bounded old mark=1 head in each selected Group and exact-recycle it
+   to mark=0 at Redis execution time, even when there is no Pool shortage.
+2. For Groups needing supply, observe the due mark=0 head from Assignment's
+   optional floor, then exact-candidateize before qualification.
+3. Supply only returned TRANSITIONED new fences to Matching.
+
+Candidateization and recycling each have independent 100-per-Group and
+1000-per-round budgets; each Group gets at most one batch of each operation per
+round. Attempts advance Group rotation, including empty reads and failures. No
+Worker offset, extra thread, supplementary scan or durable cursor is introduced.
+Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
+scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
+use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
+
+Both heads count raw rows, including corruption, against their budgets. Successful
+candidateize moves a member to another mark band. Recycling advances generation,
+so an old head cannot immediately repeat the same aged cycle. No match, capacity
+refusal, qualification exception, lost response or process exit leaves a rollback
+or retry; normal age-based recycling is the recovery path while Main supplies the
+Group. Old stock independently expires. Initial/closed/parked Tasks do not create
+new demand, and a Task stop does not cancel an already admitted refill call.
 
 ## Candidate Selection
 
 ```text
-NORMAL RUNNING Tasks -> complete immutable Task descriptors
-  -> refill: shared target MAX -> Group deficit -> Pacer read-only HOT head
-      -> Kernel exact 1-second lease -> Matching projection/acceptance -> inventory
-  -> dispatch: messageId -> due Item query -> fixed Matching function
-      -> Pool take or direct identity/property lookup -> messageId -> candidate
-      -> current Endpoint/Group -> Worker execution admission -> Item exact claim
+NORMAL descriptors -> Group declarations and deficits
+  -> old candidate recycle; due ordinary HOT -> exact candidateize
+  -> Matching current qualification -> per-Pool local inventory
+Item messageId/query -> fixed Matching function -> Pool take or direct lookup
+  -> current Endpoint/Group -> execution acquisition -> exact Item claim
 ```
 
-Matching owns fixed query functions and shared stock per Group/Pool. Pacer forwards Group,
-message IDs and Item WorkerQuery envelopes through `WorkerMatching`, without normalization or
-semantic aggregation. No Task-private candidate cache or quota exists.
-Refill takes no Item input. Pool queries, including explicit ANY, consume
-inventory; a miss leaves the Item due without a source query or fresh hold.
-Direct workerId/worker.phone queries need no stock: they return identity hints and
-leave current execution eligibility to Kernel, without changing Task refill demand.
+One supplied generation may qualify into multiple Pools. Pool TTL begins at actual
+admission and lasts 60 seconds. Duplicate Worker/fence offers do not extend TTL.
+Requalification replaces older generations/views without extra storage capacity;
+nonmatching new generations remove their old entries. Catalog counts every actual
+admitted entry against its 100-entry batch budget. It retains Pool rotation and
+partial successes if a later policy throws. There is no all-Pool fill guarantee.
 
-Refill runs at a 50ms completion-relative interval. Pacer rotates positive-deficit
-Groups and tries at most 100 IDs per Group, 1000 per round, independent of the
-business deficit count. **Each observation starts at the due head from the preset
-HOT floor, in ascending Score/member order; no within-Group offset is retained.**
-Successful acquisition moves the head forward before Matching, including no-match
-and projection-failure batches. Expired leases retain their newer time coordinates.
-Group rotation still advances on attempts, including empty observations and failures.
-Observation returns at most 100 raw rows, filtering corrupt scores without a
-replacement scan or automatic progress through a fully corrupt head. Score changes
-between observation and acquisition are handled by exact CAS, without a same-round
-rescan or a stable-snapshot promise.
+Pool take removes entries before address lookup and claim. TTL only limits take;
+a taken candidate has no extra expiry beyond Owner exact/due conditions. Old local
+selection references cannot consume a replacement. Any needs explicit enablement
+and declared supply. Direct Identity/Phone functions need no stock and generate
+identity hints without creating supply or discovering replacement Pool candidates.
 
-For each nonempty Group batch Pacer computes now plus 1 second and calls the existing
-exact acquisition once. Full-score comparison accepts due mark=0 or mark=1 and
-establishes a soft hold on success. Only TRANSITIONED new fences reach Matching; all-failed
-acquisition skips it. Owner response loss does not trigger a confirmation read.
-
-Matching calls each participating Pool policy synchronously with the remaining held IDs.
-Each policy owns qualification and shortages, and reads only
-its offered identities. Catalog rotates Pools/target pages and excludes IDs actually
-admitted by an earlier Pool. Current policies prioritize constrained targets before ANY
-and recheck expiry/capacity at local commit, retaining original fences and deadlines.
-If a later Pool maintenance call fails, earlier admissions remain consumable; the exception ends the
-remaining batch and reaches the existing Producer failure path. The next round
-re-observes shortages without rollback or replay. Maintenance policies have no lease capability,
-pending registry or separate Matching execution thread.
-
-Rare predicates/explicit IDs can wait under bounded Group supply. Pool refill cannot
-discover substitute IDs from its indexes; Direct query functions independently locate IDs. Zero-match batches still write short
-leases, and partial matches can acquire more Workers than they admit: this is the
-accepted cost of pre-Matching acquisition. Unmatched leases, ambiguous acquisition,
-expired processing and failed insertion recover by natural expiry, without renewal.
-
-Main-selected INITIAL Tasks never prewarm. Closed, parked or disabled Tasks supply
-no subsequent targets. A Main observation is round evidence; stopping a Task does
-not retroactively cancel an in-flight refill. Old stock expires without renewal.
-
-Dispatch preserves its 100-Item per-Task budget and actual-publication ordering
-hint: unserved Tasks first, then least recently served. Within a Task, Pacer submits
-one complete messageId-to-query Map. Matching validates and normalizes the entire
-batch, routes functions in first-appearance order, and each Pool function groups
-equivalent selections and assigns candidates in its group's Item order.
-The result follows original request order and omits misses and later cross-function
-duplicate Workers without replacing them. A later execution exception does not
-restore earlier consumed inventory. Item functions are independent of Task supply declarations and never generate supply.
-Each take returns at most 100 unique candidates. Pool entries are removed before address
-lookup, confirmation and claim. Pacer filters round-duplicate Workers and missing
-or wrong-Group addresses for their associated message ID only; it never redistributes
-another Item's candidate. Failure never restores stock, takes a replacement or
-refreshes a fence. Identity/Phone functions bypass Pool stock, but never bypass
-Group/address verification or Kernel execution admission.
-
-The [Matching Owner](../../../worker_matching_jvm/README.md#cost-failure-and-proof)
-records supply/refill command costs. Pool counts/take and Identity lookup are local;
-Phone lookup performs one bounded read-only Redis Lua. Endpoint HMGET,
-Worker confirmation, Item claim and mailbox publication remain bounded Owner calls.
-They are measured independently from refill, not asserted as a latency promise.
+Dispatch retains 100 Items per Task and its bounded publication ordering hint:
+unserved Tasks first, then least recently served. Matching validates the whole
+request before consumption, groups equivalent selections and returns messageId
+associations in original order. Later duplicate Workers or missing/wrong-Group
+addresses are filtered only from their associated Item. Pacer never redistributes
+another Item's candidate, restores stock or takes a replacement. Later failures
+retain earlier consumption. Rare predicates may wait under bounded supply.
 
 ## Assignment Closure
 
-Only the package-private `TaskAssignmentDispatcher` constructs claimed Commands:
+Only package-private TaskAssignmentDispatcher creates claimed Commands:
 
 ```text
-Pacer partitions exact fences / identity hints
-  -> Worker transferObservedHotScoreLeases(seal=true) / acquireCurrentHotScoreLeases
-  -> exact ACTIVE Item claim
-  -> ResultContext carrying the returned execution fence
-  -> Adapter-partitioned Worker mailbox
+nonzero expected fence -> acquireObservedHotScoreLeases
+identity hint          -> acquireCurrentHotScoreLeases
+  -> returned execution fence -> exact ACTIVE Item claim
+  -> ResultContext -> Adapter-partitioned Worker mailbox
 ```
 
-Pacer treats scores as opaque evidence. It cannot decode, construct or calculate
-coordinates. Only TRANSITIONED with a returned new fence proceeds to Item claim;
-NOOP, STALE and INVALID never authorize it, even if a result echoes a sealed
-current score. `RoutedWorkerCandidate` carries `WorkerCandidate.expectedScore`
-alongside the verified Group and Endpoint. Pacer partitions the complete validated
-batch: nonzero fences go unchanged to `transferObservedHotScoreLeases`; zero hints
-become an identity list for `acquireCurrentHotScoreLeases`. That operation admits
-due HOT with either mark or current/future soft HOT and always writes a sealed fence. Kernel's exact input
-rejects zero, and its current-state input has no expected-score field. Empty
-partitions make no Owner call. The two calls are independent atomic batches;
-an exception after the first commits leaves those holds to expire, without Item
-claim, rollback, compensation or retry. Transfer rejection never falls back to
-the other operation. Neither the input expectation nor a Pool deadline can
-substitute for the returned execution fence. A committed execution
-is not revoked by later facts updates. Unused and publication-failed leases
-recover through existing expiry semantics.
+Both acquisition paths require strictly past HOT with either mark and a requested
+future deadline. They atomically write mark=0 and the execution deadline. They
+cannot preempt a current/future hold. Only TRANSITIONED with a returned score
+permits claim. A strict failure never downgrades to an identity hint. No zero
+sentinel reaches Kernel; it has a separate identity-only operation.
 
-WorkerScore also offers transfer with seal=false for a future bounded caller.
-It can only preserve or extend a soft deadline; unchanged time is NOOP. This
-Pacer adds no allocator, cached-candidate discovery or preemption loop. Matching
-may retain a fence after another caller transfers it; Dispatch's exact transfer
-rejects that old fence without refreshing it or taking a replacement.
-All production Pool functions still return their original nonzero expectations. Fixed
-Identity and Phone executors produce zero hints. Runtime Boundary creates ordinary Tasks with `refill=[]` to
-prove they execute due Workers without pre-existing stock or a candidate lease.
-A Direct win invalidates the old Pool fence without synchronously removing stock.
+Each nonempty partition is one bounded Owner call, split according to its existing
+capacity. An exception after an earlier commit leaves execution holds to expire,
+without Item claim, rollback or retries. ResultContext carries the new execution
+fence, never the candidate generation. Multiple Pools and Direct acquisition race
+for one execution slot; stale copies cannot claim or release the winner's hold.
 
-Task Dispatch independently stores failed Result before requesting terminal tag
-5 for exhausted/expired Items, and owns pacing/idle close or park. Result routing
-and subsequent outcome observations retain their separate lifecycle and commits.
+Properties invalidation atomically advances past HOT time and clears candidate
+mark, making it observable by ordinary Refill after the current slot passes.
+Past non-cold RECOVERY retains mark when advancing; both retain polarity.
+Execution-first ordering preserves the future hold. Network evidence retains
+mark and protected times, with CONNECTED only performing startup-floor activation.
+Task Dispatch independently records exhausted/expired failure before terminal Item
+movement. Result content, Item finality and Worker release keep separate commits.
 
 ## Failure Semantics
 
 | Failure | Result |
 | --- | --- |
-| unavailable function | no assignment; failure/idle handling continues |
-| invalid selector | Server rejects before Item mutation; stored invalid input fails bounded acquisition |
-| HOT observation failure | refill Producer backoff; no acquisition |
-| projection failure | refill Producer backoff; no new Group stock; acquired holds expire |
-| acquisition failure or response loss | no stock from unconfirmed results; committed holds expire |
-| competing exact score or sealing a held candidate | reject the stale acquisition or execution fence |
-| unused hold | expires naturally; no compensation |
-| restart | local stock is lost; facts and Task descriptors persist and normal refill acquires new holds |
+| Invalid selector | Rejected before the corresponding consumption/mutation |
+| Head read failure | Existing Producer backoff |
+| Candidate CAS lost | No Matching offer |
+| Qualification/capacity/return loss | No compensation; committed generations age into recycle |
+| Properties or competing assignment changes fence | Stale strict acquisition, no fallback |
+| TTL expires before take | Inventory removed locally |
+| Claim/publication fails | Execution hold expires independently |
+| Restart | Local stock lost; retained generations recover through bounded recycling |
 
-There is no Score/facts transaction, ACK, replay, repair scan or guarantee that
-lost Properties evidence eventually arrives. Matching resources and functions never couple Task lifecycles.
+There is no facts/Score transaction, reliable SYSTEM replay, global Worker scan,
+allocator or rule-change sweep. Refill alone supplies no network evidence. An
+actual delivery remains necessary for the existing delivery-evidence recovery path;
+periodic Probe remains governed by its preset and bounded Serviceability policy.
 
 ### Serviceability And Verification Scope
 
-Focused Pacer tests establish ordering and bounded policy. Redis Owner proof
-establishes lease fences and admission; Runtime Boundary and system proofs
-establish their named execution/failure claims. Follow the
-[mainline code/proof pointers](../../../doc/kernel/scheduling-overview.md#production-and-proof-pointers)
-and [TESTING](../../../TESTING.md) for current selection.
-
-The [2026-09-15 verification notes](https://github.com/quiaingmuarua/xa_mass_platform/blob/86052b2855a8d73c4df9d03cd5c40af31d0bf6f3/kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#serviceability-and-verification-scope)
-preserve version-scoped results and an unresolved failure observation. They are
-historical evidence, not a current pass/fail report or a production contract.
-
-Lease acquisition is not network evidence. The existing current-slot evidence
-boundary, observation-age checks and Serviceability probe strategy are unchanged.
-Refill alone emits no Adapter delivery evidence and does not guarantee repair after
-a lost disconnect. Actual dispatch retains the existing delivery-evidence path.
+Focused Pacer tests prove bounded attempts, independent budgets and no fallback.
+Redis Owner proof establishes time/exact fences and four 100/100/50 head-progress
+cases. Matching proof covers independent TTL, shared generations and replacement.
+Runtime Boundary retains execution, Binding and delivery witnesses. System lanes
+keep their existing thresholds and nonclaims; see [TESTING](../../../TESTING.md)
+and [mainline proof pointers](../../../doc/kernel/scheduling-overview.md#production-and-proof-pointers).
