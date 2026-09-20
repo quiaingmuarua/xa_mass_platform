@@ -68,6 +68,7 @@
     "WorkerMatching": [
       "observe_refill_deficits",
       "refill",
+      "reuse_candidates",
       "take"
     ],
     "TaskEvidenceRuntime": [

@@ -81,17 +81,27 @@ final class WorkerEligibilityRefillPolicy {
             // Lane movement advances the head, including candidates Matching may reject.
             var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, limit);
             DispatchStageEvent.batch(started, "REFILL_OBSERVATION", limit, observed.size(), false);
-            if (observed.isEmpty()) continue;
-            long acquiredAt = DispatchStageEvent.start();
-            Map<String, Long> candidates = Map.of();
-            boolean failed = true;
-            try {
-                candidates = transitioned(observed, scores.candidateizeObservedHotScores(group, observed));
-                failed = false;
-            } finally {
-                DispatchStageEvent.batch(acquiredAt, "CANDIDATEIZE", observed.size(), candidates.size(), failed);
+            int added = 0;
+            if (!observed.isEmpty()) {
+                long acquiredAt = DispatchStageEvent.start();
+                Map<String, Long> candidates = Map.of();
+                boolean failed = true;
+                try {
+                    candidates = transitioned(observed, scores.candidateizeObservedHotScores(group, observed));
+                    failed = false;
+                } finally {
+                    DispatchStageEvent.batch(acquiredAt, "CANDIDATEIZE", observed.size(), candidates.size(), failed);
+                }
+                if (!candidates.isEmpty()) added = index.refill(group, targets.get(group), candidates);
             }
-            if (!candidates.isEmpty()) admitted += index.refill(group, targets.get(group), candidates);
+            admitted += added;
+            // Fresh generations go first, so reuse cannot mask Properties invalidation.
+            int reuseLimit = Math.max(0, limit - added);
+            if (reuseLimit > 0) {
+                int reused = index.reuseCandidates(group, targets.get(group), reuseLimit);
+                if (reused < 0 || reused > reuseLimit) throw new IllegalStateException("Matching reuse exceeded the admission budget");
+                admitted += reused;
+            }
         }
         return admitted;
     }

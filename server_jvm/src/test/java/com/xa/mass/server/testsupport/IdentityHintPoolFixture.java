@@ -48,6 +48,11 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
         return pool.refill(group, targets, offered, maxAccepted);
     }
 
+    @Override public List<String> refillRetained(String group, Map<EligibilityQuery, Integer> targets,
+            Map<String, CandidatePool.RetainedCandidate> offered, int maxAccepted) {
+        return pool.refillRetained(group, targets, offered, maxAccepted);
+    }
+
     public com.xa.mass.workermatching.QueryFunction queryFunction() {
         return new com.xa.mass.workermatching.QueryFunction() {
             public Object normalizeInput(String group, Object input) {

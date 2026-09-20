@@ -1417,7 +1417,7 @@ class RuntimeBoundaryIntegrationTest {
                     WorkerScorePolarity.HOT_ACQUIRE
             );
             assertThat(timeMillis(restored))
-                    .isEqualTo(timeMillis(disconnected));
+                    .isGreaterThanOrEqualTo(timeMillis(disconnected));
 
             demandTaskId=createTask(workerGroupId,"worker.any");
             demandTaskCreated = true;

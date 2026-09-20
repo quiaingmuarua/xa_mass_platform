@@ -101,6 +101,10 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     private PoolRefillPolicy trace(PoolRefillPolicy handler) {
         return new PoolRefillPolicy() {
+            public List<String> refillRetained(String group, Map<EligibilityQuery, Integer> targets,
+                    Map<String, CandidatePool.RetainedCandidate> offered, int maxAccepted) {
+                return handler.refillRetained(group, targets, offered, maxAccepted);
+            }
             public EligibilityQuery normalizeQuery(String group,EligibilityQuery query) { return handler.normalizeQuery(group,query); }
             public Map<EligibilityQuery,Integer> deficits(String group,Map<EligibilityQuery,Integer> targets) { return handler.deficits(group,targets); }
             public List<String> refill(String group,Map<EligibilityQuery,Integer> targets,Map<String, Long> offered,int maxAccepted) {

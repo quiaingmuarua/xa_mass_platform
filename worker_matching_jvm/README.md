@@ -25,6 +25,7 @@ actual admission. Only TaskItem assignment creates an execution lease.
 | Supply | Pacer observes mark=0 HOT and exact-candidateizes; aged mark=1 is independently recycled |
 | Qualification/admission | Each Pool reads offered identities, retains their fences and establishes local TTL |
 | Coordination | Several Pools may accept the same generation; total budget counts actual entries |
+| Later supply | Existing live Pool stock can be requalified for another Pool without consuming it or extending its original TTL |
 | Execution | Kernel exact-acquires a due Pool fence or current due identity; only its new execution fence permits Item claim |
 
 **Cross-Pool failure contract:** Pool A's successful refill remains committed if
@@ -86,8 +87,26 @@ validates and works without a prior hint or Task registration. Both operations m
 bounded local target normalization; they retain no shared execution plan, policy
 view or inventory transaction. Server admission and Main do not maintain stock.
 
+`reuseCandidates(group, declarations, limit)` fills later supply demand from
+generations already retained in this Group's Pools. The existing Refill Producer
+calls it only for the shortage left after fresh candidate supply, so retained stale
+fences cannot prevent Properties-invalidated ordinary HOT from being candidateized.
+Each call observes at most 100 raw local entries, including duplicate identities,
+and admits at most `limit` entries (1..100). Source Pools and their local entry
+orders rotate across calls; these are process-local inventory observations, not
+WorkerScore pagination or another inventory. There is no Redis Worker discovery.
+
+Policies recheck qualifications through their existing bounded facts/index reads.
+Reuse fills absent target identities only, never replaces or discards a different
+target generation, and retains the source entry's expiry. Repeated sharing cannot
+keep a generation alive through TTL renewal. Source consumption may race the
+observation; execution still requires Kernel's exact due acquisition. Earlier
+admissions survive a later failure. Unaccepted Worker generations are not retained
+for this path and keep their existing aged-recycle recovery. No query or Item
+consumption triggers reuse; the ordinary Refill Producer owns the call.
+
 Server admission uses `WorkerMatchingCatalog.normalizeQuery(group, WorkerQuery)`.
-The Pacer port exposes shortage observation, refill and
+The Pacer port exposes shortage observation, fresh refill, retained reuse and
 `take(group, queriesByMessageId)`. The function name belongs to each Item, not an
 outer Task binding. Unknown or Group-disabled names fail without fallback; names
 are matched exactly, never classified by prefix. Item functions do not depend on Task supply declarations. A Task with no supply can
@@ -177,6 +196,7 @@ now owns only the refill side:
 | `normalizeQuery(group, query)` | Idempotent target admission; no Redis read or inventory mutation |
 | `deficits(group, targets)` | Immutable observed shortages, never reservations |
 | `refill(group, targets, offered, maxAccepted)` | Qualify supplied IDs and return actual admissions with opaque fences and local TTL |
+| `refillRetained(group, targets, offered, maxAccepted)` | Requalify retained fences, fill absent identities only and preserve source expiry |
 
 `EligibilityQuery` remains the quantity-free string-list structure for supply.
 `RefillTarget(poolName,target,count)` carries the resource name and quantity. TaskDescriptor
@@ -367,7 +387,10 @@ The single-flight refill Producer uses Main-selected NORMAL RUNNING Tasks, with
 a 50ms completion-relative interval. INITIAL does not prewarm. Closed, parked or
 disabled Tasks supply no later demand; an in-flight round is not a lifecycle lock.
 Pacer rotates Groups, at most 100 HOT candidates per Group and 1000 per round.
-A positive deficit enables a Group but never reduces its fixed HOT scan budget.
+A positive deficit limits the raw HOT read to `min(deficit, 100)`, while each
+attempt still reserves 100 from the round budget. After fresh supply, at most 100
+retained local entries may be observed for the remaining shortage; fresh and
+retained admissions together stay within 100 per Group attempt.
 
 Catalog rotates Pool policies; only non-Country policies use bounded query pages,
 including empty attempts. Country visits the full target set per attempt. A maintenance policy
@@ -462,7 +485,8 @@ Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
 pages, before admission and Pacer start. Retained facts are the rebuild input;
 malformed facts abort startup. Cleanup visits only the declared roots and descendants
 of enabled Rules/functions, leaving other index namespaces untouched. With no configured Groups, rebuild is a no-op
-and opens no Redis connection. Refill reads their projections only for Pacer-issued IDs; there is no
+and opens no Redis connection. Refill reads projections only for Pacer-issued IDs
+or those already retained in bounded local Pool stock; there is no
 autonomous source take, index repair scan, lease registry or per-Task publication.
 
 ## Cost, Failure and Proof
@@ -477,9 +501,13 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Refill recycling: one read-only candidate-head Lua per selected Group and one
   exact recycle Lua for a nonempty batch, even without supply shortage. It has a
   separate 100-per-Group/1000-per-round budget and shares existing Group rotation.
-- Each Group needing supply: one mark=0 due-head Lua, one exact candidateize Lua,
-  then at most one projection read per participating policy. No successful
-  candidateization means no Matching call. Full stock skips this supply path.
+- Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
+  Lua for a nonempty head, then at most one projection read per participating policy
+  for successful candidateizations. Full stock skips this supply path.
+- Remaining shortage: one bounded retained-stock observation with zero Score
+  commands, followed by at most one additional qualification read per participating
+  policy. This can run even when fresh supply is empty. Retained admission keeps
+  source expiry; it does not create another 60-second lifetime.
 - Any needs no qualification read and never discovers substitute IDs.
 - Final execution: one bounded Lua per nonempty strict/current partition, each
   with Redis TIME. Only strictly due HOT can gain execution. Address, Item claim,

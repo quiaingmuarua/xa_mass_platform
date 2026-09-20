@@ -429,6 +429,15 @@ bounded recycling, with no compensation or replay. Several Pools may share the
 same fence; actual entries count against the call budget. Earlier Pool admission
 survives a later Pool failure.
 
+The actual Pacer/Matching/Redis composition also fixes later Pool demand: twelve
+Workers first enter Country, then Messaging reuses the same candidate generation
+without aged recycling or Score writes. Competing Country/Messaging candidates
+still have one exact execution winner. Focused tests bound retained reads to 100,
+prove progress beyond an unmatched local head, preserve source TTL, and forbid
+retained offers from replacing a different target fence. Fresh generations are
+supplied before retained reuse. Scenario Coexistence keeps its original send
+deadline and is the process witness for this interaction.
+
 Owner proof covers high-mark encoding, strict current-slot exclusion, Properties
 ordering, network floor activation, pause MAX/0, relative deferral and one execution
 winner across Pool/Direct callers. Ordinary candidate, aged candidate, Serviceability

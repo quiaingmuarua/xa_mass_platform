@@ -36,6 +36,9 @@ The 50ms completion-relative Refill Producer shares Main's Group rotation:
    rows from the due mark=0 head at Assignment's optional floor, then
    exact-candidateize before qualification.
 3. Supply only returned TRANSITIONED new fences to Matching.
+4. If the observed shortage remains, ask Matching to requalify at most 100 retained
+   local Pool entries. New supply plus reuse admits at most 100 entries per Group
+   attempt. Reuse preserves the original source TTL and does not write WorkerScore.
 
 Candidateization and recycling each have independent 100-per-Group and
 1000-per-round budgets; each Group gets at most one batch of each operation per
@@ -45,6 +48,8 @@ partial/failed attempts do not refund budget. The observation stage records the
 actual requested limit. Zero deficit skips ordinary observation but not recycling.
 Attempts advance Group rotation, including empty reads and failures. No
 Worker offset, extra thread, supplementary scan or durable cursor is introduced.
+Matching may rotate through its existing bounded local Pool stock to serve later
+Pool demand. This does not change either Redis head or the Group attempt budget.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
 scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
 use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
@@ -69,6 +74,9 @@ Item messageId/query -> fixed Matching function -> Pool take or direct lookup
 
 One supplied generation may qualify into multiple Pools. Pool TTL begins at actual
 admission and lasts 60 seconds. Duplicate Worker/fence offers do not extend TTL.
+Later Pool demand can reuse an already retained generation within the source's
+original TTL. Reuse never replaces an existing target identity. Fresh candidate
+supply runs first, preventing old retained fences from masking a new generation.
 Requalification replaces older generations/views without extra storage capacity;
 nonmatching new generations remove their old entries. Catalog counts every actual
 admitted entry against its 100-entry batch budget. It retains Pool rotation and

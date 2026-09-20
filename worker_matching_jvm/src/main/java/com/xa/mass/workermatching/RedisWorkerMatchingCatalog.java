@@ -36,6 +36,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private final LongSupplier clock;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
     private final Map<Scope,Integer> queryCursors=new LinkedHashMap<>();
+    private final Map<String,String> lastReuseSources=new LinkedHashMap<>();
     private long lastDiagnosticMillis;
     private long requestedDeficit;
 
@@ -180,6 +181,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         pools.values().forEach(CandidatePool::expireAll);
         queryCursors.keySet().retainAll(targets.keySet());
         eligibilityCursors.keySet().retainAll(supplied.keySet());
+        lastReuseSources.keySet().retainAll(supplied.keySet());
         var deficits=new LinkedHashMap<String,Integer>();
         targets.forEach((scope,rows)->{
             var handler=requireEligibility(scope.workerGroupId(),scope.poolName());
@@ -217,7 +219,34 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             if(score == null || score == 0)throw new IllegalArgumentException("strict candidate required");
             candidates.put(id,score);
         });
-        var scopes=targets(Map.of(group,declarations)).entrySet().stream()
+        return refill(group, targets(Map.of(group, declarations)), candidates, 100, null);
+    }
+
+    @Override public int reuseCandidates(String group, List<RefillTarget> declarations, int limit) {
+        requireNonBlank(group, "workerGroupId");
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("reuse limit requires 1..100");
+        // Complete pure admission before advancing any local observation cursor.
+        var declaredTargets = targets(Map.of(group, declarations));
+        if (declaredTargets.isEmpty()) return 0;
+        var sources = groups.getOrDefault(group, new MatchingGroup(Set.of(), Set.of())).pools().stream()
+                .filter(pools::containsKey).sorted().toList();
+        if (sources.isEmpty()) return 0;
+        int start = (sources.indexOf(lastReuseSources.get(group)) + 1) % sources.size();
+        int remaining = 100;
+        var retained = new LinkedHashMap<String, CandidatePool.RetainedCandidate>();
+        for (int offset = 0; offset < sources.size() && remaining > 0; offset++) {
+            String source = sources.get((start + offset) % sources.size());
+            lastReuseSources.put(group, source);
+            var observed = pools.get(source).observeRetained(group, remaining);
+            remaining -= observed.size(); // Duplicate identities still consume the observation budget.
+            observed.forEach(retained::putIfAbsent);
+        }
+        return refill(group, declaredTargets, CandidatePool.retainedScores(retained), limit, retained);
+    }
+
+    private int refill(String group, Map<Scope, List<RefillTarget>> declaredTargets, Map<String, Long> candidates,
+            int room, Map<String, CandidatePool.RetainedCandidate> retained) {
+        var scopes=declaredTargets.entrySet().stream()
                 .sorted(java.util.Comparator.<Map.Entry<Scope,List<RefillTarget>>>comparingInt(
                         entry -> poolOrder(entry.getKey().poolName()))
                         .thenComparing(entry -> entry.getKey().poolName())).toList();
@@ -225,7 +254,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         if(remaining.isEmpty() || scopes.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
         eligibilityCursors.put(group,(start+1)%scopes.size());
-        int room=100, added=0;
+        int added=0;
         for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<room;n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
@@ -250,7 +279,9 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             // Each Pool commits its own admission. A later failure preserves earlier successes.
             var batch=new LinkedHashMap<String,Long>();
             remaining.forEach(id->batch.put(id,candidates.get(id)));
-            var accepted=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),room-added);
+            var accepted=retained == null
+                    ? handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),room-added)
+                    : handler.refillRetained(group,targetCounts(selected),Collections.unmodifiableMap(retained),room-added);
             if(accepted.size()>room-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Pool policy returned invalid admitted identities");
             // A generation may qualify in several Pools; budget counts actual entries.

@@ -57,7 +57,9 @@ independently of Pool demand. See the
 
 For Pool supply, Pacer candidateizes due ordinary HOT without advancing time.
 Matching retains that generation with its own admission TTL and may share it
-across Pools. Pacer separately recycles aged generations. A Pool function consumes
+across Pools. After fresh supply, the same Refill attempt can requalify bounded
+retained stock for later Pool demand without extending its source TTL or changing
+WorkerScore. Pacer separately recycles aged generations. A Pool function consumes
 stock; Kernel exact-acquires its due fence for execution. Direct workerId/worker.phone
 functions return identity hints for atomic current due acquisition. Both write a
 new execution fence; current/future holds cannot be preempted. Strict failure

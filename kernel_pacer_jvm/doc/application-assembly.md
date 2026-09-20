@@ -71,7 +71,8 @@ WorkerServiceabilityRuntime
 Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
 Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
 those declarations, asks Matching for Group shortage hints, and passes explicit
-Group/Pool targets with each candidateized Group batch. Dispatch calls Matching with the
+Group/Pool targets with each candidateized Group batch. Remaining shortages may reuse
+bounded live Matching stock in the same attempt, within its original TTL. Dispatch calls Matching with the
 Task's Group and messageId-to-WorkerQuery Maps, receiving messageId-to-WorkerCandidate
 Maps. Each Item names its own function; candidates carry strict fences or identity
 hints. Only Matching normalizes and groups queries;
@@ -273,6 +274,12 @@ raw head limit is `min(observed Group deficit, 100)`; smaller shortages do not
 increase the per-round Group call ceiling. Matching supplies numeric shortage
 hints without reserving stock. Candidate age is 60 seconds in production/Scenario
 Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds.
+After fresh supply, the same Group attempt may fill its remaining shortage from
+at most 100 existing local Pool entries via Matching. Total actual admissions
+remain at most 100 per Group attempt. Reuse retains the source TTL, cannot replace
+another target generation, and uses normal qualification reads without Score
+writes, new Redis keys or another Producer. Matching rotates its local stock
+observations; Redis ordinary/aged candidate heads remain cursor-free.
 The event Mechanism chooses target polarity and minimum activation time for the mechanical
 Score operation. Provider construction and close ownership stay unchanged; the
 package-private encoding helper has no separate lifecycle or assembly.

@@ -23,6 +23,14 @@ public interface WorkerMatching {
             Map<String, Long> candidateScores);
 
     /**
+     * Requalifies a bounded slice of this Group's existing Pool stock for current supply.
+     * Visits at most 100 retained entries and admits at most limit entries (1..100).
+     * Does not consume source stock, extend its TTL or replace an existing target identity.
+     * Fences remain opaque; Kernel still decides execution eligibility by exact acquisition.
+     */
+    int reuseCandidates(String workerGroupId, List<RefillTarget> declarations, int limit);
+
+    /**
      * Bounded candidate lookup for at most 100 nonblank message IDs, one candidate per ID.
      * Matching validates and normalizes the entire batch before executing fixed named functions.
      * Functions execute in first-appearance order and own their local input semantics. Current

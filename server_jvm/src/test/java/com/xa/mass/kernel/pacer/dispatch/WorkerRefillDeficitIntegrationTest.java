@@ -2,6 +2,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import static com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED;
 import static com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.STALE;
+import static com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.INVALID;
 import static com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus.NOOP;
 import static com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity.*;
 import static com.xa.mass.kernel.score.redis.WorkerScoreRedisFixture.*;
@@ -28,6 +29,72 @@ import org.junit.jupiter.api.Test;
 /** Actual Pacer policy, Matching stock and Redis fences; no duplicate refill algorithm. */
 @Tag("redis-owner")
 class WorkerRefillDeficitIntegrationTest {
+    @Test
+    void laterMessagingDemandReusesCountryGenerationAndExecutionStillHasOneWinner() throws Exception {
+        var scope = RedisTestScope.create("refill_later_pool");
+        var client = RedisClient.create(REDIS_URL);
+        var commands = new CopyOnWriteArrayList<String>();
+        client.addListener(new CommandListener() {
+            @Override public void commandStarted(CommandStartedEvent event) {
+                commands.add(event.getCommand().getType().toString());
+            }
+        });
+        String group = "g";
+        var country = new RefillTarget("country", new EligibilityQuery(Map.of()), 100);
+        var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of("worker.phone", List.of("+12025550000"))), 1);
+        var countryTask = new TaskDescriptor("country-task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(country), null, Map.of());
+        var messagingTask = new TaskDescriptor("messaging-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
+        try (var connection = client.connect();
+                var scores = new RedisWorkerScoreCore(client, scope.keyspace());
+                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))))) {
+            var redis = connection.sync();
+            try {
+                var time = redis.time();
+                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                var facts = new LinkedHashMap<String, Map<String, String>>();
+                for (int i = 0; i < 12; i++) {
+                    String id = "w%02d".formatted(i);
+                    redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), id);
+                    facts.put(id, Map.of("country", "US", "phone", "+1202555%04d".formatted(i), "messaging.enabled", "true"));
+                }
+                matching.upsertWorkerFactsBatch(group, facts);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
+                assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(12);
+                var before = readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()));
+                assertThat(before.values()).allMatch(score -> mark(score) == 1);
+                assertThat(scores.observeDueHotScoreCandidates(group, null, 100)).isEmpty();
+
+                commands.clear();
+                assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask))).isEqualTo(1);
+                // Existing ordinary/aged head reads plus one Messaging qualification, no Score write.
+                assertThat(commands.stream().filter("EVAL"::equals).count()).isEqualTo(3);
+                assertThat(readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()))).isEqualTo(before);
+                var fromCountry = matching.take(group, Map.of("country", new WorkerQuery("worker.country", List.of("US")))).get("country");
+                var fromMessaging = matching.take(group, Map.of("messaging", new WorkerQuery("worker.messaging.available",
+                        Map.of("country", List.of("US"), "phone", "+12025550000")))).get("messaging");
+                assertThat(fromCountry).isEqualTo(fromMessaging);
+                var fence = Map.of(fromCountry.workerId(), fromCountry.expectedScore());
+                try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                    var start = new java.util.concurrent.CountDownLatch(1);
+                    var left = executor.submit(() -> { start.await(); return scores.acquireObservedHotScoreLeases(group, fence, sampled + 30_000).get(fromCountry.workerId()); });
+                    var right = executor.submit(() -> { start.await(); return scores.acquireObservedHotScoreLeases(group, fence, sampled + 30_000).get(fromCountry.workerId()); });
+                    start.countDown();
+                    assertThat(List.of(left.get(5, java.util.concurrent.TimeUnit.SECONDS).status(), right.get(5, java.util.concurrent.TimeUnit.SECONDS).status()))
+                            .containsExactlyInAnyOrder(TRANSITIONED, STALE);
+                }
+                assertThat(scores.releaseObservedHotScoreHolds(group, fence, System.currentTimeMillis() + 100)
+                        .get(fromCountry.workerId()).status()).isEqualTo(INVALID);
+            } finally {
+                scope.cleanup(redis);
+            }
+        } finally {
+            client.shutdown();
+        }
+    }
+
     @Test
     void reconnectReplenishesConsumedStaleStockWithoutAgedRecyclingOrFenceRevival() {
         var scope = RedisTestScope.create("refill_network_generation");
