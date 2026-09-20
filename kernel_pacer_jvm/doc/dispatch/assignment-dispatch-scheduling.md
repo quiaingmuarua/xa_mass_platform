@@ -15,8 +15,10 @@ independently name functions. Items never generate refill demand. Pacer forwards
 opaque queries and scores without interpreting facts, indexes or coordinates.
 
 Matching normalizes declarations and merges equivalent targets using MAX.
-`groupsNeedingRefill` observes local shortages; observations do not advance target
-pages. Actual refill attempts retain Pool/target rotation. Country uses its complete
+`observeRefillDeficits` returns positive Group shortage counts in an immutable Map;
+observations do not advance target pages or reserve inventory. Matching owns the
+count interpretation; Pacer uses it only to bound candidate supply. Actual refill
+attempts retain Pool/target rotation. Country uses its complete
 bounded target set; other policies retain bounded target pages. Server admission
 has no inventory observation or maintenance authority.
 
@@ -30,13 +32,18 @@ The 50ms completion-relative Refill Producer shares Main's Group rotation:
 
 1. Observe a bounded old mark=1 head in each selected Group and exact-recycle it
    to mark=0 at Redis execution time, even when there is no Pool shortage.
-2. For Groups needing supply, observe the due mark=0 head from Assignment's
-   optional floor, then exact-candidateize before qualification.
+2. For Groups needing supply, observe at most `min(observed deficit, 100)` raw
+   rows from the due mark=0 head at Assignment's optional floor, then
+   exact-candidateize before qualification.
 3. Supply only returned TRANSITIONED new fences to Matching.
 
 Candidateization and recycling each have independent 100-per-Group and
 1000-per-round budgets; each Group gets at most one batch of each operation per
-round. Attempts advance Group rotation, including empty reads and failures. No
+round. Every refill attempt reserves 100 budget even for a smaller requested
+head: at most ten Groups receive refill attempts per round. Empty reads and
+partial/failed attempts do not refund budget. The observation stage records the
+actual requested limit. Zero deficit skips ordinary observation but not recycling.
+Attempts advance Group rotation, including empty reads and failures. No
 Worker offset, extra thread, supplementary scan or durable cursor is introduced.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
 scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
@@ -107,8 +114,12 @@ for one execution slot; stale copies cannot claim or release the winner's hold.
 Properties invalidation atomically advances past HOT time and clears candidate
 mark, making it observable by ordinary Refill after the current slot passes.
 Past non-cold RECOVERY retains mark when advancing; both retain polarity.
-Execution-first ordering preserves the future hold. Network evidence retains
-mark and protected times, with CONNECTED only performing startup-floor activation.
+Execution-first ordering preserves the future hold. Network evidence also retains
+current/future time and mark. An accepted past polarity change advances generation
+and clears mark; ordinary same-polarity evidence leaves the coordinate unchanged.
+CONNECTED can additionally activate a below-floor past coordinate, provided the
+evidence reaches the startup floor. Reconnect can therefore return a consumed
+candidate to ordinary Refill without waiting for aged recycling.
 Task Dispatch independently records exhausted/expired failure before terminal Item
 movement. Result content, Item finality and Worker release keep separate commits.
 

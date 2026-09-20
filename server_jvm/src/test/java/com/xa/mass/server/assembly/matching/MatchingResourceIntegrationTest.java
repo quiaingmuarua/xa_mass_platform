@@ -42,7 +42,7 @@ class MatchingResourceIntegrationTest {
             var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
             assertThat(composition.pools()).isEmpty(); assertThat(composition.policies()).isEmpty();
             try (var catalog = composition.catalog()) {
-                assertThat(catalog.groupsNeedingRefill(Map.of("g", List.of()))).isEmpty();
+                assertThat(catalog.observeRefillDeficits(Map.of("g", List.of()))).isEmpty();
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "first")));
                 assertThat(phone(catalog, "first")).containsValue(new WorkerCandidate("w", 0));
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "second")));
@@ -80,7 +80,7 @@ class MatchingResourceIntegrationTest {
                         .containsEntry("pool", new WorkerCandidate("w0", 123));
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
                 clock.set(61_001);
-                assertThat(catalog.groupsNeedingRefill(Map.of())).isEmpty();
+                assertThat(catalog.observeRefillDeficits(Map.of())).isEmpty();
                 assertThat(composition.budget().available()).isEqualTo(10_000);
                 assertThat(catalog.take("g", Map.of("pool", new WorkerQuery("worker.any", Map.of())))).isEmpty();
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));

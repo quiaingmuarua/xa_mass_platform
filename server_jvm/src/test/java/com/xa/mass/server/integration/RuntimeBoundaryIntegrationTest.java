@@ -775,7 +775,7 @@ class RuntimeBoundaryIntegrationTest {
                         && rules.stream().filter(t->t.poolName().equals("country")).count()==2)multiRuleRoot.set(true);
                 if(targets.containsKey(groupA) && targets.containsKey(groupB))multiGroupRoot.set(true);
                 return call.callRealMethod();
-            }).when(matchingCatalog).groupsNeedingRefill(anyMap());
+            }).when(matchingCatalog).observeRefillDeficits(anyMap());
             doAnswer(call->{
                 String group=call.getArgument(0);
                 Map<String, Long> offered=call.getArgument(2);
@@ -832,7 +832,7 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(supplied).containsExactlyInAnyOrder(groupA,groupB);
             for(String task:tasks.keySet())awaitTaskExport(task);
         } finally {
-            doCallRealMethod().when(matchingCatalog).groupsNeedingRefill(anyMap());
+            doCallRealMethod().when(matchingCatalog).observeRefillDeficits(anyMap());
             doCallRealMethod().when(matchingCatalog).refill(anyString(), anyList(), anyMap());
             for(var worker:workers)worker.close();
         }

@@ -36,7 +36,8 @@ For HOT, mark=0 is the ordinary lane; mark=1 denotes a candidate generation.
 Candidate admission changes only the mark and never creates a future Worker
 lease. A mark=1 coordinate is not written into the future by candidateization,
 recycling or Properties invalidation. Execution acquisition, pause and relative
-Recovery deferral write mark=0. Polarity correction and exact release preserve mark.
+Recovery deferral write mark=0. A past polarity change clears mark while advancing
+generation; current/future polarity correction and exact release preserve mark.
 The decoder validates coordinates without making clock-dependent state claims.
 
 RECOVERY is a long-lived resource state. Its future time is nextRecheckAt, an
@@ -159,7 +160,10 @@ later slot; the previous same-slot mark=1 accepted-NOOP boundary remains.
 `releaseObservedHotScoreHolds` additionally accepts the exact negative of the
 original HOT fence and writes HOT at release time. Java maps its accepted NOOP
 to TRANSITIONED. Other changes reject the old fence. `toggleCurrentPolarity`
-reuses exact replacement with the negative Score and retains time/mark.
+reuses exact replacement, flips polarity, clears mark and retains time. Java
+prepares the complete target without TIME; a zero target is INVALID. This exact
+operation serves the excluded-Endpoint toggle/park composition, not network
+generation refresh.
 
 ### Relative Recovery Deferral And Cold Park
 
@@ -187,25 +191,40 @@ means deletion. Valid network evidence may reactivate cold membership.
 ### Current Polarity Within A Time Fence
 
 `rewriteCurrentPolarityWithinTimeFence` receives supplied times, target polarity
-and minimumTimeMillis (zero means no time promotion), never an event name.
+and minimumTimeMillis (zero disables the startup activation condition), never an
+event name. Let T be storedSlot, E be suppliedSlot, N be Redis currentSlot and F be
+minimumSlot. One atomic read per member applies these rules:
 
 ```text
-allow when storedSlot >= redisNowSlot OR storedSlot <= suppliedSlot
+T >= N: correct polarity; preserve time and mark
+T < N and E < T: STALE, no write
+T < N and T < F: require E >= F and N >= F, otherwise STALE
 
-promote only when:
-    storedSlot < redisNowSlot
-    AND storedSlot < minimumSlot <= redisNowSlot
-    AND suppliedSlot >= minimumSlot
-then time = minimumSlot
-
-replace polarity; preserve mark
+for an admitted past polarity change or below-F activation:
+    newSlot = max(T + 1, min(E, N))
+    write target polarity, mark=0, newSlot
+otherwise: NOOP
 ```
 
 CONNECTED supplies the Runtime's once-sampled startup floor; DISCONNECTED supplies
-zero. Current/future/PAUSE times remain unchanged. Past coordinates at/above floor
-are not refreshed by repeated CONNECTED. Evidence before floor cannot activate a
-lower coordinate across it. Upstream Binding/source/age checks remain. These are
-best-effort evidence timestamps, not a total network event version or replay log.
+zero. The activation exception also applies to same-polarity HOT below floor after
+restart. Evidence before floor leaves that lower coordinate unchanged. Normal
+same-polarity evidence, including repeated Polling, never clears candidate mark or
+advances time. Current/future execution, recheck and PAUSE coordinates retain their
+full absolute value and therefore preserve the original execution counterpart.
+
+The new past generation is strictly later than T and no later than N. A legitimate
+same-slot evidence time remains admissible and advances one slot; it cannot recreate
+an old Pool fence on requalification. A later evidence slot is preferred to processing
+time, so delayed consumption does not unnecessarily raise the evidence fence. A
+coordinate written at N must cross the next slot before candidateization or execution.
+Old Pool entries need no repair or rollback. Normal Refill can resupply a due restored
+HOT without waiting for 60-second candidate recycling.
+
+The existing batch uses one EVAL and one script-local TIME with no pre-read or retry.
+Malformed-score reply differences remain; refreshing a fractional stored coordinate
+must not silently repair it into an integer. Upstream Binding/source/age checks remain.
+These are best-effort evidence timestamps, not a total network event version or replay log.
 
 ## Failure And Atomicity Boundaries
 

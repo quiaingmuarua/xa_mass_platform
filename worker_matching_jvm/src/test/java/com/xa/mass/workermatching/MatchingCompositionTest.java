@@ -35,7 +35,7 @@ class MatchingCompositionTest {
             assertEquals(Set.of("workerId", "worker.phone"), composition.functions().keySet());
             try (var catalog = composition.catalog()) {
                 assertEquals(List.of(), catalog.normalizeRefill("g", List.of()));
-                assertEquals(Set.of(), catalog.groupsNeedingRefill(Map.of()));
+                assertEquals(Map.of(), catalog.observeRefillDeficits(Map.of()));
                 var query = new WorkerQuery("worker.phone", "+1");
                 assertEquals(query, catalog.normalizeQuery("g", query));
                 assertEquals("w", catalog.take("g", Map.of("m", new WorkerQuery("workerId", "w"))).get("m").workerId());

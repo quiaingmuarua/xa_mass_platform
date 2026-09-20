@@ -175,7 +175,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         return null;
     }
 
-    @Override public Set<String> groupsNeedingRefill(Map<String,List<RefillTarget>> supplied) {
+    @Override public Map<String,Integer> observeRefillDeficits(Map<String,List<RefillTarget>> supplied) {
         var targets=targets(supplied);
         pools.values().forEach(CandidatePool::expireAll);
         queryCursors.keySet().retainAll(targets.keySet());
@@ -198,7 +198,12 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
                     "Eligibility refill deficit="+requestedDeficit+" "+budget.diagnostics());
             lastDiagnosticMillis=now;
         }
-        return Collections.unmodifiableSet(new LinkedHashSet<>(deficits.keySet()));
+        var result=new LinkedHashMap<String,Integer>();
+        supplied.keySet().forEach(group->{
+            int deficit=deficits.getOrDefault(group,0);
+            if(deficit>0)result.put(group,deficit);
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     @Override public int refill(String group,List<RefillTarget> declarations,

@@ -8,6 +8,8 @@ import java.util.*;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -30,8 +32,13 @@ class WorkerEligibilityRefillPolicyTest {
     static WorkerScoreTransitionResult changed(long score) {
         return new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED,score);
     }
+    static Map<String,Integer> deficits(List<String> groups,int count) {
+        var result=new LinkedHashMap<String,Integer>();
+        groups.forEach(group->result.put(group,count));
+        return result;
+    }
     void oneIssuedWorker() {
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of("g"));
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g",100));
         when(scores.observeDueHotScoreCandidates("g",500L,100)).thenReturn(Map.of("w",10L));
         when(scores.candidateizeObservedHotScores("g", Map.of("w",10L))).thenReturn(Map.of("w",changed(20L)));
     }
@@ -47,13 +54,13 @@ class WorkerEligibilityRefillPolicyTest {
         });
         assertEquals(1,policy.refill(List.of("g"),tasks));
         var order=inOrder(scores,index);
-        order.verify(index).groupsNeedingRefill(Map.of("g",targets));
+        order.verify(index).observeRefillDeficits(Map.of("g",targets));
         order.verify(scores).observeDueHotScoreCandidates("g",500L,100);
         order.verify(scores).candidateizeObservedHotScores("g", Map.of("w",10L));
         order.verify(index).refill("g",targets,Map.ofEntries(Map.entry("w", (long) (20L))));
         verify(scores,atLeastOnce()).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
         verifyNoMoreInteractions(scores);
-        verify(index,times(1)).groupsNeedingRefill(Map.of("g",targets));
+        verify(index,times(1)).observeRefillDeficits(Map.of("g",targets));
     }
 
     @Test void partialCandidateizationOffersOnlySuccessfullyCandidateizedSuppliedIdentities() {
@@ -72,9 +79,9 @@ class WorkerEligibilityRefillPolicyTest {
     }
 
     @Test void satisfiedInventoryAndForeignGroupDemandNeverAcquireWorkers() {
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of("outside"));
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("outside",100));
         assertEquals(0,policy.refill(List.of("g"),tasks));
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of());
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of());
         assertEquals(0,policy.refill(List.of("g"),tasks));
         assertEquals(0,policy.refill(List.of(),List.of()));
         verify(scores,times(2)).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
@@ -84,7 +91,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void emptyRoundsRotateAcrossMoreGroupsThanTheGlobalBudget() {
         var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(new LinkedHashSet<>(groups));
+        when(index.observeRefillDeficits(anyMap())).thenReturn(deficits(groups,100));
         var attempted=new ArrayList<String>();
         when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(100))).thenAnswer(call->{
             attempted.add(call.getArgument(0));return Map.of();
@@ -94,8 +101,44 @@ class WorkerEligibilityRefillPolicyTest {
         policy.refill(groups,tasks(groups));
         assertEquals(groups.subList(10,15),attempted.subList(10,15));
         assertEquals(20,attempted.size());
-        verify(index,times(2)).groupsNeedingRefill(anyMap());
+        verify(index,times(2)).observeRefillDeficits(anyMap());
         verify(scores,never()).candidateizeObservedHotScores(anyString(), anyMap());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0,0", "1,1", "99,99", "100,100", "101,100", "1000,100"})
+    void observedDeficitBoundsTheRawReadWithoutChangingTheRecycleBudget(int deficit,int limit) {
+        when(index.observeRefillDeficits(anyMap())).thenReturn(deficit==0 ? Map.of() : Map.of("g",deficit));
+        if(limit>0) {
+            when(scores.observeDueHotScoreCandidates("g",500L,limit)).thenReturn(Map.of("w",10L));
+            when(scores.candidateizeObservedHotScores("g",Map.of("w",10L))).thenReturn(Map.of("w",changed(20L)));
+        }
+        assertEquals(0,policy.refill(List.of("g"),tasks)); // Matching may decline the single offered generation.
+        verify(index).observeRefillDeficits(Map.of("g",targets));
+        verify(scores).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
+        if(limit>0) {
+            verify(scores).observeDueHotScoreCandidates("g",500L,limit);
+            verify(scores).candidateizeObservedHotScores("g",Map.of("w",10L));
+            verify(index).refill("g",targets,Map.of("w",20L));
+        }
+        verifyNoMoreInteractions(scores,index);
+    }
+
+    @Test void oneWorkerDeficitsStillReserveOneHundredBudgetPerGroupAttempt() {
+        var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
+        when(index.observeRefillDeficits(anyMap())).thenReturn(deficits(groups,1));
+        var attempted=new ArrayList<String>();
+        when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(1))).thenAnswer(call->{
+            attempted.add(call.getArgument(0)); return Map.of();
+        });
+        policy.refill(groups,tasks(groups));
+        assertEquals(groups.subList(0,10),attempted);
+        policy.refill(groups,tasks(groups));
+        assertEquals(groups.subList(10,15),attempted.subList(10,15));
+        assertEquals(20,attempted.size());
+        verify(scores,times(20)).observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100));
+        verify(scores,never()).candidateizeObservedHotScores(anyString(),anyMap());
+        verify(index,times(2)).observeRefillDeficits(anyMap());
     }
 
     @Test void noMatchKeepsTheSingleCandidateizationWithoutRenewalOrRelease() {
@@ -149,7 +192,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void oldCandidatesAreRecycledWithoutDeficitsAndUseAnIndependentBudget() {
         var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of());
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of());
         var attempts=new ArrayList<String>();
         when(scores.observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
             attempts.add(call.getArgument(0)); return Map.of("old",22L);
@@ -164,7 +207,7 @@ class WorkerEligibilityRefillPolicyTest {
     }
 
     @Test void noMatchAndProjectionFailureDoNotRescanWithinTheRound() {
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.of("g"));
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g",100));
         when(scores.observeDueHotScoreCandidates("g",500L,100))
                 .thenReturn(Map.of("a",11L),Map.of("b",12L),Map.of("c",13L));
         when(scores.candidateizeObservedHotScores(eq("g"), anyMap())).thenAnswer(call->{
@@ -186,7 +229,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void observationFailureStillRotatesToTheNextGroup() {
         var groups=List.of("a","b");
-        when(index.groupsNeedingRefill(anyMap())).thenReturn(Set.copyOf(groups));
+        when(index.observeRefillDeficits(anyMap())).thenReturn(deficits(groups,100));
         var attempted=new ArrayList<String>();
         when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(100))).thenAnswer(call->{
             String group=call.getArgument(0);attempted.add(group);

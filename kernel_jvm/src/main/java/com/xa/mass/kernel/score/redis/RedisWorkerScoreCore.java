@@ -205,9 +205,18 @@ public final class RedisWorkerScoreCore
               if now < 0 or now > maximum or absolute <= 0 or absolute > band + maximum then
                 return {'invalid', stored}
               end
-              if slot < now and slot > supplied_slot then return {'stale', stored} end
-              if slot < now and slot < minimum_slot and supplied_slot >= minimum_slot and minimum_slot <= now then
-                absolute = absolute - slot + minimum_slot + slot % 1
+              if slot < now then
+                if slot > supplied_slot then return {'stale', stored} end
+                local activate = slot < minimum_slot
+                if activate and (supplied_slot < minimum_slot or now < minimum_slot) then
+                  return {'stale', stored}
+                end
+                if current * sign < 0 or activate then
+                  -- A past polarity change must not recreate the old candidate fence.
+                  local next_slot = math.max(math.floor(slot) + 1, math.min(supplied_slot, now))
+                  -- Preserve malformed fractional data rather than repairing it here.
+                  absolute = next_slot + slot % 1
+                end
               end
               local result = write_changed(KEYS[1], id, current, sign * absolute)
               if result[1] == 'noop' then result[2] = stored end
@@ -644,7 +653,11 @@ public final class RedisWorkerScoreCore
         } catch (IllegalStateException error) {
             return transition(WorkerScoreTransitionStatus.INVALID);
         }
-        return compareAndSet(homeBucketId, workerId, observedScore, -observed.score());
+        long target = -Long.signum(observed.score()) * (observed.timeMillis() / SLOT_MILLIS);
+        if (target == ZERO_SCORE) {
+            return transition(WorkerScoreTransitionStatus.INVALID);
+        }
+        return compareAndSet(homeBucketId, workerId, observedScore, target);
     }
 
     @Override

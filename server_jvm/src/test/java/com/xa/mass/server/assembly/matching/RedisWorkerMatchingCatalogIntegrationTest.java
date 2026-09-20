@@ -454,7 +454,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     private int refillDeclarations(RedisWorkerMatchingCatalog owner,String group,Map<String,TaskDescriptor> tasks,int limit) {
         var targets=targets(tasks);
-        if(!owner.groupsNeedingRefill(targets).contains(group))return 0;
+        if(!owner.observeRefillDeficits(targets).containsKey(group))return 0;
         var offered=offer(group,limit);
         var held=candidateize(group,offered);
         return held.isEmpty()?0:owner.refill(group,targets.get(group),held);
@@ -641,7 +641,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         int added=0;var visited=new ArrayList<String>();
         for(int round=0;round<3 && added==0;round++) {
             var targets=targets(prepared);
-            catalog.groupsNeedingRefill(targets);
+            catalog.observeRefillDeficits(targets);
             var observedBatch=scores.observeDueHotScoreCandidates("g",null,100);
             visited.addAll(observedBatch.keySet());
             var held=candidateize("g",observedBatch);

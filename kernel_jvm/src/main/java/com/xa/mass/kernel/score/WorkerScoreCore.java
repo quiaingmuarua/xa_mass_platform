@@ -102,6 +102,7 @@ public interface WorkerScoreCore {
             List<String> workerIds
     );
 
+    /** Exact-flips polarity, clears the candidate mark and preserves time. */
     WorkerScoreTransitionResult toggleCurrentPolarity(
             String homeBucketId,
             String workerId,
@@ -118,10 +119,12 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Corrects current polarity when the stored slot is current/future or no later than
-     * the supplied slot. A minimum time advances only past coordinates below that
-     * minimum when the supplied evidence reaches it. Zero disables the advance.
-     * Mark is always retained.
+     * Corrects polarity when the stored slot is current/future or no later than the
+     * supplied slot. Current/future coordinates retain time and mark. A past polarity
+     * change clears mark and advances to max(storedSlot + 1, min(suppliedSlot, redisNowSlot)).
+     * Same-polarity evidence is a no-op except for past coordinates below the minimum:
+     * evidence and Redis time must reach that minimum before activation can refresh
+     * the generation. Zero disables this activation condition.
      */
     Map<String, WorkerScoreTransitionResult>
             rewriteCurrentPolarityWithinTimeFence(

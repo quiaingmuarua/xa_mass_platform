@@ -1164,6 +1164,9 @@ An isolated DEFAULT-preset Runtime Boundary witness deliberately loses the first
 disconnect report after its real Redis handoff. A subsequent TASK must reach the
 Adapter, expire, and supply correlated rejection plus new network evidence that
 changes the Worker to RECOVERY. A real reconnect then completes the same Item.
+The reconnect wait remains 15 seconds with production candidate recycling at
+60 seconds. Past polarity changes refresh the candidate generation; the real
+Pacer can replenish consumed stale stock without a Pool compensation path.
 Periodic probes cannot satisfy this witness. Failure evidence contains bounded
 Command/evidence timing and Score transition traces, never opaque content.
 

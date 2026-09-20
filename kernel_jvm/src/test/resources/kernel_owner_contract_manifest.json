@@ -66,7 +66,7 @@
       "on_route_unavailable"
     ],
     "WorkerMatching": [
-      "groups_needing_refill",
+      "observe_refill_deficits",
       "refill",
       "take"
     ],

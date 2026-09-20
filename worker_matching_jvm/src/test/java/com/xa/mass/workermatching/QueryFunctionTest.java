@@ -162,7 +162,7 @@ class QueryFunctionTest {
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis,
                         Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))))) {
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
-            assertEquals(Set.of("g"), catalog.groupsNeedingRefill(Map.of("g", targets)));
+            assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
             assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));
             assertEquals(new WorkerCandidate("w", 44), catalog.take("g", Map.of("m", new WorkerQuery("map", Map.of()))).get("m"));
             verifyNoInteractions(client);

@@ -80,29 +80,35 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void networkActivationUsesOnlyStartupFloorAndPreservesExecutionTime() {
+    void networkActivationRefreshesPastGenerationAndPreservesExecutionTime() {
         long now = redisTimeMillis() / SLOT_MILLIS;
         long floor = now - 100;
         var observations = new LinkedHashMap<String, Long>();
         for (var entry : Map.of("cold", 1L, "above", floor + 10,
                 "future", now + 100, "pause", MAX_TIME_SLOT).entrySet()) {
             redis.zadd(scoreKey("activation"), workerScore(-1, entry.getValue(), 0), entry.getKey());
-            observations.put(entry.getKey(), now * SLOT_MILLIS);
+            observations.put(entry.getKey(), (now - 1) * SLOT_MILLIS);
         }
         var connected = scoreCore.rewriteCurrentPolarityWithinTimeFence("activation", observations,
                 WorkerScorePolarity.HOT_ACQUIRE, floor * SLOT_MILLIS);
-        assertThat(connected.get("cold").score()).isEqualTo(workerScore(1, floor, 0));
-        assertThat(connected.get("above").score()).isEqualTo(workerScore(1, floor + 10, 0));
+        assertThat(connected.get("cold").score()).isEqualTo(workerScore(1, now - 1, 0));
+        assertThat(connected.get("above").score()).isEqualTo(workerScore(1, now - 1, 0));
         assertThat(connected.get("future").score()).isEqualTo(workerScore(1, now + 100, 0));
         assertThat(connected.get("pause").score()).isEqualTo(workerScore(1, MAX_TIME_SLOT, 0));
         var disconnected = scoreCore.rewriteCurrentPolarityWithinTimeFence("activation", observations,
                 WorkerScorePolarity.RECOVERY_RECHECK, 0);
-        connected.forEach((id, value) -> assertThat(disconnected.get(id).score()).isEqualTo(-value.score()));
+        for (String id : List.of("cold", "above")) {
+            assertThat(disconnected.get(id).score()).isEqualTo(workerScore(-1, now, 0));
+        }
+        for (String id : List.of("future", "pause")) {
+            assertThat(disconnected.get(id).score()).isEqualTo(-connected.get(id).score());
+        }
         redis.zadd(scoreKey("activation"), workerScore(-1, floor - 10, 1), "old-evidence");
         var old = scoreCore.rewriteCurrentPolarityWithinTimeFence("activation",
                 Map.of("old-evidence", (floor - 1) * SLOT_MILLIS), WorkerScorePolarity.HOT_ACQUIRE,
                 floor * SLOT_MILLIS).get("old-evidence");
-        assertThat(old.score()).isEqualTo(workerScore(1, floor - 10, 1));
+        assertThat(old.status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThat(old.score()).isEqualTo(workerScore(-1, floor - 10, 1));
     }
 
     @Test
@@ -1332,7 +1338,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 finalStates.get("old-hot"),
                 WorkerScorePolarity.HOT_ACQUIRE,
                 currentSlot * SLOT_MILLIS,
-                1
+                0
         );
     }
 
@@ -1413,15 +1419,14 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "same", pastSlot * 100,
                 "newer", (pastSlot + 1) * 100,
                 "pause", pastSlot * 100,
-                "missing", pastSlot * 100), target, (target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot + 1 : 0) * 100);
+                "missing", pastSlot * 100), target, (target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot : 0) * 100);
 
         assertThat(result.get("older").status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
         assertThat(redis.zscore(scoreKey("g"), "older")).isEqualTo((double) past);
         assertThat(result.get("same").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-        assertThat(result.get("same").score()).isEqualTo(-past);
+        assertThat(result.get("same").score()).isEqualTo(workerScore(polarityValue(target), pastSlot + 1, 0));
         assertThat(result.get("newer").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-        assertThat(result.get("newer").score()).isEqualTo(workerScore(polarityValue(target),
-                target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot + 1 : pastSlot, 1));
+        assertThat(result.get("newer").score()).isEqualTo(workerScore(polarityValue(target), pastSlot + 1, 0));
         assertThat(result.get("pause").score()).isEqualTo(-pause);
         assertThat(result.get("missing").status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
         assertThat(redis.zscore(scoreKey("g"), "missing")).isNull();
@@ -1724,7 +1729,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 ).get("toggle-worker"),
                 WorkerScorePolarity.RECOVERY_RECHECK,
                 timeSlot * SLOT_MILLIS,
-                1
+                0
         );
         assertThat(scoreCore.toggleCurrentPolarity(
                 "group-1",
@@ -2034,14 +2039,15 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1})
-    void availableEvidenceRestoresHotWithoutChangingCandidateMark(int mark) {
+    void availableEvidenceRestoresOrdinaryHotAtANewGeneration(int mark) {
         long now = redisTimeMillis();
         long recovery = workerScore(-1, now / 100 - 300, mark);
         redis.zadd(scoreKey("evidence-candidate"), recovery, "w");
-        var activated = scoreCore.rewriteCurrentPolarityWithinTimeFence("evidence-candidate", Map.of("w", now),
+        long evidenceSlot = now / 100 - 2;
+        var activated = scoreCore.rewriteCurrentPolarityWithinTimeFence("evidence-candidate", Map.of("w", evidenceSlot * 100),
                 WorkerScorePolarity.HOT_ACQUIRE, now - 60_000).get("w");
-        assertThat(activated.score()).isEqualTo(-recovery);
-        assertThat(decodeState("w", activated.score()).mark()).isEqualTo(mark);
+        assertThat(activated.score()).isEqualTo(workerScore(1, evidenceSlot, 0));
+        assertThat(decodeState("w", activated.score()).mark()).isZero();
         assertThat(scoreCore.acquireObservedHotScoreLeases("evidence-candidate", Map.of("w", activated.score()), now + 5000)
                 .get("w").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
     }
@@ -2134,20 +2140,20 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
-    void pastTimeRefreshIsExplicitAndIndependentOfTargetPolarity(int polarity) {
+    void pastPolarityChangeRefreshesGenerationWithOrWithoutAnActivationMinimum(int polarity) {
         long slot = redisTimeMillis() / 100;
         var target = polarity == 1 ? WorkerScorePolarity.HOT_ACQUIRE : WorkerScorePolarity.RECOVERY_RECHECK;
-        for (boolean refresh : new boolean[]{false, true}) {
-            String id = "refresh-" + refresh;
+        for (boolean withMinimum : new boolean[]{false, true}) {
+            String id = "minimum-" + withMinimum;
             long observed = workerScore(-polarity, slot - 10, 1);
             redis.zadd(scoreKey("mechanical-polarity"), observed, id);
             var times = Map.of(id, (slot - 5) * 100);
             var result = scoreCore.rewriteCurrentPolarityWithinTimeFence(
-                    "mechanical-polarity", times, target, refresh ? (slot - 5) * 100 : 0L).get(id);
+                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * 100 : 0L).get(id);
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-            assertThat(result.score()).isEqualTo(workerScore(polarity, slot - (refresh ? 5 : 10), 1));
+            assertThat(result.score()).isEqualTo(workerScore(polarity, slot - 5, 0));
             assertThat(scoreCore.rewriteCurrentPolarityWithinTimeFence(
-                    "mechanical-polarity", times, target, refresh ? (slot - 5) * 100 : 0L).get(id).status())
+                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * 100 : 0L).get(id).status())
                     .isEqualTo(WorkerScoreTransitionStatus.NOOP);
         }
     }

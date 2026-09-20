@@ -45,6 +45,13 @@ candidate recycling. DEFAULT keeps no Assignment scan floor or periodic Probe.
 Score Owner alone aligns time. The floor is not stored in Redis or exposed by an
 API, and restart of the same Runtime loops does not resample it.
 
+Network evidence uses the existing bounded Score operation. Past polarity changes
+advance generation and clear candidate mark; same-polarity normal observations,
+including Polling, leave it alone. Below-floor HOT activation is the exception.
+Current/future holds retain their exact absolute coordinate. Reconnected due HOT
+can re-enter ordinary Refill without waiting for aged candidate recycling; no Pool
+compensation, new Producer or additional clock sampling is introduced.
+
 ## Mechanical Owners
 
 The finite Java caller closure is:
@@ -261,7 +268,10 @@ not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff
 parking is reserved for excluded Endpoints. No cleanup thread is installed. CONNECTED evidence keeps a
 future recheck coordinate and mark. Execution must await strict due eligibility.
 Candidateize and recycling use separate 100-per-Group/1000-per-round budgets on
-the existing Refill Producer. Candidate age is 60 seconds in production/Scenario
+the existing Refill Producer. Each refill attempt reserves 100 budget, but its
+raw head limit is `min(observed Group deficit, 100)`; smaller shortages do not
+increase the per-round Group call ceiling. Matching supplies numeric shortage
+hints without reserving stock. Candidate age is 60 seconds in production/Scenario
 Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds.
 The event Mechanism chooses target polarity and minimum activation time for the mechanical
 Score operation. Provider construction and close ownership stay unchanged; the

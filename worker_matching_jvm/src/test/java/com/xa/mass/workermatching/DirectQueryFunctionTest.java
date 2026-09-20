@@ -69,7 +69,7 @@ class DirectQueryFunctionTest {
         try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_explicit_any"), Map.of());
                 var catalog=new MatchingComposition(storage, Map.of(), System::currentTimeMillis).catalog()) {
             assertEquals(List.of(),catalog.normalizeRefill("g",List.of()));
-            assertEquals(Set.of(),catalog.groupsNeedingRefill(Map.of("g",List.of())));
+            assertEquals(Map.of(),catalog.observeRefillDeficits(Map.of("g",List.of())));
             for(String pool:List.of("any","default"))
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
                         new com.xa.mass.kernel.assignment.RefillTarget(pool,new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),1))));

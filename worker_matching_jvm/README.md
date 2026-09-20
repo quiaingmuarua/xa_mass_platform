@@ -66,8 +66,11 @@ Managed Call registration also saves `[]` unless its Group explicitly configures
 Matching does not receive Task IDs or own Task lifecycle. The [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md)
 owns persistence, strict decoding and descriptor equality.
 
-Pacer concatenates declarations by Group and passes `groupsNeedingRefill(refillByGroup)`,
-then `refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
+Pacer concatenates declarations by Group and passes `observeRefillDeficits(refillByGroup)`.
+The immutable Map retains input Group order and only positive shortage counts;
+absent Groups have no observed demand. Pacer limits its raw candidate read to the
+smaller of that count and its per-Group ceiling, then calls
+`refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
 Pool maintenance by resource name, normalizes targets and MAX-merges them. Country
 receives its complete bounded target set; Messaging and Proof keep target pages.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
@@ -75,7 +78,9 @@ limit. Country receives up to 10,000 targets without a query cursor. Other polic
 receive at most 100 targets per page. Observation does not advance those cursors;
 an actual refill attempt does.
 
-Global expired-stock and inactive-cursor cleanup belongs to `groupsNeedingRefill`.
+Global expired-stock and inactive-cursor cleanup belongs to `observeRefillDeficits`.
+Counts retain existing target-page, Pool aggregation and capacity rules; they are
+neither reservations nor distinct Worker counts, since targets and Pools may overlap.
 The hint and later admission may observe different stock. Refill independently
 validates and works without a prior hint or Task registration. Both operations may redo
 bounded local target normalization; they retain no shared execution plan, policy

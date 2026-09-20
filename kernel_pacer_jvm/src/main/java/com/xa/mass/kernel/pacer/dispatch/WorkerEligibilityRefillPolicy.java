@@ -58,11 +58,12 @@ final class WorkerEligibilityRefillPolicy {
         });
         var targets = new LinkedHashMap<String, List<RefillTarget>>();
         collected.forEach((group, declarations) -> targets.put(group, List.copyOf(declarations)));
-        var neededGroups = index.groupsNeedingRefill(Collections.unmodifiableMap(targets));
+        var deficits = index.observeRefillDeficits(Collections.unmodifiableMap(targets));
         int budget = ROUND_BUDGET, recycleBudget = ROUND_BUDGET, admitted = 0;
         for (int n = 0; n < groups.size() && (budget > 0 || recycleBudget > 0); n++) {
             String group = groups.get((start + n) % groups.size());
-            boolean refill = budget > 0 && neededGroups.contains(group);
+            int deficit = deficits.getOrDefault(group, 0);
+            boolean refill = budget > 0 && deficit > 0;
             if (recycleBudget == 0 && !refill) continue;
             // Advance on attempts, including empty observations and infrastructure failure.
             lastAttemptedGroup = group;
@@ -73,11 +74,13 @@ final class WorkerEligibilityRefillPolicy {
                 if (!old.isEmpty()) scores.recycleObservedHotCandidates(group, old);
             }
             if (!refill) continue;
+            // Reserve the existing per-Group call budget even when only a few rows are needed.
             budget -= GROUP_BUDGET;
+            int limit = Math.min(deficit, GROUP_BUDGET);
             long started = DispatchStageEvent.start();
             // Lane movement advances the head, including candidates Matching may reject.
-            var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, GROUP_BUDGET);
-            DispatchStageEvent.batch(started, "REFILL_OBSERVATION", GROUP_BUDGET, observed.size(), false);
+            var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, limit);
+            DispatchStageEvent.batch(started, "REFILL_OBSERVATION", limit, observed.size(), false);
             if (observed.isEmpty()) continue;
             long acquiredAt = DispatchStageEvent.start();
             Map<String, Long> candidates = Map.of();

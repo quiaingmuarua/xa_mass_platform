@@ -85,7 +85,7 @@ class CountryPoolPolicyTest {
         facts("late","HR"); // coordinate 199, beyond a 100-target first page
         var traced=spy(policy);
         try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), clock::get, Map.of("country",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))))) {
-            assertEquals(Set.of("g"),catalog.groupsNeedingRefill(Map.of("g",targets)));
+            assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));
             verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(100));

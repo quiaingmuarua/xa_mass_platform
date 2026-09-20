@@ -200,7 +200,7 @@ class WorkerCandidateGenerationIntegrationTest {
                 WorkerScorePolarity.HOT_ACQUIRE, floor);
         assertThat(activated.values()).allSatisfy(result ->
                 assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED));
-        assertThat(decodeState("candidate-cold", activated.get("candidate-cold").score()).mark()).isEqualTo(CANDIDATE_MARK);
+        assertThat(decodeState("candidate-cold", activated.get("candidate-cold").score()).mark()).isZero();
         assertThat(scores.observeSchedulingStates("g", List.of("ordinary-cold", "candidate-cold", "connected-first"))
                 .statesByWorkerId().values()).containsOnly(SchedulingState.HOT_SCORE_OVERDUE);
     }

@@ -106,8 +106,9 @@ cold Prepare followed by verified connection or Polling activation. These proofs
 do not promise activation after lost evidence or atomic Binding/Score commits.
 
 Properties/Candidate invalidation is a Redis Owner claim: one Redis-timed batch
-advances past generation without changing mark, exact execution acquisition
-rejects old fences, and execution-first ordering preserves future result fences.
+advances past HOT generation and clears candidate mark; past non-cold RECOVERY
+retains mark. Exact execution acquisition rejects old fences, and execution-first
+ordering preserves future result fences.
 Server tests own APPLIED-only best-effort invalidation. Facts and Score remain
 separate commits without guaranteed repair.
 
@@ -174,6 +175,13 @@ including unmatched leases, partial acquisition, sealing invalidation and comman
 order. A controlled clock proves that Matching cannot reset the candidate deadline.
 Matching unit tests own bounded target paging, incremental admission counts,
 concurrent refill/take, immutable results and local versus global expiry maintenance.
+Refill deficit proofs preserve numeric Group shortages across the Matching/Pacer
+boundary: raw reads use the smaller of shortage and 100, while every Group
+attempt still reserves 100 of the 1000-round budget. Real Pacer/Matching/Redis
+composition proves that stock 99 against target 100 candidateizes only one of
+100 ordinary Workers; the other 99 remain discoverable on the next normal round
+without aged recycling. A declined candidate is not rolled back or replaced by
+a supplementary scan. These proofs retain all external convergence deadlines.
 Controlled races prove entry identity checks (including equal-value reinsertion),
 partial take after a lost entry, no restart after unrelated Group changes and hard
 capacity under concurrent refill. Observed target watermarks may be exceeded or
@@ -430,12 +438,20 @@ time TTL, duplicate non-renewal, replacement at full capacity and stale selectio
 protection. TTL limits take, not already-taken exact acquisition. Runtime Boundary
 and Dynamic Matching retain their existing workload and time limits.
 
-### Network Evidence At The Current Lease Slot
+### Network Evidence And Candidate Generations
 
 Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
 while preserving time and mark; execution acquisition still requires strictly past time.
 Redis-timed cases cover evidence and execution ordering, concurrent CAS,
-100-Worker command cost, PAUSE and unchanged past-slot freshness rejection.
+100-Worker command cost, PAUSE and past-slot freshness rejection. Accepted past
+polarity changes advance generation, clear mark and cap the target at Redis now;
+same-slot evidence advances one slot so the old candidate fence cannot recur.
+Ordinary same-polarity Polling leaves generation unchanged. Below-floor activation
+requires post-floor evidence and is the only same-polarity refresh.
+Actual Pacer, Matching and Redis Owner composition consumes stale Pool stock,
+reconnects and refills a new generation without waiting for the 60-second recycle.
+The isolated DEFAULT Runtime witness retains its 15-second reconnect deadline
+and cannot depend on periodic Probe or a shortened recycle threshold.
 Only a missed timing window may be resampled; a wrong in-window result fails.
 Worker Convergence Health retains its original outage fixture and timeout;
 these checks do not promise strict network ordering or evidence replay.

@@ -146,7 +146,11 @@ witness, not a guarantee under continuing evidence loss.
 
 The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
 current-slot evidence may correct polarity while preserving the stored
-coordinate and mark. Execution acquisition itself requires strictly past time. It also checks past-slot rejection, PAUSE,
+coordinate and mark. Accepted past polarity changes clear mark and advance
+generation without passing Redis now; normal same-polarity Polling leaves it
+unchanged. A separate actual Pacer/Matching witness proves that reconnect can
+refill consumed stale stock without waiting for aged candidate recycling.
+Execution acquisition itself requires strictly past time. The Owner also checks past-slot rejection, PAUSE,
 arrival order, exact execution acquisition races and bounded command cost. This process
 proof does not force evidence into a particular slot or establish reliable replay.
 Owner/Pacer proofs also cover Recovery beyond the former attempt and 24-hour limits;

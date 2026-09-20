@@ -99,12 +99,21 @@ fence. After the current slot passes, normal Refill can observe the ordinary HOT
 without waiting for age-based recycling; Group roots, deficits and budgets still
 govern Pool admission. Direct assignment can independently acquire a due Worker.
 
-Network evidence corrects polarity without changing mark. Current/future slots
-accept validated evidence and retain time. Past coordinates retain their evidence
-freshness check. CONNECTED only promotes coordinates below startup floor to that
-floor, provided evidence reaches it; DISCONNECTED never advances time. Thus future
-execution/recheck coordinates and PAUSE survive reconnect. Network evidence is not
-a reliable ordered log, and execution evidence never infers connection polarity.
+Network evidence corrects current/future polarity while retaining time and mark,
+so execution/recheck coordinates and PAUSE survive reconnect. For past coordinates,
+evidence older than the stored slot is STALE. An actual polarity change clears mark
+and writes max(storedSlot + 1, min(evidenceSlot, redisNowSlot)). Same-slot evidence
+remains admissible, but requalification can no longer reproduce the earlier Pool
+fence. Normal Refill can replenish consumed stale stock without waiting for aged
+candidate recycling; no Pool entry is restored and strict failures still do not fall
+back to identity acquisition.
+
+Same-polarity evidence is unchanged, including repeated valid Polling. The sole
+activation exception is a past HOT target below startup floor: both evidence and
+Redis time must reach floor before the generation can refresh, even if polarity
+already is HOT. Failure to reach floor returns STALE without writing. Network
+evidence remains best-effort rather than a reliable ordered log; execution evidence
+never infers connection polarity.
 
 ## Release And Result Association
 

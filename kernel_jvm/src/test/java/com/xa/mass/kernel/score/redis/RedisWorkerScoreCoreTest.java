@@ -37,6 +37,10 @@ class RedisWorkerScoreCoreTest {
                             "group-1", "worker-1", 2L
                     ).status()
             );
+            for (long zeroSlot : new long[]{WorkerScoreEncoding.MARK_BASE, -WorkerScoreEncoding.MARK_BASE}) {
+                assertEquals(WorkerScoreTransitionStatus.INVALID,
+                        scoreCore.toggleCurrentPolarity("group-1", "worker-1", zeroSlot).status());
+            }
             assertEquals(
                     WorkerScoreTransitionStatus.INVALID,
                     scoreCore.deferObservedToRecovery("group-1", Map.of("worker-1", 0L), 1_000L).get("worker-1").status()

@@ -36,15 +36,22 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   future hold survives; RECOVERY mark and cold-registration protection remain.
   Shared Pool and Direct callers have one execution-acquisition winner and stale
   stock cannot release it. Pool tests fix admission TTL, duplicate non-renewal,
-  full-capacity replacement and old selection protection. Current-slot network
-  evidence preserves time/mark; CONNECTED only promotes below-floor past time to
-  floor and rejects pre-floor activation. Pause writes MAX/0; relative targets
+  full-capacity replacement and old selection protection. Current/future network
+  evidence preserves time/mark. An accepted past polarity change advances generation
+  and clears mark, including a one-slot advance for same-slot evidence; ordinary
+  same-polarity Polling is unchanged. Below-floor activation additionally requires
+  post-floor evidence. Pause writes MAX/0; relative targets
   accept MAX and reject larger slots. Recovery keeps unlimited age/attempts and
   Redis-relative delay; Pacer owns timing and budget policy. Refill filters corrupt
   raw rows, while Serviceability retains strict fractional conversion; neither
   supplements a bounded head. Serviceability merges two mark ranges before final
   raw-budget truncation. Candidateize precedes qualification, with no substitute
   discovery. Facts/index writes and generation invalidation remain independent.
+  Actual Pacer/Matching/Redis composition proves deficit-bounded candidateization:
+  stock 99 and target 100 changes one of 100 ordinary Worker fences, leaving the
+  other 99 available after normal inventory consumption without aged recycling.
+  The same production composition proves that reconnect refills consumed stale
+  Pool stock at a new generation without waiting for the 60-second recycle.
   TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
@@ -72,7 +79,8 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   acquisition-before-qualification and successful finite execution. They do not measure throughput.
   An isolated DEFAULT-preset witness loses the first disconnect evidence, then
   requires actual Adapter TASK expiry, correlated rejection and consumed network
-  evidence to drive RECOVERY; reconnect completes the same Item. No Probe or
+  evidence to drive RECOVERY; reconnect completes the same Item within the existing
+  15-second wait, without a shortened recycle threshold. No Probe or
   synthetic expiry Report substitutes for that path. Safe bounded traces accompany failures.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity, guaranteed activation after evidence loss, atomic registration,

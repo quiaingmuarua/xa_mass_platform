@@ -47,9 +47,11 @@ floor .. now     ordinary due HOT or candidate generation
 current/future   not acquirable; execution/recheck hold or PAUSE
 ```
 
-Registration uses the fixed negative cold coordinate. Valid CONNECTED can promote
-a past time below floor to floor only when its evidence reaches floor. It does not
-refresh times already at/above floor. Current/future coordinates remain unchanged.
+Registration uses the fixed negative cold coordinate. Valid CONNECTED can activate
+a past coordinate below floor only when evidence and Redis time reach floor. This
+also reactivates historical HOT after restart. Normal same-polarity evidence does
+not refresh time or mark. A past polarity change advances generation and clears mark;
+current/future coordinates retain time and mark. The precise rule is below.
 
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
@@ -96,8 +98,9 @@ through the ordinary retry scan. If Route evidence is lost before an ordinary
 HOT coordinate changes polarity, the unchanged coordinate eventually enters
 the stale-HOT compensation range.
 
-An unused candidate that is repeatedly refilled does not have an unchanged
-coordinate: each new lease advances its time. It can remain outside the old-HOT
+An unused candidate that is repeatedly recycled does not have an unchanged
+coordinate: recycling advances generation, while candidate admission preserves it.
+It can remain outside the old-HOT
 probe range without any actual Adapter delivery to generate fresh evidence.
 Refill alone therefore does not guarantee fleet-wide unavailability after an
 outage. Task-fault records these scheduling states as diagnostics and proves
@@ -153,7 +156,7 @@ The Producer interval remains 1 second. recheckDelayMillis defaults to 15 second
 hotProbeStaleAfterMillis independently remains 60 seconds for the HOT cutoff.
 The Runtime Boundary preset retains separate 10ms values for both checks.
 Pacer supplies the fixed delay. Score Owner encodes floor((Redis now+delay)/100)
-inside the exact batch Lua and preserves mark. Only storedSlot < redisNowSlot
+inside the exact batch Lua and clears mark. Only storedSlot < redisNowSlot
 is due, so rounding down cannot permit an early check.
 
 **15 seconds is eligibility delay, not a promised Probe time or periodic schedule.**
@@ -284,7 +287,8 @@ Every initial registration, including Polling, is cold. Lost first connection
 or poll evidence leaves it cold until fresh valid evidence arrives. No ACK,
 replay or cold-member scan promises activation. Excluded Endpoints use the same
 cold coordinate. Network events do not initialize
-missing Scores, release leases, clear mark or undo PAUSE.
+missing Scores, release leases or undo PAUSE. A past network polarity change clears
+candidate mark as part of generation refresh; repeated same-polarity polling does not.
 
 ## Score Convergence
 
@@ -297,12 +301,20 @@ CONNECTED or valid Polling observation        -> HOT, minimum=startup floor
 DISCONNECTED / delivery expired / Probe miss -> RECOVERY, minimum=0
 ```
 
-Current/future stored coordinates accept valid evidence and preserve time. Past
-coordinates accept only evidence from the same or a later slot. All network
-corrections preserve mark. CONNECTED promotes only a past coordinate below floor,
-and only if evidence reaches floor, to exactly floor. DISCONNECTED changes sign
-only. Current, future and PAUSE time remain unchanged. A future recheck restored
-to HOT must still become strictly due before candidateization or execution.
+Current/future stored coordinates accept valid evidence and preserve time and mark.
+Past coordinates accept only evidence from the same or a later slot. A past polarity
+change clears mark and advances to max(storedSlot + 1, min(evidenceSlot, redisNowSlot)).
+Normal same-polarity evidence is NOOP. A past HOT target below floor is the activation
+exception: both evidence and Redis time must reach floor, otherwise the write is STALE.
+Activation also refreshes a historical same-polarity HOT generation after restart.
+A future recheck restored to HOT must still become strictly due before acquisition.
+
+The one-slot advance for valid same-slot evidence prevents old candidate fences from
+reappearing after requalification. Current/future execution fences still change only
+by exact sign, preserving Result association. A recovered past Worker returns to the
+ordinary head without a 60-second recycling wait even if a failed strict acquisition
+has already consumed its Pool entry. The DEFAULT offline-delivery proof retains its
+15-second reconnect witness and excludes periodic Probe assistance.
 
 The Runtime supplies one activation floor to the event Mechanism even in DEFAULT;
 the Result policy does not calculate it. Score time is not a network event version.
@@ -344,7 +356,7 @@ close a Worker Channel merely because delivery expired.
 
 All presets install the Network Evidence lane. DEFAULT has no HOT floor or
 periodic Serviceability Dispatch lane. Production mints the floor
-once in Java and shares it only with Serviceability Dispatch and Assignment,
+once in Java and shares it with the event Mechanism and, when enabled, Serviceability Dispatch and Assignment,
 and uses:
 
 ```text
@@ -355,8 +367,9 @@ stop: Java Dispatch Convergence
    -> Java Result Convergence
 ```
 
-Serviceability Dispatch and Assignment use the same floor. Network Evidence
-does not receive or rewrite it. This assembly has no duplicate consumers or
+Serviceability Dispatch and Assignment use the same floor. Network Evidence's
+event Mechanism receives it for activation; the Result policy never calculates it.
+This assembly has no duplicate consumers or
 Probe Request producers.
 
 - Do not generalize the Runtime into an event bus.

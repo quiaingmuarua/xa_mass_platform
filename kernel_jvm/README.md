@@ -59,7 +59,9 @@ ordinary/execution time from candidate generation. Candidate admission preserves
 time; strict or current due acquisition establishes mark=0 execution leases.
 Properties advances past time and clears HOT candidate mark, while retaining
 RECOVERY mark and leaving current/future holds unchanged. Pause writes MAX,0, and
-CONNECTED only promotes below-floor past time to startup floor. The new encoding
+past network polarity changes clear mark and advance generation. Normal same-polarity
+evidence is unchanged; below-floor HOT activation is the exception and requires
+post-floor evidence. Current/future network corrections preserve the hold. The encoding
 requires a new scope; no compatibility decoder or migration is added.
 
 ## Production Call Closure
