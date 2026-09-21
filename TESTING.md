@@ -393,8 +393,12 @@ qualified again. A restarted Matching catalog cannot adopt old stock.
 
 Focused tests cover direct named refill/take without Task registration or prior
 shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
-capacities, concurrent take, overlapping target qualification and source failure
-after hold. Pacer tests keep refill independent of Item observation and dispatch
+capacities, concurrent entry consumption, overlapping target qualification and source
+failure after candidateization. Container tests cover single-bucket FIFO, immutable
+repeated identities/fences, partial acceptance, approximate resident counts, lazy TTL
+and capacity-pressure recovery of idle stock. Proof tuple tests preserve all partial
+queries and literal/missing values without multiple memberships. Catalog duplicate
+association filtering remains independent of the container's duplicate entries. Pacer tests keep refill independent of Item observation and dispatch
 independent of Pool source reads/acquisition. Runtime Boundary uses actual WebSocket,
 Socket and Polling Workers, including multiple Tasks consuming one shared pool.
 Dynamic Matching preserves its 1,000 Worker/150,400 Item workload with explicit
@@ -467,8 +471,8 @@ ordering, network floor activation, pause MAX/0, relative deferral and one execu
 winner across Pool/Direct callers. Ordinary candidate, aged candidate, Serviceability
 HOT and Recovery heads each reach 250 equal-score members in 100/100/50 batches.
 Stale stock cannot claim or release a newer hold. Local Pool tests prove admission-
-time TTL, duplicate non-renewal, replacement at full capacity and stale selection
-protection. TTL limits take, not already-taken exact acquisition. Runtime Boundary
+time TTL for independent occurrences, capacity accounting for duplicate entries,
+bucket FIFO, lazy pressure cleanup and concurrent at-most-once entry consumption. TTL limits take, not already-taken exact acquisition. Runtime Boundary
 and Dynamic Matching retain their existing workload and time limits.
 
 ### Network Evidence And Candidate Generations

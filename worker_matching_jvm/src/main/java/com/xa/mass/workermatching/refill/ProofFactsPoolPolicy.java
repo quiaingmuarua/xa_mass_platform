@@ -2,8 +2,8 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
-import com.xa.mass.workermatching.pool.CandidatePool;
-import com.xa.mass.workermatching.views.ProofFactsViews;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
+import com.xa.mass.workermatching.buckets.ProofFactsBuckets;
 import java.util.*;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -14,7 +14,7 @@ public final class ProofFactsPoolPolicy extends PoolMaintenance<WorkerFacts> {
             "worker.proofTarget", "proofTarget", "platform.proofEnabled", "proofEnabled",
             "worker.convergenceSlot", "convergenceSlot");
     private final BiFunction<String, List<String>, Map<String, WorkerFacts>> readFacts;
-    public ProofFactsPoolPolicy(CandidatePool pool, BiFunction<String, List<String>, Map<String, WorkerFacts>> readFacts) {
+    public ProofFactsPoolPolicy(WorkerCandidatePool pool, BiFunction<String, List<String>, Map<String, WorkerFacts>> readFacts) {
         super(pool); this.readFacts = Objects.requireNonNull(readFacts);
     }
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery input) {
@@ -25,15 +25,21 @@ public final class ProofFactsPoolPolicy extends PoolMaintenance<WorkerFacts> {
         query.query().values().forEach(RuleQueries::one);
         return query;
     }
-    @Override protected CandidatePool.Selection target(String group, EligibilityQuery query) {
-        var values = new LinkedHashMap<String, String>();
-        query.query().forEach((field, value) -> values.put(FIELDS.get(field), RuleQueries.one(value)));
-        return ProofFactsViews.select(values);
-    }
     @Override protected Map<String, WorkerFacts> readQualifications(String group, List<String> ids) {
         return readFacts.apply(group, ids);
     }
-    @Override protected @Nullable Map<String, String> memberships(String group, String id, @Nullable WorkerFacts facts) {
-        return ProofFactsViews.memberships(facts);
+    @Override protected @Nullable String bucketKey(String group, String id, @Nullable WorkerFacts facts) {
+        return ProofFactsBuckets.bucketKey(facts);
+    }
+    @Override protected Map<EligibilityQuery, Set<String>> matchingKeys(String group,
+            Collection<EligibilityQuery> queries, Set<String> keys) {
+        var directory = ProofFactsBuckets.decodeKeys(keys);
+        var result = new LinkedHashMap<EligibilityQuery, Set<String>>();
+        for (var query : queries) {
+            var values = new LinkedHashMap<String, String>();
+            query.query().forEach((field, value) -> values.put(FIELDS.get(field), RuleQueries.one(value)));
+            result.put(query, ProofFactsBuckets.matchingKeys(values, directory));
+        }
+        return result;
     }
 }

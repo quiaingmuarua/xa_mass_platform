@@ -2,7 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
@@ -27,7 +27,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     private final FactsIndexStore storage;
     private final CandidateBudget budget;
-    private final Map<String, CandidatePool> pools;
+    private final Map<String, WorkerCandidatePool> pools;
     private final Map<String,PoolRefillPolicy> handlers;
     private final Map<String,QueryFunction> executors;
     private final Map<String,MatchingGroup> groups;
@@ -41,7 +41,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private long requestedDeficit;
 
     public RedisWorkerMatchingCatalog(FactsIndexStore storage, CandidateBudget budget,
-            Map<String, CandidatePool> pools, LongSupplier clock,
+            Map<String, WorkerCandidatePool> pools, LongSupplier clock,
             Map<String,PoolRefillPolicy> poolPolicies, Map<String,QueryFunction> queryFunctions,
             Map<String,MatchingGroup> groups, List<String> poolOrder, Set<String> globalFunctions) {
         this.storage=Objects.requireNonNull(storage,"storage");
@@ -189,7 +189,13 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
 
     @Override public Map<String,Integer> observeRefillDeficits(Map<String,List<RefillTarget>> supplied) {
         var targets=targets(supplied);
-        pools.values().forEach(CandidatePool::expireAll);
+        // Reclaim idle stock only when a requested Group-Pool cannot admit anything.
+        if (targets.keySet().stream().anyMatch(scope -> {
+            var pool = pools.get(scope.poolName());
+            return pool != null && pool.remainingCapacity(scope.workerGroupId()) == 0;
+        })) {
+            pools.values().forEach(WorkerCandidatePool::discardExpired);
+        }
         queryCursors.keySet().retainAll(targets.keySet());
         eligibilityCursors.keySet().retainAll(supplied.keySet());
         var deficits=new LinkedHashMap<String,Integer>();

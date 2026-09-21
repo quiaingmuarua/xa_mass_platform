@@ -11,7 +11,7 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.IndexMutation;
 import com.xa.mass.workermatching.index.PhoneIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
 import com.xa.mass.workermatching.refill.CountryPoolPolicy;
 import com.xa.mass.workermatching.refill.MessagingPoolPolicy;
@@ -27,7 +27,7 @@ public final class MatchingComposition {
     private final LongSupplier clock;
     private final CandidateBudget budget = new CandidateBudget();
     private final Map<String, MatchingGroup> groups;
-    private final Map<String, CandidatePool> pools;
+    private final Map<String, WorkerCandidatePool> pools;
     private final Map<String, PoolRefillPolicy> policies;
     private final Map<String, QueryFunction> functions;
     private final List<String> poolOrder;
@@ -50,13 +50,13 @@ public final class MatchingComposition {
             enabledPools.addAll(config.pools());
             enabledFunctions.addAll(config.functions());
         });
-        var pools = new LinkedHashMap<String, CandidatePool>();
+        var pools = new LinkedHashMap<String, WorkerCandidatePool>();
         var policies = new LinkedHashMap<String, PoolRefillPolicy>();
         var functions = new LinkedHashMap<String, QueryFunction>();
         functions.put("workerId", new IdentityQueryFunction());
         for (String name : List.of("any", "country", "messaging", "proof-facts")) {
             if (!enabledPools.contains(name)) continue;
-            var pool = new CandidatePool(clock, budget);
+            var pool = new WorkerCandidatePool(clock, budget);
             pools.put(name, pool);
             switch (name) {
                 case "any" -> {
@@ -103,7 +103,7 @@ public final class MatchingComposition {
         return Collections.unmodifiableMap(indexes);
     }
 
-    public Map<String, CandidatePool> pools() { return pools; }
+    public Map<String, WorkerCandidatePool> pools() { return pools; }
     public CandidateBudget budget() { return budget; }
     public Map<String, PoolRefillPolicy> policies() { return policies; }
     public Map<String, QueryFunction> functions() { return functions; }

@@ -181,9 +181,9 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   Matching must not accept Task IDs, retain Task configuration/message IDs or
   own Item lifecycle.
 - Functions own input interpretation and resource selection. Refill policies own
-  target normalization, deficits and qualification. CandidatePool owns mechanical
-  range stock; indexes own physical definitions and reads. Catalog coordinates
-  bounded calls and correlation without taking over those local mechanisms.
+  target normalization, deficits and qualification. WorkerCandidatePool owns
+  Group-isolated single-bucket queues; indexes own physical definitions and reads.
+  Catalog coordinates bounded calls and correlation without taking over those local mechanisms.
 - Refill counts are shortage watermarks, not admission quotas or inventory caps.
   Pacer bounds supply by observed deficits; Matching qualifies supplied identities
   within the call budget and actual capacity without clipping to target counts.
@@ -213,8 +213,11 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   best-effort commit, not a property-version transaction.
 - Catalog coordinates composition-provided Pool order, global function availability
   and ALL/PAGED target capability without interpreting strategy names. Shared
-  PoolMaintenance owns generation/replacement and commit rules; concrete policies
-  own qualification and local view coordinates.
+  PoolMaintenance owns complete qualification preparation and batch offers; concrete
+  policies own qualification and bucket keys. Pool entries are immutable occurrences:
+  do not add identity deduplication, generation replacement, multiple memberships or
+  select/commit state. TTL is checked on poll; resident counts are hints. Catalog
+  may reclaim expired heads under capacity pressure without a background sweep.
 - Keep Any explicitly configured, Country and Messaging on offered Worker Facts,
   Proof on one atomic offered Worker/Platform snapshot, and Phone as an independent
   Group index. Qualified Messaging Phone uses that index followed by bounded Facts

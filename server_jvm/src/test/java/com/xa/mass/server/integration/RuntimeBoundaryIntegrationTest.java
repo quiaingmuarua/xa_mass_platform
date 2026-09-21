@@ -14,7 +14,7 @@ import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.*;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.server.testsupport.BucketPoolFixture;
@@ -112,12 +112,12 @@ class RuntimeBoundaryIntegrationTest {
         }
         @Bean IdentityHintPoolFixture identityHintRule(MatchingComposition composition) {
             return new IdentityHintPoolFixture(System::currentTimeMillis,
-                    new CandidatePool(System::currentTimeMillis,composition.budget()));
+                    new WorkerCandidatePool(System::currentTimeMillis,composition.budget()));
         }
         @Bean(destroyMethod="close") RedisWorkerMatchingCatalog workerMatchingCatalog(
                 FactsIndexStore storage,MatchingComposition composition,MatchingProperties rules,
                 IdentityHintPoolFixture identityHintRule) {
-            var stock=new CandidatePool(System::currentTimeMillis,composition.budget());
+            var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
             var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,false);
             var pools=new LinkedHashMap<>(composition.pools());
             pools.put(BucketPoolFixture.ID,stock); pools.put(IdentityHintPoolFixture.ID,identityHintRule.stock());

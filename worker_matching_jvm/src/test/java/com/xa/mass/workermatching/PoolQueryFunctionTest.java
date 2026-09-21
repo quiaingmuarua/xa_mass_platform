@@ -6,7 +6,7 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.functions.*;
 import com.xa.mass.workermatching.index.PhoneIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import io.lettuce.core.RedisClient;
 import java.util.*;
@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 
 class PoolQueryFunctionTest {
     @Test void admissionNormalizesLocalInputsWithoutTouchingInjectedResources() {
-        var pool = mock(CandidatePool.class);
+        var pool = mock(WorkerCandidatePool.class);
         var phones = mock(PhoneIndex.class);
         assertEquals(Map.of(), new AnyQueryFunction(pool).normalizeInput("g", Map.of()));
         assertEquals(List.of("CN", "US"), new CountryQueryFunction(pool).normalizeInput("g", List.of("US", "CN", "US")));
@@ -37,11 +37,9 @@ class PoolQueryFunctionTest {
 
     @Test void equivalentInterleavedInputsAreAdmittedOnceAndKeepOriginalAssignmentOrder() {
         var budget = new CandidateBudget();
-        var pool = spy(new CandidatePool(() -> 1000, budget));
-        pool.admit("g", List.of(
-                new CandidatePool.Admission("cn1", (long) (11), Map.of("country", "CN")),
-                new CandidatePool.Admission("us", (long) (12), Map.of("country", "US")),
-                new CandidatePool.Admission("cn2", (long) (13), Map.of("country", "CN"))));
+        var pool = spy(new WorkerCandidatePool(() -> 1000, budget));
+        pool.offerBatch("g", "CN", List.of(new WorkerCandidate("cn1", 11), new WorkerCandidate("cn2", 13)));
+        pool.offerBatch("g", "US", List.of(new WorkerCandidate("us", 12)));
         var function = spy(new CountryQueryFunction(pool));
         var client = mock(RedisClient.class);
         try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_strategy_order"), Map.of());
@@ -57,7 +55,9 @@ class PoolQueryFunctionTest {
             assertEquals(List.of(new WorkerCandidate("cn1", 11), new WorkerCandidate("us", 12), new WorkerCandidate("cn2", 13)), List.copyOf(result.values()));
             verify(function, times(4)).normalizeInput(eq("g"), any());
             verify(function).apply(eq("g"), anyMap());
-            verify(pool).take(eq("g"), anyMap());
+            verify(pool).pollBatch("g", Set.of("CN"), 2);
+            verify(pool).pollBatch("g", Set.of("US"), 1);
+            verify(pool).pollAnyBatch("g", 1);
             assertThrows(UnsupportedOperationException.class, result::clear);
             verifyNoInteractions(client);
         }
@@ -65,8 +65,8 @@ class PoolQueryFunctionTest {
 
     @Test void entryBudgetAndLateInvalidInputAreRejectedBeforeAnyPoolConsumption() {
         var budget = new CandidateBudget();
-        var pool = new CandidatePool(() -> 1000, budget);
-        pool.admit("g", List.of(new CandidatePool.Admission("w", (long) (19), Map.of("country", "CN"))));
+        var pool = new WorkerCandidatePool(() -> 1000, budget);
+        pool.offerBatch("g", "CN", List.of(new WorkerCandidate("w", 19)));
         var identity = spy(new IdentityQueryFunction());
         try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_strategy_admission"), Map.of());
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,
@@ -85,5 +85,24 @@ class PoolQueryFunctionTest {
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", invalid));
             assertEquals(Map.of("next", new WorkerCandidate("w", 19)), catalog.take("g", Map.of("next", invalid.get("good"))));
         }
+    }
+    @Test void proofPartialQueriesUseOneDirectorySnapshotAndKeepEachEntryInOneBucket() {
+        var pool = spy(new WorkerCandidatePool(() -> 1000, new CandidateBudget()));
+        var first = new WorkerMatchingCatalog.WorkerFacts("a", "g", Map.of("proofPool", "*", "proofTarget", "yes", "convergenceSlot", "slot"), Map.of("proofEnabled", "yes"));
+        var second = new WorkerMatchingCatalog.WorkerFacts("b", "g", Map.of("proofPool", "~", "proofTarget", "yes"), Map.of("proofEnabled", "yes"));
+        String a = com.xa.mass.workermatching.buckets.ProofFactsBuckets.bucketKey(first);
+        String b = com.xa.mass.workermatching.buckets.ProofFactsBuckets.bucketKey(second);
+        pool.offerBatch("g", a, List.of(new WorkerCandidate("a", 11)));
+        pool.offerBatch("g", b, List.of(new WorkerCandidate("b", 12)));
+        assertEquals(Map.of(a, 1, b, 1), pool.countByKey("g"));
+        clearInvocations(pool);
+        var inputs = new LinkedHashMap<String, Object>();
+        inputs.put("specific", Map.of("proofPool", "*"));
+        inputs.put("already-consumed", Map.of("convergenceSlot", "slot"));
+        inputs.put("partial", Map.of("proofTarget", "yes"));
+        assertEquals(Map.of("specific", new WorkerCandidate("a", 11), "partial", new WorkerCandidate("b", 12)),
+                new ProofFactsQueryFunction(pool).apply("g", inputs));
+        verify(pool, times(1)).countByKey("g");
+        assertTrue(pool.countByKey("g").isEmpty());
     }
 }

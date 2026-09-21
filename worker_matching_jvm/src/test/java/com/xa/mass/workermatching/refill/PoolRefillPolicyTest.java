@@ -2,7 +2,7 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 class PoolRefillPolicyTest {
     final CandidateBudget budget = new CandidateBudget();
     @Test void targetOneHundredAllowsTwoHundredResidentsWithoutClippingOrEviction() {
-        var stock = new CandidatePool(() -> 1000, budget);
+        var stock = new WorkerCandidatePool(() -> 1000, budget);
         var policy = new AnyPoolPolicy(stock);
         var target = new EligibilityQuery(Map.of());
         var targets = Map.of(target, 100);
@@ -29,14 +29,14 @@ class PoolRefillPolicyTest {
             assertEquals(100, policy.refill("g", targets, offered, 100).size());
             assertEquals(Map.of(target, 0), policy.deficits("g", targets));
         }
-        assertEquals(200, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+        assertEquals(200, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
         assertEquals(9800, budget.available());
         assertEquals(Map.of(target, 0), policy.deficits("g", targets));
-        assertEquals(200, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+        assertEquals(200, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
     }
 
     @Test void batchBudgetAndHardCapacityStillBoundOffersAboveTheWatermark() {
-        var stock = new CandidatePool(() -> 1000, budget);
+        var stock = new WorkerCandidatePool(() -> 1000, budget);
         var policy = new AnyPoolPolicy(stock);
         var targets = Map.of(new EligibilityQuery(Map.of()), 1);
         for (int start = 0; start < 900; start += 100) {
@@ -49,31 +49,28 @@ class PoolRefillPolicyTest {
         assertEquals(7, policy.refill("g", targets, offered, 7).size());
         assertEquals(93, policy.refill("g", targets, offered, 100).size());
         assertTrue(policy.refill("g", targets, Map.of("overflow", 20L), 100).isEmpty());
-        assertEquals(1000, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+        assertEquals(1000, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
         assertEquals(9000, budget.available());
     }
 
     @Test void messagingKeepsCountryQualificationWithoutPhoneViewsOrTargets() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
-            var stock=new CandidatePool(()->1000, budget);
+            var stock=new WorkerCandidatePool(()->1000, budget);
             var handler=new MessagingPoolPolicy(stock, storage::readWorkerFacts);
             var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"))));
-            var match=handler.target("g",q);
-            assertTrue(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","CN","phone","+86123"))));
-            assertTrue(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","CN"))));
-            assertFalse(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","US","phone","+86123"))));
-            assertNull(handler.memberships("g","w",null));
-            assertEquals(Map.of("country", "CN"), handler.memberships("g", "w",
-                    Map.of("messaging.enabled", "true", "country", "CN", "phone", "+86123")));
-            assertNull(handler.memberships("g", "w", Map.of("messaging.enabled", "false", "country", "CN")));
-            assertNull(handler.memberships("g", "w", Map.of("messaging.enabled", "true", "country", "invalid")));
+            assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN","phone","+86123")));
+            assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN")));
+            assertEquals(Set.of("CN"),handler.matchingKeys("g",List.of(q),Set.of("CN","US")).get(q));
+            assertNull(handler.bucketKey("g","w",null));
+            assertNull(handler.bucketKey("g","w",Map.of("messaging.enabled","false","country","CN")));
+            assertNull(handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","invalid")));
             assertThrows(IllegalArgumentException.class, () -> handler.normalizeQuery("g",
                     new EligibilityQuery(Map.of("worker.phone", List.of("+86123")))));
         }
     }
     @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
-            for(var rule:List.of(new CountryPoolPolicy(new CandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new CandidatePool(()->1000, budget), storage::readWorkerFacts),new ProofFactsPoolPolicy(new CandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
+            for(var rule:List.of(new CountryPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new ProofFactsPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
                 assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of())));
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("w")))));
             }
@@ -82,7 +79,7 @@ class PoolRefillPolicyTest {
     @Test void anyNeedsNoFactsAndRejectsIdentityAndCountryConditions() {
         var client=mock(RedisClient.class);
         try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_any"), Map.of())) {
-            var stock=new CandidatePool(()->1000, budget);
+            var stock=new WorkerCandidatePool(()->1000, budget);
             var rule=new AnyPoolPolicy(stock);
             var function=new AnyQueryFunction(stock);
             var target=new EligibilityQuery(Map.of());

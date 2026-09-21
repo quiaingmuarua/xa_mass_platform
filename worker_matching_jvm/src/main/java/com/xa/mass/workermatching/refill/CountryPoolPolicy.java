@@ -2,16 +2,15 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.RuleInputs;
-import com.xa.mass.workermatching.pool.CandidatePool;
-import com.xa.mass.workermatching.pool.CandidatePool.Selection;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.util.*;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
-/** Country supply over bounded Facts reads and one local bucket snapshot; no source index or cursor. */
+/** Country supply over bounded Facts reads and a single bucket-count snapshot. */
 public final class CountryPoolPolicy extends PoolMaintenance<Map<String, Object>> {
     private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts;
-    public CountryPoolPolicy(CandidatePool pool,
+    public CountryPoolPolicy(WorkerCandidatePool pool,
             BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts) {
         super(pool); this.readFacts = Objects.requireNonNull(readFacts);
     }
@@ -22,36 +21,24 @@ public final class CountryPoolPolicy extends PoolMaintenance<Map<String, Object>
             throw new IllegalArgumentException("country Pool only accepts worker.country");
         return new EligibilityQuery(Map.of("worker.country", RuleInputs.countries(query.query().get("worker.country"))));
     }
-    @Override protected Selection target(String group, EligibilityQuery query) {
-        return query.query().isEmpty() ? CandidatePool.all() : CandidatePool.range("country", query.query().get("worker.country"));
-    }
     @Override protected Map<String, Map<String, Object>> readQualifications(String group, List<String> ids) {
         return readFacts.apply(group, ids);
     }
-    @Override protected @Nullable Map<String, String> memberships(String group, String id, @Nullable Map<String, Object> facts) {
+    @Override protected @Nullable String bucketKey(String group, String id, @Nullable Map<String, Object> facts) {
         return facts != null && facts.get("country") instanceof String country && RuleInputs.validCountry(country)
-                ? Map.of("country", country) : null;
+                ? country : null;
     }
-    @Override protected CandidatePool.Observation observe(CandidatePool pool, String group,
-            Collection<Selection> selections, Collection<String> ids) {
-        var observed = pool.observeView(group, "country", ids);
-        var counts = new LinkedHashMap<Selection, Integer>();
-        for (var selection : selections) counts.put(selection,
-                selection.kind() == CandidatePool.SelectionKind.ALL ? observed.total()
-                        : selection.values().stream().mapToInt(country -> observed.counts().getOrDefault(country, 0)).sum());
-        return new CandidatePool.Observation(counts, observed.present(), observed.room());
-    }
-    @Override protected Set<String> matchingIdentities(Collection<Selection> selections,
-            Map<String, CandidatePool.Admission> prepared) {
-        var countries = new HashSet<String>();
-        for (var selection : selections) {
-            if (selection.kind() == CandidatePool.SelectionKind.ALL) return prepared.keySet();
-            countries.addAll(selection.values());
+    @Override protected Map<EligibilityQuery, Set<String>> matchingKeys(String group,
+            Collection<EligibilityQuery> queries, Set<String> keys) {
+        var result = new LinkedHashMap<EligibilityQuery, Set<String>>();
+        for (var query : queries) {
+            if (query.query().isEmpty()) result.put(query, keys);
+            else {
+                var countries = new HashSet<>(query.query().get("worker.country"));
+                countries.retainAll(keys);
+                result.put(query, countries);
+            }
         }
-        var result = new LinkedHashSet<String>();
-        prepared.forEach((id, admission) -> {
-            if (countries.contains(admission.views().get("country"))) result.add(id);
-        });
         return result;
     }
 }

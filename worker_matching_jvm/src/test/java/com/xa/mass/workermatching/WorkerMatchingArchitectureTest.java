@@ -13,15 +13,15 @@ class WorkerMatchingArchitectureTest {
     private static final Path SOURCE = Path.of("src/main/java");
 
     @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
-        assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.", "com.xa.mass.workermatching.views.", "WorkerFacts",
+        assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.", "com.xa.mass.workermatching.buckets.", "WorkerFacts",
                 ".functions.", ".refill.", "executorName", "QueryFunction", "PoolRefillPolicy"));
         assertPackageDependencies("index", List.of(".pool.", ".refill.", ".functions.",
                 "executorName", "QueryFunction", "PoolRefillPolicy", "CandidateBudget"));
-        assertPackageDependencies("views", List.of("io.lettuce", ".index.", ".storage.", ".functions.", ".refill.", "redis.call"));
+        assertPackageDependencies("buckets", List.of("io.lettuce", ".index.", ".storage.", ".functions.", ".refill.", "redis.call"));
         assertPackageDependencies("storage", List.of(".pool.", ".refill.", ".functions.",
-                "executorName", "CandidateBudget", "CandidatePool"));
+                "executorName", "CandidateBudget", "WorkerCandidatePool"));
         assertPackageDependencies("functions", List.of(".refill.", ".storage.", "io.lettuce",
-                "PoolRefillPolicy", "PoolMaintenance", "new CandidatePool", "new PhoneIndex", "new Thread", ".admit(", ".discardChanged("));
+                "PoolRefillPolicy", "PoolMaintenance", "new WorkerCandidatePool", "new PhoneIndex", "new Thread", ".offerBatch(", ".discardExpired("));
         assertPackageDependencies("refill", List.of("io.lettuce", "IndexMutation", "prepareLua",
                 ".index.", ".storage.", "redis.call", ":matching:"));
     }

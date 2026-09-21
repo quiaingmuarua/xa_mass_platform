@@ -35,8 +35,8 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   needs no aged recycle and cannot restore the old fence. An execution-first
   future hold survives; RECOVERY mark and cold-registration protection remain.
   Shared Pool and Direct callers have one execution-acquisition winner and stale
-  stock cannot release it. Pool tests fix admission TTL, duplicate non-renewal,
-  full-capacity replacement and old selection protection. Current/future network
+  stock cannot release it. Pool tests fix per-entry admission TTL, independent repeated fences,
+  capacity accounting, lazy cleanup and concurrent at-most-once entry consumption. Current/future network
   evidence preserves time/mark. An accepted past polarity change advances generation
   and clears mark, including a one-slot advance for same-slot evidence; ordinary
   same-polarity Polling is unchanged. Below-floor activation additionally requires
@@ -63,7 +63,7 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Old Pool fences cannot acquire or release the execution hold;
   concurrent Pool/Direct acquisition has one winner. Recycling allows a new
   generation to enter another Pool while the stale entry remains. Local tests
-  prove single-Pool admission and original TTL/selection protections. Scenario
+  prove single-Pool admission, batch bucket consumption and poll-time age filtering. Scenario
   Coexistence retains its existing business assertions and deadlines.
   Matching qualification reads only offered Facts: Messaging uses one HMGET and
   Proof one atomic two-HMGET snapshot. Retired qualification keys, even with wrong

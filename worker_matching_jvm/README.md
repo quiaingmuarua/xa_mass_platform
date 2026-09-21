@@ -81,16 +81,15 @@ limit. Country receives up to 10,000 targets without a query cursor. Other polic
 receive at most 100 targets per page. Observation does not advance those cursors;
 an actual refill attempt does.
 
-Global expired-stock and inactive-cursor cleanup belongs to `observeRefillDeficits`.
+Inactive-cursor cleanup belongs to `observeRefillDeficits`; expired stock is reclaimed there only under capacity pressure.
 Counts retain existing target-page, Pool aggregation and capacity rules; they are
 neither reservations nor distinct Worker counts, because target predicates may overlap and counts do not reserve identities.
 `count` is a shortage watermark, not an inventory ceiling: 200 matching residents
 against a target of 100 need no refill and are not removed; 80 against 100 request
 20. Pacer bounds its observation by this shortage. Once candidates have been
 supplied, the selected target predicates decide qualification, without clipping
-admission to their counts. Qualified new identities retain offered order, after
-existing-identity replacements; only the call budget and actual storage capacity
-bound admission. Existing target-page selection and Pool rotation are unchanged.
+admission to their counts. Qualified offers are selected within the call budget
+in offered order, then appended by bucket; actual storage capacity bounds admission. Existing target-page selection and Pool rotation are unchanged.
 An already-satisfied watermark therefore does not skip a supplied Facts batch;
 its bounded qualification read and corruption checks still apply. No supplied
 candidates means no qualification read.
@@ -124,7 +123,7 @@ normalizes the complete batch before any consumption. It invokes each function
 once in first-appearance order with its messageId-to-local-input Map. The current
 Pool functions group equivalent selections, process groups in first-appearance
 order and allocate within each group in Item order. Catalog returns an immutable
-Map in original request order, omitting misses. Cross-function duplicate Workers
+Map in original request order, omitting misses. Duplicate Workers within the Catalog call, including duplicates returned by one Pool,
 keep their first association; later associations are discarded without replacement.
 An empty batch touches no inventory. Late invalid input consumes nothing. A later
 execution exception ends the call without rolling back earlier consumption.
@@ -225,7 +224,7 @@ separately requires a new scope for the high-mark layout.
 ## Fixed Resource Composition
 
 `MatchingComposition` creates each enabled resource once and injects it into its
-users. Pool maintenance and named consumer functions receive the same CandidatePool;
+users. Pool maintenance and named consumer functions receive the same WorkerCandidatePool;
 Direct functions receive an existing PhoneIndex. Resources do not know executorName.
 Functions need not implement a maintenance interface. There is no dynamic registry
 or executorType, and composition does not create a Pool or policy for Identity/Phone-only Groups.
@@ -233,24 +232,23 @@ or executorType, and composition does not create a Pool or policy for Identity/P
 | Package | Owned implementation |
 | --- | --- |
 | `functions` | Local input interpretation, resource access and candidate correlation |
-| `pool` | CandidatePool entries, range views, deadlines and CandidateBudget |
-| `refill` | Target interpretation, supplied-ID qualification and membership calculation |
-| `views` | Pure Messaging and Proof qualification/view coordinates shared by refill and consumption |
+| `pool` | WorkerCandidatePool single-bucket queues, admission age and CandidateBudget |
+| `refill` | Target interpretation, supplied-ID qualification and one bucket key per offer |
+| `buckets` | Pure Proof tuple encoding and partial-query bucket matching |
 | `index` | Independent Phone resource definitions, reads and mutation Lua |
 | `storage` | Facts encoding, persistence, atomic index-write assembly, rebuild and Redis connection |
 
-CandidatePool receives only a clock and shared CandidateBudget. Composition retains
-the fixed Pool map; Catalog expires that collection and reads budget diagnostics.
-There is no self-registration or resource manager. Index resources receive Redis
-access and keyspace, with no Pool, capacity, refill-policy or function-name dependency.
+WorkerCandidatePool receives only a clock and shared CandidateBudget. Composition
+retains the fixed Pool map; Catalog invokes lazy cleanup only when a requested
+Group-Pool has no room and reads budget diagnostics. There is no self-registration
+or resource manager. Index resources have no Pool, capacity, policy or function dependency.
 Country and Messaging receive the bounded Worker Facts reader; Proof receives an
-atomic Worker/Platform snapshot reader. Pure view helpers are shared by each
-policy and its QueryFunction. Policies neither construct indexes nor define write Lua.
-All fixed policies use PoolMaintenance for fence validation, fallible preparation,
-generation invalidation, replacement selection, budgeting and final admission.
-Country overrides only the deficit count snapshot and qualification against the
-union of selected countries. Admission observes existing identities and capacity,
-without counting every target again.
+atomic Worker/Platform snapshot reader. Messaging uses its existing pure eligibility
+helper. Proof refill and query share the complete tuple codec and bucket matching.
+All fixed policies use PoolMaintenance for fence validation, complete fallible
+qualification, batch budgeting and grouped offers. No admission observes resident
+Worker identities, compares generations, replaces entries or removes old mismatches.
+Country counts its complete target set from one bucket-count snapshot.
 
 `FactsIndexStore` deduplicates IndexMutation definitions by resource namespace before
 assembling the single preflight-and-write Lua. Conflicting definitions fail assembly.
@@ -268,8 +266,8 @@ no per-index connections, constructor-started threads or background repair tasks
 | --- | --- |
 | `any` | Empty target only, unconditional candidate stock; no Facts or property views |
 | `country` | Valid Worker country Facts and local country buckets |
-| `messaging` | enabled messaging and country views; empty or country-only targets |
-| `proof-facts` | finite proof memberships |
+| `messaging` | enabled messaging and country buckets; empty or country-only targets |
+| `proof-facts` | complete proof tuple buckets with rule-owned partial matching |
 
 Composition explicitly supplies the immutable global-function set containing
 `workerId`; Catalog applies no function-name exception. It remains available even
@@ -280,11 +278,11 @@ implicit Pool stock or managed supply is created.
 
 ## Country Facts and Memory Buckets
 
-Country keeps one `country` membership string per Entry. Its ANY means any entry
-with a valid `[A-Z]{2}` Worker country; the `any` Pool does not require Facts.
-Single-country take visits one bucket; multi-country take merges only the selected
-buckets in original admission order. Removal and expiry remove every Entry reference
-and empty bucket; stock capacity is counted once.
+Country stores each entry in one country bucket. Its ANY means any entry with a
+valid `[A-Z]{2}` Worker country; the `any` Pool does not require Facts. Single-country
+poll visits one bucket; multi-country poll visits only selected buckets in key order,
+with FIFO inside each. ANY visits buckets in creation order. Removing an entry
+releases one capacity unit; empty buckets are removed without reverse links.
 
 Country refill issues at most one Worker Facts HMGET for its live offered IDs,
 never Platform Facts, all-Worker scans or a public Catalog read. The shared stored
@@ -315,15 +313,15 @@ reads retain row-local null-on-corruption behavior.
 
 Messaging requires the exact string messaging.enabled=true and a valid uppercase
 country. A fixed pure Java predicate is shared by Pool qualification and qualified
-Direct Phone lookup. Pool entries have only the country view; missing phone does
+Direct Phone lookup. Pool entries have one country bucket; missing phone does
 not disqualify an otherwise eligible Pool candidate. Country values are strings
 without numeric Redis prefixes. Pool queries and supply targets reject phone conditions.
 
 Proof keeps its three fixed proof fields and independent convergenceSlot.
 proofTarget and proofEnabled normalize to yes only for the exact string yes;
-other stored values normalize to no. The seven nonempty field combinations use
-fixed views and JSON tuple bucket values; the convergence slot has a separate
-view. Omitted query fields impose no condition. Missing proofPool and convergenceSlot
+other stored values normalize to no. Each entry uses one complete JSON tuple,
+including convergenceSlot. Partial queries select matching tuple keys in Java
+without another view or copying entries. Omitted query fields impose no condition. Missing proofPool and convergenceSlot
 values are JSON null, never the literal strings *, ~ or a delimiter. Quotes, Unicode and separator
 characters round-trip through the same helper for qualification and query selection.
 
@@ -383,35 +381,47 @@ matches are omitted; corruption of index types fails without repair. Identity hi
 are not persisted and consume no Pool capacity. Phone observation and execution
 admission are separate commits, with no property version or enduring value guarantee.
 
-`PoolMaintenance` handles supply target interpretation, offered-ID qualification and membership calculation.
-Each Pool QueryFunction independently interprets Item input over an injected resource.
-The package-private `PoolCandidates.take` helper groups already selected ranges
-and associates returned candidates with message IDs. It accepts data rather than
-normalization/selection callbacks and owns no resource or lifecycle.
-The internal `CandidatePool` is a concrete memory resource with no Redis or
-executor interface. It stores one identity Entry per Group/Pool, the opaque
-candidate fence, local TTL, admission order and finite view memberships. It never receives a
-business predicate callback.
+`PoolMaintenance` handles supply target interpretation, offered-ID qualification
+and one bucket key per candidate. QueryFunctions interpret Item input independently.
+The package-private `PoolCandidates.take` helper groups equivalent admitted inputs
+in first-appearance order, invokes each already-prepared batch poll and associates
+results in original message order. It owns no inventory or persistent correlation.
 
-- An identity map provides exact stock lookup. Country buckets and bucket entries
-  are ordered JDK collections; multi-bucket take merges their admission ordinals.
-- Each Entry belongs to at most one value in each view. Bucket sizes therefore
-  provide exact range counts without copying or filtering the whole inventory.
-- Messaging entries have one country view. Proof views follow only actual finite memberships.
-- A removable deadline-ordered structure expires due entries. Consumption and
-  expiration remove all view references and empty buckets immediately.
-- Counts visit selected buckets; take walks selected ranges. Expiration work is
-  separately measured by actual expired entries rather than hidden as query cost.
+The internal `WorkerCandidatePool` is a concrete memory container:
 
-Selection retains only bounded Entry references. Commit checks the exact original
-Entry object and deadline. Replaced, expired or removed entries are skipped with
-no reselection, pool revision or retry. Concurrent unrelated changes do not prevent
-other selected entries from committing. Qualification and fallible strategy work
-remain outside the state lock. Shared capacity coordinates counts only.
+```text
+Rule Pool instance -> Group -> bucketKey -> ArrayDeque<Entry>
+Entry = immutable WorkerCandidate + admission time
+```
+
+Country and Messaging use country keys. Any uses one ordinary fixed key. Proof
+uses a canonical JSON tuple of proofPool, proofTarget, proofEnabled and convergenceSlot;
+missing values remain distinct from all strings. Partial Proof queries decode each
+key once from one directory snapshot per call and select matching keys in Java.
+They visit bucket metadata, not candidate entries, and maintain no second index.
+This exchanges the former multiple-view writes for directory work on partial queries;
+it is not a throughput claim.
+
+- `offerBatch(group, key, candidates)` appends the capacity-fitting prefix and returns
+  accepted candidates. Repeated identities and fences are independent occurrences.
+- `pollBatch(group, keys, limit)` uses lexicographic key order and FIFO within a bucket;
+  empty keys match nothing. `pollAnyBatch(group, limit)` uses bucket creation order.
+- Poll removes each physical entry once under the Pool lock, skips entries at least
+  60 seconds old, and returns immutable candidates with no TTL. It samples time once.
+  There is no global FIFO, priority, identity deduplication or select/commit window.
+- `countByKey` reads queue sizes only. Counts include lazily retained old entries
+  and duplicates, and are neither unique-Worker nor executable-Worker counts.
+- Empty buckets and Groups are removed during consumption or cleanup. Shared
+  capacity accounts for physical entries and has no generation replacement privilege.
+
+Full input admission and all fallible qualification/key interpretation precede
+inventory mutation. Facts I/O is outside the Pool lock. Later failures retain earlier
+admissions or consumption. Catalog still filters repeated Worker associations in
+one take call without restoring entries or polling replacements.
 
 Refill may underfill after concurrent consumption or exceed an observed target
-after concurrent admission. Current hard pool/process capacity and deadlines still
-apply. Later rounds converge; targets do not reserve stock or extend leases.
+after concurrent admission. Approximate resident counts may also defer refill until
+old entries are consumed or reclaimed. Targets reserve neither identities nor leases.
 
 Facts and all enabled indexes prepare before any write in one Lua, independently
 of the local refill/consume failure contracts. Index queries do not consume members;
@@ -446,7 +456,7 @@ Phone Index depends on Group resource composition, never Task demand.
 
 Current Pools retain candidates only in this process: at most 100 resident
 Group/Pool pools, 1000 entries per pool and 10000 in total. Each entry carries
-its identity, range memberships, admission order, opaque generation fence and local TTL deadline.
+its immutable WorkerCandidate, opaque generation fence and admission time.
 Tasks have no reserved share. Restart discards all stock without adoption.
 
 The single-flight refill Producer uses Main-selected NORMAL RUNNING Tasks, with
@@ -461,29 +471,26 @@ waits for a normal round; no existing Pool stock is observed for supply.
 Catalog rotates the explicitly ordered Pool policies. PAGED policies retain
 bounded query pages, including empty attempts; ALL policies receive the complete
 bounded target set. Observation never advances the target cursor. A maintenance policy
-qualifies against the selected target predicates, prioritizes new generations of
-existing identities, then admits qualified new identities in offered order.
-Offered memberships are computed once before admission; target counts do not cap
-acceptance. Each Pool receives only identities not
-already admitted by an earlier Pool in this batch. The 100-entry call budget counts actual admissions, including
-replacement of an existing identity, and does not promise to fill every Pool.
+qualifies the supplied batch completely before appending candidates by bucket.
+The call budget selects qualified offers in input order; target counts do not cap
+acceptance. Each Pool receives only identities not already admitted by an earlier
+Pool in this batch. The 100-entry call budget counts actual admissions. Single-Pool
+handoff is a production supply contract, not identity uniqueness enforced by storage.
 
-Global lazy expiry runs once at Group shortage observation by invoking current resource-owned
-pool cleanup. It does not store a second inventory. Group access expires only its
-own pool; diagnostics and capacity reads do not sweep unrelated pools. Admission
-establishes each entry's local TTL and rechecks shared hard capacity at commit,
-without revalidating the whole inventory or clipping at the observed shortage.
-Other expiry may release capacity after the round's budget was observed, so a
-round may conservatively underfill. A Pool with no available capacity reports zero
-refill deficit, preserving the existing full-stock supply suppression. Duplicate same-fence admission does not extend TTL.
+TTL is a local 60-second age filter from each actual admission, independent of
+Worker generation and Pacer candidate recycling. A repeated Worker/fence creates
+another entry with its own admission time and does not renew the old entry. A new
+generation is another entry, may coexist with the old one and can be refused at
+capacity. Failed requalification leaves existing entries untouched.
 
-Pool TTL starts at actual admission and is 60 seconds, independent of the Worker
-generation time and Pacer's separate candidate age threshold. Same Worker/fence
-supply is a duplicate: it neither consumes admission budget nor extends TTL.
-A new generation is qualified again and replaces its old entry and views even
-when storage is full. Replacement uses the same capacity unit but consumes this
-call's processing budget. A changed generation which no longer matches removes
-the old entry. Stale selection references cannot consume a replacement.
+Normal operations do not perform an unconditional global expiry sweep. Counts and
+capacity reads do not expire stock. Nonempty shortage observation checks whether
+any requested, registered Group-Pool has zero capacity. If so, Catalog invokes each
+Pool's lazy cleanup at most once before computing deficits. Cleanup removes expired
+heads per bucket, including idle Groups, without evicting live entries. Empty supply
+still clears inactive cursors but does not sweep stock. Independent strategies without
+this container retain their own stock behavior. A full Pool still reports zero deficit;
+a race after observation can refuse admission until a later normal round.
 
 Pool consumption is destructive. TTL only governs stock take; once taken, a
 candidate carries no TTL and is checked only against current exact/due Score
@@ -555,7 +562,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 
 - Target resolution: local only, no Redis; Task configuration reads belong to Task Owner.
 - Group shortage observation: zero Redis commands; local target aggregation and
-  one global expiry sweep per round. Country uses one country-count observation for
+  capacity-pressure cleanup only when a requested Group-Pool has no room. Country uses one bucket-count snapshot for
   all targets; other policies receive only visited target pages.
 - Pool stock counts and take: zero Redis commands or facts reads.
 - Identity take: zero Redis commands. Nonempty Phone take: one read-only Lua for
@@ -567,8 +574,9 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   separate 100-per-Group/1000-per-round budget and shares existing Group rotation.
 - Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
   Lua for a nonempty head, then one HMGET for Country/Messaging or one EVAL_RO
-  (two HMGETs) for Proof, only when that policy needs qualification. Full stock
-  skips this supply path.
+  (two HMGETs) for Proof, only when that policy needs qualification. A full-stock
+  deficit suppresses normal Pacer supply. If a batch is supplied anyway, it still
+  qualifies before capacity refusal; no resident-identity pre-read skips that work.
 - Any needs no qualification read and never discovers substitute IDs.
 - Final execution: one bounded Lua per nonempty strict/current partition, each
   with Redis TIME. Only strictly due HOT can gain execution. Address, Item claim,
@@ -584,9 +592,9 @@ misses do not query a source or acquire a lease. Direct misses do not retry anot
 identity. Restart loses stock; Main-supplied Groups recover generations through
 normal candidate recycling and refill, without adoption or replay.
 
-Focused tests cover qualification, target paging, single-Pool admission, replacement
-at capacity, unchanged-fence TTL, stale Entry references and cross-Pool partial
-success. Name-independent ALL/PAGED behavior and explicit rotation have focused
+Focused tests cover qualification, target paging, single-Pool admission, independent
+duplicate entries, bucket ordering, lazy TTL, pressure cleanup, at-most-once entry
+consumption and cross-Pool partial success. Name-independent ALL/PAGED behavior and explicit rotation have focused
 proof. Redis Owner proves bounded strict Facts snapshots, ignored retired indexes,
 candidateize-before-qualification, no substitute discovery,
 Properties/assignment ordering, equal-score head progress, execution races and

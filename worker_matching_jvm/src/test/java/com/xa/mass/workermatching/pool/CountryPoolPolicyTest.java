@@ -4,7 +4,7 @@ import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.refill.CountryPoolPolicy;
 
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
@@ -30,7 +30,7 @@ class CountryPoolPolicyTest {
     @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
     final AtomicLong clock=new AtomicLong(1000);
     final FactsIndexStore storage=new FactsIndexStore(client, new RedisKeyspace("test_country_buckets"), Map.of());
-    final CandidatePool pool=new CandidatePool(clock::get, budget);
+    final WorkerCandidatePool pool=spy(new WorkerCandidatePool(clock::get, budget));
     final CountryPoolPolicy policy=new CountryPoolPolicy(pool, storage::readWorkerFacts);
     final Map<String,String> facts=new HashMap<>();
     final List<List<String>> reads=new ArrayList<>();
@@ -59,12 +59,12 @@ class CountryPoolPolicyTest {
         targets.put(any,1);targets.put(country("CN","US","CN"),1);targets.put(country("US","GB"),1);
         assertEquals(List.of("jp","us","cn","gb"),policy.refill("g",targets,offers("jp","us","cn","gb"),100));
         assertTrue(policy.deficits("g",targets).values().stream().allMatch(n->n==0));
-        assertEquals(4,pool.viewBuckets("g"));assertEquals(9996,budget.available());
+        assertEquals(4,pool.countByKey("g").size());assertEquals(9996,budget.available());
         assertEquals(List.of(List.of("jp","us","cn","gb")),reads);
         clearInvocations(redis);
         var selected=new CountryQueryFunction(pool).apply("g",Map.of("m",List.of("US","US")));
         assertEquals(new WorkerCandidate("us",20),selected.get("m"));verifyNoInteractions(redis);
-        assertEquals(3,pool.viewBuckets("g"));assertEquals(9997,budget.available());
+        assertEquals(3,pool.countByKey("g").size());assertEquals(9997,budget.available());
     }
     @Test void equivalentCountryTargetsMergeMaxAndCountOneUnion() {
         try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))), List.of("country"), Set.of())) {
@@ -90,20 +90,20 @@ class CountryPoolPolicyTest {
             assertEquals(1,catalog.refill("g",targets,offers("late")));
             verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(100));
             assertEquals(1,reads.size());
-            long before=pool.visits().countBuckets();
+            clearInvocations(pool);
             policy.deficits("g",targets.stream().collect(java.util.stream.Collectors.toMap(RefillTarget::target,RefillTarget::count)));
-            assertEquals(1,pool.visits().countBuckets()-before);
-            assertEquals(0,pool.visits().selectedEntries());
+            verify(pool).countByKey("g");
+            verify(pool, never()).pollAnyBatch(anyString(), anyInt());
         }
     }
     @Test void invalidOrMissingCountrySkipsButCorruptFactsFailBeforeAdmission() {
         facts("valid","CN");facts("lowercase","cn");facts.put("number","{\"country\":42}");facts.put("empty","{}");
         facts.put("corrupt","[]");
         assertThrows(IllegalArgumentException.class,()->policy.refill("g",Map.of(any,100),offers("valid","corrupt"),100));
-        assertEquals(10000,budget.available());assertEquals(0,pool.viewBuckets("g"));
+        assertEquals(10000,budget.available());assertEquals(0,pool.countByKey("g").size());
         assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100));
         clock.set(61000); assertTrue(new CountryQueryFunction(pool).apply("g",Map.of("m",Map.of())).isEmpty());
-        assertEquals(0,pool.viewBuckets("g"));assertEquals(10000,budget.available());
+        assertEquals(0,pool.countByKey("g").size());assertEquals(10000,budget.available());
     }
     @Test void satisfiedWatermarkStillValidatesTheWholeOfferedFactsBatch() {
         facts("resident", "US");
@@ -115,10 +115,10 @@ class CountryPoolPolicyTest {
         assertThrows(IllegalArgumentException.class,
                 () -> policy.refill("g", targets, offers("valid", "corrupt"), 100));
         assertEquals(List.of("valid", "corrupt"), reads.getLast());
-        assertEquals(1, pool.observeView("g", "country", List.of()).total());
+        assertEquals(1, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
         facts("corrupt", "CN");
         assertEquals(List.of("valid"), policy.refill("g", targets, offers("valid", "corrupt"), 100));
-        assertEquals(2, pool.observeView("g", "country", List.of()).total());
+        assertEquals(2, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
     }
     @Test void readFailureDoesNotAdmitAndSuccessfulAdmissionStartsLocalTtl() {
         when(redis.hmget(anyString(),any(String[].class))).thenThrow(new IllegalStateException("read failed"));
@@ -127,17 +127,17 @@ class CountryPoolPolicyTest {
         doAnswer(call->{clock.set(2000);return List.of(KeyValue.just("w","{\"country\":\"CN\"}"));})
                 .when(redis).hmget(anyString(),any(String[].class));
         assertEquals(List.of("w"),policy.refill("g",Map.of(any,1),offers("w"),1));
-        clock.set(62_000); pool.expireAll();
+        clock.set(62_000); pool.discardExpired();
         assertEquals(10000,budget.available());
     }
-    @Test void multiCountryTakeKeepsAdmissionOrderAndDoesNotVisitUnrelatedEntries() {
+    @Test void multiCountryTakeUsesBucketOrderAndLeavesUnrelatedEntries() {
         facts("a","US");facts("b","CN");facts("c","JP");facts("d","CN");
         policy.refill("g",Map.of(any,4),offers("a","b","c","d"),4);
         var requests=new LinkedHashMap<String,Object>();requests.put("first",List.of("CN","US"));requests.put("second",List.of("US","CN"));
         var taken=new CountryQueryFunction(pool).apply("g",requests);
-        assertEquals(List.of("a","b"),taken.values().stream().map(WorkerCandidate::workerId).toList());
-        assertEquals(2,pool.visits().selectedEntries());
+        assertEquals(List.of("b","d"),taken.values().stream().map(WorkerCandidate::workerId).toList());
+        assertEquals(Map.of("US", 1, "JP", 1), pool.countByKey("g"));
         assertTrue(new CountryQueryFunction(pool).apply("other",requests).isEmpty());
-        assertEquals(2,pool.viewBuckets("g"));
+        assertEquals(2,pool.countByKey("g").size());
     }
 }

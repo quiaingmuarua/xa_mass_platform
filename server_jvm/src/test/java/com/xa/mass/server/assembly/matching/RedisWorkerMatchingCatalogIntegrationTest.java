@@ -12,7 +12,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.workermatching.*;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -89,7 +89,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         }});
         var storage=new FactsIndexStore(redisClient,keyspace,indexes);
         var composition=new MatchingComposition(storage,groups,System::currentTimeMillis);
-        var stock=new CandidatePool(System::currentTimeMillis,composition.budget());
+        var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
         var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,fail);
         var pools=new LinkedHashMap<>(composition.pools()); pools.put(BucketPoolFixture.ID,stock);
         var policies=new LinkedHashMap<>(composition.policies()); policies.put(BucketPoolFixture.ID,bucket);

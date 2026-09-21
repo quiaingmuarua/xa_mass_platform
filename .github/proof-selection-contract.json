@@ -576,12 +576,19 @@
     },
     {
       "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckTaskService.java",
-      "lanes": ["jvm_contracts", "product_coexistence", "runtime_distribution"],
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
       "reason": "One-shot Task composition needs finite real Worker execution and packaged scenario assembly."
     },
     {
       "path": "scenarios/app-checks-jvm/run_acceptance.py",
-      "lanes": ["jvm_contracts", "product_coexistence"],
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence"
+      ],
       "reason": "Source and ZIP app-checks oracles run in the existing finite scenario lane."
     },
     {
@@ -757,7 +764,7 @@
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/pool/CandidatePool.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/pool/WorkerCandidatePool.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1002,22 +1009,7 @@
       "reason": "Messaging Pool and Direct Phone share fixed Facts qualification without adding a state Owner."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/views/MessagingViews.java",
-      "lanes": [
-        "jvm_contracts",
-        "redis_owner",
-        "runtime_boundary",
-        "worker_correctness",
-        "worker_convergence_health",
-        "android_emulator",
-        "runtime_distribution",
-        "worker_dynamic_matching",
-        "product_coexistence"
-      ],
-      "reason": "Matching resource ownership retains the existing production proof selection."
-    },
-    {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/views/ProofFactsViews.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/buckets/ProofFactsBuckets.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

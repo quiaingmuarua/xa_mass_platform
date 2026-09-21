@@ -2,7 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.pool.CandidatePool;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
@@ -32,7 +32,7 @@ class WorkerSelectorAdmissionTest {
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);
         try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
-            var stock=new CandidatePool(System::currentTimeMillis, budget);
+            var stock=new WorkerCandidatePool(System::currentTimeMillis, budget);
             var rule=new CountryPoolPolicy(stock, storage::readWorkerFacts);
             assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
             assertThrows(IllegalArgumentException.class,()->EligibilityQuery.parse(Map.of("worker.country",Map.of("op","in","values",List.of("CN")))));

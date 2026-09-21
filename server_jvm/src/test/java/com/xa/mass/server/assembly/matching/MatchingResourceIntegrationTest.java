@@ -81,8 +81,9 @@ class MatchingResourceIntegrationTest {
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
                 clock.set(61_001);
                 assertThat(catalog.observeRefillDeficits(Map.of())).isEmpty();
-                assertThat(composition.budget().available()).isEqualTo(10_000);
+                assertThat(composition.budget().available()).isEqualTo(9_001);
                 assertThat(catalog.take("g", Map.of("pool", new WorkerQuery("worker.any", Map.of())))).isEmpty();
+                assertThat(composition.budget().available()).isEqualTo(10_000);
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
             }
         }
