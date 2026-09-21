@@ -95,13 +95,6 @@ final class WorkerEligibilityRefillPolicy {
                 if (!candidates.isEmpty()) added = index.refill(group, targets.get(group), candidates);
             }
             admitted += added;
-            // Fresh generations go first, so reuse cannot mask Properties invalidation.
-            int reuseLimit = Math.max(0, limit - added);
-            if (reuseLimit > 0) {
-                int reused = index.reuseCandidates(group, targets.get(group), reuseLimit);
-                if (reused < 0 || reused > reuseLimit) throw new IllegalStateException("Matching reuse exceeded the admission budget");
-                admitted += reused;
-            }
         }
         return admitted;
     }

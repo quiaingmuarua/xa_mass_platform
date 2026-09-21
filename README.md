@@ -31,7 +31,7 @@ API -> Server asks Matching to validate optional Pool supply and explicit Item q
 POOL SUPPLY (independent of Item dispatch)
 Main's NORMAL Task descriptors -> Pacer groups supply declarations
     -> Pacer candidateizes due Workers and recycles aged generations
-    -> Matching qualifies shared generation fences into Pools with local TTL
+    -> Matching qualifies each generation into at most one Pool with local TTL
 
 ITEM DISPATCH
 Main's NORMAL Task descriptors -> due Items -> Matching executes each Item's query

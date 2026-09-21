@@ -22,7 +22,7 @@ class WorkerSelectorAdmissionTest {
     @Test void publicRuleContractContainsOnlyEligibilityOperations() {
         var methods=Arrays.stream(PoolRefillPolicy.class.getDeclaredMethods()).map(java.lang.reflect.Method::getName)
                 .collect(java.util.stream.Collectors.toSet());
-        assertEquals(Set.of("normalizeQuery","deficits","refill","refillRetained"),methods);
+        assertEquals(Set.of("normalizeQuery","deficits","refill"),methods);
         assertEquals(0,PoolRefillPolicy.class.getDeclaredClasses().length);
         for(var method:PoolRefillPolicy.class.getDeclaredMethods())for(var type:method.getParameterTypes())
             assertFalse(type.getName().contains("Redis") || type.getName().contains("Lease")

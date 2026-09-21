@@ -101,10 +101,6 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     private PoolRefillPolicy trace(PoolRefillPolicy handler) {
         return new PoolRefillPolicy() {
-            public List<String> refillRetained(String group, Map<EligibilityQuery, Integer> targets,
-                    Map<String, CandidatePool.RetainedCandidate> offered, int maxAccepted) {
-                return handler.refillRetained(group, targets, offered, maxAccepted);
-            }
             public EligibilityQuery normalizeQuery(String group,EligibilityQuery query) { return handler.normalizeQuery(group,query); }
             public Map<EligibilityQuery,Integer> deficits(String group,Map<EligibilityQuery,Integer> targets) { return handler.deficits(group,targets); }
             public List<String> refill(String group,Map<EligibilityQuery,Integer> targets,Map<String, Long> offered,int maxAccepted) {
@@ -608,7 +604,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(due.get("w")).isNotEqualTo(held.get("w"));
     }
 
-    @Test void eligibilitiesShareOneCandidateizedGroupBatchWithoutChangingGeneration() {
+    @Test void eligibilitiesPartitionOneCandidateizedGroupBatchWithoutChangingGeneration() {
         catalog.upsertWorkerFactsBatch("g",Map.of("cn",Map.of("country","CN"),"us",Map.of("country","US")));
         hot("g",List.of("cn","us"));
         declareTask("country","g","worker.country",List.of(target(1,"CN")));
@@ -622,11 +618,11 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refillStages).containsExactly("candidateize","qualification","qualification");
         var delivered=new HashSet<String>();
         prepared.values().forEach(view->takeItems(catalog,view.workerGroupId(),function(view),Map.of(),100).forEach(held->{
-            delivered.add(held.workerId());
+            assertThat(delivered.add(held.workerId())).isTrue();
             assertThat(held).isEqualTo(new WorkerCandidate(held.workerId(), original.get(held.workerId())));
             assertThat(held.expectedScore()).isNotEqualTo(observed.get(held.workerId()));
         }));
-        assertThat(delivered).containsExactly("cn");
+        assertThat(delivered).containsExactlyInAnyOrder("cn", "us");
     }
 
     @Test void headCandidateizationReachesARareMatchWithoutSkippingUnmatchedWorkers() {
@@ -773,23 +769,24 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             assertThat(refillDeclarations(restarted,"g",views,100)).isZero();
         }
     }
-    @Test void multiplePoolsShareOneGenerationButOnlyOneExecutionCanWin() {
-        catalog.upsertWorkerFactsBatch("g",Map.of("w",messageFacts("CN","phone")));
-        hot("g",List.of("w"));
-        declare("default","worker.any"); declare("country","worker.country"); declare("messaging","worker.messaging.available");
-        var prepared=declarations("default","country","messaging");
-        assertThat(refillDeclarations(prepared)).isEqualTo(3);
-        Long fence=null;
-        int successes=0;
-        for(var task:prepared.values()) {
-            var candidate=takeItems(catalog,"g",function(task),Map.of(),1).getFirst();
-            if(fence==null)fence=candidate.expectedScore();
-            assertThat(candidate.expectedScore()).isEqualTo(fence);
-            var result=scores.acquireObservedHotScoreLeases("g",Map.of("w",candidate.expectedScore()),System.currentTimeMillis()+5000).get("w");
-            if(result.status()==WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED)successes++;
-            else assertThat(result.status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.STALE);
+    @Test void overlappingPoolTargetsAdmitOneGenerationOnlyOnce() {
+        catalog.upsertWorkerFactsBatch("g", Map.of("w", messageFacts("CN", "phone")));
+        hot("g", List.of("w"));
+        declare("default", "worker.any"); declare("country", "worker.country"); declare("messaging", "worker.messaging.available");
+        var prepared = declarations("default", "country", "messaging");
+        refillStages.clear();
+        assertThat(refillDeclarations(prepared)).isEqualTo(1);
+        assertThat(refillStages.stream().filter("qualification"::equals).count()).isEqualTo(1);
+        var candidates = new ArrayList<WorkerCandidate>();
+        for (var task : prepared.values()) {
+            candidates.addAll(takeItems(catalog, "g", function(task), Map.of(), 1));
         }
-        assertThat(successes).isEqualTo(1);
+        assertThat(candidates).hasSize(1);
+        var candidate = candidates.getFirst();
+        assertThat(candidate.workerId()).isEqualTo("w");
+        assertThat(scores.acquireObservedHotScoreLeases("g", Map.of("w", candidate.expectedScore()),
+                System.currentTimeMillis() + 5000).get("w").status())
+                .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
     }
 
     @Test void localTtlBlocksUntakenStockButDoesNotRevokeAnAlreadyTakenFence() {

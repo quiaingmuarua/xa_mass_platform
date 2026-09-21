@@ -53,14 +53,6 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
     }
     @Override public List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted) {
-        return refill(group, targets, offered, maxAccepted, null);
-    }
-    @Override public List<String> refillRetained(String group, Map<EligibilityQuery, Integer> targets,
-            Map<String, CandidatePool.RetainedCandidate> offered, int maxAccepted) {
-        return refill(group, targets, CandidatePool.retainedScores(offered), maxAccepted, offered);
-    }
-    private List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
-            Map<String, Long> offered, int maxAccepted, Map<String, CandidatePool.RetainedCandidate> retained) {
         var countries = targets(group, targets);
         Objects.requireNonNull(offered, "offered");
         if (offered.size() > 100 || maxAccepted < 0 || maxAccepted > 100)
@@ -71,9 +63,8 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
         });
         if (maxAccepted == 0 || offered.isEmpty() || countries.isEmpty()) return List.of();
         var observed = pool.observeView(group, "country", offered.keySet());
-        if (retained != null && observed.present().keySet().containsAll(offered.keySet())) return List.of();
         var missing = missing(countries, targets, observed);
-        boolean replacement = retained == null && offered.entrySet().stream().anyMatch(entry ->
+        boolean replacement = offered.entrySet().stream().anyMatch(entry ->
                 observed.present().containsKey(entry.getKey()) && !observed.present().get(entry.getKey()).equals(entry.getValue()));
         if (!replacement && (observed.room() == 0 || missing.values().stream().noneMatch(count -> count > 0))) return List.of();
         var facts = readFacts.apply(group, List.copyOf(offered.keySet()));
@@ -86,7 +77,7 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
                 prepared.put(id, new CandidatePool.Admission(id, score, Map.of("country", country)));
             }
         });
-        if (retained == null) pool.discardChanged(group, offered, prepared.keySet());
+        pool.discardChanged(group, offered, prepared.keySet());
         // Only invocation-local target references, never a second inventory or query cache.
         var affected = new HashMap<String, List<EligibilityQuery>>();
         var anyTargets = new ArrayList<EligibilityQuery>();
@@ -98,7 +89,7 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
         for (var entry : prepared.entrySet()) {
             if (selected.size() == maxAccepted) break;
             Long old = observed.present().get(entry.getKey());
-            if (retained == null && old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
+            if (old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
         }
         for (boolean any : List.of(false, true)) {
             for (var entry : prepared.entrySet()) {
@@ -112,8 +103,7 @@ public final class CountryPoolPolicy implements PoolRefillPolicy {
                 for (var query : anyTargets) missing.compute(query, (ignored, count) -> count - 1);
             }
         }
-        return retained == null ? pool.admit(group, List.copyOf(selected.values()))
-                : pool.admitRetained(group, List.copyOf(selected.values()), retained);
+        return pool.admit(group, List.copyOf(selected.values()));
     }
     private static void identity(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("non-blank identity required");

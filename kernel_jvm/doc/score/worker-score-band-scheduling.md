@@ -249,6 +249,6 @@ use fresh test_* scopes and only scoped SCAN + UNLINK cleanup.
 Encoding and structural tests keep arithmetic/I/O in the Owner. Redis Owner
 proof covers exact competition, current-slot exclusions, evidence ordering,
 Properties versus assignment, pause/resume, long Recovery and four equal-score
-heads progressing 100/100/50. Matching proof covers TTL, replacement, shared Pool
-fences and single-winner execution. Runtime and system lanes retain their named
+heads progressing 100/100/50. Matching proof covers TTL, replacement, single-Pool
+admission and one execution winner across Pool and independent Direct queries. Runtime and system lanes retain their named
 Binding, delivery, result and convergence claims. No allocator is introduced.

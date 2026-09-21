@@ -128,10 +128,6 @@ class QueryFunctionTest {
     @Test void independentMapStockCanShareRefillAndNamedConsumptionWithoutUsingPoolResource() {
         var held = new LinkedHashMap<String, Long>();
         PoolRefillPolicy rule = new PoolRefillPolicy() {
-            public List<String> refillRetained(String g, Map<EligibilityQuery, Integer> targets,
-                    Map<String, com.xa.mass.workermatching.pool.CandidatePool.RetainedCandidate> offered, int limit) {
-                throw new AssertionError("This independent fixture exposes no retained Pool stock");
-            }
             public EligibilityQuery normalizeQuery(String g, EligibilityQuery q) {
                 if (!q.query().isEmpty()) throw new IllegalArgumentException(); return q;
             }

@@ -1,7 +1,6 @@
 package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.pool.CandidatePool.RetainedCandidate;
 import java.util.List;
 import java.util.Map;
 
@@ -24,8 +23,4 @@ public interface PoolRefillPolicy {
      */
     List<String> refill(String workerGroupId, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted);
-
-    /** Requalifies retained generations without replacing stock or extending their original TTL. */
-    List<String> refillRetained(String workerGroupId, Map<EligibilityQuery, Integer> targets,
-            Map<String, RetainedCandidate> offered, int maxAccepted);
 }

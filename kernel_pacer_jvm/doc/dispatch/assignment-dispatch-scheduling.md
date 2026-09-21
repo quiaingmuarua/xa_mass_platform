@@ -35,10 +35,8 @@ The 50ms completion-relative Refill Producer shares Main's Group rotation:
 2. For Groups needing supply, observe at most `min(observed deficit, 100)` raw
    rows from the due mark=0 head at Assignment's optional floor, then
    exact-candidateize before qualification.
-3. Supply only returned TRANSITIONED new fences to Matching.
-4. If the observed shortage remains, ask Matching to requalify at most 100 retained
-   local Pool entries. New supply plus reuse admits at most 100 entries per Group
-   attempt. Reuse preserves the original source TTL and does not write WorkerScore.
+3. Supply only returned TRANSITIONED new fences to Matching once. Each admitted
+   identity is removed before the next Pool receives the remaining batch.
 
 Candidateization and recycling each have independent 100-per-Group and
 1000-per-round budgets; each Group gets at most one batch of each operation per
@@ -48,8 +46,6 @@ partial/failed attempts do not refund budget. The observation stage records the
 actual requested limit. Zero deficit skips ordinary observation but not recycling.
 Attempts advance Group rotation, including empty reads and failures. No
 Worker offset, extra thread, supplementary scan or durable cursor is introduced.
-Matching may rotate through its existing bounded local Pool stock to serve later
-Pool demand. This does not change either Redis head or the Group attempt budget.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
 scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
 use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
@@ -72,11 +68,10 @@ Item messageId/query -> fixed Matching function -> Pool take or direct lookup
   -> current Endpoint/Group -> execution acquisition -> exact Item claim
 ```
 
-One supplied generation may qualify into multiple Pools. Pool TTL begins at actual
-admission and lasts 60 seconds. Duplicate Worker/fence offers do not extend TTL.
-Later Pool demand can reuse an already retained generation within the source's
-original TTL. Reuse never replaces an existing target identity. Fresh candidate
-supply runs first, preventing old retained fences from masking a new generation.
+One supplied generation enters at most one Pool. Rejected identities can proceed
+to later Pools; accepted identities cannot. Pool TTL begins at actual admission
+and lasts 60 seconds. Duplicate Worker/fence offers do not extend TTL. Later
+Pool demand waits for newly candidateized generations rather than copying stock.
 Requalification replaces older generations/views without extra storage capacity;
 nonmatching new generations remove their old entries. Catalog counts every actual
 admitted entry against its 100-entry batch budget. It retains Pool rotation and
@@ -116,7 +111,7 @@ sentinel reaches Kernel; it has a separate identity-only operation.
 Each nonempty partition is one bounded Owner call, split according to its existing
 capacity. An exception after an earlier commit leaves execution holds to expire,
 without Item claim, rollback or retries. ResultContext carries the new execution
-fence, never the candidate generation. Multiple Pools and Direct acquisition race
+fence, never the candidate generation. Pool and Direct acquisition race
 for one execution slot; stale copies cannot claim or release the winner's hold.
 
 Properties invalidation atomically advances past HOT time and clears candidate
@@ -153,7 +148,9 @@ periodic Probe remains governed by its preset and bounded Serviceability policy.
 
 Focused Pacer tests prove bounded attempts, independent budgets and no fallback.
 Redis Owner proof establishes time/exact fences and four 100/100/50 head-progress
-cases. Matching proof covers independent TTL, shared generations and replacement.
+cases. Matching proof covers independent TTL, single-Pool admission and replacement.
+Direct acquisition leaves cached Pool entries untouched; their old fences fail
+Kernel exact acquisition, with no Pool notification or invalidation callback.
 Runtime Boundary retains execution, Binding and delivery witnesses. System lanes
 keep their existing thresholds and nonclaims; see [TESTING](../../../TESTING.md)
 and [mainline proof pointers](../../../doc/kernel/scheduling-overview.md#production-and-proof-pointers).

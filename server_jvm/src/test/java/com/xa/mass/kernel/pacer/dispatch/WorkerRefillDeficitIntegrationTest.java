@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class WorkerRefillDeficitIntegrationTest {
     @Test
-    void laterMessagingDemandReusesCountryGenerationAndExecutionStillHasOneWinner() throws Exception {
+    void laterPoolDemandDoesNotCopyStockAndDirectAcquisitionNeedsNoPoolNotification() {
         var scope = RedisTestScope.create("refill_later_pool");
         var client = RedisClient.create(REDIS_URL);
         var commands = new CopyOnWriteArrayList<String>();
@@ -49,7 +49,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))))) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.phone"))))) {
             var redis = connection.sync();
             try {
                 var time = redis.time();
@@ -68,25 +68,130 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(scores.observeDueHotScoreCandidates(group, null, 100)).isEmpty();
 
                 commands.clear();
-                assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask))).isEqualTo(1);
-                // Existing ordinary/aged head reads plus one Messaging qualification, no Score write.
-                assertThat(commands.stream().filter("EVAL"::equals).count()).isEqualTo(3);
+                assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask))).isZero();
+                // Only the aged and ordinary heads are read: no retained qualification or Score write.
+                assertThat(commands.stream().filter("EVAL"::equals).count()).isEqualTo(2);
                 assertThat(readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()))).isEqualTo(before);
-                var fromCountry = matching.take(group, Map.of("country", new WorkerQuery("worker.country", List.of("US")))).get("country");
-                var fromMessaging = matching.take(group, Map.of("messaging", new WorkerQuery("worker.messaging.available",
-                        Map.of("country", List.of("US"), "phone", "+12025550000")))).get("messaging");
-                assertThat(fromCountry).isEqualTo(fromMessaging);
-                var fence = Map.of(fromCountry.workerId(), fromCountry.expectedScore());
+                assertThat(matching.take(group, Map.of("messaging", new WorkerQuery("worker.messaging.available",
+                        Map.of("country", List.of("US"), "phone", "+12025550000"))))).isEmpty();
+
+                var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.phone", "+12025550000"))).get("direct");
+                assertThat(direct.workerId()).isEqualTo("w00");
+                assertThat(direct.expectedScore()).isZero();
+                var execution = scores.acquireCurrentHotScoreLeases(group, List.of(direct.workerId()), sampled + 30_000).get("w00");
+                assertThat(execution.status()).isEqualTo(TRANSITIONED);
+                assertThat(scores.acquireCurrentHotScoreLeases(group, List.of("w00"), sampled + 40_000).get("w00").status()).isEqualTo(STALE);
+                // No Pool notification: its old entry is still counted and can still be taken.
+                assertThat(matching.observeRefillDeficits(Map.of(group, List.of(country)))).containsEntry(group, 88);
+                var cached = matching.take(group, Map.of("country", new WorkerQuery("worker.country", List.of("US")))).get("country");
+                assertThat(cached.workerId()).isEqualTo("w00");
+                assertThat(cached.expectedScore()).isEqualTo(before.get("w00"));
+                var oldFence = Map.of("w00", cached.expectedScore());
+                assertThat(scores.acquireObservedHotScoreLeases(group, oldFence, sampled + 30_000).get("w00").status()).isEqualTo(STALE);
+                assertThat(scores.releaseObservedHotScoreHolds(group, oldFence, System.currentTimeMillis() + 100)
+                        .get("w00").status()).isEqualTo(INVALID);
+                assertThat(readScores(redis, scope.keyspace(), group, List.of("w00"))).containsEntry("w00", execution.score());
+            } finally {
+                scope.cleanup(redis);
+            }
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
+    void poolAndDirectQueriesCompeteForOneExecutionLease() throws Exception {
+        var scope = RedisTestScope.create("refill_direct_race");
+        var client = RedisClient.create(REDIS_URL);
+        String group = "g";
+        var target = new RefillTarget("any", new EligibilityQuery(Map.of()), 1);
+        var task = new TaskDescriptor("task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(target), null, Map.of());
+        try (var connection = client.connect();
+                var scores = new RedisWorkerScoreCore(client, scope.keyspace());
+                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone"))))) {
+            var redis = connection.sync();
+            try {
+                var time = redis.time();
+                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
+                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number")));
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
+                assertThat(pacer.refill(List.of(group), List.of(task))).isEqualTo(1);
+                var pooled = matching.take(group, Map.of("pool", new WorkerQuery("worker.any", Map.of()))).get("pool");
+                var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.phone", "number"))).get("direct");
+                assertThat(direct.workerId()).isEqualTo(pooled.workerId());
+                assertThat(direct.expectedScore()).isZero();
                 try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
                     var start = new java.util.concurrent.CountDownLatch(1);
-                    var left = executor.submit(() -> { start.await(); return scores.acquireObservedHotScoreLeases(group, fence, sampled + 30_000).get(fromCountry.workerId()); });
-                    var right = executor.submit(() -> { start.await(); return scores.acquireObservedHotScoreLeases(group, fence, sampled + 30_000).get(fromCountry.workerId()); });
+                    var strict = executor.submit(() -> {
+                        start.await();
+                        return scores.acquireObservedHotScoreLeases(group, Map.of("w", pooled.expectedScore()), sampled + 30_000).get("w");
+                    });
+                    var current = executor.submit(() -> {
+                        start.await();
+                        return scores.acquireCurrentHotScoreLeases(group, List.of(direct.workerId()), sampled + 30_000).get("w");
+                    });
                     start.countDown();
-                    assertThat(List.of(left.get(5, java.util.concurrent.TimeUnit.SECONDS).status(), right.get(5, java.util.concurrent.TimeUnit.SECONDS).status()))
-                            .containsExactlyInAnyOrder(TRANSITIONED, STALE);
+                    var results = List.of(strict.get(5, java.util.concurrent.TimeUnit.SECONDS), current.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                    assertThat(results).extracting(result -> result.status()).containsExactlyInAnyOrder(TRANSITIONED, STALE);
+                    long execution = results.stream().filter(result -> result.status() == TRANSITIONED).findFirst().orElseThrow().score();
+                    assertThat(scores.releaseObservedHotScoreHolds(group, Map.of("w", pooled.expectedScore()), sampled + 100)
+                            .get("w").status()).isNotEqualTo(TRANSITIONED);
+                    assertThat(readScores(redis, scope.keyspace(), group, List.of("w"))).containsEntry("w", execution);
                 }
-                assertThat(scores.releaseObservedHotScoreHolds(group, fence, System.currentTimeMillis() + 100)
-                        .get(fromCountry.workerId()).status()).isEqualTo(INVALID);
+            } finally {
+                scope.cleanup(redis);
+            }
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
+    void recycledGenerationCanEnterAnotherPoolWhileTheOldEntryRemains() {
+        var scope = RedisTestScope.create("refill_single_pool_generation");
+        var client = RedisClient.create(REDIS_URL);
+        String group = "g";
+        var country = new RefillTarget("country", new EligibilityQuery(Map.of()), 1);
+        var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of()), 1);
+        var countryTask = new TaskDescriptor("country", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(country), null, Map.of());
+        var messagingTask = new TaskDescriptor("messaging", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
+        try (var connection = client.connect();
+                var scores = new RedisWorkerScoreCore(client, scope.keyspace());
+                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))))) {
+            var redis = connection.sync();
+            try {
+                var time = redis.time();
+                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
+                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
+                var clock = new java.util.concurrent.atomic.AtomicLong(sampled);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, clock::get);
+                assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(1);
+                long original = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
+                assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isZero();
+                clock.addAndGet(60_000);
+                // A Redis slot may elapse between recycling and the ordinary-head read.
+                int admitted = pacer.refill(List.of(group), List.of(messagingTask));
+                assertThat(admitted).isBetween(0, 1);
+                if (admitted == 0) {
+                    org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(3)).untilAsserted(() ->
+                            assertThat(scores.observeDueHotScoreCandidates(group, null, 1)).containsKey("w"));
+                    assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isEqualTo(1);
+                }
+                var old = matching.take(group, Map.of("old", new WorkerQuery("worker.country", List.of("US")))).get("old");
+                var fresh = matching.take(group, Map.of("fresh", new WorkerQuery("worker.messaging.available", Map.of()))).get("fresh");
+                assertThat(old.expectedScore()).isEqualTo(original);
+                assertThat(fresh.workerId()).isEqualTo(old.workerId());
+                assertThat(fresh.expectedScore()).isNotEqualTo(original);
+                assertThat(scores.acquireObservedHotScoreLeases(group, Map.of("w", original), sampled + 30_000).get("w").status()).isEqualTo(STALE);
+                assertThat(scores.acquireObservedHotScoreLeases(group, Map.of("w", fresh.expectedScore()), sampled + 30_000)
+                        .get("w").status()).isEqualTo(TRANSITIONED);
             } finally {
                 scope.cleanup(redis);
             }

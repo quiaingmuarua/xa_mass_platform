@@ -17,18 +17,12 @@ public interface WorkerMatching {
     /**
      * Qualifies at most 100 unique candidate generations supplied by Pacer for this Group.
      * Does not require an earlier shortage observation. Preserves opaque fences and uses local inventory TTL;
-     * later Rule failure does not undo earlier admissions. Target bounds match the observation.
+     * Each supplied generation is offered only until one Pool admits it. Later Rule failure
+     * does not undo earlier admissions. Target bounds match the observation. Pacer supplies
+     * each successful candidateization once; this operation does not replay retained stock.
      */
     int refill(String workerGroupId, List<RefillTarget> declarations,
             Map<String, Long> candidateScores);
-
-    /**
-     * Requalifies a bounded slice of this Group's existing Pool stock for current supply.
-     * Visits at most 100 retained entries and admits at most limit entries (1..100).
-     * Does not consume source stock, extend its TTL or replace an existing target identity.
-     * Fences remain opaque; Kernel still decides execution eligibility by exact acquisition.
-     */
-    int reuseCandidates(String workerGroupId, List<RefillTarget> declarations, int limit);
 
     /**
      * Bounded candidate lookup for at most 100 nonblank message IDs, one candidate per ID.

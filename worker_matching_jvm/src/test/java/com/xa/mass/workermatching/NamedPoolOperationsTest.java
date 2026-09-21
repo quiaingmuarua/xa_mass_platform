@@ -320,95 +320,59 @@ class NamedPoolOperationsTest {
         assertTrue(takeItems(catalog,"g1","zz.fail",Map.of(),1).isEmpty());
     }
 
-    @Test void generationsAreSharedAcrossPoolsAndEachEntryConsumesAdmissionBudget() {
-        rule.facts.putAll(Map.of("a","US","b","US"));
+    @Test void admittedCandidatesAreExcludedFromEveryLaterPoolQualification() {
+        rule.facts.putAll(Map.of("a", "US", "b", "US"));
         failingRule.facts.putAll(rule.facts);
-        var targets=List.of(pool(1,"US"), new RefillTarget("zz.fail",pool(1,"US").target(),1));
-        assertEquals(2,catalog.refill("g1",targets,offer("a","b")));
-        assertEquals(List.of(List.of("a","b")),failingRule.snapshots);
-        assertEquals("a",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
-        assertEquals("a",takeItems(catalog,"g1","zz.fail",Map.of(),1).getFirst().workerId());
-        assertEquals(2,catalog.refill("g1",targets,offer("a")));
-        assertEquals("a",takeItems(catalog,"g1","zz.fail",Map.of(),1).getFirst().workerId());
+        var targets = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
+        assertEquals(2, catalog.refill("g1", targets, offer("a", "b")));
+        assertEquals(List.of(List.of("a", "b")), rule.snapshots);
+        assertEquals(List.of(List.of("b")), failingRule.snapshots);
+        assertEquals("a", takeItems(catalog, "g1", "test.pool", Map.of(), 1).getFirst().workerId());
+        assertEquals("b", takeItems(catalog, "g1", "zz.fail", Map.of(), 1).getFirst().workerId());
+        verifyNoInteractions(redis);
     }
 
-    @Test void laterPoolDemandReusesRetainedGenerationWithoutRenewingEitherInventory() {
+    @Test void aRejectedCandidateCanEnterALaterPool() {
+        rule.facts.put("w", "CN");
+        failingRule.facts.put("w", "US");
+        var targets = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
+        assertEquals(1, catalog.refill("g1", targets, offer("w")));
+        assertEquals(List.of(List.of("w")), rule.snapshots);
+        assertEquals(List.of(List.of("w")), failingRule.snapshots);
+        assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
+        assertEquals("w", takeItems(catalog, "g1", "zz.fail", Map.of(), 1).getFirst().workerId());
+    }
+
+    @Test void laterDemandDoesNotCopyRetainedStockWithoutNewCandidateization() {
         rule.facts.put("w", "US");
-        var original = List.of(new RefillTarget("any", ANY, 1));
-        assertEquals(1, catalog.refill("g1", original, Map.of("w", 42L)));
-        clock.set(60_000);
+        assertEquals(1, catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 42L)));
         var later = List.of(pool(1, "US"));
         assertEquals(Map.of("g1", 1), catalog.observeRefillDeficits(Map.of("g1", later)));
-        assertEquals(1, catalog.reuseCandidates("g1", later, 1));
-        assertEquals(0, catalog.reuseCandidates("g1", later, 1));
-        assertEquals(42L, rule.stock.observeRetained("g1", 1).get("w").score());
-        assertEquals(61_000L, rule.stock.observeRetained("g1", 1).get("w").expiresAtMillis());
-        assertTrue(catalog.observeRefillDeficits(Map.of("g1", later)).isEmpty());
-        clock.set(61_000);
-        assertEquals(0, catalog.reuseCandidates("g1", later, 1));
-        assertTrue(catalog.take("g1", Map.of("take", new WorkerQuery("worker.any", Map.of()))).isEmpty());
-        assertTrue(rule.stock.take("g1", Map.of(all(), 1)).get(all()).isEmpty());
-    }
-
-    @Test void retainedReuseProgressesBeyondAnUnmatchedHundredEntryHead() {
-        var original = List.of(new RefillTarget("any", ANY, 250));
-        for (int offset = 0; offset < 250; offset += 100) {
-            var offered = new LinkedHashMap<String, Long>();
-            for (int i = offset; i < Math.min(offset + 100, 250); i++) offered.put("w" + i, 42L);
-            assertEquals(offered.size(), catalog.refill("g1", original, offered));
-        }
-        rule.facts.put("w249", "US");
-        var later = List.of(pool(1, "US"));
-        assertEquals(0, catalog.reuseCandidates("g1", later, 1));
-        assertEquals(0, catalog.reuseCandidates("g1", later, 1));
-        assertEquals(1, catalog.reuseCandidates("g1", later, 1));
-        assertEquals(new WorkerCandidate("w249", 42), rule.stock.take("g1", Map.of(all(), 1)).get(all()).getFirst());
-        assertTrue(rule.snapshots.stream().allMatch(ids -> ids.size() <= 100));
-    }
-
-    @Test void retainedReuseCannotReplaceAGenerationAdmittedDuringQualification() {
-        catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 20L));
-        rule.facts.put("w", "US");
-        rule.beforeSnapshot = () -> rule.stock.admit("g1", List.of(new Admission("w", 21L, Map.of("pool", "US"))));
-        assertEquals(0, catalog.reuseCandidates("g1", List.of(pool(1, "US")), 1));
-        assertEquals(List.of(new WorkerCandidate("w", 21)), takeItems(catalog, "g1", "test.pool", Map.of(), 1));
-        assertEquals(List.of(new WorkerCandidate("w", 20)), takeItems(catalog, "g1", "worker.any", Map.of(), 1));
-    }
-
-    @Test void retainedReuseCannotAdmitAfterSourceExpiryDuringQualification() {
-        catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 20L));
-        rule.facts.put("w", "US");
-        rule.beforeSnapshot = () -> clock.set(61000);
-        assertEquals(0, catalog.reuseCandidates("g1", List.of(pool(1, "US")), 1));
+        assertEquals(0, catalog.refill("g1", later, Map.of()));
+        assertTrue(rule.snapshots.isEmpty());
         assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
-        assertTrue(takeItems(catalog, "g1", "worker.any", Map.of(), 1).isEmpty());
+        assertEquals(new WorkerCandidate("w", 42), takeItems(catalog, "g1", "worker.any", Map.of(), 1).getFirst());
     }
 
-    @Test void retainedReuseFailurePreservesEarlierAdmissionsAndSourceStock() {
-        catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 20L));
-        rule.facts.put("w", "US");
-        failingRule.beforeSnapshot = () -> { throw new IllegalStateException("qualification"); };
-        var later = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
-        assertThrows(IllegalStateException.class, () -> catalog.reuseCandidates("g1", later, 2));
-        assertEquals(List.of(new WorkerCandidate("w", 20)), takeItems(catalog, "g1", "test.pool", Map.of(), 1));
-        assertEquals(List.of(new WorkerCandidate("w", 20)), takeItems(catalog, "g1", "worker.any", Map.of(), 1));
-    }
-
-    @Test void sharedGenerationsKeepTheTotalBatchBudgetAndPoolRotation() {
-        var offered = new LinkedHashMap<String,Long>();
-        for (int i = 0; i < 100; i++) {
+    @Test void newCandidateBatchesKeepTheTotalBudgetAndPoolRotation() {
+        var first = new LinkedHashMap<String, Long>();
+        var second = new LinkedHashMap<String, Long>();
+        for (int i = 0; i < 200; i++) {
             String id = "w" + i;
-            offered.put(id, 20L);
+            (i < 100 ? first : second).put(id, 20L);
             rule.facts.put(id, "US");
             failingRule.facts.put(id, "US");
         }
-        var targets = List.of(pool(100,"US"), new RefillTarget("zz.fail",pool(100,"US").target(),100));
-        assertEquals(100, catalog.refill("g1", targets, offered));
+        var targets = List.of(pool(100, "US"), new RefillTarget("zz.fail", pool(100, "US").target(), 100));
+        assertEquals(100, catalog.refill("g1", targets, first));
         assertTrue(failingRule.snapshots.isEmpty());
-        assertEquals(100, catalog.refill("g1", targets, offered));
-        assertEquals(0, catalog.refill("g1", targets, offered));
-        assertEquals(100, takeItems(catalog,"g1","test.pool",Map.of(),100).size());
-        assertEquals(100, takeItems(catalog,"g1","zz.fail",Map.of(),100).size());
+        assertEquals(100, catalog.refill("g1", targets, second));
+        assertEquals(List.of(List.copyOf(first.keySet())), rule.snapshots);
+        assertEquals(List.of(List.copyOf(second.keySet())), failingRule.snapshots);
+        assertEquals(first.keySet(), new LinkedHashSet<>(takeItems(catalog, "g1", "test.pool", Map.of(), 100)
+                .stream().map(WorkerCandidate::workerId).toList()));
+        assertEquals(second.keySet(), new LinkedHashSet<>(takeItems(catalog, "g1", "zz.fail", Map.of(), 100)
+                .stream().map(WorkerCandidate::workerId).toList()));
     }
 
     @Test void aFullPoolRequalifiesReplacementGenerationsAndRemovesNonmatchingOnes() {

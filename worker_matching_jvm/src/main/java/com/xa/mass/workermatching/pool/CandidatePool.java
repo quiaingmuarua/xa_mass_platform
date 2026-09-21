@@ -25,8 +25,6 @@ public final class CandidatePool {
             views = Map.copyOf(views);
         }
     }
-    /** A retained fence may be shared only within its original inventory lifetime. */
-    public record RetainedCandidate(long score, long expiresAtMillis) { }
     static final class Entry {
         final String workerId;
         final long score, expiresAtMillis;
@@ -49,7 +47,6 @@ public final class CandidatePool {
         final Map<String, NavigableMap<String, NavigableMap<Long, Entry>>> views = new HashMap<>();
         final NavigableMap<Expiry, Entry> expiry = new TreeMap<>();
         long nextOrder;
-        long lastSharedOrder = -1;
     }
     public record Observation(Map<Selection, Integer> counts, Map<String, Long> present, int room) { }
     public record ViewObservation(Map<String, Integer> counts, int total, Map<String, Long> present, int room) { }
@@ -109,22 +106,6 @@ public final class CandidatePool {
     }
 
     public synchronized List<String> admit(String group, List<Admission> selected) {
-        return admit(group, selected, null);
-    }
-
-    /** Cross-Pool reuse fills absent identities only, including when another admission races it. */
-    public synchronized List<String> admitRetained(String group, List<Admission> selected,
-            Map<String, RetainedCandidate> retained) {
-        Objects.requireNonNull(retained);
-        for (var admission : selected) {
-            var source = retained.get(admission.workerId());
-            if (source == null || source.score() != admission.score())
-                throw new IllegalArgumentException("retained candidate fence required");
-        }
-        return admit(group, selected, retained);
-    }
-
-    private List<String> admit(String group, List<Admission> selected, Map<String, RetainedCandidate> retained) {
         expire(group);
         Stock existing = groups.get(group);
         Stock stock = existing == null ? new Stock() : existing;
@@ -135,14 +116,12 @@ public final class CandidatePool {
             String id = admission.workerId();
             Entry previous = stock.identities.get(id);
             if (previous != null && previous.score == admission.score()) continue;
-            long deadline = retained == null ? expiresAtMillis : Math.min(expiresAtMillis, retained.get(id).expiresAtMillis());
-            if ((retained != null && previous != null) || deadline <= now) continue;
             if (previous == null) {
                 if (!budget.acquire(stock)) continue;
             } else {
                 removeIndexes(stock, previous);
             }
-            Entry entry = new Entry(admission, stock.nextOrder++, deadline);
+            Entry entry = new Entry(admission, stock.nextOrder++, expiresAtMillis);
             stock.identities.put(id, entry);
             stock.all.put(entry.order, entry);
             stock.expiry.put(new Expiry(entry.expiresAtMillis, entry.order), entry);
@@ -152,30 +131,6 @@ public final class CandidatePool {
             accepted.add(id);
         }
         return List.copyOf(accepted);
-    }
-
-    /** Bounded round-robin observation of live entries; never consumes or renews stock. */
-    public synchronized Map<String, RetainedCandidate> observeRetained(String group, int limit) {
-        if (limit < 1 || limit > 100) throw new IllegalArgumentException("retained read limit requires 1..100");
-        expire(group);
-        Stock stock = groups.get(group);
-        if (stock == null) return Map.of();
-        var result = new LinkedHashMap<String, RetainedCandidate>();
-        long after = stock.lastSharedOrder;
-        for (var range : List.of(stock.all.tailMap(after, false), stock.all.headMap(after, true))) {
-            for (Entry entry : range.values()) {
-                result.put(entry.workerId, new RetainedCandidate(entry.score, entry.expiresAtMillis));
-                stock.lastSharedOrder = entry.order;
-                if (result.size() == limit) return Collections.unmodifiableMap(result);
-            }
-        }
-        return Collections.unmodifiableMap(result);
-    }
-
-    public static Map<String, Long> retainedScores(Map<String, RetainedCandidate> retained) {
-        var scores = new LinkedHashMap<String, Long>();
-        retained.forEach((id, candidate) -> scores.put(id, candidate.score()));
-        return Collections.unmodifiableMap(scores);
     }
 
     public Map<Selection, List<WorkerCandidate>> take(String group, Map<Selection, Integer> limits) {

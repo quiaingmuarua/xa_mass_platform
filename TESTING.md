@@ -425,18 +425,19 @@ repeat them. Physical Android device behavior remains a separate manual proof.
 Pacer supplies only successful candidateized fences. Redis Owner offers A while
 B remains indexed and proves Matching cannot discover B. Unmatched candidates,
 capacity failure, failed projection and lost returns recover through normal
-bounded recycling, with no compensation or replay. Several Pools may share the
-same fence; actual entries count against the call budget. Earlier Pool admission
+bounded recycling, with no compensation or replay. Each admitted generation leaves
+the input for later Pools; actual admissions count against the call budget. Earlier Pool admission
 survives a later Pool failure.
 
-The actual Pacer/Matching/Redis composition also fixes later Pool demand: twelve
-Workers first enter Country, then Messaging reuses the same candidate generation
-without aged recycling or Score writes. Competing Country/Messaging candidates
-still have one exact execution winner. Focused tests bound retained reads to 100,
-prove progress beyond an unmatched local head, preserve source TTL, and forbid
-retained offers from replacing a different target fence. Fresh generations are
-supplied before retained reuse. Scenario Coexistence keeps its original send
-deadline and is the process witness for this interaction.
+The actual Pacer/Matching/Redis composition proves later Pool demand cannot copy
+Country stock. Direct Phone lookup still finds the cached Worker and execution
+acquisition leaves the Pool entry unchanged; its old fence cannot acquire or
+release the new hold. Concurrent Pool/Direct callers have one execution winner.
+Normal recycling creates a new generation which can enter another Pool while the
+old entry remains cached. Focused tests prove accepted IDs never reach subsequent
+qualification, rejected IDs remain eligible for later Pools, and fresh batches
+retain Pool rotation. Scenario Coexistence keeps its existing business assertions
+and deadlines; overlapping business demand does not authorize stock copying.
 
 Owner proof covers high-mark encoding, strict current-slot exclusion, Properties
 ordering, network floor activation, pause MAX/0, relative deferral and one execution

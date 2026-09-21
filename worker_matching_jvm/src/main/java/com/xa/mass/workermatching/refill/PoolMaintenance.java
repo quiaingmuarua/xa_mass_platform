@@ -53,14 +53,6 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
     }
     @Override public final List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted) {
-        return refill(group, targets, offered, maxAccepted, null);
-    }
-    @Override public final List<String> refillRetained(String group, Map<EligibilityQuery, Integer> targets,
-            Map<String, RetainedCandidate> offered, int maxAccepted) {
-        return refill(group, targets, CandidatePool.retainedScores(offered), maxAccepted, offered);
-    }
-    private List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
-            Map<String, Long> offered, int maxAccepted, Map<String, RetainedCandidate> retained) {
         var selections = targets(group, targets);
         Objects.requireNonNull(offered);
         if (offered.size() > 100 || maxAccepted < 0 || maxAccepted > 100)
@@ -71,9 +63,8 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         });
         if (maxAccepted == 0 || offered.isEmpty() || selections.isEmpty()) return List.of();
         var observation = pool.observe(group, selections.values(), offered.keySet());
-        if (retained != null && observation.present().keySet().containsAll(offered.keySet())) return List.of();
         var missing = missing(selections, targets, observation);
-        boolean replacement = retained == null && offered.entrySet().stream().anyMatch(entry ->
+        boolean replacement = offered.entrySet().stream().anyMatch(entry ->
                 observation.present().containsKey(entry.getKey()) && !observation.present().get(entry.getKey()).equals(entry.getValue()));
         if (!replacement && (observation.room() == 0 || missing.values().stream().noneMatch(count -> count > 0))) return List.of();
         var values = readQualifications(group, List.copyOf(offered.keySet()));
@@ -87,13 +78,13 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
                 prepared.put(id, new CandidatePool.Admission(id, score, views));
             }
         });
-        if (retained == null) pool.discardChanged(group, offered, prepared.keySet());
+        pool.discardChanged(group, offered, prepared.keySet());
         var selected = new LinkedHashMap<String, CandidatePool.Admission>();
         // Requalification of an existing identity is independent of storage headroom or deficits.
         for (var entry : prepared.entrySet()) {
             if (selected.size() == maxAccepted) break;
             Long old = observation.present().get(entry.getKey());
-            if (retained == null && old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
+            if (old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
         }
         for (boolean any : List.of(false, true)) {
             for (var entry : prepared.entrySet()) {
@@ -111,8 +102,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
                 });
             }
         }
-        return retained == null ? pool.admit(group, List.copyOf(selected.values()))
-                : pool.admitRetained(group, List.copyOf(selected.values()), retained);
+        return pool.admit(group, List.copyOf(selected.values()));
     }
 
     private static void identity(String id) {

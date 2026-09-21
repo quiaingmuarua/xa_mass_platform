@@ -52,10 +52,13 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   other 99 available after normal inventory consumption without aged recycling.
   The same production composition proves that reconnect refills consumed stale
   Pool stock at a new generation without waiting for the 60-second recycle.
-  It also proves that later Messaging demand reuses existing Country generations
-  without Score writes, with one execution winner across both Pools. Local stock
-  tests preserve original TTL and bound rotating retained observations; Scenario
-  Coexistence retains the real send deadline for this cross-Pool interaction.
+  It also proves that later Pool demand cannot copy existing Country stock, while
+  Direct Phone lookup can independently acquire the cached Worker without any Pool
+  notification. Old Pool fences cannot acquire or release the execution hold;
+  concurrent Pool/Direct acquisition has one winner. Recycling allows a new
+  generation to enter another Pool while the stale entry remains. Local tests
+  prove single-Pool admission and original TTL/selection protections. Scenario
+  Coexistence retains its existing business assertions and deadlines.
   TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded

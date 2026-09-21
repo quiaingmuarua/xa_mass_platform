@@ -45,10 +45,12 @@ matches removes the old entry. Stale local selection references cannot consume a
 later replacement. Expired entries cannot be taken; a previously taken candidate
 is governed only by final exact and due checks, not by the local TTL.
 
-One generation may populate several Pools. Each Pool independently qualifies and
-expires it. Catalog rotates Pool attempts and counts actual accepted entries
+A Pacer-issued generation enters at most one Pool; accepted identities leave
+the input offered to subsequent Pools. Catalog rotates Pool attempts and counts actual accepted entries
 against its 100-entry call budget; it does not promise all Pools fill in one call.
-Matching reads no Worker Score and cannot renew, acquire, decode or substitute a
+Direct execution acquisition does not notify a Pool or remove its cached entry;
+a later strict acquisition rejects the obsolete fence. Matching reads no Worker
+Score and cannot renew, acquire, decode or substitute a
 Worker. It receives Map<workerId, opaqueScore>, with no Worker lease deadline.
 
 No match, capacity refusal, qualification failure, process loss or an ambiguous

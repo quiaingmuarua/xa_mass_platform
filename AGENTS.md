@@ -196,8 +196,10 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   contracts across functions/Pools. Earlier admissions or consumption survive a
   later failure; do not add rollback, replay or whole-selection retries.
 - Pacer candidateizes due ordinary HOT before Matching qualification. Matching
-  accepts only supplied generation fences, starts local admission TTL and may
-  share a fence across Pools. It cannot discover substitutes or acquire/renew
+  accepts each successful candidateization once and stops offering its fence after
+  one Pool admits it. Pools share stock among Tasks, never across Pools. Direct
+  query acquisition neither notifies nor edits Pool stock. Matching cannot discover
+  substitutes or acquire/renew
   execution leases. Aged candidate recycling stays in the existing Refill Producer.
 - Pool candidates retain strict nonzero expectations. Zero is an identity hint
   only at the Matching-to-Pacer boundary; no zero sentinel reaches Kernel.

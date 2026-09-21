@@ -22,45 +22,6 @@ class CandidatePoolTest {
     }
     List<String> ids(List<WorkerCandidate> candidates) { return candidates.stream().map(WorkerCandidate::workerId).toList(); }
 
-    @Test void retainedObservationRotatesWithoutConsumingReorderingOrRenewingStock() {
-        var rows = new ArrayList<Admission>();
-        for (int i = 0; i < 250; i++) rows.add(row("w" + i, "US", 42));
-        pool.admit("g", rows);
-        var first = pool.observeRetained("g", 100);
-        var second = pool.observeRetained("g", 100);
-        var third = pool.observeRetained("g", 100);
-        assertEquals(rows.subList(0, 100).stream().map(Admission::workerId).toList(), List.copyOf(first.keySet()));
-        assertEquals(rows.subList(100, 200).stream().map(Admission::workerId).toList(), List.copyOf(second.keySet()));
-        assertEquals(rows.subList(200, 250).stream().map(Admission::workerId).toList(), List.copyOf(third.keySet()).subList(0, 50));
-        assertEquals(new RetainedCandidate(42, 61_000), first.get("w0"));
-        assertThrows(UnsupportedOperationException.class, first::clear);
-        assertTrue(pool.observeRetained("other", 100).isEmpty());
-        assertEquals("w0", pool.take("g", Map.of(all(), 1)).get(all()).getFirst().workerId());
-        clock.set(61_000);
-        assertTrue(pool.observeRetained("g", 100).isEmpty());
-        assertEquals(10_000, budget.available());
-    }
-
-    @Test void retainedAdmissionCannotReplaceAnotherFenceOrExtendSourceLifetime() {
-        pool.admit("g", List.of(row("w", "US", 42)));
-        var retained = pool.observeRetained("g", 100);
-        var target = new CandidatePool(clock::get, budget);
-        clock.set(60_000);
-        assertEquals(List.of("w"), target.admitRetained("g", List.of(row("w", "US", 42)), retained));
-        assertTrue(target.admitRetained("g", List.of(row("w", "US", 42)), retained).isEmpty());
-        clock.set(61_000);
-        assertTrue(target.take("g", Map.of(all(), 1)).get(all()).isEmpty());
-        assertTrue(target.admitRetained("g", List.of(row("w", "US", 42)), retained).isEmpty());
-
-        clock.set(70_000);
-        pool.admit("g", List.of(row("w", "US", 43)));
-        retained = pool.observeRetained("g", 100);
-        target.admit("g", List.of(row("w", "CN", 44)));
-        assertTrue(target.admitRetained("g", List.of(row("w", "US", 43)), retained).isEmpty());
-        assertEquals(new WorkerCandidate("w", 44), target.take("g", Map.of(range("country", List.of("CN")), 1))
-                .get(range("country", List.of("CN"))).getFirst());
-    }
-
     @Test void duplicateFenceDoesNotExtendTtlAndReplacementCannotBeConsumedByOldSelection() {
         pool.admit("g", List.of(row("w", "CN", 17)));
         clock.set(60_000);
