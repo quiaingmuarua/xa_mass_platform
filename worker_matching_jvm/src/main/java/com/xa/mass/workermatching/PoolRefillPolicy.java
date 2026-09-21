@@ -21,7 +21,8 @@ public interface PoolRefillPolicy {
     /**
      * Qualifies at most 100 supplied generations and returns IDs actually admitted.
      * Preserves fences; Pool admission owns its TTL. Validates before admitting new candidates.
-     * Target counts guide an observation, not a reservation; hard capacity still bounds admission.
+     * Target counts guide shortage observation, never an admission quota. Qualified offers may
+     * exceed the watermark; maxAccepted and hard capacity still bound admission.
      * A later Pool's failure never rolls back this Pool's completed admission.
      */
     List<String> refill(String workerGroupId, Map<EligibilityQuery, Integer> targets,

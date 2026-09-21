@@ -84,6 +84,16 @@ an actual refill attempt does.
 Global expired-stock and inactive-cursor cleanup belongs to `observeRefillDeficits`.
 Counts retain existing target-page, Pool aggregation and capacity rules; they are
 neither reservations nor distinct Worker counts, because target predicates may overlap and counts do not reserve identities.
+`count` is a shortage watermark, not an inventory ceiling: 200 matching residents
+against a target of 100 need no refill and are not removed; 80 against 100 request
+20. Pacer bounds its observation by this shortage. Once candidates have been
+supplied, the selected target predicates decide qualification, without clipping
+admission to their counts. Qualified new identities retain offered order, after
+existing-identity replacements; only the call budget and actual storage capacity
+bound admission. Existing target-page selection and Pool rotation are unchanged.
+An already-satisfied watermark therefore does not skip a supplied Facts batch;
+its bounded qualification read and corruption checks still apply. No supplied
+candidates means no qualification read.
 The hint and later admission may observe different stock. Refill independently
 validates and works without a prior hint or Task registration. Both operations may redo
 bounded local target normalization; they retain no shared execution plan, policy
@@ -238,8 +248,9 @@ atomic Worker/Platform snapshot reader. Pure view helpers are shared by each
 policy and its QueryFunction. Policies neither construct indexes nor define write Lua.
 All fixed policies use PoolMaintenance for fence validation, fallible preparation,
 generation invalidation, replacement selection, budgeting and final admission.
-Country overrides only the count snapshot and invocation-local target associations;
-it retains one country-bucket observation and inverted country-to-target lookup.
+Country overrides only the deficit count snapshot and qualification against the
+union of selected countries. Admission observes existing identities and capacity,
+without counting every target again.
 
 `FactsIndexStore` deduplicates IndexMutation definitions by resource namespace before
 assembling the single preflight-and-write Lua. Conflicting definitions fail assembly.
@@ -285,8 +296,9 @@ Targets retain string-list syntax. `CN+US / 100` means 100 combined entries, not
 100 per country. Equivalent normalized sets use MAX. Overlapping sets each count
 their matching entries, while capacity counts one Entry once. One bucket-count
 snapshot serves the entire target set; no Entry copying or per-target stock scan
-is needed. Constrained targets precede ANY, and each selected country updates all
-of its affected deficits. There is no Country target page, cursor or source ZSET.
+is needed. Admission matches the selected country union, or every valid country
+when ANY is included; counts neither prioritize candidates nor stop admission.
+There is no Country target page, cursor or source ZSET.
 
 The old country, messaging and proof index namespaces are neither read, written,
 validated, rebuilt nor deleted. Phone remains the independent discovery index.
@@ -449,17 +461,18 @@ waits for a normal round; no existing Pool stock is observed for supply.
 Catalog rotates the explicitly ordered Pool policies. PAGED policies retain
 bounded query pages, including empty attempts; ALL policies receive the complete
 bounded target set. Observation never advances the target cursor. A maintenance policy
-prioritizes constrained targets before ANY, incrementing all overlapping target
-counts for each selected candidate. Offered memberships are computed once before
-admission; range decisions remain local. Each Pool receives only identities not
+qualifies against the selected target predicates, prioritizes new generations of
+existing identities, then admits qualified new identities in offered order.
+Offered memberships are computed once before admission; target counts do not cap
+acceptance. Each Pool receives only identities not
 already admitted by an earlier Pool in this batch. The 100-entry call budget counts actual admissions, including
 replacement of an existing identity, and does not promise to fill every Pool.
 
 Global lazy expiry runs once at Group shortage observation by invoking current resource-owned
 pool cleanup. It does not store a second inventory. Group access expires only its
 own pool; diagnostics and capacity reads do not sweep unrelated pools. Admission
-uses observed shortages and establishes each entry's local TTL and rechecks shared
-hard capacity at commit, without revalidating the whole inventory.
+establishes each entry's local TTL and rechecks shared hard capacity at commit,
+without revalidating the whole inventory or clipping at the observed shortage.
 Other expiry may release capacity after the round's budget was observed, so a
 round may conservatively underfill. A Pool with no available capacity reports zero
 refill deficit, preserving the existing full-stock supply suppression. Duplicate same-fence admission does not extend TTL.

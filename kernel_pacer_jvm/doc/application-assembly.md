@@ -275,7 +275,9 @@ Candidateize and recycling use separate 100-per-Group/1000-per-round budgets on
 the existing Refill Producer. Each refill attempt reserves 100 budget, but its
 raw head limit is `min(observed Group deficit, 100)`; smaller shortages do not
 increase the per-round Group call ceiling. Matching supplies numeric shortage
-hints without reserving stock. Candidate age is 60 seconds in production/Scenario
+hints without reserving stock. Target counts are watermarks: Matching does not
+truncate already-supplied qualified candidates at those counts; admission still
+honors its batch budget and actual capacity. Candidate age is 60 seconds in production/Scenario
 Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds.
 Each Group attempt supplies only the successful new candidateizations, once.
 Remaining shortage does not trigger stock copying, a supplementary scan or replay.

@@ -41,19 +41,16 @@ public final class CountryPoolPolicy extends PoolMaintenance<Map<String, Object>
                         : selection.values().stream().mapToInt(country -> observed.counts().getOrDefault(country, 0)).sum());
         return new CandidatePool.Observation(counts, observed.present(), observed.room());
     }
-    @Override protected Map<String, List<EligibilityQuery>> matchingTargets(Map<EligibilityQuery, Selection> selections,
+    @Override protected Set<String> matchingIdentities(Collection<Selection> selections,
             Map<String, CandidatePool.Admission> prepared) {
-        var byCountry = new HashMap<String, List<EligibilityQuery>>();
-        var anyTargets = new ArrayList<EligibilityQuery>();
-        selections.forEach((query, selection) -> {
-            if (selection.kind() == CandidatePool.SelectionKind.ALL) anyTargets.add(query);
-            else selection.values().forEach(country -> byCountry.computeIfAbsent(country, ignored -> new ArrayList<>()).add(query));
-        });
-        var result = new LinkedHashMap<String, List<EligibilityQuery>>();
+        var countries = new HashSet<String>();
+        for (var selection : selections) {
+            if (selection.kind() == CandidatePool.SelectionKind.ALL) return prepared.keySet();
+            countries.addAll(selection.values());
+        }
+        var result = new LinkedHashSet<String>();
         prepared.forEach((id, admission) -> {
-            var affected = new ArrayList<>(byCountry.getOrDefault(admission.views().get("country"), List.of()));
-            affected.addAll(anyTargets);
-            result.put(id, affected);
+            if (countries.contains(admission.views().get("country"))) result.add(id);
         });
         return result;
     }

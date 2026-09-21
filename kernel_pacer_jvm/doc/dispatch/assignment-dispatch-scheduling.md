@@ -22,6 +22,12 @@ attempts retain Pool/target rotation. Country uses its complete
 bounded target set; other policies retain bounded target pages. Server admission
 has no inventory observation or maintenance authority.
 
+Target counts are shortage watermarks. Inventory 200 against target 100 needs
+no new supply; inventory 80 requests at most 20 raw candidates this round.
+Matching qualifies supplied candidates against selected predicates without
+truncating at the watermark. Batch budgets and actual Pool capacity still apply;
+this does not permit copying generations already admitted to another Pool.
+
 ## Candidate Generation Boundary
 
 **Refill candidateizes due ordinary HOT without changing its time. Assignment

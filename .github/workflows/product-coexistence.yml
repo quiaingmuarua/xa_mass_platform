@@ -44,6 +44,7 @@ jobs:
           corepack prepare pnpm@11.9.0 --activate
           python -m pip install -r distribution/server/requirements-preview.txt
       - name: Owner tests and real product composition
+        id: prepare
         run: |
           ./gradlew :scenarios:app-checks-jvm:test :scenarios:message-campaigns-jvm:test :scenarios:sms-reception-jvm:test :worker_simulator_jvm:test :server_boot_jvm:test :server_boot_jvm:scenarioCompositionIntegrationTest :distribution:server:stagePreviewServer :distribution:server:stagePreviewHost :distribution:server:stagePreviewFrontend --console=plain
           python -m unittest discover -s integrations/scenario-coexistence -p 'test_*.py'
@@ -52,23 +53,37 @@ jobs:
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test
-      - name: Twelve shared Workers and lifecycle isolation
-        if: inputs.scenario != 'load-1k'
-        run: |
-          python integrations/scenario-coexistence/run_proof.py --scenario functional --output integrations/scenario-coexistence/build/ci-functional
-          python integrations/scenario-coexistence/run_proof.py --scenario lifecycle --port 18540 --output integrations/scenario-coexistence/build/ci-lifecycle
-          python scenarios/app-checks-jvm/run_acceptance.py --port 18620 --output scenarios/app-checks-jvm/build/ci-source
+      - name: Shared Worker product behavior
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python integrations/scenario-coexistence/run_proof.py --scenario functional --output integrations/scenario-coexistence/build/ci-functional
+      - name: Independent Messaging Pool selection
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python integrations/scenario-coexistence/run_proof.py --scenario pool-selection --port 18560 --output integrations/scenario-coexistence/build/ci-pool-selection
+      - name: Worker lifecycle isolation
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python integrations/scenario-coexistence/run_proof.py --scenario lifecycle --port 18540 --output integrations/scenario-coexistence/build/ci-lifecycle
+      - name: App Checks from source
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python scenarios/app-checks-jvm/run_acceptance.py --port 18620 --output scenarios/app-checks-jvm/build/ci-source
       - name: Explicit 1000 Worker combined acceptance
         if: inputs.scenario == 'load-1k'
         run: python integrations/scenario-coexistence/run_proof.py --scenario load-1k --port 18560 --output integrations/scenario-coexistence/build/ci-1k
       - name: Fresh unified Preview archive
-        if: inputs.scenario != 'load-1k'
+        id: archive
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.scenario != 'load-1k' }}
         run: |
           ./gradlew :distribution:server:previewZip --console=plain
           python distribution/server/src/test/python/verify_preview_archive.py --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist --output integrations/scenario-coexistence/build/archive.json
           python -m zipfile -e distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip distribution/server/build/preview/ci-unpacked
-          python integrations/scenario-coexistence/run_proof.py --scenario functional --port 18580 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output integrations/scenario-coexistence/build/ci-zip-functional
-          python scenarios/app-checks-jvm/run_acceptance.py --port 18640 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output scenarios/app-checks-jvm/build/ci-zip
+      - name: Shared Worker product behavior from ZIP
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.archive.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python integrations/scenario-coexistence/run_proof.py --scenario functional --port 18580 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output integrations/scenario-coexistence/build/ci-zip-functional
+      - name: Independent Messaging Pool selection from ZIP
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.archive.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python integrations/scenario-coexistence/run_proof.py --scenario pool-selection --port 18600 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output integrations/scenario-coexistence/build/ci-zip-pool-selection
+      - name: App Checks from ZIP
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.archive.outcome == 'success' && inputs.scenario != 'load-1k' }}
+        run: python scenarios/app-checks-jvm/run_acceptance.py --port 18640 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output scenarios/app-checks-jvm/build/ci-zip
       - name: Upload safe summaries only
         if: always()
         uses: actions/upload-artifact@v7.0.1
@@ -76,9 +91,11 @@ jobs:
           name: product-coexistence-proof-${{ github.run_attempt }}
           path: |
             integrations/scenario-coexistence/build/ci-functional/summary.json
+            integrations/scenario-coexistence/build/ci-pool-selection/summary.json
             integrations/scenario-coexistence/build/ci-lifecycle/summary.json
             integrations/scenario-coexistence/build/ci-1k/summary.json
             integrations/scenario-coexistence/build/ci-zip-functional/summary.json
+            integrations/scenario-coexistence/build/ci-zip-pool-selection/summary.json
             integrations/scenario-coexistence/build/archive.json
             scenarios/app-checks-jvm/build/ci-source/summary.json
             scenarios/app-checks-jvm/build/ci-zip/summary.json

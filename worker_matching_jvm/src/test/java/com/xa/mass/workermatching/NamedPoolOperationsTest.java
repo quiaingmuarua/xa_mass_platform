@@ -169,9 +169,9 @@ class NamedPoolOperationsTest {
         var needed=catalog.observeRefillDeficits(targets);
         assertEquals(Map.of("g1",2,"g2",1),needed);
         assertThrows(UnsupportedOperationException.class,needed::clear);
-        assertEquals(2,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
+        assertEquals(3,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
         assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
-        assertEquals(List.of("w1","w2"),takeItems(catalog,"g1","test.pool",Map.of(),2)
+        assertEquals(List.of("w1","w2","w3"),takeItems(catalog,"g1","test.pool",Map.of(),3)
                 .stream().map(h -> h.workerId()).toList());
         assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",Map.of(),1)
                 .stream().map(h -> h.workerId()).toList());
@@ -239,17 +239,18 @@ class NamedPoolOperationsTest {
         verifyNoInteractions(redis);
     }
 
-    @Test void observationIsNotAReservationAndAdmissionUsesCurrentStock() {
+    @Test void satisfiedObservedWatermarkDoesNotRejectLaterQualifiedOffers() {
         rule.facts.putAll(Map.of("first","US","second","US"));
         var targets=List.of(pool(1,"US"));
         assertEquals(Map.of("g1",1),catalog.observeRefillDeficits(Map.of("g1",targets)));
         assertEquals(1,catalog.refill("g1",targets,offer("first")));
         int reads=rule.snapshots.size();
-        assertEquals(0,catalog.refill("g1",targets,offer("second")));
-        assertEquals(reads,rule.snapshots.size());
+        assertEquals(1,catalog.refill("g1",targets,offer("second")));
+        assertEquals(reads + 1,rule.snapshots.size());
         assertTrue(catalog.observeRefillDeficits(Map.of("g1",targets)).isEmpty());
         catalog.take("g1",Map.of("m",new WorkerQuery("test.pool",Map.of())));
-        assertEquals(1,catalog.refill("g1",targets,offer("second")));
+        assertEquals(0,catalog.refill("g1",targets,offer("second")));
+        assertEquals("second",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
     }
 
     @Test void observationDoesNotAdvancePagesAndActualRefillAttemptsDo() {
@@ -294,7 +295,7 @@ class NamedPoolOperationsTest {
     @Test void declarationCeilingsAreAcceptedAndEquivalentTargetsUseMax() {
         var rules=Collections.nCopies(10_000,new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1));
         assertEquals(Map.of("g1",1),catalog.observeRefillDeficits(Map.of("g1",rules)));
-        assertEquals(1,catalog.refill("g1",rules,offer("first","second")));
+        assertEquals(2,catalog.refill("g1",rules,offer("first","second")));
         var groups=new LinkedHashMap<String,List<RefillTarget>>();
         for(int i=0;i<100;i++)groups.put("group"+i,List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
         assertEquals(100,catalog.observeRefillDeficits(groups).size());
@@ -326,9 +327,10 @@ class NamedPoolOperationsTest {
         var targets = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
         assertEquals(2, catalog.refill("g1", targets, offer("a", "b")));
         assertEquals(List.of(List.of("a", "b")), rule.snapshots);
-        assertEquals(List.of(List.of("b")), failingRule.snapshots);
-        assertEquals("a", takeItems(catalog, "g1", "test.pool", Map.of(), 1).getFirst().workerId());
-        assertEquals("b", takeItems(catalog, "g1", "zz.fail", Map.of(), 1).getFirst().workerId());
+        assertTrue(failingRule.snapshots.isEmpty());
+        assertEquals(List.of("a", "b"), takeItems(catalog, "g1", "test.pool", Map.of(), 2)
+                .stream().map(WorkerCandidate::workerId).toList());
+        assertTrue(takeItems(catalog, "g1", "zz.fail", Map.of(), 1).isEmpty());
         verifyNoInteractions(redis);
     }
 

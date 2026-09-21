@@ -8,7 +8,7 @@ public interface WorkerMatching {
     /**
      * Positive Group shortage hints in input Group order, as an immutable snapshot.
      * Missing Groups have no observed shortage. Counts are not reservations or distinct
-     * Worker counts: overlapping targets and Pools may share a candidate. At most 100
+     * Worker counts: target predicates may overlap, while admission remains single-Pool. At most 100
      * Groups and 10,000 target declarations; retains existing capacity limits.
      * Performs global lazy expiry and inactive refill-cursor cleanup, including on empty input.
      */
@@ -20,6 +20,7 @@ public interface WorkerMatching {
      * Each supplied generation is offered only until one Pool admits it. Later Rule failure
      * does not undo earlier admissions. Target bounds match the observation. Pacer supplies
      * each successful candidateization once; this operation does not replay retained stock.
+     * Target counts are shortage watermarks, not quotas on the qualified candidates supplied here.
      */
     int refill(String workerGroupId, List<RefillTarget> declarations,
             Map<String, Long> candidateScores);

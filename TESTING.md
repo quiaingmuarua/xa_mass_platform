@@ -61,12 +61,19 @@ changes or a new performance workload; SMS/Messages retain app_count=0 fixtures.
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) adds a selected
 Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the
 same Worker, receipts after Task completion/closure, duplicates, ordering and
-Worker run isolation. The executable's `scenarioCompositionIntegrationTest` owns
+Worker run isolation. Ordinary Messages US/ANY Pool queries run in a separate
+12-Worker scope with only Messaging demand; its managed Tasks remain INITIAL.
+Functional and Pool selection run against both source artifacts and a fresh ZIP;
+lifecycle runs against source artifacts. Independent CI steps retain later proof
+results after an earlier failure, while every required failure still fails the job.
+This lane makes no cross-Pool fairness or starvation-freedom claim.
+The executable's `scenarioCompositionIntegrationTest` owns
 platform/preview assembly plus real partial submission and delayed execution
 evidence. The fixed 1k dual workload is explicit/manual, never part of ordinary CI:
 
 ```powershell
 python integrations/scenario-coexistence/run_proof.py --build --scenario functional
+python integrations/scenario-coexistence/run_proof.py --scenario pool-selection --port 18560
 python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 python integrations/scenario-coexistence/run_proof.py --scenario load-1k
 ```
@@ -180,7 +187,11 @@ boundary: raw reads use the smaller of shortage and 100, while every Group
 attempt still reserves 100 of the 1000-round budget. Real Pacer/Matching/Redis
 composition proves that stock 99 against target 100 candidateizes only one of
 100 ordinary Workers; the other 99 remain discoverable on the next normal round
-without aged recycling. A declined candidate is not rolled back or replaced by
+without aged recycling. The stock-80 case likewise candidateizes exactly 20.
+Matching tests prove 200 residents against target 100 remain valid, zero-deficit
+offers still receive full qualification, and batch budgets and hard capacity
+continue to bound admissions. Target counts do not truncate qualified offers.
+A declined candidate is not rolled back or replaced by
 a supplementary scan. These proofs retain all external convergence deadlines.
 Controlled races prove entry identity checks (including equal-value reinsertion),
 partial take after a lost entry, no restart after unrelated Group changes and hard
@@ -255,7 +266,7 @@ Correctness and Android Worker Proof after the Binding ownership move.
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
-| Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario lifecycle` and fresh ZIP functional | Redis 7, Java 21, Python, Node for build |
+| Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
 The exact JVM module build list and Android assembly commands are maintained in
@@ -374,14 +385,15 @@ Redis Owner proves complete Task descriptors, preserved source coordinates, boun
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
 no Matching Task configuration access, local target resolution and direct Group/Pool operations without
 executable binding views or refill callbacks, bounded named refill command counts
-from the Matching Owner contract, and zero Redis access for Pool take or
-satisfied watermarks. Candidateization and execution acquisition use bounded exact CAS
+from the Matching Owner contract, and zero Redis access for Pool take and deficit
+observation. Supplied candidates still require bounded qualification even when
+their target watermark is satisfied. Candidateization and execution acquisition use bounded exact CAS
 batches. Properties time invalidation rejects old fences; a new generation is
 qualified again. A restarted Matching catalog cannot adopt old stock.
 
 Focused tests cover direct named refill/take without Task registration or prior
 shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
-capacities, concurrent take, constrained-target budget sharing and source failure
+capacities, concurrent take, overlapping target qualification and source failure
 after hold. Pacer tests keep refill independent of Item observation and dispatch
 independent of Pool source reads/acquisition. Runtime Boundary uses actual WebSocket,
 Socket and Polling Workers, including multiple Tasks consuming one shared pool.

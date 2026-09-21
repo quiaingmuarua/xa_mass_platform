@@ -18,6 +18,41 @@ import static org.mockito.Mockito.*;
 
 class PoolRefillPolicyTest {
     final CandidateBudget budget = new CandidateBudget();
+    @Test void targetOneHundredAllowsTwoHundredResidentsWithoutClippingOrEviction() {
+        var stock = new CandidatePool(() -> 1000, budget);
+        var policy = new AnyPoolPolicy(stock);
+        var target = new EligibilityQuery(Map.of());
+        var targets = Map.of(target, 100);
+        for (int start : List.of(0, 100)) {
+            var offered = new LinkedHashMap<String, Long>();
+            for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L + i);
+            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+            assertEquals(Map.of(target, 0), policy.deficits("g", targets));
+        }
+        assertEquals(200, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+        assertEquals(9800, budget.available());
+        assertEquals(Map.of(target, 0), policy.deficits("g", targets));
+        assertEquals(200, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+    }
+
+    @Test void batchBudgetAndHardCapacityStillBoundOffersAboveTheWatermark() {
+        var stock = new CandidatePool(() -> 1000, budget);
+        var policy = new AnyPoolPolicy(stock);
+        var targets = Map.of(new EligibilityQuery(Map.of()), 1);
+        for (int start = 0; start < 900; start += 100) {
+            var offered = new LinkedHashMap<String, Long>();
+            for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L);
+            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+        }
+        var offered = new LinkedHashMap<String, Long>();
+        for (int i = 900; i < 1000; i++) offered.put("w" + i, 20L);
+        assertEquals(7, policy.refill("g", targets, offered, 7).size());
+        assertEquals(93, policy.refill("g", targets, offered, 100).size());
+        assertTrue(policy.refill("g", targets, Map.of("overflow", 20L), 100).isEmpty());
+        assertEquals(1000, stock.observe("g", List.of(CandidatePool.all()), List.of()).counts().get(CandidatePool.all()));
+        assertEquals(9000, budget.available());
+    }
+
     @Test void messagingKeepsCountryQualificationWithoutPhoneViewsOrTargets() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
             var stock=new CandidatePool(()->1000, budget);

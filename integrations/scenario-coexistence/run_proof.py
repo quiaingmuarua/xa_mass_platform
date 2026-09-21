@@ -32,6 +32,20 @@ def require(condition, message):
         raise AssertionError(message)
 
 
+def complete_stage(run):
+    if getattr(run, "current_stage", None) is not None:
+        run.completed_stages.append(run.current_stage)
+        run.current_stage = None
+
+
+def begin_stage(run, name):
+    if not hasattr(run, "completed_stages"):
+        run.completed_stages = []
+    complete_stage(run)
+    run.current_stage = name
+    print("Proof stage: " + name, flush=True)
+
+
 def wait(run, predicate, seconds, label):
     deadline = min(time.monotonic() + seconds, getattr(run, "phase_deadline", float("inf")))
     while time.monotonic() < deadline:
@@ -192,6 +206,7 @@ def sms_wait(run, listener, state):
 
 def functional(run):
     run.phase_deadline = time.monotonic() + 180
+    begin_stage(run, "shared-supply-preconditions")
     sms_catalog = http(run.url, "/api/v1/sms/catalog")
     messages_catalog = http(run.url, "/api/v1/messages/catalog")
     require({c["workerGroupId"] for c in sms_catalog["countries"]}
@@ -199,6 +214,7 @@ def functional(run):
     inventory = all_pages(run.host, "/lab/v1/messages/inventory")
     require(len(inventory) == 12, "Expected 12 shared Workers")
     listener = sms_wait(run, sms_create(run), "LISTENING")
+    begin_stage(run, "direct-phone-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     created, request = campaign(run, phone=listener["phone"])
     require(http(run.url, "/api/v1/messages/tasks", request)["taskId"] == created["taskId"], "Campaign request was duplicated")
@@ -210,6 +226,7 @@ def functional(run):
     value, rows = sent(run, created)
     require(all(m["workerId"] == listener["workerId"] for m in rows), "Targeted campaign did not execute on SMS Worker")
     require(http(run.url, "/api/v1/sms/listeners/" + listener["id"])["status"] == "LISTENING", "Campaign stopped SMS listening")
+    begin_stage(run, "terminal-sent-export")
     wait(run, lambda: task_state(run, value["taskId"]) == "terminal", 30, "finite Task automatic completion")
     initial_export = export_results(run, value["taskId"])
     require(set(initial_export) == {m["id"] for m in rows} and all(json.loads(p)["status"] == "SENT" for p in initial_export.values()),
@@ -229,15 +246,18 @@ def functional(run):
             "Rejected cross-Worker input changed local records")
     require(all(m["status"] == "SENT" for m in campaign_messages(run, value)),
             "Rejected cross-Worker input changed product observations")
+    begin_stage(run, "completed-task-receipts")
     # Generated before terminality, withheld on the wire until after terminality.
     began = release_delivered(run, rows[0])
-    checkpoints = [observe_receipt(run, value, rows[0], "DELIVERED", began)]
+    checkpoints = run.receipt_checkpoints = []
+    checkpoints.append(observe_receipt(run, value, rows[0], "DELIVERED", began))
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
     for name, status, text in [("read", "READ", None), ("reply", "REPLIED", "first"), ("reply", "REPLIED", "second")]:
         began, receipt = action(run, rows[0], name, text)
         require(receipt["callbackQueued"], "Normal callback was not queued")
         checkpoints.append(observe_receipt(run, value, rows[0], status, began, text))
         require(task_state(run, value["taskId"]) == "terminal", "Receipt reopened completed Task")
+    begin_stage(run, "reordered-and-duplicate-receipts")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     ids = [delivered_id(run, rows[1])]
     for name, text in [("read", None), ("reply", "old"), ("reply", "latest")]:
@@ -253,6 +273,7 @@ def functional(run):
     require(duplicate["callbackQueued"], "First identified reply callback was not queued")
     _, duplicate = action(run, rows[0], "reply", "second", "duplicate-reply")
     require(duplicate["unchanged"] and not duplicate["callbackQueued"], "Reply operation was replayed")
+    begin_stage(run, "duplicate-execution-association")
     # Execute the identical send through a real Worker using the shared managed Task via direct identity.
     task = next(c["taskId"] for c in sms_catalog["countries"] if c["id"] == "CN")
     payload = {k: rows[0][k] for k in ("campaignId", "messageId", "country", "recipientId", "body")}
@@ -266,6 +287,7 @@ def functional(run):
     began, receipt = action(run, rows[0], "reply", "after-duplicate")
     require(receipt["callbackQueued"], "Original message callback was not queued")
     checkpoints.append(observe_receipt(run, value, rows[0], "REPLIED", began, "after-duplicate"))
+    begin_stage(run, "shared-worker-sms-reception")
     target = run.input_workers_by_id[listener["workerId"]]
     input_path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="") + ":inputs"
     injected = http(run.host, input_path, {"eventName": "sms.receive", "payload": {
@@ -273,11 +295,13 @@ def functional(run):
     require(injected["status"] == "MATCHED", "Same Worker SMS did not match")
     received = sms_wait(run, listener, "RECEIVED")
     require(received["workerId"] == rows[0]["workerId"], "Cross-product identity mismatch")
+    begin_stage(run, "closed-task-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     closed, _ = campaign(run, "closed-batch", 1, phone=listener["phone"])
     closed, closed_rows = sent(run, closed)
     http(run.url, f'/api/v1/tasks/{closed["taskId"]}/close', {})
     wait(run, lambda: task_state(run, closed["taskId"]) == "terminal", 10, "explicit Task close")
+    begin_stage(run, "closed-task-receipts")
     began = release_delivered(run, closed_rows[0])
     checkpoints.append(observe_receipt(run, closed, closed_rows[0], "DELIVERED", began))
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
@@ -286,6 +310,7 @@ def functional(run):
         require(receipt["callbackQueued"], "Closed Task callback was not queued")
         checkpoints.append(observe_receipt(run, closed, closed_rows[0], status, began, text))
         require(task_state(run, closed["taskId"]) == "terminal", "Receipt reopened closed Task")
+    begin_stage(run, "automatic-send-and-receipts")
     automatic, _ = campaign(run, "automatic", 1, phone=listener["phone"], instructions={
         "receipts_status": ["read", "replied", "replied"], "delayMs": 200, "probability": 0, "text": "auto"})
     automatic, automatic_rows = sent(run, automatic)
@@ -299,19 +324,7 @@ def functional(run):
     require(http(run.url, results_path, [message["id"]])[message["id"]] == first, "Reading deleted latest content")
     require(json.loads(first["opaqueResultPayload"])["replyRequestId"] == local["replyRequestId"], "Latest auto reply was not retained")
 
-    # Independent sender range: the same CN recipient list can use a US-constrained or ANY Messaging Pool query.
-    cross, cross_request = campaign(run, "cross-country", 2, country="US", recipient_country="CN")
-    cross, cross_rows = sent(run, cross)
-    require(all(run.input_workers_by_id[m["workerId"]]["country"] == "US" and m["country"] == "CN" for m in cross_rows),
-            "Recipient country still constrained actual sender country")
-    require(all(lab_message(run, m)["recipientId"] == m["recipientId"] for m in cross_rows), "Cross-country send bypassed Lab reception")
-    any_campaign, any_request = campaign(run, "any-country", 2, country=None, recipient_country="CN")
-    require(any_request["recipientIds"] == cross_request["recipientIds"], "Country comparison changed the recipient fixture")
-    any_campaign, any_rows = sent(run, any_campaign)
-    for message in any_rows:
-        worker = run.input_workers_by_id[message["workerId"]]
-        require(worker["country"] in ("CN", "US", "GB") and message["country"] == "CN"
-                and lab_message(run, message)["workerId"] == worker["workerId"], "ANY did not execute through a valid Messaging Worker")
+    begin_stage(run, "latest-result-export")
     exported = export_results(run, value["taskId"])
     require(json.loads(exported[rows[0]["id"]])["reply"] == "after-duplicate", "Export missed the later reply")
     began, receipt = action(run, rows[0], "reply", "after-export")
@@ -320,37 +333,106 @@ def functional(run):
     require(json.loads(newest[rows[0]["id"]])["reply"] == "after-export" and export_results(run, value["taskId"]) == newest,
             "Repeated export did not retain the latest reply")
     return {"passed": True, "workers": 12, "sharedWorkerId": listener["workerId"], "smsReceived": True,
-            "messages": 8, "automaticHttpReceipts": 4, "checkpoints": checkpoints, "requestIdempotency": True, "duplicateExecution": True,
-            "independentRecipientAndSenderCountries": True, "anyMessagingSend": True, "repeatedLatestResultExport": True,
+            "messages": 4, "automaticHttpReceipts": 4, "checkpoints": checkpoints, "requestIdempotency": True, "duplicateExecution": True,
+            "repeatedLatestResultExport": True,
             "reorderedAndDuplicateReceipts": True, "completedAndClosedTasksRemainTerminal": True,
             "hostMetrics": http(run.host, "/lab/v1/messages/metrics")}
 
 
+def require_managed_tasks_initial(run):
+    for project in ("sms", "messages"):
+        directory = http(run.url, f"/api/v1/projects/{project}")
+        managed = directory["managedTaskIds"]
+        require(set(managed) == {"demo-sim"}, "Unexpected managed Group in Pool fixture")
+        page = http(run.url, f"/api/v1/projects/{project}/tasks?limit=100")
+        require(not page["truncated"], "Pool fixture Project observation was truncated")
+        rows = {row["taskId"]: row for row in page["tasks"]}
+        require(all(identity in rows and rows[identity]["scoreBand"] == "running-initial"
+                    for identity in managed.values()), "Managed Task became active in Pool-only fixture")
+
+
+def require_messaging_supply(run, value, country):
+    page = http(run.url, "/api/v1/projects/messages/tasks?limit=100")
+    require(not page["truncated"], "Pool Task observation was truncated")
+    row = next((row for row in page["tasks"] if row["taskId"] == value["taskId"]), None)
+    require(row is not None and row["task"] is not None, "Pool Task descriptor is missing")
+    target = {} if country is None else {"worker.country": [country]}
+    require(row["task"]["refill"] == [{"poolName": "messaging", "target": target, "count": 100}],
+            "Ordinary Messages did not declare Messaging Pool supply")
+    require("senderPhone" not in row["task"]["metadata"], "Pool Task unexpectedly selected a phone")
+
+
+def pool_selection(run):
+    run.phase_deadline = time.monotonic() + 180
+    begin_stage(run, "pool-supply-preconditions")
+    require(Counter(w["country"] for w in run.input_workers_by_id.values()) == {"CN": 4, "US": 4, "GB": 4},
+            "Expected four Workers per country in Pool fixture")
+    require_managed_tasks_initial(run)
+
+    begin_stage(run, "pool-us-send")
+    cross, cross_request = campaign(run, "cross-country", 2, country="US", recipient_country="CN")
+    require_messaging_supply(run, cross, "US")
+    cross, cross_rows = sent(run, cross)
+    require(all(m["workerId"] in run.input_workers_by_id
+                and run.input_workers_by_id[m["workerId"]]["country"] == "US" and m["country"] == "CN" for m in cross_rows),
+            "Recipient country still constrained actual sender country")
+    for message in cross_rows:
+        local = lab_message(run, message)
+        require(local["recipientId"] == message["recipientId"] and local["workerId"] == message["workerId"]
+                and local["campaignId"] == message["campaignId"] == cross["taskId"], "Cross-country send bypassed Lab reception")
+
+    begin_stage(run, "pool-any-send")
+    any_campaign, any_request = campaign(run, "any-country", 2, country=None, recipient_country="CN")
+    require(any_request["recipientIds"] == cross_request["recipientIds"], "Country comparison changed the recipient fixture")
+    require_messaging_supply(run, any_campaign, None)
+    any_campaign, any_rows = sent(run, any_campaign)
+    for message in any_rows:
+        require(message["workerId"] in run.input_workers_by_id, "ANY returned an unknown Worker")
+        worker = run.input_workers_by_id[message["workerId"]]
+        local = lab_message(run, message)
+        require(worker["country"] in ("CN", "US", "GB") and message["country"] == "CN"
+                and local["workerId"] == worker["workerId"] and local["recipientId"] == message["recipientId"]
+                and local["campaignId"] == message["campaignId"] == any_campaign["taskId"],
+                "ANY did not execute through a valid Messaging Worker")
+
+    begin_stage(run, "pool-supply-isolation")
+    require_managed_tasks_initial(run)
+    return {"passed": True, "workers": 12, "messages": 4, "managedTasksRemainInitial": True,
+            "independentRecipientAndSenderCountries": True, "anyMessagingSend": True}
+
+
 def lifecycle(run):
     run.phase_deadline = time.monotonic() + 180
+    begin_stage(run, "lifecycle-supply-preconditions")
     listener = sms_wait(run, sms_create(run), "LISTENING")
+    begin_stage(run, "lifecycle-old-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     value, _ = campaign(run, "old-run", 1, phone=listener["phone"])
     value, rows = sent(run, value)
     target = next(w for w in all_pages(run.host, "/lab/v1/messages/inventory") if w["workerId"] == rows[0]["workerId"])
     control = f'/lab/v1/messages/workers/{target["workerGroupId"]}/{target["replicaKey"]}'
+    begin_stage(run, "lifecycle-stopped-run-receipt")
     http(run.host, control + ":stop", {})
     receipt_id = delivered_id(run, rows[0])
     release_delivered(run, rows[0])
     callback_observed(run, rows[0], receipt_id, False)
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
+    begin_stage(run, "lifecycle-restart-isolation")
     http(run.host, control + ":start", {})
     wait(run, run.connected, 30, "Worker restart")
     _, receipt = action(run, rows[0], "read")
     callback_observed(run, rows[0], receipt["receiptId"], False)
     _, receipt = action(run, rows[0], "reply", "old-run-local-only")
     callback_observed(run, rows[0], receipt["receiptId"], False)
+    begin_stage(run, "lifecycle-new-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     fresh, _ = campaign(run, "new-run", 1, phone=target["phone"])
     fresh, fresh_rows = sent(run, fresh)
     require(fresh_rows[0]["workerId"] == rows[0]["workerId"], "Restart changed Worker identity")
+    begin_stage(run, "lifecycle-new-run-receipt")
     began = release_delivered(run, fresh_rows[0])
     checkpoint = observe_receipt(run, fresh, fresh_rows[0], "DELIVERED", began)
+    begin_stage(run, "lifecycle-old-result-retained")
     require(campaign_messages(run, value)[0]["status"] == "SENT", "Product fabricated outcome for old run")
     old_result = http(run.url, f'/api/v1/tasks/{value["taskId"]}/results:load', [rows[0]["id"]])[rows[0]["id"]]
     require(json.loads(old_result["opaqueResultPayload"])["status"] == "SENT", "Old run Result changed")
@@ -528,10 +610,47 @@ def load_1k(run):
         campaign_thread.join(timeout=5); recipient_thread.join(timeout=10)
 
 
+def execute_scenario(run, scenario, output):
+    result = {"passed": False}
+    started = time.monotonic()
+    small = scenario != "load-1k"
+    if small:
+        begin_stage(run, "startup")
+    try:
+        with run:
+            print("Shared Server and Host ready; beginning " + scenario, flush=True)
+            if small:
+                begin_stage(run, "inventory")
+            run.input_workers_by_id = {worker["workerId"]: worker
+                                       for worker in all_pages(run.host, "/lab/v1/messages/inventory")}
+            result = {"functional": functional, "pool-selection": pool_selection,
+                      "lifecycle": lifecycle, "load-1k": load_1k}[scenario](run)
+            if small:
+                begin_stage(run, "shutdown")
+        if small:
+            complete_stage(run)
+    except Exception as error:
+        result["passed"] = False
+        result["failureType"] = type(error).__name__
+        # Assertion text is proof-authored; never publish a remote response/body.
+        if isinstance(error, AssertionError):
+            result["failure"] = str(error)
+        (output / "private" / "failure.txt").write_text(str(error), encoding="utf-8")
+    if small:
+        result["completedStages"] = run.completed_stages
+        if run.current_stage is not None:
+            result["failedStage"] = run.current_stage
+        if hasattr(run, "receipt_checkpoints"):
+            result["checkpoints"] = run.receipt_checkpoints
+    result.update(scenario=scenario, durationSeconds=round(time.monotonic() - started, 3),
+                  artifacts=run.artifacts, resourcePeaks=run.peaks, processModel=["server", "host"])
+    return result
+
+
 def main():
     global preview, http, all_pages
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=["functional", "lifecycle", "load-1k"], default="functional")
+    parser.add_argument("--scenario", choices=["functional", "pool-selection", "lifecycle", "load-1k"], default="functional")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
@@ -550,23 +669,7 @@ def main():
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
     materialize_inventory(sandbox_root, product_worker_world(counts))
     run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=0)
-    result = {"passed": False}
-    started = time.monotonic()
-    try:
-        with run:
-            print("Shared Server and Host ready; beginning " + args.scenario, flush=True)
-            run.input_workers_by_id = {worker["workerId"]: worker
-                                       for worker in all_pages(run.host, "/lab/v1/messages/inventory")}
-            result = {"functional": functional, "lifecycle": lifecycle, "load-1k": load_1k}[args.scenario](run)
-    except Exception as error:
-        result["passed"] = False
-        result["failureType"] = type(error).__name__
-        # Assertion text is proof-authored; never publish a remote response/body.
-        if isinstance(error, AssertionError):
-            result["failure"] = str(error)
-        (output / "private" / "failure.txt").write_text(str(error), encoding="utf-8")
-    result.update(scenario=args.scenario, durationSeconds=round(time.monotonic() - started, 3),
-                  artifacts=run.artifacts, resourcePeaks=run.peaks, processModel=["server", "host"])
+    result = execute_scenario(run, args.scenario, output)
     (output / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)
     raise SystemExit(0 if result["passed"] else 1)

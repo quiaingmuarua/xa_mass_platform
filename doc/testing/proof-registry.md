@@ -50,6 +50,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Actual Pacer/Matching/Redis composition proves deficit-bounded candidateization:
   stock 99 and target 100 changes one of 100 ordinary Worker fences, leaving the
   other 99 available after normal inventory consumption without aged recycling.
+  Stock 80 against target 100 similarly changes exactly 20 fences. Matching
+  watermarks do not cap inventory or truncate supplied qualified candidates;
+  batch budgets, real capacity, TTL and generation checks remain authoritative.
   The same production composition proves that reconnect refills consumed stale
   Pool stock at a new generation without waiting for the 60-second recycle.
   It also proves that later Pool demand cannot copy existing Country stock, while
@@ -239,7 +242,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   set and neutral Group declarations; finite message execution and later recipient
   observations remain correlated after Task completion or explicit closure.
   SMS selects Country Pool stock; phone-directed Messages uses qualified Direct
-  lookup with empty supply, while ordinary Messages retains Messaging Pool selection.
+  lookup with empty supply. Ordinary Messages US/ANY selection is witnessed in a
+  separate scope with only Messaging demand and INITIAL managed Tasks, retaining
+  real execution identity and sender/recipient country assertions.
   Duplicate/reordered receipts and Worker restart preserve latest content and run
   isolation. Platform/preview executable composition and fresh unified Preview
   delivery remain consistent with public Console availability.
@@ -247,8 +252,13 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   approval/recreation; a real delayed synchronous execution Result cannot erase
   a newer recipient reply. The process runner uses only business/Runtime/Lab APIs.
 - **Deliberate nonclaims:** reliable receipts across failure, restart recovery,
-  third-party sending, chat history, capacity maximum or per-Task fairness.
-- **Selection:** small 12-Worker lane participates in Proof Gate. Fixed 1,000-Worker
+  third-party sending, chat history, capacity maximum, fixed throughput, per-Task
+  or cross-Pool fairness, or starvation-freedom under insufficient supply.
+- **Selection:** each small scenario has 12 Workers. Source functional, Pool selection
+  and lifecycle participate in Proof Gate; fresh ZIP repeats functional and Pool
+  selection. Independent steps retain other outcomes after a proof fails, with
+  every required failure still failing CI. Safe summaries retain completed stages
+  and identify the failing stage without private message content. Fixed 1,000-Worker
   simultaneous SMS/message load is explicit local or workflow_dispatch acceptance.
   Generic Score and Result transition truth remains with Redis Owner/Runtime Boundary.
 

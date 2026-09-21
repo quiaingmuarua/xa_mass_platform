@@ -271,8 +271,10 @@ class WorkerRefillDeficitIntegrationTest {
         }
     }
 
-    @Test
-    void oneMissingEntryLeavesTheOtherOrdinaryWorkersAvailableForTheNextRound() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {80, 99})
+    void observedShortageLeavesTheOtherOrdinaryWorkersAvailableForTheNextRound(int residentCount) {
+        int deficit = 100 - residentCount;
         var scope=RedisTestScope.create("refill_deficit");
         var client=RedisClient.create(REDIS_URL);
         var commands=new CopyOnWriteArrayList<String>();
@@ -297,7 +299,7 @@ class WorkerRefillDeficitIntegrationTest {
                 long original=dueOrdinaryScore(now);
                 String key=scope.keyspace().base()+":worker:score:"+group;
                 var residents=new LinkedHashMap<String,Long>();
-                for(int i=0;i<99;i++) {
+                for(int i=0;i<residentCount;i++) {
                     String id="resident-"+i;
                     redis.zadd(key,original,id); residents.put(id,original);
                 }
@@ -306,16 +308,16 @@ class WorkerRefillDeficitIntegrationTest {
                     assertThat(result.status()).isEqualTo(TRANSITIONED);
                     held.put(id,result.score());
                 });
-                assertThat(matching.refill(group,declarations,held)).isEqualTo(99);
+                assertThat(matching.refill(group,declarations,held)).isEqualTo(residentCount);
                 var additional=new LinkedHashMap<String,Long>();
                 for(int i=0;i<100;i++) {
                     String id="available-%03d".formatted(i);
                     redis.zadd(key,original,id); additional.put(id,original);
                 }
-                assertThat(matching.observeRefillDeficits(Map.of(group,declarations))).containsExactlyEntriesOf(Map.of(group,1));
+                assertThat(matching.observeRefillDeficits(Map.of(group,declarations))).containsExactlyEntriesOf(Map.of(group,deficit));
                 var pacer=new WorkerEligibilityRefillPolicy(scores,matching,null,()->now);
                 commands.clear();
-                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(1);
+                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(deficit);
                 assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(3); // old head + due head + exact candidateize
                 assertThat(commands).doesNotContain("ZMSCORE","TIME");
 
@@ -330,8 +332,8 @@ class WorkerRefillDeficitIntegrationTest {
                         assertThat(timeMillis(score)).isEqualTo(timeMillis(original));
                     }
                 });
-                assertThat(changed).hasSize(1);
-                assertThat(unchanged).hasSize(99);
+                assertThat(changed).hasSize(deficit);
+                assertThat(unchanged).hasSize(residentCount);
                 assertThat(scores.observeDueHotScoreCandidates(group,null,100)).containsExactlyInAnyOrderEntriesOf(unchanged);
                 assertThat(scores.observeHotCandidateScoresBefore(group,null,now-60_000,100)).isEmpty();
 
@@ -340,9 +342,9 @@ class WorkerRefillDeficitIntegrationTest {
                 var taken=matching.take(group,queries);
                 assertThat(taken).hasSize(100);
                 assertThat(taken.values()).extracting(candidate->candidate.workerId())
-                        .containsAll(residents.keySet()).contains(changed.getFirst());
+                        .containsAll(residents.keySet()).containsAll(changed);
                 commands.clear();
-                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(99);
+                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(residentCount);
                 assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(3);
                 var next=matching.take(group,queries);
                 assertThat(next.values()).extracting(candidate->candidate.workerId())

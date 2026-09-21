@@ -64,11 +64,10 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required");
         });
         if (maxAccepted == 0 || offered.isEmpty() || selections.isEmpty()) return List.of();
-        var observation = observe(pool, group, selections.values(), offered.keySet());
-        var missing = missing(selections, targets, observation);
+        var observation = pool.observe(group, List.of(), offered.keySet());
         boolean replacement = offered.entrySet().stream().anyMatch(entry ->
                 observation.present().containsKey(entry.getKey()) && !observation.present().get(entry.getKey()).equals(entry.getValue()));
-        if (!replacement && (observation.room() == 0 || missing.values().stream().noneMatch(count -> count > 0))) return List.of();
+        if (!replacement && observation.room() == 0) return List.of();
         var values = readQualifications(group, List.copyOf(offered.keySet()));
         if (!offered.keySet().containsAll(values.keySet()))
             throw new IllegalStateException("Pool policy read an unoffered identity");
@@ -80,8 +79,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
                 prepared.put(id, new CandidatePool.Admission(id, score, views));
             }
         });
-        var affected = matchingTargets(selections, prepared);
-        prepared.keySet().removeIf(id -> affected.get(id).isEmpty());
+        prepared.keySet().retainAll(matchingIdentities(selections.values(), prepared));
         var selected = new LinkedHashMap<String, CandidatePool.Admission>();
         // Requalification of an existing identity is independent of storage headroom or deficits.
         for (var entry : prepared.entrySet()) {
@@ -89,15 +87,11 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             Long old = observation.present().get(entry.getKey());
             if (old != null && old.longValue() != entry.getValue().score()) selected.put(entry.getKey(), entry.getValue());
         }
-        for (boolean any : List.of(false, true)) {
-            for (var entry : prepared.entrySet()) {
-                if (selected.size() == maxAccepted) break;
-                if (selected.containsKey(entry.getKey()) || observation.present().containsKey(entry.getKey())) continue;
-                var queries = affected.get(entry.getKey());
-                if (queries.stream().noneMatch(query -> query.query().isEmpty() == any && missing.get(query) > 0)) continue;
-                selected.put(entry.getKey(), entry.getValue());
-                for (var query : queries) missing.compute(query, (ignored, count) -> count - 1);
-            }
+        // Target counts request supply; admission is bounded by this batch and actual capacity.
+        for (var entry : prepared.entrySet()) {
+            if (selected.size() == maxAccepted) break;
+            if (observation.present().containsKey(entry.getKey())) continue;
+            selected.put(entry.getKey(), entry.getValue());
         }
         pool.discardChanged(group, offered, prepared.keySet());
         return pool.admit(group, List.copyOf(selected.values()));
@@ -109,12 +103,13 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         return pool.observe(group, selections, ids);
     }
 
-    /** Invocation-local target references, fully prepared before inventory mutation. */
-    protected Map<String, List<EligibilityQuery>> matchingTargets(Map<EligibilityQuery, Selection> selections,
+    /** Qualify the supplied identities against the selected target predicates before inventory mutation. */
+    protected Set<String> matchingIdentities(Collection<Selection> selections,
             Map<String, CandidatePool.Admission> prepared) {
-        var result = new LinkedHashMap<String, List<EligibilityQuery>>();
-        prepared.forEach((id, admission) -> result.put(id, selections.entrySet().stream()
-                .filter(entry -> entry.getValue().matches(id, admission.views())).map(Map.Entry::getKey).toList()));
+        var result = new LinkedHashSet<String>();
+        prepared.forEach((id, admission) -> {
+            if (selections.stream().anyMatch(selection -> selection.matches(id, admission.views()))) result.add(id);
+        });
         return result;
     }
 

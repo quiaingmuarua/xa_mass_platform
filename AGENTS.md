@@ -184,6 +184,9 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   target normalization, deficits and qualification. CandidatePool owns mechanical
   range stock; indexes own physical definitions and reads. Catalog coordinates
   bounded calls and correlation without taking over those local mechanisms.
+- Refill counts are shortage watermarks, not admission quotas or inventory caps.
+  Pacer bounds supply by observed deficits; Matching qualifies supplied identities
+  within the call budget and actual capacity without clipping to target counts.
 - Register QueryFunction strategies directly with normalizeInput/apply methods.
   Catalog admits the entire batch; apply uses admitted inputs without repeating
   its request-budget checks. Keep resource invariants at their own boundary.

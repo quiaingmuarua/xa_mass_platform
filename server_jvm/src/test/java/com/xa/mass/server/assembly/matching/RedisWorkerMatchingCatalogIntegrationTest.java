@@ -497,7 +497,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(takeItems(catalog,query.workerGroupId(),function(query),List.of("CN"),1)).extracting(h -> h.workerId()).containsExactly("cn");
         assertThat(takeItems(catalog,query.workerGroupId(),function(query),Map.of(),100)).extracting(h -> h.workerId()).containsExactly("us");
     }
-    @Test void sharedTargetsUseMaximumAndOtherTasksCanConsumeTheSameStock() {
+    @Test void sharedTargetsUseMaximumForShortageWithoutCappingQualifiedOffers() {
         var facts=new LinkedHashMap<String,Map<String,String>>();
         for(int i=0;i<30;i++)facts.put("w"+i,Map.of("country","US"));
         catalog.upsertWorkerFactsBatch("g",facts); hot("g",List.copyOf(facts.keySet()));
@@ -505,10 +505,14 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(refillDeclarations(catalog,"g",declarations("seed"),15)).isEqualTo(15);
         declareTask("a","g","worker.country",List.of(target(10,"US")));
         declareTask("b","g","worker.country",List.of(target(20,"US")));
-        assertThat(refill("a","b")).isEqualTo(5);
-        var views=declarations("a","b"); commandTypes.clear();
+        var views=declarations("a","b");
+        assertThat(catalog.observeRefillDeficits(targets(views))).containsEntry("g",5);
+        // This Owner fixture deliberately supplies the remaining 15, independently of Pacer's read limit.
+        assertThat(refill("a","b")).isEqualTo(15);
+        commandTypes.clear();
         assertThat(refillDeclarations(views)).isZero();
         assertThat(takeItems(catalog,views.get("a").workerGroupId(),function(views.get("a")),List.of("US"),20)).hasSize(20);
+        assertThat(takeItems(catalog,views.get("b").workerGroupId(),function(views.get("b")),List.of("US"),10)).hasSize(10);
         assertThat(takeItems(catalog,views.get("b").workerGroupId(),function(views.get("b")),List.of("US"),1)).isEmpty();
         assertThat(commandTypes).isEmpty();
     }

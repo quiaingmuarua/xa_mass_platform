@@ -110,14 +110,15 @@ class RuleEligibilityTest {
     void populate(int count) {
         for(int i=0;i<count;i+=100)rule.refill("g",targets(List.of(pools(count,"US"))),offers(i,Math.min(100,count-i),"US"),100);
     }
-    @Test void fullTargetsAndTakeDoNotReadFactsAndResultsAreImmutable() {
+    @Test void satisfiedWatermarksStillQualifyOffersWhileTakeDoesNotReadFacts() {
         populate(20); int reads=rule.reads;
         var targets=List.of(pools(10,"US"),pools(20,"US","CN"));
         var deficits=rule.deficits("g",targets(targets));
         assertEquals(List.of(0,0),new ArrayList<>(deficits.values()));
-        assertTrue(rule.refill("g",targets(targets),offers(50,1,"US"),100).isEmpty());
+        assertEquals(List.of("w50"),rule.refill("g",targets(targets),offers(50,1,"US"),100));
+        assertEquals(reads + 1,rule.reads);
         var taken=rule.functions().apply("g",Map.of("message",Map.of()));
-        assertEquals(1,taken.size()); assertEquals(reads,rule.reads);
+        assertEquals(1,taken.size()); assertEquals(reads + 1,rule.reads);
         assertThrows(UnsupportedOperationException.class,()->deficits.clear());
         assertThrows(UnsupportedOperationException.class,()->taken.clear());
     }
@@ -167,9 +168,9 @@ class RuleEligibilityTest {
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(ANY,3),offers(10,101,"US"),100));
         assertEquals(reads,rule.reads); assertEquals(2,consume(rule,"g",Map.of(),100).size());
     }
-    @Test void constrainedTargetsPrecedeAnyAndMembershipsArePreparedOnce() {
+    @Test void qualifiedOffersKeepInputOrderWithinTheBatchBudget() {
         var offered=offers(0,2,"US");rule.current=Map.of("w0","CN","w1","US");
-        assertEquals(List.of("w1"),rule.refill("g",targets(List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1));
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1));
         assertEquals(2,rule.evaluations);
     }
     @Test void hundredTargetsUseOneBoundedSourceRead() {
