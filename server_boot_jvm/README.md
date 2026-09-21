@@ -20,8 +20,9 @@ their platform behavior. `preview` imports [SMS Reception](../scenarios/sms-rece
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
 
-Preview enables the independent `worker.phone` query for `demo-sim`, alongside its
-existing Pool Rules. Direct `workerId` is available in every Group; Matching owns
+Preview enables independent `worker.phone` and qualified `worker.messaging.phone`
+queries for `demo-sim`, alongside its Pool Rules. Directed Messages need no Messaging
+Pool stock. Direct `workerId` is available in every Group; Matching owns
 the [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 
 `application-preview.yaml` declares the common `demo-sim` Group, its complete
@@ -172,7 +173,7 @@ configuration in nested platform/Scenario libraries and reject test configuratio
 
 Matching resources are explicit per Group. The scenario-workers profile enables
 any/worker.any for both Lab Groups and preserves their 1000 managed watermarks.
-Preview enables country/messaging and phone lookup; SMS managed supply is
+Preview enables country/messaging and both Phone query functions; SMS managed supply is
 country/{} /100. Groups without a task-rpc refill override save empty managed
 supply and may use Identity without a Pool.
 

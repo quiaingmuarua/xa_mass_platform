@@ -370,14 +370,14 @@ Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
-Redis Owner proves complete Task descriptors, preserved source coordinates, sparse Messaging phone partitions,
+Redis Owner proves complete Task descriptors, preserved source coordinates, bounded qualified Messaging Phone lookup,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
 no Matching Task configuration access, local target resolution and direct Group/Pool operations without
 executable binding views or refill callbacks, bounded named refill command counts
 from the Matching Owner contract, and zero Redis access for Pool take or
-satisfied watermarks. Initial acquisition and confirmation use bounded exact CAS
-batches. Properties sealing invalidates old fences; a fresh hold after natural
-expiry rechecks eligibility. A restarted Matching catalog cannot adopt old stock.
+satisfied watermarks. Candidateization and execution acquisition use bounded exact CAS
+batches. Properties time invalidation rejects old fences; a new generation is
+qualified again. A restarted Matching catalog cannot adopt old stock.
 
 Focused tests cover direct named refill/take without Task registration or prior
 shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
@@ -386,7 +386,8 @@ after hold. Pacer tests keep refill independent of Item observation and dispatch
 independent of Pool source reads/acquisition. Runtime Boundary uses actual WebSocket,
 Socket and Polling Workers, including multiple Tasks consuming one shared pool.
 Dynamic Matching preserves its 1,000 Worker/150,400 Item workload with explicit
-proof-Rule refill targets. Messages declares country plus sparse phone targets.
+proof-Rule refill targets. Ordinary Messages declares ANY/country Pool supply;
+directed Messages uses qualified Phone queries with empty supply.
 The existing mixed Call workload supplies coexistence and aggregate Redis cost
 evidence; a local nonreference run is not a throughput improvement claim.
 
@@ -398,6 +399,16 @@ membership validation; tests assert bounds and validity, not random distribution
 or latency. Mixed Pool/Identity/Phone tests retain whole-batch admission and first
 association wins. Identity uses no Redis in Matching; Pacer still verifies existence
 and Group before Kernel execution acquisition.
+
+Qualified Messaging Phone shares that index, then reads only returned identities
+with one strict Facts HMGET. Focused and Redis tests cover ordered association,
+country/enabled/phone filtering, between-read phone changes, no-Pool configuration,
+shared index rebuild and partial failure. No resampling follows a filter miss.
+Actual Pacer/Matching/Redis composition proves a Country-cached Worker can be
+acquired by qualified Direct lookup while its old Pool fence cannot execute or
+release the new hold. Product functional/lifecycle keeps the original directed
+send deadlines and subsequent receipt/restart assertions. This migration does
+not establish a fix for the separately recorded Dynamic Matching drain failure.
 
 ## CI Gate
 
@@ -484,8 +495,8 @@ Workers. Use new scopes; old direct-selector Items are deliberately unreadable.
 Matching Pool convergence is covered by the existing lanes: explicit Any without
 Facts, no-Pool Identity/Phone Tasks, Country union/overlapping watermarks and full
 bounded targets, one offered-ID Facts HMGET, local range take and strict candidate
-invalidation. Messaging/Proof paging and enabled-index atomic writes remain separate
-regressions. Country fixtures no longer rely on the retired Country ZSET. Convergence
+invalidation. Messaging/Proof target paging and Facts/Phone atomic writes remain
+separate regressions. Country fixtures no longer rely on the retired Country ZSET. Convergence
 checkpoints use a single Identity target after stopping the backup; the independent
 Proof Pool witness retains qualification and strict-fence coverage.
 
@@ -495,7 +506,13 @@ index definitions, startup failure cleanup and idempotent Catalog close. Archite
 tests enforce actual package dependency restrictions for Pool, Index, refill and
 function implementations. Redis Owner covers Phone updates and rebuild without Task
 demand, non-destructive shared-index queries, Pool capacity/expiry independence,
-namespace-deduplicated writes and every enabled index's preflight protection. Existing
-Messaging/Proof qualification, concurrent Worker/Platform writes, strict-fence/Direct
-competition and real Worker proofs remain unchanged; these tests claim no new capacity
+namespace-deduplicated writes and Phone preflight protection. Matching convergence
+adds name-independent ALL/PAGED batching, explicit Pool rotation, a strict atomic
+Worker/Platform snapshot and zero access to poisoned retired Messaging/Proof keys.
+Messaging uses one offered-ID HMGET; Proof uses one EVAL_RO with two HMGETs.
+Malformed active Facts fail before the current Pool changes stock; public Facts
+observation retains its previous row-local behavior. Literal proof values (*, ~,
+separators, quotes and Unicode) no longer collide with omitted conditions.
+Concurrent Worker/Platform writes, strict-fence/Direct competition and real Worker
+proofs retain their assertions; these tests claim no new capacity
 or performance result.

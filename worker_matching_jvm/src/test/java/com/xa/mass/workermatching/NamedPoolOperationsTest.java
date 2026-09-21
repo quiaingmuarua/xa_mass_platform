@@ -49,7 +49,7 @@ class NamedPoolOperationsTest {
         rule=new CountingRule(clock::get,budget); failingRule=new CountingRule(clock::get,budget);
         var defaultStock=new CandidatePool(clock::get, budget);
         var defaults=new AnyPoolPolicy(defaultStock);
-        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new AnyQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups());
+        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new AnyQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups(), List.of("any", "test.pool", "zz.fail"), Set.of());
     }
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
@@ -352,6 +352,19 @@ class NamedPoolOperationsTest {
         assertTrue(rule.snapshots.isEmpty());
         assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
         assertEquals(new WorkerCandidate("w", 42), takeItems(catalog, "g1", "worker.any", Map.of(), 1).getFirst());
+    }
+
+    @Test void compositionControlsRotationInsteadOfPoolNames() {
+        rule.facts.put("w", "US");
+        failingRule.facts.put("w", "US");
+        var configured = new RedisWorkerMatchingCatalog(storage, budget,
+                Map.of("a", rule.stock, "z", failingRule.stock), clock::get,
+                Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of())),
+                List.of("z", "a"), Set.of());
+        var targets = List.of(new RefillTarget("a", ANY, 1), new RefillTarget("z", ANY, 1));
+        assertEquals(1, configured.refill("g", targets, Map.of("w", 42L)));
+        assertTrue(rule.snapshots.isEmpty());
+        assertEquals(List.of(List.of("w")), failingRule.snapshots);
     }
 
     @Test void newCandidateBatchesKeepTheTotalBudgetAndPoolRotation() {

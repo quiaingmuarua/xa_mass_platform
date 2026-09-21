@@ -79,6 +79,9 @@ hints. Only Matching normalizes and groups queries;
 Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
 Source indexes project facts independently; candidate inventory
 is replenished from Task-declared targets without inspecting Items.
+Messages with an explicit sender phone declares empty supply and uses Matching's
+qualified Direct Phone function. Its identity hint follows the existing current
+execution acquisition; Pacer adds no Pool notification or business qualification.
 
 The module direction remains:
 
@@ -277,6 +280,9 @@ Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds.
 Each Group attempt supplies only the successful new candidateizations, once.
 Remaining shortage does not trigger stock copying, a supplementary scan or replay.
 Matching retains Pool/target rotation while each generation enters at most one Pool.
+Its composition supplies Pool order and target batching capability; Pacer does
+not interpret them. Matching qualifies offered IDs from Facts (Proof uses an
+atomic Worker/Platform snapshot), never source-index discovery or substitute IDs.
 Direct queries bypass stock; successful execution acquisition sends no notification
 to a Pool. Redis ordinary/aged candidate heads remain cursor-free.
 The event Mechanism chooses target polarity and minimum activation time for the mechanical

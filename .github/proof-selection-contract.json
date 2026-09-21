@@ -141,7 +141,7 @@
       "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/PartitionedZsetIndex.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/PoolMaintenance.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -972,7 +972,37 @@
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/MessagingIndex.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/MessagingPhoneQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Qualified Direct Phone lookup separates directed Messages from Pool stock while retaining Kernel execution admission."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MessagingEligibility.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Messaging Pool and Direct Phone share fixed Facts qualification without adding a state Owner."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/views/MessagingViews.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -987,7 +1017,7 @@
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/ProofFactsIndex.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/views/ProofFactsViews.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

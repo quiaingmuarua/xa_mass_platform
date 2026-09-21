@@ -6,7 +6,7 @@ import com.xa.mass.workermatching.RuleInputs;
 import com.xa.mass.workermatching.pool.CandidatePool;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
+import com.xa.mass.workermatching.views.ProofFactsViews;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -29,14 +29,7 @@ public final class ProofFactsQueryFunction implements QueryFunction {
         var selections = new LinkedHashMap<String, CandidatePool.Selection>();
         inputsByMessageId.forEach((id, input) -> {
             @SuppressWarnings("unchecked") var values = (Map<String, Object>) input;
-            if (values.isEmpty()) {
-                selections.put(id, CandidatePool.all());
-            } else {
-                String partition = values.containsKey("convergenceSlot") ? "slot:" + values.get("convergenceSlot")
-                        : values.getOrDefault("proofPool", "*") + "|" + values.getOrDefault("proofTarget", "*")
-                                + "|" + values.getOrDefault("proofEnabled", "*");
-                selections.put(id, CandidatePool.range("partition:" + partition, List.of("1")));
-            }
+            selections.put(id, ProofFactsViews.select(values));
         });
         return PoolCandidates.take(pool, workerGroupId, selections);
     }

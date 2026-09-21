@@ -56,10 +56,10 @@ class MatchingCompositionTest {
         var facts = new MapScanCursor<String, String>(); facts.setCursor("0"); facts.setFinished(true);
         when(commands.scan(any(ScanCursor.class), any(ScanArgs.class))).thenReturn(keys);
         when(commands.hscan(anyString(), any(ScanCursor.class), any(ScanArgs.class))).thenReturn(facts);
-        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone", "worker.messaging.phone")));
         var catalog = MatchingComposition.create(client, keyspace, groups);
-        // Rebuild visits all three resources, but acquires only one physical connection.
-        verify(commands, times(3)).unlink(anyString());
+        // Only the independent Phone index is rebuilt; qualification uses supplied Facts.
+        verify(commands).unlink(IndexMutation.base(keyspace, "g") + ":phone");
         verify(client, times(1)).connect(StringCodec.UTF8);
         catalog.close(); catalog.close();
         verify(connection, times(1)).close();
@@ -97,5 +97,28 @@ class MatchingCompositionTest {
         assertThrows(IllegalArgumentException.class, () -> new FactsIndexStore(client, keyspace,
                 Map.of("g", List.of(phone, new IndexMutation(phone.namespace(), "different definition")))));
         verifyNoInteractions(client);
+    }
+
+    @Test void qualifiedPhoneNeedsOnlyOnePhoneIndexAndNoPoolOrGenericPhoneFunction() {
+        var client = mock(RedisClient.class);
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")));
+        var indexes = MatchingComposition.indexes(groups);
+        assertEquals(List.of("phone"), indexes.get("g").stream().map(IndexMutation::namespace).toList());
+        try (var store = new FactsIndexStore(client, keyspace, indexes)) {
+            var composition = new MatchingComposition(store, groups, () -> 1_000L);
+            assertTrue(composition.pools().isEmpty());
+            assertTrue(composition.policies().isEmpty());
+            assertEquals(Set.of("workerId", "worker.messaging.phone"), composition.functions().keySet());
+            try (var catalog = composition.catalog()) {
+                var query = new WorkerQuery("worker.messaging.phone", Map.of("phone", "+1"));
+                assertEquals(query, catalog.normalizeQuery("g", query));
+                assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("other", query));
+                assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("worker.phone", "+1")));
+                assertEquals(List.of(), catalog.normalizeRefill("g", List.of()));
+                verifyNoInteractions(client);
+            }
+        }
+        assertEquals(1, MatchingComposition.indexes(Map.of("g", new MatchingGroup(Set.of(),
+                Set.of("worker.phone", "worker.messaging.phone")))).get("g").size());
     }
 }

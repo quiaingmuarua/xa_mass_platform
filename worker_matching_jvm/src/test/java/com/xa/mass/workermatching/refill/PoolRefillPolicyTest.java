@@ -3,9 +3,6 @@ package com.xa.mass.workermatching.refill;
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.CandidatePool;
-import com.xa.mass.workermatching.index.MessagingIndex;
-import com.xa.mass.workermatching.index.PartitionedZsetIndex;
-import com.xa.mass.workermatching.index.ProofFactsIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
@@ -21,22 +18,27 @@ import static org.mockito.Mockito.*;
 
 class PoolRefillPolicyTest {
     final CandidateBudget budget = new CandidateBudget();
-    @Test void messagingKeepsCountryAndPhoneIntersection() {
+    @Test void messagingKeepsCountryQualificationWithoutPhoneViewsOrTargets() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
             var stock=new CandidatePool(()->1000, budget);
-            var handler=new MessagingPoolPolicy(stock, new MessagingIndex(storage::commands, storage.keyspace()));
-            var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"),
-                    "worker.phone",List.of("+86123"))));
+            var handler=new MessagingPoolPolicy(stock, storage::readWorkerFacts);
+            var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"))));
             var match=handler.target("g",q);
-            assertTrue(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("65",Set.of("phone:+86123")))));
-            assertFalse(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("65",Set.of("phone:other")))));
-            assertFalse(match.matches("w",handler.memberships("g","w",new PartitionedZsetIndex.Projection("538",Set.of("phone:+86123")))));
+            assertTrue(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","CN","phone","+86123"))));
+            assertTrue(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","CN"))));
+            assertFalse(match.matches("w",handler.memberships("g","w",Map.of("messaging.enabled","true","country","US","phone","+86123"))));
             assertNull(handler.memberships("g","w",null));
+            assertEquals(Map.of("country", "CN"), handler.memberships("g", "w",
+                    Map.of("messaging.enabled", "true", "country", "CN", "phone", "+86123")));
+            assertNull(handler.memberships("g", "w", Map.of("messaging.enabled", "false", "country", "CN")));
+            assertNull(handler.memberships("g", "w", Map.of("messaging.enabled", "true", "country", "invalid")));
+            assertThrows(IllegalArgumentException.class, () -> handler.normalizeQuery("g",
+                    new EligibilityQuery(Map.of("worker.phone", List.of("+86123")))));
         }
     }
     @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
-            for(var rule:List.of(new CountryPoolPolicy(new CandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new CandidatePool(()->1000, budget), new MessagingIndex(storage::commands, storage.keyspace())),new ProofFactsPoolPolicy(new CandidatePool(()->1000, budget), new ProofFactsIndex(storage::commands, storage.keyspace())))) {
+            for(var rule:List.of(new CountryPoolPolicy(new CandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new CandidatePool(()->1000, budget), storage::readWorkerFacts),new ProofFactsPoolPolicy(new CandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
                 assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of())));
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("w")))));
             }

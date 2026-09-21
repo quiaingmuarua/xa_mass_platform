@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Runtime Boundary fixture only: real Pool supply, explicit identity-only execution hints. */
 public final class IdentityHintPoolFixture implements PoolRefillPolicy {
+    @Override public TargetBatching targetBatching() { return TargetBatching.PAGED; }
     public static final String ID = "proof.identity-hint";
     private final AnyPoolPolicy pool;
     private final com.xa.mass.workermatching.QueryFunction consumer;

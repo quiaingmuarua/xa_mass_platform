@@ -20,8 +20,10 @@ class PoolQueryFunctionTest {
         var phones = mock(PhoneIndex.class);
         assertEquals(Map.of(), new AnyQueryFunction(pool).normalizeInput("g", Map.of()));
         assertEquals(List.of("CN", "US"), new CountryQueryFunction(pool).normalizeInput("g", List.of("US", "CN", "US")));
-        assertEquals(Map.of("country", List.of("CN"), "phone", "number"), new MessagingQueryFunction(pool)
-                .normalizeInput("g", Map.of("country", List.of("CN", "CN"), "phone", "number")));
+        assertEquals(Map.of("country", List.of("CN")), new MessagingQueryFunction(pool)
+                .normalizeInput("g", Map.of("country", List.of("CN", "CN"))));
+        assertThrows(IllegalArgumentException.class, () -> new MessagingQueryFunction(pool)
+                .normalizeInput("g", Map.of("phone", "number")));
         assertEquals(Map.of("convergenceSlot", "slot"), new ProofFactsQueryFunction(pool)
                 .normalizeInput("g", Map.of("convergenceSlot", "slot")));
         assertEquals(" number ", new PhoneQueryFunction(phones).normalizeInput("g", " number "));
@@ -44,7 +46,7 @@ class PoolQueryFunctionTest {
         var client = mock(RedisClient.class);
         try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_strategy_order"), Map.of());
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,
-                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))))) {
+                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of())) {
             var inputs = new LinkedHashMap<String, WorkerQuery>();
             inputs.put("a", new WorkerQuery("country", List.of("CN", "CN")));
             inputs.put("b", new WorkerQuery("country", List.of("US")));
@@ -69,7 +71,7 @@ class PoolQueryFunctionTest {
         try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_strategy_admission"), Map.of());
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,
                         Map.of(), Map.of("country", new CountryQueryFunction(pool), "workerId", identity),
-                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))))) {
+                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of("workerId"))) {
             var oversized = new LinkedHashMap<String, WorkerQuery>();
             for (int i = 0; i <= 100; i++) oversized.put("m" + i, new WorkerQuery("workerId", "w" + i));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", oversized));

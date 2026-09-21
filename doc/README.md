@@ -30,7 +30,8 @@ proof provides a current validation result.
 - [Java Kernel authority](kernel/README.md)
 - [Kernel mechanical owners](../kernel_jvm/README.md)
 - [Kernel Pacer policy](../kernel_pacer_jvm/README.md)
-- [Worker Matching owner](../worker_matching_jvm/README.md)
+- [Worker Matching owner](../worker_matching_jvm/README.md): bounded Facts qualification,
+  local Pool stock and independent Phone Index, including qualified Direct Messages.
 - [Runtime API Server](../server_jvm/README.md)
 - [Server Boot and profiles](../server_boot_jvm/README.md)
 - [Transport](../transport/README.md)

@@ -101,6 +101,25 @@ public final class FactsIndexStore implements AutoCloseable {
             if (value.hasValue()) result.put(value.getKey(), decodeObject(value.getValue()));
         return Collections.unmodifiableMap(result);
     }
+    private static final String FACTS_SNAPSHOT = """
+            return {redis.call('HMGET',KEYS[1],unpack(ARGV)), redis.call('HMGET',KEYS[2],unpack(ARGV))}
+            """;
+
+    /** Internal qualification snapshot. Both HASH reads share one Redis execution; corrupt present facts fail the batch. */
+    public Map<String, WorkerFacts> readFactsSnapshot(String group, List<String> ids) {
+        if (ids.size() > 100 || new HashSet<>(ids).size() != ids.size())
+            throw new IllegalArgumentException("at most 100 unique Worker identities");
+        if (ids.isEmpty()) return Map.of();
+        List<List<String>> rows = commands().evalReadOnly(FACTS_SNAPSHOT, ScriptOutputType.MULTI,
+                new String[]{workerFactsKey(group), workerPlatformFactsKey(group)}, ids.toArray(String[]::new));
+        var result = new LinkedHashMap<String, WorkerFacts>();
+        for (int i = 0; i < ids.size(); i++) {
+            String worker = rows.get(0).get(i), platform = rows.get(1).get(i);
+            if (worker != null) result.put(ids.get(i), new WorkerFacts(ids.get(i), group,
+                    decodeObject(worker), platform == null ? Map.of() : decodeObject(platform)));
+        }
+        return Collections.unmodifiableMap(result);
+    }
     /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
     public void rebuildIndexes() {
         for (String group:indexesByGroup.keySet()) {

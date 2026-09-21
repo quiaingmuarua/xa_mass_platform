@@ -81,6 +81,6 @@ class DirectQueryFunctionTest {
     }
 
     private RedisWorkerMatchingCatalog catalog(FactsIndexStore storage) {
-        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new PhoneIndex(storage::commands, storage.keyspace()))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))));
+        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new PhoneIndex(storage::commands, storage.keyspace()))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
     }
 }

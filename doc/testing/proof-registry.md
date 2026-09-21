@@ -54,11 +54,19 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Pool stock at a new generation without waiting for the 60-second recycle.
   It also proves that later Pool demand cannot copy existing Country stock, while
   Direct Phone lookup can independently acquire the cached Worker without any Pool
-  notification. Old Pool fences cannot acquire or release the execution hold;
+  notification. Qualified Messaging Phone also uses this path, after one bounded
+  current Facts read; it requires no Messaging Pool supply or inventory. Tests cover
+  phone changes between reads, no-Pool configuration and strict corruption failure.
+  Old Pool fences cannot acquire or release the execution hold;
   concurrent Pool/Direct acquisition has one winner. Recycling allows a new
   generation to enter another Pool while the stale entry remains. Local tests
   prove single-Pool admission and original TTL/selection protections. Scenario
   Coexistence retains its existing business assertions and deadlines.
+  Matching qualification reads only offered Facts: Messaging uses one HMGET and
+  Proof one atomic two-HMGET snapshot. Retired qualification keys, even with wrong
+  types, do not participate in writes, startup or refill. Phone retains its atomic
+  update/rebuild proof. Focused tests cover name-independent batching, explicit
+  rotation and literal-safe Proof views.
   TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
   corruption rejection, terminal-preserving NX, and one-command bounded
@@ -230,6 +238,8 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
   set and neutral Group declarations; finite message execution and later recipient
   observations remain correlated after Task completion or explicit closure.
+  SMS selects Country Pool stock; phone-directed Messages uses qualified Direct
+  lookup with empty supply, while ordinary Messages retains Messaging Pool selection.
   Duplicate/reordered receipts and Worker restart preserve latest content and run
   isolation. Platform/preview executable composition and fresh unified Preview
   delivery remain consistent with public Console availability.

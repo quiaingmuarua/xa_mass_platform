@@ -11,9 +11,12 @@ import java.util.Map;
  * Consumption is independently composed through QueryFunction.
  */
 public interface PoolRefillPolicy {
+    enum TargetBatching { ALL, PAGED }
+    /** How the coordinator presents this policy's targets; observation never advances a page. */
+    TargetBatching targetBatching();
     /** Idempotent query validation/normalization, without Redis reads or stock changes. */
     EligibilityQuery normalizeQuery(String workerGroupId, EligibilityQuery query);
-    /** Observed refill shortages, not reservations; Country accepts up to 10,000 targets together; other policies at most 100. Capacity may suppress refill. */
+    /** Observed shortages, not reservations; ALL accepts up to 10,000 targets, PAGED at most 100. Capacity may suppress refill. */
     Map<EligibilityQuery, Integer> deficits(String workerGroupId, Map<EligibilityQuery, Integer> targets);
     /**
      * Qualifies at most 100 supplied generations and returns IDs actually admitted.

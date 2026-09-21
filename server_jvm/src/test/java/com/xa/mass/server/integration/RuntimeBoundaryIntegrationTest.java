@@ -136,19 +136,17 @@ class RuntimeBoundaryIntegrationTest {
                     return messaging.apply(g,local);
                 }
             });
-            functions.put("proof.messaging.phones", new QueryFunction() {
+            functions.put("proof.messaging.countries", new QueryFunction() {
                 public Object normalizeInput(String g, Object input) {
-                    if (!(input instanceof List<?> phones) || phones.size()!=1 || !(phones.getFirst() instanceof String phone))
-                        throw new IllegalArgumentException("one phone required");
-                    messaging.normalizeInput(g,Map.of("phone",phone)); return List.of(phone);
+                    return ((Map<?, ?>) messaging.normalizeInput(g,Map.of("country",input))).get("country");
                 }
                 public Map<String, WorkerMatching.WorkerCandidate> apply(String g, Map<String, Object> inputs) {
-                    var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("phone",((List<?>)input).getFirst())));
+                    var local=new LinkedHashMap<String,Object>(); inputs.forEach((id,input)->local.put(id,Map.of("country",input)));
                     return messaging.apply(g,local);
                 }
             });
             var catalog=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
-                    System::currentTimeMillis,handlers,functions,rules.groups());
+                    System::currentTimeMillis,handlers,functions,rules.groups(), java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID)).toList(), composition.globalFunctions());
             try { storage.rebuildIndexes(); return catalog; }
             catch(RuntimeException failure) { catalog.close(); throw failure; }
         }
@@ -301,7 +299,7 @@ class RuntimeBoundaryIntegrationTest {
         registry.add("xa.mass.worker-matching.groups[property-tools-boundary].pools[0]", () -> "proof-facts");
         registry.add("xa.mass.worker-matching.groups[shared-pool-functions].pools[0]", () -> "messaging");
         registry.add("xa.mass.worker-matching.groups[shared-pool-functions].functions[0]", () -> "proof.messaging.country");
-        registry.add("xa.mass.worker-matching.groups[shared-pool-functions].functions[1]", () -> "proof.messaging.phones");
+        registry.add("xa.mass.worker-matching.groups[shared-pool-functions].functions[1]", () -> "proof.messaging.countries");
         registry.add("xa.mass.task-rpc.refill-by-worker-group[shared-pool-functions]", () -> "");
         registry.add("xa.mass.task-item-outcomes.names[7]", () -> "delivered");
         registry.add("xa.mass.task-item-outcomes.names[8]", () -> "read");
@@ -696,15 +694,18 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(send("POST","/api/v1/tasks/"+supplier+"/items",Jsons.toJson(List.of(Map.of("messageId",pending,"eventCode",event,
                     "payload",Map.of(),"workerSelector",Map.of("executorName","workerId","input","absent-worker"))))).statusCode()).isEqualTo(200);
             assertThat(send("POST","/api/v1/tasks/"+supplier+"/approve",null).statusCode()).isEqualTo(200);
-            for(String function:List.of("proof.messaging.country","proof.messaging.phones")) {
+            for(String function:List.of("proof.messaging.country","proof.messaging.countries")) {
                 var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of())));
                 String task=JSON.readTree(consumer.body()).get("taskId").asText(), id=UUID.randomUUID().toString();
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(task)).get(task).refill()).isEmpty();
-                Object input=function.endsWith("country")?"CN":List.of(phone);
-                assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
-                        "workerSelector",Map.of("executorName",function,"input",input))))).statusCode()).isEqualTo(200);
+                Object input=function.endsWith("country")?"CN":List.of("CN");
+                var appended=send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(List.of(Map.of("messageId",id,"eventCode",event,"payload",Map.of(),
+                        "workerSelector",Map.of("executorName",function,"input",input)))));
+                assertThat(appended.statusCode()).isEqualTo(200);
+                assertThat(JSON.readTree(appended.body()).get(id).get("status").asText()).as(function).isEqualTo("applied");
                 assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
-                awaitTaskExport(task);
+                try { awaitTaskExport(task); }
+                catch (AssertionError failure) { throw new AssertionError("Shared Pool function did not execute: " + function, failure); }
                 var observed=JSON.readTree(send("POST","/api/v1/tasks/"+task+"/results:load",Jsons.toJson(List.of(id))).body()).get(id);
                 assertThat(observed.get("status").asText()).isEqualTo("succeeded");
                 assertThat(Jsons.parseObject(observed.get("opaqueResultPayload").asText())).containsEntry("executor",workerId);

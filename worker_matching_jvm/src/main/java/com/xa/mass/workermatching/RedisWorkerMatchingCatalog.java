@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -32,6 +31,8 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private final Map<String,PoolRefillPolicy> handlers;
     private final Map<String,QueryFunction> executors;
     private final Map<String,MatchingGroup> groups;
+    private final Map<String,Integer> poolPositions;
+    private final Set<String> globalFunctions;
     private record Scope(String workerGroupId,String poolName) { }
     private final LongSupplier clock;
     private final Map<String,Integer> eligibilityCursors=new LinkedHashMap<>();
@@ -42,13 +43,24 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     public RedisWorkerMatchingCatalog(FactsIndexStore storage, CandidateBudget budget,
             Map<String, CandidatePool> pools, LongSupplier clock,
             Map<String,PoolRefillPolicy> poolPolicies, Map<String,QueryFunction> queryFunctions,
-            Map<String,MatchingGroup> groups) {
+            Map<String,MatchingGroup> groups, List<String> poolOrder, Set<String> globalFunctions) {
         this.storage=Objects.requireNonNull(storage,"storage");
         this.budget=Objects.requireNonNull(budget,"budget");
         this.pools=Map.copyOf(pools);
         this.clock=Objects.requireNonNull(clock,"clock");
         this.handlers=Map.copyOf(poolPolicies);
         this.executors=Map.copyOf(queryFunctions);
+        var positions=new LinkedHashMap<String,Integer>();
+        for (String name : poolOrder) {
+            if (positions.putIfAbsent(name, positions.size()) != null)
+                throw new IllegalArgumentException("duplicate Pool in rotation order");
+        }
+        if (!positions.keySet().equals(handlers.keySet()))
+            throw new IllegalArgumentException("rotation order must name every Pool policy exactly once");
+        this.poolPositions=Map.copyOf(positions);
+        this.globalFunctions=Set.copyOf(globalFunctions);
+        if (!executors.keySet().containsAll(this.globalFunctions))
+            throw new IllegalArgumentException("unknown global function");
         executors.keySet().forEach(id -> requireNonBlank(id,"executorName"));
         handlers.keySet().forEach(id->requireNonBlank(id,"Pool name"));
         var instances=Collections.newSetFromMap(new java.util.IdentityHashMap<PoolRefillPolicy,Boolean>());
@@ -83,7 +95,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private QueryFunction requireExecutor(String group, String name) {
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var executor = executors.get(name);
-        if (executor == null || !"workerId".equals(name)
+        if (executor == null || !globalFunctions.contains(name)
                 && !groups.getOrDefault(group, new MatchingGroup(Set.of(),Set.of())).functions().contains(name))
             throw new IllegalArgumentException("unavailable Matching function");
         return executor;
@@ -183,7 +195,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         var deficits=new LinkedHashMap<String,Integer>();
         targets.forEach((scope,rows)->{
             var handler=requireEligibility(scope.workerGroupId(),scope.poolName());
-            if (scope.poolName().equals("country")) {
+            if (handler.targetBatching() == PoolRefillPolicy.TargetBatching.ALL) {
                 int missing=handler.deficits(scope.workerGroupId(),targetCounts(rows)).values().stream().mapToInt(Integer::intValue).sum();
                 if(missing>0)deficits.merge(scope.workerGroupId(),Math.min(budget.available(),missing),Integer::sum);
             } else {
@@ -223,8 +235,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
     private int refill(String group, Map<Scope, List<RefillTarget>> declaredTargets, Map<String, Long> candidates) {
         var scopes=declaredTargets.entrySet().stream()
                 .sorted(java.util.Comparator.<Map.Entry<Scope,List<RefillTarget>>>comparingInt(
-                        entry -> poolOrder(entry.getKey().poolName()))
-                        .thenComparing(entry -> entry.getKey().poolName())).toList();
+                        entry -> poolPositions.get(entry.getKey().poolName()))).toList();
         var remaining=new LinkedHashSet<>(candidates.keySet());
         if(remaining.isEmpty() || scopes.isEmpty())return 0;
         int start=Math.floorMod(eligibilityCursors.getOrDefault(group,0),scopes.size());
@@ -236,7 +247,7 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             var handler=requireEligibility(group,scope.poolName());
             List<RefillTarget> selected;
             RefillPage page=null;
-            if (scope.poolName().equals("country")) {
+            if (handler.targetBatching() == PoolRefillPolicy.TargetBatching.ALL) {
                 selected=entry.getValue();
             } else {
                 page=page(scope,entry.getValue(),handler);
@@ -268,17 +279,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
         var result = new LinkedHashMap<EligibilityQuery, Integer>();
         targets.forEach(target -> result.merge(target.target(), target.count(), Math::max));
         return Collections.unmodifiableMap(result);
-    }
-
-    /** Preserve the fixed maintenance rotation independently of consumer function names. */
-    private static int poolOrder(String name) {
-        return switch (name) {
-            case "proof-facts" -> 0;
-            case "country" -> 1;
-            case "any" -> 2;
-            case "messaging" -> 3;
-            default -> 4;
-        };
     }
 
     @Override public Map<String,MutationResult> upsertWorkerFactsBatch(String group,Map<String,Map<String,String>> facts) {
@@ -353,10 +353,6 @@ public final class RedisWorkerMatchingCatalog implements WorkerMatchingCatalog, 
             }
         }
         return List.copyOf(unique);
-    }
-
-    private static <K, V> Map<K, V> immutableNullableMap(Map<K, V> source) {
-        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 
     private static void requireNonBlank(String value, String name) {

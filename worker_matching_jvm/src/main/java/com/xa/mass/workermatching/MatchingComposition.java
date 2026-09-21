@@ -4,13 +4,12 @@ import com.xa.mass.workermatching.functions.PhoneQueryFunction;
 import com.xa.mass.workermatching.functions.IdentityQueryFunction;
 import com.xa.mass.workermatching.functions.ProofFactsQueryFunction;
 import com.xa.mass.workermatching.functions.MessagingQueryFunction;
+import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.IndexMutation;
-import com.xa.mass.workermatching.index.MessagingIndex;
 import com.xa.mass.workermatching.index.PhoneIndex;
-import com.xa.mass.workermatching.index.ProofFactsIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.CandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
@@ -31,6 +30,8 @@ public final class MatchingComposition {
     private final Map<String, CandidatePool> pools;
     private final Map<String, PoolRefillPolicy> policies;
     private final Map<String, QueryFunction> functions;
+    private final List<String> poolOrder;
+    private final Set<String> globalFunctions = Set.of("workerId");
 
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
         this.storage = Objects.requireNonNull(storage);
@@ -67,25 +68,27 @@ public final class MatchingComposition {
                     functions.put("worker.country", new CountryQueryFunction(pool));
                 }
                 case "messaging" -> {
-                    var index = new MessagingIndex(storage::commands, storage.keyspace());
-                    policies.put(name, new MessagingPoolPolicy(pool, index));
+                    policies.put(name, new MessagingPoolPolicy(pool, storage::readWorkerFacts));
                     functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
                 }
                 case "proof-facts" -> {
-                    var index = new ProofFactsIndex(storage::commands, storage.keyspace());
-                    policies.put(name, new ProofFactsPoolPolicy(pool, index));
+                    policies.put(name, new ProofFactsPoolPolicy(pool, storage::readFactsSnapshot));
                     functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
                 }
                 default -> throw new IllegalStateException("Unexpected built-in Pool");
             }
         }
-        if (enabledFunctions.contains("worker.phone")) {
+        if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
             var phone = new PhoneIndex(storage::commands, storage.keyspace());
-            functions.put("worker.phone", new PhoneQueryFunction(phone));
+            if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
+            if (enabledFunctions.contains("worker.messaging.phone"))
+                functions.put("worker.messaging.phone", new MessagingPhoneQueryFunction(phone, storage::readWorkerFacts));
         }
         this.pools = Map.copyOf(pools);
         this.policies = Map.copyOf(policies);
         this.functions = Map.copyOf(functions);
+        this.poolOrder = List.of("proof-facts", "country", "any", "messaging").stream()
+                .filter(policies::containsKey).toList();
     }
 
     /** Fixed dependencies, independent of Task demand or current Pool inventory. */
@@ -93,9 +96,8 @@ public final class MatchingComposition {
         var indexes = new LinkedHashMap<String, List<IndexMutation>>();
         groups.forEach((group, config) -> {
             var resources = new ArrayList<IndexMutation>();
-            if (config.pools().contains("messaging")) resources.add(MessagingIndex.mutation());
-            if (config.pools().contains("proof-facts")) resources.add(ProofFactsIndex.mutation());
-            if (config.functions().contains("worker.phone")) resources.add(PhoneIndex.mutation());
+            if (config.functions().contains("worker.phone") || config.functions().contains("worker.messaging.phone"))
+                resources.add(PhoneIndex.mutation());
             indexes.put(group, List.copyOf(resources));
         });
         return Collections.unmodifiableMap(indexes);
@@ -105,9 +107,12 @@ public final class MatchingComposition {
     public CandidateBudget budget() { return budget; }
     public Map<String, PoolRefillPolicy> policies() { return policies; }
     public Map<String, QueryFunction> functions() { return functions; }
+    public List<String> poolOrder() { return poolOrder; }
+    public Set<String> globalFunctions() { return globalFunctions; }
 
     public RedisWorkerMatchingCatalog catalog() {
-        return new RedisWorkerMatchingCatalog(storage, budget, pools, clock, policies, functions, groups);
+        return new RedisWorkerMatchingCatalog(storage, budget, pools, clock, policies, functions, groups,
+                poolOrder, globalFunctions);
     }
 
     public static RedisWorkerMatchingCatalog create(RedisClient client, RedisKeyspace keyspace,

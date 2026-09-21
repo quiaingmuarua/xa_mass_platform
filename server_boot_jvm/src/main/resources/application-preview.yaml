@@ -19,7 +19,7 @@ xa:
       groups:
         demo-sim:
           pools: [country, messaging]
-          functions: [worker.country, worker.messaging.available, worker.phone]
+          functions: [worker.country, worker.messaging.available, worker.messaging.phone, worker.phone]
         app-a-sim:
           pools: [any]
           functions: [worker.any]

@@ -100,6 +100,28 @@ class MessageTaskServiceTest {
             assertThatThrownBy(() -> service.create(input(200))).hasMessageContaining("different content");
         }
     }
+
+    @Test void senderPhoneUsesQualifiedDirectQueryWithoutPoolSupply() {
+        for (String senderCountry : Arrays.asList("US", null)) {
+            reset(creation, data, lifecycle);
+            try (var service = service()) {
+                var request = new HashMap<>(input(1)); request.put("senderCountry", senderCountry);
+                var created = service.create(request);
+                verify(creation).create(argThat(r -> r.refill().isEmpty()
+                        && r.metadata().get("senderPhone").equals("+86123")
+                        && r.metadata().get("recipientCountry").equals("CN")));
+                var expected = new LinkedHashMap<String, Object>(); expected.put("phone", "+86123");
+                if (senderCountry != null) expected.put("country", List.of(senderCountry));
+                verify(data).appendFiniteTaskItems(eq("finite-task"), argThat(items -> items.size() == 1
+                        && items.getFirst().workerSelector().executorName().equals("worker.messaging.phone")
+                        && items.getFirst().workerSelector().input().equals(expected)
+                        && ((Map<?, ?>) items.getFirst().payload()).get("country").equals("CN")));
+                verify(lifecycle).approve("finite-task");
+                assertThat(service.create(request)).isEqualTo(created);
+                verify(creation, times(1)).create(any());
+            }
+        }
+    }
     @Test void partialAppendAndUnknownCreationRetainGeneratedIdAndNeverRetry() {
         try (var service = service()) {
             doThrow(new IllegalStateException("Lost response")).when(data).appendFiniteTaskItems(anyString(), anyList());

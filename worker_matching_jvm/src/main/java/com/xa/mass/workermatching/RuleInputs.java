@@ -1,7 +1,5 @@
 package com.xa.mass.workermatching;
 
-import com.xa.mass.workermatching.index.CountryIndex;
-
 import java.util.*;
 
 /** Local parameter helpers for the fixed Pool strategies, not a shared query language. */
@@ -33,8 +31,5 @@ public final class RuleInputs {
     public static boolean validCountry(String value) {
         return value.length() == 2 && value.charAt(0) >= 'A' && value.charAt(0) <= 'Z'
                 && value.charAt(1) >= 'A' && value.charAt(1) <= 'Z';
-    }
-    public static List<String> codes(Object input) {
-        return countries(input).stream().map(country -> Integer.toString(CountryIndex.code(country))).toList();
     }
 }

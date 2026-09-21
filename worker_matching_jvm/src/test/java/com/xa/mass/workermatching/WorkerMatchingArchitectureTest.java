@@ -13,17 +13,23 @@ class WorkerMatchingArchitectureTest {
     private static final Path SOURCE = Path.of("src/main/java");
 
     @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
-        assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.",
+        assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.", "com.xa.mass.workermatching.views.", "WorkerFacts",
                 ".functions.", ".refill.", "executorName", "QueryFunction", "PoolRefillPolicy"));
         assertPackageDependencies("index", List.of(".pool.", ".refill.", ".functions.",
                 "executorName", "QueryFunction", "PoolRefillPolicy", "CandidateBudget"));
+        assertPackageDependencies("views", List.of("io.lettuce", ".index.", ".storage.", ".functions.", ".refill.", "redis.call"));
         assertPackageDependencies("storage", List.of(".pool.", ".refill.", ".functions.",
                 "executorName", "CandidateBudget", "CandidatePool"));
         assertPackageDependencies("functions", List.of(".refill.", ".storage.", "io.lettuce",
-                "PoolRefillPolicy", "PoolMaintenance", "new CandidatePool", "new PhoneIndex",
-                "new MessagingIndex", "new ProofFactsIndex", "new Thread"));
+                "PoolRefillPolicy", "PoolMaintenance", "new CandidatePool", "new PhoneIndex", "new Thread", ".admit(", ".discardChanged("));
         assertPackageDependencies("refill", List.of("io.lettuce", "IndexMutation", "prepareLua",
-                "new PhoneIndex", "new MessagingIndex", "new ProofFactsIndex", "redis.call", ":matching:"));
+                ".index.", ".storage.", "redis.call", ":matching:"));
+    }
+
+    @Test void catalogCoordinatesCapabilitiesWithoutBusinessNamesOrRedisCommands() throws IOException {
+        String source = Files.readString(SOURCE.resolve("com/xa/mass/workermatching/RedisWorkerMatchingCatalog.java"));
+        for (String forbidden : List.of("\"country\"", "\"messaging\"", "\"proof-facts\"", "\"workerId\".equals",
+                "io.lettuce", ".commands()", "redis.call")) assertFalse(source.contains(forbidden), forbidden);
     }
 
     private void assertPackageDependencies(String name, List<String> forbidden) throws IOException {

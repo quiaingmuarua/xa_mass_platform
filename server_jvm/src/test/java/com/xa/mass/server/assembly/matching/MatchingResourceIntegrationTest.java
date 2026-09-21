@@ -105,7 +105,7 @@ class MatchingResourceIntegrationTest {
                 }
             });
             try (var catalog = new RedisWorkerMatchingCatalog(store, composition.budget(), composition.pools(),
-                    System::currentTimeMillis, composition.policies(), functions, groups)) {
+                    System::currentTimeMillis, composition.policies(), functions, groups, composition.poolOrder(), composition.globalFunctions())) {
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "number")));
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("direct", new WorkerQuery("worker.phone", "number"));
@@ -134,31 +134,25 @@ class MatchingResourceIntegrationTest {
         }
     }
 
-    @Test void everyIndexPreflightProtectsFactsAndOtherIndexesWithoutAnyDemand() {
+    @Test void phonePreflightProtectsFactsAndMembershipWithoutAnyDemand() {
         var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone")));
         try (var catalog = MatchingComposition.create(client, scope.keyspace(), groups)) {
             var original = Map.of("phone", "old", "country", "CN", "messaging.enabled", "true", "proofPool", "A", "proofTarget", "yes");
             catalog.upsertWorkerFactsBatch("g", Map.of("w", original));
             var root = IndexMutation.base(scope.keyspace(), "g");
             var factsKey = scope.keyspace().base() + ":matching:worker:facts:g";
-            for (String namespace : List.of("phone", "messaging", "proof")) {
-                String broken = root + ":" + namespace;
-                // Preserve and restore the existing resource to exercise each preflight independently.
-                byte[] dump = redis.dump(broken);
-                redis.del(broken); redis.set(broken, "wrong-type");
-                String before = redis.hget(factsKey, "w");
-                var beforeIndexes = new LinkedHashMap<String, byte[]>();
-                for (String suffix : List.of("phone", "messaging", "messaging:partitions", "proof", "proof:partitions"))
-                    beforeIndexes.put(root + ":" + suffix, redis.dump(root + ":" + suffix));
-                assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of("w",
-                        Map.of("phone", "new", "country", "US", "messaging.enabled", "true"))))
-                        .isInstanceOf(RuntimeException.class);
-                assertThat(redis.hget(factsKey, "w")).isEqualTo(before);
-                beforeIndexes.forEach((key, bytes) -> assertThat(redis.dump(key)).as(key).isEqualTo(bytes));
-                redis.del(broken); if (dump != null) redis.restore(broken, 0, dump);
-                assertThat(phone(catalog, "old")).containsValue(new WorkerCandidate("w", 0));
-                assertThat(phone(catalog, "new")).isEmpty();
-            }
+            String broken = root + ":phone";
+            byte[] dump = redis.dump(broken);
+            redis.unlink(broken); redis.set(broken, "wrong-type");
+            String before = redis.hget(factsKey, "w");
+            assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of("w",
+                    Map.of("phone", "new", "country", "US", "messaging.enabled", "true"))))
+                    .isInstanceOf(RuntimeException.class);
+            assertThat(redis.hget(factsKey, "w")).isEqualTo(before);
+            assertThat(redis.get(broken)).isEqualTo("wrong-type");
+            redis.unlink(broken); redis.restore(broken, 0, dump);
+            assertThat(phone(catalog, "old")).containsValue(new WorkerCandidate("w", 0));
+            assertThat(phone(catalog, "new")).isEmpty();
         }
     }
 

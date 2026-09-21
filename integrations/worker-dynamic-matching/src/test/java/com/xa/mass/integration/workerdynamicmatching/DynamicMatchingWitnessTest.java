@@ -21,6 +21,17 @@ import org.junit.jupiter.api.io.TempDir;
 class DynamicMatchingWitnessTest {
     @TempDir Path temporary;
 
+    @Test void missingPoolWitnessOmitsTheConditionWhileLiteralSentinelsRemainLiteral() throws Exception {
+        try (var fixture = new Fixture(temporary, true)) {
+            var rule = DynamicMatchingMain.class.getDeclaredMethod("rule", String.class, boolean.class, boolean.class);
+            rule.setAccessible(true);
+            assertEquals(Map.of("worker.proofTarget", List.of("yes"), "platform.proofEnabled", List.of("yes")),
+                    rule.invoke(fixture.harness, null, true, true));
+            assertEquals(Map.of("worker.proofPool", List.of("~"), "worker.proofTarget", List.of("yes"),
+                    "platform.proofEnabled", List.of("yes")), rule.invoke(fixture.harness, "~", true, true));
+        }
+    }
+
     @Test void observesWitnessResultsWithoutWaitingForTheBackgroundReader() throws Exception {
         try (var fixture = new Fixture(temporary, true)) {
             fixture.allow(Duration.ofSeconds(2));

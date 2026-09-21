@@ -71,7 +71,7 @@ and SDK publication path. Platform Properties still use their independent Server
 | A baseline | Submit target-only B witness; three seconds with no execution or Result while background work runs. |
 | A to B | Four Lab writers issue eight `properties.update` rounds over 100 targets, sequential per Worker and at least 500 ms between rounds, without remote observation waits. B witness subsequently succeeds on actual targets. |
 | B stable | Submit target-only A witness; require no execution/Result for three seconds and retain it for final recovery. |
-| Pool removed | `properties.replace` omits `proofPool` and prior delta fields. The fixed target-only pool-absent witness succeeds. |
+| Pool removed | `properties.replace` omits `proofPool` and prior delta fields. Facts observers confirm absence before the fixed target-only, enabled witness is created and succeeds; its query omits the pool condition. |
 | Platform disabled | Restore B, change only target Platform Properties to `proofEnabled=no`, submit another B witness and establish a three-second negative window. |
 | Platform enabled | Patch only Platform Properties to `yes`; the waiting B witness succeeds. Worker Properties remain unchanged. |
 | Return A | Replace target Properties with their A baselines. The waiting A witness succeeds; drain all seven Tasks. |

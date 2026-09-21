@@ -77,7 +77,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var composition=new MatchingComposition(storage,groups,clock);
         var traced=new LinkedHashMap<String,PoolRefillPolicy>(); composition.policies().forEach((id,policy)->traced.put(id,trace(policy)));
         var result=new RedisWorkerMatchingCatalog(storage,composition.budget(),composition.pools(),
-                clock,traced,composition.functions(),groups);
+                clock,traced,composition.functions(),groups, composition.poolOrder(), composition.globalFunctions());
         stores.put(result,storage);
         return result;
     }
@@ -95,12 +95,13 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var policies=new LinkedHashMap<>(composition.policies()); policies.put(BucketPoolFixture.ID,bucket);
         var functions=new LinkedHashMap<>(composition.functions()); functions.put(BucketPoolFixture.ID,bucket.functions());
         var result=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
-                System::currentTimeMillis,policies,functions,groups);
+                System::currentTimeMillis,policies,functions,groups, java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID)).toList(), composition.globalFunctions());
         stores.put(result,storage);
         return result;
     }
     private PoolRefillPolicy trace(PoolRefillPolicy handler) {
         return new PoolRefillPolicy() {
+            public TargetBatching targetBatching() { return handler.targetBatching(); }
             public EligibilityQuery normalizeQuery(String group,EligibilityQuery query) { return handler.normalizeQuery(group,query); }
             public Map<EligibilityQuery,Integer> deficits(String group,Map<EligibilityQuery,Integer> targets) { return handler.deficits(group,targets); }
             public List<String> refill(String group,Map<EligibilityQuery,Integer> targets,Map<String, Long> offered,int maxAccepted) {
@@ -179,15 +180,15 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(first).hasSize(40);assertThat(second).hasSize(60);assertThat(commandTypes).isEmpty();
         var ids=new HashSet<String>();first.forEach(h->assertThat(ids.add(h.workerId())).isTrue());second.forEach(h->assertThat(ids.add(h.workerId())).isTrue());
     }
-    @Test void messagingPhoneAndCountryIntersectionUsesOnlyExistingStockViews() {
+    @Test void messagingCountryAndAnyQueriesUseOnlyExistingStockViews() {
         catalog.upsertWorkerFactsBatch("g",Map.of("cn",messageFacts("CN","same"),
                 "us",messageFacts("US","same"),"other",messageFacts("CN","other")));
         hot("g",List.of("cn","us","other")); declare("messages","worker.messaging.available");
         assertThat(refill("messages")).isEqualTo(3);
         var requests=new LinkedHashMap<String,WorkerQuery>();
-        requests.put("intersection",new WorkerQuery("worker.messaging.available",Map.of("country",List.of("CN"),"phone","same")));
-        requests.put("phone",new WorkerQuery("worker.messaging.available",Map.of("phone","same")));
-        requests.put("other",new WorkerQuery("worker.messaging.available",Map.of("phone","other")));
+        requests.put("country",new WorkerQuery("worker.messaging.available",Map.of("country",List.of("CN"))));
+        requests.put("us",new WorkerQuery("worker.messaging.available",Map.of("country",List.of("US"))));
+        requests.put("any",new WorkerQuery("worker.messaging.available",Map.of()));
         commandTypes.clear();
         assertThat(catalog.take("g",requests).values()).extracting(WorkerCandidate::workerId).containsExactly("cn","us","other");
         assertThat(commandTypes).isEmpty();
@@ -550,10 +551,10 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(commandTypes).isEmpty();
     }
 
-    @Test void sparsePhoneTargetsReadCurrentFactsAfterCandidateization() {
+    @Test void messagingCountryTargetReadsCurrentFactsAfterCandidateization() {
         catalog.upsertWorkerFactsBatch("g",Map.of("target",messageFacts("CN","rare")));
         hot("g",List.of("target"));
-        var q=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN"),"worker.phone",List.of("rare"))), 1);
+        var q=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("worker.country",List.of("CN"))), 1);
         declareTask("messages","g","worker.messaging.available",List.of(q));
         var prepared=declarations("messages");
         var held=candidateize("g",offer("g",100));
@@ -821,14 +822,15 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThat(facts.workerProperties()).containsEntry("sequence","99");
         assertThat(facts.platformProperties()).containsEntry("sequence","99");
     }
-    @Test void corruptFactsAndIndexCannotBeSilentlyOverwritten() {
-        catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","CN")));
-        hot("g",List.of("w"));
-        String index=keyspace.base()+":matching:worker:index:Zw:messaging";
-        redis.zadd(index,-1,"w");
-        assertThatThrownBy(()->catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","US")))) .isInstanceOf(RuntimeException.class);
-        assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").workerProperties()).containsEntry("country","CN");
-        assertThatThrownBy(()->refillDeclarations(Map.of("task",declare("task","worker.messaging.available")))).isInstanceOf(RuntimeException.class);
+    @Test void corruptStoredFactsCannotBeSilentlyOverwritten() {
+        catalog.upsertWorkerFactsBatch("g", Map.of("w", messageFacts("CN", "phone")));
+        String facts = keyspace.base() + ":matching:worker:facts:g";
+        redis.hset(facts, "w", "[]");
+        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of("w", messageFacts("US", "new"))))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(redis.hget(facts, "w")).isEqualTo("[]");
+        // The public observation retains its row-local null result.
+        assertThat(catalog.loadWorkerFacts("g", List.of("w"))).containsEntry("w", null);
     }
     @Test void obsoleteCountryIndexesAreNeitherReadUpdatedNorRebuilt() {
         catalog.close();catalog=createCatalog(Map.of("g",Set.of("worker.country")));
@@ -848,20 +850,88 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThatThrownBy(()->refill("country")).isInstanceOf(IllegalArgumentException.class);
         assertThat(takeItems(catalog,"g","worker.country",Map.of(),100)).isEmpty();
     }
-    @Test void corruptPartitionMetadataRejectsProjectionWithoutChangingTheIndex() {
-        catalog.upsertWorkerFactsBatch("g", Map.of("w", messageFacts("CN", "phone")));
-        String key = keyspace.base() + ":matching:worker:index:Zw:messaging";
-        hot("g",List.of("w"));
-        redis.hset(key + ":partitions", "w", "{}");
-        Double score = redis.zscore(key, "w");
-        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of("w", messageFacts("US", "new"))))
-                .isInstanceOf(RuntimeException.class);
-        assertThat(catalog.loadWorkerFacts("g", List.of("w")).get("w").workerProperties())
-                .containsEntry("country", "CN");
-        assertThatThrownBy(() -> refillDeclarations(Map.of("messaging",declare("messaging","worker.messaging.available"))))
-                .isInstanceOf(RuntimeException.class);
-        assertThat(redis.zscore(key, "w")).isEqualTo(score);
+    @Test void retiredQualificationIndexesAreNotReadWrittenValidatedOrRebuilt() {
+        var oldKeys = new LinkedHashMap<String, String>();
+        for (String name : List.of("messaging", "proof")) {
+            String root = keyspace.base() + ":matching:worker:index:Zw:" + name;
+            oldKeys.put(root, "wrong-type-root");
+            oldKeys.put(root + ":partitions", "wrong-type-partitions");
+            oldKeys.put(root + ":partition:legacy", "obsolete-partition");
+        }
+        oldKeys.forEach(redis::set);
+        catalog.upsertWorkerFactsBatch("g", Map.of("message", messageFacts("CN", "phone"),
+                "proof", Map.of("proofPool", "*")));
+        catalog.patchWorkerPlatformProperties("g", "proof", Map.of("proofEnabled", "yes"));
+        var enabled = groups(Map.of("g", Set.of("worker.messaging.available", "proof.worker.facts")));
+        commandTypes.clear();
+        try (var restarted = MatchingComposition.create(redisClient, keyspace, enabled)) {
+            assertThat(commandTypes).isEmpty(); // No qualification index startup scan, even with poisoned keys.
+            commandTypes.clear();
+            assertThat(restarted.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("message", 42L))).isEqualTo(1);
+            assertThat(commandTypes).containsExactly("HMGET");
+            commandTypes.clear();
+            assertThat(restarted.refill("g", List.of(new RefillTarget("proof-facts", ANY, 1)), Map.of("proof", 43L))).isEqualTo(1);
+            assertThat(commandTypes).containsExactly("EVAL_RO");
+            assertThat(restarted.take("g", Map.of("m", new WorkerQuery("proof.worker.facts", Map.of("proofPool", "*",
+                    "proofEnabled", "yes"))))).containsEntry("m", new WorkerCandidate("proof", 43L));
+        }
+        oldKeys.forEach((key, value) -> assertThat(redis.get(key)).isEqualTo(value));
     }
+
+    @Test void qualificationReadsOnlyOfferedFactsAndCorruptionCannotPartiallyAdmit() {
+        String workerKey = keyspace.base() + ":matching:worker:facts:g";
+        String platformKey = keyspace.base() + ":matching:worker:platform-properties:g";
+        catalog.upsertWorkerFactsBatch("g", Map.of("valid", messageFacts("CN", "phone"),
+                "bad", messageFacts("US", "other")));
+        redis.hset(workerKey, "unoffered", "[]");
+        redis.hset(platformKey, "unoffered", "[]");
+        commandTypes.clear();
+        assertThat(catalog.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("valid", 42L))).isEqualTo(1);
+        assertThat(commandTypes).containsExactly("HMGET");
+        assertThat(catalog.take("g", Map.of("m", new WorkerQuery("worker.messaging.available", Map.of()))))
+                .containsEntry("m", new WorkerCandidate("valid", 42L));
+        // Even after a valid first row, both strict paths fail before this Pool admits anything.
+        var offered = new LinkedHashMap<String, Long>(); offered.put("valid", 43L); offered.put("bad", 44L);
+        redis.hset(workerKey, "bad", "[]");
+        assertThatThrownBy(() -> catalog.refill("g", List.of(new RefillTarget("messaging", ANY, 2)), offered))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(catalog.take("g", Map.of("m", new WorkerQuery("worker.messaging.available", Map.of())))).isEmpty();
+        redis.hset(workerKey, "bad", "{}");
+        redis.hset(platformKey, "bad", "[]");
+        assertThatThrownBy(() -> catalog.refill("g", List.of(new RefillTarget("proof-facts", ANY, 2)), offered))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(catalog.take("g", Map.of("m", new WorkerQuery("proof.worker.facts", Map.of())))).isEmpty();
+        // Absent Worker rows are skipped; absent Platform is an empty map.
+        redis.hset(platformKey, "missing", "[]");
+        commandTypes.clear();
+        var snapshot = stores.get(catalog).readFactsSnapshot("g", List.of("valid", "missing"));
+        assertThat(commandTypes).containsExactly("EVAL_RO");
+        assertThat(snapshot.keySet()).containsExactly("valid");
+        assertThat(snapshot.get("valid").platformProperties()).isEmpty();
+    }
+
+    @Test void proofSnapshotCannotMixWorkerAndPlatformCommits() throws Exception {
+        String workerKey = keyspace.base() + ":matching:worker:facts:g";
+        String platformKey = keyspace.base() + ":matching:worker:platform-properties:g";
+        String write = "redis.call('HSET',KEYS[1],ARGV[1],ARGV[2]); redis.call('HSET',KEYS[2],ARGV[1],ARGV[2]); return 1";
+        redis.eval(write, io.lettuce.core.ScriptOutputType.INTEGER, new String[]{workerKey, platformKey}, "w", "{\"version\":0}");
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var writer = executor.submit(() -> {
+                start.await();
+                for (int i = 1; i <= 200; i++) redis.eval(write, io.lettuce.core.ScriptOutputType.INTEGER,
+                        new String[]{workerKey, platformKey}, "w", "{\"version\":" + i + "}");
+                return null;
+            });
+            start.countDown();
+            for (int i = 0; i < 200; i++) {
+                var facts = stores.get(catalog).readFactsSnapshot("g", List.of("w")).get("w");
+                assertThat(facts.workerProperties().get("version")).isEqualTo(facts.platformProperties().get("version"));
+            }
+            writer.get(10, TimeUnit.SECONDS);
+        }
+    }
+
     @Test void rebuildingAGroupWithGlobAndSeparatorCharactersDoesNotClearAnotherGroup() {
         String special = "g:*[x]";
         try (var selected = createCatalog(Map.of(special, Set.of("worker.country")));
@@ -875,7 +945,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
             assertThat(takeItems(neighbor,query.workerGroupId(),"worker.country",Map.of(),1)).extracting(h -> h.workerId()).containsExactly("b");
         }
     }
-    @Test void startupRebuildUsesRetainedFactsAndOnlyThisGroupsIndexes() {
+    @Test void restartQualificationUsesRetainedFactsWithoutIndexRebuild() {
         catalog.upsertWorkerFactsBatch("g",Map.of("w",messageFacts("CN","phone")));
         var query=declare("message","worker.messaging.available");
         redis.set(keyspace.base()+":unrelated","kept");

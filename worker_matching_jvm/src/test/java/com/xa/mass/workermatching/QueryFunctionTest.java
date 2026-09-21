@@ -17,7 +17,17 @@ class QueryFunctionTest {
 
     RedisWorkerMatchingCatalog catalog(FactsIndexStore storage, Map<String, QueryFunction> functions) {
         return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(),
-                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())));
+                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())), List.of(), Set.of());
+    }
+
+    @Test void globalAvailabilityIsCompositionDataAndAllowsUnknownGroups() {
+        try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_global_function"), Map.of());
+             var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis,
+                     Map.of(), Map.of("renamed", new com.xa.mass.workermatching.functions.IdentityQueryFunction()),
+                     Map.of(), List.of(), Set.of("renamed"))) {
+            assertEquals("w", catalog.take("not-configured", Map.of("m", new WorkerQuery("renamed", "w"))).get("m").workerId());
+            assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("workerId", "w")));
+        }
     }
 
     @Test void scalarStrategiesNeedNeitherRefillPolicyNorPoolAndKeepCallLocalOrder() {
@@ -128,6 +138,7 @@ class QueryFunctionTest {
     @Test void independentMapStockCanShareRefillAndNamedConsumptionWithoutUsingPoolResource() {
         var held = new LinkedHashMap<String, Long>();
         PoolRefillPolicy rule = new PoolRefillPolicy() {
+            public TargetBatching targetBatching() { return TargetBatching.PAGED; }
             public EligibilityQuery normalizeQuery(String g, EligibilityQuery q) {
                 if (!q.query().isEmpty()) throw new IllegalArgumentException(); return q;
             }
@@ -160,7 +171,7 @@ class QueryFunctionTest {
         var client = mock(RedisClient.class);
         try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_map_function"), Map.of());
                 var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis,
-                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))))) {
+                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of())) {
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
             assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));

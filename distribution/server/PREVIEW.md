@@ -68,9 +68,11 @@ owns Server/Adapter/Endpoint coordinates. It is packaged in the Boot JAR and
 copied to source `build/preview/config` and archive `config` by the distribution. Preview
 enables all three business libraries. SMS/Messages share one mixed-country
 `demo-sim` Group and Host Manager. App Checks uses one Manager per App Group.
-SMS queries shared country Pool stock; Messages uses the
-`worker.messaging.available` function over messaging Pool stock. Their Task
-supply declarations remain separate from Item queries.
+SMS queries shared country Pool stock. Messages without a sender phone uses
+`worker.messaging.available` over messaging Pool ANY/country stock; phone-directed
+Messages uses `worker.messaging.phone` through Phone Index and Facts qualification,
+with empty Task supply. Both retain Kernel execution acquisition. Task supply
+declarations remain separate from Item queries.
 All catalogs must initialize before the Host starts, then actual Adapter routes
 must be observed. This is the sole source/ZIP launcher; scenario modules retain
 their own APIs and acceptance oracles.

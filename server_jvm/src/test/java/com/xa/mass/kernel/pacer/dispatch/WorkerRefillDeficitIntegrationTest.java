@@ -41,7 +41,7 @@ class WorkerRefillDeficitIntegrationTest {
         });
         String group = "g";
         var country = new RefillTarget("country", new EligibilityQuery(Map.of()), 100);
-        var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of("worker.phone", List.of("+12025550000"))), 1);
+        var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of("worker.country", List.of("US"))), 1);
         var countryTask = new TaskDescriptor("country-task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(country), null, Map.of());
         var messagingTask = new TaskDescriptor("messaging-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -49,7 +49,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.phone"))))) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"))))) {
             var redis = connection.sync();
             try {
                 var time = redis.time();
@@ -73,9 +73,12 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(commands.stream().filter("EVAL"::equals).count()).isEqualTo(2);
                 assertThat(readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()))).isEqualTo(before);
                 assertThat(matching.take(group, Map.of("messaging", new WorkerQuery("worker.messaging.available",
-                        Map.of("country", List.of("US"), "phone", "+12025550000"))))).isEmpty();
+                        Map.of("country", List.of("US")))))).isEmpty();
 
-                var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.phone", "+12025550000"))).get("direct");
+                commands.clear();
+                var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.messaging.phone",
+                        Map.of("phone", "+12025550000", "country", List.of("US"))))).get("direct");
+                assertThat(commands).containsExactly("EVAL", "HMGET");
                 assertThat(direct.workerId()).isEqualTo("w00");
                 assertThat(direct.expectedScore()).isZero();
                 var execution = scores.acquireCurrentHotScoreLeases(group, List.of(direct.workerId()), sampled + 30_000).get("w00");
@@ -99,8 +102,9 @@ class WorkerRefillDeficitIntegrationTest {
         }
     }
 
-    @Test
-    void poolAndDirectQueriesCompeteForOneExecutionLease() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"worker.phone", "worker.messaging.phone"})
+    void poolAndDirectQueriesCompeteForOneExecutionLease(String directFunction) throws Exception {
         var scope = RedisTestScope.create("refill_direct_race");
         var client = RedisClient.create(REDIS_URL);
         String group = "g";
@@ -110,17 +114,18 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone"))))) {
+                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"))))) {
             var redis = connection.sync();
             try {
                 var time = redis.time();
                 long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
-                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number")));
+                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
                 assertThat(pacer.refill(List.of(group), List.of(task))).isEqualTo(1);
                 var pooled = matching.take(group, Map.of("pool", new WorkerQuery("worker.any", Map.of()))).get("pool");
-                var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.phone", "number"))).get("direct");
+                var direct = matching.take(group, Map.of("direct", new WorkerQuery(directFunction,
+                        directFunction.equals("worker.phone") ? "number" : Map.of("phone", "number")))).get("direct");
                 assertThat(direct.workerId()).isEqualTo(pooled.workerId());
                 assertThat(direct.expectedScore()).isZero();
                 try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {

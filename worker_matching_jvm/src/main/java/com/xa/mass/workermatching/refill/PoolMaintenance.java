@@ -15,6 +15,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
     protected PoolMaintenance(CandidatePool pool) {
         this.pool = Objects.requireNonNull(pool);
     }
+    @Override public TargetBatching targetBatching() { return TargetBatching.PAGED; }
     protected abstract EligibilityQuery normalize(String group, EligibilityQuery query);
     protected abstract Selection target(String group, EligibilityQuery normalized);
     /** Reads only offered identities; null qualification may be valid for unconditional Any admission. */
@@ -27,7 +28,8 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
     }
     private Map<EligibilityQuery, Selection> targets(String group, Map<EligibilityQuery, Integer> targets) {
         identity(group); Objects.requireNonNull(targets);
-        if (targets.size() > 100) throw new IllegalArgumentException("at most 100 targets");
+        int limit = targetBatching() == TargetBatching.ALL ? 10_000 : 100;
+        if (targets.size() > limit) throw new IllegalArgumentException("at most " + limit + " targets");
         var result = new LinkedHashMap<EligibilityQuery, Selection>();
         targets.forEach((query, count) -> {
             if (count == null || count < 1 || count > 1000) throw new IllegalArgumentException("target count requires 1..1000");
@@ -46,7 +48,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
     }
     @Override public final Map<EligibilityQuery, Integer> deficits(String group, Map<EligibilityQuery, Integer> targets) {
         var selections = targets(group, targets);
-        var observation = pool.observe(group, selections.values(), List.of());
+        var observation = observe(pool, group, selections.values(), List.of());
         var result = missing(selections, targets, observation);
         if (observation.room() == 0) result.replaceAll((query, count) -> 0);
         return Collections.unmodifiableMap(result);
@@ -62,7 +64,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required");
         });
         if (maxAccepted == 0 || offered.isEmpty() || selections.isEmpty()) return List.of();
-        var observation = pool.observe(group, selections.values(), offered.keySet());
+        var observation = observe(pool, group, selections.values(), offered.keySet());
         var missing = missing(selections, targets, observation);
         boolean replacement = offered.entrySet().stream().anyMatch(entry ->
                 observation.present().containsKey(entry.getKey()) && !observation.present().get(entry.getKey()).equals(entry.getValue()));
@@ -74,11 +76,12 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         var prepared = new LinkedHashMap<String, CandidatePool.Admission>();
         offered.forEach((id, score) -> {
             var views = memberships(group, id, values.get(id));
-            if (views != null && selections.values().stream().anyMatch(selection -> selection.matches(id, views))) {
+            if (views != null) {
                 prepared.put(id, new CandidatePool.Admission(id, score, views));
             }
         });
-        pool.discardChanged(group, offered, prepared.keySet());
+        var affected = matchingTargets(selections, prepared);
+        prepared.keySet().removeIf(id -> affected.get(id).isEmpty());
         var selected = new LinkedHashMap<String, CandidatePool.Admission>();
         // Requalification of an existing identity is independent of storage headroom or deficits.
         for (var entry : prepared.entrySet()) {
@@ -90,19 +93,29 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             for (var entry : prepared.entrySet()) {
                 if (selected.size() == maxAccepted) break;
                 if (selected.containsKey(entry.getKey()) || observation.present().containsKey(entry.getKey())) continue;
-                boolean needed = false;
-                for (var query : selections.entrySet()) {
-                    if (query.getKey().query().isEmpty() == any && missing.get(query.getKey()) > 0
-                            && query.getValue().matches(entry.getKey(), entry.getValue().views())) needed = true;
-                }
-                if (!needed) continue;
+                var queries = affected.get(entry.getKey());
+                if (queries.stream().noneMatch(query -> query.query().isEmpty() == any && missing.get(query) > 0)) continue;
                 selected.put(entry.getKey(), entry.getValue());
-                selections.forEach((query, selection) -> {
-                    if (selection.matches(entry.getKey(), entry.getValue().views())) missing.compute(query, (ignored, count) -> count - 1);
-                });
+                for (var query : queries) missing.compute(query, (ignored, count) -> count - 1);
             }
         }
+        pool.discardChanged(group, offered, prepared.keySet());
         return pool.admit(group, List.copyOf(selected.values()));
+    }
+
+    /** Count hook: Country uses a single bucket snapshot for its complete target set. */
+    protected CandidatePool.Observation observe(CandidatePool pool, String group,
+            Collection<Selection> selections, Collection<String> ids) {
+        return pool.observe(group, selections, ids);
+    }
+
+    /** Invocation-local target references, fully prepared before inventory mutation. */
+    protected Map<String, List<EligibilityQuery>> matchingTargets(Map<EligibilityQuery, Selection> selections,
+            Map<String, CandidatePool.Admission> prepared) {
+        var result = new LinkedHashMap<String, List<EligibilityQuery>>();
+        prepared.forEach((id, admission) -> result.put(id, selections.entrySet().stream()
+                .filter(entry -> entry.getValue().matches(id, admission.views())).map(Map.Entry::getKey).toList()));
+        return result;
     }
 
     private static void identity(String id) {

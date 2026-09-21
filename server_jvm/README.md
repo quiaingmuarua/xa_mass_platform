@@ -305,6 +305,9 @@ Direct queries use `{"executorName":"workerId","input":"w-123"}` or
 `{"executorName":"worker.phone","input":"+8613800000000"}`. Identity is available
 in all Groups; Phone requires explicit Group enablement and indexes the exact
 Worker Properties phone without Messaging conditions. Neither requires Pool stock.
+The Group-enabled `worker.messaging.phone` accepts required `phone` and optional
+`country` in an object, using Phone Index plus bounded Facts qualification. Directed
+Messages use it with empty Task supply; generic Phone semantics remain unchanged.
 Matching returns identity hints, Pacer verifies Binding/Group, and Kernel atomically
 acquires execution from strictly due HOT with either mark. Current/future holds
 cannot be preempted. Server neither reads Score nor selects an alternative on failure.
@@ -543,7 +546,8 @@ Prepare success does not imply connectivity, scheduling availability or observed
 Properties. All Workers, including Polling, initially remain cold. Valid network
 evidence may later request activation; evidence loss has no replay guarantee. New Workers
 have no Matching facts until an admitted Adapter observation creates them;
-Country requires valid country Facts, while Messaging/Proof use their indexes.
+Country and Messaging qualify offered Worker Facts; Proof uses one atomic
+Worker/Platform Facts snapshot. Only Phone retains an independent Redis index.
 Explicit Any Pool and direct workerId need no Facts. Polling has no current Adapter
 Properties path, so new Polling Workers use explicitly supplied Any or Identity. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never

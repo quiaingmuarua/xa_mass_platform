@@ -104,13 +104,15 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
                 metadata.put("senderCountry", specification.senderCountry());
             }
             if (specification.senderPhone() != null) {
-                supply.put("worker.phone", List.of(specification.senderPhone()));
                 query.put("phone", specification.senderPhone()); metadata.put("senderPhone", specification.senderPhone());
             }
             requireRunning();
+            var refill = specification.senderPhone() == null
+                    ? List.of(RefillTarget.of("messaging", new EligibilityQuery(supply), 100)) : List.<RefillTarget>of();
             taskId = creation.create(new TaskCreateRequest("messages", workerGroupId, 50, 3,
-                    List.of(RefillTarget.of("messaging", new EligibilityQuery(supply), 100)), specification.name(), metadata)).taskId();
-            var selector = new WorkerQuery("worker.messaging.available", query);
+                    refill, specification.name(), metadata)).taskId();
+            var selector = new WorkerQuery(specification.senderPhone() == null
+                    ? "worker.messaging.available" : "worker.messaging.phone", query);
             for (int start = 0; start < specification.recipientIds().size(); start += 100) {
                 requireRunning();
                 var items = new ArrayList<TaskItemRequest>();

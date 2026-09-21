@@ -23,9 +23,11 @@ fixture uses `app_count=0`: new Preview App Groups have no Workers
 in this proof. Their independent one-shot witness belongs to
 [App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明), run in the same CI lane.
 SMS uses
-the country Pool; Messages consumes messaging Pool stock with country constraints.
+the country Pool; ordinary Messages consumes messaging Pool stock with country constraints.
 A real SMS listener supplies the number
-for a campaign's additional phone condition; both execute on the same Worker and the SMS
+for a campaign's qualified Direct Phone query with empty Pool supply. Phone Index
+and current Worker Facts establish the identity and message qualification; Kernel
+still requires due HOT for execution. Both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
 terminal before releasing the automatically generated delivered receipt (hold is
 enabled before send), then before manual read/reply; another Task is explicitly

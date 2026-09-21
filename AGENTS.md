@@ -35,7 +35,7 @@ agents change the repository; it is not the canonical mechanism narrative.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
 - `worker_matching_jvm/` owns Worker/Platform Properties, fixed query functions and Pool maintenance,
-  materialized eligibility indexes and bounded query interpretation.
+  bounded Facts qualification, the independent Phone Index and query interpretation.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `server_boot_jvm/` owns the sole production main, Boot JAR and explicit
   platform/preview configuration. It owns no business or resource logic.
@@ -208,8 +208,16 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
 - Facts and enabled indexes prepare before one bounded Lua write. Index upkeep
   is independent of Task demand and Pool stock; Score invalidation is a separate
   best-effort commit, not a property-version transaction.
-- Keep Any explicitly configured, Country on offered Facts/local buckets, and
-  Phone as an independent Group index. Query/capacity limits remain Owner-local.
+- Catalog coordinates composition-provided Pool order, global function availability
+  and ALL/PAGED target capability without interpreting strategy names. Shared
+  PoolMaintenance owns generation/replacement and commit rules; concrete policies
+  own qualification and local view coordinates.
+- Keep Any explicitly configured, Country and Messaging on offered Worker Facts,
+  Proof on one atomic offered Worker/Platform snapshot, and Phone as an independent
+  Group index. Qualified Messaging Phone uses that index followed by bounded Facts
+  qualification, without Pool access. Directed Messages declares no Pool supply;
+  ordinary Messaging Pool accepts ANY/country only. Retired qualification projections
+  have no read/write/rebuild path. Query/capacity limits remain Owner-local.
   Do not add dynamic registries, prefix routing, unavailable-function fallback,
   per-Task stock, targeted refill or a Matching execution thread.
 

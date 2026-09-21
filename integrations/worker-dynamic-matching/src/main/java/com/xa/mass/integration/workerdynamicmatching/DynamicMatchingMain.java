@@ -194,7 +194,9 @@ public final class DynamicMatchingMain {
 
     private Map<String, Object> rule(String pool, boolean target, boolean enabled) {
         var rule = new LinkedHashMap<String, Object>();
-        rule.put("worker.proofPool", List.of(pool==null ? "~" : pool));
+        // The missing-pool phase independently observes absence before creating this witness.
+        // An omitted query field adds no condition; literal strings are never absence sentinels.
+        if (pool != null) rule.put("worker.proofPool", List.of(pool));
         if (target) rule.put("worker.proofTarget", List.of("yes"));
         if (enabled) rule.put("platform.proofEnabled", List.of("yes"));
         return rule;

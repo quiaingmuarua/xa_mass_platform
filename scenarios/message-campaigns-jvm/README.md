@@ -52,9 +52,16 @@ requestId/name/senderPhone 最长 128 字符，body 最长 4096，必须为 JSON
 Lab 独占具体指令语义；Server 不重复解释步骤、概率和随机延迟。
 
 **收件国家与发送国家独立。** senderCountry 省略/null 为 ANY；可选 senderPhone 与国家取交集。
-Task 声明 messaging Pool 供给：worker.country/worker.phone；Item 使用
-worker.messaging.available(country/phone)。ANY 同时省略两处国家，仍要求 messaging.enabled。
-全部通过既有 Matching 资格与 Kernel 派发，不新增定向获取。
+未指定 senderPhone 时，Task 声明 messaging Pool 的 ANY／worker.country 供给，
+Item 使用 worker.messaging.available 的 ANY／country 查询。
+指定 senderPhone 时，Task 保存空供给声明，Item 使用 worker.messaging.phone(phone/country)：
+Matching 从独立 Phone Index 查询身份，再按本批身份读取 Facts，校验 messaging.enabled="true"、
+合法国家、当前手机号及可选发送国家条件。ANY 只省略国家条件，不放宽消息资格。
+此路径不要求 Worker 进入 Messaging Pool，也不通知或删除 Country Pool 中的旧条目。
+Kernel 仍只从到期 HOT 获取执行租约，不能抢占正在执行的 Worker；查询资格与执行获取不是同一事务。
+
+切换前结束含旧手机号 Pool 查询／供给声明的 Task，或使用新 scope；不迁移旧 Task/Item，
+不保留兼容入口、不自动清理数据。Facts、Phone Index 和历史结果格式保持。
 
 name 是前端生成的显示名称；Task ID 始终由 Server 生成。metadata 保存 scenario=messages、
 recipientCountry、可选 senderCountry/senderPhone 和 body。不保存号码列表或统计。
