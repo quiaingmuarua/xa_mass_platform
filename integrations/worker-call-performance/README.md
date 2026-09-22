@@ -21,6 +21,12 @@ and the eight-case acceptance run under unchanged production configuration.
 It separates API response rate from successful calls and retains the 2k Task
 Result-closure failures that prevent enabling the new scheduled composition.
 
+The [2026-09-21 Task ANY attribution](baselines/2026-09-21-task-any-attribution.md)
+combines current CI recordings with local CPU-placement experiments and an
+aligned 1,000-Worker Task/Direct control. It identifies the Task Score slot gate,
+observed lease-release rejection and CI contention separately. Local diagnostic
+runs do not replace reference-host acceptance or establish a candidate benefit.
+
 Targeted Task calls use the independent `workerId` function and direct execution admission.
 Historical targeted-ID Pool measurements are not equivalent to this path; compare
 source fingerprints and query contracts before using an old result as a baseline.

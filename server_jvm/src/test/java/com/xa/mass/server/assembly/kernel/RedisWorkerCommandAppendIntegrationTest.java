@@ -4,7 +4,9 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,6 +19,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
@@ -27,13 +30,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 @Tag("redis-owner")
 class RedisWorkerCommandAppendIntegrationTest {
@@ -60,9 +66,12 @@ class RedisWorkerCommandAppendIntegrationTest {
         client.shutdown();
     }
 
-    @ParameterizedTest @ValueSource(ints = {0, 1, 100, 101})
-    void currentAppendCostIsOneTimePlusOneInsertAttemptPerWorker(int count) {
+    @ParameterizedTest
+    @CsvSource({"0,false", "1,false", "100,false", "101,false", "201,false",
+            "1,true", "100,true", "101,true"})
+    void appendCostIsOneTimePlusOneCommandPerHundred(int count, boolean occupied) {
         var input = commands(count);
+        if (occupied) owner.appendWorkerCommands("adapter", input);
         var calls = new CopyOnWriteArrayList<String>();
         var listener = new CommandListener() {
             @Override public void commandStarted(CommandStartedEvent event) {
@@ -78,10 +87,11 @@ class RedisWorkerCommandAppendIntegrationTest {
             var result = owner.appendWorkerCommands("adapter", input);
             assertThat(result.keySet()).containsExactlyElementsOf(input.keySet());
             if (count == 0) assertThat(result).isEmpty();
-            else assertThat(result.values()).containsOnly(WorkerCommandAppendStatus.APPENDED);
+            else assertThat(result.values()).containsOnly(occupied
+                    ? WorkerCommandAppendStatus.REPLACED : WorkerCommandAppendStatus.APPENDED);
             var expected = new ArrayList<String>();
             if (count > 0) expected.add("TIME");
-            for (int offset = 0; offset < count; offset++) expected.add("HSETNX");
+            for (int offset = 0; offset < count; offset += 100) expected.add("EVAL");
             assertThat(calls).containsExactlyElementsOf(expected);
         } finally {
             client.removeListener(listener);
@@ -159,24 +169,96 @@ class RedisWorkerCommandAppendIntegrationTest {
         assertThat(owner.consumeWorkerCommand("adapter", "w0")).isEqualTo(replacement);
     }
 
-    @Test void closedConnectionAfterOneHundredWritesLeavesEarlierCommandsApplied() {
+    @Test void failedSecondBatchLeavesFirstBatchApplied() {
         try (var failingConnection = client.connect(StringCodec.UTF8)) {
             var intercepted = intercept(failingConnection);
             var writes = new AtomicInteger();
             doAnswer(invocation -> {
-                if (writes.incrementAndGet() == 101) failingConnection.close();
+                if (writes.incrementAndGet() == 2) failingConnection.close();
                 try {
                     return invocation.getMethod().invoke(failingConnection.sync(), invocation.getRawArguments());
                 } catch (java.lang.reflect.InvocationTargetException error) {
                     throw error.getCause();
                 }
-            }).when(intercepted).hsetnx(anyString(), anyString(), anyString());
+            }).when(intercepted).eval(anyString(), eq(ScriptOutputType.MULTI),
+                    any(String[].class), any(String[].class));
             try (var tested = interceptedOwner(intercepted)) {
                 assertThatThrownBy(() -> tested.appendWorkerCommands("adapter", commands(101)))
                         .isInstanceOf(RuntimeException.class);
             }
+            assertThat(writes).hasValue(2);
         }
         assertThat(redis.hkeys(key())).containsExactlyInAnyOrderElementsOf(commands(100).keySet());
+    }
+
+    @Test void lostReplyDoesNotRetryAppliedBatchOrContinueToNextBatch() {
+        var intercepted = intercept(connection);
+        var writes = new AtomicInteger();
+        doAnswer(invocation -> {
+            writes.incrementAndGet();
+            String script = invocation.getArgument(0);
+            redis.eval(script, ScriptOutputType.MULTI,
+                    invocation.getArgument(2), (String[]) invocation.getRawArguments()[3]);
+            throw new IllegalStateException("reply unavailable after write");
+        }).when(intercepted).eval(anyString(), eq(ScriptOutputType.MULTI),
+                any(String[].class), any(String[].class));
+        var input = commands(101);
+        try (var tested = interceptedOwner(intercepted)) {
+            assertThatThrownBy(() -> tested.appendWorkerCommands("adapter", input))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        assertThat(writes).hasValue(1);
+        assertThat(redis.hkeys(key())).containsExactlyInAnyOrderElementsOf(
+                new ArrayList<>(input.keySet()).subList(0, 100));
+    }
+
+    @Test void malformedReplyFailsWithoutUndoingWrites() {
+        var intercepted = intercept(connection);
+        var writes = new AtomicInteger();
+        doAnswer(invocation -> {
+            writes.incrementAndGet();
+            String script = invocation.getArgument(0);
+            redis.eval(script, ScriptOutputType.MULTI,
+                    invocation.getArgument(2), (String[]) invocation.getRawArguments()[3]);
+            return List.of(1L, 2L);
+        }).when(intercepted).eval(anyString(), eq(ScriptOutputType.MULTI),
+                any(String[].class), any(String[].class));
+        var input = commands(2);
+        try (var tested = interceptedOwner(intercepted)) {
+            assertThatThrownBy(() -> tested.appendWorkerCommands("adapter", input))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Redis Worker command append returned an invalid response");
+        }
+        assertThat(writes).hasValue(1);
+        assertThat(owner.consumeWorkerCommands("adapter", 100)).isEqualTo(input);
+    }
+
+    @Test void concurrentAppendsClassifyEachSlotAndPreserveTheReplacingCommand() throws Exception {
+        var first = commands(101);
+        var second = new LinkedHashMap<String, DeliveryCommand>();
+        first.keySet().forEach(worker -> second.put(worker, command(DeliveryEndpoint.TASK, "second-" + worker)));
+        try (var other = new RedisWorkerCommandRuntime(client, codec, scope.keyspace());
+             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var start = new CountDownLatch(1);
+            var firstWrite = executor.submit(() -> {
+                start.await();
+                return owner.appendWorkerCommands("adapter", first);
+            });
+            var secondWrite = executor.submit(() -> {
+                start.await();
+                return other.appendWorkerCommands("adapter", second);
+            });
+            start.countDown();
+            var firstResult = firstWrite.get(10, TimeUnit.SECONDS);
+            var secondResult = secondWrite.get(10, TimeUnit.SECONDS);
+            for (String worker : first.keySet()) {
+                assertThat(List.of(firstResult.get(worker), secondResult.get(worker)))
+                        .containsExactlyInAnyOrder(WorkerCommandAppendStatus.APPENDED, WorkerCommandAppendStatus.REPLACED);
+                var expected = firstResult.get(worker) == WorkerCommandAppendStatus.REPLACED
+                        ? first.get(worker) : second.get(worker);
+                assertThat(owner.consumeWorkerCommand("adapter", worker)).isEqualTo(expected);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

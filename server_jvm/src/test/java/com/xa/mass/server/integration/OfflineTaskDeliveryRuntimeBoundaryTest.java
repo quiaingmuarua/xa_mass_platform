@@ -43,8 +43,12 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -56,6 +60,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 @SpringBootTest(classes = ServerTestConfiguration.class,
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @Tag("runtime-boundary")
+@Import(OfflineTaskDeliveryRuntimeBoundaryTest.ObservationConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OfflineTaskDeliveryRuntimeBoundaryTest {
@@ -66,7 +71,6 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     private static final String EVENT = "extension.worker.offline-delivery";
     private static final URI BASE = URI.create("http://127.0.0.1:" + PORT);
     private static final RedisTestScope SCOPE = RedisTestScope.create("offline_delivery");
-    private final List<String> trace = new CopyOnWriteArrayList<>();
     private final HttpClient http = HttpClient.newHttpClient();
 
     @MockitoSpyBean WorkerScoreCore scores;
@@ -76,6 +80,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     @Autowired KernelPacerAssembly pacer;
     @Autowired ServerConfiguredRuntimeLifecycleHost adapters;
     @Autowired TaskRpcResultProbe resultProbe;
+    @Autowired BoundaryEvidence evidence;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -119,13 +124,13 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     void lostDisconnectIsReplacedByActualTaskDeliveryExpiryAndWorkRecovers() throws Exception {
         post("/api/v1/worker-groups/" + GROUP + ":register", Map.of("eventCodes", List.of(EVENT)));
         String task = (String) post("/api/v1/tasks", Map.of("projectId", "offline-boundary", "workerGroupId", GROUP, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","any","target",Map.of(),"count",100)))).get("taskId");
-        var invoked = new AtomicInteger();
-        var lostDisconnects = new AtomicInteger();
-        var deliveryEvidence = new AtomicInteger();
-        var rejectedDeliveries = new AtomicInteger();
-        var delivered = new CopyOnWriteArrayList<DeliveryCommand>();
-        var candidateFence = new AtomicReference<Long>();
-        var applied = new AtomicReference<WorkerScoreTransitionResult>();
+        var invoked = evidence.invoked;
+        var lostDisconnects = evidence.lostDisconnects;
+        var deliveryEvidence = evidence.deliveryEvidence;
+        var rejectedDeliveries = evidence.rejectedDeliveries;
+        var delivered = evidence.delivered;
+        var candidateFence = evidence.candidateFence;
+        var applied = evidence.applied;
         try (var worker = JavaWorker.create(BASE, GROUP, "offline-worker", WorkerTransportType.WEBSOCKET,
                 Map::of, List.of(WorkerEventDefinition.extension("offline-delivery",
                         WorkerEventParameterResolvers.jsonMap(), input -> {
@@ -137,66 +142,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             String workerId = worker.snapshot().workerId();
             await("verified connected HOT baseline", () -> connectionState(workerId).equals("connected")
                     && isHot(workerId));
-
-            doAnswer(call -> {
-                List<DeliveryReport> reports = (List<DeliveryReport>) call.callRealMethod();
-                var retained = new ArrayList<DeliveryReport>();
-                for (DeliveryReport report : reports) {
-                    boolean ours = report.src() == DeliveryEndpoint.ADAPTER && report.sourceId().equals(ADAPTER)
-                            && workerId.equals(Jsons.parseObject(report.payload()).get("workerId"));
-                    if (ours && report.messageType().equals(ADAPTER_WORKER_CONNECTION_CHANGED)
-                            && "DISCONNECTED".equals(Jsons.parseObject(report.payload()).get("state"))
-                            && lostDisconnects.compareAndSet(0, 1)) {
-                        record("DROP_FIRST_DISCONNECT", Jsons.parseObject(report.payload()).get("observedAtMillis"));
-                        continue; // Test-only loss after real Adapter -> HTTP -> Redis delivery.
-                    }
-                    if (ours && report.messageType().equals(ADAPTER_WORKER_DELIVERY_EXPIRED)) {
-                        deliveryEvidence.incrementAndGet();
-                        record("CONSUME_DELIVERY_EXPIRED", Jsons.parseObject(report.payload()).get("observedAtMillis"));
-                    }
-                    retained.add(report);
-                }
-                return List.copyOf(retained);
-            }).when(serviceability).consumeNetworkEvidenceResults(anyInt());
-            doAnswer(call -> {
-                Map<String, DeliveryCommand> result = (Map<String, DeliveryCommand>) call.callRealMethod();
-                DeliveryCommand command = result.get(workerId);
-                if (command != null && command.src() == DeliveryEndpoint.TASK) {
-                    delivered.add(command);
-                    record("COMMAND_HANDED_TO_ADAPTER deadline", command.executeBeforeMillis());
-                }
-                return result;
-            }).when(commands).consumeWorkerCommands(eq(ADAPTER), anyInt());
-            doAnswer(call -> {
-                Map<String, Long> observed = call.getArgument(1);
-                candidateFence.set(observed.get(workerId));
-                Object result = call.callRealMethod();
-                record("EXACT_CONFIRM input=" + observed, result);
-                return result;
-            }).when(scores).acquireObservedHotScoreLeases(eq(GROUP), anyMap(), anyLong());
-            doAnswer(call -> {
-                Map<String, WorkerScoreTransitionResult> result =
-                        (Map<String, WorkerScoreTransitionResult>) call.callRealMethod();
-                record("NETWORK_SCORE target=" + call.getArgument(2) + " observed=" + call.getArgument(1), result);
-                if (call.getArgument(2) == RECOVERY_RECHECK) applied.set(result.get(workerId));
-                return result;
-            }).when(scores).rewriteCurrentPolarityWithinTimeFence(eq(GROUP), anyMap(), any(), org.mockito.ArgumentMatchers.anyLong());
-            doAnswer(call -> {
-                Object result = call.callRealMethod();
-                record("SUCCESS_RELEASE input=" + call.getArgument(1), result);
-                return result;
-            }).when(scores).releaseObservedHotScoreHolds(eq(GROUP), anyMap(), anyLong());
-            doAnswer(call -> {
-                List<DeliveryReport> reports = call.getArgument(1);
-                for (DeliveryReport report : reports) {
-                    if (report.messageType().equals(ADAPTER_COMMAND_DELIVERY_FAILED)
-                            && delivered.stream().anyMatch(command -> command.forward().equals(report.forward()))) {
-                        rejectedDeliveries.incrementAndGet();
-                        record("CORRELATED_ADAPTER_DELIVERY_FAILED", report.diagnosticCode());
-                    }
-                }
-                return call.callRealMethod();
-            }).when(taskEvidence).appendTaskEvidence(eq(TaskEvidenceType.EXECUTION_FAILURE), anyList());
+            evidence.workerId.set(workerId);
 
             worker.stop();
             await("disconnect consumed and deliberately lost", () -> lostDisconnects.get() == 1
@@ -228,9 +174,115 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 post("/api/v1/tasks/" + task + "/close", null);
             } finally {
                 // JUnit captures this bounded, content-free trace in the existing CI failure artifact.
-                System.out.println("Offline TASK delivery evidence: " + trace);
+                System.out.println("Offline TASK delivery evidence: " + evidence.trace);
             }
         }
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class ObservationConfiguration {
+        @Bean BoundaryEvidence offlineDeliveryEvidence() { return new BoundaryEvidence(); }
+
+        @Bean SmartInitializingSingleton installOfflineDeliveryObservers(
+                WorkerScoreCore scores, WorkerServiceabilityRuntime serviceability,
+                WorkerCommandRuntime commands, TaskEvidenceRuntime taskEvidence,
+                BoundaryEvidence evidence, KernelPacerAssembly pacer,
+                ServerConfiguredRuntimeLifecycleHost adapters) {
+            // Install all answers before Pacer and Adapter lifecycles can invoke these spies.
+            return () -> {
+                assertThat(pacer.isRunning()).isFalse();
+                assertThat(adapters.isRunning()).isFalse();
+                installSpyAnswers(scores, serviceability, commands, taskEvidence, evidence);
+            };
+        }
+    }
+
+    private static final class BoundaryEvidence {
+        final AtomicReference<String> workerId = new AtomicReference<>("");
+        final AtomicInteger invoked = new AtomicInteger();
+        final AtomicInteger lostDisconnects = new AtomicInteger();
+        final AtomicInteger deliveryEvidence = new AtomicInteger();
+        final AtomicInteger rejectedDeliveries = new AtomicInteger();
+        final List<DeliveryCommand> delivered = new CopyOnWriteArrayList<>();
+        final AtomicReference<Long> candidateFence = new AtomicReference<>();
+        final AtomicReference<WorkerScoreTransitionResult> applied = new AtomicReference<>();
+        final List<String> trace = new CopyOnWriteArrayList<>();
+
+        synchronized void record(String stage, Object value) {
+            if (trace.size() < 100) trace.add(System.currentTimeMillis() + " " + stage + " " + value);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void installSpyAnswers(
+            WorkerScoreCore scores, WorkerServiceabilityRuntime serviceability,
+            WorkerCommandRuntime commands, TaskEvidenceRuntime taskEvidence,
+            BoundaryEvidence evidence) {
+        var lostDisconnects = evidence.lostDisconnects;
+        var deliveryEvidence = evidence.deliveryEvidence;
+        var rejectedDeliveries = evidence.rejectedDeliveries;
+        var delivered = evidence.delivered;
+        var candidateFence = evidence.candidateFence;
+        var applied = evidence.applied;
+        doAnswer(call -> {
+            List<DeliveryReport> reports = (List<DeliveryReport>) call.callRealMethod();
+            var retained = new ArrayList<DeliveryReport>();
+            for (DeliveryReport report : reports) {
+                boolean ours = report.src() == DeliveryEndpoint.ADAPTER && report.sourceId().equals(ADAPTER)
+                        && evidence.workerId.get().equals(Jsons.parseObject(report.payload()).get("workerId"));
+                if (ours && report.messageType().equals(ADAPTER_WORKER_CONNECTION_CHANGED)
+                        && "DISCONNECTED".equals(Jsons.parseObject(report.payload()).get("state"))
+                        && lostDisconnects.compareAndSet(0, 1)) {
+                    evidence.record("DROP_FIRST_DISCONNECT", Jsons.parseObject(report.payload()).get("observedAtMillis"));
+                    continue; // Test-only loss after real Adapter -> HTTP -> Redis delivery.
+                }
+                if (ours && report.messageType().equals(ADAPTER_WORKER_DELIVERY_EXPIRED)) {
+                    deliveryEvidence.incrementAndGet();
+                    evidence.record("CONSUME_DELIVERY_EXPIRED", Jsons.parseObject(report.payload()).get("observedAtMillis"));
+                }
+                retained.add(report);
+            }
+            return List.copyOf(retained);
+        }).when(serviceability).consumeNetworkEvidenceResults(anyInt());
+        doAnswer(call -> {
+            Map<String, DeliveryCommand> result = (Map<String, DeliveryCommand>) call.callRealMethod();
+            DeliveryCommand command = result.get(evidence.workerId.get());
+            if (command != null && command.src() == DeliveryEndpoint.TASK) {
+                delivered.add(command);
+                evidence.record("COMMAND_HANDED_TO_ADAPTER deadline", command.executeBeforeMillis());
+            }
+            return result;
+        }).when(commands).consumeWorkerCommands(eq(ADAPTER), anyInt());
+        doAnswer(call -> {
+            Map<String, Long> observed = call.getArgument(1);
+            candidateFence.set(observed.get(evidence.workerId.get()));
+            Object result = call.callRealMethod();
+            evidence.record("EXACT_CONFIRM input=" + observed, result);
+            return result;
+        }).when(scores).acquireObservedHotScoreLeases(eq(GROUP), anyMap(), anyLong());
+        doAnswer(call -> {
+            Map<String, WorkerScoreTransitionResult> result =
+                    (Map<String, WorkerScoreTransitionResult>) call.callRealMethod();
+            evidence.record("NETWORK_SCORE target=" + call.getArgument(2) + " observed=" + call.getArgument(1), result);
+            if (call.getArgument(2) == RECOVERY_RECHECK) applied.set(result.get(evidence.workerId.get()));
+            return result;
+        }).when(scores).rewriteCurrentPolarityWithinTimeFence(eq(GROUP), anyMap(), any(), org.mockito.ArgumentMatchers.anyLong());
+        doAnswer(call -> {
+            Object result = call.callRealMethod();
+            evidence.record("SUCCESS_RELEASE input=" + call.getArgument(1), result);
+            return result;
+        }).when(scores).releaseObservedHotScoreHolds(eq(GROUP), anyMap(), anyLong());
+        doAnswer(call -> {
+            List<DeliveryReport> reports = call.getArgument(1);
+            for (DeliveryReport report : reports) {
+                if (report.messageType().equals(ADAPTER_COMMAND_DELIVERY_FAILED)
+                        && delivered.stream().anyMatch(command -> command.forward().equals(report.forward()))) {
+                    rejectedDeliveries.incrementAndGet();
+                    evidence.record("CORRELATED_ADAPTER_DELIVERY_FAILED", report.diagnosticCode());
+                }
+            }
+            return call.callRealMethod();
+        }).when(taskEvidence).appendTaskEvidence(eq(TaskEvidenceType.EXECUTION_FAILURE), anyList());
     }
 
     private String connectionState(String workerId) throws Exception {
@@ -245,7 +297,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                         ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).as("POST %s; evidence=%s", path, trace).isEqualTo(200);
+        assertThat(response.statusCode()).as("POST %s; evidence=%s", path, evidence.trace).isEqualTo(200);
         return response.body().isBlank() ? Map.of() : Jsons.parseObject(response.body());
     }
 
@@ -255,11 +307,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             if (check.done()) return;
             Thread.sleep(20);
         }
-        throw new AssertionError(stage + "; evidence=" + trace);
-    }
-
-    private synchronized void record(String stage, Object value) {
-        if (trace.size() < 100) trace.add(System.currentTimeMillis() + " " + stage + " " + value);
+        throw new AssertionError(stage + "; evidence=" + evidence.trace);
     }
 
     @FunctionalInterface private interface Check { boolean done() throws Exception; }

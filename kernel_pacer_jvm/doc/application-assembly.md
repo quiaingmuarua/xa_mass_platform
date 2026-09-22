@@ -148,6 +148,17 @@ not a platform QPS guarantee. Group-managed calls share that Task budget.
 with controlled execution and time. These values remain preset-owned and have no
 Server override.
 
+The completion interval is not the only eligibility gate. Task Score scheduling
+excludes the current 100ms Redis slot, and Task Dispatch rewrites each visited
+claimable Task to the round's start time. With aligned clocks and successful
+rewrites, a continuously loaded single Task therefore normally becomes visible
+at most once per slot: roughly 1,000 checked Items/s at the current 100-Item
+budget, before slower rounds and unavailable Workers reduce progress. The 50ms
+completion budget alone does not establish 2,000/s. This composition is observed
+in the [2026-09-21 attribution](../../integrations/worker-call-performance/baselines/2026-09-21-task-any-attribution.md);
+it is not a global multi-Task capacity limit or a change to Score interpretation
+inside Pacer.
+
 Initialization keeps its 100ms interval. Dispatch and refill each use
 50ms so candidate availability can be consumed without adding another full
 100ms idle interval after a mixed-Task round. The 100-Item ceiling, single-flight
@@ -160,6 +171,10 @@ and Result consume/process/release
 calls. Counts describe attempts or batches, not unique completed Items. Owner-local
 events add no registry, queue, Redis operation or Score interpretation; sampled
 correlation is joined only by the offline [call proof](../../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+In particular, `WORKER_RELEASE` counts a normally returned Worker event call,
+not successful per-Worker Score transitions. The current semantic event discards
+the mechanical release statuses; release success cannot be inferred from this
+JFR count alone.
 
 The fixed Producers are:
 

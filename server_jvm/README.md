@@ -1165,7 +1165,10 @@ probe/properties/events handlers, observes Adapter connection state, closes
 the current Channel, and proves transparent reconnect.
 
 An isolated DEFAULT-preset Runtime Boundary witness deliberately loses the first
-disconnect report after its real Redis handoff. A subsequent TASK must reach the
+disconnect report after its real Redis handoff. Its test-only interceptors are
+installed before Pacer and Adapter startup; the target identity is armed only
+after the verified connected HOT baseline, avoiding live-consumer races during
+fixture setup. A subsequent TASK must reach the
 Adapter, expire, and supply correlated rejection plus new network evidence that
 changes the Worker to RECOVERY. A real reconnect then completes the same Item.
 The reconnect wait remains 15 seconds with production candidate recycling at
