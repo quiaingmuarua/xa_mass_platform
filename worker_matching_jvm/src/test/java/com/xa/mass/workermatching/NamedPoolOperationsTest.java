@@ -4,21 +4,14 @@ import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
-import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
 import com.xa.mass.workermatching.refill.PoolMaintenance;
 
-import io.lettuce.core.KeyValue;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.api.sync.RedisCommands;
-import io.lettuce.core.codec.StringCodec;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import tools.jackson.databind.json.JsonMapper;
@@ -28,26 +21,18 @@ import static org.mockito.Mockito.*;
 
 class NamedPoolOperationsTest {
     final CandidateBudget budget = new CandidateBudget();
-    final RedisClient client=mock(RedisClient.class);
-    @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
-    @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
     CountingRule rule;
     CountingRule failingRule;
     final java.util.concurrent.atomic.AtomicLong clock=new java.util.concurrent.atomic.AtomicLong(1000);
     final JsonMapper json=JsonMapper.builder().build();
-    RedisWorkerMatchingCatalog catalog;
-    FactsIndexStore storage;
+    DefaultWorkerMatchingCatalog catalog;
     static final EligibilityQuery ANY=EligibilityQuery.parse(Map.of());
 
     @BeforeEach void setUp() {
-        when(client.connect(StringCodec.UTF8)).thenReturn(connection);
-        when(connection.isOpen()).thenReturn(true);
-        when(connection.sync()).thenReturn(redis);
-        storage=new FactsIndexStore(client, new RedisKeyspace("test_named_pool"), Map.of());
         rule=new CountingRule(clock::get,budget); failingRule=new CountingRule(clock::get,budget);
         var defaultStock=new WorkerCandidatePool(clock::get, budget);
         var defaults=new AnyPoolPolicy(defaultStock);
-        catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new AnyQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups(), List.of("any", "test.pool", "zz.fail"), Set.of());
+        catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new AnyQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups(), List.of("any", "test.pool", "zz.fail"), Set.of());
     }
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
@@ -59,7 +44,6 @@ class NamedPoolOperationsTest {
         groups.put("g2",new MatchingGroup(Set.of("any","test.pool"),Set.of("worker.any","test.pool")));
         return groups;
     }
-    @AfterEach void close() { catalog.close(); }
 
     @Test void equivalentAndInterleavedQueriesAreGroupedThenCorrelatedInInputOrder() {
         rule.facts.putAll(Map.of("a","US","b","CN","c","CN"));
@@ -72,7 +56,6 @@ class NamedPoolOperationsTest {
         assertEquals(List.of("first","narrow","equivalent"),List.copyOf(result.keySet()));
         assertEquals(List.of("b","a","c"),result.values().stream().map(WorkerCandidate::workerId).toList());
         assertThrows(UnsupportedOperationException.class,result::clear);
-        requests.clear(); assertEquals(3,result.size()); verifyNoInteractions(redis);
     }
 
     @Test void candidateRequiresIdentityButLeavesFenceInterpretationToScoreOwner() {
@@ -104,7 +87,6 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
         assertThrows(IllegalArgumentException.class,()->catalog.take("other",Map.of("m",any)));
         assertEquals("worker",catalog.take("g1",Map.of("valid",any)).get("valid").workerId());
-        verifyNoInteractions(redis);
     }
 
     @Test void overlappingQueriesShortagesAndRepeatedMessageIdsHaveOnlyCallLocalMeaning() {
@@ -123,7 +105,6 @@ class NamedPoolOperationsTest {
         rule.facts.put("four","CN");
         assertEquals(1,catalog.refill("g1",targets,offer("four")));
         assertEquals("four",catalog.take("g1",Map.of("id-first",any)).get("id-first").workerId());
-        verifyNoInteractions(redis);
     }
 
     @Test void oneHundredMessagesCanShareOneNormalizedQuery() {
@@ -134,7 +115,6 @@ class NamedPoolOperationsTest {
         var result=catalog.take("g1",requests);
         assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
         assertEquals(held.entrySet().stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
-        verifyNoInteractions(redis);
     }
 
     @Test void resolvesTargetsWithoutTaskIdentityRedisOrInventoryChanges() {
@@ -147,7 +127,6 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("other",List.of(pool(1,"US"))));
         assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g1", Collections.nCopies(101,expected)));
         assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
-        verifyNoInteractions(redis);
     }
 
     static RefillTarget pool(int count,String... values) {
@@ -163,7 +142,6 @@ class NamedPoolOperationsTest {
         var targets=Map.of("g1",List.of(pool(1,"US"), pool(2,"US","US")),
                 "g2",List.of(pool(1,"CN")));
         assertTrue(rule.observedTargets.isEmpty());
-        clearInvocations(redis);
         var needed=catalog.observeRefillDeficits(targets);
         assertEquals(Map.of("g1",2,"g2",1),needed);
         assertThrows(UnsupportedOperationException.class,needed::clear);
@@ -173,10 +151,9 @@ class NamedPoolOperationsTest {
                 .stream().map(h -> h.workerId()).toList());
         assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",Map.of(),1)
                 .stream().map(h -> h.workerId()).toList());
-        verifyNoInteractions(redis);
     }
 
-    @Test void endingDemandRetainsSharedStockWhileEmptyRoundsStillExpireEntries() {
+    @Test void endingDemandRetainsStockUntilPollDiscardsExpiredEntries() {
         var supply = List.of(new RefillTarget("any", ANY, 2));
         assertEquals(2, catalog.refill("g1", supply, offer("first", "second")));
         assertTrue(catalog.observeRefillDeficits(Map.of()).isEmpty());
@@ -185,7 +162,6 @@ class NamedPoolOperationsTest {
         clock.set(61000);
         assertTrue(catalog.observeRefillDeficits(Map.of()).isEmpty());
         assertTrue(catalog.take("g1", Map.of("late", new WorkerQuery("worker.any", Map.of()))).isEmpty());
-        verifyNoInteractions(redis);
     }
 
     @Test void deficitCountsMergeEquivalentTargetsAndPoolsInInputGroupOrder() {
@@ -201,7 +177,6 @@ class NamedPoolOperationsTest {
         assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w")));
         assertEquals(5,observed.get("g2"));
         assertEquals(Map.of("g2",4,"g1",7),catalog.observeRefillDeficits(targets));
-        verifyNoInteractions(redis);
     }
 
     @Test void capacityPressureReclaimsIdleGroupsButEmptyInputDoesNotSweep() {
@@ -224,7 +199,6 @@ class NamedPoolOperationsTest {
         assertEquals(0,budget.available());
         assertEquals(Map.of("g1",100),catalog.observeRefillDeficits(requested));
         assertEquals(10_000,budget.available());
-        verifyNoInteractions(redis);
     }
 
     @Test void namedRefillAndTakeNeedNoPreparation() {
@@ -235,7 +209,6 @@ class NamedPoolOperationsTest {
         assertEquals(1,catalog.refill("g2",targets,offer("b")));
         assertEquals("a",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
         assertEquals("b",takeItems(catalog,"g2","test.pool",Map.of(),1).getFirst().workerId());
-        verifyNoInteractions(redis);
     }
 
     @Test void satisfiedObservedWatermarkDoesNotRejectLaterQualifiedOffers() {
@@ -288,7 +261,6 @@ class NamedPoolOperationsTest {
         assertEquals(100,catalog.observeRefillDeficits(tooMany).size());
         assertTrue(rule.snapshots.isEmpty());
         assertTrue(takeItems(catalog,"g1","test.pool",Map.of(),1).isEmpty());
-        verifyNoInteractions(redis);
     }
 
     @Test void declarationCeilingsAreAcceptedAndEquivalentTargetsUseMax() {
@@ -330,7 +302,6 @@ class NamedPoolOperationsTest {
         assertEquals(List.of("a", "b"), takeItems(catalog, "g1", "test.pool", Map.of(), 2)
                 .stream().map(WorkerCandidate::workerId).toList());
         assertTrue(takeItems(catalog, "g1", "zz.fail", Map.of(), 1).isEmpty());
-        verifyNoInteractions(redis);
     }
 
     @Test void aRejectedCandidateCanEnterALaterPool() {
@@ -358,7 +329,7 @@ class NamedPoolOperationsTest {
     @Test void compositionControlsRotationInsteadOfPoolNames() {
         rule.facts.put("w", "US");
         failingRule.facts.put("w", "US");
-        var configured = new RedisWorkerMatchingCatalog(storage, budget,
+        var configured = new DefaultWorkerMatchingCatalog(budget,
                 Map.of("a", rule.stock, "z", failingRule.stock), clock::get,
                 Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of())),
                 List.of("z", "a"), Set.of());
@@ -420,7 +391,6 @@ class NamedPoolOperationsTest {
         assertEquals(Map.of("US", 1), rule.stock.countByKey("g1"));
         assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
         assertEquals(Map.of("g1", 1), catalog.observeRefillDeficits(Map.of("g1", targets)));
-        verifyNoInteractions(redis);
     }
 
     @Test void pressureReclaimsEachRegisteredPoolOnlyOnceAndKeepsLiveEntries() {
@@ -429,7 +399,7 @@ class NamedPoolOperationsTest {
         a.offerBatch("g", "any", Collections.nCopies(1000, new WorkerCandidate("old", 20)));
         clock.set(2000);
         b.offerBatch("idle", "any", List.of(new WorkerCandidate("live", 21)));
-        var local = new RedisWorkerMatchingCatalog(storage, budget, Map.of("a", a, "b", b), clock::get,
+        var local = new DefaultWorkerMatchingCatalog(budget, Map.of("a", a, "b", b), clock::get,
                 Map.of("a", new AnyPoolPolicy(a), "b", new AnyPoolPolicy(b)), Map.of(),
                 Map.of("g", new MatchingGroup(Set.of("a", "b"), Set.of())), List.of("a", "b"), Set.of());
         clearInvocations(a, b);

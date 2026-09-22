@@ -27,8 +27,8 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.MutationResult;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -62,7 +62,7 @@ public final class WorkerDeliveryService {
     private final WorkerResourceCatalog workerCatalog;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
-    private final WorkerMatchingCatalog matchingCatalog;
+    private final WorkerProperties workerProperties;
     private final WorkerSchedulingService scheduling;
 
     public WorkerDeliveryService(
@@ -71,7 +71,7 @@ public final class WorkerDeliveryService {
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchingCatalog matchingCatalog,
+            WorkerProperties workerProperties,
             WorkerSchedulingService scheduling
     ) {
         this.commandRuntime = commandRuntime;
@@ -79,7 +79,7 @@ public final class WorkerDeliveryService {
         this.workerCatalog = workerCatalog;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
-        this.matchingCatalog = Objects.requireNonNull(matchingCatalog, "matchingCatalog");
+        this.workerProperties = Objects.requireNonNull(workerProperties, "workerProperties");
         this.scheduling = Objects.requireNonNull(scheduling, "scheduling");
     }
 
@@ -366,7 +366,7 @@ public final class WorkerDeliveryService {
             });
             int accepted = 0;
             for (var group : byGroup.entrySet()) {
-                Map<String, MutationResult> results = matchingCatalog.upsertWorkerFactsBatch(
+                Map<String, MutationResult> results = workerProperties.upsertWorkerFactsBatch(
                         group.getKey(), group.getValue()
                 );
                 List<String> changed = new ArrayList<>();

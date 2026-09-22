@@ -9,7 +9,9 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.server.testsupport.RedisTestScope;
-import com.xa.mass.workermatching.RedisWorkerMatchingCatalog;
+import com.xa.mass.workermatching.DefaultWorkerMatchingCatalog;
+import com.xa.mass.workermatching.MatchingComposition;
+import com.xa.mass.workermatching.WorkerProperties;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -27,7 +29,9 @@ class PhoneIndexIntegrationTest {
     private RedisClient client;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
-    private RedisWorkerMatchingCatalog catalog;
+    private DefaultWorkerMatchingCatalog catalog;
+    private MatchingComposition composition;
+    private WorkerProperties properties;
     private final List<String> commands = new CopyOnWriteArrayList<>();
 
     @BeforeEach void setup() {
@@ -36,15 +40,15 @@ class PhoneIndexIntegrationTest {
         client.addListener(new CommandListener() {
             @Override public void commandStarted(CommandStartedEvent event) { commands.add(event.getCommand().getType().toString()); }
         });
-        connection = client.connect(); redis = connection.sync(); catalog = create();
+        connection = client.connect(); redis = connection.sync(); composition = create(); catalog = composition.catalog(); properties = composition.properties();
     }
-    private RedisWorkerMatchingCatalog create() {
+    private MatchingComposition create() {
         return com.xa.mass.workermatching.MatchingComposition.create(client, keyspace, Map.of(
                 "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("any","messaging"), Set.of("worker.any","worker.phone","worker.messaging.available")),
                 "other", new com.xa.mass.workermatching.MatchingGroup(Set.of(), Set.of("worker.phone"))));
     }
     @AfterEach void cleanup() {
-        if (catalog != null) catalog.close();
+        if (catalog != null) composition.close();
         if (redis != null) scope.cleanup(redis);
         if (connection != null) connection.close();
         if (client != null) client.shutdown();
@@ -56,14 +60,14 @@ class PhoneIndexIntegrationTest {
     }
     private String root(String group) { return RedisHashPropertyIndex.key(keyspace, group, "phone"); }
     private String factsKey() { return keyspace.base() + ":matching:worker:facts:g"; }
-    private void write(String id, String phone) { catalog.upsertWorkerFactsBatch("g", Map.of(id, Map.of("phone", phone))); }
+    private void write(String id, String phone) { properties.upsertWorkerFactsBatch("g", Map.of(id, Map.of("phone", phone))); }
 
     @Test void phoneMembershipIsIndependentOfMessagingAndUsesOneHmget() {
         var batch = new LinkedHashMap<String, Map<String, String>>();
         batch.put("a", Map.of("phone", "+1"));
         batch.put("b", Map.of("phone", "+1", "messaging.enabled", "false"));
         batch.put("c", Map.of("phone", "+2", "country", "invalid"));
-        commands.clear(); catalog.upsertWorkerFactsBatch("g", batch);
+        commands.clear(); properties.upsertWorkerFactsBatch("g", batch);
         assertThat(commands).containsExactly("EVAL");
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("first", new WorkerQuery("worker.phone", "+1"));
@@ -93,26 +97,26 @@ class PhoneIndexIntegrationTest {
         write("a", "");
         assertThat(find("g", " +1 ", 1)).isEmpty();
         assertThat(redis.hget(factsKey(), "b")).contains(" +1 ");
-        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", " +1 "))).get("b").status())
-                .isEqualTo(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.UNCHANGED);
+        assertThat(properties.upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", " +1 "))).get("b").status())
+                .isEqualTo(com.xa.mass.workermatching.WorkerProperties.MutationStatus.UNCHANGED);
         assertThat(find("g", " +1 ", 1).values()).containsExactly(new WorkerCandidate("b", 0));
-        catalog.upsertWorkerFactsBatch("g", Map.of("b", Map.of()));
+        properties.upsertWorkerFactsBatch("g", Map.of("b", Map.of()));
         assertThat(redis.hgetall(root("g"))).isEmpty();
     }
 
     @Test void platformPatchesNeverReclaimPhoneButIdenticalWorkerReportsDo() {
         write("a", "shared"); write("b", "shared");
         commands.clear();
-        catalog.patchWorkerPlatformProperties("g", "a", Map.of("phone", "platform", "nested", Map.of("list", List.of())));
+        properties.patchWorkerPlatformProperties("g", "a", Map.of("phone", "platform", "nested", Map.of("list", List.of())));
         assertThat(commands).containsExactly("EVAL");
         assertThat(find("g", "shared", 1).values()).containsExactly(new WorkerCandidate("b", 0));
         assertThat(find("g", "platform", 1)).isEmpty();
-        assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "shared"))).get("a").status())
-                .isEqualTo(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.UNCHANGED);
+        assertThat(properties.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "shared"))).get("a").status())
+                .isEqualTo(com.xa.mass.workermatching.WorkerProperties.MutationStatus.UNCHANGED);
         assertThat(find("g", "shared", 1).values()).containsExactly(new WorkerCandidate("a", 0));
         redis.unlink(root("g")); redis.set(root("g"), "wrong-type");
-        assertThat(catalog.patchWorkerPlatformProperties("g", "a", Map.of("independent", true)).status())
-                .isEqualTo(com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus.APPLIED);
+        assertThat(properties.patchWorkerPlatformProperties("g", "a", Map.of("independent", true)).status())
+                .isEqualTo(com.xa.mass.workermatching.WorkerProperties.MutationStatus.APPLIED);
         assertThat(redis.get(root("g"))).isEqualTo("wrong-type");
     }
 
@@ -120,15 +124,15 @@ class PhoneIndexIntegrationTest {
         write("a", "left"); write("b", "right");
         var batch = new LinkedHashMap<String, Map<String, String>>();
         batch.put("a", Map.of("phone", "right")); batch.put("b", Map.of("phone", "left"));
-        catalog.upsertWorkerFactsBatch("g", batch);
+        properties.upsertWorkerFactsBatch("g", batch);
         assertThat(redis.hgetall(root("g"))).containsExactlyInAnyOrderEntriesOf(Map.of("right", "a", "left", "b"));
         batch.put("a", Map.of("phone", "left")); batch.put("b", Map.of("phone", "third"));
-        catalog.upsertWorkerFactsBatch("g", batch);
+        properties.upsertWorkerFactsBatch("g", batch);
         assertThat(redis.hgetall(root("g"))).containsExactlyInAnyOrderEntriesOf(Map.of("left", "a", "third", "b"));
         batch.put("a", Map.of("phone", "shared")); batch.put("b", Map.of("phone", "shared"));
-        catalog.upsertWorkerFactsBatch("g", batch);
+        properties.upsertWorkerFactsBatch("g", batch);
         assertThat(redis.hgetall(root("g"))).containsExactlyEntriesOf(Map.of("shared", "b"));
-        catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of()));
+        properties.upsertWorkerFactsBatch("g", Map.of("a", Map.of()));
         assertThat(redis.hget(root("g"), "shared")).isEqualTo("b");
     }
 
@@ -137,12 +141,12 @@ class PhoneIndexIntegrationTest {
         var batch = new LinkedHashMap<String, Map<String, String>>();
         batch.put("a", Map.of("phone", "new-a")); batch.put("b", Map.of("phone", "new-b"));
         redis.hset(factsKey(), "b", "[]");
-        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", batch)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> properties.upsertWorkerFactsBatch("g", batch)).isInstanceOf(RuntimeException.class);
         assertThat(redis.hget(factsKey(), "a")).contains("old-a");
         assertThat(redis.hgetall(root("g"))).containsExactlyInAnyOrderEntriesOf(Map.of("old-a", "a", "old-b", "b"));
         redis.hset(factsKey(), "b", "{\"phone\":\"old-b\"}");
         redis.hset(keyspace.base() + ":matching:worker:platform-properties:g", "b", "[]");
-        assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", batch)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> properties.upsertWorkerFactsBatch("g", batch)).isInstanceOf(RuntimeException.class);
         assertThat(redis.hget(factsKey(), "a")).contains("old-a");
         assertThat(redis.hget(root("g"), "new-a")).isNull();
     }
@@ -152,15 +156,15 @@ class PhoneIndexIntegrationTest {
         String account = RedisHashPropertyIndex.key(keyspace, "g", "account:id");
         try (var store = new FactsIndexStore(client, keyspace, Map.of("g", configured, "g:*[x]", configured))) {
             commands.clear();
-            store.replaceWorkerFacts("g", List.of("a", "{\"phone\":\"same\",\"account:id\":\"same\"}"));
+            store.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same", "account:id", "same")));
             assertThat(commands).containsExactly("EVAL");
-            store.replaceWorkerFacts("g:*[x]", List.of("b", "{\"phone\":\"same\"}"));
+            store.upsertWorkerFactsBatch("g:*[x]", Map.of("b", Map.of("phone", "same")));
             assertThat(new RedisHashPropertyIndex(store::commands, keyspace, "account:id").lookup("g", List.of("same")))
                     .containsExactlyEntriesOf(Map.of("same", "a"));
             assertThat(new RedisHashPropertyIndex(store::commands, keyspace, "phone").lookup("g:*[x]", List.of("same")))
                     .containsExactlyEntriesOf(Map.of("same", "b"));
             redis.unlink(account); redis.set(account, "wrong-type");
-            assertThatThrownBy(() -> store.replaceWorkerFacts("g", List.of("a", "{\"phone\":\"new\"}")))
+            assertThatThrownBy(() -> store.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "new"))))
                     .isInstanceOf(RuntimeException.class);
             assertThat(redis.hget(root("g"), "same")).isEqualTo("a");
             assertThat(redis.hget(factsKey(), "a")).contains("same");
@@ -171,12 +175,12 @@ class PhoneIndexIntegrationTest {
         write("a", "same"); write("b", "same");
         String oldRoot = keyspace.base() + ":matching:worker:index:Zw:phone";
         redis.set(oldRoot, "retired-corrupt-root"); redis.set(oldRoot + ":value:legacy", "retired-corrupt-set");
-        catalog.close(); commands.clear(); catalog = create();
+        composition.close(); commands.clear(); composition = create(); catalog = composition.catalog(); properties = composition.properties();
         assertThat(commands).isEmpty();
         assertThat(find("g", "same", 1).values()).containsExactly(new WorkerCandidate("b", 0));
         assertThat(redis.get(oldRoot)).isEqualTo("retired-corrupt-root");
         assertThat(redis.get(oldRoot + ":value:legacy")).isEqualTo("retired-corrupt-set");
-        redis.unlink(root("g")); catalog.close(); commands.clear(); catalog = create();
+        redis.unlink(root("g")); composition.close(); commands.clear(); composition = create(); catalog = composition.catalog(); properties = composition.properties();
         assertThat(commands).isEmpty();
         assertThat(find("g", "same", 1)).isEmpty();
         write("a", "same");
@@ -195,11 +199,11 @@ class PhoneIndexIntegrationTest {
     }
 
     @Test void concurrentReplacementsLeaveOnlyTheWinningValueAndPreservePlatformFacts() throws Exception {
-        write("w", "initial"); catalog.patchWorkerPlatformProperties("g", "w", Map.of("retained", true));
+        write("w", "initial"); properties.patchWorkerPlatformProperties("g", "w", Map.of("retained", true));
         var start = new java.util.concurrent.CountDownLatch(1);
         try (var other = create(); var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            var a = executor.submit(() -> { start.await(); return catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "left"))); });
-            var b = executor.submit(() -> { start.await(); return other.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "right"))); });
+            var a = executor.submit(() -> { start.await(); return properties.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "left"))); });
+            var b = executor.submit(() -> { start.await(); return other.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "right"))); });
             start.countDown(); a.get(5, java.util.concurrent.TimeUnit.SECONDS); b.get(5, java.util.concurrent.TimeUnit.SECONDS);
         }
         String winner = (String) FactsIndexStore.decodeObject(redis.hget(factsKey(), "w")).get("phone");
@@ -211,8 +215,8 @@ class PhoneIndexIntegrationTest {
     @Test void concurrentWorkersKeepTheirFactsButOnlyTheLastMappingAndLoserCannotDeleteIt() throws Exception {
         var start = new java.util.concurrent.CountDownLatch(1);
         try (var other = create(); var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            var a = executor.submit(() -> { start.await(); return catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same"))); });
-            var b = executor.submit(() -> { start.await(); return other.upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same"))); });
+            var a = executor.submit(() -> { start.await(); return properties.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same"))); });
+            var b = executor.submit(() -> { start.await(); return other.properties().upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same"))); });
             start.countDown(); a.get(5, java.util.concurrent.TimeUnit.SECONDS); b.get(5, java.util.concurrent.TimeUnit.SECONDS);
         }
         String winner = redis.hget(root("g"), "same");
@@ -226,7 +230,7 @@ class PhoneIndexIntegrationTest {
     }
 
     @Test void mixedPoolPhoneAndIdentityKeepFirstAssociationWithoutConsumingTheIndex() {
-        catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "+1")));
+        properties.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "+1")));
         assertThat(catalog.refill("g", List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)), Map.ofEntries(Map.entry("a", (long) (123))))).isEqualTo(1);
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("pool", new WorkerQuery("worker.any", Map.of()));

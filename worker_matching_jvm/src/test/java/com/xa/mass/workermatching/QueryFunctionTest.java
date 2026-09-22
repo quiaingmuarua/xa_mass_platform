@@ -2,10 +2,7 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.*;
 import com.xa.mass.kernel.assignment.WorkerMatching.*;
-import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.storage.FactsIndexStore;
-import io.lettuce.core.RedisClient;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -15,25 +12,25 @@ import static org.mockito.Mockito.*;
 class QueryFunctionTest {
     final CandidateBudget budget = new CandidateBudget();
 
-    RedisWorkerMatchingCatalog catalog(FactsIndexStore storage, Map<String, QueryFunction> functions) {
-        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(),
+    DefaultWorkerMatchingCatalog catalog(Map<String, QueryFunction> functions) {
+        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(),
                 functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())), List.of(), Set.of());
     }
 
     @Test void globalAvailabilityIsCompositionDataAndAllowsUnknownGroups() {
-        try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_global_function"), Map.of());
-             var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis,
+        {
+            var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis,
                      Map.of(), Map.of("renamed", new com.xa.mass.workermatching.functions.IdentityQueryFunction()),
-                     Map.of(), List.of(), Set.of("renamed"))) {
+                     Map.of(), List.of(), Set.of("renamed"));
             assertEquals("w", catalog.take("not-configured", Map.of("m", new WorkerQuery("renamed", "w"))).get("m").workerId());
             assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("workerId", "w")));
         }
     }
 
     @Test void scalarStrategiesNeedNeitherRefillPolicyNorPoolAndKeepCallLocalOrder() {
-        var client = mock(RedisClient.class);
+
         var calls = new ArrayList<String>();
-        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_function_table"), Map.of())) {
+        {
             QueryFunction strings = new QueryFunction() {
                 public Object normalizeInput(String group, Object input) {
                     calls.add("admit-text");
@@ -63,7 +60,8 @@ class QueryFunctionTest {
             };
             var supplied = new LinkedHashMap<String, QueryFunction>();
             supplied.put("text", strings); supplied.put("number", numbers);
-            try (var catalog = catalog(storage, supplied)) {
+            {
+            var catalog = catalog(supplied);
                 supplied.clear();
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("a", new WorkerQuery("text", "a"));
@@ -77,14 +75,14 @@ class QueryFunctionTest {
                 assertEquals(result, catalog.take("g", requests));
                 assertThrows(UnsupportedOperationException.class, result::clear);
                 assertThrows(IllegalArgumentException.class, () -> catalog.take("other", requests));
-                verifyNoInteractions(client);
+
             }
         }
     }
 
     @Test void lateAdmissionFailureConsumesNothingAndLaterExecutionFailureDoesNotRollBack() {
         var consumed = new AtomicInteger();
-        try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_function_failure"), Map.of())) {
+        {
             var first = new QueryFunction() {
                 public Object normalizeInput(String g, Object i) { return i; }
                 public Map<String, WorkerCandidate> apply(String g, Map<String, Object> inputs) {
@@ -101,7 +99,8 @@ class QueryFunctionTest {
                     throw new IllegalStateException("execution failure");
                 }
             };
-            try (var catalog = catalog(storage, Map.of("first", first, "last", last))) {
+            {
+            var catalog = catalog(Map.of("first", first, "last", last));
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("first", new WorkerQuery("first", Map.of()));
                 requests.put("last", new WorkerQuery("last", false));
@@ -125,8 +124,8 @@ class QueryFunctionTest {
                 return Collections.unmodifiableMap(result);
             }
         };
-        try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_function_dedup"), Map.of());
-                var catalog = catalog(storage, Map.of("first", fn, "second", fn))) {
+        {
+            var catalog = catalog(Map.of("first", fn, "second", fn));
             var requests = new LinkedHashMap<String, WorkerQuery>();
             requests.put("first", new WorkerQuery("first", Map.of()));
             requests.put("second", new WorkerQuery("second", Map.of()));
@@ -168,15 +167,15 @@ class QueryFunctionTest {
                 return Collections.unmodifiableMap(result);
             }
         };
-        var client = mock(RedisClient.class);
-        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_map_function"), Map.of());
-                var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis,
-                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of())) {
+
+        {
+            var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis,
+                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of());
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
             assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));
             assertEquals(new WorkerCandidate("w", 44), catalog.take("g", Map.of("m", new WorkerQuery("map", Map.of()))).get("m"));
-            verifyNoInteractions(client);
+
         }
     }
 }

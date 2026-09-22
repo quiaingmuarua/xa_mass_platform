@@ -41,20 +41,22 @@ class MatchingResourceIntegrationTest {
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
             assertThat(composition.pools()).isEmpty(); assertThat(composition.policies()).isEmpty();
-            try (var catalog = composition.catalog()) {
+            {
+            var catalog = composition.catalog();
                 assertThat(catalog.observeRefillDeficits(Map.of("g", List.of()))).isEmpty();
-                catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "first")));
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "first")));
                 assertThat(phone(catalog, "first")).containsValue(new WorkerCandidate("w", 0));
-                catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "second")));
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "second")));
                 assertThat(phone(catalog, "first")).isEmpty();
-                catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of()));
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of()));
                 assertThat(phone(catalog, "second")).isEmpty();
-                catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "retained")));
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "retained")));
                 assertThat(phone(catalog, "retained")).containsValue(new WorkerCandidate("w", 0));
                 assertThat(composition.budget().available()).isEqualTo(10_000);
             }
         }
-        try (var restarted = MatchingComposition.create(client, scope.keyspace(), groups)) {
+        try (var restartedComposition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+            var restarted = restartedComposition.catalog();
             assertThat(phone(restarted, "retained")).containsValue(new WorkerCandidate("w", 0));
             assertThat(phone(restarted, "retained")).containsValue(new WorkerCandidate("w", 0));
         }
@@ -65,8 +67,9 @@ class MatchingResourceIntegrationTest {
         var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone")));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, clock::get);
-            try (var catalog = composition.catalog()) {
-                catalog.upsertWorkerFactsBatch("g", Map.of("w0", Map.of("phone", "number")));
+            {
+            var catalog = composition.catalog();
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w0", Map.of("phone", "number")));
                 var target = List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1_000));
                 for (int batch = 0; batch < 10; batch++) {
                     var held = new LinkedHashMap<String, Long>();
@@ -91,7 +94,7 @@ class MatchingResourceIntegrationTest {
     @Test void twoFunctionsReadTheSamePhoneResourceWithoutDuplicatingStorageOrConsumingIt() {
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone")));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
+            var composition = new MatchingComposition(store, Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))), System::currentTimeMillis);
             var direct = composition.functions().get("worker.phone");
             var functions = new LinkedHashMap<>(composition.functions());
             functions.put("worker.phone", direct);
@@ -104,9 +107,10 @@ class MatchingResourceIntegrationTest {
                     return direct.apply(g, inputs);
                 }
             });
-            try (var catalog = new RedisWorkerMatchingCatalog(store, composition.budget(), composition.pools(),
-                    System::currentTimeMillis, composition.policies(), functions, groups, composition.poolOrder(), composition.globalFunctions())) {
-                catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "number")));
+            {
+            var catalog = new DefaultWorkerMatchingCatalog(composition.budget(), composition.pools(),
+                    System::currentTimeMillis, composition.policies(), functions, groups, composition.poolOrder(), composition.globalFunctions());
+                composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "number")));
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("direct", new WorkerQuery("worker.phone", "number"));
                 requests.put("other-input", new WorkerQuery("proof.phone", List.of("number")));
@@ -123,26 +127,28 @@ class MatchingResourceIntegrationTest {
     @Test void twoFunctionsEnableOnePropertyAndAnUnchangedReportReassertsItsMapping() {
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone")));
         assertThat(MatchingComposition.indexedProperties(groups).get("g")).containsExactly("phone");
-        try (var catalog = MatchingComposition.create(client, scope.keyspace(), groups)) {
-            catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same")));
-            catalog.upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same")));
-            assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same"))).get("a").status())
-                    .isEqualTo(WorkerMatchingCatalog.MutationStatus.UNCHANGED);
+        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+            var catalog = composition.catalog();
+            composition.properties().upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same")));
+            composition.properties().upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same")));
+            assertThat(composition.properties().upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same"))).get("a").status())
+                    .isEqualTo(WorkerProperties.MutationStatus.UNCHANGED);
             assertThat(phone(catalog, "same")).containsValue(new WorkerCandidate("a", 0));
         }
     }
 
     @Test void phonePreflightProtectsFactsAndMembershipWithoutAnyDemand() {
         var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone")));
-        try (var catalog = MatchingComposition.create(client, scope.keyspace(), groups)) {
+        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+            var catalog = composition.catalog();
             var original = Map.of("phone", "old", "country", "CN", "messaging.enabled", "true", "proofPool", "A", "proofTarget", "yes");
-            catalog.upsertWorkerFactsBatch("g", Map.of("w", original));
+            composition.properties().upsertWorkerFactsBatch("g", Map.of("w", original));
             var factsKey = scope.keyspace().base() + ":matching:worker:facts:g";
             String broken = RedisHashPropertyIndex.key(scope.keyspace(), "g", "phone");
             byte[] dump = redis.dump(broken);
             redis.unlink(broken); redis.set(broken, "wrong-type");
             String before = redis.hget(factsKey, "w");
-            assertThatThrownBy(() -> catalog.upsertWorkerFactsBatch("g", Map.of("w",
+            assertThatThrownBy(() -> composition.properties().upsertWorkerFactsBatch("g", Map.of("w",
                     Map.of("phone", "new", "country", "US", "messaging.enabled", "true"))))
                     .isInstanceOf(RuntimeException.class);
             assertThat(redis.hget(factsKey, "w")).isEqualTo(before);

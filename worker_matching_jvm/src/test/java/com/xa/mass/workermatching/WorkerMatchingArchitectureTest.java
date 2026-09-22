@@ -26,10 +26,24 @@ class WorkerMatchingArchitectureTest {
                 ".index.", ".storage.", "redis.call", ":matching:"));
     }
 
-    @Test void catalogCoordinatesCapabilitiesWithoutBusinessNamesOrRedisCommands() throws IOException {
-        String source = Files.readString(SOURCE.resolve("com/xa/mass/workermatching/RedisWorkerMatchingCatalog.java"));
-        for (String forbidden : List.of("\"country\"", "\"messaging\"", "\"proof-facts\"", "\"workerId\".equals",
-                "io.lettuce", ".commands()", "redis.call")) assertFalse(source.contains(forbidden), forbidden);
+    @Test void coordinationDoesNotDependOnPropertiesStorageOrBusinessNames() throws IOException {
+        for (String type : List.of("WorkerMatchingCatalog", "DefaultWorkerMatchingCatalog", "PoolRefillCoordinator")) {
+            String source = Files.readString(SOURCE.resolve("com/xa/mass/workermatching/" + type + ".java"));
+            for (String forbidden : List.of("\"country\"", "\"messaging\"", "\"proof-facts\"", "\"workerId\".equals",
+                    "io.lettuce", ".commands()", "redis.call", "FactsIndexStore", "WorkerProperties", "WorkerFacts",
+                    "ObjectMapper", "JsonMapper", "AutoCloseable"))
+                assertFalse(source.contains(forbidden), type + " must not depend on " + forbidden);
+        }
+    }
+
+    @Test void propertyCallersDependOnlyOnThePropertiesPort() throws IOException {
+        Path server = Path.of("../server_jvm/src/main/java/com/xa/mass/server");
+        for (String file : List.of("delivery/application/WorkerDeliveryService.java",
+                "worker/resource/WorkerResourceCommandService.java", "runtimeview/RuntimeViewService.java")) {
+            String source = Files.readString(server.resolve(file));
+            for (String forbidden : List.of("WorkerMatchingCatalog", "FactsIndexStore", "MatchingComposition"))
+                assertFalse(source.contains(forbidden), file + " must not depend on " + forbidden);
+        }
     }
 
     private void assertPackageDependencies(String name, List<String> forbidden) throws IOException {

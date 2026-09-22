@@ -13,6 +13,7 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.workermatching.*;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
@@ -98,20 +99,26 @@ class RuntimeBoundaryIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods=false)
     static class MatchingTestAssembly {
-        @Bean(destroyMethod="close") FactsIndexStore matchingFactsStore(
+        @Bean(destroyMethod="close") MatchingComposition matchingComposition(
                 RedisClient client, XaMassRedisProperties redis, MatchingProperties rules) {
-            return new FactsIndexStore(client, redis.keyspace(), MatchingComposition.indexedProperties(rules.groups()));
-        }
-        @Bean MatchingComposition matchingTestComposition(FactsIndexStore storage,MatchingProperties rules) {
-            return new MatchingComposition(storage,rules.groups(),System::currentTimeMillis);
+            var storage = new FactsIndexStore(client, redis.keyspace(), MatchingComposition.indexedProperties(rules.groups()));
+            var builtIns = new LinkedHashMap<String, MatchingGroup>();
+            var fixturePools = java.util.Set.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID);
+            var fixtureFunctions = java.util.Set.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID,
+                    "proof.messaging.country", "proof.messaging.countries");
+            rules.groups().forEach((group, config) -> builtIns.put(group, new MatchingGroup(
+                    config.pools().stream().filter(name -> !fixturePools.contains(name)).collect(java.util.stream.Collectors.toSet()),
+                    config.functions().stream().filter(name -> !fixtureFunctions.contains(name)).collect(java.util.stream.Collectors.toSet()))));
+            return new MatchingComposition(storage,builtIns,System::currentTimeMillis);
         }
         @Bean IdentityHintPoolFixture identityHintRule(MatchingComposition composition) {
             return new IdentityHintPoolFixture(System::currentTimeMillis,
                     new WorkerCandidatePool(System::currentTimeMillis,composition.budget()));
         }
-        @Bean(destroyMethod="close") RedisWorkerMatchingCatalog workerMatchingCatalog(
-                FactsIndexStore storage,MatchingComposition composition,MatchingProperties rules,
+        @Bean(destroyMethod="") DefaultWorkerMatchingCatalog workerMatchingCatalog(
+                MatchingComposition composition,MatchingProperties rules,
                 IdentityHintPoolFixture identityHintRule) {
+            var storage = (FactsIndexStore) composition.properties();
             var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
             var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,false);
             var pools=new LinkedHashMap<>(composition.pools());
@@ -140,7 +147,7 @@ class RuntimeBoundaryIntegrationTest {
                     return messaging.apply(g,local);
                 }
             });
-            var catalog=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
+            var catalog=new DefaultWorkerMatchingCatalog(composition.budget(),pools,
                     System::currentTimeMillis,handlers,functions,rules.groups(), java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID)).toList(), composition.globalFunctions());
             return catalog;
         }
@@ -236,6 +243,8 @@ class RuntimeBoundaryIntegrationTest {
 
     @MockitoSpyBean
     private WorkerMatchingCatalog matchingCatalog;
+    @MockitoSpyBean
+    private WorkerProperties workerProperties;
     @Autowired
     private com.xa.mass.kernel.task.TaskResourceCatalog taskCatalog;
     @MockitoSpyBean
@@ -363,7 +372,7 @@ class RuntimeBoundaryIntegrationTest {
             String secondId = rows.get(1).get("workerId").asText();
             assertThat(secondId).isNotEqualTo(firstId);
             List<String> ids = List.of(firstId, secondId);
-            assertThat(matchingCatalog.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
+            assertThat(workerProperties.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
             assertThat(send("PATCH", "/api/v1/worker-groups/" + groupId + "/workers/" + firstId
                     + "/platform-properties", "{\"pool\":\"a\"}").statusCode()).isEqualTo(400);
             for (boolean pause : List.of(false, true)) {
@@ -387,7 +396,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(row.get("workerProperties").isEmpty()).isTrue();
                 assertThat(row.get("platformProperties").isEmpty()).isTrue();
             }
-            assertThat(matchingCatalog.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
+            assertThat(workerProperties.loadWorkerFacts(groupId, ids).values()).containsOnlyNulls();
         }
     }
 
@@ -410,19 +419,19 @@ class RuntimeBoundaryIntegrationTest {
                     throw new IllegalStateException("Matching facts unavailable");
                 }
                 return invocation.callRealMethod();
-            }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+            }).when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
             try (JavaWorker worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port),
                     groupId, "live-host", type, host::get)) {
                 worker.start();
                 awaitCondition(() -> worker.snapshot().workerId() != null);
                 String workerId = worker.snapshot().workerId();
                 assertThat(firstObservation.await(5, TimeUnit.SECONDS)).isTrue();
-                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId))).containsEntry(workerId, null);
+                assertThat(workerProperties.loadWorkerFacts(groupId, List.of(workerId))).containsEntry(workerId, null);
                 awaitRuntimeProperties(groupId, workerId, adapterId, Map.of());
                 Thread.sleep(150); // SYSTEM failure has no automatic replay, including the first baseline.
                 assertThat(firstSubmissions).hasValue(1);
                 verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
-                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+                doCallRealMethod().when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
                 assertThat(worker.reportProperties()).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
                 URI endpoint = worker.snapshot().endpointUri();
@@ -446,7 +455,7 @@ class RuntimeBoundaryIntegrationTest {
                         Map.of("network.type", "stale-startup"));
                 assertThat(repeated.workerId()).isEqualTo(workerId);
                 assertThat(repeated.endpointUri()).isEqualTo(endpoint);
-                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                assertThat(workerProperties.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
                         .workerProperties()).isEqualTo(host.get());
                 assertThat(readWorkerFences(groupId, List.of(workerId))).isEqualTo(scoreBeforePrepare);
 
@@ -463,13 +472,13 @@ class RuntimeBoundaryIntegrationTest {
                         throw new IllegalStateException("Matching facts unavailable");
                     }
                     return invocation.callRealMethod();
-                }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+                }).when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
                 host.set(Map.of("network.type", "recovered"));
                 assertThat(worker.reportProperties(Map.of("network.type", "recovered"))).isTrue();
                 assertThat(failedSubmission.await(5, TimeUnit.SECONDS)).isTrue();
                 Thread.sleep(150); // Exceeds multiple configured 20ms Report backoffs; no automatic replay.
                 assertThat(submissions).hasValue(1);
-                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                assertThat(workerProperties.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
                         .workerProperties()).isEmpty();
                 assertThat(worker.reportProperties()).isTrue(); // New Host input, not transport repair.
                 awaitRuntimeProperties(groupId, workerId, adapterId, host.get());
@@ -478,7 +487,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
                 verify(preparationService, times(2)).prepareAll(eq(groupId), any(), any(), anyList());
             } finally {
-                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+                doCallRealMethod().when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
             }
         }
     }
@@ -919,7 +928,7 @@ class RuntimeBoundaryIntegrationTest {
                         throw new IllegalStateException("Matching facts unavailable");
                     }
                     return invocation.callRealMethod();
-                }).when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+                }).when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
 
                 host.set(lostFull);
                 assertThat(worker.reportProperties()).isTrue();
@@ -927,7 +936,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertAdapterProperties(adapterId, workerId, lostFull);
                 Thread.sleep(150); // No SYSTEM replay across several configured Report backoffs.
                 assertThat(submissions).hasValue(1);
-                assertThat(matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
+                assertThat(workerProperties.loadWorkerFacts(groupId, List.of(workerId)).get(workerId)
                         .workerProperties()).isEqualTo(original);
                 awaitRuntimeProperties(groupId, workerId, adapterId, original);
 
@@ -936,8 +945,8 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(worker.reportProperties(Map.of("battery", "89"))).isTrue();
                 awaitRuntimeProperties(groupId, workerId, adapterId, latest);
                 assertAdapterProperties(adapterId, workerId, latest);
-                verify(matchingCatalog).upsertWorkerFactsBatch(groupId, Map.of(workerId, latest));
-                var facts = matchingCatalog.loadWorkerFacts(groupId, List.of(workerId)).get(workerId);
+                verify(workerProperties).upsertWorkerFactsBatch(groupId, Map.of(workerId, latest));
+                var facts = workerProperties.loadWorkerFacts(groupId, List.of(workerId)).get(workerId);
                 assertThat(facts.workerProperties()).isEqualTo(latest).doesNotContainKey("ssid");
                 assertThat(facts.platformProperties()).isEqualTo(Map.of("pool", "retained"));
 
@@ -949,7 +958,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(worker.snapshot().endpointUri()).isEqualTo(endpoint);
                 verify(preparationService, times(1)).prepareAll(eq(groupId), any(), any(), anyList());
             } finally {
-                doCallRealMethod().when(matchingCatalog).upsertWorkerFactsBatch(eq(groupId), anyMap());
+                doCallRealMethod().when(workerProperties).upsertWorkerFactsBatch(eq(groupId), anyMap());
             }
         }
     }
@@ -1858,7 +1867,7 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(managedClose.statusCode()).isEqualTo(400);
             assertThat(managedClose.body()).contains("\"code\":12008");
             if (transportProfile == TransportProfile.POLLING) {
-                assertThat(matchingCatalog.loadWorkerFacts(workerGroupId, List.of(workerId)))
+                assertThat(workerProperties.loadWorkerFacts(workerGroupId, List.of(workerId)))
                         .containsEntry(workerId, null);
             }
         } finally {
@@ -2131,7 +2140,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private void awaitWorkerProperties(String workerGroupId, String workerId) throws InterruptedException {
-        awaitCondition(() -> matchingCatalog.loadWorkerFacts(workerGroupId, List.of(workerId)).get(workerId) != null);
+        awaitCondition(() -> workerProperties.loadWorkerFacts(workerGroupId, List.of(workerId)).get(workerId) != null);
     }
 
     private void awaitStoredResult(

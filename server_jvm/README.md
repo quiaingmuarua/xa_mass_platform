@@ -73,7 +73,8 @@ Public API
 WorkerMatchingAssembly
   -> shared Facts storage and enabled property HASH resources; retain indexes on restart
   -> fixed query functions and Pool maintenance over injected resources
-  -> one Catalog lifecycle; synchronous bounded admission/refill/take
+  -> one MatchingComposition lifecycle with stable Catalog and Properties ports
+  -> synchronous bounded admission/refill/take and independent Properties operations
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
@@ -343,7 +344,7 @@ instance exposed to Pacer only through `WorkerMatching`. The Catalog's Server ad
 method is not part of that Pacer port. Submission does not take candidates; dispatch
 passes messageId-to-query Maps for the fixed function table to normalize, execute
 and correlate.
-Catalog startup retains property HASH mappings without scanning or rebuilding.
+Matching composition startup retains property HASH mappings without scanning or rebuilding.
 Matching owns the country range and
 take time; Kernel retains candidate generation, due execution acquisition and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 
@@ -564,7 +565,7 @@ Worker Preview still returns the Kernel-owned identity, Group and Endpoint when
 Matching returns no usable facts. Both Properties fields are then empty Maps,
 and the Worker counts as returned rather than unreadable. This is a projection,
 not a synthetic Matching record or proof of an observed empty baseline. The
-current Catalog maps both missing and undecodable facts to no usable facts;
+current `WorkerProperties` observation maps both missing and undecodable facts to no usable facts;
 this read distinction is unchanged. Missing Kernel descriptors still count as
 unreadable, and Owner call failures still fail the request.
 
@@ -799,10 +800,15 @@ assembly. The `assembly.redis` package owns connection and health only;
 Redis key operations live in
 owner-local provider packages.
 
-`assembly.matching` exposes one Catalog lifecycle Bean. Matching's fixed composition
-creates enabled Pool and property lookup resources with one lazy Matching Redis
-connection. Startup does not read or rebuild indexes. Failed assembly closes
-that connection; Catalog destruction closes it idempotently without shutting down
+`assembly.matching` registers one `MatchingComposition` lifecycle Bean. It exposes
+stable `WorkerMatchingCatalog` and `WorkerProperties` interface Beans with independent
+destruction disabled. Task admission uses Catalog; Properties reception, Platform
+mutation and Runtime Facts display use only `WorkerProperties`. Pacer still sees
+only `WorkerMatching`. Properties APPLIED results continue to trigger separate
+best-effort Score invalidation in the Server use case.
+Composition creates enabled Pool and property lookup resources with one lazy Matching
+Redis connection. Startup does not read or rebuild indexes. Failed assembly and
+Composition destruction close that connection idempotently without shutting down
 the Server-owned RedisClient. Server does not assemble separate index lifecycles.
 Resource dependencies and atomic Facts/index writes belong to the
 [Matching Owner](../worker_matching_jvm/README.md#fixed-resource-composition).

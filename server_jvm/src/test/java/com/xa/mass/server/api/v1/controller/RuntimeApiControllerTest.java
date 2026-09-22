@@ -78,8 +78,9 @@ import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.MutationResult;
+import com.xa.mass.workermatching.WorkerProperties.MutationStatus;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -102,6 +103,7 @@ class RuntimeApiControllerTest {
     private WorkerEndpointDirectory workerEndpoints;
     private WorkerResourceCatalog workerCatalog;
     private WorkerMatchingCatalog matchingCatalog;
+    private WorkerProperties workerProperties;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskCallItemSubmission taskCallSubmission;
@@ -117,6 +119,7 @@ class RuntimeApiControllerTest {
         workerEndpoints = mock(WorkerEndpointDirectory.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
         matchingCatalog = mock(WorkerMatchingCatalog.class);
+        workerProperties = mock(WorkerProperties.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         itemScores = mock(TaskItemScoreBandCore.class);
@@ -161,7 +164,7 @@ class RuntimeApiControllerTest {
                 .thenAnswer(invocation -> invocation.getArgument(1).toString());
         when(matchingCatalog.normalizeQuery(anyString(),any())).thenAnswer(call -> call.getArgument(1));
 
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 any(),
                 any(),
                 any()
@@ -279,7 +282,7 @@ class RuntimeApiControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                new WorkerResourceCommandService(matchingCatalog, mock(WorkerSchedulingService.class))
+                                new WorkerResourceCommandService(workerProperties, mock(WorkerSchedulingService.class))
                         ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
@@ -468,7 +471,7 @@ class RuntimeApiControllerTest {
 
     @Test
     void workerPropertiesPatchUsesResourceBusinessErrors() throws Exception {
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "phone-tools", "missing-worker", Map.of("pool", "batch")
         )).thenReturn(new MutationResult(
                 MutationStatus.NOT_FOUND,
@@ -491,7 +494,7 @@ class RuntimeApiControllerTest {
     @Test
     void workerPropertiesPatchReturnsUnchangedForOwnerNoop()
             throws Exception {
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "phone-tools", "worker-1", Map.of("pool", "batch")
         )).thenReturn(new MutationResult(MutationStatus.UNCHANGED));
 

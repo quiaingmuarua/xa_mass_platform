@@ -5,14 +5,10 @@ import com.xa.mass.workermatching.functions.PhoneQueryFunction;
 import com.xa.mass.workermatching.functions.IdentityQueryFunction;
 
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
-import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.kernel.redis.RedisKeyspace;
 
-import io.lettuce.core.RedisClient;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +20,9 @@ import static org.mockito.Mockito.*;
 class DirectQueryFunctionTest {
     final CandidateBudget budget = new CandidateBudget();
     @Test void identityNeedsNoFactsStockOrRedisAndRetainsInvocationLocalCorrelation() {
-        var client = mock(RedisClient.class);
-        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_direct_identity"), Map.of());
-             var catalog = catalog(storage)) {
+
+        {
+            var catalog = catalog();
             var input = new LinkedHashMap<String, WorkerQuery>();
             input.put("first", new WorkerQuery("workerId", "w1"));
             input.put("second", new WorkerQuery("workerId", "w2"));
@@ -38,14 +34,14 @@ class DirectQueryFunctionTest {
             assertThrows(UnsupportedOperationException.class, found::clear);
             assertThrows(IllegalArgumentException.class, () -> catalog.normalizeRefill("g",List.of(new com.xa.mass.kernel.assignment.RefillTarget("workerId",new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),1))));
             assertThrows(IllegalArgumentException.class, () -> catalog.normalizeRefill("g",List.of(new com.xa.mass.kernel.assignment.RefillTarget("worker.phone",new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),1))));
-            verifyNoInteractions(client);
+
         }
     }
 
     @Test void localAdmissionIsStrictAndPhoneEnablementDoesNotReadRedis() {
-        var client = mock(RedisClient.class);
-        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_direct_admission"), Map.of());
-             var catalog = catalog(storage)) {
+
+        {
+            var catalog = catalog();
             for (Object input : List.of("", " ", 42, true, List.of("w"), Map.of("workerId", "w"))) {
                 assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("workerId", input)));
             }
@@ -60,14 +56,15 @@ class DirectQueryFunctionTest {
             input.put("invalid", new WorkerQuery("workerId", " "));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", input));
             assertEquals(Map.of(), catalog.take("g", Map.of()));
-            verifyNoInteractions(client);
+
         }
     }
 
     @Test void noPoolGroupRejectsAnyAndRetiredDefaultWithoutImplicitSupply() {
-        var client=mock(RedisClient.class);
-        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_explicit_any"), Map.of());
-                var catalog=new MatchingComposition(storage, Map.of(), System::currentTimeMillis).catalog()) {
+
+        {
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(),
+                    Map.of("workerId", new IdentityQueryFunction()), Map.of(), List.of(), Set.of("workerId"));
             assertEquals(List.of(),catalog.normalizeRefill("g",List.of()));
             assertEquals(Map.of(),catalog.observeRefillDeficits(Map.of("g",List.of())));
             for(String pool:List.of("any","default"))
@@ -76,11 +73,11 @@ class DirectQueryFunctionTest {
             for(String function:List.of("worker.any","worker.default"))
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeQuery("g",new WorkerQuery(function,Map.of())));
             assertEquals(new WorkerCandidate("w",0),catalog.take("g",Map.of("m",new WorkerQuery("workerId","w"))).get("m"));
-            verifyNoInteractions(client);
+
         }
     }
 
-    private RedisWorkerMatchingCatalog catalog(FactsIndexStore storage) {
-        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone"))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
+    private DefaultWorkerMatchingCatalog catalog() {
+        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction((group, values) -> { throw new AssertionError("admission must not read the index"); })), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
     }
 }

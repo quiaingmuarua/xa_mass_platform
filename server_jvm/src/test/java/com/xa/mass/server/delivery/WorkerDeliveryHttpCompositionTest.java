@@ -19,7 +19,7 @@ import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -45,8 +45,8 @@ class WorkerDeliveryHttpCompositionTest {
                             )
                     )
                     .withBean(
-                            WorkerMatchingCatalog.class,
-                            () -> org.mockito.Mockito.mock(WorkerMatchingCatalog.class)
+                            WorkerProperties.class,
+                            () -> org.mockito.Mockito.mock(WorkerProperties.class)
                     )
                     .withBean(
                             WorkerSchedulingService.class,

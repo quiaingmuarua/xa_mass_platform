@@ -54,6 +54,13 @@ compensation, new Producer or additional clock sampling is introduced.
 
 ## Mechanical Owners
 
+Matching exposes only its three-operation `WorkerMatching` port to Pacer: observe
+refill deficits, supply candidate fences, and take query results. Its Catalog
+delegates supply organization and both local cursors to `PoolRefillCoordinator`.
+Server-only Properties reads/writes use the separate `WorkerProperties` port.
+Both interfaces are assembled under one MatchingComposition lifetime; this split
+does not change Pacer Producers, Group rotation or Score operations.
+
 The finite Java caller closure is:
 
 ```text

@@ -184,6 +184,9 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   target normalization, deficits and qualification. WorkerCandidatePool owns
   Group-isolated single-bucket queues; indexes own physical definitions and reads.
   Catalog coordinates bounded calls and correlation without taking over those local mechanisms.
+- Server Properties callers use `WorkerProperties`; Task admission uses
+  `WorkerMatchingCatalog`; Pacer uses only `WorkerMatching`. Facts types belong to
+  Properties. Catalog owns no Facts encoding, storage dependency or close operation.
 - Refill counts are shortage watermarks, not admission quotas or inventory caps.
   Pacer bounds supply by observed deficits; Matching qualifies supplied identities
   within the call budget and actual capacity without clipping to target counts.
@@ -192,8 +195,10 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   its request-budget checks. Keep resource invariants at their own boundary.
 - Fixed composition injects existing resources. Pool resources depend only on
   their clock and shared capacity budget; indexes do not depend on Pools,
-  functions or refill policy. FactsIndexStore owns the shared connection, Facts,
-  fixed atomic Facts/HASH writes. Startup retains mappings without rebuild. Failed startup closes Matching resources,
+  functions or refill policy. FactsIndexStore directly implements WorkerProperties
+  and owns the shared connection, Facts and fixed atomic Facts/HASH writes.
+  MatchingComposition owns one stable Catalog/Properties pair and their close lifecycle;
+  interface Beans have no independent destruction. Startup retains mappings without rebuild. Failed startup closes Matching resources,
   never the Server-owned RedisClient.
 - Preserve full validation before consumption and the Owner's partial-success
   contracts across functions/Pools. Earlier admissions or consumption survive a
@@ -212,12 +217,13 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   Platform patches never maintain Worker property mappings. Index upkeep
   is independent of Task demand and Pool stock; Score invalidation is a separate
   best-effort commit, not a property-version transaction.
-- Catalog coordinates composition-provided Pool order, global function availability
-  and ALL/PAGED target capability without interpreting strategy names. Shared
+- Catalog coordinates query admission and global function availability. Its package-local
+  PoolRefillCoordinator owns composition-provided Pool order, ALL/PAGED target organization,
+  both refill cursors and capacity-pressure cleanup without interpreting strategy names. Shared
   PoolMaintenance owns complete qualification preparation and batch offers; concrete
   policies own qualification and bucket keys. Pool entries are immutable occurrences:
   do not add identity deduplication, generation replacement, multiple memberships or
-  select/commit state. TTL is checked on poll; resident counts are hints. Catalog
+  select/commit state. TTL is checked on poll; resident counts are hints. The coordinator
   may reclaim expired heads under capacity pressure without a background sweep.
 - Keep Any explicitly configured, Country and Messaging on offered Worker Facts,
   Proof on one atomic offered Worker/Platform snapshot, and Phone as an independent

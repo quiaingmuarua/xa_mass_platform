@@ -31,7 +31,7 @@ class WorkerSelectorAdmissionTest {
     }
     @Test void admissionIsLocalAndNamedRulesRejectIds() {
         var client=mock(RedisClient.class);
-        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
+        try (var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
             var stock=new WorkerCandidatePool(System::currentTimeMillis, budget);
             var rule=new CountryPoolPolicy(stock, storage::readWorkerFacts);
             assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN")))));
@@ -46,10 +46,11 @@ class WorkerSelectorAdmissionTest {
     }
     @Test void invalidCompositionAndTargetsFailWithoutRedis() {
         var client=mock(RedisClient.class);
-        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
+        try (var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
             assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of())), System::currentTimeMillis).catalog());
             assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country"))), System::currentTimeMillis).catalog());
-            try(var catalog=new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("country"),Set.of())), System::currentTimeMillis).catalog()) {
+            {
+            var catalog=new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("country"),Set.of())), System::currentTimeMillis).catalog();
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
                         new RefillTarget("country",new EligibilityQuery(Map.of("workerId",List.of("w"))),1))));
             }

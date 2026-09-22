@@ -10,7 +10,8 @@ public interface WorkerMatching {
      * Missing Groups have no observed shortage. Counts are not reservations or distinct
      * Worker counts: target predicates may overlap, while admission remains single-Pool. At most 100
      * Groups and 10,000 target declarations; retains existing capacity limits.
-     * Performs global lazy expiry and inactive refill-cursor cleanup, including on empty input.
+     * Clears inactive refill cursors even on empty input. Expired inventory is reclaimed
+     * only on take or when requested Group-Pool capacity is exhausted.
      */
     Map<String, Integer> observeRefillDeficits(Map<String, List<RefillTarget>> refillByGroup);
 

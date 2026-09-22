@@ -1,6 +1,27 @@
 # XA Mass Worker Matching JVM
 
-Status: current fixed query functions, bounded Facts qualification, Phone Index and Pool Owner.
+Status: current Worker Properties, fixed query functions, bounded Facts qualification, Phone Index and Pool Owner.
+
+Matching saves accepted Worker attributes, maintains property indexes, and supplies
+bounded candidates through Pool or Index resources. Its public entrypoints follow
+three caller paths:
+
+| Path | Entrypoint and flow |
+| --- | --- |
+| Properties update/observation | Server calls `WorkerProperties` for complete Worker replacement, independent Platform patch and bounded Facts reads. `FactsIndexStore` implements the interface directly. |
+| Pool supply | Pacer calls `WorkerMatching.observeRefillDeficits/refill`; `PoolRefillCoordinator` organizes targets and rotation, policies qualify offered identities, and Pools retain candidates. |
+| Query consumption | Server admits queries through `WorkerMatchingCatalog`; Pacer calls `WorkerMatching.take`. `DefaultWorkerMatchingCatalog` validates, groups and correlates fixed function calls to Pool or Index resources. |
+
+`WorkerMatchingCatalog` extends the three-operation Pacer port with query and supply
+normalization only. Properties types and mutation results belong to `WorkerProperties`;
+Catalog has no Facts JSON, Redis connection or resource-close responsibility.
+
+The four internal responsibilities are Properties/index persistence, Query interpretation
+and correlation, Refill coordination/qualification, and in-memory candidate storage.
+`MatchingComposition` creates stable Catalog and Properties instances and owns their
+shared resources. Facts and property HASHes persist across restart; Pool entries and
+Refill cursors remain local. This interface split changes no keys, formats or atomic
+write rules and requires no new scope or deployment configuration.
 
 Matching uses an immutable, construction-time name-to-function table for Item
 consumption. Functions interpret local JSON inputs and choose resource access.
@@ -75,7 +96,7 @@ smaller of that count and its per-Group ceiling, then calls
 `refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
 Pool maintenance by resource name, normalizes targets and MAX-merges them.
 Composition supplies the rotation base order: proof-facts, country, any, messaging.
-Catalog interprets the policy's fixed targetBatching capability, never its name:
+The Refill coordinator interprets the policy's fixed targetBatching capability, never its name:
 Country uses ALL; the other fixed policies use PAGED.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
 limit. Country receives up to 10,000 targets without a query cursor. Other policies
@@ -241,7 +262,7 @@ or executorType, and composition does not create a Pool or policy for Identity/P
 | `storage` | Facts encoding, fixed atomic Facts/HASH writes and shared Redis connection |
 
 WorkerCandidatePool receives only a clock and shared CandidateBudget. Composition
-retains the fixed Pool map; Catalog invokes lazy cleanup only when a requested
+retains the fixed Pool map; the Refill coordinator invokes lazy cleanup only when a requested
 Group-Pool has no room and reads budget diagnostics. There is no self-registration
 or resource manager. Index resources have no Pool, capacity, policy or function dependency.
 Country and Messaging receive the bounded Worker Facts reader; Proof receives an
@@ -260,10 +281,13 @@ configuration enables `phone` once for either Phone function, without separate
 index configuration or Task demand. Other property names use the same mechanical
 HASH implementation; no account query is configured by this change.
 
-Server owns one Catalog lifecycle Bean and one lazy shared Matching Redis connection.
-Composition does no Redis I/O or rebuild at startup; failed assembly closes its store.
-Catalog closes that store idempotently after platform callers stop, never the
-Server-owned RedisClient. No per-index connections or background repair are added.
+Server registers one managed `MatchingComposition` Bean and two interface Beans,
+`WorkerMatchingCatalog` and `WorkerProperties`, without independent destroy callbacks.
+`catalog()` and `properties()` always return the same instances. Composition performs
+no Redis I/O or rebuild at startup; failed assembly closes its store. Composition
+closes the store idempotently after platform callers stop, never the Server-owned
+RedisClient. Properties and indexes share the store's one lazy connection. Pure
+Pool/Identity Catalog tests construct their resources without a Redis Store.
 
 | Pool | Maintenance |
 | --- | --- |
@@ -479,7 +503,7 @@ attempt still reserves 100 from the round budget. Each attempt supplies only its
 successful candidateizations, with at most 100 actual admissions. Remaining shortage
 waits for a normal round; no existing Pool stock is observed for supply.
 
-Catalog rotates the explicitly ordered Pool policies. PAGED policies retain
+`PoolRefillCoordinator` rotates the explicitly ordered Pool policies. PAGED policies retain
 bounded query pages, including empty attempts; ALL policies receive the complete
 bounded target set. Observation never advances the target cursor. A maintenance policy
 qualifies the supplied batch completely before appending candidates by bucket.
@@ -496,7 +520,7 @@ capacity. Failed requalification leaves existing entries untouched.
 
 Normal operations do not perform an unconditional global expiry sweep. Counts and
 capacity reads do not expire stock. Nonempty shortage observation checks whether
-any requested, registered Group-Pool has zero capacity. If so, Catalog invokes each
+any requested, registered Group-Pool has zero capacity. If so, the coordinator invokes each
 Pool's lazy cleanup at most once before computing deficits. Cleanup removes expired
 heads per bucket, including idle Groups, without evicting live entries. Empty supply
 still clears inactive cursors but does not sweep stock. Independent strategies without
@@ -513,7 +537,7 @@ Pool queries never trigger targeted HOT reads; rare predicates may wait. Direct
 queries can independently acquire due Workers without stock. No allocator or
 rule-change sweep is added.
 
-## Persistent Catalog
+## Persistent Properties and Indexes
 
 All keys use `xa_mass:<scope>`:
 
@@ -526,7 +550,8 @@ All keys use `xa_mass:<scope>`:
 
 Group and property names use UTF-8 Base64 URL without padding; values are raw HASH
 fields. Worker and Platform Facts retain their existing keys and JSON formats.
-The new index layout requires a fresh scope. Normal restarts retain HASH mappings;
+The earlier property-HASH cutover required a fresh scope; the current interface split
+uses that layout unchanged. Normal restarts retain HASH mappings;
 startup does not scan Facts, clear indexes or reconstruct overwritten winners.
 Retired reverse HASHes, value SETs and qualification indexes are not read, written,
 validated or cleaned. There is no compatibility reader, migrator or version marker;
@@ -534,6 +559,12 @@ mixed old/new processes are unsupported. Missing indexes remain empty until norm
 Worker Properties reports populate them, including unchanged reports.
 
 ## Facts Writes and Index Maintenance
+
+`WorkerProperties` owns `upsertWorkerFactsBatch`, `patchWorkerPlatformProperties`
+and `loadWorkerFacts`, including input validation and mutation result mapping in
+`FactsIndexStore`. Display reads preserve missing/corrupt rows as null entries;
+internal qualification reads remain strict and Proof still uses one atomic
+Worker/Platform snapshot. Neither read path is routed through Catalog.
 
 Prepare creates no facts. An admitted Adapter observation replaces the complete
 Worker string Map, including an observed empty Map, while preserving Platform

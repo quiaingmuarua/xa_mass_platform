@@ -523,7 +523,7 @@ Proof Pool witness retains qualification and strict-fence coverage.
 
 Matching resource separation uses those same proof lanes. Focused assembly tests
 cover no-Pool Identity/Phone composition, one lazy shared connection, immutable
-property configuration, startup without Redis I/O and idempotent Catalog close. Architecture
+property configuration, startup without Redis I/O and idempotent Composition close. Architecture
 tests enforce actual package dependency restrictions for Pool, Index, refill and
 function implementations. Redis Owner covers Phone updates and restart retention
 without Task demand, non-consuming shared lookup, Pool capacity/expiry independence,
@@ -531,6 +531,13 @@ single-property enablement and HASH preflight protection. Matching convergence
 adds name-independent ALL/PAGED batching, explicit Pool rotation, a strict atomic
 Worker/Platform snapshot and zero access to poisoned retired Messaging/Proof keys.
 Messaging uses one offered-ID HMGET; Proof uses one EVAL_RO with two HMGETs.
+Properties entrypoint separation retains those same lanes: pure Pool/Identity Catalog
+tests use no Redis Store; Server property callers depend only on `WorkerProperties`.
+Composition tests verify stable interface instances, shared Properties/index connection,
+failure cleanup and that closing Matching never shuts down the Server-owned RedisClient.
+Refill coordinator regressions retain target paging, Pool rotation, single-Pool
+admission and partial success. Empty demand cleans cursors, not expired inventory;
+expiry remains poll-driven or capacity-pressure-driven.
 Malformed active Facts fail before the current Pool changes stock; public Facts
 observation retains its previous row-local behavior. Literal proof values (*, ~,
 separators, quotes and Unicode) no longer collide with omitted conditions.

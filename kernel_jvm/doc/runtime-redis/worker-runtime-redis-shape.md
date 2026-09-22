@@ -43,7 +43,7 @@ accepted missing members. These stages commit separately and retry fills gaps.
 
 ## Matching Facts
 
-[Worker Matching](../../../worker_matching_jvm/README.md#persistent-catalog) owns
+[Worker Matching](../../../worker_matching_jvm/README.md#persistent-properties-and-indexes) owns
 Worker facts, independent Platform Properties and enabled indexes. Task Owner
 stores optional Pool supply declarations in each descriptor and an explicit
 WorkerQuery in each Item; Matching has no Task-ID configuration store. Fixed
@@ -109,7 +109,7 @@ independent `test_*` scopes and clean only their own exact prefix.
 
 [Server Prepare](../../../server_jvm/README.md#workergroup-and-worker-preparation)
 owns the ordered cross-owner use case. The
-[Matching catalog](../../../worker_matching_jvm/README.md#persistent-catalog)
+[Matching catalog](../../../worker_matching_jvm/README.md#persistent-properties-and-indexes)
 owns fact/query semantics, and the
 [Worker resource model](../resource-model/worker-resource-model.md) owns Kernel
 Binding and registration. Runtime views join independent Owner reads; they are neither new

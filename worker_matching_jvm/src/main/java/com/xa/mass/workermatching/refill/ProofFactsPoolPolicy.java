@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.buckets.ProofFactsBuckets;
 import java.util.*;

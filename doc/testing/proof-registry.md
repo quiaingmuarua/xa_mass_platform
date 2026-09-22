@@ -17,7 +17,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 
 - **Primary owner:** each touched JVM module; CI only aggregates.
 - **Claim:** Java contracts, architecture guards and deterministic Owner tests
-  pass together.
+  pass together. Matching guards separate the Properties port, pure Catalog query
+  coordination and the local Refill coordinator; composition tests establish one
+  stable interface pair and one independently closed Matching connection.
 - **Deliberate nonclaims:** Redis behavior, process boundaries and system
   convergence.
 - **Contract:** [Selection and commands](../../TESTING.md#lane-index).

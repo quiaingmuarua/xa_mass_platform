@@ -27,7 +27,9 @@ class MessagingPhoneIntegrationTest {
     private RedisClient client;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
-    private RedisWorkerMatchingCatalog catalog;
+    private DefaultWorkerMatchingCatalog catalog;
+    private MatchingComposition composition;
+    private WorkerProperties properties;
     private final List<String> commands = new CopyOnWriteArrayList<>();
     private final Map<String, MatchingGroup> groups = Map.of(
             "direct", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")),
@@ -40,11 +42,13 @@ class MessagingPhoneIntegrationTest {
             @Override public void commandStarted(CommandStartedEvent event) { commands.add(event.getCommand().getType().toString()); }
         });
         connection = client.connect(); redis = connection.sync();
-        catalog = MatchingComposition.create(client, scope.keyspace(), groups);
+        composition = MatchingComposition.create(client, scope.keyspace(), groups);
+        catalog = composition.catalog();
+        properties = composition.properties();
     }
 
     @AfterEach void cleanup() {
-        if (catalog != null) catalog.close();
+        if (catalog != null) composition.close();
         if (redis != null) scope.cleanup(redis);
         if (connection != null) connection.close();
         if (client != null) client.shutdown();
@@ -57,7 +61,7 @@ class MessagingPhoneIntegrationTest {
             facts.put("w" + i, eligible("CN", "phone" + i));
             requests.put("m" + i, query("phone" + i));
         }
-        catalog.upsertWorkerFactsBatch("direct", facts);
+        properties.upsertWorkerFactsBatch("direct", facts);
         commands.clear();
         var found = catalog.take("direct", requests);
         assertThat(found.keySet()).containsExactlyElementsOf(requests.keySet());
@@ -74,17 +78,19 @@ class MessagingPhoneIntegrationTest {
         assertThat(commands).containsExactly("HMGET");
 
         // Restart retains the existing mapping without rebuilding.
-        catalog.close(); catalog = MatchingComposition.create(client, scope.keyspace(), groups);
+        composition.close(); composition = MatchingComposition.create(client, scope.keyspace(), groups);
+        catalog = composition.catalog();
+        properties = composition.properties();
         assertThat(catalog.take("direct", Map.of("m", query("phone0"))))
                 .containsEntry("m", new WorkerCandidate("w0", 0));
     }
 
     @Test void countryIntersectionFiltersFactsAndGenericPhoneKeepsItsIndependentMeaning() {
-        catalog.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same"), "us", eligible("US", "same"),
+        properties.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same"), "us", eligible("US", "same"),
                 "disabled", Map.of("country", "CN", "phone", "disabled", "messaging.enabled", "false"),
                 "invalid", eligible("invalid", "invalid"), "missing", eligible("CN", "missing")));
         // Make the last mapping deterministic; earlier US facts remain but are not a fallback.
-        catalog.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same")));
+        properties.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same")));
         redis.hdel(factsKey("mixed"), "missing");
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("us", new WorkerQuery("worker.messaging.phone", Map.of("phone", "same", "country", List.of("US"))));
@@ -101,11 +107,11 @@ class MessagingPhoneIntegrationTest {
     }
 
     @Test void phoneChangedAfterLookupIsRejectedByCurrentFactsWithoutRefetching() {
-        catalog.upsertWorkerFactsBatch("direct", Map.of("w", eligible("CN", "old")));
+        properties.upsertWorkerFactsBatch("direct", Map.of("w", eligible("CN", "old")));
         try (var storage = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var function = new MessagingPhoneQueryFunction(new RedisHashPropertyIndex(storage::commands, scope.keyspace(), "phone"), (group, ids) -> {
                 assertThat(ids).containsExactly("w");
-                catalog.upsertWorkerFactsBatch(group, Map.of("w", eligible("CN", "new")));
+                properties.upsertWorkerFactsBatch(group, Map.of("w", eligible("CN", "new")));
                 return storage.readWorkerFacts(group, ids);
             });
             assertThat(function.apply("direct", Map.of("m", function.normalizeInput("direct", Map.of("phone", "old"))))).isEmpty();
@@ -114,7 +120,7 @@ class MessagingPhoneIntegrationTest {
     }
 
     @Test void fullAdmissionPrecedesEffectsButFactsFailureKeepsEarlierPoolConsumption() {
-        catalog.upsertWorkerFactsBatch("mixed", Map.of("bad", eligible("CN", "bad")));
+        properties.upsertWorkerFactsBatch("mixed", Map.of("bad", eligible("CN", "bad")));
         redis.hset(factsKey("mixed"), "bad", "not-json");
         assertThat(catalog.refill("mixed", List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1)),
                 Map.of("pooled", 123L))).isEqualTo(1);

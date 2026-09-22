@@ -3,17 +3,14 @@ package com.xa.mass.workermatching;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 
-import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
 import com.xa.mass.workermatching.refill.PoolMaintenance;
 
-import io.lettuce.core.RedisClient;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -25,10 +22,8 @@ import static org.mockito.Mockito.*;
 class RuleEligibilityTest {
     final CandidateBudget budget = new CandidateBudget();
     final AtomicLong clock=new AtomicLong(1000);
-    final FactsIndexStore storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule_stock"), Map.of());
     final TestPoolPolicy rule=new TestPoolPolicy();
     static final EligibilityQuery ANY=EligibilityQuery.parse(Map.of());
-    @AfterEach void close() { storage.close(); }
     final class TestPoolPolicy extends com.xa.mass.workermatching.refill.PoolMaintenance<String> {
         Map<String,String> current=Map.of();
         int reads, evaluations;
@@ -151,7 +146,7 @@ class RuleEligibilityTest {
     }
     @Test void invalidInputDoesNotReadOrMutateExistingStock() {
         populate(2); int reads=rule.reads;
-        var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("pool", rule.stock), clock::get,
+        var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("pool", rule.stock), clock::get,
                 Map.of("pool", rule), Map.of("pool", rule.functions()),
                 Map.of("g", new MatchingGroup(Set.of("pool"), Set.of("pool"))), List.of("pool"), Set.of());
         var oversized = new LinkedHashMap<String, WorkerQuery>();
@@ -186,7 +181,7 @@ class RuleEligibilityTest {
     }
     @Test void concurrentTakesConsumeEachEntryOnce() throws Exception {
         populate(100);
-        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var a=executor.submit(()->consume(rule,"g",Map.of(),100));
             var b=executor.submit(()->consume(rule,"g",Map.of(),100));
             var all=new ArrayList<>(a.get(5,TimeUnit.SECONDS));all.addAll(b.get(5,TimeUnit.SECONDS));
@@ -212,7 +207,7 @@ class RuleEligibilityTest {
     private List<String> refillTogether(int target,Map<String, Long> first,Map<String, Long> second) throws Exception {
         var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
         rule.beforeRead=()->{entered.countDown();await(release);};
-        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var a=executor.submit(()->rule.refill("g",Map.of(ANY,target),first,100));
             var b=executor.submit(()->rule.refill("g",Map.of(ANY,target),second,100));
             try { assertTrue(entered.await(5,TimeUnit.SECONDS)); }
@@ -277,7 +272,7 @@ class RuleEligibilityTest {
         var entered=new CountDownLatch(1); var release=new CountDownLatch(1);
         rule.beforeRead=()->{entered.countDown();try { assertTrue(release.await(5,TimeUnit.SECONDS)); }catch(InterruptedException e){throw new RuntimeException(e);}};
         var offered=offers(1,1,"US");
-        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var refill=executor.submit(()->rule.refill("g",targets(List.of(pools(2,"US"))),offered,100));
             assertTrue(entered.await(5,TimeUnit.SECONDS));
             try { assertEquals(1,executor.submit(()->consume(rule,"g",Map.of(),1).size()).get(2,TimeUnit.SECONDS)); }

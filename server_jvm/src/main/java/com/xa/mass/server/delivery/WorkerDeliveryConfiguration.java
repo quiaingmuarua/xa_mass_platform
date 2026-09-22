@@ -4,7 +4,7 @@ import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
@@ -29,7 +29,7 @@ public class WorkerDeliveryConfiguration {
             WorkerResourceCatalog workerCatalog,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatchingCatalog matchingCatalog,
+            WorkerProperties workerProperties,
             WorkerSchedulingService scheduling
     ) {
         return new WorkerDeliveryService(
@@ -38,7 +38,7 @@ public class WorkerDeliveryConfiguration {
                 workerCatalog,
                 directCalls,
                 serviceability,
-                matchingCatalog,
+                workerProperties,
                 scheduling
         );
     }

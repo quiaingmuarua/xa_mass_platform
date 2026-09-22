@@ -48,8 +48,9 @@ class WorkerRefillDeficitIntegrationTest {
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
-                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
                         new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"))))) {
+            var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
                 var time = redis.time();
@@ -60,7 +61,7 @@ class WorkerRefillDeficitIntegrationTest {
                     redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), id);
                     facts.put(id, Map.of("country", "US", "phone", "+1202555%04d".formatted(i), "messaging.enabled", "true"));
                 }
-                matching.upsertWorkerFactsBatch(group, facts);
+                matchingComposition.properties().upsertWorkerFactsBatch(group, facts);
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
                 assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(12);
                 var before = readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()));
@@ -113,14 +114,15 @@ class WorkerRefillDeficitIntegrationTest {
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(target), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
-                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
                         new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"))))) {
+            var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
                 var time = redis.time();
                 long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
-                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
+                matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
                 assertThat(pacer.refill(List.of(group), List.of(task))).isEqualTo(1);
                 var pooled = matching.take(group, Map.of("pool", new WorkerQuery("worker.any", Map.of()))).get("pool");
@@ -167,14 +169,15 @@ class WorkerRefillDeficitIntegrationTest {
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
-                var matching = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
                         new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))))) {
+            var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
                 var time = redis.time();
                 long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
-                matching.upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
+                matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
                 var clock = new java.util.concurrent.atomic.AtomicLong(sampled);
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, clock::get);
                 assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(1);
@@ -216,8 +219,9 @@ class WorkerRefillDeficitIntegrationTest {
         var query = Map.of("item", new WorkerQuery("worker.any", Map.of()));
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
-                var matching = MatchingComposition.create(client, scope.keyspace(),
+                var matchingComposition = MatchingComposition.create(client, scope.keyspace(),
                         Map.of(group, new MatchingGroup(Set.of("any"), Set.of("worker.any"))))) {
+            var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
                 var parts = redis.time();
@@ -290,8 +294,9 @@ class WorkerRefillDeficitIntegrationTest {
                 Map.of("priority","0","maxRetryTimes","1"),declarations,null,Map.of()));
         try (var connection=client.connect();
                 var scores=new RedisWorkerScoreCore(client,scope.keyspace());
-                var matching=MatchingComposition.create(client,scope.keyspace(),
+                var matchingComposition=MatchingComposition.create(client,scope.keyspace(),
                         Map.of(group,new MatchingGroup(Set.of("any"),Set.of("worker.any"))))) {
+            var matching = matchingComposition.catalog();
             var redis=connection.sync();
             try {
                 var time=redis.time();

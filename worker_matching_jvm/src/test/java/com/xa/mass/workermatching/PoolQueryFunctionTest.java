@@ -2,13 +2,10 @@ package com.xa.mass.workermatching;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.WorkerQuery;
-import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.functions.*;
 import com.xa.mass.workermatching.index.PropertyIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
-import com.xa.mass.workermatching.storage.FactsIndexStore;
-import io.lettuce.core.RedisClient;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,10 +38,10 @@ class PoolQueryFunctionTest {
         pool.offerBatch("g", "CN", List.of(new WorkerCandidate("cn1", 11), new WorkerCandidate("cn2", 13)));
         pool.offerBatch("g", "US", List.of(new WorkerCandidate("us", 12)));
         var function = spy(new CountryQueryFunction(pool));
-        var client = mock(RedisClient.class);
-        try (var storage = new FactsIndexStore(client, new RedisKeyspace("test_strategy_order"), Map.of());
-                var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,
-                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of())) {
+
+        {
+            var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), () -> 1000,
+                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of());
             var inputs = new LinkedHashMap<String, WorkerQuery>();
             inputs.put("a", new WorkerQuery("country", List.of("CN", "CN")));
             inputs.put("b", new WorkerQuery("country", List.of("US")));
@@ -59,7 +56,7 @@ class PoolQueryFunctionTest {
             verify(pool).pollBatch("g", Set.of("US"), 1);
             verify(pool).pollAnyBatch("g", 1);
             assertThrows(UnsupportedOperationException.class, result::clear);
-            verifyNoInteractions(client);
+
         }
     }
 
@@ -68,10 +65,10 @@ class PoolQueryFunctionTest {
         var pool = new WorkerCandidatePool(() -> 1000, budget);
         pool.offerBatch("g", "CN", List.of(new WorkerCandidate("w", 19)));
         var identity = spy(new IdentityQueryFunction());
-        try (var storage = new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_strategy_admission"), Map.of());
-                var catalog = new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), () -> 1000,
+        {
+            var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), () -> 1000,
                         Map.of(), Map.of("country", new CountryQueryFunction(pool), "workerId", identity),
-                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of("workerId"))) {
+                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of("workerId"));
             var oversized = new LinkedHashMap<String, WorkerQuery>();
             for (int i = 0; i <= 100; i++) oversized.put("m" + i, new WorkerQuery("workerId", "w" + i));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", oversized));
@@ -88,8 +85,8 @@ class PoolQueryFunctionTest {
     }
     @Test void proofPartialQueriesUseOneDirectorySnapshotAndKeepEachEntryInOneBucket() {
         var pool = spy(new WorkerCandidatePool(() -> 1000, new CandidateBudget()));
-        var first = new WorkerMatchingCatalog.WorkerFacts("a", "g", Map.of("proofPool", "*", "proofTarget", "yes", "convergenceSlot", "slot"), Map.of("proofEnabled", "yes"));
-        var second = new WorkerMatchingCatalog.WorkerFacts("b", "g", Map.of("proofPool", "~", "proofTarget", "yes"), Map.of("proofEnabled", "yes"));
+        var first = new WorkerProperties.WorkerFacts("a", "g", Map.of("proofPool", "*", "proofTarget", "yes", "convergenceSlot", "slot"), Map.of("proofEnabled", "yes"));
+        var second = new WorkerProperties.WorkerFacts("b", "g", Map.of("proofPool", "~", "proofTarget", "yes"), Map.of("proofEnabled", "yes"));
         String a = com.xa.mass.workermatching.buckets.ProofFactsBuckets.bucketKey(first);
         String b = com.xa.mass.workermatching.buckets.ProofFactsBuckets.bucketKey(second);
         pool.offerBatch("g", a, List.of(new WorkerCandidate("a", 11)));

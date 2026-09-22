@@ -13,9 +13,9 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationStatus;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.MutationResult;
+import com.xa.mass.workermatching.WorkerProperties.MutationStatus;
 import java.util.Map;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,36 +23,36 @@ import org.junit.jupiter.api.Test;
 
 class WorkerResourceCommandServiceTest {
 
-    private WorkerMatchingCatalog matchingCatalog;
+    private WorkerProperties workerProperties;
     private WorkerResourceCommandService service;
     private WorkerSchedulingService scheduling;
 
     @BeforeEach
     void setUp() {
-        matchingCatalog = mock(WorkerMatchingCatalog.class);
+        workerProperties = mock(WorkerProperties.class);
         scheduling = mock(WorkerSchedulingService.class);
-        service = new WorkerResourceCommandService(matchingCatalog, scheduling);
+        service = new WorkerResourceCommandService(workerProperties, scheduling);
     }
 
     @Test
     void mapsSuccessfulOwnerResultsToActionOutcomes() {
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
         )).thenReturn(result(MutationStatus.APPLIED));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of("region", "east")
         )).isEqualTo(ActionOutcome.applied());
 
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).thenReturn(result(MutationStatus.UNCHANGED));
         assertThat(service.patchPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).isEqualTo(ActionOutcome.unchanged());
-        var order = inOrder(matchingCatalog, scheduling);
-        order.verify(matchingCatalog).patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east"));
+        var order = inOrder(workerProperties, scheduling);
+        order.verify(workerProperties).patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east"));
         order.verify(scheduling).invalidateCandidates("group-1", List.of("worker-1"));
-        order.verify(matchingCatalog).patchWorkerPlatformProperties("group-1", "worker-1", Map.of());
+        order.verify(workerProperties).patchWorkerPlatformProperties("group-1", "worker-1", Map.of());
         verifyNoMoreInteractions(scheduling);
     }
 
@@ -74,7 +74,7 @@ class WorkerResourceCommandServiceTest {
 
     @Test
     void providerFailureIsUnavailable() {
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).thenThrow(new IllegalStateException("Redis detail"));
 
@@ -94,8 +94,8 @@ class WorkerResourceCommandServiceTest {
     @Test
     void appliedPlatformPatchSurvivesInvalidationFailure() {
         var scores = mock(com.xa.mass.kernel.score.WorkerScoreCore.class);
-        service = new WorkerResourceCommandService(matchingCatalog, new WorkerSchedulingService(scores));
-        when(matchingCatalog.patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
+        service = new WorkerResourceCommandService(workerProperties, new WorkerSchedulingService(scores));
+        when(workerProperties.patchWorkerPlatformProperties("group-1", "worker-1", Map.of("region", "east")))
                 .thenReturn(result(MutationStatus.APPLIED));
         when(scores.advancePastScoreTimesToNow("group-1", List.of("worker-1")))
                 .thenThrow(new IllegalStateException("unavailable"));
@@ -108,7 +108,7 @@ class WorkerResourceCommandServiceTest {
             MutationStatus status,
             ServerErrorCode expectedCode
     ) {
-        when(matchingCatalog.patchWorkerPlatformProperties(
+        when(workerProperties.patchWorkerPlatformProperties(
                 "group-1", "worker-1", Map.of()
         )).thenReturn(new MutationResult(status, "owner detail"));
 

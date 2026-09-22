@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.function.LongSupplier;
 
 /** Fixed resource wiring; resource construction and startup precede every Pacer caller. */
-public final class MatchingComposition {
+public final class MatchingComposition implements AutoCloseable {
     private final FactsIndexStore storage;
     private final LongSupplier clock;
     private final CandidateBudget budget = new CandidateBudget();
@@ -31,63 +31,75 @@ public final class MatchingComposition {
     private final Map<String, QueryFunction> functions;
     private final List<String> poolOrder;
     private final Set<String> globalFunctions = Set.of("workerId");
+    private final DefaultWorkerMatchingCatalog catalog;
+    private boolean closed;
 
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
         this.storage = Objects.requireNonNull(storage);
-        this.clock = Objects.requireNonNull(clock);
-        this.groups = Map.copyOf(groups);
-        var enabledPools = new HashSet<String>();
-        var enabledFunctions = new HashSet<String>();
-        var dependencies = Map.of("worker.any", "any", "worker.country", "country",
-                "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
-        groups.values().forEach(config -> {
-            for (String name : config.functions()) {
-                String required = dependencies.get(name);
-                if (required != null && !config.pools().contains(required))
-                    throw new IllegalArgumentException("Function " + name + " requires Pool " + required);
+        try {
+            this.clock = Objects.requireNonNull(clock);
+            this.groups = Map.copyOf(groups);
+            var enabledPools = new HashSet<String>();
+            var enabledFunctions = new HashSet<String>();
+            var dependencies = Map.of("worker.any", "any", "worker.country", "country",
+                    "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
+            groups.values().forEach(config -> {
+                for (String name : config.functions()) {
+                    String required = dependencies.get(name);
+                    if (required != null && !config.pools().contains(required))
+                        throw new IllegalArgumentException("Function " + name + " requires Pool " + required);
+                }
+                enabledPools.addAll(config.pools());
+                enabledFunctions.addAll(config.functions());
+            });
+            var pools = new LinkedHashMap<String, WorkerCandidatePool>();
+            var policies = new LinkedHashMap<String, PoolRefillPolicy>();
+            var functions = new LinkedHashMap<String, QueryFunction>();
+            functions.put("workerId", new IdentityQueryFunction());
+            for (String name : List.of("any", "country", "messaging", "proof-facts")) {
+                if (!enabledPools.contains(name)) continue;
+                var pool = new WorkerCandidatePool(clock, budget);
+                pools.put(name, pool);
+                switch (name) {
+                    case "any" -> {
+                        policies.put(name, new AnyPoolPolicy(pool));
+                        functions.put("worker.any", new AnyQueryFunction(pool));
+                    }
+                    case "country" -> {
+                        policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
+                        functions.put("worker.country", new CountryQueryFunction(pool));
+                    }
+                    case "messaging" -> {
+                        policies.put(name, new MessagingPoolPolicy(pool, storage::readWorkerFacts));
+                        functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
+                    }
+                    case "proof-facts" -> {
+                        policies.put(name, new ProofFactsPoolPolicy(pool, storage::readFactsSnapshot));
+                        functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
+                    }
+                    default -> throw new IllegalStateException("Unexpected built-in Pool");
+                }
             }
-            enabledPools.addAll(config.pools());
-            enabledFunctions.addAll(config.functions());
-        });
-        var pools = new LinkedHashMap<String, WorkerCandidatePool>();
-        var policies = new LinkedHashMap<String, PoolRefillPolicy>();
-        var functions = new LinkedHashMap<String, QueryFunction>();
-        functions.put("workerId", new IdentityQueryFunction());
-        for (String name : List.of("any", "country", "messaging", "proof-facts")) {
-            if (!enabledPools.contains(name)) continue;
-            var pool = new WorkerCandidatePool(clock, budget);
-            pools.put(name, pool);
-            switch (name) {
-                case "any" -> {
-                    policies.put(name, new AnyPoolPolicy(pool));
-                    functions.put("worker.any", new AnyQueryFunction(pool));
-                }
-                case "country" -> {
-                    policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
-                    functions.put("worker.country", new CountryQueryFunction(pool));
-                }
-                case "messaging" -> {
-                    policies.put(name, new MessagingPoolPolicy(pool, storage::readWorkerFacts));
-                    functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
-                }
-                case "proof-facts" -> {
-                    policies.put(name, new ProofFactsPoolPolicy(pool, storage::readFactsSnapshot));
-                    functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
-                }
-                default -> throw new IllegalStateException("Unexpected built-in Pool");
+            if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
+                var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
+                if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
+                if (enabledFunctions.contains("worker.messaging.phone"))
+                    functions.put("worker.messaging.phone", new MessagingPhoneQueryFunction(phone, storage::readWorkerFacts));
             }
+            this.pools = Map.copyOf(pools);
+            this.policies = Map.copyOf(policies);
+            this.functions = Map.copyOf(functions);
+            this.poolOrder = List.of("proof-facts", "country", "any", "messaging").stream()
+                    .filter(policies::containsKey).toList();
+            if (!groups.keySet().containsAll(storage.indexedGroups()))
+                throw new IllegalArgumentException("Index Group unavailable");
+            this.catalog = new DefaultWorkerMatchingCatalog(budget, this.pools, clock, this.policies,
+                    this.functions, this.groups, poolOrder, globalFunctions);
+        } catch (RuntimeException | Error failure) {
+            try { storage.close(); }
+            catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
         }
-        if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
-            var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
-            if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
-            if (enabledFunctions.contains("worker.messaging.phone"))
-                functions.put("worker.messaging.phone", new MessagingPhoneQueryFunction(phone, storage::readWorkerFacts));
-        }
-        this.pools = Map.copyOf(pools);
-        this.policies = Map.copyOf(policies);
-        this.functions = Map.copyOf(functions);
-        this.poolOrder = List.of("proof-facts", "country", "any", "messaging").stream()
-                .filter(policies::containsKey).toList();
     }
 
     /** Fixed dependencies, independent of Task demand or current Pool inventory. */
@@ -107,21 +119,22 @@ public final class MatchingComposition {
     public List<String> poolOrder() { return poolOrder; }
     public Set<String> globalFunctions() { return globalFunctions; }
 
-    public RedisWorkerMatchingCatalog catalog() {
-        return new RedisWorkerMatchingCatalog(storage, budget, pools, clock, policies, functions, groups,
-                poolOrder, globalFunctions);
+    public DefaultWorkerMatchingCatalog catalog() {
+        return catalog;
     }
 
-    public static RedisWorkerMatchingCatalog create(RedisClient client, RedisKeyspace keyspace,
+    public WorkerProperties properties() { return storage; }
+
+    @Override public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        System.getLogger(getClass().getName()).log(System.Logger.Level.INFO, "Matching stopped " + budget.diagnostics());
+        storage.close();
+    }
+
+    public static MatchingComposition create(RedisClient client, RedisKeyspace keyspace,
             Map<String, MatchingGroup> groups) {
         var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups));
-        try {
-            var composition = new MatchingComposition(storage, groups, System::currentTimeMillis);
-            return composition.catalog();
-        } catch (RuntimeException | Error failure) {
-            try { storage.close(); }
-            catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }
-            throw failure;
-        }
+        return new MatchingComposition(storage, groups, System::currentTimeMillis);
     }
 }

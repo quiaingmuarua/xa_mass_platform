@@ -1115,6 +1115,51 @@
         "product_coexistence"
       ],
       "reason": "Direct strategy admission and batched execution retain all Matching production proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/WorkerProperties.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/DefaultWorkerMatchingCatalog.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/PoolRefillCoordinator.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
     }
   ]
 }

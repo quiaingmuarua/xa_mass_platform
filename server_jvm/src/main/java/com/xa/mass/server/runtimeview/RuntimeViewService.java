@@ -19,8 +19,8 @@ import com.xa.mass.server.api.v1.contract.runtimeview.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,20 +51,20 @@ public final class RuntimeViewService {
     private final TaskResourceCatalog taskCatalog;
     private final TaskScoreBandCore taskScores;
     private final WorkerSchedulingService workerScheduling;
-    private final WorkerMatchingCatalog matchingCatalog;
+    private final WorkerProperties workerProperties;
 
     public RuntimeViewService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
             TaskScoreBandCore taskScores,
             WorkerSchedulingService workerScheduling,
-            WorkerMatchingCatalog matchingCatalog
+            WorkerProperties workerProperties
     ) {
         this.workerCatalog = workerCatalog;
         this.taskCatalog = taskCatalog;
         this.taskScores = taskScores;
         this.workerScheduling = workerScheduling;
-        this.matchingCatalog = matchingCatalog;
+        this.workerProperties = workerProperties;
     }
 
     public TaskPreviewResponse previewTasks(
@@ -211,9 +211,9 @@ public final class RuntimeViewService {
                     );
             List<String> sampledIds = List.copyOf(sampled.keySet());
             Map<String, WorkerFacts> facts = new LinkedHashMap<>();
-            for (int offset = 0; offset < sampledIds.size(); offset += WorkerMatchingCatalog.MAX_BATCH_SIZE) {
-                facts.putAll(matchingCatalog.loadWorkerFacts(workerGroupId, sampledIds.subList(
-                        offset, Math.min(offset + WorkerMatchingCatalog.MAX_BATCH_SIZE, sampledIds.size())
+            for (int offset = 0; offset < sampledIds.size(); offset += WorkerProperties.MAX_BATCH_SIZE) {
+                facts.putAll(workerProperties.loadWorkerFacts(workerGroupId, sampledIds.subList(
+                        offset, Math.min(offset + WorkerProperties.MAX_BATCH_SIZE, sampledIds.size())
                 )));
             }
             var workers = new ArrayList<WorkerView>();

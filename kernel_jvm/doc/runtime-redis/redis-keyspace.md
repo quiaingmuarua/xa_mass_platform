@@ -55,7 +55,7 @@ Result routing        xa_mass:<scope>:result:routing:<outcomeClass>
 
 The structures and owner semantics behind these keys remain defined by their
 resource, scheduling, delivery, and runtime-shape documents. Matching index suffixes
-and Phone member sets are detailed in the [Matching Owner](../../../worker_matching_jvm/README.md#persistent-catalog).
+and Phone member sets are detailed in the [Matching Owner](../../../worker_matching_jvm/README.md#persistent-properties-and-indexes).
 Pool candidates, including Country buckets, are process-local; no per-Task
 candidate or Country ZSET key participates in the current path.
 

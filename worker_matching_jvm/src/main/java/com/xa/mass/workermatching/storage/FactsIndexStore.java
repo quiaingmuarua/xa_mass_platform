@@ -1,7 +1,7 @@
 package com.xa.mass.workermatching.storage;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.KeyValue;
@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Facts, enabled index commits and their shared Redis connection. No candidate inventory. */
-public final class FactsIndexStore implements AutoCloseable {
+public final class FactsIndexStore implements WorkerProperties, AutoCloseable {
     private final RedisClient client;
     private final RedisKeyspace keyspace;
     private final Map<String, Set<String>> indexedPropertiesByGroup;
@@ -48,7 +48,71 @@ public final class FactsIndexStore implements AutoCloseable {
         return connection.sync();
     }
 
-    public List<Long> replaceWorkerFacts(String group, List<String> encodedPairs) {
+    @Override public Map<String,MutationResult> upsertWorkerFactsBatch(String group,Map<String,Map<String,String>> facts) {
+        requireNonBlank(group,"workerGroupId"); Objects.requireNonNull(facts,"facts");
+        if (facts.isEmpty() || facts.size()>100) throw new IllegalArgumentException("Worker facts batch must contain 1..100 entries");
+        var args=new ArrayList<String>(); var ids=new ArrayList<String>(); var result=new LinkedHashMap<String,MutationResult>();
+        facts.forEach((id,properties) -> {
+            requireNonBlank(id,"workerId");
+            if (properties==null || ((Map<?,?>)properties).entrySet().stream().anyMatch(e -> !(e.getKey() instanceof String key) || key.isBlank() || !(e.getValue() instanceof String))) {
+                result.put(id,result(MutationStatus.INVALID,"invalid Worker properties"));
+            } else { ids.add(id); args.add(id); args.add(encodeObject(properties)); }
+        });
+        if (!args.isEmpty()) {
+            var effects=replaceWorkerFacts(group,args);
+            for (int i=0;i<ids.size();i++) result.put(ids.get(i),new MutationResult(effects.get(i)==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED));
+        }
+        var ordered=new LinkedHashMap<String,MutationResult>(); facts.keySet().forEach(id -> ordered.put(id,result.get(id)));
+        return Collections.unmodifiableMap(ordered);
+    }
+
+    @Override public MutationResult patchWorkerPlatformProperties(String group,String id,Map<String,@Nullable Object> properties) {
+        requireNonBlank(group,"workerGroupId"); requireNonBlank(id,"workerId"); Objects.requireNonNull(properties,"properties");
+        String encoded;
+        try {
+            if (properties.size()>100 || properties.keySet().stream().anyMatch(key -> key==null || key.isBlank())) throw new IllegalArgumentException("invalid property names");
+            encoded=encodeObject(properties);
+        } catch (IllegalArgumentException invalid) { return result(MutationStatus.INVALID,"invalid platform properties"); }
+        long effect=patchPlatformProperties(group,id,encoded);
+        return new MutationResult(effect<0 ? MutationStatus.NOT_FOUND : effect==0 ? MutationStatus.UNCHANGED : MutationStatus.APPLIED);
+    }
+
+    private static MutationResult result(
+            MutationStatus status,
+            String reason
+    ) {
+        return new MutationResult(status, reason);
+    }
+
+    private static List<String> boundedUnique(
+            List<String> values,
+            String name
+    ) {
+        Objects.requireNonNull(values, name);
+        if (values.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    name + " must contain at most " + MAX_BATCH_SIZE + " entries"
+            );
+        }
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String value : values) {
+            requireNonBlank(value, name + " entry");
+            if (!unique.add(value)) {
+                throw new IllegalArgumentException(
+                        name + " must not contain duplicates"
+                );
+            }
+        }
+        return List.copyOf(unique);
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " must be non-blank");
+        }
+    }
+
+    private List<Long> replaceWorkerFacts(String group, List<String> encodedPairs) {
         if (encodedPairs.size() > 200 || encodedPairs.size() % 2 != 0)
             throw new IllegalArgumentException("Worker facts write requires at most 100 identity/value pairs");
         if (encodedPairs.isEmpty()) return List.of();
@@ -64,7 +128,7 @@ public final class FactsIndexStore implements AutoCloseable {
                 keys.toArray(String[]::new), args.toArray(String[]::new));
     }
 
-    public long patchPlatformProperties(String group, String workerId, String encoded) {
+    private long patchPlatformProperties(String group, String workerId, String encoded) {
         return commands().eval(PATCH_PLATFORM_PROPERTIES, ScriptOutputType.INTEGER,
                 new String[]{workerFactsKey(group), workerPlatformFactsKey(group)}, workerId, encoded);
     }
@@ -118,11 +182,12 @@ public final class FactsIndexStore implements AutoCloseable {
         return Collections.unmodifiableMap(result);
     }
 
-    public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
+    @Override public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
             String workerGroupId,
             List<String> workerIds
     ) {
-        List<String> ids = workerIds;
+        requireNonBlank(workerGroupId, "workerGroupId");
+        List<String> ids = boundedUnique(workerIds, "workerIds");
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -160,7 +225,7 @@ public final class FactsIndexStore implements AutoCloseable {
         return Collections.unmodifiableMap(result);
     }
 
-    public static String encodeObject(Map<String, ?> value) {
+    private static String encodeObject(Map<String, ?> value) {
         try {
             return FACTS_JSON.writeValueAsString(canonicalJsonValue(value));
         } catch (JacksonException error) {

@@ -4,8 +4,8 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.MutationResult;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.MutationResult;
 import java.util.Map;
 import java.util.List;
 import java.util.Objects;
@@ -18,16 +18,16 @@ public final class WorkerResourceCommandService {
     private static final String PATCH_OPERATION =
             "workerResource.patchPlatformProperties";
 
-    private final WorkerMatchingCatalog matchingCatalog;
+    private final WorkerProperties workerProperties;
     private final WorkerSchedulingService scheduling;
 
     public WorkerResourceCommandService(
-            WorkerMatchingCatalog matchingCatalog,
+            WorkerProperties workerProperties,
             WorkerSchedulingService scheduling
     ) {
-        this.matchingCatalog = Objects.requireNonNull(
-                matchingCatalog,
-                "matchingCatalog"
+        this.workerProperties = Objects.requireNonNull(
+                workerProperties,
+                "workerProperties"
         );
         this.scheduling = Objects.requireNonNull(scheduling, "scheduling");
     }
@@ -44,7 +44,7 @@ public final class WorkerResourceCommandService {
         }
         MutationResult result;
         try {
-            result = matchingCatalog.patchWorkerPlatformProperties(
+            result = workerProperties.patchWorkerPlatformProperties(
                     workerGroupId,
                     workerId,
                     properties

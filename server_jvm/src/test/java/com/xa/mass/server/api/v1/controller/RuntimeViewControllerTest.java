@@ -34,8 +34,8 @@ import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import com.xa.mass.kernel.score.WorkerScoreCore.SchedulingState;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,7 +58,7 @@ class RuntimeViewControllerTest {
     private TaskResourceCatalog taskCatalog;
     private TaskScoreBandCore taskScores;
     private WorkerSchedulingService workerScheduling;
-    private WorkerMatchingCatalog matchingCatalog;
+    private WorkerProperties workerProperties;
     private WorkerNetworkObservationService workerNetwork;
     private MockMvc mockMvc;
 
@@ -68,10 +68,10 @@ class RuntimeViewControllerTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskScores = mock(TaskScoreBandCore.class);
         workerScheduling = mock(WorkerSchedulingService.class);
-        matchingCatalog = mock(WorkerMatchingCatalog.class);
+        workerProperties = mock(WorkerProperties.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
 
-        when(matchingCatalog.loadWorkerFacts(anyString(), anyList()))
+        when(workerProperties.loadWorkerFacts(anyString(), anyList()))
                 .thenAnswer(invocation -> {
                     String workerGroupId = invocation.getArgument(0);
                     List<String> workerIds = invocation.getArgument(1);
@@ -97,7 +97,7 @@ class RuntimeViewControllerTest {
                                         taskCatalog,
                                         taskScores,
                                         workerScheduling,
-                                        matchingCatalog
+                                        workerProperties
                                 ),
                                 workerNetwork
                         )
@@ -207,7 +207,7 @@ class RuntimeViewControllerTest {
         ordered.verify(workerCatalog).getWorkerGroupDescriptors(
                 List.of("group-b", "missing-group", "group-a")
         );
-        verifyNoInteractions(matchingCatalog);
+        verifyNoInteractions(workerProperties);
     }
 
     @Test
@@ -222,7 +222,7 @@ class RuntimeViewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries").isEmpty());
 
-        verifyNoInteractions(taskCatalog, workerCatalog, matchingCatalog);
+        verifyNoInteractions(taskCatalog, workerCatalog, workerProperties);
     }
 
     @Test
@@ -527,7 +527,7 @@ class RuntimeViewControllerTest {
                 .thenReturn(groupLookup("group-a"));
         when(workerCatalog.sampleWorkerDescriptors("group-a", 1))
                 .thenReturn(Map.of("worker-a", worker("worker-a", "group-a")));
-        when(matchingCatalog.loadWorkerFacts("group-a", List.of("worker-a")))
+        when(workerProperties.loadWorkerFacts("group-a", List.of("worker-a")))
                 .thenReturn(java.util.Collections.singletonMap("worker-a", null));
 
         mockMvc.perform(post("/api/v1/runtime-view/worker-groups/group-a/workers:preview")
@@ -541,8 +541,8 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.workers[0].endpointManagerId").value("endpoint-1"))
                 .andExpect(jsonPath("$.workers[0].workerProperties").isEmpty())
                 .andExpect(jsonPath("$.workers[0].platformProperties").isEmpty());
-        verify(matchingCatalog).loadWorkerFacts("group-a", List.of("worker-a"));
-        org.mockito.Mockito.verifyNoMoreInteractions(matchingCatalog);
+        verify(workerProperties).loadWorkerFacts("group-a", List.of("worker-a"));
+        org.mockito.Mockito.verifyNoMoreInteractions(workerProperties);
     }
 
     @Test
@@ -551,7 +551,7 @@ class RuntimeViewControllerTest {
                 .thenReturn(groupLookup("group-a"));
         when(workerCatalog.sampleWorkerDescriptors("group-a", 1))
                 .thenReturn(Map.of("worker-a", worker("worker-a", "group-a")));
-        when(matchingCatalog.loadWorkerFacts("group-a", List.of("worker-a")))
+        when(workerProperties.loadWorkerFacts("group-a", List.of("worker-a")))
                 .thenThrow(new IllegalStateException("matching unavailable"));
         mockMvc.perform(post("/api/v1/runtime-view/worker-groups/group-a/workers:preview")
                         .contentType(MediaType.APPLICATION_JSON).content("1"))
@@ -692,7 +692,7 @@ class RuntimeViewControllerTest {
         var sampled = new LinkedHashMap<String, WorkerDescriptor>();
         IntStream.range(0, 1000).forEach(i -> sampled.put("worker-" + i, worker("worker-" + i, "group-a")));
         when(workerCatalog.sampleWorkerDescriptors("group-a", 1000)).thenReturn(sampled);
-        when(matchingCatalog.loadWorkerFacts(anyString(), anyList())).thenAnswer(invocation -> {
+        when(workerProperties.loadWorkerFacts(anyString(), anyList())).thenAnswer(invocation -> {
             List<String> ids = invocation.getArgument(1);
             org.assertj.core.api.Assertions.assertThat(ids).hasSize(100);
             return ids.stream().collect(Collectors.toMap(id -> id, id -> new WorkerFacts(
@@ -705,7 +705,7 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.sampleLimit").value(1000))
                 .andExpect(jsonPath("$.returnedCount").value(1000))
                 .andExpect(jsonPath("$.workers[999].workerProperties.identityWitness").value("worker-999"));
-        verify(matchingCatalog, org.mockito.Mockito.times(10)).loadWorkerFacts(anyString(), anyList());
+        verify(workerProperties, org.mockito.Mockito.times(10)).loadWorkerFacts(anyString(), anyList());
     }
 
     @Test
@@ -725,7 +725,7 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.entries.length()").value(1000))
                 .andExpect(jsonPath("$.entries[0].taskId").value("task-0"))
                 .andExpect(jsonPath("$.entries[999].taskId").value("task-999"));
-        verifyNoInteractions(matchingCatalog);
+        verifyNoInteractions(workerProperties);
     }
 
     @Test

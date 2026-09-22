@@ -67,7 +67,8 @@ class CountryPoolPolicyTest {
         assertEquals(3,pool.countByKey("g").size());assertEquals(9997,budget.available());
     }
     @Test void equivalentCountryTargetsMergeMaxAndCountOneUnion() {
-        try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))), List.of("country"), Set.of())) {
+        {
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))), List.of("country"), Set.of());
             var target=new RefillTarget("country",country("CN","US"),3);
             var declarations=catalog.normalizeRefill("g",List.of(
                     new RefillTarget("country",country("US","CN","US"),1),target));
@@ -84,7 +85,8 @@ class CountryPoolPolicyTest {
         for(int i=0;i<200;i++) targets.add(new RefillTarget("renamed-country-policy",country(""+(char)('A'+i/26)+(char)('A'+i%26)),1));
         facts("late","HR"); // coordinate 199, beyond a 100-target first page
         var traced=spy(policy);
-        try(var catalog=new RedisWorkerMatchingCatalog(storage, budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"))), List.of("renamed-country-policy"), Set.of())) {
+        {
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"))), List.of("renamed-country-policy"), Set.of());
             assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));

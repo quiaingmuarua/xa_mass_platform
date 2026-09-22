@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching.buckets;
 
-import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
+import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import java.util.*;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.json.JsonMapper;

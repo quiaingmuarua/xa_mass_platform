@@ -110,7 +110,7 @@ class DirectCallControllerTest {
                 catalog,
                 directCalls,
                 mock(WorkerServiceabilityRuntime.class),
-                mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class),
+                mock(com.xa.mass.workermatching.WorkerProperties.class),
                 mock(WorkerSchedulingService.class));
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
