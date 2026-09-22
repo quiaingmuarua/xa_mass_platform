@@ -72,15 +72,27 @@ The phase order is:
    unavailable. Submit wave six and a separate finite Pool-backed Task requiring
    `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
    restart Runtime Server while retaining Worker Simulator.
-7. Require the other 999 stable identities to reconnect and become HOT while
-   the directed Worker stays stopped. Replace its stopped-state slot and start
-   it once. Require its original identity, canonical Property and connected/HOT
-   observations; close the Pool-backed witness, wave six and final wave seven.
+7. Require the other 999 stable identities to reconnect while the directed Worker
+   stays stopped. Sample their scheduling states once per Group for diagnostics,
+   without waiting for the idle fleet to become HOT. Replace its stopped-state
+   slot and start it once. Require its original identity, canonical Property and
+   connected/HOT observations; close the Pool-backed witness and final wave seven.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
 witnesses. The workload also offers seven delay and seven fail Items. These are
 submission counts, not Handler invocation or observed Result counts, and the
 scenario does not require every offered Item to succeed.
+
+**Restart acceptance:** the managed Phone Task may already be idle after its
+wave-six witness succeeds. Serviceability receives only Groups from Main's current
+NORMAL Task roots; elapsed recheck time does not discover an idle Group. Network
+evidence remains best-effort and may be lost, delayed or superseded. The restart
+sample therefore records state counts and identities, or an observation failure,
+without delaying the next work. It adds no replay, Properties repair or mutation
+retry. All 999 reconnects and stable identities, the directed Worker's HOT and
+Properties checks, the Pool-backed witness and all named execution witnesses
+remain mandatory. The 700/70 workload and existing observation bounds are unchanged.
+This acceptance change does not repair or establish monotonic network evidence.
 
 ## In-Flight Loss Convergence
 
@@ -157,10 +169,10 @@ Owner/Pacer proofs also cover Recovery beyond the former attempt and 24-hour lim
 the default 15-second eligibility delay is not a Probe execution deadline.
 
 Multi-Worker outage checks page Network and Scheduling observations at the
-public 100-ID boundary. State-scenario convergence rows follow its established
-oracles; task-fault records physical disconnection and one diagnostic scheduling
-sample per Group, including residual identities and state counts. Runtime Worker preview remains a
-100-entry random sample per Group; it checks sampled canonical identity while
+public 100-ID boundary. State-scenario restart and task-fault Host-down each record
+one diagnostic scheduling sample per Group, including residual identities and
+state counts. Runtime Worker preview remains a 100-entry random sample per Group;
+it checks sampled canonical identity while
 the paged Network/Scheduling observations cover the exact fleet. A `wave-6`
 timeout additionally records a best-effort bounded
 snapshot of witness status, managed Task score band, target Network/Scheduling

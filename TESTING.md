@@ -493,7 +493,10 @@ The isolated DEFAULT Runtime witness retains its 15-second reconnect deadline
 and cannot depend on periodic Probe or a shortened recycle threshold.
 Only a missed timing window may be resampled; a wrong in-window result fails.
 Worker Convergence Health retains its original outage fixture and timeout;
-these checks do not promise strict network ordering or evidence replay.
+these checks do not promise strict network ordering or evidence replay. After
+Server restart, 999 reconnects and unchanged identities remain gates; idle-fleet
+Score observations are diagnostic, while the directed Worker and successful
+execution witnesses remain required. This does not claim idle Group discovery.
 
 Matching consumption uses the fixed function table and `WorkerQuery` envelope.
 Kernel query tests own immutable JSON bounds and strict decoding; Matching tests

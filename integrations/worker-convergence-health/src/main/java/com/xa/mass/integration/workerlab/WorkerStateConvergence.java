@@ -295,7 +295,7 @@ final class WorkerStateConvergence {
                     evidence
             );
             requireStableIdentities(state, reconnected);
-            awaitHot("server-restarted-hot", options, runtime, reconnected);
+            recordRestartScheduling(runtime, reconnected, evidence);
 
             String expectedSlotCWorkerId = state.workerIdsByCoordinate().get(
                     SLOT_C_WORKER.coordinate()
@@ -466,6 +466,35 @@ final class WorkerStateConvergence {
                 ),
                 "Worker identity changed across Runtime Server restart"
         ));
+    }
+
+    private static void recordRestartScheduling(
+            RuntimeApiClient runtime,
+            Map<WorkerRef, String> workers,
+            ConvergenceEvidence evidence
+    ) {
+        // Idle Groups have no Task root for periodic recovery. Observe once,
+        // then prove recovery through the directed Worker and execution witnesses.
+        Map<String, List<String>> byGroup = new LinkedHashMap<>();
+        workers.forEach((worker, workerId) -> byGroup
+                .computeIfAbsent(worker.groupId(), ignored -> new ArrayList<>())
+                .add(workerId));
+        byGroup.forEach((groupId, workerIds) -> {
+            try {
+                Map<String, String> states = runtime.observeScheduling(groupId, workerIds);
+                Map<String, Integer> counts = new LinkedHashMap<>();
+                states.values().forEach(value -> counts.merge(value, 1, Integer::sum));
+                evidence.record("server-restarted", "scheduling-sample", Map.of(
+                        "workerGroupId", groupId, "stateCounts", counts,
+                        "statesByWorkerId", states
+                ));
+            } catch (RuntimeException failure) {
+                evidence.record("server-restarted", "scheduling-sample-unavailable", Map.of(
+                        "workerGroupId", groupId,
+                        "failureType", failure.getClass().getSimpleName()
+                ));
+            }
+        });
     }
 
     private static void stopOnceAndAwait(

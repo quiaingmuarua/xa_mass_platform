@@ -137,11 +137,13 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 - **Claim:** Adapter and Kernel scheduling converge after established state
   mutations and one Server restart. Execution-time Host loss establishes the
   physical outage, followed by checkpoint/work recovery after reconnect and
-  retained named Results across a later Host loss. Host-down Score samples are
-  diagnostic, not a gate requiring all unused offline candidates to leave HOT.
+  retained named Results across a later Host loss. Host-down and post-Server-restart
+  fleet Score samples are diagnostic. Reconnect identities, the directed Worker's
+  HOT check and named successful executions remain mandatory.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
   fleet-wide scheduling unavailability after one best-effort disconnect report,
+  idle-fleet HOT restoration without active Task roots, monotonic network evidence,
   background fault Result status or execution count, TaskItem Score finality
   across the interruption window, executing Worker, random coverage,
   throughput and soak.
