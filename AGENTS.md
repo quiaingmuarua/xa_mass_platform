@@ -193,7 +193,7 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
 - Fixed composition injects existing resources. Pool resources depend only on
   their clock and shared capacity budget; indexes do not depend on Pools,
   functions or refill policy. FactsIndexStore owns the shared connection, Facts,
-  atomic index writes and rebuild. Failed startup closes Matching resources,
+  fixed atomic Facts/HASH writes. Startup retains mappings without rebuild. Failed startup closes Matching resources,
   never the Server-owned RedisClient.
 - Preserve full validation before consumption and the Owner's partial-success
   contracts across functions/Pools. Earlier admissions or consumption survive a
@@ -208,7 +208,8 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   only at the Matching-to-Pacer boundary; no zero sentinel reaches Kernel.
   Do not downgrade a failed strict expectation to current identity acquisition,
   or restore/retake stock when a candidate association is dropped.
-- Facts and enabled indexes prepare before one bounded Lua write. Index upkeep
+- Worker Facts and enabled property HASHes prepare before one bounded fixed Lua write.
+  Platform patches never maintain Worker property mappings. Index upkeep
   is independent of Task demand and Pool stock; Score invalidation is a separate
   best-effort commit, not a property-version transaction.
 - Catalog coordinates composition-provided Pool order, global function availability
@@ -220,7 +221,9 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   may reclaim expired heads under capacity pressure without a background sweep.
 - Keep Any explicitly configured, Country and Messaging on offered Worker Facts,
   Proof on one atomic offered Worker/Platform snapshot, and Phone as an independent
-  Group index. Qualified Messaging Phone uses that index followed by bounded Facts
+  Group property HASH through a storage-independent lookup interface. Values map
+  to the last Worker Properties writer; old mappings are deleted only while still
+  owned by that Worker, with no fallback or startup reconstruction. Qualified Messaging Phone uses that index followed by bounded Facts
   qualification, without Pool access. Directed Messages declares no Pool supply;
   ordinary Messaging Pool accepts ANY/country only. Retired qualification projections
   have no read/write/rebuild path. Query/capacity limits remain Owner-local.

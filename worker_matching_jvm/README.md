@@ -36,7 +36,8 @@ Redis reads and fallible validation/matching finish before its bounded local com
 This partial-success contract is independent of atomic Facts/index writes below.
 
 ```text
-Worker / Platform facts -> one Lua -> Facts and enabled Phone Index
+Worker facts -> one fixed Lua -> Worker Facts and enabled property HASHes
+Platform patch -> one fixed Lua -> Platform Facts only
 NORMAL Task descriptors -> Group/Pool target MAX -> maintenance deficits
   -> Pacer HOT head -> Kernel exact candidateize -> offered generation fences
   -> qualification and admission -> shared Pool resource
@@ -116,7 +117,7 @@ The Pacer port exposes shortage observation, candidate refill and
 outer Task binding. Unknown or Group-disabled names fail without fallback; names
 are matched exactly, never classified by prefix. Item functions do not depend on Task supply declarations. A Task with no supply can
 consume stock maintained by another Task. Group resource enablement controls indexes
-independently of demand, including Phone Index updates and startup rebuild.
+independently of demand, including Phone Index updates. Startup preserves existing mappings without scanning Facts.
 
 Take accepts at most 100 nonblank message IDs. Catalog captures input order and
 normalizes the complete batch before any consumption. It invokes each function
@@ -218,14 +219,15 @@ remains 0..100. All structure and fallible qualification checks precede admissio
 Task descriptors switch once to `refillJson`; recreate Tasks in a new scope. Old
 Rule/target fields, missing supply and corrupt entries fail reading. No dual read,
 conversion, default supply, migration or cleanup is provided. Existing WorkerQuery
-Item encoding, Facts and index keys remain unchanged. Worker Score cutover
-separately requires a new scope for the high-mark layout.
+Item encoding and Facts keys remain unchanged. Property HASH and Worker Score
+cutovers each require a new scope; neither has a compatibility reader.
 
 ## Fixed Resource Composition
 
 `MatchingComposition` creates each enabled resource once and injects it into its
 users. Pool maintenance and named consumer functions receive the same WorkerCandidatePool;
-Direct functions receive an existing PhoneIndex. Resources do not know executorName.
+Direct functions receive the PropertyIndex lookup interface, backed by one shared
+RedisHashPropertyIndex bound to `phone`. Resources do not know executorName.
 Functions need not implement a maintenance interface. There is no dynamic registry
 or executorType, and composition does not create a Pool or policy for Identity/Phone-only Groups.
 
@@ -235,8 +237,8 @@ or executorType, and composition does not create a Pool or policy for Identity/P
 | `pool` | WorkerCandidatePool single-bucket queues, admission age and CandidateBudget |
 | `refill` | Target interpretation, supplied-ID qualification and one bucket key per offer |
 | `buckets` | Pure Proof tuple encoding and partial-query bucket matching |
-| `index` | Independent Phone resource definitions, reads and mutation Lua |
-| `storage` | Facts encoding, persistence, atomic index-write assembly, rebuild and Redis connection |
+| `index` | PropertyIndex lookup contract and property-bound Redis HASH reads/key definitions |
+| `storage` | Facts encoding, fixed atomic Facts/HASH writes and shared Redis connection |
 
 WorkerCandidatePool receives only a clock and shared CandidateBudget. Composition
 retains the fixed Pool map; Catalog invokes lazy cleanup only when a requested
@@ -250,17 +252,18 @@ qualification, batch budgeting and grouped offers. No admission observes residen
 Worker identities, compares generations, replaces entries or removes old mismatches.
 Country counts its complete target set from one bucket-count snapshot.
 
-`FactsIndexStore` deduplicates IndexMutation definitions by resource namespace before
-assembling the single preflight-and-write Lua. Conflicting definitions fail assembly.
-Group function configuration enables the independent Phone Index, with no separate
-index configuration or Task demand prerequisite. Phone depends only on Worker
-phone. Pool qualification has no materialized Redis projections.
+`FactsIndexStore` receives immutable Group-to-property-name sets. Worker replacement
+uses one fixed preflight-and-write Lua; Platform patch uses a separate fixed script
+and never updates Worker property mappings. There are no injected Lua fragments,
+per-Group generated scripts or index-specific write callbacks. Group function
+configuration enables `phone` once for either Phone function, without separate
+index configuration or Task demand. Other property names use the same mechanical
+HASH implementation; no account query is configured by this change.
 
-Server owns one Catalog lifecycle Bean. Composition uses one lazy shared Matching
-Redis connection, completes startup rebuild before returning Catalog, and closes
-the store if assembly or rebuild fails. Catalog closes its store idempotently after
-platform callers stop; it never shuts down the Server-owned RedisClient. There are
-no per-index connections, constructor-started threads or background repair tasks.
+Server owns one Catalog lifecycle Bean and one lazy shared Matching Redis connection.
+Composition does no Redis I/O or rebuild at startup; failed assembly closes its store.
+Catalog closes that store idempotently after platform callers stop, never the
+Server-owned RedisClient. No per-index connections or background repair are added.
 
 | Pool | Maintenance |
 | --- | --- |
@@ -348,7 +351,8 @@ Qualified `worker.messaging.phone` uses that same index and then one strict Work
 Facts HMGET for the returned, deduplicated IDs. It requires a nonblank exact phone,
 Messaging eligibility, the current Facts phone equal to the requested phone, and
 any supplied country condition. Requests are grouped by phone for a single bounded
-lookup, then assigned in original request order to compatible unused identities.
+lookup. Each phone has at most one mapped Worker, assigned to the first compatible
+request in original order. Repeated requests do not obtain additional Workers.
 No match after filtering means no candidate: there is no overfetch, substitute
 lookup, retry or allocation optimizer. Empty lookup skips Facts entirely. Malformed
 present Facts fail the function; earlier function consumption remains committed.
@@ -365,21 +369,28 @@ stale without a Pool notification.
 Cutover removes phone inputs from `worker.messaging.available` and `worker.phone`
 conditions from Messaging supply targets. End affected old Tasks before deployment
 or use a new scope. Stored Task/Item queries are not migrated or compatibility-read;
-Facts, Phone Index and historical Result formats are unchanged. No data is deleted.
+Facts and historical Result formats are unchanged. The property HASH cutover below
+requires a new scope. No old data is deleted.
 
-Phone storage uses the existing encoded Group index base plus `:phone`: a reverse
-HASH maps Worker ID to phone; `:value:<sha1(phone)>` SETs map exact values to IDs.
-Facts and all enabled indexes preflight before writing in the same Lua. Replacement
-removes the old association; absent/empty phone removes membership. Startup rebuild
-uses persisted Facts before Pacer starts, without background repair.
+`PropertyIndex.lookup(group, values)` accepts at most 100 unique nonempty strings
+and returns an immutable value-to-workerId map in request order, omitting misses.
+An empty batch performs no Redis I/O. RedisHashPropertyIndex uses one HASH per Group
+and property: raw property value is the field and workerId is the value. One HMGET
+serves the batch. Values are not trimmed, hashed or converted to numeric scores.
+The index is persistent and non-consuming, with no TTL, sampling or Pool capacity.
 
-Equal phone requests share one positive-count SRANDMEMBER; one read-only Lua handles
-the batch, checks selected IDs against the reverse HASH, and returns at most the
-requested count (100 total). Selection is random, non-destructive and has no cursor,
-busy-worker rescan or fairness guarantee. Multiple Workers may share a phone. Missing
-matches are omitted; corruption of index types fails without repair. Identity hints
-are not persisted and consume no Pool capacity. Phone observation and execution
-admission are separate commits, with no property version or enduring value guarantee.
+Each value maps to the last valid Worker Properties writer. Cross-call order is
+Redis execution order; within a batch the supplied member order determines the
+winner. Other Workers retain their Facts but are not fallback candidates. Removing
+the winner leaves a miss until a later Worker report establishes a mapping again.
+An unchanged Worker report also reasserts its mapping while Facts may return
+UNCHANGED. Platform patches do not reassert Worker mappings. Qualified lookup does
+not seek an older mapping when the current winner fails eligibility.
+
+Index reads fail on wrong HASH types rather than repairing them. Phone observation
+and execution admission remain independent, with no property version or lasting
+value guarantee. Functions depend on lookup capability, not Redis implementation;
+this exact lookup interface does not prescribe the storage of other future indexes.
 
 `PoolMaintenance` handles supply target interpretation, offered-ID qualification
 and one bucket key per candidate. QueryFunctions interpret Item input independently.
@@ -509,16 +520,18 @@ All keys use `xa_mass:<scope>`:
 ```text
 :matching:worker:facts:<group>                         HASH workerId -> Worker JSON
 :matching:worker:platform-properties:<group>           HASH workerId -> Platform JSON
-:matching:worker:index:<encoded-group>:phone            HASH workerId -> exact phone
-:matching:worker:index:<encoded-group>:phone:value:<digest>
-                                                      SET of Worker IDs; digest = SHA-1(phone)
+:matching:worker:index:<encoded-group>:<encoded-property>
+                                                      HASH exact property value -> workerId
 ```
 
-Group encoding is UTF-8 Base64 URL without padding; Phone value digests use SHA-1.
-Facts, Platform Facts and Phone formats are unchanged. A normal restart may use
-the retained Facts scope. Retired Messaging/Proof keys are ignored, with no
-compatibility reader, automatic cleanup, migrator or version marker. Mixed old
-and new processes are unsupported.
+Group and property names use UTF-8 Base64 URL without padding; values are raw HASH
+fields. Worker and Platform Facts retain their existing keys and JSON formats.
+The new index layout requires a fresh scope. Normal restarts retain HASH mappings;
+startup does not scan Facts, clear indexes or reconstruct overwritten winners.
+Retired reverse HASHes, value SETs and qualification indexes are not read, written,
+validated or cleaned. There is no compatibility reader, migrator or version marker;
+mixed old/new processes are unsupported. Missing indexes remain empty until normal
+Worker Properties reports populate them, including unchanged reports.
 
 ## Facts Writes and Index Maintenance
 
@@ -528,11 +541,20 @@ Properties. Platform patch requires an existing Worker facts row and changes
 only supplied Platform fields; null removes a field. Nested Platform JSON,
 including empty arrays and objects, retains its shape.
 
-A batch of 1..100 Worker replacements or one bounded Platform patch uses one Lua.
-That operation reads the latest opposite facts, validates stored objects/index
-metadata, computes enabled Phone membership and writes Facts with that membership. There is no Java pre-read/CAS loop. Worker and Platform writes cannot
-lose each other's independent changes. Missing eligibility removes memberships.
-Unexpected/corrupt stored data fails; it is not converted to empty eligible facts.
+A batch of 1..100 Worker replacements uses one fixed Lua. It checks relevant HASH
+types and decodes every supplied row's existing Worker/Platform Facts and new Worker
+Facts before any write. For each Worker and configured property, the old value is
+read from existing Facts, so no reverse index is stored. Absent/empty values have no
+mapping. When a value changes, the old field is deleted only if it still maps to
+that Worker at the actual write step. The new nonempty value is then mapped to the
+Worker and changed Facts are stored. Earlier rows in the batch cannot leave a stale
+delete decision that erases a later ownership change. Known preflight corruption
+fails before mutation; this is not a rollback guarantee for arbitrary Redis failures.
+
+One bounded Platform patch uses its own fixed Lua and does not access property
+indexes. Both paths retain stored Facts validation, opposite-Facts preservation,
+existing statuses and nested JSON shape semantics. Neither pre-reads in Java nor
+retries conflicts. There is no uniqueness rejection or automatic fallback search.
 
 Server separately asks Worker Score Owner to advance past times after APPLIED
 facts writes. Past HOT atomically becomes mark=0 at Redis current time; past
@@ -549,11 +571,8 @@ generation; subsequent qualification cannot revive the old fence. After the
 current slot passes, normal Refill may supply it without waiting for candidate
 recycling. Group roots, deficits and round budgets still govern admission.
 
-Startup rebuilds only enabled Group indexes with bounded SCAN/UNLINK and HSCAN
-pages, before admission and Pacer start. Retained facts are the rebuild input;
-malformed Facts in a Phone-enabled Group abort startup. Cleanup visits only the
-Phone roots and descendants, leaving retired qualification namespaces untouched.
-With no Phone-enabled Groups, rebuild is a no-op and opens no Redis connection.
+Startup performs no index or Facts scan. Corruption is reported by the affected
+read/write operation; startup neither repairs it nor chooses a new duplicate winner.
 Refill reads Facts only for the remaining
 Pacer-issued identities not yet admitted in that batch; there is no
 autonomous source take, index repair scan, lease registry or per-Task publication.
@@ -565,8 +584,8 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   capacity-pressure cleanup only when a requested Group-Pool has no room. Country uses one bucket-count snapshot for
   all targets; other policies receive only visited target pages.
 - Pool stock counts and take: zero Redis commands or facts reads.
-- Identity take: zero Redis commands. Nonempty Phone take: one read-only Lua for
-  grouped exact phone values, returning at most 100 identities without a lease read.
+- Identity take: zero Redis commands. Nonempty Phone take: one HMGET for at most
+  100 unique exact values, returning at most one identity per value, without a lease read.
 - Qualified Messaging Phone take: the same bounded lookup plus at most one HMGET
   for returned identities, transferring complete Worker Facts. No Pool or Score read.
 - Refill recycling: one read-only candidate-head Lua per selected Group and one
@@ -604,8 +623,9 @@ Call Performance retains its separate measurement claim. See [TESTING](../TESTIN
 
 Runtime Boundary uses Tasks with empty supply and proves Identity and Phone
 queries executing due Workers through real delivery and Result observation. Redis
-Owner checks independent phone replacement, removal, shared numbers, corruption,
-concurrent writes and startup rebuilding, plus direct/Pool execution races.
+Owner checks phone replacement/removal, last-writer duplicate handling, conditional
+old-value deletion, batch preflight, concurrent writes, restart retention and ignored
+legacy keys, plus direct/Pool execution races.
 Qualified Phone proofs cover no-Pool configuration, one lookup plus one Facts read,
 phone changes between reads, whole-batch admission, corruption and earlier Pool
 consumption. Real Pacer refill places a Worker in Country Pool before qualified
@@ -614,6 +634,7 @@ original send/receipt/lifecycle deadlines.
 
 Task configuration now lives in the Task descriptor. Recreate Tasks in a new scope;
 old descriptor formats are rejected, and old Matching data is neither read nor
-cleared. HTTP and existing facts/index formats are unchanged. Worker Score uses
+cleared. HTTP and Facts formats are unchanged; property HASH indexes require the
+fresh scope described above. Worker Score uses
 the high-mark layout in a new scope, without compatibility decoding. Local stock
 is lost on restart; candidate recycling and execution expiry have separate roles.

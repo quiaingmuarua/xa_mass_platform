@@ -67,8 +67,9 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Coexistence retains its existing business assertions and deadlines.
   Matching qualification reads only offered Facts: Messaging uses one HMGET and
   Proof one atomic two-HMGET snapshot. Retired qualification keys, even with wrong
-  types, do not participate in writes, startup or refill. Phone retains its atomic
-  update/rebuild proof. Focused tests cover name-independent batching, explicit
+  types, do not participate in writes, startup or refill. Property HASH proofs cover
+  atomic Facts updates, last-writer collisions, conditional deletion, one-HMGET
+  lookup and restart retention without rebuilding. Focused tests cover name-independent batching, explicit
   rotation and literal-safe Proof views.
   TaskItem outcome proof covers
   generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,

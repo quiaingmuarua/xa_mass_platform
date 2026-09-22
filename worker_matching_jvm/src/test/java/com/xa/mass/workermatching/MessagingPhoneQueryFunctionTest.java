@@ -5,13 +5,13 @@ import static org.mockito.Mockito.*;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
-import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.PropertyIndex;
 import java.util.*;
 import java.util.function.BiFunction;
 import org.junit.jupiter.api.Test;
 
 class MessagingPhoneQueryFunctionTest {
-    private final PhoneIndex phones = mock(PhoneIndex.class);
+    private final PropertyIndex phones = mock(PropertyIndex.class);
     @SuppressWarnings("unchecked")
     private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> facts = mock(BiFunction.class);
     private final MessagingPhoneQueryFunction function = new MessagingPhoneQueryFunction(phones, facts);
@@ -28,58 +28,58 @@ class MessagingPhoneQueryFunctionTest {
         verifyNoInteractions(phones, facts);
     }
 
-    @Test void batchesLookupAndFactsThenAssignsCompatibleUnusedIdentitiesInRequestOrder() {
+    @Test void oneMappingGoesToFirstCompatibleRequestWithoutLookingForAnotherWorker() {
         var requests = new LinkedHashMap<String, Object>();
         requests.put("us", Map.of("phone", "same", "country", List.of("US")));
         requests.put("other", Map.of("phone", "other"));
         requests.put("cn", Map.of("phone", "same", "country", List.of("CN")));
         requests.put("any", Map.of("phone", "same"));
-        var found = new LinkedHashMap<String, List<String>>();
-        found.put("same", List.of("cn", "us", "gb")); found.put("other", List.of("other"));
-        when(phones.lookup("g", Map.of("same", 3, "other", 1))).thenReturn(found);
-        when(facts.apply("g", List.of("cn", "us", "gb", "other"))).thenReturn(Map.of(
+        var found = new LinkedHashMap<String, String>();
+        found.put("same", "cn"); found.put("other", "other");
+        when(phones.lookup("g", List.of("same", "other"))).thenReturn(found);
+        when(facts.apply("g", List.of("cn", "other"))).thenReturn(Map.of(
                 "cn", eligible("CN", "same"), "us", eligible("US", "same"),
                 "gb", eligible("GB", "same"), "other", eligible("CN", "other")));
 
         var result = function.apply("g", requests);
-        assertEquals(List.of("us", "other", "cn", "any"), List.copyOf(result.keySet()));
-        assertEquals(List.of(new WorkerCandidate("us", 0), new WorkerCandidate("other", 0),
-                new WorkerCandidate("cn", 0), new WorkerCandidate("gb", 0)), List.copyOf(result.values()));
+        assertEquals(List.of("other", "cn"), List.copyOf(result.keySet()));
+        assertEquals(List.of(new WorkerCandidate("other", 0), new WorkerCandidate("cn", 0)), List.copyOf(result.values()));
         assertThrows(UnsupportedOperationException.class, result::clear);
-        verify(phones).lookup("g", Map.of("same", 3, "other", 1));
-        verify(facts).apply("g", List.of("cn", "us", "gb", "other"));
+        verify(phones).lookup("g", List.of("same", "other"));
+        verify(facts).apply("g", List.of("cn", "other"));
         verifyNoMoreInteractions(phones, facts);
     }
 
     @Test void filtersChangedPhoneDisabledMissingAndInvalidFactsWithoutAnotherLookup() {
         var ids = List.of("moved", "disabled", "invalid-country", "boolean-enabled", "missing", "no-phone", "country-miss");
-        when(phones.lookup("g", Map.of("old", ids.size()))).thenReturn(Map.of("old", ids));
+        var found = new LinkedHashMap<String, String>(); ids.forEach(id -> found.put(id, id));
+        when(phones.lookup("g", ids)).thenReturn(found);
         when(facts.apply("g", ids)).thenReturn(Map.of(
                 "moved", eligible("CN", "new"),
-                "disabled", Map.of("phone", "old", "country", "CN", "messaging.enabled", "false"),
-                "invalid-country", eligible("cn", "old"),
-                "boolean-enabled", Map.of("phone", "old", "country", "CN", "messaging.enabled", true),
+                "disabled", Map.of("phone", "disabled", "country", "CN", "messaging.enabled", "false"),
+                "invalid-country", eligible("cn", "invalid-country"),
+                "boolean-enabled", Map.of("phone", "boolean-enabled", "country", "CN", "messaging.enabled", true),
                 "no-phone", Map.of("country", "CN", "messaging.enabled", "true"),
-                "country-miss", eligible("US", "old")));
+                "country-miss", eligible("US", "country-miss")));
         var requests = new LinkedHashMap<String, Object>();
-        ids.forEach(id -> requests.put(id, Map.of("phone", "old", "country", List.of("CN"))));
+        ids.forEach(id -> requests.put(id, Map.of("phone", id, "country", List.of("CN"))));
         assertEquals(Map.of(), function.apply("g", requests));
-        verify(phones).lookup("g", Map.of("old", ids.size()));
+        verify(phones).lookup("g", ids);
         verify(facts).apply("g", ids);
         verifyNoMoreInteractions(phones, facts);
     }
 
     @Test void lookupMissSkipsFactsAndFactsFailureDoesNotReplayLookup() {
-        when(phones.lookup("g", Map.of("missing", 1))).thenReturn(Map.of("missing", List.of()));
+        when(phones.lookup("g", List.of("missing"))).thenReturn(Map.of());
         assertEquals(Map.of(), function.apply("g", Map.of("m", Map.of("phone", "missing"))));
         verifyNoInteractions(facts);
-        when(phones.lookup("g", Map.of("present", 1))).thenReturn(Map.of("present", List.of("w")));
+        when(phones.lookup("g", List.of("present"))).thenReturn(Map.of("present", "w"));
         var failure = new IllegalStateException("malformed facts");
         when(facts.apply("g", List.of("w"))).thenThrow(failure);
         assertSame(failure, assertThrows(IllegalStateException.class,
                 () -> function.apply("g", Map.of("m", Map.of("phone", "present")))));
-        verify(phones).lookup("g", Map.of("missing", 1));
-        verify(phones).lookup("g", Map.of("present", 1));
+        verify(phones).lookup("g", List.of("missing"));
+        verify(phones).lookup("g", List.of("present"));
         verify(facts).apply("g", List.of("w"));
         verifyNoMoreInteractions(phones, facts);
     }

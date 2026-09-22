@@ -77,7 +77,9 @@ Task's Group and messageId-to-WorkerQuery Maps, receiving messageId-to-WorkerCan
 Maps. Each Item names its own function; candidates carry strict fences or identity
 hints. Only Matching normalizes and groups queries;
 Pacer keeps correlation and mechanical checks. No executable view or refill closure crosses the port.
-Source indexes project facts independently; candidate inventory
+Property HASHes retain the last Writer for each exact value independently of Pool
+stock. Direct functions use the lookup interface; no index rebuild runs at startup.
+Candidate inventory
 is replenished from Task-declared targets without inspecting Items.
 Messages with an explicit sender phone declares empty supply and uses Matching's
 qualified Direct Phone function. Its identity hint follows the existing current

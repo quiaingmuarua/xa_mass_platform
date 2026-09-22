@@ -5,7 +5,7 @@ import com.xa.mass.workermatching.functions.PhoneQueryFunction;
 import com.xa.mass.workermatching.functions.IdentityQueryFunction;
 
 import com.xa.mass.workermatching.pool.CandidateBudget;
-import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
@@ -81,6 +81,6 @@ class DirectQueryFunctionTest {
     }
 
     private RedisWorkerMatchingCatalog catalog(FactsIndexStore storage) {
-        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new PhoneIndex(storage::commands, storage.keyspace()))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
+        return new RedisWorkerMatchingCatalog(storage, budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction(new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone"))), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
     }
 }

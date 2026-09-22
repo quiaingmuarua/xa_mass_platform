@@ -6,14 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.index.IndexMutation;
-import com.xa.mass.workermatching.index.PhoneIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
-import io.lettuce.core.KeyScanCursor;
-import io.lettuce.core.MapScanCursor;
+import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.ScanArgs;
-import io.lettuce.core.ScanCursor;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
@@ -28,7 +23,7 @@ class MatchingCompositionTest {
     @Test void directOnlyCompositionHasNoPoolOrPolicyAndAdmissionNeedsNoConnection() {
         var client = mock(RedisClient.class);
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
-        try (var store = new FactsIndexStore(client, keyspace, MatchingComposition.indexes(groups))) {
+        try (var store = new FactsIndexStore(client, keyspace, MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, () -> 1_000L);
             assertTrue(composition.pools().isEmpty());
             assertTrue(composition.policies().isEmpty());
@@ -52,36 +47,27 @@ class MatchingCompositionTest {
         var commands = (RedisCommands<String, String>) mock(RedisCommands.class);
         when(client.connect(StringCodec.UTF8)).thenReturn(connection);
         when(connection.sync()).thenReturn(commands);
-        var keys = new KeyScanCursor<String>(); keys.setCursor("0"); keys.setFinished(true);
-        var facts = new MapScanCursor<String, String>(); facts.setCursor("0"); facts.setFinished(true);
-        when(commands.scan(any(ScanCursor.class), any(ScanArgs.class))).thenReturn(keys);
-        when(commands.hscan(anyString(), any(ScanCursor.class), any(ScanArgs.class))).thenReturn(facts);
+        when(commands.hmget(anyString(), eq("number"))).thenReturn(List.of(KeyValue.just("number", "w")));
         var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone", "worker.messaging.phone")));
         var catalog = MatchingComposition.create(client, keyspace, groups);
-        // Only the independent Phone index is rebuilt; qualification uses supplied Facts.
-        verify(commands).unlink(IndexMutation.base(keyspace, "g") + ":phone");
+        verifyNoInteractions(client);
+        catalog.take("g", Map.of("m", new WorkerQuery("worker.phone", "number")));
+        catalog.take("g", Map.of("n", new WorkerQuery("worker.phone", "number")));
+        verify(commands, times(2)).hmget(anyString(), eq("number"));
+        verifyNoMoreInteractions(commands);
         verify(client, times(1)).connect(StringCodec.UTF8);
         catalog.close(); catalog.close();
         verify(connection, times(1)).close();
         verify(client, never()).shutdown();
     }
 
-    @SuppressWarnings("unchecked")
-    @Test void startupRebuildFailureClosesTheCreatedConnectionAndPreservesOriginalFailure() {
+    @Test void startupAndCloseDoNotOpenRedisOrRebuildIndexes() {
         var client = mock(RedisClient.class);
-        var connection = (StatefulRedisConnection<String, String>) mock(StatefulRedisConnection.class);
-        var commands = (RedisCommands<String, String>) mock(RedisCommands.class);
-        when(client.connect(StringCodec.UTF8)).thenReturn(connection);
-        when(connection.sync()).thenReturn(commands);
-        var failure = new IllegalStateException("rebuild failed");
-        when(commands.unlink(anyString())).thenThrow(failure);
-        var closeFailure = new IllegalStateException("close failed");
-        doThrow(closeFailure).when(connection).close();
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))))));
-        assertArrayEquals(new Throwable[]{closeFailure}, failure.getSuppressed());
-        verify(connection, times(1)).close();
-        verify(client, never()).shutdown();
+        try (var catalog = MatchingComposition.create(client, keyspace,
+                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))))) {
+            assertEquals(Map.of(), catalog.take("g", Map.of()));
+        }
+        verifyNoInteractions(client);
     }
 
     @Test void partialAssemblyFailureDoesNotOpenAConnection() {
@@ -91,19 +77,19 @@ class MatchingCompositionTest {
         verifyNoInteractions(client);
     }
 
-    @Test void conflictingIndexDefinitionsFailBeforeOpeningAConnection() {
+    @Test void invalidPropertyConfigurationFailsBeforeOpeningAConnection() {
         var client = mock(RedisClient.class);
-        var phone = PhoneIndex.mutation();
         assertThrows(IllegalArgumentException.class, () -> new FactsIndexStore(client, keyspace,
-                Map.of("g", List.of(phone, new IndexMutation(phone.namespace(), "different definition")))));
+                Map.of("g", Set.of(" "))));
         verifyNoInteractions(client);
     }
 
     @Test void qualifiedPhoneNeedsOnlyOnePhoneIndexAndNoPoolOrGenericPhoneFunction() {
         var client = mock(RedisClient.class);
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")));
-        var indexes = MatchingComposition.indexes(groups);
-        assertEquals(List.of("phone"), indexes.get("g").stream().map(IndexMutation::namespace).toList());
+        var indexes = MatchingComposition.indexedProperties(groups);
+        assertEquals(Set.of("phone"), indexes.get("g"));
+        assertThrows(UnsupportedOperationException.class, indexes::clear);
         try (var store = new FactsIndexStore(client, keyspace, indexes)) {
             var composition = new MatchingComposition(store, groups, () -> 1_000L);
             assertTrue(composition.pools().isEmpty());
@@ -118,7 +104,7 @@ class MatchingCompositionTest {
                 verifyNoInteractions(client);
             }
         }
-        assertEquals(1, MatchingComposition.indexes(Map.of("g", new MatchingGroup(Set.of(),
+        assertEquals(1, MatchingComposition.indexedProperties(Map.of("g", new MatchingGroup(Set.of(),
                 Set.of("worker.phone", "worker.messaging.phone")))).get("g").size());
     }
 }

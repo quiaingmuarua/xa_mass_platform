@@ -9,7 +9,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.*;
-import com.xa.mass.workermatching.index.IndexMutation;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -36,9 +36,9 @@ class MatchingResourceIntegrationTest {
         if (client != null) client.shutdown();
     }
 
-    @Test void phoneOnlyAssemblyMaintainsAndRebuildsWithoutPoolOrTaskDemand() {
+    @Test void phoneOnlyAssemblyMaintainsAndRetainsWithoutPoolOrTaskDemand() {
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
-        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexes(groups))) {
+        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
             assertThat(composition.pools()).isEmpty(); assertThat(composition.policies()).isEmpty();
             try (var catalog = composition.catalog()) {
@@ -50,8 +50,7 @@ class MatchingResourceIntegrationTest {
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of()));
                 assertThat(phone(catalog, "second")).isEmpty();
                 catalog.upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "retained")));
-                redis.del(IndexMutation.base(scope.keyspace(), "g") + ":phone");
-                assertThat(phone(catalog, "retained")).isEmpty();
+                assertThat(phone(catalog, "retained")).containsValue(new WorkerCandidate("w", 0));
                 assertThat(composition.budget().available()).isEqualTo(10_000);
             }
         }
@@ -64,7 +63,7 @@ class MatchingResourceIntegrationTest {
     @Test void poolConsumptionExpirationAndFullCapacityDoNotChangePropertyIndex() {
         var clock = new AtomicLong(1_000);
         var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone")));
-        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexes(groups))) {
+        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, clock::get);
             try (var catalog = composition.catalog()) {
                 catalog.upsertWorkerFactsBatch("g", Map.of("w0", Map.of("phone", "number")));
@@ -91,7 +90,7 @@ class MatchingResourceIntegrationTest {
 
     @Test void twoFunctionsReadTheSamePhoneResourceWithoutDuplicatingStorageOrConsumingIt() {
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone")));
-        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexes(groups))) {
+        try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
             var direct = composition.functions().get("worker.phone");
             var functions = new LinkedHashMap<>(composition.functions());
@@ -114,24 +113,22 @@ class MatchingResourceIntegrationTest {
                 assertThat(catalog.take("g", requests)).containsOnlyKeys("direct");
                 assertThat(catalog.take("g", Map.of("next", requests.get("other-input"))))
                         .containsEntry("next", new WorkerCandidate("w", 0));
-                assertThat(redis.hgetall(IndexMutation.base(scope.keyspace(), "g") + ":phone"))
-                        .containsExactlyEntriesOf(Map.of("w", "number"));
+                assertThat(redis.hgetall(RedisHashPropertyIndex.key(scope.keyspace(), "g", "phone")))
+                        .containsExactlyEntriesOf(Map.of("number", "w"));
                 assertThat(composition.pools()).isEmpty();
             }
         }
     }
 
-    @Test void repeatedResourceDeclarationsApplyOneMutationPerWorker() {
-        var counted = new IndexMutation("counted", """
-                return function(key,id,w,p)
-                  local kind=redis.call('TYPE',key).ok
-                  if kind~='none' and kind~='hash' then error('corrupt counted index') end
-                  return function() redis.call('HINCRBY',key,id,1) end
-                end
-                """);
-        try (var store = new FactsIndexStore(client, scope.keyspace(), Map.of("g", List.of(counted, counted)))) {
-            store.replaceWorkerFacts("g", List.of("w", "{}"));
-            assertThat(redis.hget(IndexMutation.base(scope.keyspace(), "g") + ":counted", "w")).isEqualTo("1");
+    @Test void twoFunctionsEnableOnePropertyAndAnUnchangedReportReassertsItsMapping() {
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone")));
+        assertThat(MatchingComposition.indexedProperties(groups).get("g")).containsExactly("phone");
+        try (var catalog = MatchingComposition.create(client, scope.keyspace(), groups)) {
+            catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same")));
+            catalog.upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same")));
+            assertThat(catalog.upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same"))).get("a").status())
+                    .isEqualTo(WorkerMatchingCatalog.MutationStatus.UNCHANGED);
+            assertThat(phone(catalog, "same")).containsValue(new WorkerCandidate("a", 0));
         }
     }
 
@@ -140,9 +137,8 @@ class MatchingResourceIntegrationTest {
         try (var catalog = MatchingComposition.create(client, scope.keyspace(), groups)) {
             var original = Map.of("phone", "old", "country", "CN", "messaging.enabled", "true", "proofPool", "A", "proofTarget", "yes");
             catalog.upsertWorkerFactsBatch("g", Map.of("w", original));
-            var root = IndexMutation.base(scope.keyspace(), "g");
             var factsKey = scope.keyspace().base() + ":matching:worker:facts:g";
-            String broken = root + ":phone";
+            String broken = RedisHashPropertyIndex.key(scope.keyspace(), "g", "phone");
             byte[] dump = redis.dump(broken);
             redis.unlink(broken); redis.set(broken, "wrong-type");
             String before = redis.hget(factsKey, "w");

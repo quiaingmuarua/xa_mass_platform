@@ -21,8 +21,8 @@ class WorkerMatchingArchitectureTest {
         assertPackageDependencies("storage", List.of(".pool.", ".refill.", ".functions.",
                 "executorName", "CandidateBudget", "WorkerCandidatePool"));
         assertPackageDependencies("functions", List.of(".refill.", ".storage.", "io.lettuce",
-                "PoolRefillPolicy", "PoolMaintenance", "new WorkerCandidatePool", "new PhoneIndex", "new Thread", ".offerBatch(", ".discardExpired("));
-        assertPackageDependencies("refill", List.of("io.lettuce", "IndexMutation", "prepareLua",
+                "PoolRefillPolicy", "PoolMaintenance", "new WorkerCandidatePool", "RedisHashPropertyIndex", "new Thread", ".offerBatch(", ".discardExpired("));
+        assertPackageDependencies("refill", List.of("io.lettuce",
                 ".index.", ".storage.", "redis.call", ":matching:"));
     }
 

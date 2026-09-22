@@ -100,12 +100,7 @@ class RuntimeBoundaryIntegrationTest {
     static class MatchingTestAssembly {
         @Bean(destroyMethod="close") FactsIndexStore matchingFactsStore(
                 RedisClient client, XaMassRedisProperties redis, MatchingProperties rules) {
-            var indexes=new LinkedHashMap<>(MatchingComposition.indexes(rules.groups()));
-            rules.groups().forEach((group,config)->{if(config.pools().contains(BucketPoolFixture.ID)) {
-                var all=new ArrayList<>(indexes.getOrDefault(group,List.of()));
-                all.addAll(BucketPoolFixture.indexes()); indexes.put(group,List.copyOf(all));
-            }});
-            return new FactsIndexStore(client,redis.keyspace(),indexes);
+            return new FactsIndexStore(client, redis.keyspace(), MatchingComposition.indexedProperties(rules.groups()));
         }
         @Bean MatchingComposition matchingTestComposition(FactsIndexStore storage,MatchingProperties rules) {
             return new MatchingComposition(storage,rules.groups(),System::currentTimeMillis);
@@ -147,8 +142,7 @@ class RuntimeBoundaryIntegrationTest {
             });
             var catalog=new RedisWorkerMatchingCatalog(storage,composition.budget(),pools,
                     System::currentTimeMillis,handlers,functions,rules.groups(), java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID)).toList(), composition.globalFunctions());
-            try { storage.rebuildIndexes(); return catalog; }
-            catch(RuntimeException failure) { catalog.close(); throw failure; }
+            return catalog;
         }
 
     }

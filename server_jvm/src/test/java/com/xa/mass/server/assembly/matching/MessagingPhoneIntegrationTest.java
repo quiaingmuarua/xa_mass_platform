@@ -10,7 +10,7 @@ import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.*;
 import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
-import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -62,7 +62,7 @@ class MessagingPhoneIntegrationTest {
         var found = catalog.take("direct", requests);
         assertThat(found.keySet()).containsExactlyElementsOf(requests.keySet());
         for (int i = 0; i < 100; i++) assertThat(found.get("m" + i)).isEqualTo(new WorkerCandidate("w" + i, 0));
-        assertThat(commands).containsExactly("EVAL", "HMGET");
+        assertThat(commands).containsExactly("HMGET", "HMGET");
         assertThatThrownBy(found::clear).isInstanceOf(UnsupportedOperationException.class);
         assertThat(catalog.observeRefillDeficits(Map.of("direct", List.of()))).isEmpty();
 
@@ -71,9 +71,9 @@ class MessagingPhoneIntegrationTest {
         assertThat(commands).isEmpty();
         commands.clear();
         assertThat(catalog.take("direct", Map.of("missing", query("absent")))).isEmpty();
-        assertThat(commands).containsExactly("EVAL");
+        assertThat(commands).containsExactly("HMGET");
 
-        // Startup rebuild also works when only the qualified Phone function is enabled.
+        // Restart retains the existing mapping without rebuilding.
         catalog.close(); catalog = MatchingComposition.create(client, scope.keyspace(), groups);
         assertThat(catalog.take("direct", Map.of("m", query("phone0"))))
                 .containsEntry("m", new WorkerCandidate("w0", 0));
@@ -83,6 +83,8 @@ class MessagingPhoneIntegrationTest {
         catalog.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same"), "us", eligible("US", "same"),
                 "disabled", Map.of("country", "CN", "phone", "disabled", "messaging.enabled", "false"),
                 "invalid", eligible("invalid", "invalid"), "missing", eligible("CN", "missing")));
+        // Make the last mapping deterministic; earlier US facts remain but are not a fallback.
+        catalog.upsertWorkerFactsBatch("mixed", Map.of("cn", eligible("CN", "same")));
         redis.hdel(factsKey("mixed"), "missing");
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("us", new WorkerQuery("worker.messaging.phone", Map.of("phone", "same", "country", List.of("US"))));
@@ -91,17 +93,17 @@ class MessagingPhoneIntegrationTest {
         requests.put("invalid", query("invalid")); requests.put("missing", query("missing"));
         commands.clear();
         var found = catalog.take("mixed", requests);
-        assertThat(found.keySet()).containsExactly("us", "cn");
-        assertThat(found.values()).containsExactly(new WorkerCandidate("us", 0), new WorkerCandidate("cn", 0));
-        assertThat(commands).containsExactly("EVAL", "HMGET");
+        assertThat(found.keySet()).containsExactly("cn");
+        assertThat(found.values()).containsExactly(new WorkerCandidate("cn", 0));
+        assertThat(commands).containsExactly("HMGET", "HMGET");
         assertThat(catalog.take("mixed", Map.of("generic", new WorkerQuery("worker.phone", "disabled"))))
                 .containsEntry("generic", new WorkerCandidate("disabled", 0));
     }
 
     @Test void phoneChangedAfterLookupIsRejectedByCurrentFactsWithoutRefetching() {
         catalog.upsertWorkerFactsBatch("direct", Map.of("w", eligible("CN", "old")));
-        try (var storage = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexes(groups))) {
-            var function = new MessagingPhoneQueryFunction(new PhoneIndex(storage::commands, scope.keyspace()), (group, ids) -> {
+        try (var storage = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
+            var function = new MessagingPhoneQueryFunction(new RedisHashPropertyIndex(storage::commands, scope.keyspace(), "phone"), (group, ids) -> {
                 assertThat(ids).containsExactly("w");
                 catalog.upsertWorkerFactsBatch(group, Map.of("w", eligible("CN", "new")));
                 return storage.readWorkerFacts(group, ids);
@@ -126,7 +128,7 @@ class MessagingPhoneIntegrationTest {
                 List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1))))).isEmpty();
         requests.remove("invalid");
         assertThatThrownBy(() -> catalog.take("mixed", requests)).isInstanceOf(RuntimeException.class);
-        assertThat(commands).containsExactly("EVAL", "HMGET");
+        assertThat(commands).containsExactly("HMGET", "HMGET");
         assertThat(catalog.take("mixed", Map.of("next", new WorkerQuery("worker.any", Map.of())))).isEmpty();
     }
 

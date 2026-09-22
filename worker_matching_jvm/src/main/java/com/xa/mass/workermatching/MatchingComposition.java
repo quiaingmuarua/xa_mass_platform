@@ -8,8 +8,7 @@ import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.workermatching.index.IndexMutation;
-import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
@@ -79,7 +78,7 @@ public final class MatchingComposition {
             }
         }
         if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
-            var phone = new PhoneIndex(storage::commands, storage.keyspace());
+            var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
             if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
             if (enabledFunctions.contains("worker.messaging.phone"))
                 functions.put("worker.messaging.phone", new MessagingPhoneQueryFunction(phone, storage::readWorkerFacts));
@@ -92,13 +91,11 @@ public final class MatchingComposition {
     }
 
     /** Fixed dependencies, independent of Task demand or current Pool inventory. */
-    public static Map<String, List<IndexMutation>> indexes(Map<String, MatchingGroup> groups) {
-        var indexes = new LinkedHashMap<String, List<IndexMutation>>();
+    public static Map<String, Set<String>> indexedProperties(Map<String, MatchingGroup> groups) {
+        var indexes = new LinkedHashMap<String, Set<String>>();
         groups.forEach((group, config) -> {
-            var resources = new ArrayList<IndexMutation>();
-            if (config.functions().contains("worker.phone") || config.functions().contains("worker.messaging.phone"))
-                resources.add(PhoneIndex.mutation());
-            indexes.put(group, List.copyOf(resources));
+            boolean phone = config.functions().contains("worker.phone") || config.functions().contains("worker.messaging.phone");
+            indexes.put(group, phone ? Set.of("phone") : Set.of());
         });
         return Collections.unmodifiableMap(indexes);
     }
@@ -117,12 +114,10 @@ public final class MatchingComposition {
 
     public static RedisWorkerMatchingCatalog create(RedisClient client, RedisKeyspace keyspace,
             Map<String, MatchingGroup> groups) {
-        var storage = new FactsIndexStore(client, keyspace, indexes(groups));
+        var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups));
         try {
             var composition = new MatchingComposition(storage, groups, System::currentTimeMillis);
-            var catalog = composition.catalog();
-            storage.rebuildIndexes();
-            return catalog;
+            return composition.catalog();
         } catch (RuntimeException | Error failure) {
             try { storage.close(); }
             catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }

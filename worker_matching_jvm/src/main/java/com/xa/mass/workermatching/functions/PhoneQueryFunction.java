@@ -2,19 +2,20 @@ package com.xa.mass.workermatching.functions;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.QueryFunction;
-import com.xa.mass.workermatching.index.PhoneIndex;
-import java.util.ArrayList;
+import com.xa.mass.workermatching.index.PropertyIndex;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /** Exact property lookup over an existing index; neither consumes stock nor acquires leases. */
 public final class PhoneQueryFunction implements QueryFunction {
-    private final PhoneIndex phones;
+    private final PropertyIndex phones;
 
-    public PhoneQueryFunction(PhoneIndex phones) {
+    public PhoneQueryFunction(PropertyIndex phones) {
         this.phones = Objects.requireNonNull(phones);
     }
 
@@ -25,18 +26,16 @@ public final class PhoneQueryFunction implements QueryFunction {
     }
 
     @Override public Map<String, WorkerCandidate> apply(String workerGroupId, Map<String, Object> inputsByMessageId) {
-        var requests = new LinkedHashMap<String, List<String>>();
-        inputsByMessageId.forEach((id, input) -> requests.computeIfAbsent((String) input, ignored -> new ArrayList<>()).add(id));
-        var counts = new LinkedHashMap<String, Integer>();
-        requests.forEach((phone, ids) -> counts.put(phone, ids.size()));
-        var found = phones.lookup(workerGroupId, counts);
-        var assigned = new LinkedHashMap<String, WorkerCandidate>();
-        requests.forEach((phone, ids) -> {
-            var workers = found.get(phone);
-            for (int i = 0; i < workers.size(); i++) assigned.put(ids.get(i), new WorkerCandidate(workers.get(i), 0));
-        });
+        var values = new LinkedHashSet<String>();
+        inputsByMessageId.values().forEach(input -> values.add((String) input));
+        if (values.isEmpty()) return Map.of();
+        var found = phones.lookup(workerGroupId, List.copyOf(values));
+        var used = new HashSet<String>();
         var result = new LinkedHashMap<String, WorkerCandidate>();
-        inputsByMessageId.keySet().forEach(id -> { if (assigned.containsKey(id)) result.put(id, assigned.get(id)); });
+        inputsByMessageId.forEach((id, input) -> {
+            String worker = found.get(input);
+            if (worker != null && used.add(worker)) result.put(id, new WorkerCandidate(worker, 0));
+        });
         return Collections.unmodifiableMap(result);
     }
 }

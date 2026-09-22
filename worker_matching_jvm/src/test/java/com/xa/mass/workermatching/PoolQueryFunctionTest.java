@@ -4,7 +4,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.functions.*;
-import com.xa.mass.workermatching.index.PhoneIndex;
+import com.xa.mass.workermatching.index.PropertyIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
@@ -17,7 +17,7 @@ import static org.mockito.Mockito.*;
 class PoolQueryFunctionTest {
     @Test void admissionNormalizesLocalInputsWithoutTouchingInjectedResources() {
         var pool = mock(WorkerCandidatePool.class);
-        var phones = mock(PhoneIndex.class);
+        var phones = mock(PropertyIndex.class);
         assertEquals(Map.of(), new AnyQueryFunction(pool).normalizeInput("g", Map.of()));
         assertEquals(List.of("CN", "US"), new CountryQueryFunction(pool).normalizeInput("g", List.of("US", "CN", "US")));
         assertEquals(Map.of("country", List.of("CN")), new MessagingQueryFunction(pool)

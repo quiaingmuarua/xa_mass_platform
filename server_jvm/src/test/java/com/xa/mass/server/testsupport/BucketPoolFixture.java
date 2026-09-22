@@ -4,43 +4,14 @@ import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.PoolMaintenance;
-import com.xa.mass.workermatching.index.IndexMutation;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import com.xa.mass.workermatching.QueryFunction;
-import com.xa.mass.workerdelivery.json.Jsons;
-import io.lettuce.core.api.sync.RedisCommands;
 import java.util.*;
 import java.util.function.*;
 
-/** Non-ZSET Rule: bucket SETs and a HASH source, with Rule-owned local Eligibility. */
+/** Test Rule qualifying only the supplied Worker/Platform Facts snapshot. */
 public final class BucketPoolFixture extends PoolMaintenance<String> {
     public static final String ID="proof.bucket";
-    private static final String PREPARE="""
-            local function projection(raw)
-              if not raw then return nil end
-              local value=cjson.decode(raw)
-              if type(value)~='table' or type(value.bucket)~='string' or value.bucket=='' then error('corrupt bucket projection') end
-              local size=0; for _ in pairs(value) do size=size+1 end
-              if size~=1 then error('corrupt bucket projection') end
-              return value.bucket
-            end
-            local function bucketKey(root,bucket) return root..':bucket:'..redis.sha1hex(bucket) end
-            return function(key,id,w,p)
-              local old=projection(redis.call('HGET',key,id))
-              local next=type(w.testBucket)=='string' and w.testBucket~='' and p.testEnabled~='no' and w.testBucket or nil
-              for _,bucket in pairs({old=old,next=next}) do
-                local kind=redis.call('TYPE',bucketKey(key,bucket)).ok
-                if kind~='none' and kind~='set' then error('corrupt bucket set') end
-              end
-              local encoded=next and cjson.encode({bucket=next}) or nil
-              return function()
-                if old then redis.call('SREM',bucketKey(key,old),id) end
-                if next then
-                  redis.call('HSET',key,id,encoded); redis.call('SADD',bucketKey(key,next),id)
-                else redis.call('HDEL',key,id) end
-              end
-            end
-            """;
     private final boolean failSnapshot;
     private final WorkerCandidatePool stock;
     private final FactsIndexStore storage;
@@ -65,9 +36,6 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
                 }
             };
         }
-    public static List<IndexMutation> indexes() {
-        return List.of(new IndexMutation("test_buckets",PREPARE));
-    }
     @Override protected EligibilityQuery normalize(String group,EligibilityQuery input) {
             var expression = input.query();
         if(!Set.of("test.bucket").containsAll(expression.keySet()))throw new IllegalArgumentException("unsupported bucket parameter");
@@ -98,16 +66,14 @@ public final class BucketPoolFixture extends PoolMaintenance<String> {
             return bucket;
         }
     @Override protected Map<String,String> readQualifications(String group,List<String> ids) {
-        if(failSnapshot)throw new IllegalStateException("injected bucket projection failure");
+        if(failSnapshot)throw new IllegalStateException("injected bucket qualification failure");
         var result=new LinkedHashMap<String,String>();
-        for(var row:storage.commands().hmget(IndexMutation.base(storage.keyspace(),group)+":test_buckets",ids.toArray(String[]::new)))
-            if(row.hasValue())result.put(row.getKey(),decode(row.getValue()));
+        for (var facts : storage.readFactsSnapshot(group, ids).values()) {
+            Object bucket = facts.workerProperties().get("testBucket");
+            if (bucket instanceof String value && !value.isEmpty()
+                    && !"no".equals(facts.platformProperties().get("testEnabled")))
+                result.put(facts.workerId(), value);
+        }
         return result;
-    }
-    private static String decode(String raw) {
-        var value=Jsons.parseObject(raw);
-        if(!value.keySet().equals(Set.of("bucket")) || !(value.get("bucket") instanceof String bucket) || bucket.isBlank())
-            throw new IllegalStateException("corrupt bucket projection");
-        return bucket;
     }
 }

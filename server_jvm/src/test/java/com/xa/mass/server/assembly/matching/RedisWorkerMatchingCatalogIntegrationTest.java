@@ -73,7 +73,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     private RedisWorkerMatchingCatalog createCatalog(Map<String,Set<String>> enabled, java.util.function.LongSupplier clock) {
         var groups=groups(enabled);
-        var storage=new FactsIndexStore(redisClient,keyspace,MatchingComposition.indexes(groups));
+        var storage=new FactsIndexStore(redisClient,keyspace,MatchingComposition.indexedProperties(groups));
         var composition=new MatchingComposition(storage,groups,clock);
         var traced=new LinkedHashMap<String,PoolRefillPolicy>(); composition.policies().forEach((id,policy)->traced.put(id,trace(policy)));
         var result=new RedisWorkerMatchingCatalog(storage,composition.budget(),composition.pools(),
@@ -83,11 +83,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
     }
     private RedisWorkerMatchingCatalog bucketCatalog(Map<String,Set<String>> enabled,boolean fail) {
         var groups=groups(enabled);
-        var indexes=new LinkedHashMap<>(MatchingComposition.indexes(groups));
-        groups.forEach((group,config)->{ if(config.pools().contains(BucketPoolFixture.ID)) {
-            var all=new ArrayList<>(indexes.getOrDefault(group,List.of())); all.addAll(BucketPoolFixture.indexes()); indexes.put(group,List.copyOf(all));
-        }});
-        var storage=new FactsIndexStore(redisClient,keyspace,indexes);
+        var storage=new FactsIndexStore(redisClient,keyspace,MatchingComposition.indexedProperties(groups));
         var composition=new MatchingComposition(storage,groups,System::currentTimeMillis);
         var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
         var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,fail);
@@ -162,7 +158,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         assertThatThrownBy(result::clear).isInstanceOf(UnsupportedOperationException.class);
         assertThat(catalog.take("g",requests)).isEmpty();
     }
-    @Test void independentBucketLayoutSharesStockAndRetainsBatchCommandBudgets() {
+    @Test void independentBucketQualificationSharesStockWithOneAtomicFactsRead() {
         useBucketRule(false);
         var facts=new LinkedHashMap<String,Map<String,String>>();
         for(int i=0;i<100;i++)facts.put("w"+i,Map.of("country","CN","testBucket",i%2==0?"red":"blue"));
@@ -172,7 +168,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         for(String task:List.of("a","b"))declareTask(task,"g",BucketPoolFixture.ID,List.of(target));
         commandTypes.clear();var prepared=declarations("a","b");assertThat(commandTypes).isEmpty();
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isEqualTo(100);
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","HMGET");
+        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL_RO");
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isZero();
         var selector=Map.of("test.bucket",List.of("red","blue"));
         var first=takeItems(catalog,prepared.get("a").workerGroupId(),function(prepared.get("a")),selector,40);
@@ -209,32 +205,23 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         var blue=Map.of("test.bucket",List.of("blue"));
         assertThat(takeItems(catalog,prepared.get("bucket").workerGroupId(),function(prepared.get("bucket")),blue,1)).extracting(h -> h.workerId()).containsExactly("w");
         catalog.patchWorkerPlatformProperties("g","w",Map.of("testEnabled","no"));
-        assertThat(redis.hget(keyspace.base()+":matching:worker:index:Zw:test_buckets","w")).isNull();
+        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 42L))).isZero();
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red")));
         assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").platformProperties()).containsEntry("testEnabled","no");
         catalog.patchWorkerPlatformProperties("g","w",Map.of("testEnabled","yes"));
-        assertThat(redis.hget(keyspace.base()+":matching:worker:index:Zw:test_buckets","w")).contains("red");
+        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 43L))).isEqualTo(1);
+        assertThat(takeItems(catalog,"g",BucketPoolFixture.ID,Map.of("test.bucket",List.of("red")),1)).extracting(WorkerCandidate::workerId).containsExactly("w");
     }
-    @Test void bucketCorruptionFailsBeforeFactsOrAnotherIndexWrite() {
-        useBucketRule(false);catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red","country","CN")));
-        String key=keyspace.base()+":matching:worker:index:Zw:test_buckets";
-        var cursor=io.lettuce.core.ScanCursor.INITIAL;
-        var buckets=new java.util.ArrayList<String>();
-        do {
-            var page=redis.scan(cursor,new io.lettuce.core.ScanArgs().match(key+":bucket:*").limit(100));
-            buckets.addAll(page.getKeys()); cursor=page;
-        } while(!cursor.isFinished());
-        assertThat(buckets).hasSize(1);
-        String set=buckets.getFirst();
-        redis.unlink(set);redis.set(set,"corrupt"); Double country=redis.zscore(indexKey(),"w");
-        assertThatThrownBy(()->catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","blue","country","US")))).isInstanceOf(RuntimeException.class);
-        assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").workerProperties()).containsEntry("testBucket","red");
-        assertThat(redis.zscore(indexKey(),"w")).isEqualTo(country);
-        redis.unlink(set);redis.hset(key,"w","{}");
-        assertThatThrownBy(()->catalog.patchWorkerPlatformProperties("g","w",Map.of("testEnabled","no"))).isInstanceOf(RuntimeException.class);
-        assertThat(catalog.loadWorkerFacts("g",List.of("w")).get("w").platformProperties()).isEmpty();
+    @Test void corruptBucketFactsFailBeforeAnyAdmission() {
+        useBucketRule(false);
+        catalog.upsertWorkerFactsBatch("g",Map.of("a",Map.of("testBucket","red"),"b",Map.of("testBucket","blue")));
+        redis.hset(keyspace.base()+":matching:worker:facts:g","b","[]");
+        var offered = new LinkedHashMap<String,Long>(); offered.put("a",42L); offered.put("b",43L);
+        assertThatThrownBy(() -> catalog.refill("g",List.of(new RefillTarget(BucketPoolFixture.ID,ANY,2)),offered))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(takeItems(catalog,"g",BucketPoolFixture.ID,Map.of(),100)).isEmpty();
     }
-    @Test void bucketProjectionFailureLeavesTheLeaseWithoutStockOrRecoveryRead() {
+    @Test void bucketQualificationFailureLeavesTheGenerationWithoutStockOrRecoveryRead() {
         useBucketRule(true);catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red")));hot("g",List.of("w"));
         var query=declare("bucket",BucketPoolFixture.ID);
         var held=candidateize("g",offer("g",100));
@@ -245,22 +232,18 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         commandTypes.clear();assertThat(takeItems(catalog,query.workerGroupId(),function(query),Map.of(),1)).isEmpty();assertThat(commandTypes).isEmpty();
         assertThat(readScores(redis, keyspace, "g",List.of("w")).get("w")).isEqualTo(held.values().iterator().next());
     }
-    @Test void rebuildUsesOnlyTheEnabledHandlersDeclaredRootAndDescendants() {
+    @Test void bucketQualificationAndRestartIgnoreRetiredProjections() {
         useBucketRule(false);
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red","country","CN")));
         String root=keyspace.base()+":matching:worker:index:Zw:test_buckets";
-        redis.hset(root,"stale","{}"); redis.sadd(root+":orphan","stale");
-        redis.set(root+"_neighbor","kept"); redis.zadd(indexKey(),1,"other-rule-member");
-        catalog.close();
-        var groups=Map.of("g",Set.of(BucketPoolFixture.ID));
-        catalog=bucketCatalog(groups,false);
-        stores.get(catalog).rebuildIndexes();
-        assertThat(redis.hkeys(root)).containsExactly("w");
-        assertThat(redis.exists(root+":orphan")).isZero();
-        assertThat(redis.get(root+"_neighbor")).isEqualTo("kept");
-        assertThat(redis.zscore(indexKey(),"other-rule-member")).isEqualTo(1);
-        hot("g",List.of("w")); var query=declare("rebuilt",BucketPoolFixture.ID); refill("rebuilt");
-        assertThat(takeItems(catalog,query.workerGroupId(),function(query),Map.of(),1)).extracting(h -> h.workerId()).containsExactly("w");
+        redis.set(root,"retired"); redis.set(root+":orphan","retired-child");
+        catalog.close(); commandTypes.clear();
+        catalog=bucketCatalog(Map.of("g",Set.of(BucketPoolFixture.ID)),false);
+        assertThat(commandTypes).isEmpty();
+        hot("g",List.of("w")); var query=declare("retained",BucketPoolFixture.ID); refill("retained");
+        assertThat(takeItems(catalog,query.workerGroupId(),function(query),Map.of(),1)).extracting(WorkerCandidate::workerId).containsExactly("w");
+        assertThat(redis.get(root)).isEqualTo("retired");
+        assertThat(redis.get(root+":orphan")).isEqualTo("retired-child");
     }
     @Test
     void boundedBatchReplacesWholeMapsAndPreservesIndependentPlatformProperties() {
@@ -840,7 +823,6 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.close();catalog=createCatalog(Map.of("g",Set.of("worker.country")));
         redis.set(indexKey(),"obsolete-corrupt-index");
         catalog.upsertWorkerFactsBatch("g",Map.of("w",Map.of("country","CN")));
-        stores.get(catalog).rebuildIndexes();
         assertThat(redis.get(indexKey())).isEqualTo("obsolete-corrupt-index");
         hot("g",List.of("w"));declare("country","worker.country");
         commandTypes.clear();assertThat(refill("country")).isEqualTo(1);
@@ -936,13 +918,12 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         }
     }
 
-    @Test void rebuildingAGroupWithGlobAndSeparatorCharactersDoesNotClearAnotherGroup() {
+    @Test void qualifyingAGroupWithGlobAndSeparatorCharactersDoesNotAffectAnotherGroup() {
         String special = "g:*[x]";
         try (var selected = createCatalog(Map.of(special, Set.of("worker.country")));
              var neighbor = createCatalog(Map.of(special + ":other", Set.of("worker.country")))) {
             selected.upsertWorkerFactsBatch(special, Map.of("a", Map.of("country", "CN")));
             neighbor.upsertWorkerFactsBatch(special + ":other", Map.of("b", Map.of("country", "US")));
-            stores.get(selected).rebuildIndexes();
             var query = new TaskDescriptor("neighbor", "test-project", special+":other", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), neighbor.normalizeRefill(special+":other", List.of(new RefillTarget("country",ANY,100))), null, java.util.Map.of());
             hot(special+":other",List.of("b"));
             refillDeclarations(neighbor,special+":other",Map.of("neighbor",query),100);
@@ -953,7 +934,7 @@ class RedisWorkerMatchingCatalogIntegrationTest {
         catalog.upsertWorkerFactsBatch("g",Map.of("w",messageFacts("CN","phone")));
         var query=declare("message","worker.messaging.available");
         redis.set(keyspace.base()+":unrelated","kept");
-        stores.get(catalog).rebuildIndexes();
+        catalog.close(); catalog=createCatalog(Map.of("g",Set.of("worker.messaging.available")));
         hot("g",List.of("w")); refill("message");
         assertThat(takeItems(catalog,query.workerGroupId(),function(query),Map.of("country",List.of("CN")),1)).extracting(h -> h.workerId()).containsExactly("w");
         assertThat(redis.get(keyspace.base()+":unrelated")).isEqualTo("kept");

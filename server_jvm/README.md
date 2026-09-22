@@ -71,7 +71,7 @@ Public API
   -> owner-local Java Redis provider
 
 WorkerMatchingAssembly
-  -> shared Facts storage and enabled index resources; startup rebuild
+  -> shared Facts storage and enabled property HASH resources; retain indexes on restart
   -> fixed query functions and Pool maintenance over injected resources
   -> one Catalog lifecycle; synchronous bounded admission/refill/take
 
@@ -343,8 +343,8 @@ instance exposed to Pacer only through `WorkerMatching`. The Catalog's Server ad
 method is not part of that Pacer port. Submission does not take candidates; dispatch
 passes messageId-to-query Maps for the fixed function table to normalize, execute
 and correlate.
-Catalog startup rebuilds configured
-derived indexes before the bean is exposed. Matching owns the country range and
+Catalog startup retains property HASH mappings without scanning or rebuilding.
+Matching owns the country range and
 take time; Kernel retains candidate generation, due execution acquisition and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
 
 `results:load` accepts a direct JSON array and returns one state object for
@@ -800,8 +800,8 @@ Redis key operations live in
 owner-local provider packages.
 
 `assembly.matching` exposes one Catalog lifecycle Bean. Matching's fixed composition
-creates the enabled Pool and Index resources, shares one Matching Redis connection,
-and completes index rebuild before platform callers start. Failed assembly closes
+creates enabled Pool and property lookup resources with one lazy Matching Redis
+connection. Startup does not read or rebuild indexes. Failed assembly closes
 that connection; Catalog destruction closes it idempotently without shutting down
 the Server-owned RedisClient. Server does not assemble separate index lifecycles.
 Resource dependencies and atomic Facts/index writes belong to the

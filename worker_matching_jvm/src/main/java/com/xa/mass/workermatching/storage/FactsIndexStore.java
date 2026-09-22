@@ -2,10 +2,8 @@ package com.xa.mass.workermatching.storage;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.WorkerMatchingCatalog.WorkerFacts;
-import com.xa.mass.workermatching.index.IndexMutation;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.ScanArgs;
-import io.lettuce.core.ScanCursor;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -23,33 +21,26 @@ import tools.jackson.databind.json.JsonMapper;
 public final class FactsIndexStore implements AutoCloseable {
     private final RedisClient client;
     private final RedisKeyspace keyspace;
-    private final Map<String, List<IndexMutation>> indexesByGroup;
-    private final Map<String, String> scriptsByGroup;
+    private final Map<String, Set<String>> indexedPropertiesByGroup;
     private StatefulRedisConnection<String, String> connection;
     private boolean closed;
 
     public FactsIndexStore(RedisClient client, RedisKeyspace keyspace,
-            Map<String, List<IndexMutation>> indexesByGroup) {
+            Map<String, Set<String>> indexedPropertiesByGroup) {
         this.client = Objects.requireNonNull(client);
         this.keyspace = Objects.requireNonNull(keyspace);
-        var indexes = new LinkedHashMap<String, List<IndexMutation>>();
-        var scripts = new LinkedHashMap<String, String>();
-        indexesByGroup.forEach((group, mutations) -> {
-            var unique = new LinkedHashMap<String, IndexMutation>();
-            for (var mutation : mutations) {
-                var prior = unique.putIfAbsent(mutation.namespace(), mutation);
-                if (prior != null && !prior.equals(mutation))
-                    throw new IllegalArgumentException("Conflicting index resource");
-            }
-            var captured = List.copyOf(unique.values());
-            indexes.put(group, captured); scripts.put(group, script(captured));
+        var indexes = new LinkedHashMap<String, Set<String>>();
+        indexedPropertiesByGroup.forEach((group, properties) -> {
+            if (group == null || group.isBlank()) throw new IllegalArgumentException("Group must be nonblank");
+            var captured = new LinkedHashSet<>(properties);
+            captured.forEach(property -> RedisHashPropertyIndex.key(keyspace, group, property));
+            indexes.put(group, Collections.unmodifiableSet(captured));
         });
-        this.indexesByGroup = Map.copyOf(indexes);
-        this.scriptsByGroup = Map.copyOf(scripts);
+        this.indexedPropertiesByGroup = Collections.unmodifiableMap(indexes);
     }
 
     public RedisKeyspace keyspace() { return keyspace; }
-    public Set<String> indexedGroups() { return indexesByGroup.keySet(); }
+    public Set<String> indexedGroups() { return indexedPropertiesByGroup.keySet(); }
 
     public synchronized RedisCommands<String, String> commands() {
         if (closed) throw new IllegalStateException("Matching storage is closed");
@@ -58,18 +49,24 @@ public final class FactsIndexStore implements AutoCloseable {
     }
 
     public List<Long> replaceWorkerFacts(String group, List<String> encodedPairs) {
-        return mutate(group, "replace", encodedPairs);
+        if (encodedPairs.size() > 200 || encodedPairs.size() % 2 != 0)
+            throw new IllegalArgumentException("Worker facts write requires at most 100 identity/value pairs");
+        if (encodedPairs.isEmpty()) return List.of();
+        var keys = new ArrayList<String>();
+        keys.add(workerFactsKey(group)); keys.add(workerPlatformFactsKey(group));
+        var args = new ArrayList<String>();
+        for (String property : indexedPropertiesByGroup.getOrDefault(group, Set.of())) {
+            keys.add(RedisHashPropertyIndex.key(keyspace, group, property));
+            args.add(property);
+        }
+        args.addAll(encodedPairs);
+        return commands().eval(REPLACE_WORKER_FACTS, ScriptOutputType.MULTI,
+                keys.toArray(String[]::new), args.toArray(String[]::new));
     }
 
     public long patchPlatformProperties(String group, String workerId, String encoded) {
-        return mutate(group, "patch", List.of(workerId, encoded)).getFirst();
-    }
-
-    private List<Long> mutate(String group, String mode, List<String> input) {
-        var args = new ArrayList<String>(); args.add(mode); args.addAll(input);
-        return commands().eval(scriptsByGroup.getOrDefault(group, NO_INDEX_SCRIPT), ScriptOutputType.MULTI,
-                new String[]{workerFactsKey(group), workerPlatformFactsKey(group), IndexMutation.base(keyspace, group)},
-                args.toArray(String[]::new));
+        return commands().eval(PATCH_PLATFORM_PROPERTIES, ScriptOutputType.INTEGER,
+                new String[]{workerFactsKey(group), workerPlatformFactsKey(group)}, workerId, encoded);
     }
 
     private String workerPlatformFactsKey(String group) {
@@ -119,36 +116,6 @@ public final class FactsIndexStore implements AutoCloseable {
                     decodeObject(worker), platform == null ? Map.of() : decodeObject(platform)));
         }
         return Collections.unmodifiableMap(result);
-    }
-    /** Startup only, before facts admission and Pacer start. Never scheduled in the background. */
-    public void rebuildIndexes() {
-        for (String group:indexesByGroup.keySet()) {
-            if(indexesByGroup.get(group).isEmpty())continue;
-            var redis=commands();
-            ScanCursor cursor;
-            for(var index:indexesByGroup.get(group)) {
-                String root=IndexMutation.base(keyspace, group)+":"+index.namespace();
-                // The exact root and its descendants only; never another resource's index.
-                redis.unlink(root);
-                cursor=ScanCursor.INITIAL;
-                do {
-                    var page=redis.scan(cursor,new ScanArgs().match(root+":*").limit(100));
-                    if(!page.getKeys().isEmpty())redis.unlink(page.getKeys().toArray(String[]::new));
-                    cursor=page;
-                } while(!cursor.isFinished());
-            }
-            cursor=ScanCursor.INITIAL;
-            do {
-                var page=redis.hscan(workerFactsKey(group),cursor,new ScanArgs().limit(100));
-                var ids=new ArrayList<String>();
-                for (var entry:page.getMap().entrySet()) {
-                    decodeObject(entry.getValue()); ids.add(entry.getKey()); ids.add("{}");
-                    if (ids.size()==200) { mutate(group,"rebuild",ids); ids.clear(); }
-                }
-                if (!ids.isEmpty()) mutate(group,"rebuild",ids);
-                cursor=page;
-            } while (!cursor.isFinished());
-        }
     }
 
     public Map<String, @Nullable WorkerFacts> loadWorkerFacts(
@@ -249,13 +216,15 @@ public final class FactsIndexStore implements AutoCloseable {
         throw new IllegalArgumentException("value is not JSON-compatible");
     }
 
-    private static final String HELPERS = """
+    private static final String OBJECT = """
             local function object(raw)
               if not raw or not string.match(raw,'^%s*{') then error('corrupt Matching facts') end
               local value=cjson.decode(raw)
               if type(value)~='table' then error('corrupt Matching facts') end
               return value
             end
+            """;
+    private static final String PATCH_HELPERS = OBJECT + """
             -- Preserve nested JSON shapes, including empty arrays, while merging only top-level fields.
             local function fields(raw)
               object(raw)
@@ -295,37 +264,48 @@ public final class FactsIndexStore implements AutoCloseable {
             end
             """;
 
-    private static String script(List<IndexMutation> indexes) {
-        var source=new StringBuilder(HELPERS);
-        for (int i=0;i<indexes.size();i++) source.append("local prepare_").append(i)
-                .append("=(function()\n").append(indexes.get(i).prepareLua()).append("\nend)()\n");
-        source.append("""
-                local results, writes, updates={},{},{}
-                local mode=ARGV[1]
-                for i=2,#ARGV,2 do
-                  local id,input=ARGV[i],ARGV[i+1]
-                  local old=redis.call('HGET',KEYS[1],id)
-                  local platform=redis.call('HGET',KEYS[2],id) or '{}'
-                  if mode=='patch' and not old then results[#results+1]=-1
-                  else
-                    if old then object(old) end
-                    local replacement=mode=='replace' and input or old
-                    local nextPlatform=mode=='patch' and patch(platform,input) or platform
-                    local w,p=object(replacement),object(nextPlatform)
-                    local effect=(mode=='replace' and old~=replacement or mode=='patch' and platform~=nextPlatform) and 1 or 0
-                    results[#results+1]=effect
-                    if effect==1 then writes[#writes+1]={mode=='patch' and KEYS[2] or KEYS[1],id,mode=='patch' and nextPlatform or replacement} end
-                """);
-        for (int i=0;i<indexes.size();i++) source.append("local apply=prepare_").append(i)
-                .append("(KEYS[3]..':").append(indexes.get(i).namespace()).append("',id,w,p)\nif type(apply)~='function' then error('invalid Rule update') end\nupdates[#updates+1]=apply\n");
-        source.append("""
-                  end
+    private static final String REPLACE_WORKER_FACTS = OBJECT + """
+            local count=#KEYS-2
+            for _,key in ipairs(KEYS) do
+              local kind=redis.call('TYPE',key).ok
+              if kind~='none' and kind~='hash' then error('corrupt Matching HASH type') end
+            end
+            local prepared,results={},{}
+            for i=count+1,#ARGV,2 do
+              local id,input=ARGV[i],ARGV[i+1]
+              local old=redis.call('HGET',KEYS[1],id)
+              local before=old and object(old) or {}
+              local after=object(input)
+              object(redis.call('HGET',KEYS[2],id) or '{}')
+              prepared[#prepared+1]={id=id,input=input,before=before,after=after,changed=old~=input}
+              results[#results+1]=old~=input and 1 or 0
+            end
+            local function value(properties,name)
+              local v=properties[name]
+              return type(v)=='string' and v~='' and v or nil
+            end
+            for _,row in ipairs(prepared) do
+              for j=1,count do
+                local key=KEYS[j+2]
+                local old,next=value(row.before,ARGV[j]),value(row.after,ARGV[j])
+                if old and old~=next and redis.call('HGET',key,old)==row.id then
+                  redis.call('HDEL',key,old)
                 end
-                for _,w in ipairs(writes) do redis.call('HSET',unpack(w)) end
-                for _,apply in ipairs(updates) do apply() end
-                return results
-                """);
-        return source.toString();
-    }
-    private static final String NO_INDEX_SCRIPT = script(List.of());
+                if next then redis.call('HSET',key,next,row.id) end
+              end
+              if row.changed then redis.call('HSET',KEYS[1],row.id,row.input) end
+            end
+            return results
+            """;
+
+    private static final String PATCH_PLATFORM_PROPERTIES = PATCH_HELPERS + """
+            local old=redis.call('HGET',KEYS[1],ARGV[1])
+            local platform=redis.call('HGET',KEYS[2],ARGV[1]) or '{}'
+            if not old then return -1 end
+            object(old)
+            local next=patch(platform,ARGV[2])
+            if platform==next then return 0 end
+            redis.call('HSET',KEYS[2],ARGV[1],next)
+            return 1
+            """;
 }

@@ -156,7 +156,7 @@
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/PhoneIndex.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/RedisHashPropertyIndex.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -964,7 +964,7 @@
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/IndexMutation.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/PropertyIndex.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

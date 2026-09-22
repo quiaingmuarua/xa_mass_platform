@@ -151,8 +151,8 @@ Items, timeouts and execution assertions; Group registration alone creates no Ta
 
 Task configuration and index proof belongs to Redis Owner: complete create-only
 descriptors, concurrent configuration integrity and strict corruption rejection,
-one-Lua facts/index updates, independent Worker/Platform writes and startup
-rebuild isolation. Matching tests prove the Pool maintenance interface and fixed query functions, unsupported condition
+fixed one-Lua Worker Facts/HASH updates, independent Platform patches and restart
+retention without index rebuilding. Matching tests prove the Pool maintenance interface and fixed query functions, unsupported condition
 rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
 original fences and atomic destructive consumption. Catalog tests own messageId
 correlation, equivalent/interleaved queries, shortages, immutable input-ordered
@@ -162,9 +162,9 @@ Kernel tests own immutable
 WorkerQuery capture and strict envelope JSON; Server tests own flat target configuration
 and HTTP admission. Redis Owner rejects old property conditions without rewriting
 records or substituting ANY.
-The separately assembled bucket SET/projection HASH Rule proves that a different
-index layout uses the public Handler contract without common-flow changes. Its
-Redis Owner cases cover batch costs, corrupt-index preflight and sealing invalidation;
+The separately assembled Bucket Rule reads a bounded Worker/Platform Facts snapshot
+and qualifies the offered identities through the public policy contract. Its
+Redis Owner cases cover batch costs, corrupt-Facts rejection and generation invalidation;
 Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
 finite-ID target saturation and named-Rule identity rejection have focused proofs.
 Pacer tests prove refill without Item reads, independently scheduled consumption,
@@ -407,19 +407,21 @@ directed Messages uses qualified Phone queries with empty supply.
 The existing mixed Call workload supplies coexistence and aggregate Redis cost
 evidence; a local nonreference run is not a throughput improvement claim.
 
-The independent Phone Index has Redis Owner proofs for exact value replacement,
-removal, multiple Workers per value, Group isolation, Platform independence,
-all-index preflight atomicity, concurrent writes and startup rebuild. A direct Phone
-batch uses one read-only Lua and at most 100 random identities, with reverse
-membership validation; tests assert bounds and validity, not random distribution
-or latency. Mixed Pool/Identity/Phone tests retain whole-batch admission and first
+The independent property HASH has Redis Owner proofs for exact value replacement,
+conditional old-field removal, last-writer collisions, Group/property isolation,
+Platform independence, full-batch preflight and concurrent writes. Restart preserves
+the existing winner without Facts scans or reconstruction. Retired reverse HASHes
+and value SETs are ignored even when corrupt. A direct Phone batch uses one HMGET
+for at most 100 unique values, returning at most one identity per value.
+Mixed Pool/Identity/Phone tests retain whole-batch admission and first
 association wins. Identity uses no Redis in Matching; Pacer still verifies existence
 and Group before Kernel execution acquisition.
 
 Qualified Messaging Phone shares that index, then reads only returned identities
 with one strict Facts HMGET. Focused and Redis tests cover ordered association,
 country/enabled/phone filtering, between-read phone changes, no-Pool configuration,
-shared index rebuild and partial failure. No resampling follows a filter miss.
+shared index retention and partial failure. No fallback to overwritten identities
+or resampling follows a filter miss.
 Actual Pacer/Matching/Redis composition proves a Country-cached Worker can be
 acquired by qualified Direct lookup while its old Pool fence cannot execute or
 release the new hold. Product functional/lifecycle keeps the original directed
@@ -517,12 +519,12 @@ checkpoints use a single Identity target after stopping the backup; the independ
 Proof Pool witness retains qualification and strict-fence coverage.
 
 Matching resource separation uses those same proof lanes. Focused assembly tests
-cover no-Pool Identity/Phone composition, a single shared connection, conflicting
-index definitions, startup failure cleanup and idempotent Catalog close. Architecture
+cover no-Pool Identity/Phone composition, one lazy shared connection, immutable
+property configuration, startup without Redis I/O and idempotent Catalog close. Architecture
 tests enforce actual package dependency restrictions for Pool, Index, refill and
-function implementations. Redis Owner covers Phone updates and rebuild without Task
-demand, non-destructive shared-index queries, Pool capacity/expiry independence,
-namespace-deduplicated writes and Phone preflight protection. Matching convergence
+function implementations. Redis Owner covers Phone updates and restart retention
+without Task demand, non-consuming shared lookup, Pool capacity/expiry independence,
+single-property enablement and HASH preflight protection. Matching convergence
 adds name-independent ALL/PAGED batching, explicit Pool rotation, a strict atomic
 Worker/Platform snapshot and zero access to poisoned retired Messaging/Proof keys.
 Messaging uses one offered-ID HMGET; Proof uses one EVAL_RO with two HMGETs.

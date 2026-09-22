@@ -78,7 +78,7 @@ class WorkerRefillDeficitIntegrationTest {
                 commands.clear();
                 var direct = matching.take(group, Map.of("direct", new WorkerQuery("worker.messaging.phone",
                         Map.of("phone", "+12025550000", "country", List.of("US"))))).get("direct");
-                assertThat(commands).containsExactly("EVAL", "HMGET");
+                assertThat(commands).containsExactly("HMGET", "HMGET");
                 assertThat(direct.workerId()).isEqualTo("w00");
                 assertThat(direct.expectedScore()).isZero();
                 var execution = scores.acquireCurrentHotScoreLeases(group, List.of(direct.workerId()), sampled + 30_000).get("w00");
