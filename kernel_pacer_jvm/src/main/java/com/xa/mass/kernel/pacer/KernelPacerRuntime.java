@@ -17,7 +17,9 @@ import com.xa.mass.kernel.worker.DefaultWorkerExecutionResultEvents;
 import com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * The single external assembly and lifecycle boundary for all production
@@ -28,6 +30,22 @@ import java.util.Objects;
  * and storage ownership.</p>
  */
 public final class KernelPacerRuntime {
+
+    /** Best-effort source observation, not execution truth or a delivery acknowledgement. */
+    public record WorkerObservation(
+            String workerGroupId,
+            List<String> workerIds,
+            long observedAtMillis,
+            String messageEventName,
+            String observationEventName
+    ) {
+        public WorkerObservation {
+            Objects.requireNonNull(workerGroupId, "workerGroupId");
+            workerIds = List.copyOf(workerIds);
+            Objects.requireNonNull(messageEventName, "messageEventName");
+            Objects.requireNonNull(observationEventName, "observationEventName");
+        }
+    }
 
     public enum PolicyPreset {
         DEFAULT,
@@ -100,7 +118,8 @@ public final class KernelPacerRuntime {
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatching workerMatching
+            WorkerMatching workerMatching,
+            Consumer<WorkerObservation> workerObservations
     ) {
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
@@ -138,7 +157,8 @@ public final class KernelPacerRuntime {
                         workerCommands,
                         serviceability,
                         new ResultContextCodec(),
-                        workerMatching
+                        workerMatching,
+                        workerObservations
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,

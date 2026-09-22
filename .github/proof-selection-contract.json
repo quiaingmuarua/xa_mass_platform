@@ -1160,6 +1160,70 @@
         "product_coexistence"
       ],
       "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/WorkerObservationConsumer.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Allocation observation handoff retains Server proof selection and existing platform and scenario lifecycle lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/FunctionHandler.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Fixed internal observation functions retain the receiver's existing Server and scenario proof lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/PlatformPropertiesHandler.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Moved Properties projection effects keep the former receiver's proof coverage and lifecycle boundaries."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/observation/WorkerPropertyProjection.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The passive projection contract retains Server selection without adding a new proof lane."
+    },
+    {
+      "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckAssignmentWindow.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Scenario arithmetic stays in the existing JVM and coexistence lanes; no new capacity claim."
     }
   ]
 }

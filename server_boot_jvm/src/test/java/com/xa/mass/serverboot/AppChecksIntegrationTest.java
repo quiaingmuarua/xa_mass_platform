@@ -8,6 +8,8 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workersimulator.appchecks.AppRegistrationCheck;
+import com.xa.mass.server.assembly.pacer.WorkerObservationWitness;
+import com.xa.mass.workermatching.WorkerProperties;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
@@ -30,6 +32,36 @@ import static org.assertj.core.api.Assertions.*;
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"1000,1000,0,false", "0,0,0,true", "1000,1000,6000,false"})
+    @Timeout(90)
+    void allocationProjectionPrecedesReportAndSurvivesSuccessFailureAndLateResults(
+            int registered, int unregistered, int delay, boolean failure) throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        try (var world = new World(); var workers = world.workers("app-a-sim", entered, release)) {
+            workers.start();
+            // Establish the independent first Facts publication before exercising this lossy projection.
+            List<String> ids = world.readyFacts(workers, "app-a-sim");
+            String task = world.create("allocation-observation", "app-a", 1, registered, unregistered, delay);
+            try {
+                assertThat(entered.await(15, TimeUnit.SECONDS)).isTrue();
+                assertThat(rows(world.get("/api/v1/app-checks/tasks/" + task)))
+                        .noneMatch(row -> "succeeded".equals(row.get("resultStatus")) || "failed".equals(row.get("resultStatus")));
+                world.assertAllocationProjection("app-a-sim", ids);
+            } finally { release.countDown(); }
+            var result = world.settled(task, 1);
+            assertThat(task(result)).containsEntry(failure ? "failedCount" : "succeededCount", 1L);
+            if (failure) assertThat(world.attempts).anyMatch(Attempt::failed);
+            else assertThat(rows(result)).allSatisfy(row -> assertThat(row)
+                    .containsEntry("registered", true).containsEntry("simulatedDelayMillis", (long) delay));
+            world.assertAllocationProjection("app-a-sim", ids);
+            var saved = world.context.getBean(WorkerProperties.class).loadWorkerFacts("app-a-sim", ids);
+            world.restart();
+            var restored = world.context.getBean(WorkerProperties.class).loadWorkerFacts("app-a-sim", ids);
+            ids.forEach(id -> assertThat(restored.get(id).platformProperties()).isEqualTo(saved.get(id).platformProperties()));
+        } finally { release.countDown(); }
+    }
+
     @Test @Timeout(150)
     void realHandlersIsolateAppsThrowFailuresAndRetainResultsAcrossServerRestart() throws Exception {
         try (var world = new World(); var a = world.workers("app-a-sim"); var b = world.workers("app-b-sim")) {
@@ -100,6 +132,7 @@ class AppChecksIntegrationTest {
         final String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         final Queue<Attempt> attempts = new ConcurrentLinkedQueue<>();
+        final WorkerObservationWitness observations = new WorkerObservationWitness();
         final URI base;
         final SpringApplication application = new SpringApplication(ServerBootConfiguration.class);
         final String[] arguments;
@@ -108,6 +141,7 @@ class AppChecksIntegrationTest {
         World() throws Exception {
             int port = port(), adapter = port(); base = URI.create("http://127.0.0.1:" + port);
             application.setRegisterShutdownHook(false);
+            application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
@@ -117,6 +151,9 @@ class AppChecksIntegrationTest {
             context = application.run(arguments);
         }
         JavaWorkerManager workers(String group) {
+            return workers(group, null, null);
+        }
+        JavaWorkerManager workers(String group, CountDownLatch entered, CountDownLatch release) {
             var reference = new AtomicReference<JavaWorkerManager>();
             var builder = JavaWorkerManager.builder(base, group, WorkerTransportType.WEBSOCKET);
             for (String replica : List.of("one", "two")) {
@@ -126,6 +163,11 @@ class AppChecksIntegrationTest {
                     try { return actual.handler().execute(input); }
                     catch (WorkerException error) { failed = error.errorCode() == WorkerErrorCode.EVENT_EXECUTION_FAILED; throw error; }
                     finally {
+                        if (entered != null) {
+                            entered.countDown();
+                            try { if (!release.await(15, TimeUnit.SECONDS)) throw new AssertionError("Report gate was not released"); }
+                            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+                        }
                         if (attempts.size() >= 500) throw new AssertionError("Bounded attempt witness overflow");
                         attempts.add(new Attempt(group, (String) input.get("number"), failed, System.nanoTime() - start));
                     }
@@ -133,6 +175,41 @@ class AppChecksIntegrationTest {
                 builder.replica(replica, () -> Map.of("simulated", "true"), List.of(witnessed));
             }
             var manager = builder.build(); reference.set(manager); return manager;
+        }
+        List<String> readyFacts(JavaWorkerManager manager, String group) throws Exception {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+            do {
+                var ids = List.of("one", "two").stream().map(replica -> manager.snapshot(replica).workerId())
+                        .filter(Objects::nonNull).toList();
+                if (ids.size() == 2 && context.getBean(WorkerProperties.class).loadWorkerFacts(group, ids).values().stream()
+                        .filter(Objects::nonNull).count() == 2) return ids;
+                Thread.sleep(20);
+            } while (System.nanoTime() < deadline);
+            throw new AssertionError("Worker Facts publication was not established");
+        }
+        void assertAllocationProjection(String group, List<String> ids) throws Exception {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            do {
+                var snapshot = observations.snapshot();
+                var times = new LinkedHashMap<String, List<Long>>();
+                snapshot.stream().filter(observation -> observation.workerGroupId().equals(group)
+                        && observation.observationEventName().equals("worker.assigned")
+                        && observation.messageEventName().equals("extension.worker.app.registration.check"))
+                        .forEach(observation -> observation.workerIds().forEach(id -> times.computeIfAbsent(id, ignored -> new ArrayList<>())
+                                .add(observation.observedAtMillis())));
+                var facts = context.getBean(WorkerProperties.class).loadWorkerFacts(group, ids);
+                boolean matches = !times.isEmpty();
+                for (var worker : times.entrySet()) {
+                    long last = worker.getValue().stream().mapToLong(Long::longValue).max().orElseThrow();
+                    long count = worker.getValue().stream().filter(time -> time / 60_000 == last / 60_000).count();
+                    var values = facts.get(worker.getKey()).platformProperties();
+                    matches &= values.get("lastAssignedAt") instanceof Number at && at.longValue() == last
+                            && values.get("windowAssignmentCount") instanceof Number n && n.longValue() == count;
+                }
+                if (matches && observations.snapshot().equals(snapshot)) return;
+                Thread.sleep(20);
+            } while (System.nanoTime() < deadline);
+            throw new AssertionError("Platform window did not match the bounded allocation source witness");
         }
         String create(String request, String app, int count, int registered, int unregistered, int delay) throws Exception {
             int offset = ++sequence * 1000;

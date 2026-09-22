@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,11 +25,101 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class TaskAssignmentDispatcherTest {
+
+    @Test
+    void observationsContainOnlyAllocatedWorkersAndSplitEventsBeforeCommandEncoding() {
+        var items = mock(TaskItemScoreBandCore.class);
+        var scores = mock(WorkerScoreCore.class);
+        var commands = mock(WorkerCommandRuntime.class);
+        var codec = mock(ResultContextCodec.class);
+        var verified = new LinkedHashMap<String, WorkerScoreTransitionResult>();
+        var claims = new LinkedHashMap<String, TaskItemScoreTransitionResult>();
+        var attempts = new ArrayList<TaskAssignmentDispatcher.AssignmentAttempt>();
+        var events = List.of("event.a", "event.b", "event.a", "event.rejected", "event.missing");
+        for (int i = 0; i < events.size(); i++) {
+            verified.put("w" + i, new WorkerScoreTransitionResult(i == 4
+                    ? WorkerScoreTransitionStatus.STALE : WorkerScoreTransitionStatus.TRANSITIONED, 500L + i));
+            claims.put("m" + i, new TaskItemScoreTransitionResult(i == 3
+                    ? TaskItemScoreTransitionStatus.STALE : TaskItemScoreTransitionStatus.TRANSITIONED, 600L + i));
+            attempts.add(attempt(new TaskItem("m" + i, events.get(i), 0, Map.of(), 0, null,
+                    new WorkerQuery("worker.any", Map.of())), 300L + i, worker("w" + i, 0)));
+        }
+        when(scores.acquireCurrentHotScoreLeases(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyLong())).thenReturn(verified);
+        when(items.rewriteObservedItemScores(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyMap(),
+                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(claims);
+        var observations = new ArrayList<WorkerObservation>();
+        when(codec.encode(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            assertEquals(2, observations.size());
+            throw new IllegalArgumentException("encoding failed after assignment");
+        });
+        long before = System.currentTimeMillis();
+        var dispatcher = new TaskAssignmentDispatcher(items, scores, commands, codec, observations::add);
+        assertThrows(IllegalArgumentException.class, () -> dispatcher.dispatch(dueTask(), attempts, 5_000));
+        assertEquals(List.of("event.a", "event.b"), observations.stream().map(WorkerObservation::messageEventName).toList());
+        assertEquals(List.of("w0", "w2"), observations.getFirst().workerIds());
+        assertEquals(List.of("w1"), observations.getLast().workerIds());
+        for (var observation : observations) {
+            assertEquals("group-1", observation.workerGroupId());
+            assertEquals("worker.assigned", observation.observationEventName());
+            org.junit.jupiter.api.Assertions.assertTrue(observation.observedAtMillis() >= before
+                    && observation.observedAtMillis() <= System.currentTimeMillis());
+            assertThrows(UnsupportedOperationException.class, () -> observation.workerIds().add("another"));
+        }
+        verifyNoInteractions(commands);
+    }
+
+    @Test
+    void publicationFailureKeepsObservationAndLaterAllocationNotifiesAgainDespiteSinkFailure() {
+        var items = mock(TaskItemScoreBandCore.class);
+        var scores = mock(WorkerScoreCore.class);
+        var commands = mock(WorkerCommandRuntime.class);
+        when(scores.acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L)).thenReturn(Map.of(
+                "worker-1", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 501L)));
+        when(items.rewriteObservedItemScores("task-1", Map.of("message-1", 301L), 5_000L, -1)).thenReturn(Map.of(
+                "message-1", new TaskItemScoreTransitionResult(TaskItemScoreTransitionStatus.TRANSITIONED, 601L)));
+        when(commands.appendWorkerCommands(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyMap()))
+                .thenThrow(new IllegalStateException("publication failed"))
+                .thenReturn(Map.of("worker-1", WorkerCommandAppendStatus.APPENDED));
+        var observations = new ArrayList<WorkerObservation>();
+        var dispatcher = new TaskAssignmentDispatcher(items, scores, commands, new ResultContextCodec(), observation -> {
+            observations.add(observation);
+            throw new IllegalStateException("sink failed");
+        });
+        var attempts = List.of(attempt(item(), 301L, worker("worker-1", 0)));
+        assertThrows(IllegalStateException.class, () -> dispatcher.dispatch(dueTask(), attempts, 5_000));
+        assertEquals(1, observations.size());
+        assertEquals(1, dispatcher.dispatch(dueTask(), attempts, 5_000));
+        assertEquals(2, observations.size());
+    }
+
+    @Test
+    void failedClaimDoesNotNotifyAndDtoCapturesItsListWithoutAnotherBatchLimit() {
+        var ids = new ArrayList<String>();
+        for (int i = 0; i < 200; i++) ids.add("worker-" + i);
+        var observation = new WorkerObservation("group-1", ids, 1, "event", "worker.assigned");
+        ids.clear();
+        assertEquals(200, observation.workerIds().size());
+        var items = mock(TaskItemScoreBandCore.class);
+        var scores = mock(WorkerScoreCore.class);
+        var commands = mock(WorkerCommandRuntime.class);
+        when(scores.acquireCurrentHotScoreLeases("group-1", List.of("worker-1"), 5_000L)).thenReturn(Map.of(
+                "worker-1", new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.TRANSITIONED, 501L)));
+        when(items.rewriteObservedItemScores("task-1", Map.of("message-1", 301L), 5_000L, -1)).thenReturn(Map.of(
+                "message-1", new TaskItemScoreTransitionResult(TaskItemScoreTransitionStatus.STALE, 601L)));
+        var observations = new ArrayList<WorkerObservation>();
+        assertEquals(0, new TaskAssignmentDispatcher(items, scores, commands, new ResultContextCodec(), observations::add)
+                .dispatch(dueTask(), List.of(attempt(item(), 301L, worker("worker-1", 0))), 5_000));
+        assertEquals(List.of(), observations);
+        verifyNoInteractions(commands);
+    }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(longs = {0, 111_111_111})
@@ -72,7 +163,7 @@ class TaskAssignmentDispatcherTest {
                 itemScores,
                 workerScores,
                 commands,
-                new ResultContextCodec()
+                new ResultContextCodec(), ignored -> {}
         ).dispatch(
                 dueTask(),
                 List.of(attempt(
@@ -122,7 +213,7 @@ class TaskAssignmentDispatcherTest {
                 itemScores,
                 workerScores,
                 commands,
-                new ResultContextCodec()
+                new ResultContextCodec(), ignored -> {}
         ).dispatch(
                 dueTask(),
                 List.of(attempt(
@@ -164,7 +255,7 @@ class TaskAssignmentDispatcherTest {
                     return Map.of("hint", WorkerCommandAppendStatus.APPENDED, "strict", WorkerCommandAppendStatus.APPENDED);
                 });
         var codec = new ResultContextCodec();
-        assertEquals(2, new TaskAssignmentDispatcher(itemScores, workerScores, commands, codec).dispatch(dueTask(), List.of(
+        assertEquals(2, new TaskAssignmentDispatcher(itemScores, workerScores, commands, codec, ignored -> {}).dispatch(dueTask(), List.of(
                 attempt(item("m-hint"), 301L, worker("hint", 0)),
                 attempt(item("m-stale"), 302L, worker("stale", 402L)),
                 attempt(item("m-strict"), 303L, worker("strict", 401L)),
@@ -190,7 +281,7 @@ class TaskAssignmentDispatcherTest {
         when(workerScores.acquireCurrentHotScoreLeases("group-1", List.of("hint"), 5_000L))
                 .thenThrow(new IllegalStateException("current acquisition unavailable"));
         assertThrows(IllegalStateException.class, () -> new TaskAssignmentDispatcher(itemScores, workerScores, commands,
-                new ResultContextCodec()).dispatch(dueTask(), List.of(
+                new ResultContextCodec(), ignored -> {}).dispatch(dueTask(), List.of(
                         attempt(item("m-hint"), 301L, worker("hint", 0)),
                         attempt(item("m-strict"), 302L, worker("strict", 401L))), 5_000L));
         var order = org.mockito.Mockito.inOrder(workerScores);
@@ -209,7 +300,7 @@ class TaskAssignmentDispatcherTest {
                 itemScores,
                 workerScores,
                 commands,
-                new ResultContextCodec()
+                new ResultContextCodec(), ignored -> {}
         );
 
         assertThrows(IllegalArgumentException.class, () ->
@@ -242,7 +333,7 @@ class TaskAssignmentDispatcherTest {
                 itemScores,
                 workerScores,
                 commands,
-                new ResultContextCodec()
+                new ResultContextCodec(), ignored -> {}
         );
 
         assertThrows(IllegalArgumentException.class, () ->
@@ -275,7 +366,7 @@ class TaskAssignmentDispatcherTest {
                 itemScores,
                 workerScores,
                 commands,
-                new ResultContextCodec()
+                new ResultContextCodec(), ignored -> {}
         );
 
         assertThrows(IllegalArgumentException.class, () ->

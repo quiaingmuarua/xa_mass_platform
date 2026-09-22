@@ -15,7 +15,7 @@ class ScenarioArchitectureTest {
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService",
                         "task.TaskLifecycleService", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
-                        "api.v1.contract.task.TaskItemResultStatus"),
+                        "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
                 "sms-reception-jvm", Set.of("project.ProjectDirectory",
                         "task.call.TaskCallSubmissionService", "task.TaskDataService",
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",

@@ -177,7 +177,8 @@ class KernelPacerModuleBoundaryTest {
         }
 
         assertEquals(Set.of(
-                "import com.xa.mass.kernel.pacer.KernelPacerRuntime;"
+                "import com.xa.mass.kernel.pacer.KernelPacerRuntime;",
+                "import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;"
         ), Set.copyOf(pacerImports));
     }
 

@@ -691,6 +691,18 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("RedisClient");
     }
 
+    @Test
+    void observationRoutingAndPropertyEffectsKeepSeparateDependencies() throws IOException {
+        assertThat(readSources(KERNEL_PACER.resolve("WorkerObservationConsumer.java")))
+                .doesNotContain("WorkerProperties", "WorkerResourceCommandService", "WorkerPropertyProjection",
+                        "patchPlatformProperties", "loadWorkerFacts", "@Component");
+        assertThat(readSources(KERNEL_PACER.resolve("PlatformPropertiesHandler.java")))
+                .doesNotContain("SmartLifecycle", "DisposableBean", "ArrayBlockingQueue", "Thread.of",
+                        "RedisClient", "ScoreCore", "TaskRuntime");
+        assertThat(readSources(KERNEL_PACER.resolve("KernelPacerConfiguration.java")))
+                .contains("new PlatformPropertiesHandler", "new WorkerObservationConsumer");
+    }
+
     private static String readSources(Path root) throws IOException {
         if (!Files.exists(root)) {
             return "";

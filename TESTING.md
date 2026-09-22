@@ -381,6 +381,40 @@ Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
+### Allocation observations and App Checks projection
+
+Pacer focused tests prove the five-field notification after both execution
+acquisition and Item claim, event/Worker grouping, and notification before Command
+encoding/publication. Sink errors do not alter dispatch. Server tests cover exact
+Group/event selection before queue admission: unmatched traffic cannot consume
+waiting capacity, trigger Facts reads or change diagnostic counters. Latch-controlled
+tests retain matched whole-batch saturation and prove first-appearance projection
+grouping for interleaved events, unsorted/duplicate times, local patch visibility
+and overlapping-field precedence. They also cover bounded Properties reads, one
+patch per Worker per drain, isolation of read/compute/write failures and lifecycle
+cleanup. A different-field projection uses the same
+Properties handler without changing Pacer. Function dispatch tests use consumers
+with no Properties dependencies and prove one enqueue with multiple handlers,
+immutable routing/input snapshots, instance-based batching across Groups/events,
+receipt order including duplicate notices, handler failure isolation, and the
+existing drain budget. They also cover duplicate registration, stopping before
+subsequent handlers, close timeout and restart only after the previous thread exits.
+Direct Properties-handler tests retain local patch/deletion visibility, whole-Worker
+failure isolation and stop checks before writes without starting a queue/thread.
+App Checks tests own fixed-window arithmetic,
+invalid persisted values, older observations and restart continuation.
+
+The existing `:server_boot_jvm:scenarioCompositionIntegrationTest` now also gates
+success, failure and late App Checks Reports behind a test-only Handler barrier.
+Before release, actual Platform Properties must match the bounded source
+allocation witness while no Result has arrived. After release it keeps the
+original business assertions and proves persisted properties survive restart.
+The proof compares notification times/identities, not Item or Result totals.
+The ordinary App Checks process acceptance retains its execution oracle. Neither
+proof establishes reliable counting or window-based Matching admission.
+
+### Existing Matching proof ownership
+
 Redis Owner proves complete Task descriptors, preserved source coordinates, bounded qualified Messaging Phone lookup,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:
 no Matching Task configuration access, local target resolution and direct Group/Pool operations without

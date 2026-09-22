@@ -4,6 +4,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -12,6 +13,7 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Module-internal lifecycle bridge for the Dispatch Convergence package.
@@ -49,7 +51,8 @@ public final class DispatchConvergenceRuntime {
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
             ResultContextCodec resultContextCodec,
-            WorkerMatching workerMatching
+            WorkerMatching workerMatching,
+            Consumer<WorkerObservation> workerObservations
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(
@@ -83,7 +86,8 @@ public final class DispatchConvergenceRuntime {
                         itemScores,
                         workerScores,
                         workerCommands,
-                        resultContextCodec
+                        resultContextCodec,
+                        workerObservations
                 );
         TaskIdleSettlement idleSettlement = new TaskIdleSettlement(
                 taskScores,
