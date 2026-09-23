@@ -146,7 +146,7 @@ are matched exactly, never classified by prefix. Item functions do not depend on
 consume stock maintained by another Task. Group resource enablement controls indexes
 independently of demand, including Phone Index updates. Startup preserves existing mappings without scanning Facts.
 
-Take accepts at most 100 nonblank message IDs. Catalog captures input order and
+Take accepts at most 1000 nonblank message IDs at the Catalog entry. Catalog captures input order and
 normalizes the complete batch before any consumption. It invokes each function
 once in first-appearance order with its messageId-to-local-input Map. The current
 Pool functions group equivalent selections, process groups in first-appearance
@@ -234,8 +234,9 @@ Both configuration values must be positive; missing configuration fails assembly
 Other Groups receive no implicit policy. Inputs cannot override these values.
 
 The function polls at most the requested count once, preserves the first original
-nonzero fence for each identity, and reads those distinct identities in Facts-owner
-pages. After reading, one clock sample determines the current fixed window. It
+nonzero fence for each identity, and reads those distinct identities in one atomic
+Facts-owner snapshot. It does not split a Catalog-admitted batch into pages.
+After reading, one clock sample determines the current fixed window. It
 returns qualifying candidates in stock order against the first input message IDs.
 Missing Facts are skipped. With Facts present, absent `lastAssignedAt` and
 `windowAssignmentCount` means no observed assignments. A previous window has an
@@ -274,8 +275,8 @@ WorkerQuery and must be explicit at both finite append and managed Call. They ca
 generate, modify or imply Pool supply.
 
 Country maintenance receives up to 10,000 targets; other policies receive at most
-100 per call. Offered candidates remain at most 100 unique IDs and maxAccepted
-remains 0..100. All structure and fallible qualification checks precede admission.
+100 per call. Catalog admits at most 1000 unique offered IDs. Internal maxAccepted
+is the remaining admitted input budget, without another fixed size ceiling. All structure and fallible qualification checks precede admission.
 
 Task descriptors switch once to `refillJson`; recreate Tasks in a new scope. Old
 Rule/target fields, missing supply and corrupt entries fail reading. No dual read,
@@ -370,7 +371,7 @@ validated, rebuilt nor deleted. Phone remains the independent discovery index.
 
 ## Messaging and Proof Facts Qualification
 
-Every policy reads only the remaining offered identities, at most 100. Any makes
+Every policy reads only the remaining Catalog-admitted identities, at most 1000. Any makes
 no read. Country and Messaging each use one Worker Facts HMGET. Proof uses one
 fixed EVAL_RO containing two HMGETs, so Worker and Platform rows share a Redis
 execution snapshot. A missing Worker row is ineligible; missing Platform is an
@@ -436,7 +437,7 @@ or use a new scope. Stored Task/Item queries are not migrated or compatibility-r
 Facts and historical Result formats are unchanged. The property HASH cutover below
 requires a new scope. No old data is deleted.
 
-`PropertyIndex.lookup(group, values)` accepts at most 100 unique nonempty strings
+`PropertyIndex.lookup(group, values)` accepts caller-bounded unique nonempty strings
 and returns an immutable value-to-workerId map in request order, omitting misses.
 An empty batch performs no Redis I/O. RedisHashPropertyIndex uses one HASH per Group
 and property: raw property value is the field and workerId is the value. One HMGET
@@ -537,10 +538,11 @@ Tasks have no reserved share. Restart discards all stock without adoption.
 The single-flight refill Producer uses Main-selected NORMAL RUNNING Tasks, with
 a 50ms completion-relative interval. INITIAL does not prewarm. Closed, parked or
 disabled Tasks supply no later demand; an in-flight round is not a lifecycle lock.
-Pacer rotates Groups, at most 100 HOT candidates per Group and 1000 per round.
-A positive deficit limits the raw HOT read to `min(deficit, 100)`, while each
-attempt still reserves 100 from the round budget. Each attempt supplies only its
-successful candidateizations, with at most 100 actual admissions. Remaining shortage
+Pacer rotates Groups with instance ceiling `B` (default 100, 1..1000) and 1000
+raw rows per round. A positive deficit requests `min(B, deficit, remainingBudget)`
+rows and charges that exact request, even if no candidates qualify. Each attempt
+supplies only its successful candidateizations. Increasing `B` does not change
+Task declarations, watermarks or Pool capacity. Remaining shortage
 waits for a normal round; no existing Pool stock is observed for supply.
 
 `PoolRefillCoordinator` rotates the explicitly ordered Pool policies. PAGED policies retain
@@ -549,7 +551,7 @@ bounded target set. Observation never advances the target cursor. A maintenance 
 qualifies the supplied batch completely before appending candidates by bucket.
 The call budget selects qualified offers in input order; target counts do not cap
 acceptance. Each Pool receives only identities not already admitted by an earlier
-Pool in this batch. The 100-entry call budget counts actual admissions. Single-Pool
+Pool in this batch. The admitted input collection bounds actual admissions; internal helpers do not repeat the Catalog ceiling. Single-Pool
 handoff is a production supply contract, not identity uniqueness enforced by storage.
 
 TTL is a local 60-second age filter from each actual admission, independent of
@@ -656,23 +658,23 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   all targets; other policies receive only visited target pages.
 - Pool resource counts and polling, and existing unqualified Pool functions:
   zero Redis commands or Facts reads. Assignment-window take adds one EVAL_RO
-  snapshot (two HMGETs) per Facts-owner page of polled distinct identities; empty
+  snapshot (two HMGETs) for the complete polled distinct identity set; empty
   stock adds no read. It never expands the Item request budget to find substitutes.
-- Identity take: zero Redis commands. Nonempty Phone take: one HMGET for at most
-  100 unique exact values, returning at most one identity per value, without a lease read.
+- Identity take: zero Redis commands. Nonempty Phone take: one HMGET for the Catalog-admitted
+  unique exact values, returning at most one identity per value, without a lease read.
 - Qualified Messaging Phone take: the same bounded lookup plus at most one HMGET
   for returned identities, transferring complete Worker Facts. No Pool or Score read.
 - Refill recycling: one read-only candidate-head Lua per selected Group and one
   exact recycle Lua for a nonempty batch, even without supply shortage. It has a
-  separate 100-per-Group/1000-per-round budget and shares existing Group rotation.
+  separate 100-per-Group/1000-per-round budget and its own Group rotation hint.
 - Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
   Lua for a nonempty head, then one HMGET for Country/Messaging or one EVAL_RO
   (two HMGETs) for Proof, only when that policy needs qualification. A full-stock
   deficit suppresses normal Pacer supply. If a batch is supplied anyway, it still
   qualifies before capacity refusal; no resident-identity pre-read skips that work.
 - Any needs no qualification read and never discovers substitute IDs.
-- Final execution: one bounded Lua per nonempty strict/current partition, each
-  with Redis TIME. Only strictly due HOT can gain execution. Address, Item claim,
+- Final execution: one Lua per at-most-100-member chunk of each nonempty strict/current partition,
+  each with Redis TIME. That storage chunk is not a logical assignment ceiling. Only strictly due HOT can gain execution. Address, Item claim,
   publication and Result paths retain their separate costs.
 
 These are command budgets, not throughput promises. Diagnostics report actual

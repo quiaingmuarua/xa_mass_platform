@@ -69,6 +69,7 @@ public class KernelPacerConfiguration {
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
+                properties.assignmentBatchLimit(),
                 TaskItemOutcomeProperties.FAILED_TAG,
                 TaskItemOutcomeProperties.SUCCEEDED_TAG,
                 taskEvidence,

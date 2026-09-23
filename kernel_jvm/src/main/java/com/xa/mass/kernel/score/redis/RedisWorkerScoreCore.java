@@ -328,8 +328,8 @@ public final class RedisWorkerScoreCore
             int limit
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
-        if (limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("candidate observation requires limit 1..100");
+        if (limit < 1) {
+            throw new IllegalArgumentException("candidate observation requires a positive limit");
         }
         long minimumScore;
         if (hotEligibilityFloorMillis == null) {
@@ -464,7 +464,7 @@ public final class RedisWorkerScoreCore
     private Map<String, WorkerScoreTransitionResult> updateCandidateLane(
             String group, Map<String, Long> observedScores, int sourceMark) {
         requireNonBlank(group, "homeBucketId");
-        var ordered = boundedWorkerValues(observedScores, "observedScores");
+        var ordered = workerValues(observedScores, "observedScores");
         var immediate = new LinkedHashMap<String, WorkerScoreTransitionResult>();
         var pending = new LinkedHashMap<String, Long>();
         var arguments = new ArrayList<String>();
@@ -1036,6 +1036,11 @@ public final class RedisWorkerScoreCore
                             + MAX_SCORE_BATCH_SIZE + " workers"
             );
         }
+        return workerValues(values, name);
+    }
+
+    private static <T> LinkedHashMap<String, T> workerValues(Map<String, T> values, String name) {
+        if (values == null) throw new IllegalArgumentException(name + " must be present");
         LinkedHashMap<String, T> ordered = new LinkedHashMap<>();
         values.forEach((workerId, value) -> {
             requireNonBlank(workerId, "workerId");

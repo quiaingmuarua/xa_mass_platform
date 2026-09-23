@@ -35,6 +35,11 @@ on:
         description: "Immutable baseline: three formal pairs, or one separate A/B pair in JFR mode"
         required: false
         type: string
+      assignment_batch_limit:
+        description: "Instance assignment ceiling (1..1000); refill remains demand-driven"
+        required: true
+        type: number
+        default: 100
 
 permissions:
   contents: read
@@ -75,6 +80,7 @@ jobs:
           SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
           DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
           REPETITIONS: ${{ inputs.repetitions || '1' }}
+          ASSIGNMENT_BATCH_LIMIT: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.assignment_batch_limit) || '100' }}
         run: |
           # RPC 2k has not passed fixed Result-closure acceptance. Keep the
           # previously accepted schedule until the new manual manifest passes.
@@ -89,7 +95,7 @@ jobs:
             done
             exit "$status"
           fi
-          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS")
+          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS" --assignment-batch-limit "$ASSIGNMENT_BATCH_LIMIT")
           if [ -n "$BASELINE_REF" ]; then
             args+=(--baseline-ref "$BASELINE_REF")
             if [ "$DIAGNOSTICS" = jfr ]; then

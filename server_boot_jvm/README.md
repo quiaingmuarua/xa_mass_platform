@@ -195,3 +195,12 @@ manifest must also explicitly replace the Project list with its exact Groups.
 Default and AgentForge have empty Project lists; downstream deployments provide
 Groups and Projects before startup when managed Calls are required. An external
 Group registration alone creates no Task. Projects have no mutation API.
+
+## Assignment batch ceiling
+
+`xa.mass.kernel-pacer.assignment-batch-limit` binds
+`XA_MASS_KERNEL_PACER_ASSIGNMENT_BATCH_LIMIT`, defaults to 100 and permits 1..1000.
+Server passes it to the Pacer assembly for admission before resource creation.
+It bounds each Task's Item check and each Group's demand-driven candidate read;
+it is not a requested inventory size. No hot reload or per-Task override exists.
+Other Owner budgets, preset intervals and HTTP limits remain independent.

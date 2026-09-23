@@ -16,7 +16,7 @@ import java.util.function.LongSupplier;
 /** Pacer changes the candidate lane before Matching qualifies a bounded Group batch. */
 final class WorkerEligibilityRefillPolicy {
     static final long CANDIDATE_RECYCLE_AFTER_MILLIS = 60_000;
-    private static final int GROUP_BUDGET = 100;
+    private static final int RECYCLE_GROUP_BUDGET = 100;
     private static final int ROUND_BUDGET = 1_000;
 
     private final WorkerScoreCore scores;
@@ -24,21 +24,20 @@ final class WorkerEligibilityRefillPolicy {
     private final Long hotFloorMillis;
     private final LongSupplier clock;
     private final long recycleAfterMillis;
+    private final int assignmentBatchLimit;
     private String lastAttemptedGroup;
+    private String lastRecycledGroup;
 
-    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index, Long hotFloorMillis) {
-        this(scores, index, hotFloorMillis, System::currentTimeMillis);
+    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index,
+            Long hotFloorMillis, int assignmentBatchLimit, LongSupplier clock) {
+        this(scores, index, hotFloorMillis, assignmentBatchLimit, CANDIDATE_RECYCLE_AFTER_MILLIS, clock);
     }
 
     WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index,
-            Long hotFloorMillis, LongSupplier clock) {
-        this(scores, index, hotFloorMillis, CANDIDATE_RECYCLE_AFTER_MILLIS, clock);
-    }
-
-    WorkerEligibilityRefillPolicy(WorkerScoreCore scores, WorkerMatching index,
-            Long hotFloorMillis, long recycleAfterMillis, LongSupplier clock) {
+            Long hotFloorMillis, int assignmentBatchLimit, long recycleAfterMillis, LongSupplier clock) {
         if (recycleAfterMillis <= 0) throw new IllegalArgumentException("recycleAfterMillis must be positive");
         this.recycleAfterMillis = recycleAfterMillis;
+        this.assignmentBatchLimit = assignmentBatchLimit;
         this.scores = Objects.requireNonNull(scores);
         this.index = Objects.requireNonNull(index);
         this.hotFloorMillis = hotFloorMillis;
@@ -46,9 +45,9 @@ final class WorkerEligibilityRefillPolicy {
     }
 
     int refill(List<String> rootGroups, List<TaskDescriptor> tasks) {
-        if (rootGroups.size() > 100 || tasks.size() > 100) throw new IllegalArgumentException("at most 100 root coordinates");
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
+        if (!groups.contains(lastRecycledGroup)) lastRecycledGroup = null;
         int start = lastAttemptedGroup == null ? 0 : (groups.indexOf(lastAttemptedGroup) + 1) % groups.size();
         var collected = new LinkedHashMap<String, List<RefillTarget>>();
         tasks.forEach(descriptor -> {
@@ -59,24 +58,27 @@ final class WorkerEligibilityRefillPolicy {
         var targets = new LinkedHashMap<String, List<RefillTarget>>();
         collected.forEach((group, declarations) -> targets.put(group, List.copyOf(declarations)));
         var deficits = index.observeRefillDeficits(Collections.unmodifiableMap(targets));
+        int recycleStart = lastRecycledGroup == null ? 0 : (groups.indexOf(lastRecycledGroup) + 1) % groups.size();
         int budget = ROUND_BUDGET, recycleBudget = ROUND_BUDGET, admitted = 0;
         for (int n = 0; n < groups.size() && (budget > 0 || recycleBudget > 0); n++) {
+            // Independent rotations, interleaved so a later failure preserves earlier supply.
+            if (recycleBudget > 0) {
+                String recycledGroup = groups.get((recycleStart + n) % groups.size());
+                lastRecycledGroup = recycledGroup;
+                recycleBudget -= RECYCLE_GROUP_BUDGET;
+                long cutoff = Math.max(0, clock.getAsLong() - recycleAfterMillis);
+                var old = scores.observeHotCandidateScoresBefore(recycledGroup, hotFloorMillis, cutoff, RECYCLE_GROUP_BUDGET);
+                if (!old.isEmpty()) scores.recycleObservedHotCandidates(recycledGroup, old);
+            }
+            if (budget == 0) continue;
             String group = groups.get((start + n) % groups.size());
             int deficit = deficits.getOrDefault(group, 0);
-            boolean refill = budget > 0 && deficit > 0;
-            if (recycleBudget == 0 && !refill) continue;
+            if (deficit <= 0) continue;
             // Advance on attempts, including empty observations and infrastructure failure.
             lastAttemptedGroup = group;
-            if (recycleBudget > 0) {
-                recycleBudget -= GROUP_BUDGET;
-                long cutoff = Math.max(0, clock.getAsLong() - recycleAfterMillis);
-                var old = scores.observeHotCandidateScoresBefore(group, hotFloorMillis, cutoff, GROUP_BUDGET);
-                if (!old.isEmpty()) scores.recycleObservedHotCandidates(group, old);
-            }
-            if (!refill) continue;
-            // Reserve the existing per-Group call budget even when only a few rows are needed.
-            budget -= GROUP_BUDGET;
-            int limit = Math.min(deficit, GROUP_BUDGET);
+            int limit = Math.min(Math.min(deficit, assignmentBatchLimit), budget);
+            // Charge requested raw rows, even when reads or qualification yield no candidates.
+            budget -= limit;
             long started = DispatchStageEvent.start();
             // Lane movement advances the head, including candidates Matching may reject.
             var observed = scores.observeDueHotScoreCandidates(group, hotFloorMillis, limit);

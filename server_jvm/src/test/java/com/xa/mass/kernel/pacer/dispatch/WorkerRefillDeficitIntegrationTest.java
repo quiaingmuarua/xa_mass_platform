@@ -62,7 +62,7 @@ class WorkerRefillDeficitIntegrationTest {
                     facts.put(id, Map.of("country", "US", "phone", "+1202555%04d".formatted(i), "messaging.enabled", "true"));
                 }
                 matchingComposition.properties().upsertWorkerFactsBatch(group, facts);
-                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
                 assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(12);
                 var before = readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()));
                 assertThat(before.values()).allMatch(score -> mark(score) == 1);
@@ -123,7 +123,7 @@ class WorkerRefillDeficitIntegrationTest {
                 long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
-                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
                 assertThat(pacer.refill(List.of(group), List.of(task))).isEqualTo(1);
                 var pooled = matching.take(group, Map.of("pool", new WorkerQuery("worker.any", Map.of()))).get("pool");
                 var direct = matching.take(group, Map.of("direct", new WorkerQuery(directFunction,
@@ -179,7 +179,7 @@ class WorkerRefillDeficitIntegrationTest {
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
                 var clock = new java.util.concurrent.atomic.AtomicLong(sampled);
-                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, clock::get);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, clock::get);
                 assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(1);
                 long original = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
                 assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isZero();
@@ -229,7 +229,7 @@ class WorkerRefillDeficitIntegrationTest {
                 long original = dueOrdinaryScore(sampled);
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, original, "w");
                 // A fixed round clock excludes aged recycling from both production Refill calls.
-                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, () -> sampled);
+                var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
                 assertThat(pacer.refill(List.of(group), tasks)).isEqualTo(1);
                 long oldFence = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
                 assertThat(mark(oldFence)).isEqualTo(1);
@@ -320,7 +320,7 @@ class WorkerRefillDeficitIntegrationTest {
                     redis.zadd(key,original,id); additional.put(id,original);
                 }
                 assertThat(matching.observeRefillDeficits(Map.of(group,declarations))).containsExactlyEntriesOf(Map.of(group,deficit));
-                var pacer=new WorkerEligibilityRefillPolicy(scores,matching,null,()->now);
+                var pacer=new WorkerEligibilityRefillPolicy(scores,matching,null,100,()->now);
                 commands.clear();
                 assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(deficit);
                 assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(3); // old head + due head + exact candidateize

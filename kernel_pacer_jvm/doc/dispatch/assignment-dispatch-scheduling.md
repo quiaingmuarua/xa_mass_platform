@@ -13,6 +13,8 @@ Main supplies complete bounded Group roots and immutable NORMAL Task descriptors
 to fixed single-flight Producers. Task supply declarations name Pools; Item queries
 independently name functions. Items never generate refill demand. Pacer forwards
 opaque queries and scores without interpreting facts, indexes or coordinates.
+`B` is the instance `xa.mass.kernel-pacer.assignment-batch-limit`: default 100,
+range 1..1000, admitted by the public runtime assembly before resource creation.
 
 Matching normalizes declarations and merges equivalent targets using MAX.
 `observeRefillDeficits` returns positive Group shortage counts in an immutable Map;
@@ -34,24 +36,28 @@ this does not permit copying generations already admitted to another Pool.
 alone establishes a future execution lease.** Matching receives only successful
 candidate fences as Map<workerId, Long>, not held-lease DTOs or deadlines.
 
-The 50ms completion-relative Refill Producer shares Main's Group rotation:
+The 50ms completion-relative Refill Producer operates over Main's bounded Group roots:
 
 1. Observe a bounded old mark=1 head in each selected Group and exact-recycle it
    to mark=0 at Redis execution time, even when there is no Pool shortage.
-2. For Groups needing supply, observe at most `min(observed deficit, 100)` raw
-   rows from the due mark=0 head at Assignment's optional floor, then
+2. For Groups needing supply, observe at most
+   `min(B, observed deficit, remaining round budget)` raw rows from the due mark=0
+   head at Assignment's optional floor, then
    exact-candidateize before qualification.
 3. Supply only returned TRANSITIONED new fences to Matching once. Each admitted
    identity is removed before the next Pool receives the remaining batch.
 
-Candidateization and recycling each have independent 100-per-Group and
-1000-per-round budgets; each Group gets at most one batch of each operation per
-round. Every refill attempt reserves 100 budget even for a smaller requested
-head: at most ten Groups receive refill attempts per round. Empty reads and
-partial/failed attempts do not refund budget. The observation stage records the
-actual requested limit. Zero deficit skips ordinary observation but not recycling.
-Attempts advance Group rotation, including empty reads and failures. No
-Worker offset, extra thread, supplementary scan or durable cursor is introduced.
+Candidate supply uses `min(B, observed Group deficit, remaining round budget)`
+raw rows and charges that requested count against 1000 per round. Empty reads,
+corruption and qualification rejection do not refund rows or trigger substitute
+scans. Zero shortage performs no ordinary observation/candidateization. Recycling
+retains 100 per Group and 1000 per round. Supply and recycling each rotate their
+bounded Group roots with an independent last-attempt hint, so unequal budgets
+cannot skip the other operation's next Group. Both hints are process-local,
+cleared when their Group leaves the roots, and advance before fallible work.
+Each Group receives at most one batch of each operation per round.
+The observation stage records the requested raw-row limit. No Worker offset,
+extra thread, supplementary scan or durable cursor is introduced.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
 scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
 use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
@@ -78,9 +84,11 @@ One supplied generation enters at most one Pool. Rejected identities can proceed
 to later Pools; accepted identities cannot. Pool TTL begins at actual admission
 and lasts 60 seconds. Duplicate Worker/fence offers do not extend TTL. Later
 Pool demand waits for newly candidateized generations rather than copying stock.
-Requalification replaces older generations/views without extra storage capacity;
-nonmatching new generations remove their old entries. Catalog counts every actual
-admitted entry against its 100-entry batch budget. It retains Pool rotation and
+Offers are independent immutable occurrences; requalification does not replace
+or remove old entries. Pool capacity and admission-time TTL remain independent.
+Catalog admits at most 1000 supplied candidates, then counts actual
+admissions against that supplied collection. Internal maintenance has no second
+fixed candidate-count ceiling. It retains Pool rotation and
 partial successes if a later policy throws. There is no all-Pool fill guarantee.
 
 Pool take removes entries before address lookup and claim. TTL only limits take;
@@ -89,7 +97,7 @@ selection references cannot consume a replacement. Any needs explicit enablement
 and declared supply. Direct Identity/Phone functions need no stock and generate
 identity hints without creating supply or discovering replacement Pool candidates.
 
-Dispatch retains 100 Items per Task and its bounded publication ordering hint:
+Dispatch checks at most the configured `B` Items per Task (default 100, 1..1000) and its bounded publication ordering hint:
 unserved Tasks first, then least recently served. Matching validates the whole
 request before consumption, groups equivalent selections and returns messageId
 associations in original order. Later duplicate Workers or missing/wrong-Group

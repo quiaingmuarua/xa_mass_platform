@@ -270,7 +270,7 @@ def markdown_summary(final):
     if final.get("suite") in ("rpc-diagnosis", "nightly"):
         lines = ["# RPC mainline attribution", "",
             f"Status: **{final['status']}**. Reference host: {final['referenceHost']}. Full suite selected: {final['completeSuite']}.", "",
-            "Same-version observations under unchanged policy. Each main case uses 1000 Workers; mixed-500 retains its original 100 Workers and 30 seconds.", "",
+            f"Assignment ceiling: {final.get('assignmentBatchLimit', 100)}. Each main case uses 1000 Workers; mixed-500 retains its original 100 Workers and 30 seconds.", "",
             "| Repetition | Case | Window | Sent / planned | HTTP responses/s | Original success | Successful cohort/s | Accepted success after drain | Success p99 ms | Limited |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for row in final["runs"]:
@@ -294,7 +294,8 @@ def markdown_summary(final):
         lines += ["", "Original success uses sent requests; drain uses HTTP-accepted Items and never rewrites call latency. "
             "Planned cohorts and responses arriving within a window are separate. Limited windows cannot quantify capacity. "
             "Pass means the finite measurement contract passed, not a QPS SLA or an A/B improvement. "
-            "Task budget is at most 100 checked Items per round plus 100ms after completion; sampled stages are observations, not finality.", ""]
+            "Task checks use the recorded instance ceiling; DEFAULT retains its 50ms completion interval and independent 100ms Score slots. "
+            "Sampled stages are observations, not finality.", ""]
         return "\n".join(lines)
     if final.get("suite") in ("direct", "direct-diagnosis"):
         lines = ["# Worker Direct Call Performance", "",
@@ -332,6 +333,7 @@ def markdown_summary(final):
         return "\n".join(lines)
     lines = ["# Worker Call Performance", "", f"Status: **{final['status']}**. "
              f"Reference host: {final['referenceHost']}. Complete suite: {final['completeSuite']}.", "",
+             f"Assignment ceiling: {final.get('assignmentBatchLimit', 100)}.", "",
              "| Pair | Version | Case | Sent / planned | Response success | Result success after drain | Success p99 ms | Generator limited |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for row in final["runs"]:
@@ -349,7 +351,38 @@ def markdown_summary(final):
     return "\n".join(lines)
 
 
-def run_case(root, case, output, version, deadline, diagnostics="off"):
+def assignment_limit(value):
+    limit = int(value)
+    if not 1 <= limit <= 1000:
+        raise argparse.ArgumentTypeError("assignment-batch-limit must be in 1..1000")
+    return limit
+
+
+def assignment_overrides(root, limit):
+    # Historical fixed-100 baselines have no configuration field to bind.
+    if any("assignment-batch-limit:" in (root / path).read_text(encoding="utf-8")
+           for path in fingerprint(root)):
+        return {"xa.mass.kernel-pacer.assignment-batch-limit": str(limit)}
+    if limit != 100:
+        raise RuntimeError("Selected version does not support an assignment batch override")
+    return {}
+
+
+def artifact_fingerprints(root, server_jar):
+    artifacts = [server_jar, *sorted((root / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib").glob("*.jar")),
+                 *sorted((ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib").glob("*.jar"))]
+    result = {}
+    for path in artifacts:
+        digest = hashlib.sha256()
+        with path.open("rb") as artifact:
+            for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                digest.update(chunk)
+        role = "server" if path == server_jar else "host" if "worker_simulator_jvm" in path.parts else "harness"
+        result[role + "/" + path.name] = digest.hexdigest()
+    return result
+
+
+def run_case(root, case, output, version, deadline, diagnostics="off", assignment_batch_limit=100):
     import redis
     output.mkdir(parents=True)
     evidence = output / "evidence"
@@ -395,6 +428,7 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
                and k not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}}
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
         flags = dict(SERVER_FLAGS)
+        flags.update(assignment_overrides(root, assignment_batch_limit))
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
         if diagnostics == "jfr":
             flags["xa.mass.diagnostics.enabled"] = "true"
@@ -406,6 +440,8 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM,
             "configurationSourceSha256": fingerprint(root), "workers": worker_count, "group": GROUP,
             "configurationSources": configuration_sources(root),
+            "assignmentBatchLimit": assignment_batch_limit,
+            "sourceHead": command(["git", "rev-parse", "HEAD"], cwd=root),
             "presetSelection": {"name": "DEFAULT", "assignmentIntervalMillis": 50,
                 "resultIdleIntervalMillis": 100, "serviceabilityDispatchEnabled": False},
             "redisImage": REDIS_IMAGE, "maximumInFlight": 4096, "warmupSeconds": 20,
@@ -416,6 +452,8 @@ def run_case(root, case, output, version, deadline, diagnostics="off"):
             "callPath": "DIRECT_CALL" if direct else "TASK", "drainSeconds": None if direct else 180})
         jars = [p for p in (root / server_distribution(root) / "build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
+        write_json(evidence / "artifact-fingerprints.json", artifact_fingerprints(root, jar))
+        result["assignmentBatchLimit"] = assignment_batch_limit
         processes["server"] = start_process(["java", *JVM, *jfr_options(private, "server", diagnostics), "-jar", jar,
             *(f"--{key}={value}" for key, value in flags.items())], private / "server.log", env)
         sampler.register("server", processes["server"])
@@ -653,6 +691,8 @@ def main():
     parser.add_argument("--diagnostics", choices=("off", "jfr"), default="off", help="Bounded private JFR recording; excluded from performance comparison")
     parser.add_argument("--diagnostic-pair", action="store_true", help="One same-host A/B JFR pair, never a formal benefit comparison")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--assignment-batch-limit", type=assignment_limit, default=100,
+                        help="Instance assignment ceiling (1..1000); supply still follows Matching deficits")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     options = parser.parse_args()
     try:
@@ -688,7 +728,7 @@ def main():
     baseline = None
     runs = []
     final = {"status": "failed", "referenceHost": reference, "completeSuite": options.case is None,
-             "suite": options.suite,
+             "suite": options.suite, "assignmentBatchLimit": options.assignment_batch_limit,
              "fixtureVersion": 4 if options.suite in ("task", "rpc-diagnosis", "nightly") else 2 if options.suite == "direct-diagnosis" else 1,
              "repetitions": options.repetitions, "expectedCases": list((options.case,) if options.case else cases),
              "diagnostics": options.diagnostics,
@@ -715,7 +755,8 @@ def main():
                     ordered_cases += ("mixed-500",)
                 for case in (options.case,) if options.case else ordered_cases:
                     print(f"performance pair={pair + 1} version={version} case={case}", flush=True)
-                    result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline, options.diagnostics)
+                    result = run_case(roots[version], case, output / f"pair-{pair + 1}" / version / case, version, deadline,
+                                      options.diagnostics, options.assignment_batch_limit)
                     result["pair"] = pair
                     runs.append(result)
                     write_json(output / "evidence/summary.json", final)

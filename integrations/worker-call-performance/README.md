@@ -27,6 +27,11 @@ aligned 1,000-Worker Task/Direct control. It identifies the Task Score slot gate
 observed lease-release rejection and CI contention separately. Local diagnostic
 runs do not replace reference-host acceptance or establish a candidate benefit.
 
+The [2026-09-23 assignment-ceiling comparison](baselines/2026-09-23-assignment-ceiling.md)
+records six same-artifact 100/1000 runs and separate JFR/resource diagnostics.
+All six were generator-limited, so the configurable ceiling is mechanically
+proved but neither a 2k capacity claim nor a measured benefit is established.
+
 Targeted Task calls use the independent `workerId` function and direct execution admission.
 Historical targeted-ID Pool measurements are not equivalent to this path; compare
 source fingerprints and query contracts before using an old result as a baseline.
@@ -35,9 +40,10 @@ Finite background Tasks explicitly declare `any / {} / 1000` supply.
 ## RPC Mainline Diagnosis
 
 `--suite rpc-diagnosis` measures the primary `items:call` Any Pool path and
-uses Direct Call as a control for the shared HTTP/Transport path. It freezes
-production configuration, including the 100-Item per-Task check bound and the
-DEFAULT 50ms completion-relative Dispatch interval. No tuning parameter is added.
+uses Direct Call as a control for the shared HTTP/Transport path. It retains the DEFAULT 50ms completion-relative Dispatch interval. The instance
+assignment ceiling defaults to 100 and can be selected with
+`--assignment-batch-limit 1..1000`; effective configuration records the value.
+Other workload and resource settings remain fixed.
 
 | Case | API and selector | Offered calls/s |
 | --- | --- | --- |
@@ -118,8 +124,10 @@ Post-measurement Result evidence may close a sampled chain without changing the
 original HTTP outcome. Recording coverage and sampled-chain completeness are
 reported separately. Raw JFR remains private and bounded to 256 MiB per process.
 
-The structural single-Task budget is at most `100 / (0.05 + round_seconds)` checked
-Items per second for continuously full rounds. Checked Items, assignment attempts
+The structural single-Task budget is at most `B / (0.05 + round_seconds)` checked
+Items per second for continuously full rounds, where `B` is the assignment ceiling
+(default 100). The 100ms Task Score slot is an additional gate, not removed by
+this setting. Checked Items, assignment attempts
 and unique successful calls differ. The budget proof exercises real scheduling
 decisions with a controlled clock/executor, including a slow single-flight round;
 it does not assert a platform SLA or a Worker-count capacity tier.
@@ -448,3 +456,33 @@ reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registr
 side effects. Finite creation requests include projectId. Existing workload,
 fault, deadline and outcome assertions are unchanged; no query is added to a
 performance measurement window.
+
+## Assignment ceiling comparison
+
+Use one freshly built Server/Host/Harness artifact set and the existing
+`rpc-any-2000` case: 1000 Workers, 20-second warmup, 120-second measurement and
+unchanged 180-second Result follow-up. Run ceilings 100/1000, 1000/100, 100/1000
+with JFR off and a fresh output directory, processes and Redis scope for each
+case. This is a same-version configuration experiment, not a baseline-ref code
+comparison or a change to scheduled defaults. The original `any-2000` has only
+100 Workers and cannot alone witness a 1000-Worker batch.
+
+```bash
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --suite rpc-diagnosis --case rpc-any-2000 --assignment-batch-limit 1000 \
+  --output-root build/assignment-1000
+```
+
+Repeat both ceilings separately with `--diagnostics jfr` for attribution. The
+manual workflow exposes the same ceiling; scheduled runs keep 100. Old fixed-100
+baselines remain usable at 100 and reject unsupported non-default overrides.
+Effective evidence includes the ceiling, Git HEAD, configuration and hashes of
+the actual Server, Host and Harness JARs. A worktree change does not change HEAD,
+so artifact hashes are required to identify the measured implementation.
+
+Compare successful throughput in the measurement window, eventual Results,
+latency percentiles, backlog, Redis client-command costs and complete resource
+sampling. HTTP response rate alone is not successful throughput. A failed or
+incomplete observation remains failed/inconclusive; a larger ceiling is not an
+automatic performance benefit or a 2k/s SLA. Local nonreference hosts retain the
+existing diagnostic-only classification.

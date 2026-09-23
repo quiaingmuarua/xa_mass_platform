@@ -159,23 +159,26 @@ A non-empty round or source failure restores the ordinary completion/backoff
 interval. `DispatchBudgetTest` checks progress and the unchanged source-call count
 under deliberately aligned clocks.
 
-DEFAULT Task Dispatch checks at most 100 Items per Task per round. Its next
-eligibility is set 50ms after the Main Scheduler processes producer completion;
+Task Dispatch checks at most the instance assignment ceiling `B` Items per Task per round.
+`xa.mass.kernel-pacer.assignment-batch-limit` defaults to 100 and accepts 1..1000
+in every preset; Boot binds `XA_MASS_KERNEL_PACER_ASSIGNMENT_BATCH_LIMIT`.
+Server passes the value to the Pacer assembly, which validates it before creating
+resources. Internal policies inherit it without repeating configuration admission.
+Under DEFAULT, next eligibility is set 50ms after the Main Scheduler processes producer completion;
 the interval does not start at dispatch launch. Slow producers remain single-flight
 and do not catch up with overlapping rounds. A continuously full single Task is
-therefore bounded above by `100 / (0.05 + round_seconds)` checked Items/s, before
+therefore bounded above by `B / (0.05 + round_seconds)` checked Items/s, before
 scan/observation delay and unsuccessful assignments. This is a policy budget,
 not a platform QPS guarantee. Group-managed calls share that Task budget.
 `DispatchBudgetTest` proves the bounded check and completion-relative scheduling
-with controlled execution and time. These values remain preset-owned and have no
-Server override.
+with controlled execution and time. The completion interval remains preset-owned; only the assignment ceiling is configurable.
 
 The completion interval is not the only eligibility gate. Task Score scheduling
 excludes the current 100ms Redis slot, and Task Dispatch rewrites each visited
 claimable Task to the round's start time. With aligned clocks and successful
 rewrites, a continuously loaded single Task therefore normally becomes visible
-at most once per slot: roughly 1,000 checked Items/s at the current 100-Item
-budget, before slower rounds and unavailable Workers reduce progress. The 50ms
+at most once per slot: roughly `10 * B` checked Items/s (1,000 at the default 100-Item
+budget), before slower rounds and unavailable Workers reduce progress. The 50ms
 completion budget alone does not establish 2,000/s. This composition is observed
 in the [2026-09-21 attribution](../../integrations/worker-call-performance/baselines/2026-09-21-task-any-attribution.md);
 it is not a global multi-Task capacity limit or a change to Score interpretation
@@ -183,7 +186,7 @@ inside Pacer.
 
 Initialization keeps its 100ms interval. Dispatch and refill each use
 50ms so candidate availability can be consumed without adding another full
-100ms idle interval after a mixed-Task round. The 100-Item ceiling, single-flight
+100ms idle interval after a mixed-Task round. The configured Item ceiling, single-flight
 Producer, latest-due Item ordering and completion-relative backoff are unchanged;
 this is additional checking headroom, not Item fairness or an all-load SLA.
 
@@ -308,10 +311,14 @@ no per-Group scan cursors or empty-range restart timers. Recheck delay defaults 
 not promise execution at 15 seconds. Recovery has no attempt limit or age cutoff; cold
 parking is reserved for excluded Endpoints. No cleanup thread is installed. CONNECTED evidence keeps a
 future recheck coordinate and mark. Execution must await strict due eligibility.
-Candidateize and recycling use separate 100-per-Group/1000-per-round budgets on
-the existing Refill Producer. Each refill attempt reserves 100 budget, but its
-raw head limit is `min(observed Group deficit, 100)`; smaller shortages do not
-increase the per-round Group call ceiling. Matching supplies numeric shortage
+Candidate supply uses `min(B, observed Group deficit, remaining round budget)`
+raw rows and charges that requested count against 1000 per round. Empty reads,
+corruption and qualification rejection do not refund rows or trigger substitute
+scans. Zero shortage performs no ordinary observation/candidateization. Recycling
+retains 100 per Group and 1000 per round. Supply and recycling each rotate their
+bounded Group roots with an independent last-attempt hint, so unequal budgets
+cannot skip the other operation's next Group. Both hints are process-local,
+cleared when their Group leaves the roots, and advance before fallible work. Matching supplies numeric shortage
 hints without reserving stock. Target counts are watermarks: Matching does not
 truncate already-supplied qualified candidates at those counts; admission still
 honors its batch budget and actual capacity. Candidate age is 60 seconds in production/Scenario

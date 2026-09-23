@@ -25,6 +25,7 @@ xa:
       enabled: ${XA_MASS_KERNEL_PACER_ENABLED:true}
       preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}
       shutdown-timeout: 5s
+      assignment-batch-limit: ${XA_MASS_KERNEL_PACER_ASSIGNMENT_BATCH_LIMIT:100}
     redis:
       url: ${XA_MASS_REDIS_URL:redis://localhost:6379/15}
       scope: ${XA_MASS_REDIS_SCOPE:profile_default}

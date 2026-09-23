@@ -29,6 +29,24 @@ def diagnosis_runs():
 
 
 class RunnerTest(unittest.TestCase):
+    def test_assignment_limit_and_effective_override(self):
+        for value in (1, 100, 101, 333, 1000):
+            self.assertEqual(value, runner.assignment_limit(str(value)))
+            self.assertEqual({"xa.mass.kernel-pacer.assignment-batch-limit": str(value)},
+                             runner.assignment_overrides(runner.ROOT, value))
+        for value in (0, -1, 1001):
+            with self.assertRaises(runner.argparse.ArgumentTypeError):
+                runner.assignment_limit(str(value))
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            config = root / "server_boot_jvm/src/main/resources"
+            config.mkdir(parents=True)
+            for name in ("application.yaml", "application-scenario-workers.yaml"):
+                (config / name).write_text("legacy: fixed", encoding="utf-8")
+            self.assertEqual({}, runner.assignment_overrides(root, 100))
+            with self.assertRaisesRegex(RuntimeError, "does not support"):
+                runner.assignment_overrides(root, 1000)
+
     def test_configuration_fingerprints_use_complete_current_or_historical_groups(self):
         names = ("application.yaml", "application-scenario-workers.yaml")
         self.assertEqual({f"server_boot_jvm/src/main/resources/{name}" for name in names},

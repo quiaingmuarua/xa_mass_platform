@@ -107,6 +107,7 @@ public final class KernelPacerRuntime {
     public static KernelPacerRuntime assemble(
             PolicyPreset policyPreset,
             Duration shutdownTimeout,
+            int assignmentBatchLimit,
             int failedOutcomeTag,
             int successOutcomeTag,
             TaskEvidenceRuntime taskEvidence,
@@ -121,6 +122,9 @@ public final class KernelPacerRuntime {
             WorkerMatching workerMatching,
             Consumer<WorkerObservation> workerObservations
     ) {
+        if (assignmentBatchLimit < 1 || assignmentBatchLimit > 1_000) {
+            throw new IllegalArgumentException("assignmentBatchLimit must be in 1..1000");
+        }
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
         );
@@ -147,6 +151,7 @@ public final class KernelPacerRuntime {
                 DispatchConvergenceRuntime.assemble(
                         policy.preset(),
                         policy.hotEligibilityFloorMillis(),
+                        assignmentBatchLimit,
                         failedOutcomeTag,
                         taskScores,
                         itemScores,

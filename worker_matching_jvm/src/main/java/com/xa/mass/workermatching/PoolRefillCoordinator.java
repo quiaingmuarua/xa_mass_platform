@@ -152,7 +152,6 @@ final class PoolRefillCoordinator {
             Map<String, Long> offered) {
         requireNonBlank(group,"workerGroupId");
         Objects.requireNonNull(offered,"offeredCandidates");
-        if(offered.size()>100)throw new IllegalArgumentException("at most 100 candidate Workers");
         var candidates=new LinkedHashMap<String,Long>();
         offered.forEach((id, score) -> {
             requireNonBlank(id,"Worker ID");
@@ -171,7 +170,7 @@ final class PoolRefillCoordinator {
         int start=Math.floorMod(poolRotationByGroup.getOrDefault(group,0),scopes.size());
         poolRotationByGroup.put(group,(start+1)%scopes.size());
         int added=0;
-        for(int n=0;n<scopes.size() && !remaining.isEmpty() && added<100;n++) {
+        for(int n=0;n<scopes.size() && !remaining.isEmpty();n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
             var handler=requirePoolPolicy(group,scope.poolName());
@@ -195,8 +194,8 @@ final class PoolRefillCoordinator {
             // Each Pool commits its own admission. A later failure preserves earlier successes.
             var batch=new LinkedHashMap<String,Long>();
             remaining.forEach(id->batch.put(id,candidates.get(id)));
-            var accepted=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),100-added);
-            if(accepted.size()>100-added || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
+            var accepted=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),remaining.size());
+            if(accepted.size()>remaining.size() || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Pool policy returned invalid admitted identities");
             // Each newly candidateized generation can enter only one Pool in this supply batch.
             remaining.removeAll(accepted);

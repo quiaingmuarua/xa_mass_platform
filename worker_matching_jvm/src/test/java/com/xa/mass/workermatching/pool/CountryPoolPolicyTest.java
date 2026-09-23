@@ -90,7 +90,7 @@ class CountryPoolPolicyTest {
             assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));
-            verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(100));
+            verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(1));
             assertEquals(1,reads.size());
             clearInvocations(pool);
             policy.deficits("g",targets.stream().collect(java.util.stream.Collectors.toMap(RefillTarget::target,RefillTarget::count)));

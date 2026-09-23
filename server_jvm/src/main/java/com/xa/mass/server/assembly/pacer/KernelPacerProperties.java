@@ -4,6 +4,7 @@ import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties(
         prefix = "xa.mass.kernel-pacer",
@@ -12,7 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record KernelPacerProperties(
         boolean enabled,
         KernelPacerRuntime.PolicyPreset preset,
-        Duration shutdownTimeout
+        Duration shutdownTimeout,
+        @DefaultValue("100") int assignmentBatchLimit
 ) {
     public KernelPacerProperties {
         Objects.requireNonNull(preset, "preset");

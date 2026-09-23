@@ -75,11 +75,33 @@ class KernelPacerPropertiesTest {
     void bindsTheFiniteLifecycleConfiguration() {
         contextRunner("test_kernel_pacer").run(context -> {
             assertThat(context).hasNotFailed();
+            assertThat(context.getBean(KernelPacerProperties.class).assignmentBatchLimit()).isEqualTo(100);
             assertThat(context.getBean(KernelPacerProperties.class).enabled())
                     .isFalse();
             assertThat(context.getBean(KernelPacerProperties.class).preset())
                     .isEqualTo(KernelPacerRuntime.PolicyPreset.DEFAULT);
         });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 100, 101, 333, 1000})
+    void bindsAssignmentCeiling(int limit) {
+        contextRunner("test_batch_limit").withPropertyValues("xa.mass.kernel-pacer.assignment-batch-limit=" + limit)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(KernelPacerProperties.class).assignmentBatchLimit()).isEqualTo(limit);
+                });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, -1, 1001})
+    void assemblyRejectsInvalidAssignmentCeilingBeforeStartingResources(int limit) {
+        contextRunner("test_batch_limit").withPropertyValues("xa.mass.kernel-pacer.assignment-batch-limit=" + limit)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseMessage("assignmentBatchLimit must be in 1..1000");
+                });
     }
 
     @Test

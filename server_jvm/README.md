@@ -1284,3 +1284,10 @@ business scheduling moves to the scenario. Preview is one HSCAN COUNT 100 then
 at most 100 Item reads; counts are Owner ZCARD/ZCOUNT observations. These surfaces
 have independent snapshots and retain existing data-error/503 semantics. Business
 tag names and aggregation belong to the Messages Owner, not Server's generic API.
+
+The instance assignment ceiling is supplied by Boot as
+`xa.mass.kernel-pacer.assignment-batch-limit` (default 100, 1..1000).
+`KernelPacerProperties` binds it and assembly forwards it to `KernelPacerRuntime`;
+Pacer owns range admission and its Item/refill policy. Matching owns its separate
+1000-query/candidate call admission. Server creates no scheduling budget or global
+batch-limit contract.

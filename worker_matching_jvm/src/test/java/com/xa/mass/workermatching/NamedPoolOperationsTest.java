@@ -83,7 +83,7 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
         requests.remove(" "); requests.put(null,any);
         assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests)); requests.remove(null);
-        for(int i=0;i<100;i++)requests.put("m"+i,any);
+        for(int i=0;i<1000;i++)requests.put("m"+i,any);
         assertThrows(IllegalArgumentException.class,()->catalog.take("g1",requests));
         assertThrows(IllegalArgumentException.class,()->catalog.take("other",Map.of("m",any)));
         assertEquals("worker",catalog.take("g1",Map.of("valid",any)).get("valid").workerId());
@@ -246,7 +246,7 @@ class NamedPoolOperationsTest {
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,offer("w","w")));
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,offer("")));
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",targets,
-                java.util.stream.IntStream.range(0,101).boxed().collect(java.util.stream.Collectors.toMap(i -> "w"+i, i -> 20L))));
+                java.util.stream.IntStream.range(0,1001).boxed().collect(java.util.stream.Collectors.toMap(i -> "w"+i, i -> 20L))));
         assertThrows(NullPointerException.class,()->catalog.refill("g1",targets,null));
         assertThrows(IllegalArgumentException.class,()->catalog.refill("g1",List.of(new RefillTarget("missing",ANY,1)),offer("w")));
         assertThrows(IllegalArgumentException.class,()->catalog.take("g2",Map.of("m",new WorkerQuery("zz.fail",Map.of()))));

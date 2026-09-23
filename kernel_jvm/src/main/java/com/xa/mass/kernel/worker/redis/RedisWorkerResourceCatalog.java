@@ -128,8 +128,9 @@ public final class RedisWorkerResourceCatalog
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
         requireNonBlank(defaultEndpointManagerId, "defaultEndpointManagerId");
-        requireWorkerIds(workerIds);
-        if (workerIds.isEmpty() || new HashSet<>(workerIds).size() != workerIds.size()) {
+        requireIds(workerIds, "workerIds");
+        if (workerIds.isEmpty() || workerIds.size() > MAX_WORKER_BATCH_SIZE
+                || new HashSet<>(workerIds).size() != workerIds.size()) {
             throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
         }
         List<String> arguments = new ArrayList<>();
@@ -201,7 +202,7 @@ public final class RedisWorkerResourceCatalog
 
     @Override
     public Map<String, WorkerDescriptor> getWorkerDescriptors(List<String> workerIds) {
-        requireWorkerIds(workerIds);
+        requireIds(workerIds, "workerIds");
         if (workerIds.isEmpty()) {
             return Map.of();
         }
@@ -214,7 +215,7 @@ public final class RedisWorkerResourceCatalog
     public CompletableFuture<Map<String, WorkerDescriptor>> getWorkerDescriptorsAsync(
             List<String> workerIds
     ) {
-        requireWorkerIds(workerIds);
+        requireIds(workerIds, "workerIds");
         if (workerIds.isEmpty()) {
             return CompletableFuture.completedFuture(Map.of());
         }
@@ -310,13 +311,6 @@ public final class RedisWorkerResourceCatalog
             throw new IllegalArgumentException(name + " must be present");
         }
         values.forEach(value -> requireNonBlank(value, name));
-    }
-
-    private static void requireWorkerIds(List<String> workerIds) {
-        requireIds(workerIds, "workerIds");
-        if (workerIds.size() > MAX_WORKER_BATCH_SIZE) {
-            throw new IllegalArgumentException("workerIds must contain at most 100 IDs");
-        }
     }
 
     private static void requireNonBlank(String value, String name) {

@@ -298,6 +298,12 @@ Policy documents own workflow, capacity and lifecycle.
 - Serviceability reads current HOT/RECOVERY heads without cross-round cursors or
   cooldowns. Score Owner uses Redis time and exact CAS to schedule the next
   recheck before Probe offer. Network evidence is consumed in every preset.
+- The instance assignment ceiling belongs to Pacer: it bounds Item checks and
+  demand-driven candidate reads, never target inventory. Charge requested raw rows
+  against the round budget; keep recycling and supply rotation independent.
+  Matching admits complete calls at its own entry. Internal helpers must not
+  repeat upstream size ceilings; storage chunks and hard capacity retain their
+  Owners. Do not create a cross-module batch constant or shared limit object.
 - Pacer owns no Redis keys, Spring/HTTP/deployment or Matching implementations.
   Do not add a SPI, dynamic registry, reflection, ServiceLoader, extra public
   internal type or second external runtime.

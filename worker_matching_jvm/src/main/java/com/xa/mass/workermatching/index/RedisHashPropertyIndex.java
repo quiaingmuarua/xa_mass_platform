@@ -43,9 +43,9 @@ public final class RedisHashPropertyIndex implements PropertyIndex {
     @Override public Map<String, String> lookup(String workerGroupId, List<String> values) {
         String key = key(keyspace, workerGroupId, property);
         Objects.requireNonNull(values, "values");
-        if (values.size() > 100 || new HashSet<>(values).size() != values.size()
+        if (new HashSet<>(values).size() != values.size()
                 || values.stream().anyMatch(value -> value == null || value.isEmpty()))
-            throw new IllegalArgumentException("property lookup requires at most 100 unique nonempty values");
+            throw new IllegalArgumentException("property lookup requires unique nonempty values");
         if (values.isEmpty()) return Map.of();
         var result = new LinkedHashMap<String, String>();
         for (var row : commands.get().hmget(key, values.toArray(String[]::new))) {

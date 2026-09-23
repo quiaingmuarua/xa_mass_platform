@@ -68,7 +68,9 @@ status; Server maps them to its existing unavailable response.
 ## Reads And Cost
 
 `getWorkerDescriptors(workerIds)` and `getWorkerDescriptorsAsync(workerIds)`
-read at most 100 IDs across Groups with one HMGET on the same Binding HASH.
+read caller-bounded IDs across Groups with one HMGET on the same Binding HASH,
+including a 1000-candidate Dispatch call. The 100-ID registration guard belongs
+only to registration and is not repeated by address reads.
 Missing or corrupt entries map to null. Empty reads return an empty Map without
 Redis. Address reads, connection verification and Direct Call do not read Score
 to check registration completeness. Callers check the requested Group against

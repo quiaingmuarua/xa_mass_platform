@@ -26,7 +26,7 @@ class WorkerEligibilityRefillPolicyTest {
     }
     final List<com.xa.mass.kernel.assignment.RefillTarget> targets=List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100));
     final java.util.concurrent.atomic.AtomicLong clock=new java.util.concurrent.atomic.AtomicLong(1000);
-    final WorkerEligibilityRefillPolicy policy=new WorkerEligibilityRefillPolicy(scores,index,500L,clock::get);
+    final WorkerEligibilityRefillPolicy policy=new WorkerEligibilityRefillPolicy(scores,index,500L,100,clock::get);
 
 
     static WorkerScoreTransitionResult changed(long score) {
@@ -149,21 +149,57 @@ class WorkerEligibilityRefillPolicyTest {
         verifyNoMoreInteractions(scores,index);
     }
 
-    @Test void oneWorkerDeficitsStillReserveOneHundredBudgetPerGroupAttempt() {
+    @Test void smallDeficitsChargeRequestedRowsAndRecyclingRotatesIndependently() {
         var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
         when(index.observeRefillDeficits(anyMap())).thenReturn(deficits(groups,1));
         var attempted=new ArrayList<String>();
+        var recycled=new ArrayList<String>();
         when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(1))).thenAnswer(call->{
             attempted.add(call.getArgument(0)); return Map.of();
         });
+        when(scores.observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
+            recycled.add(call.getArgument(0)); return Map.of();
+        });
         assertEquals(0, policy.refill(groups,tasks(groups)));
-        assertEquals(groups.subList(0,10),attempted);
+        assertEquals(groups,attempted);
+        assertEquals(groups.subList(0,10),recycled);
         assertEquals(0, policy.refill(groups,tasks(groups)));
-        assertEquals(groups.subList(10,15),attempted.subList(10,15));
-        assertEquals(20,attempted.size());
-        verify(scores,times(20)).observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100));
+        assertEquals(groups,attempted.subList(15,30));
+        assertEquals(groups.subList(10,15),recycled.subList(10,15));
+        assertEquals(20,recycled.size());
         verify(scores,never()).candidateizeObservedHotScores(anyString(),anyMap());
-        verify(index,times(2)).observeRefillDeficits(anyMap());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1,1", "100,100", "101,101", "333,333", "1000,1000"})
+    void ceilingAndRoundRemainderBoundRawRowsEvenWhenAllQualificationIsRejected(int ceiling,int first) {
+        var groups=IntStream.range(0,15).mapToObj(i->"g"+i).toList();
+        when(index.observeRefillDeficits(anyMap())).thenReturn(deficits(groups,1000));
+        var attempted=new ArrayList<String>();
+        var limits=new ArrayList<Integer>();
+        when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),anyInt())).thenAnswer(call->{
+            attempted.add(call.getArgument(0)); limits.add(call.getArgument(2));
+            return Map.of("rejected",10L);
+        });
+        when(scores.candidateizeObservedHotScores(anyString(),anyMap())).thenReturn(Map.of("rejected",changed(20L)));
+        var configured=new WorkerEligibilityRefillPolicy(scores,index,500L,ceiling,clock::get);
+        assertEquals(0,configured.refill(groups,tasks(groups)));
+        assertEquals(first,limits.getFirst());
+        assertEquals(Math.min(1000,15*ceiling),limits.stream().mapToInt(Integer::intValue).sum());
+        assertTrue(limits.stream().allMatch(value->value<=ceiling));
+        if(ceiling==333)assertEquals(List.of(333,333,333,1),limits);
+        int visits=attempted.size();
+        configured.refill(groups,tasks(groups));
+        assertEquals(groups.get(visits%groups.size()),attempted.get(visits));
+        verify(index,times(attempted.size())).refill(anyString(),anyList(),anyMap());
+    }
+
+    @Test void thousandCeilingStillReadsOnlyTheTwentyMissingCandidates() {
+        when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g",20));
+        new WorkerEligibilityRefillPolicy(scores,index,500L,1000,clock::get).refill(List.of("g"),tasks);
+        verify(scores).observeDueHotScoreCandidates("g",500L,20);
+        verify(scores).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
+        verifyNoMoreInteractions(scores);
     }
 
     @Test void noMatchKeepsTheSingleCandidateizationWithoutRenewalOrRelease() {

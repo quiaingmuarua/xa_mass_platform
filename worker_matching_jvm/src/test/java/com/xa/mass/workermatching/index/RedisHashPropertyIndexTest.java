@@ -19,7 +19,7 @@ class RedisHashPropertyIndexTest {
     @Test void validatesTheWholeBatchBeforeReadingAndEmptyIsFree() {
         assertEquals(Map.of(), index.lookup("g", List.of()));
         for (var invalid : List.of(List.of("ok", ""), List.of("same", "same"),
-                Arrays.asList("ok", null), IntStream.range(0, 101).mapToObj(Integer::toString).toList()))
+                Arrays.asList("ok", null)))
             assertThrows(IllegalArgumentException.class, () -> index.lookup("g", invalid));
         verifyNoInteractions(commands);
     }
@@ -37,12 +37,12 @@ class RedisHashPropertyIndexTest {
     }
 
     @Test void maximumBatchAndArbitraryPropertyUseTheSameBoundedRead() {
-        var values = IntStream.range(0, 100).mapToObj(Integer::toString).toList();
+        var values = IntStream.range(0, 1000).mapToObj(Integer::toString).toList();
         String key = RedisHashPropertyIndex.key(keyspace, "g:*[x]", "account:id");
         when(commands.hmget(key, values.toArray(String[]::new)))
                 .thenReturn(values.stream().map(v -> KeyValue.just(v, "w" + v)).toList());
         var account = new RedisHashPropertyIndex(() -> commands, keyspace, "account:id");
-        assertEquals(100, account.lookup("g:*[x]", values).size());
+        assertEquals(1000, account.lookup("g:*[x]", values).size());
         assertNotEquals(key, RedisHashPropertyIndex.key(keyspace, "g:*[x]:account", "id"));
         assertNotEquals(key, RedisHashPropertyIndex.key(keyspace, "g:*[x]", "phone"));
         verify(commands).hmget(key, values.toArray(String[]::new));

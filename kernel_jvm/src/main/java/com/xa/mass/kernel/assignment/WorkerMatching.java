@@ -16,7 +16,7 @@ public interface WorkerMatching {
     Map<String, Integer> observeRefillDeficits(Map<String, List<RefillTarget>> refillByGroup);
 
     /**
-     * Qualifies at most 100 unique candidate generations supplied by Pacer for this Group.
+     * Qualifies at most 1000 unique candidate generations supplied by Pacer for this Group.
      * Does not require an earlier shortage observation. Preserves opaque fences and uses local inventory TTL;
      * Each supplied generation is offered only until one Pool admits it. Later Rule failure
      * does not undo earlier admissions. Target bounds match the observation. Pacer supplies
@@ -27,7 +27,7 @@ public interface WorkerMatching {
             Map<String, Long> candidateScores);
 
     /**
-     * Bounded candidate lookup for at most 100 nonblank message IDs, one candidate per ID.
+     * Bounded candidate lookup for at most 1000 nonblank message IDs, one candidate per ID.
      * Matching validates and normalizes the entire batch before executing fixed named functions.
      * Functions execute in first-appearance order and own their local input semantics. Current
      * Pool functions consume local stock; direct functions locate identities without stock or
