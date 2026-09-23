@@ -82,7 +82,7 @@ jobs:
           REPETITIONS: ${{ inputs.repetitions || '1' }}
           ASSIGNMENT_BATCH_LIMIT: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.assignment_batch_limit) || '100' }}
         run: |
-          # RPC 2k has not passed fixed Result-closure acceptance. Keep the
+          # RPC 2k has not passed Result-closure acceptance. Keep the
           # previously accepted schedule until the new manual manifest passes.
           if [ "$SCHEDULED_RUN" = true ]; then
             status=0

@@ -32,6 +32,11 @@ records six same-artifact 100/1000 runs and separate JFR/resource diagnostics.
 All six were generator-limited, so the configurable ceiling is mechanically
 proved but neither a 2k capacity claim nor a measured benefit is established.
 
+The [2026-09-23 targeted 2k closure diagnosis](baselines/2026-09-23-targeted-2k-closure.md)
+attributes a failed `rpc-targeted-2000` closure to connected Workers that stayed
+unassignable and blocked the newest-first Item window, and records the derived
+Result closure budget below. It does not change or fix that scheduling behavior.
+
 Targeted Task calls use the independent `workerId` function and direct execution admission.
 Historical targeted-ID Pool measurements are not equivalent to this path; compare
 source fingerprints and query contracts before using an old result as a baseline.
@@ -63,9 +68,31 @@ timeout and 4,096 in-flight bound match across the paths. Each case starts fresh
 warms at 100/s for 20 seconds and closes warmup before continuous 120-second
 measurement. It reports whole, first-30-second and last-90-second cohorts plus
 five-second buckets, with separate actual-response flux and generator limits.
-Task TTL remains 120 seconds and public Result follow-up remains bounded at 180
-seconds. Direct has no follow-up. Missing accepted Task Results fail the case;
-observed failed Results are counted separately from successful throughput.
+Task TTL remains 120 seconds. Direct has no follow-up. Missing accepted Task
+Results fail the case; observed failed Results are counted separately from
+successful throughput. The follow-up budget is described under
+[Result closure budget](#result-closure-budget).
+
+### Result closure budget
+
+Every HTTP-accepted Task Item must still have an observed Result; only the time
+allowed for that closure depends on the documented single-Task check budget of
+`10 x B` Items/s (`B` = assignment ceiling). Cases offered within that budget
+keep the fixed 180-second follow-up. Above it, Dispatch settles at most that budget
+per second and every accepted Item has expired one Item TTL after the window, so
+the Harness waits `max(180, 120 + ceil(accepted / (10 x B)))` seconds. At the
+default ceiling this changes only the 2k RPC Task cases (about 345 seconds for
+about 224,000 accepted Items); the scheduled 100-Worker Task suite and every case
+at ceiling 1000 keep 180 seconds. Evidence records `drainBudgetSeconds` and the
+last follow-up observation. This relaxes the closure deadline, not the closure
+oracle: a lost Result still fails, and observed failed Results are never success.
+
+Targeted RPC cases also record `targetsWithoutSuccessAfter60Seconds`: target
+Workers whose accepted Items planned from 60 seconds on all ended without
+success. It is diagnostic, not a gate. A nonzero value marks Workers that stayed
+unassignable while connected; see the
+[targeted 2k closure diagnosis](baselines/2026-09-23-targeted-2k-closure.md).
+Results before this cutover used the fixed 180 seconds for every case.
 
 `--repetitions 3` runs the same immutable version on one host, with JFR off.
 Each repetition starts with ANY 500. At both 1k and 2k, the path orders are
@@ -89,9 +116,11 @@ aligned path-cost ratios. The runner checks exact case membership and continues
 collecting remaining case evidence after a case failure. It never calls this
 single mixed case a complete historical Task suite. Historical `task`, `direct`
 and `direct-diagnosis` suites retain their original fixtures. The new eight-case
-manifest remains manual until fixed Result-closure acceptance passes. The first
-formal RPC run failed its six 2k Task cases; the existing scheduled composition
-therefore stays **Task six cases followed by Direct diagnosis two cases**.
+manifest remains manual until Result-closure acceptance passes. The first
+formal RPC run failed its six 2k Task cases under the former fixed 180-second
+budget; the existing scheduled composition therefore stays **Task six cases
+followed by Direct diagnosis two cases**. The derived closure budget does not by
+itself enable the new manifest on the schedule.
 Case completion logs contain only status, generator limitation and the aggregate
 accepted-Result remainder; unavailable counts remain null. A missing/duplicate
 manifest is reported separately from a complete manifest containing failed cases.
@@ -218,7 +247,8 @@ Any not-sent request or schedule-lag p99 above 100ms marks the case generator
 limited. Such evidence cannot establish server capacity or compare candidates.
 
 After the measurement, public `results:load` pages contain at most 1,000 known
-IDs, with a fixed 180-second observation budget. Followup observation never
+IDs. The historical Task suite keeps a 180-second observation budget; RPC cases
+use the [Result closure budget](#result-closure-budget). Followup observation never
 rewrites the original call outcome or latency. Its elapsed time is a sampled
 observation bound recorded separately. An observed failed Result is not success;
 not_observed does not infer TaskItem finality. Unknown submissions may remain
@@ -461,7 +491,9 @@ performance measurement window.
 
 Use one freshly built Server/Host/Harness artifact set and the existing
 `rpc-any-2000` case: 1000 Workers, 20-second warmup, 120-second measurement and
-unchanged 180-second Result follow-up. Run ceilings 100/1000, 1000/100, 100/1000
+the [Result closure budget](#result-closure-budget), which gives ceiling 100 a
+longer closure deadline than ceiling 1000 (the 2026-09-23 runs used 180 seconds
+for both). Compare throughput and outcome evidence, not pass/fail alone. Run ceilings 100/1000, 1000/100, 100/1000
 with JFR off and a fresh output directory, processes and Redis scope for each
 case. This is a same-version configuration experiment, not a baseline-ref code
 comparison or a change to scheduled defaults. The original `any-2000` has only

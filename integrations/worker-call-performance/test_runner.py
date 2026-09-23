@@ -353,6 +353,19 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 runner.resource_summary(path, 20000)
 
+    def test_rpc_summary_records_derived_drain_budget_and_unassignable_targets(self):
+        window = dict(sent=10, planned=10, httpResponsesDuringWindowPerSecond=1.0, successRate=1.0,
+                      successfulCohortPerSecond=1.0, acceptedSuccessRateAfterDrain=.5,
+                      successfulCallLatencyMillis={"p99": 1}, generatorLimited=True)
+        row = dict(window, pair=0, version="B", case="rpc-targeted-2000", status="failed",
+                   drainBudgetSeconds=345, followupObservationMaxMillis=344_900,
+                   targetsWithoutSuccessAfter60Seconds=2, acceptedResultsAfterDrain={"not_observed": 7})
+        value = runner.markdown_summary(dict(suite="rpc-diagnosis", status="failed", referenceHost=True,
+                                             completeSuite=False, assignmentBatchLimit=100, runs=[row]))
+        self.assertIn("| 1 | rpc-targeted-2000 | 345 | 344.9 | 2 |", value)
+        self.assertIn("7 accepted Items remain unobserved after the 345-second drain budget", value)
+        self.assertIn("not a gate", value)
+
     def test_failed_bootstrap_summary_does_not_invent_measurements(self):
         value = runner.markdown_summary(dict(status="failed", referenceHost=True, completeSuite=True,
                 runs=[dict(pair=0, version="A", case="any-100", status="failed")]))
