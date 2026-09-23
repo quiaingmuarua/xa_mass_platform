@@ -1,0 +1,336 @@
+import groovy.json.JsonOutput
+
+plugins { id 'base' }
+
+evaluationDependsOn(':server_boot_jvm')
+
+apply from: rootProject.file('gradle/platform-diagnostic-codes.gradle')
+
+def runtimeVersion = project.version.toString()
+def requestedVersion = providers.gradleProperty('xaMassVersion')
+def repositoryRoot = rootProject.projectDir
+def pythonExecutable = providers.environmentVariable('XA_MASS_PYTHON_EXECUTABLE')
+        .orElse('python')
+def isWindows = System.getProperty('os.name')
+        .toLowerCase(Locale.ROOT)
+        .contains('windows')
+def frontendDirectory = rootProject.file('frontend')
+def stagedDirectory = layout.buildDirectory.dir("runtime/${runtimeVersion}")
+def generatedDirectory = layout.buildDirectory.dir('generated/runtime')
+def runtimeBaseName = 'xa-mass-server-runtime'
+def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
+def serverBootJar = project(':server_boot_jvm').tasks.named('bootJar')
+def gitCommit = providers.exec {
+    workingDir repositoryRoot
+    commandLine 'git', 'rev-parse', 'HEAD'
+}.standardOutput.asText.map { it.trim() }
+
+def pnpmCommand = { List<String> arguments ->
+    if (isWindows) {
+        return ['cmd.exe', '/d', '/c', 'corepack', 'pnpm@11.9.0'] + arguments
+    }
+    return ['corepack', 'pnpm@11.9.0'] + arguments
+}
+
+tasks.register('validateRuntimeVersion') {
+    group = 'verification'
+    description = 'Requires one explicit SemVer shared by the JAR and archive.'
+    doLast {
+        if (!requestedVersion.isPresent()) {
+            throw new GradleException(
+                    'Runtime distribution requires -PxaMassVersion=<major.minor.patch>'
+            )
+        }
+        if (!(runtimeVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+            throw new GradleException(
+                    "Runtime distribution version must be release SemVer: ${runtimeVersion}"
+            )
+        }
+    }
+}
+
+tasks.register('installFrontend', Exec) {
+    group = 'distribution'
+    description = 'Installs the pinned frontend dependency graph.'
+    workingDir frontendDirectory
+    inputs.files(
+            rootProject.file('frontend/package.json'),
+            rootProject.file('frontend/pnpm-lock.yaml'),
+            rootProject.file('frontend/pnpm-workspace.yaml')
+    )
+    outputs.file(rootProject.file('frontend/node_modules/.xa-mass-runtime-install.marker'))
+    doFirst {
+        commandLine(pnpmCommand(['install', '--frozen-lockfile']))
+    }
+    doLast {
+        rootProject.file('frontend/node_modules/.xa-mass-runtime-install.marker')
+                .setText('pnpm 11.9.0\n', 'UTF-8')
+    }
+}
+
+tasks.register('buildFrontend', Exec) {
+    group = 'distribution'
+    description = 'Builds the unified Console frontend.'
+    dependsOn tasks.named('installFrontend')
+    workingDir frontendDirectory
+    inputs.files(fileTree(frontendDirectory) {
+        include 'src/**', 'public/**', 'index.html', '*.json', '*.ts', '*.js'
+        exclude 'node_modules/**', 'dist/**', 'coverage/**'
+    })
+    outputs.dir(rootProject.file('frontend/dist'))
+    doFirst {
+        commandLine(pnpmCommand(['build']))
+    }
+}
+
+tasks.register('generateRuntimeManifest') {
+    group = 'distribution'
+    description = 'Generates the checked runtime archive manifest.'
+    dependsOn serverBootJar
+    inputs.property('runtimeVersion', runtimeVersion)
+    inputs.property('gitCommit', gitCommit)
+    inputs.file(serverBootJar.flatMap { it.archiveFile })
+    outputs.file(generatedDirectory.map { it.file('manifest.json') })
+    doLast {
+        String resolvedGitCommit = gitCommit.get()
+        if (!(resolvedGitCommit ==~ /[0-9a-f]{40}/)) {
+            throw new GradleException('git rev-parse HEAD did not return a full commit')
+        }
+        File output = generatedDirectory.get().file('manifest.json').asFile
+        output.parentFile.mkdirs()
+        output.setText(
+                JsonOutput.prettyPrint(JsonOutput.toJson([
+                        schemaVersion   : 5,
+                        version         : runtimeVersion,
+                        gitCommit       : resolvedGitCommit,
+                        serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
+                        javaVersion     : 21,
+                        defaultSpringProfile: 'scenario-workers',
+                        springProfiles  : [
+                                'scenario-workers',
+                                'agentforge',
+                                'preview'
+                        ],
+                        frontendIncluded: true
+                ])) + System.lineSeparator(),
+                'UTF-8'
+        )
+    }
+}
+
+tasks.register('stageRuntime', Sync) {
+    group = 'distribution'
+    description = 'Stages the complete unpacked XA Mass Server Runtime.'
+    dependsOn(
+            tasks.named('validateRuntimeVersion'),
+            serverBootJar,
+            tasks.named('buildFrontend'),
+            tasks.named('generateRuntimeManifest'),
+            tasks.named('generatePlatformDiagnosticCodes')
+    )
+    into stagedDirectory
+    from(serverBootJar.flatMap { it.archiveFile }) {
+        into 'lib'
+    }
+    from(rootProject.file('frontend/dist')) {
+        into 'frontend/dist'
+        exclude 'reference/platform-diagnostic-codes.json'
+    }
+    from(platformDiagnosticCodesFile) {
+        into 'frontend/dist/reference'
+    }
+    from('src/main/dist') {
+        exclude '**/__pycache__/**', '**/*.pyc'
+    }
+    from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
+    from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) {
+        rename { 'THIRD_PARTY_NOTICES.frontend.md' }
+    }
+    from(generatedDirectory.map { it.file('manifest.json') })
+}
+
+tasks.register('distZip', Zip) {
+    group = 'distribution'
+    description = 'Builds the single publishable XA Mass Server Runtime ZIP.'
+    dependsOn tasks.named('stageRuntime')
+    archiveBaseName.set(runtimeBaseName)
+    archiveVersion.set(runtimeVersion)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    into(runtimeRootName) {
+        from(stagedDirectory)
+    }
+}
+
+tasks.register('sourceLauncherTest', Exec) {
+    group = 'verification'
+    description = 'Runs standard-library tests for Runtime source and proof helpers.'
+    workingDir repositoryRoot
+    inputs.files(
+            rootProject.file('run_local_runtime.py'),
+            rootProject.file('.github/scripts/run_runtime_distribution_proof.py'),
+            rootProject.file('.github/scripts/test_run_local_runtime.py'),
+            rootProject.file(
+                    '.github/scripts/test_run_runtime_distribution_proof.py'
+            )
+    )
+    commandLine(
+            pythonExecutable.get(),
+            '-m',
+            'unittest',
+            'discover',
+            '-s',
+            rootProject.file('.github/scripts').absolutePath,
+            '-p',
+            'test_run_*runtime*.py',
+            '-v'
+    )
+}
+
+tasks.register('verifyRuntimeArchive', Exec) {
+    group = 'verification'
+    description = 'Verifies the Java-only publishable Runtime ZIP ABI.'
+    dependsOn tasks.named('distZip')
+    workingDir repositoryRoot
+    inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
+    inputs.file('src/test/python/verify_runtime_archive.py')
+    commandLine(
+            pythonExecutable.get(),
+            file('src/test/python/verify_runtime_archive.py').absolutePath,
+            '--archive',
+            tasks.named('distZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
+            '--version', runtimeVersion
+    )
+}
+
+tasks.register('runtimeDistributionTest', Exec) {
+    group = 'verification'
+    description = 'Unpacks and proves the published Runtime against real Redis.'
+    dependsOn tasks.named('sourceLauncherTest'), tasks.named('verifyRuntimeArchive')
+    workingDir repositoryRoot
+    inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
+    inputs.file(rootProject.file('.github/scripts/run_runtime_distribution_proof.py'))
+    outputs.upToDateWhen { false }
+    commandLine(
+            pythonExecutable.get(),
+            rootProject.file('.github/scripts/run_runtime_distribution_proof.py').absolutePath,
+            '--archive',
+            tasks.named('distZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
+            '--redis-url',
+            providers.environmentVariable('XA_MASS_REDIS_URL')
+                    .orElse('redis://127.0.0.1:6379/15')
+                    .get()
+    )
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('sourceLauncherTest'), tasks.named('verifyRuntimeArchive')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('distZip')
+}
+
+// Preview is a second delivery variant of the same executable, with its own version.
+def previewVersion = '0.1.0-preview'
+def previewDirectory = layout.buildDirectory.dir('preview')
+
+tasks.register('stagePreviewConfiguration', Sync) {
+    into previewDirectory.map { it.dir('config') }
+    from(project(':server_boot_jvm').file('src/main/resources/application-preview.yaml'))
+}
+
+tasks.register('stagePreviewServer', Sync) {
+    dependsOn serverBootJar, tasks.named('stagePreviewConfiguration')
+    into previewDirectory.map { it.dir('server') }
+    from(serverBootJar)
+}
+
+tasks.register('stagePreviewFrontend', Sync) {
+    dependsOn tasks.named('buildFrontend'), tasks.named('generatePlatformDiagnosticCodes')
+    into previewDirectory.map { it.dir('frontend/dist') }
+    from(rootProject.file('frontend/dist')) { exclude 'reference/platform-diagnostic-codes.json' }
+    from(platformDiagnosticCodesFile) { into 'reference' }
+}
+
+tasks.register('stagePreviewHost', Sync) {
+    dependsOn ':worker_simulator_jvm:jar'
+    into previewDirectory.map { it.dir('host') }
+    from(project(':worker_simulator_jvm').tasks.named('jar')) { into 'lib' }
+    from(project(':worker_simulator_jvm').configurations.runtimeClasspath) { into 'lib' }
+    from(project(':worker_simulator_jvm').file('config')) {
+        include 'lab.json', 'sms.json', 'messages.json', 'products.json'
+        into 'config'
+    }
+}
+
+tasks.register('previewManifest') {
+    dependsOn 'stagePreviewServer', 'stagePreviewHost', 'stagePreviewFrontend'
+    def output = previewDirectory.map { it.file('preview-manifest.json') }
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+    doLast {
+        def hash = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+        def jar = serverBootJar.get().archiveFile.get().asFile
+        def files = [("lib/${jar.name}".toString()): hash(jar)]
+        def host = previewDirectory.get().dir('host').asFile
+        fileTree(host).files.each { files['worker-simulator/' + host.toPath().relativize(it.toPath()).toString().replace('\\', '/')] = hash(it) }
+        def frontend = previewDirectory.get().dir('frontend/dist').asFile
+        fileTree(frontend).files.each { files['frontend/dist/' + frontend.toPath().relativize(it.toPath()).toString().replace('\\', '/')] = hash(it) }
+        files['run_preview.py'] = hash(file('run_preview.py'))
+        files['requirements.txt'] = hash(file('requirements-preview.txt'))
+        fileTree(previewDirectory.get().dir('config').asFile).files.each { files['config/' + it.name] = hash(it) }
+        def manifest = [version: previewVersion, platformVersion: runtimeVersion,
+                gitCommit: gitCommit.get(), includesWorktree: true, scenarios: ['sms', 'messages', 'app-checks'],
+                processModel: ['server', 'host'], sha256: files.sort()]
+        output.get().asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n'
+    }
+}
+
+tasks.register('previewZip', Zip) {
+    group = 'distribution'
+    description = 'Builds the Server and Simulator Scenario Preview without requiring a release version.'
+    dependsOn tasks.named('previewManifest')
+    archiveFileName = "xa-mass-scenario-preview-${previewVersion}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    into("xa-mass-scenario-preview-${previewVersion}") {
+        from('run_preview.py')
+        from('requirements-preview.txt') { rename { 'requirements.txt' } }
+        from('PREVIEW.md') { rename { 'README.md' } }
+        from(previewDirectory.map { it.dir('config') }) { into 'config' }
+        from(previewDirectory.map { it.file('preview-manifest.json') })
+        from(serverBootJar) { into 'lib' }
+        from(previewDirectory.map { it.dir('frontend/dist') }) { into 'frontend/dist' }
+        from(previewDirectory.map { it.dir('host') }) { into 'worker-simulator' }
+        from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
+        from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) { rename { 'THIRD_PARTY_NOTICES.frontend.md' } }
+    }
+}
+
+tasks.register('previewLauncherTest', Exec) {
+    group = 'verification'
+    description = 'Tests the common Preview launcher, root CLI and archive contract.'
+    dependsOn tasks.named('sourceLauncherTest')
+    workingDir repositoryRoot
+    inputs.files('run_preview.py', 'src/test/python/test_run_preview.py',
+            'src/test/python/test_verify_preview_archive.py', 'src/test/python/verify_preview_archive.py',
+            'src/test/python/verify_runtime_archive.py')
+    commandLine(pythonExecutable.get(), '-m', 'unittest', 'discover', '-s',
+            file('src/test/python').absolutePath, '-p', 'test_*preview*.py', '-v')
+}
+
+tasks.register('verifyPreviewArchive', Exec) {
+    group = 'verification'
+    description = 'Verifies the Scenario Preview archive against its own fingerprints and current frontend.'
+    dependsOn tasks.named('previewZip')
+    workingDir repositoryRoot
+    inputs.file(tasks.named('previewZip', Zip).flatMap { it.archiveFile })
+    inputs.files('src/test/python/verify_preview_archive.py', 'src/test/python/verify_runtime_archive.py')
+    commandLine(pythonExecutable.get(), file('src/test/python/verify_preview_archive.py').absolutePath,
+            '--archive', tasks.named('previewZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
+            '--frontend', frontendDirectory.toPath().resolve('dist').toString(),
+            '--output', previewDirectory.get().file('archive-verification.json').asFile.absolutePath)
+}

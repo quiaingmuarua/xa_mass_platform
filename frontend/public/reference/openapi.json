@@ -1,0 +1,2315 @@
+{
+  "components" : {
+    "schemas" : {
+      "ActionOutcome" : {
+        "properties" : {
+          "code" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "applied", "unchanged", "rejected" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiErrorResponse" : {
+        "properties" : {
+          "code" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "requestId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DirectCallRequest" : {
+        "properties" : {
+          "messageType" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "opaquePayload" : {
+            "type" : "string"
+          },
+          "waitTimeoutMillis" : {
+            "format" : "int64",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          },
+          "workerPayloads" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          }
+        },
+        "required" : [ "messageType" ],
+        "type" : "object"
+      },
+      "DirectCallResponse" : {
+        "properties" : {
+          "directCallId" : {
+            "type" : "string"
+          },
+          "results" : {
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/DirectTargetCallResponse"
+            },
+            "type" : "object"
+          },
+          "status" : {
+            "enum" : [ "observed", "partial" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DirectTargetCallResponse" : {
+        "properties" : {
+          "diagnosticCode" : {
+            "type" : "string"
+          },
+          "messageType" : {
+            "type" : "string"
+          },
+          "opaqueResultPayload" : {
+            "type" : "string"
+          },
+          "reason" : {
+            "enum" : [ "timeout", "shutdown", "not-found", "not-bound", "endpoint-mismatch", "command-slot-occupied", "submission-unknown" ],
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "observed", "unobserved", "rejected" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "EligibilityQuery" : {
+        "additionalProperties" : {
+          "items" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "maxItems" : 100,
+          "minItems" : 1,
+          "type" : "array"
+        },
+        "description" : "Immutable string-list supply target. The selected Pool maintenance policy interprets fields; empty means no additional condition. No quantity or operator objects.",
+        "maxProperties" : 100,
+        "type" : "object"
+      },
+      "Entry" : {
+        "properties" : {
+          "createdAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "scoreBand" : {
+            "type" : "string"
+          },
+          "task" : {
+            "$ref" : "#/components/schemas/TaskView"
+          },
+          "taskId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ProjectTasks" : {
+        "properties" : {
+          "projectId" : {
+            "type" : "string"
+          },
+          "tasks" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Entry"
+            },
+            "type" : "array"
+          },
+          "truncated" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "ProjectView" : {
+        "properties" : {
+          "managedTaskIds" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "projectId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "RefillTarget" : {
+        "additionalProperties" : false,
+        "description" : "Shared Pool supply declaration. Equal normalized targets in a Group/Pool merge by MAX; target is required, including an explicit empty object. This is not a Task-private quota.",
+        "properties" : {
+          "count" : {
+            "format" : "int32",
+            "maximum" : 1000,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "poolName" : {
+            "minLength" : 1,
+            "pattern" : ".*\\S.*",
+            "type" : "string"
+          },
+          "target" : {
+            "$ref" : "#/components/schemas/EligibilityQuery"
+          }
+        },
+        "required" : [ "count", "poolName", "target" ],
+        "type" : "object"
+      },
+      "TaskCreateRequest" : {
+        "properties" : {
+          "maxRetryTimes" : {
+            "format" : "int32",
+            "maximum" : 98,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "metadata" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "priority" : {
+            "format" : "int32",
+            "maximum" : 99,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "projectId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "refill" : {
+            "description" : "Optional Pool waterline declarations; omission means no supply. Equal targets in the same Group/Pool merge by MAX, never private quotas.",
+            "items" : {
+              "$ref" : "#/components/schemas/RefillTarget"
+            },
+            "maxItems" : 100,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "workerGroupId" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "projectId", "workerGroupId" ],
+        "type" : "object"
+      },
+      "TaskCreateResponse" : {
+        "properties" : {
+          "taskId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskItemRequest" : {
+        "properties" : {
+          "eventCode" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "messageId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "payload" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "priority" : {
+            "format" : "int32",
+            "maximum" : 10,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "ttlMillis" : {
+            "format" : "int64",
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "workerSelector" : {
+            "$ref" : "#/components/schemas/WorkerQuery",
+            "description" : "Named Matching function and its local JSON input. Required for finite append and managed Call. The Group-enabled function is independent of Task Pool supply declarations. worker.any accepts only {} and requires explicit any Pool/function enablement and shared supply; worker.country accepts {} or a country list; workerId accepts one identity string without Pool demand."
+          }
+        },
+        "required" : [ "eventCode", "messageId", "payload", "workerSelector" ],
+        "type" : "object"
+      },
+      "TaskItemResultResponse" : {
+        "properties" : {
+          "opaqueResultPayload" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "succeeded", "failed", "not_observed" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskItemStateResponse" : {
+        "properties" : {
+          "band" : {
+            "description" : "Terminal for scheduling, not immutable business state. While the Item is retained, valid monotonic outcome observations may continue after Task completion or closure.",
+            "enum" : [ "active", "terminal" ],
+            "type" : "string"
+          },
+          "outcomeName" : {
+            "type" : "string"
+          },
+          "tag" : {
+            "format" : "int32",
+            "maximum" : 9,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "timeMillis" : {
+            "description" : "Band-local score time in milliseconds, not business event time",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : [ "object", "null" ]
+      },
+      "TaskPreviewEntry" : {
+        "properties" : {
+          "scoreBand" : {
+            "type" : "string"
+          },
+          "task" : {
+            "$ref" : "#/components/schemas/TaskView"
+          },
+          "taskId" : {
+            "type" : "string"
+          },
+          "workerGroup" : {
+            "$ref" : "#/components/schemas/WorkerGroupView"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskPreviewResponse" : {
+        "properties" : {
+          "entries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskPreviewEntry"
+            },
+            "type" : "array"
+          },
+          "generatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "sampleLimit" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskRpcCallRequest" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskItemRequest"
+            },
+            "maxItems" : 100,
+            "minItems" : 1,
+            "type" : "array"
+          },
+          "waitTimeoutMillis" : {
+            "format" : "int64",
+            "maximum" : 60000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items" ],
+        "type" : "object"
+      },
+      "TaskView" : {
+        "properties" : {
+          "config" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "idleDisposition" : {
+            "type" : "string"
+          },
+          "metadata" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "projectId" : {
+            "type" : "string"
+          },
+          "refill" : {
+            "items" : {
+              "$ref" : "#/components/schemas/RefillTarget"
+            },
+            "type" : "array"
+          },
+          "taskId" : {
+            "type" : "string"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerCommandResponse" : {
+        "properties" : {
+          "dst" : {
+            "type" : "string"
+          },
+          "executeBeforeMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "forward" : {
+            "type" : "string"
+          },
+          "messageType" : {
+            "type" : "string"
+          },
+          "payload" : {
+            "type" : "string"
+          },
+          "src" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupBatchGetResponse" : {
+        "properties" : {
+          "missingWorkerGroupIds" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "workerGroups" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerGroupView"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupPreviewResponse" : {
+        "properties" : {
+          "generatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "returnedCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sampleLimit" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sampledCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "unreadableCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "workerGroups" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerGroupView"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupRegisterRequest" : {
+        "properties" : {
+          "attributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "eventCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupRegisterResponse" : {
+        "properties" : {
+          "status" : {
+            "type" : "string"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupView" : {
+        "properties" : {
+          "attributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "eventCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerNetworkObserveResponse" : {
+        "properties" : {
+          "endpointManagerId" : {
+            "type" : "string"
+          },
+          "readAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "statesByWorkerId" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerPreparationRequest" : {
+        "properties" : {
+          "transportType" : {
+            "enum" : [ "POLLING", "WEBSOCKET", "SOCKET" ],
+            "type" : "string"
+          },
+          "workerKind" : {
+            "default" : "CLIENT_KEY",
+            "enum" : [ "CLIENT_KEY", "SCENARIO_LAB" ],
+            "type" : "string"
+          },
+          "workerProperties" : {
+            "additionalProperties" : { },
+            "description" : "Input for the Server-owned identity policy. Only registration coordinates are consumed; Prepare does not store Worker Properties. Matching facts arrive through Adapter observations after connection.",
+            "type" : "object"
+          }
+        },
+        "required" : [ "transportType", "workerProperties" ],
+        "type" : "object"
+      },
+      "WorkerPreparationResponse" : {
+        "properties" : {
+          "endpointUri" : {
+            "type" : "string"
+          },
+          "transportType" : {
+            "type" : "string"
+          },
+          "workerId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerPreviewResponse" : {
+        "properties" : {
+          "generatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "returnedCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sampleLimit" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sampledCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "unreadableCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          },
+          "workers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerView"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerQuery" : {
+        "additionalProperties" : false,
+        "properties" : {
+          "executorName" : {
+            "minLength" : 1,
+            "pattern" : ".*\\S.*",
+            "type" : "string"
+          },
+          "input" : {
+            "description" : "Executor-local JSON. Root cannot be null; nested null is preserved. Each container has at most 100 members, container depth at most 8, encoded input at most 64 KiB. Only the selected Matching function interprets its shape.",
+            "type" : [ "object", "array", "string", "number", "boolean" ]
+          }
+        },
+        "required" : [ "executorName", "input" ],
+        "type" : "object"
+      },
+      "WorkerResultBatchResponse" : {
+        "properties" : {
+          "acceptedCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "rejectedCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerResultRequest" : {
+        "properties" : {
+          "diagnosticCode" : {
+            "type" : "string"
+          },
+          "dst" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "forward" : {
+            "type" : "string"
+          },
+          "messageType" : {
+            "description" : "Exact Report event name. WORKER-to-TASK also accepts platform.worker.task-outcome.observed for later observations of the same Item.",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "payload" : {
+            "description" : "Event payload encoded as a JSON string. Task outcome observations use {tag, observedAtMillis, opaqueResultPayload?}: tag 6..9, positive supported milliseconds, and optional nonblank string content. Higher tag wins, then later milliseconds; state-only observations preserve content. Forward remains the original opaque Command context.",
+            "type" : "string"
+          },
+          "sourceId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "src" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "diagnosticCode", "dst", "forward", "messageType", "payload", "sourceId", "src" ],
+        "type" : "object"
+      },
+      "WorkerSchedulingObserveResponse" : {
+        "properties" : {
+          "readAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "statesByWorkerId" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerView" : {
+        "properties" : {
+          "endpointManagerId" : {
+            "type" : "string"
+          },
+          "platformProperties" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          },
+          "workerId" : {
+            "type" : "string"
+          },
+          "workerProperties" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "description" : "Kernel decides scheduling; Server exposes, validates and correlates Runtime APIs; Transport delivers and executes assigned work. HTTP status expresses a coarse request-processing class while ApiErrorResponse.code identifies the business reason. Matched Runtime use cases return 200 when completed, 400 for business rejection, 429 for explicit admission capacity and 503 for a temporarily unavailable Owner. Worker Delivery machine routes also use 202 for accepted Reports and 204 for an empty or bodyless successful protocol result.\n\nDiagnostic lookup: [Code Dictionary](/reference/error-codes) for people and [current-build JSON](/reference/platform-diagnostic-codes.json) for Agents. `ApiErrorResponse.code` belongs to the `server_jvm` namespace. Adapter and Worker codes use their producer-local namespaces. The dictionary is a current-build lookup; it does not bind API operations to diagnostic codes or promise cross-version compatibility.",
+    "title" : "XA Mass Runtime API",
+    "version" : "v1"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/api/v1/projects/{projectId}" : {
+      "get" : {
+        "operationId" : "get",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProjectView"
+                }
+              }
+            },
+            "description" : "Configured Project"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Project or limit is invalid"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is unavailable"
+          }
+        },
+        "summary" : "Read a configured Project and its managed Task coordinates",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/projects/{projectId}/tasks" : {
+      "get" : {
+        "operationId" : "tasks",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 100,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProjectTasks"
+                }
+              }
+            },
+            "description" : "Project Task window"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Project or limit is invalid"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is unavailable"
+          }
+        },
+        "summary" : "Read newest Project Tasks, without pagination or Result reads",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/runtime-view/endpoint-managers/{endpointManagerId}/workers:network-observe" : {
+      "post" : {
+        "operationId" : "observeWorkerNetwork",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerNetworkObserveResponse"
+                }
+              }
+            },
+            "description" : "Worker network projections"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Observe bounded Worker network projections",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/tasks:preview" : {
+      "post" : {
+        "operationId" : "previewTasks",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "format" : "int32",
+                "maximum" : 1000,
+                "minimum" : 1,
+                "type" : "integer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskPreviewResponse"
+                }
+              }
+            },
+            "description" : "Bounded Task runtime projections"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Preview a bounded Task Score window",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview" : {
+      "post" : {
+        "operationId" : "previewWorkers",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "format" : "int32",
+                "maximum" : 1000,
+                "minimum" : 1,
+                "type" : "integer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerPreviewResponse"
+                }
+              }
+            },
+            "description" : "Bounded Worker sample projection"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Preview a bounded Worker sample",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups/{workerGroupId}/workers:scheduling-observe" : {
+      "post" : {
+        "operationId" : "observeWorkerScheduling",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerSchedulingObserveResponse"
+                }
+              }
+            },
+            "description" : "Worker scheduling projections"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Observe bounded Worker scheduling projections",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups:batch-get" : {
+      "post" : {
+        "operationId" : "batchGetWorkerGroups",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 20,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupBatchGetResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup projections and missing IDs"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Load known WorkerGroups by ID",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups:preview" : {
+      "post" : {
+        "operationId" : "previewWorkerGroups",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "format" : "int32",
+                "maximum" : 100,
+                "minimum" : 1,
+                "type" : "integer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupPreviewResponse"
+                }
+              }
+            },
+            "description" : "Bounded WorkerGroup sample projection"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Runtime View Owner is unavailable"
+          }
+        },
+        "summary" : "Preview a bounded WorkerGroup sample",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/tasks" : {
+      "post" : {
+        "operationId" : "createTask",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCreateResponse"
+                }
+              }
+            },
+            "description" : "Task was created"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Create a finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/approve" : {
+      "post" : {
+        "operationId" : "approveTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Action outcome: applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Approve a finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/close" : {
+      "post" : {
+        "operationId" : "closeTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Action outcome: applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Close a finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/items" : {
+      "post" : {
+        "operationId" : "appendTaskItems",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "$ref" : "#/components/schemas/TaskItemRequest"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/ActionOutcome"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Applied or rejected Action outcomes keyed by messageId"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Append Items to a finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/items:call" : {
+      "post" : {
+        "description" : "Submission is accepted before synchronous Result observation. Items not observed within the wait budget or observation capacity are represented by the not_observed outcome and can be loaded later by messageId.",
+        "operationId" : "callTaskItems",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskRpcCallRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemResultResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Submission was accepted; each Item is succeeded, failed, or not_observed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Call a managed Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/items:states" : {
+      "post" : {
+        "description" : "Returns ACTIVE or TERMINAL score state, or null for a missing Item. timeMillis is band-local score time, not business event time. This query does not read Result content.",
+        "operationId" : "loadTaskItemStates",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemStateResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "States keyed by messageId; missing Items are null"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task query was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Load TaskItem score states",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/results:export" : {
+      "post" : {
+        "description" : "The Task score is observed once. A non-terminal Task returns TASK_RESULTS_NOT_READY immediately.",
+        "operationId" : "exportTaskItemResults",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/x-ndjson" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "Task is terminal; successful Results are streamed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Export successful finite Task results",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/results:load" : {
+      "post" : {
+        "description" : "Returns succeeded, failed, or not_observed for every requested messageId. Only succeeded contains opaqueResultPayload.",
+        "operationId" : "loadTaskItemResults",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 1000,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemResultResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Result states keyed by messageId"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task business request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is temporarily unavailable"
+          }
+        },
+        "summary" : "Load TaskItem result states",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume" : {
+      "post" : {
+        "operationId" : "consumeWorkerCommands",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "format" : "int32",
+                "minimum" : 1,
+                "type" : "integer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/WorkerCommandResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Adapter command batch"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery Owner is unavailable"
+          }
+        },
+        "summary" : "Consume an Adapter command batch",
+        "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/direct-calls" : {
+      "post" : {
+        "description" : "Best-effort direct execution. This API does not provide TASK exclusion, pause, drain, recall, or idempotency guarantees.",
+        "operationId" : "call",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DirectCallRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DirectCallResponse"
+                }
+              }
+            },
+            "description" : "Direct Call completed with per-target outcomes"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Direct Call request was rejected"
+          },
+          "429" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Direct Call admission capacity is exhausted"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Direct Call Owner is unavailable"
+          }
+        },
+        "summary" : "Call an Adapter or caller-selected Workers directly",
+        "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append" : {
+      "post" : {
+        "operationId" : "appendAdapterResults",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "$ref" : "#/components/schemas/WorkerResultRequest"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerResultBatchResponse"
+                }
+              }
+            },
+            "description" : "Adapter result batch was accepted"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery Owner is unavailable"
+          }
+        },
+        "summary" : "Append an Adapter result batch",
+        "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/workers/{workerId}/commands:poll" : {
+      "post" : {
+        "operationId" : "pollWorkerCommand",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerCommandResponse"
+                }
+              }
+            },
+            "description" : "A Worker command is available"
+          },
+          "204" : {
+            "description" : "No Worker command is available"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery Owner is unavailable"
+          }
+        },
+        "summary" : "Poll one Worker command",
+        "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/workers/{workerId}/results" : {
+      "post" : {
+        "operationId" : "appendWorkerResult",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "endpointManagerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerResultRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Worker result was accepted"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Delivery Owner is unavailable"
+          }
+        },
+        "summary" : "Append one Worker result",
+        "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties" : {
+      "patch" : {
+        "operationId" : "patchPlatformProperties",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "additionalProperties" : true,
+                "type" : "object"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Action outcome: applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker resource request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Resource Owner is unavailable"
+          }
+        },
+        "summary" : "Patch Worker platform properties",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling" : {
+      "post" : {
+        "operationId" : "pauseScheduling",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Action outcome: applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker resource request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker scheduling Owner is unavailable"
+          }
+        },
+        "summary" : "Pause Worker scheduling",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling" : {
+      "post" : {
+        "operationId" : "resumeScheduling",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Action outcome: applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker resource request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker scheduling Owner is unavailable"
+          }
+        },
+        "summary" : "Resume Worker scheduling",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers:prepare" : {
+      "post" : {
+        "operationId" : "prepareWorker",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerPreparationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerPreparationResponse"
+                }
+              }
+            },
+            "description" : "Worker preparation completed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker preparation request was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker preparation Owner is unavailable"
+          }
+        },
+        "summary" : "Prepare a Worker identity and Endpoint Binding",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers:prepare-batch" : {
+      "post" : {
+        "operationId" : "prepareWorkers",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "$ref" : "#/components/schemas/WorkerPreparationRequest"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/WorkerPreparationResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "Worker batch preparation completed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker batch preparation was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker preparation Owner is unavailable"
+          }
+        },
+        "summary" : "Prepare multiple Worker identities and bindings",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}:register" : {
+      "post" : {
+        "operationId" : "registerWorkerGroup",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerGroupRegisterRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupRegisterResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup registration completed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup declaration was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup Owner is unavailable"
+          }
+        },
+        "summary" : "Register a WorkerGroup",
+        "tags" : [ "Worker Resources" ]
+      }
+    }
+  },
+  "tags" : [ {
+    "description" : "Declare WorkerGroups and prepare or control Worker resources.",
+    "name" : "Worker Resources"
+  }, {
+    "description" : "Create and control Tasks, append Items, load or export Results and call managed Tasks by Task ID.",
+    "name" : "Tasks"
+  }, {
+    "description" : "Read-only bounded runtime projections without total or lifecycle claims.",
+    "name" : "Runtime View"
+  }, {
+    "description" : "Worker and Adapter delivery boundaries plus best-effort Direct Call.",
+    "name" : "Worker Delivery"
+  } ]
+}

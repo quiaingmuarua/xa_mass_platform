@@ -1,0 +1,43 @@
+pluginManagement {
+    repositories {
+        google()
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'xa-mass-platform'
+
+include ':kernel_jvm'
+include ':kernel_pacer_jvm'
+include ':worker_matching_jvm'
+include ':worker_simulator_jvm'
+include ':server_jvm'
+include ':server_boot_jvm'
+include ':transport:worker-delivery-contract'
+include ':transport:worker-core'
+include ':transport:netty-adapter'
+include ':transport:java-worker'
+include ':transport:android-worker'
+include ':xa-android:capabilities'
+include ':xa-android:capability-http'
+include ':xa-android:worker-demo'
+include ':integrations:worker-correctness'
+include ':integrations:worker-dynamic-matching'
+include ':integrations:worker-convergence-health'
+include ':integrations:worker-loaded-recovery'
+include ':integrations:worker-call-performance'
+include ':integrations:android-worker-proof'
+include ':distribution:server'
+include ':distribution:worker-sdk'
+include ':scenarios:sms-reception-jvm'
+include ':scenarios:message-campaigns-jvm'
+include ':scenarios:app-checks-jvm'

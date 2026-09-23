@@ -1,0 +1,971 @@
+package com.xa.mass.kernel.task.redis;
+
+import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore
+        .TaskItemScoreTransitionStatus;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResultPage;
+import io.lettuce.core.KeyValue;
+import io.lettuce.core.MapScanCursor;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.ScanCursor;
+import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.api.StatefulRedisConnection;
+import io.lettuce.core.api.sync.RedisCommands;
+import io.lettuce.core.codec.StringCodec;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
+public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
+
+    private static final int INITIAL_PRE_REVIEW_SUFFIX = 1;
+    private static final long DEFAULT_CREATION_LEASE_MILLIS = 3_000;
+    private static final long DEFAULT_ITEM_TTL_MILLIS =
+            365L * 24 * 60 * 60 * 1_000;
+    private static final int ITEM_PRIORITY_STEP_MILLIS = 100;
+    private static final String CREATE_DESCRIPTOR_SCRIPT = """
+            local key = KEYS[1]
+            local descriptorType = redis.call("TYPE", key).ok
+            local indexType = redis.call("TYPE", KEYS[2]).ok
+            if (descriptorType ~= "none" and descriptorType ~= "hash")
+                or (indexType ~= "none" and indexType ~= "zset") then
+              return redis.error_reply("Task descriptor or project directory has invalid type")
+            end
+            if redis.call("EXISTS", key) == 1 then
+              return 0
+            end
+            local now = redis.call("TIME")
+            local createdAt = now[1] * 1000 + math.floor(now[2] / 1000)
+            redis.call(
+              "HSET",
+              key,
+              "workerGroupId", ARGV[1],
+              "idleDisposition", ARGV[2],
+              "configJson", ARGV[3],
+              "refillJson", ARGV[4],
+              "projectId", ARGV[5],
+              "metadataJson", ARGV[7]
+            )
+            if ARGV[8] ~= '' then redis.call('HSET', key, 'name', ARGV[8]) end
+            redis.call("ZADD", KEYS[2], "NX", createdAt, ARGV[6])
+            return 1
+            """;
+    private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
+            local updates = {}
+            for i = 1, #ARGV, 2 do
+              local target = cjson.decode(ARGV[i + 1])
+              local stored = redis.call("HGET", KEYS[1], ARGV[i])
+              local replace = true
+              if stored then
+                local ok, current = pcall(cjson.decode, stored)
+                if not ok or type(current) ~= "table"
+                    or type(current.code) ~= "string" or current.code == ""
+                    or type(current.opaqueResultPayload) ~= "string"
+                    or current.opaqueResultPayload == "" then
+                  return redis.error_reply("TaskItem Result is corrupt")
+                end
+                local fields = 0
+                for field, _ in pairs(current) do
+                  if field ~= "code" and field ~= "opaqueResultPayload"
+                      and field ~= "tag" and field ~= "observedAtMillis" then
+                    return redis.error_reply("TaskItem Result is corrupt")
+                  end
+                  fields = fields + 1
+                end
+                if current.code == "200" then
+                  if fields ~= 4 or type(current.tag) ~= "number"
+                      or current.tag < 2 or current.tag > 9 or current.tag ~= math.floor(current.tag)
+                      or type(current.observedAtMillis) ~= "number"
+                      or current.observedAtMillis < 0 or current.observedAtMillis > 9999999999900
+                      or current.observedAtMillis ~= math.floor(current.observedAtMillis) then
+                    return redis.error_reply("TaskItem Result is corrupt")
+                  end
+                  replace = target.tag > current.tag or
+                      (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
+                elseif fields ~= 2 then
+                  return redis.error_reply("TaskItem Result is corrupt")
+                end
+              end
+              if replace then
+                updates[#updates + 1] = ARGV[i]
+                updates[#updates + 1] = ARGV[i + 1]
+              end
+            end
+            if #updates > 0 then
+              redis.call("HSET", KEYS[1], unpack(updates))
+            end
+            return #updates / 2
+            """;
+    private static final String STORE_FAILED_RESULTS_SCRIPT = """
+            local results_key = KEYS[1]
+            local failed_result = ARGV[1]
+            local results_type = redis.call("TYPE", results_key).ok
+            if results_type ~= "none" and results_type ~= "hash" then
+              return redis.error_reply("Task results key must be a hash")
+            end
+            local stored = 0
+            for index = 2, #ARGV do
+              stored = stored + redis.call(
+                "HSETNX",
+                results_key,
+                ARGV[index],
+                failed_result
+              )
+            end
+            return stored
+            """;
+
+    private final RedisClient redisClient;
+    private final TaskScoreBandCore scoreBand;
+    private final TaskItemScoreBandCore itemScoreBand;
+    private final ObjectMapper mapper = JsonMapper.builder().build();
+    private final RedisKeyspace keyspace;
+    private volatile StatefulRedisConnection<String, String> connection;
+
+    public RedisTaskRuntime(
+            RedisClient redisClient,
+            TaskScoreBandCore scoreBand,
+            TaskItemScoreBandCore itemScoreBand,
+            RedisKeyspace keyspace
+    ) {
+        if (redisClient == null) {
+            throw new IllegalArgumentException("redisClient must be present");
+        }
+        this.redisClient = redisClient;
+        this.scoreBand = java.util.Objects.requireNonNull(
+                scoreBand,
+                "scoreBand"
+        );
+        this.itemScoreBand = java.util.Objects.requireNonNull(
+                itemScoreBand,
+                "itemScoreBand"
+        );
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
+    }
+
+    @Override
+    public TaskCreationResult createTask(TaskDescriptor descriptor) {
+        if (descriptor == null) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "descriptor must be present"
+            );
+        }
+        Map<String, String> fields;
+        try {
+            fields = descriptorFields(descriptor);
+        } catch (IllegalArgumentException | JacksonException error) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "descriptor contains a non-finite or non-JSON-"
+                            + "serializable value"
+            );
+        }
+
+        try {
+            TaskCreationResult started = startOrCompleteCreation(
+                    descriptor.taskId()
+            );
+            if (started != null) {
+                return started;
+            }
+
+            var initialization = scoreBand.initializeScore(
+                    descriptor.taskId(),
+                    INITIAL_PRE_REVIEW_SUFFIX,
+                    DEFAULT_CREATION_LEASE_MILLIS
+            );
+            if (initialization.status()
+                    != TaskScoreTransitionStatus.TRANSITIONED
+                    || initialization.score() == null) {
+                return initializationFailure(
+                        descriptor.taskId(),
+                        fields,
+                        initialization.status()
+                );
+            }
+            long observedLease = initialization.score();
+
+            boolean descriptorCreated;
+            try {
+                descriptorCreated = writeDescriptorIfAbsent(
+                        descriptor.taskId(),
+                        fields
+                );
+            } catch (RuntimeException error) {
+                releaseBestEffort(descriptor.taskId(), observedLease);
+                return creation(
+                        TaskCreationStatus.RETRYABLE,
+                        "Task descriptor could not be stored"
+                );
+            }
+            if (!descriptorCreated) {
+                releaseBestEffort(descriptor.taskId(), observedLease);
+                return creation(
+                        TaskCreationStatus.CONFLICT,
+                        "task descriptor already exists"
+                );
+            }
+
+            var release = scoreBand.releaseObservedScoreHold(
+                    descriptor.taskId(),
+                    observedLease
+            );
+            return release.status()
+                    == TaskScoreTransitionStatus.TRANSITIONED
+                    ? creation(TaskCreationStatus.CREATED, null)
+                    : creation(
+                            TaskCreationStatus.RETRYABLE,
+                            "task descriptor was written but score release "
+                                    + "was not accepted"
+                    );
+        } catch (RuntimeException error) {
+            return creation(
+                    TaskCreationStatus.RETRYABLE,
+                    "Task creation owner is unavailable"
+            );
+        }
+    }
+
+    private TaskCreationResult startOrCompleteCreation(String taskId) {
+        if (commands().exists(taskDescriptorKey(taskId)) > 0) {
+            return creation(
+                    TaskCreationStatus.CONFLICT,
+                    "task descriptor already exists"
+            );
+        }
+        return null;
+    }
+
+    private TaskCreationResult initializationFailure(
+            String taskId,
+            Map<String, String> fields,
+            TaskScoreTransitionStatus status
+    ) {
+        if (status == TaskScoreTransitionStatus.NOOP) {
+            var state = scoreBand.getScoreStates(List.of(taskId)).get(taskId);
+            if (state != null
+                    && state.band() == TaskScoreBand.PRE_REVIEW
+                    && commands().exists(taskDescriptorKey(taskId)) == 0
+                    && writeDescriptorIfAbsent(taskId, fields)) {
+                return creation(TaskCreationStatus.CREATED, null);
+            }
+            return creation(
+                    TaskCreationStatus.CONFLICT,
+                    "task score is already initialized outside an "
+                            + "incomplete creation"
+            );
+        }
+        if (status == TaskScoreTransitionStatus.INVALID) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "task score initialization was rejected"
+            );
+        }
+        return creation(
+                TaskCreationStatus.RETRYABLE,
+                "task score initialization could not be confirmed"
+        );
+    }
+
+    private Map<String, String> descriptorFields(
+            TaskDescriptor descriptor
+    ) throws JacksonException {
+        rejectNonFiniteNumbers(descriptor.config());
+        String configJson = mapper.writeValueAsString(
+                new TreeMap<>(descriptor.config())
+        );
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("projectId", descriptor.projectId());
+        fields.put("workerGroupId", descriptor.workerGroupId());
+        fields.put(
+                "idleDisposition",
+                descriptor.idleDisposition().name()
+        );
+        fields.put("configJson", configJson);
+        fields.put("refillJson", mapper.writeValueAsString(descriptor.refill()));
+        fields.put("metadataJson", mapper.writeValueAsString(new TreeMap<>(descriptor.metadata())));
+        if (descriptor.name() != null) fields.put("name", descriptor.name());
+        return fields;
+    }
+
+    private boolean writeDescriptorIfAbsent(
+            String taskId,
+            Map<String, String> fields
+    ) {
+        Long result = commands().eval(
+                CREATE_DESCRIPTOR_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{taskDescriptorKey(taskId),
+                        keyspace.base() + ":task:project:" + fields.get("projectId")},
+                fields.get("workerGroupId"),
+                fields.get("idleDisposition"),
+                fields.get("configJson"),
+                fields.get("refillJson"),
+                fields.get("projectId"),
+                taskId,
+                fields.get("metadataJson"),
+                fields.getOrDefault("name", "")
+        );
+        return result != null && result == 1L;
+    }
+
+    private void releaseBestEffort(String taskId, long observedLease) {
+        try {
+            scoreBand.releaseObservedScoreHold(taskId, observedLease);
+        } catch (RuntimeException ignored) {
+            // The short initialization lease remains the recovery boundary.
+        }
+    }
+
+    private static TaskCreationResult creation(
+            TaskCreationStatus status,
+            String reason
+    ) {
+        return new TaskCreationResult(status, reason);
+    }
+
+    @Override
+    public Map<String, TaskItemAppendResult> appendItems(
+            String taskId,
+            List<TaskItem> items
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (items == null) {
+            throw new IllegalArgumentException("items must be present");
+        }
+        LinkedHashMap<String, TaskItem> orderedItems = latestItems(items);
+        if (orderedItems.isEmpty()) {
+            return Map.of();
+        }
+
+        TaskAppendPolicy appendPolicy = loadAppendPolicy(taskId);
+        if (appendPolicy == null) {
+            return uniformResults(
+                    orderedItems.keySet(),
+                    TaskItemAppendStatus.NOT_FOUND
+            );
+        }
+        long nowMillis = redisTimeMillis();
+        var records = new LinkedHashMap<String, String>();
+        var dueMillis = new LinkedHashMap<String, Long>();
+        var results = new LinkedHashMap<String, TaskItemAppendResult>();
+        orderedItems.forEach((messageId, item) -> {
+            try {
+                MaterializedItem materialized = materialize(
+                        item,
+                        nowMillis
+                );
+                records.put(messageId, encodeItem(materialized));
+                dueMillis.put(messageId, initialDueMillis(materialized));
+            } catch (IllegalArgumentException | JacksonException error) {
+                results.put(
+                        messageId,
+                        new TaskItemAppendResult(
+                                TaskItemAppendStatus.INVALID,
+                                "TaskItem is invalid or not JSON serializable"
+                        )
+                );
+            }
+        });
+        if (records.isEmpty()) {
+            return orderedResults(orderedItems.keySet(), results);
+        }
+
+        long storedAt = TaskStorageEvent.start();
+        try {
+            commands().hset(itemsKey(taskId), records);
+            TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), records.size(), false);
+        } catch (RuntimeException error) {
+            TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), 0, true);
+            records.keySet().forEach(messageId -> results.put(
+                    messageId,
+                    new TaskItemAppendResult(TaskItemAppendStatus.RETRYABLE)
+            ));
+            return orderedResults(orderedItems.keySet(), results);
+        }
+
+        long initializedAt = TaskStorageEvent.start();
+        try {
+            itemScoreBand.initializeItemScores(
+                    taskId,
+                    dueMillis,
+                    appendPolicy.maxRetryTimes()
+            ).forEach((messageId, result) -> results.put(
+                    messageId,
+                    switch (result.status()) {
+                        case TRANSITIONED, NOOP ->
+                                new TaskItemAppendResult(
+                                        TaskItemAppendStatus.APPENDED
+                                );
+                        case INVALID -> new TaskItemAppendResult(
+                                TaskItemAppendStatus.INVALID
+                        );
+                        default -> new TaskItemAppendResult(
+                                TaskItemAppendStatus.RETRYABLE
+                        );
+                    }
+            ));
+            if (initializedAt != 0) TaskStorageEvent.items(initializedAt, "ITEM_INITIALIZED", taskId, dueMillis.keySet(),
+                    (int) results.values().stream().filter(r -> r.status() == TaskItemAppendStatus.APPENDED).count(), false);
+        } catch (RuntimeException error) {
+            TaskStorageEvent.items(initializedAt, "ITEM_INITIALIZED", taskId, dueMillis.keySet(), 0, true);
+            records.keySet().forEach(messageId -> results.put(
+                    messageId,
+                    new TaskItemAppendResult(TaskItemAppendStatus.RETRYABLE)
+            ));
+        }
+        return orderedResults(orderedItems.keySet(), results);
+    }
+
+    @Override
+    public Map<String, TaskItem> loadTaskItems(
+            String taskId,
+            List<String> messageIds
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (messageIds == null) {
+            throw new IllegalArgumentException(
+                    "messageIds must be present"
+            );
+        }
+        List<String> uniqueIds = new ArrayList<>(
+                new LinkedHashSet<>(messageIds)
+        );
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+        if (uniqueIds.stream().anyMatch(RedisTaskRuntime::isBlank)) {
+            throw new IllegalArgumentException(
+                    "messageIds must be non-blank"
+            );
+        }
+        List<KeyValue<String, String>> loaded = commands().hmget(
+                itemsKey(taskId),
+                uniqueIds.toArray(String[]::new)
+        );
+        LinkedHashMap<String, TaskItem> results = new LinkedHashMap<>();
+        for (int index = 0; index < uniqueIds.size(); index++) {
+            KeyValue<String, String> value = loaded.get(index);
+            results.put(
+                    uniqueIds.get(index),
+                    value.hasValue()
+                            ? decodeTaskItem(
+                                    uniqueIds.get(index),
+                                    value.getValue()
+                            )
+                            : null
+            );
+        }
+        return results;
+    }
+
+    @Override
+    public void storeTaskItemSuccessResults(
+            String taskId,
+            Map<String, TaskItemSuccessResult> results
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (results == null || results.size() > TaskItemScoreBandCore.MAX_ITEM_BATCH_SIZE) {
+            throw new IllegalArgumentException("results must contain at most 100 entries");
+        }
+        if (results.isEmpty()) {
+            return;
+        }
+        List<String> arguments = new ArrayList<>(results.size() * 2);
+        results.forEach((messageId, result) -> {
+            requireNonBlank(messageId, "messageId");
+            if (result == null) {
+                throw new IllegalArgumentException("result must be present");
+            }
+            arguments.add(messageId);
+            arguments.add(mapper.writeValueAsString(new TreeMap<>(Map.of(
+                    "code", "200", "opaqueResultPayload", result.opaqueResultPayload(),
+                    "tag", result.tag(), "observedAtMillis", result.observedAtMillis()))));
+        });
+        commands().eval(STORE_SUCCESS_RESULTS_SCRIPT, ScriptOutputType.INTEGER,
+                new String[]{resultsKey(taskId)}, arguments.toArray(String[]::new));
+    }
+
+    @Override
+    public void storeTaskItemFailedResults(
+            String taskId,
+            List<String> messageIds
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (messageIds == null) {
+            throw new IllegalArgumentException(
+                    "messageIds must be present"
+            );
+        }
+        List<String> uniqueIds = new ArrayList<>(
+                new LinkedHashSet<>(messageIds)
+        );
+        if (uniqueIds.isEmpty()) {
+            return;
+        }
+        if (uniqueIds.stream().anyMatch(RedisTaskRuntime::isBlank)) {
+            throw new IllegalArgumentException(
+                    "messageIds must be non-blank"
+            );
+        }
+        List<String> arguments = new ArrayList<>(uniqueIds.size() + 1);
+        arguments.add(encodeTaskItemResult(TaskItemResult.failed()));
+        arguments.addAll(uniqueIds);
+        commands().eval(
+                STORE_FAILED_RESULTS_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{resultsKey(taskId)},
+                arguments.toArray(String[]::new)
+        );
+    }
+
+    @Override
+    public Map<String, TaskItemResult> loadTaskItemResults(
+            String taskId,
+            List<String> messageIds
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (messageIds == null) {
+            throw new IllegalArgumentException(
+                    "messageIds must be present"
+            );
+        }
+        List<String> uniqueIds = new ArrayList<>(
+                new LinkedHashSet<>(messageIds)
+        );
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+        if (uniqueIds.stream().anyMatch(RedisTaskRuntime::isBlank)) {
+            throw new IllegalArgumentException(
+                    "messageIds must be non-blank"
+            );
+        }
+        List<KeyValue<String, String>> loaded = commands().hmget(
+                resultsKey(taskId),
+                uniqueIds.toArray(String[]::new)
+        );
+        var results = new LinkedHashMap<String, TaskItemResult>();
+        for (int index = 0; index < uniqueIds.size(); index++) {
+            String messageId = uniqueIds.get(index);
+            KeyValue<String, String> value = loaded.get(index);
+            results.put(
+                    messageId,
+                    value.hasValue()
+                            ? decodeTaskItemResult(value.getValue())
+                            : null
+            );
+        }
+        return results;
+    }
+
+    @Override
+    public TaskItemResultPage scanTaskItemResults(
+            String taskId,
+            String cursor,
+            int countHint
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (!isAsciiDecimal(cursor)) {
+            throw new IllegalArgumentException(
+                    "cursor must be decimal text"
+            );
+        }
+        if (countHint < 1
+                || countHint > MAX_RESULT_SCAN_COUNT_HINT) {
+            throw new IllegalArgumentException(
+                    "countHint must be in 1..1000"
+            );
+        }
+        MapScanCursor<String, String> page = commands().hscan(
+                resultsKey(taskId),
+                ScanCursor.of(cursor),
+                new ScanArgs().limit(countHint)
+        );
+        LinkedHashMap<String, TaskItemResult> results = new LinkedHashMap<>();
+        page.getMap().forEach((messageId, encoded) -> results.put(
+                messageId,
+                decodeTaskItemResult(encoded)
+        ));
+        return new TaskItemResultPage(
+                page.getCursor(),
+                results
+        );
+    }
+
+    private String encodeTaskItemResult(TaskItemResult result) {
+        try {
+            return mapper.writeValueAsString(result);
+        } catch (JacksonException error) {
+            throw new IllegalStateException(
+                    "TaskItem Result cannot be encoded",
+                    error
+            );
+        }
+    }
+
+    private TaskItemResult decodeTaskItemResult(String encoded) {
+        try {
+            JsonNode value = mapper.readTree(encoded);
+            if (value == null || !value.isObject()
+                    || !value.hasNonNull("code") || !value.get("code").isTextual()
+                    || !value.hasNonNull("opaqueResultPayload") || !value.get("opaqueResultPayload").isTextual()) {
+                throw new IllegalArgumentException("Result fields are invalid");
+            }
+            TaskItemResult result = new TaskItemResult(value.get("code").textValue(),
+                    value.get("opaqueResultPayload").textValue());
+            if (result.succeeded()) {
+                if (value.size() != 4 || !value.hasNonNull("tag") || !value.get("tag").isIntegralNumber()
+                        || !value.get("tag").canConvertToInt() || !value.hasNonNull("observedAtMillis")
+                        || !value.get("observedAtMillis").isIntegralNumber()
+                        || !value.get("observedAtMillis").canConvertToLong()) {
+                    throw new IllegalArgumentException("Result ordering is invalid");
+                }
+                new TaskItemSuccessResult(value.get("tag").intValue(),
+                        value.get("observedAtMillis").longValue(), result.opaqueResultPayload());
+            } else if (value.size() != 2) {
+                throw new IllegalArgumentException("Failed Result fields are invalid");
+            }
+            return result;
+        } catch (JacksonException | IllegalArgumentException error) {
+            throw new IllegalStateException("TaskItem Result is corrupt", error);
+        }
+    }
+
+    private TaskAppendPolicy loadAppendPolicy(String taskId) {
+        List<KeyValue<String, String>> fields = commands().hmget(
+                taskDescriptorKey(taskId),
+                "configJson"
+        );
+        if (fields.stream().allMatch(field -> !field.hasValue())) {
+            return null;
+        }
+        try {
+            if (fields.stream().anyMatch(field -> !field.hasValue())) {
+                throw new IllegalArgumentException(
+                        "Task append policy fields are incomplete"
+                );
+            }
+            JsonNode config = mapper.readTree(fields.get(0).getValue());
+            JsonNode value = config.get("maxRetryTimes");
+            if (value == null
+                    || !value.isTextual()
+                    || !isAsciiDecimal(value.textValue())) {
+                throw new IllegalArgumentException(
+                        "maxRetryTimes must be decimal text"
+                );
+            }
+            int decoded = Integer.parseInt(value.textValue());
+            if (decoded < 0 || decoded > 98) {
+                throw new IllegalArgumentException(
+                        "maxRetryTimes must be in 0..98"
+                );
+            }
+            return new TaskAppendPolicy(decoded);
+        } catch (JacksonException | IllegalArgumentException error) {
+            throw new IllegalStateException(
+                    "Task scheduling declaration is corrupt",
+                    error
+            );
+        }
+    }
+
+    private MaterializedItem materialize(
+            TaskItem item,
+            long nowMillis
+    ) {
+        rejectNonFiniteNumbers(item.payload());
+        long expiry;
+        if (item.expireAtMillis() == null) {
+            try {
+                expiry = Math.addExact(
+                        item.createdAtMillis(),
+                        DEFAULT_ITEM_TTL_MILLIS
+                );
+            } catch (ArithmeticException error) {
+                throw new IllegalArgumentException("expiry overflow", error);
+            }
+        } else {
+            expiry = item.expireAtMillis();
+        }
+        if (nowMillis >= expiry) {
+            throw new IllegalArgumentException("TaskItem is already expired");
+        }
+        return new MaterializedItem(item, expiry);
+    }
+
+    private String encodeItem(MaterializedItem item)
+            throws JacksonException {
+        TaskItem record = item.record();
+        var payload = new TreeMap<String, Object>();
+        payload.put("eventCode", record.eventCode());
+        payload.put("payload", normalizeJsonValue(record.payload()));
+        payload.put("priority", record.priority());
+        payload.put("createdAtMillis", record.createdAtMillis());
+        payload.put("expireAtMillis", item.expireAtMillis());
+        payload.put("workerSelector", record.workerSelector());
+        return mapper.writeValueAsString(payload);
+    }
+
+    private TaskItem decodeTaskItem(String messageId, String encoded) {
+        try {
+            JsonNode item = mapper.readTree(encoded);
+            if (item == null || !item.isObject()
+                    || !Set.copyOf(item.propertyNames()).equals(Set.of(
+                            "eventCode",
+                            "payload",
+                            "priority",
+                            "createdAtMillis",
+                            "expireAtMillis",
+                            "workerSelector"
+                    ))) {
+                return null;
+            }
+            JsonNode eventCode = item.get("eventCode");
+            JsonNode payload = item.get("payload");
+            JsonNode priority = item.get("priority");
+            JsonNode createdAt = item.get("createdAtMillis");
+            JsonNode expireAt = item.get("expireAtMillis");
+            JsonNode selector = item.get("workerSelector");
+            if (eventCode == null || !eventCode.isTextual()
+                    || payload == null || !payload.isObject()
+                    || priority == null || !priority.isIntegralNumber()
+                    || createdAt == null || !createdAt.isIntegralNumber()
+                    || expireAt == null || !expireAt.isIntegralNumber()
+                    || selector == null || !selector.isObject()) {
+                return null;
+            }
+            Map<String, Object> payloadMap = mapper.convertValue(
+                    payload,
+                    new TypeReference<>() {
+                    }
+            );
+            Map<String, Object> expression = mapper.convertValue(selector, new TypeReference<>() { });
+            return new TaskItem(
+                    messageId,
+                    eventCode.textValue(),
+                    createdAt.longValue(),
+                    payloadMap,
+                    priority.intValue(),
+                    expireAt.longValue(),
+                    WorkerQuery.parse(expression)
+            );
+        } catch (JacksonException | IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    private static long initialDueMillis(MaterializedItem item) {
+        return Math.max(
+                0,
+                item.record().createdAtMillis()
+                        - (long) item.record().priority()
+                        * ITEM_PRIORITY_STEP_MILLIS
+        );
+    }
+
+    private static LinkedHashMap<String, TaskItem> latestItems(
+            List<TaskItem> items
+    ) {
+        var latest = new LinkedHashMap<String, TaskItem>();
+        for (TaskItem item : items) {
+            if (item == null) {
+                throw new IllegalArgumentException(
+                        "TaskItem must be present"
+                );
+            }
+            latest.put(item.messageId(), item);
+        }
+        return latest;
+    }
+
+    private static Map<String, TaskItemAppendResult> uniformResults(
+            Set<String> messageIds,
+            TaskItemAppendStatus status
+    ) {
+        var results = new LinkedHashMap<String, TaskItemAppendResult>();
+        messageIds.forEach(messageId -> results.put(
+                messageId,
+                new TaskItemAppendResult(status)
+        ));
+        return results;
+    }
+
+    private static Map<String, TaskItemAppendResult> orderedResults(
+            Set<String> messageIds,
+            Map<String, TaskItemAppendResult> results
+    ) {
+        var ordered = new LinkedHashMap<String, TaskItemAppendResult>();
+        messageIds.forEach(messageId -> ordered.put(
+                messageId,
+                results.get(messageId)
+        ));
+        return ordered;
+    }
+
+    private long redisTimeMillis() {
+        List<String> parts = commands().time();
+        return Long.parseLong(parts.get(0)) * 1_000
+                + Long.parseLong(parts.get(1)) / 1_000;
+    }
+
+    private RedisCommands<String, String> commands() {
+        return connection().sync();
+    }
+
+    private StatefulRedisConnection<String, String> connection() {
+        StatefulRedisConnection<String, String> current = connection;
+        if (current == null || !current.isOpen()) {
+            synchronized (this) {
+                current = connection;
+                if (current == null || !current.isOpen()) {
+                    current = redisClient.connect(StringCodec.UTF8);
+                    connection = current;
+                }
+            }
+        }
+        return current;
+    }
+
+    @Override
+    public void close() {
+        StatefulRedisConnection<String, String> current = connection;
+        if (current != null) {
+            current.close();
+        }
+    }
+
+    private String taskDescriptorKey(String taskId) {
+        return keyspace.base() + ":task:" + taskId + ":descriptor";
+    }
+
+    private String itemsKey(String taskId) {
+        return keyspace.base() + ":task:" + taskId + ":items";
+    }
+
+    private String resultsKey(String taskId) {
+        return keyspace.base() + ":task:" + taskId + ":results";
+    }
+
+    private static KernelOperationNotImplementedException notImplemented(
+            String operationName
+    ) {
+        return new KernelOperationNotImplementedException(
+                "TaskRuntime",
+                operationName
+        );
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        if (isBlank(value)) {
+            throw new IllegalArgumentException(name + " must be non-blank");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static boolean isAsciiDecimal(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void rejectNonFiniteNumbers(Object value) {
+        if (value instanceof Double number && !Double.isFinite(number)) {
+            throw new IllegalArgumentException(
+                    "JSON numbers must be finite"
+            );
+        }
+        if (value instanceof Float number && !Float.isFinite(number)) {
+            throw new IllegalArgumentException(
+                    "JSON numbers must be finite"
+            );
+        }
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> {
+                if (!(key instanceof String)) {
+                    throw new IllegalArgumentException(
+                            "JSON object keys must be strings"
+                    );
+                }
+                rejectNonFiniteNumbers(child);
+            });
+        } else if (value instanceof Iterable<?> iterable) {
+            iterable.forEach(RedisTaskRuntime::rejectNonFiniteNumbers);
+        } else if (value != null
+                && !(value instanceof String)
+                && !(value instanceof Number)
+                && !(value instanceof Boolean)) {
+            throw new IllegalArgumentException(
+                    "Value is not JSON serializable"
+            );
+        }
+    }
+
+    private static Object normalizeJsonValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var normalized = new TreeMap<String, Object>();
+            map.forEach((key, child) -> normalized.put(
+                    (String) key,
+                    normalizeJsonValue(child)
+            ));
+            return normalized;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            var normalized = new ArrayList<>();
+            iterable.forEach(
+                    child -> normalized.add(normalizeJsonValue(child))
+            );
+            return normalized;
+        }
+        return value;
+    }
+
+    private record MaterializedItem(
+            TaskItem record,
+            long expireAtMillis
+    ) {
+    }
+
+    private record TaskAppendPolicy(
+            int maxRetryTimes
+    ) {
+    }
+}

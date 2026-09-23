@@ -1,0 +1,57 @@
+plugins {
+    id 'java-library'
+    id 'application'
+}
+
+base {
+    archivesName.set('xa-mass-worker-simulator-jvm')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    applicationName = 'xa-mass-worker-simulator'
+    mainClass = 'com.xa.mass.workersimulator.WorkerSimulatorMain'
+}
+
+dependencies {
+    implementation project(':transport:worker-core')
+    implementation project(':transport:worker-delivery-contract')
+    implementation project(':transport:java-worker')
+    implementation 'com.google.code.gson:gson:2.14.0'
+    implementation 'com.googlecode.libphonenumber:libphonenumber:9.0.31'
+    implementation 'com.googlecode.libphonenumber:carrier:2.31'
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testImplementation 'org.mockito:mockito-core:5.20.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+distributions {
+    main {
+        contents {
+            from('config') {
+                include 'lab.json', 'sms.json', 'messages.json', 'products.json'
+                into 'config'
+            }
+        }
+    }
+}
+
+tasks.register('runWorkerSimulator', JavaExec) {
+    description = 'Runs the standalone Worker Simulator.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    workingDir = rootProject.projectDir
+}

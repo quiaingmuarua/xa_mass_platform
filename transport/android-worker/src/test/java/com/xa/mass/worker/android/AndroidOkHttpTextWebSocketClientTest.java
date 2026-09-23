@@ -1,0 +1,595 @@
+package com.xa.mass.worker.android;
+
+import android.os.Handler;
+import android.os.HandlerThread;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.shadows.ShadowSystemClock;
+
+import java.io.IOException;
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import okhttp3.Request;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
+
+@RunWith(RobolectricTestRunner.class)
+public class AndroidOkHttpTextWebSocketClientTest {
+
+    private final FakeConnector connector = new FakeConnector();
+    private final RecordingListener listener = new RecordingListener();
+    private HandlerThread networkThread;
+    private AndroidOkHttpTextWebSocketClient client;
+
+    @Before
+    public void setUp() {
+        networkThread = new HandlerThread("android-worker-test-network");
+        networkThread.start();
+        client = new AndroidOkHttpTextWebSocketClient(
+                connector,
+                networkThread.getLooper(),
+                URI.create("ws://127.0.0.1:18084/worker"),
+                reconnectPolicy()
+        );
+    }
+
+    @After
+    public void tearDown() {
+        client.close();
+        networkThread.quitSafely();
+    }
+
+    @Test
+    public void forwardsCallbacksDirectlyInProtocolOrder()
+            throws Exception {
+        String callbackThread = Thread.currentThread().getName();
+        client.start(listener);
+        client.start(listener);
+        FakeConnection connection = awaitConnection(0);
+
+        connection.open();
+        connection.text("command");
+
+        await(() -> listener.events.size() == 2);
+        assertEquals(
+                List.of("open", "message:command"),
+                listener.events
+        );
+        assertEquals(
+                List.of(callbackThread, callbackThread),
+                listener.callbackThreads
+        );
+        assertEquals(
+                URI.create("ws://127.0.0.1:18084/worker"),
+                connection.uri
+        );
+        assertTrue(client.send("result"));
+        assertEquals(List.of("result"), connection.socket.sent);
+    }
+
+    @Test
+    public void reconnectsAndIgnoresSupersededConnectionCallbacks()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+
+        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+        await(() -> first.socket.closeCode == 1007);
+        advanceReconnectClock();
+        FakeConnection second = awaitConnection(1);
+        second.open();
+        await(() -> listener.opens.get() == 2);
+
+        first.text("stale");
+        first.closed();
+        first.failure(new IOException("late"));
+        second.text("current");
+        await(() -> listener.events.contains("message:current"));
+        advanceReconnectClock();
+
+        assertFalse(listener.events.contains("message:stale"));
+        assertEquals(2, listener.opens.get());
+        assertEquals(0, listener.terminations.get());
+        assertEquals(2, connector.connections.size());
+    }
+
+    @Test
+    public void closingWaitsForTerminalCallbackBeforeReconnect()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+
+        first.closing();
+        await(() -> first.socket.closeCode == 1000);
+        advanceReconnectClock();
+        assertEquals(1, connector.connections.size());
+
+        first.closed();
+        advanceReconnectClock();
+        awaitConnection(1);
+        first.closed();
+        first.failure(new IOException("duplicate terminal callback"));
+        advanceReconnectClock();
+
+        assertEquals(2, connector.connections.size());
+        assertEquals(0, listener.terminations.get());
+    }
+
+    @Test
+    public void rejectedSendReconnectsWithoutCachingMessage()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+        first.socket.rejectNextSend = true;
+
+        assertFalse(client.send("result"));
+        client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+        await(() -> first.socket.closeCode == 1011);
+        advanceReconnectClock();
+        FakeConnection second = awaitConnection(1);
+        assertFalse(client.send("result"));
+        second.open();
+        await(() -> listener.opens.get() == 2);
+
+        assertTrue(first.socket.sent.isEmpty());
+        assertTrue(second.socket.sent.isEmpty());
+        assertEquals(1011, first.socket.closeCode);
+    }
+
+    @Test
+    public void binaryFrameIsRejectedInsideTheWebSocketClient()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+
+        first.binary();
+        await(() -> first.socket.closeCode == 1003);
+        advanceReconnectClock();
+        awaitConnection(1);
+
+        assertEquals(1003, first.socket.closeCode);
+        assertFalse(listener.events.contains("binary"));
+    }
+
+    @Test
+    public void failureReconnectsWithoutRuntimeCallback()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+
+        first.failure(new IllegalStateException("scripted"));
+        first.closed();
+
+        await(() -> !client.send("probe"));
+        advanceReconnectClock();
+        awaitConnection(1);
+
+        assertEquals(0, listener.terminations.get());
+        assertEquals(List.of("open"), listener.events);
+    }
+
+    @Test
+    public void closeIsIdempotentAndSuppressesLaterCallbacks()
+            throws Exception {
+        client.start(listener);
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        await(() -> listener.opens.get() == 1);
+
+        client.close();
+        int eventCount = listener.events.size();
+        connection.text("late");
+        Thread.sleep(30);
+        client.close();
+
+        assertFalse(client.send("late"));
+        assertEquals(eventCount, listener.events.size());
+        assertTrue(connection.socket.cancelled);
+        assertTrue(networkThread.isAlive());
+        assertEquals(0, listener.terminations.get());
+    }
+
+    @Test
+    public void slowCallbackDoesNotBlockSharedNetworkLooper()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch networkTask = new CountDownLatch(1);
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                entered.countDown();
+                try {
+                    release.await(3, TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        });
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        ExecutorService callback = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> handling = callback.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            new Handler(networkThread.getLooper()).post(
+                    networkTask::countDown
+            );
+            assertTrue(networkTask.await(1, TimeUnit.SECONDS));
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            callback.shutdownNow();
+        }
+    }
+
+    @Test
+    public void externalCloseWaitsForCurrentCallback() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        client.start(blockingMessageListener(entered, release));
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> handling = callers.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            Future<?> closing = callers.submit(client::close);
+            Thread.sleep(50L);
+            assertFalse(closing.isDone());
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+            closing.get(3, TimeUnit.SECONDS);
+            assertTrue(connection.socket.cancelled);
+        } finally {
+            release.countDown();
+            callers.shutdownNow();
+        }
+    }
+
+    @Test
+    public void callbackMayCloseClientReentrantly() throws Exception {
+        CountDownLatch closedFromCallback = new CountDownLatch(1);
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                client.close();
+                closedFromCallback.countDown();
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        });
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+
+        connection.text("close");
+
+        assertTrue(closedFromCallback.await(1, TimeUnit.SECONDS));
+        assertTrue(connection.socket.cancelled);
+    }
+
+    @Test
+    public void closeBeforeQueuedStartSuppressesConnection()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Handler blocker = new Handler(networkThread.getLooper());
+        blocker.post(() -> {
+            entered.countDown();
+            try {
+                release.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+        try {
+            client.start(listener);
+            client.close();
+        } finally {
+            release.countDown();
+        }
+        Thread.sleep(30);
+
+        assertEquals(0, connector.connections.size());
+        assertFalse(client.send("late"));
+        assertTrue(networkThread.isAlive());
+    }
+
+    @Test
+    public void terminatesEndpointAfterBoundedUnstableAttempts()
+            throws Exception {
+        client.start(listener);
+        awaitConnection(0).failure(new IOException("one"));
+        advanceReconnectClock();
+        awaitConnection(1).failure(new IOException("two"));
+        advanceReconnectClock();
+        awaitConnection(2).failure(new IOException("three"));
+
+        await(() -> listener.terminations.get() == 1);
+        FakeConnection terminated = awaitConnection(2);
+        terminated.open();
+        terminated.text("late");
+        advanceReconnectClock();
+        assertEquals(3, connector.connections.size());
+        assertEquals(1, listener.terminations.get());
+        assertEquals(0, listener.opens.get());
+        assertFalse(listener.events.contains("message:late"));
+        assertFalse(client.send("late"));
+    }
+
+    @Test
+    public void stableConnectionResetsTheUnstableAttemptCount()
+            throws Exception {
+        client.start(listener);
+        awaitConnection(0).failure(new IOException("one"));
+        advanceReconnectClock();
+        FakeConnection stable = awaitConnection(1);
+        stable.open();
+        await(() -> listener.opens.get() == 1);
+        Thread.sleep(120);
+        ShadowSystemClock.advanceBy(Duration.ofMillis(120));
+        Thread.sleep(20);
+        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+        advanceReconnectClock();
+
+        awaitConnection(2).failure(new IOException("three"));
+        advanceReconnectClock();
+        awaitConnection(3).failure(new IOException("four"));
+        await(() -> listener.terminations.get() == 1);
+
+        assertEquals(4, connector.connections.size());
+    }
+
+    private static TextMessageReconnectPolicy reconnectPolicy() {
+        return TextMessageReconnectPolicy.of(
+                3,
+                Duration.ofMillis(10),
+                Duration.ofMillis(100)
+        );
+    }
+
+    private static TextMessageClient.Listener blockingMessageListener(
+            CountDownLatch entered,
+            CountDownLatch release
+    ) {
+        return new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                entered.countDown();
+                try {
+                    release.await(3, TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        };
+    }
+
+    private FakeConnection awaitConnection(int index) throws Exception {
+        await(() -> connector.connections.size() > index);
+        return connector.connections.get(index);
+    }
+
+    private static void advanceReconnectClock()
+            throws InterruptedException {
+        Thread.sleep(10);
+        ShadowSystemClock.advanceBy(Duration.ofMillis(20));
+    }
+
+    private static void await(Check check) throws Exception {
+        long deadline = System.nanoTime()
+                + TimeUnit.SECONDS.toNanos(3);
+        while (!check.value() && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+        assertTrue(check.value());
+    }
+
+    @FunctionalInterface
+    private interface Check {
+
+        boolean value();
+    }
+
+    private static final class RecordingListener
+            implements TextMessageClient.Listener {
+
+        private final AtomicInteger opens = new AtomicInteger();
+        private final AtomicInteger terminations = new AtomicInteger();
+        private final List<String> events =
+                new CopyOnWriteArrayList<>();
+        private final List<String> callbackThreads =
+                new CopyOnWriteArrayList<>();
+
+        @Override
+        public void onOpen() {
+            opens.incrementAndGet();
+            record("open");
+        }
+
+        @Override
+        public void onMessage(String message) {
+            record("message:" + message);
+        }
+
+        @Override
+        public void onEndpointTerminated() {
+            terminations.incrementAndGet();
+            record("terminated");
+        }
+
+        private void record(String event) {
+            events.add(event);
+            callbackThreads.add(Thread.currentThread().getName());
+        }
+    }
+
+    private static final class FakeConnector
+            implements AndroidOkHttpTextWebSocketClient
+            .WebSocketConnector {
+
+        private final List<FakeConnection> connections =
+                new CopyOnWriteArrayList<>();
+
+        @Override
+        public WebSocket connect(
+                URI uri,
+                WebSocketListener listener
+        ) {
+            FakeConnection connection =
+                    new FakeConnection(uri, listener);
+            connections.add(connection);
+            return connection.socket;
+        }
+    }
+
+    private static final class FakeConnection {
+
+        private final URI uri;
+        private final WebSocketListener listener;
+        private final FakeWebSocket socket = new FakeWebSocket();
+
+        private FakeConnection(
+                URI uri,
+                WebSocketListener listener
+        ) {
+            this.uri = uri;
+            this.listener = listener;
+        }
+
+        private void open() {
+            listener.onOpen(socket, null);
+        }
+
+        private void text(String message) {
+            listener.onMessage(socket, message);
+        }
+
+        private void binary() {
+            listener.onMessage(socket, ByteString.of((byte) 1));
+        }
+
+        private void failure(Throwable error) {
+            listener.onFailure(socket, error, null);
+        }
+
+        private void closing() {
+            listener.onClosing(socket, 1000, "closing");
+        }
+
+        private void closed() {
+            listener.onClosed(socket, 1006, "closed");
+        }
+    }
+
+    private static final class FakeWebSocket implements WebSocket {
+
+        private final List<String> sent =
+                new CopyOnWriteArrayList<>();
+        private volatile boolean rejectNextSend;
+        private volatile boolean cancelled;
+        private volatile int closeCode = -1;
+
+        @Override
+        public Request request() {
+            return new Request.Builder()
+                    .url("http://127.0.0.1/")
+                    .build();
+        }
+
+        @Override
+        public long queueSize() {
+            return 0;
+        }
+
+        @Override
+        public boolean send(String text) {
+            if (rejectNextSend) {
+                rejectNextSend = false;
+                return false;
+            }
+            sent.add(text);
+            return true;
+        }
+
+        @Override
+        public boolean send(ByteString bytes) {
+            return false;
+        }
+
+        @Override
+        public boolean close(int code, String reason) {
+            closeCode = code;
+            return true;
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+        }
+    }
+}

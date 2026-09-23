@@ -1,0 +1,45 @@
+package com.xa.mass.server.delivery;
+
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.server.delivery.directcall.DirectCallService;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+public class WorkerDeliveryConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(WorkerDeliveryCodec.class)
+    WorkerDeliveryCodec workerDeliveryCodec() {
+        return new WorkerDeliveryCodec();
+    }
+
+    @Bean
+    WorkerDeliveryService workerDeliveryService(
+            WorkerCommandRuntime commandRuntime,
+            TaskEvidenceRuntime taskEvidence,
+            WorkerResourceCatalog workerCatalog,
+            DirectCallService directCalls,
+            WorkerServiceabilityRuntime serviceability,
+            WorkerProperties workerProperties,
+            WorkerSchedulingService scheduling
+    ) {
+        return new WorkerDeliveryService(
+                commandRuntime,
+                taskEvidence,
+                workerCatalog,
+                directCalls,
+                serviceability,
+                workerProperties,
+                scheduling
+        );
+    }
+}

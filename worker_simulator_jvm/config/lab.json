@@ -1,0 +1,6 @@
+{
+  "workerGroups": {
+    "scenario-phone-number-workers": {},
+    "scenario-string-utils-workers": {}
+  }
+}

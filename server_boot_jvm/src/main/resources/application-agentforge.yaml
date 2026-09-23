@@ -1,0 +1,37 @@
+server:
+  port: ${XA_MASS_AGENTFORGE_SERVER_PORT:18182}
+
+xa:
+  mass:
+    project-assembly:
+      projects: []
+    kernel-pacer:
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}
+    redis:
+      scope: ${XA_MASS_REDIS_SCOPE:profile_agentforge}
+    worker-delivery:
+      adapter:
+        instances:
+          agentforge-websocket:
+            type: WEBSOCKET
+            listen-host: 127.0.0.1
+            listen-port: ${XA_MASS_AGENTFORGE_ADAPTER_PORT:18183}
+            command-backoff: 100ms
+            command-consume-limit: 100
+            command-retry-capacity: 1000
+            report-backoff: 1s
+            report-queue-capacity: 1000
+            reconnect-verification-retention: 10m
+            maximum-disconnected-workers: 100000
+            maximum-encoded-properties-bytes: 67108864
+            send-time-limit: 5s
+            shutdown-timeout: 5s
+    worker-endpoints:
+      defaults:
+        WEBSOCKET: agentforge-websocket
+      endpoints:
+        agentforge-websocket:
+          transport-type: WEBSOCKET
+          public-uri: ws://127.0.0.1:${XA_MASS_AGENTFORGE_ADAPTER_PORT:18183}/api/v1/worker-delivery/websocket
+    worker-assembly:
+      group-config-json: '{}'

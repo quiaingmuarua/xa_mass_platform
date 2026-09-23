@@ -1,0 +1,71 @@
+package com.xa.mass.kernel.pacer.dispatch;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class DispatchConvergenceRuntimeTest {
+
+    @Test
+    void keepsFiniteAssignmentPresetValuesInsideTheDispatchPackage() {
+        assertAssignment(PolicyPreset.DEFAULT, 100, 50);
+        assertAssignment(PolicyPreset.SERVICEABILITY_DEFAULT, 100, 50);
+        assertAssignment(PolicyPreset.SCENARIO_LAB, 20, 20);
+        assertAssignment(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 100, 50);
+    }
+
+    @Test
+    void keepsFiniteServiceabilityPresetValuesInsideTheDispatchPackage() {
+        assertNull(DispatchConvergenceRuntime.serviceabilityConfigForPreset(
+                PolicyPreset.DEFAULT,
+                0
+        ));
+
+        assertServiceability(PolicyPreset.SERVICEABILITY_DEFAULT, 15_000, 60_000);
+        assertServiceability(PolicyPreset.SCENARIO_LAB, 15_000, 60_000);
+        assertServiceability(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 10, 10);
+    }
+
+    private static void assertAssignment(
+            PolicyPreset preset,
+            long expectedInterval,
+            long expectedDispatchInterval
+    ) {
+        AssignmentDispatchConfig config =
+                DispatchConvergenceRuntime.assignmentConfigForPreset(preset);
+        assertEquals(
+                expectedInterval,
+                config.taskInitializationIntervalMillis()
+        );
+        assertEquals(
+                expectedDispatchInterval,
+                config.taskDispatchIntervalMillis()
+        );
+    }
+
+    private static void assertServiceability(
+            PolicyPreset preset,
+            long expectedRecheckDelay,
+            long expectedHotStaleAfter
+    ) {
+        WorkerServiceabilityDispatchConfig config =
+                DispatchConvergenceRuntime.serviceabilityConfigForPreset(
+                        preset,
+                        12_300
+                );
+        assertEquals(12_300, config.hotEligibilityFloorMillis());
+        assertEquals(1_000, config.intervalMillis());
+        assertEquals(
+                expectedRecheckDelay,
+                config.recheckDelayMillis()
+        );
+        assertEquals(expectedHotStaleAfter, config.hotProbeStaleAfterMillis());
+        assertEquals(
+                List.of("system-polling"),
+                config.probeExcludedEndpointManagerIds()
+        );
+    }
+}

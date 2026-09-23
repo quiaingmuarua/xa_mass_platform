@@ -1,0 +1,725 @@
+package com.xa.mass.server.delivery.application;
+
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_TASK_OUTCOME_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_DELIVERY_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_PROPERTIES_OBSERVED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SERVER_WORKER_POLL_OBSERVED;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+
+import com.xa.mass.server.delivery.DeliveryStageEvent;
+
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.server.delivery.directcall.DirectCallService;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
+import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.WorkerProperties.MutationResult;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+public final class WorkerDeliveryService {
+
+    public static final int MAX_ADAPTER_RESULT_BATCH_SIZE = 100;
+
+    private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
+    private static final String SERVICEABILITY_EVENT =
+            "platform.adapter.worker-connections.snapshot";
+    private static final int MAX_PROPERTIES_REPORT_BYTES = 1_000_000;
+    private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
+    private static final String SERVICEABILITY_FORWARD_PREFIX =
+            "worker-serviceability:v1:";
+    private static final int SERVICEABILITY_PROBE_LIMIT = 100;
+    private static final long SERVICEABILITY_COMMAND_VALIDITY_MILLIS = 5_000L;
+
+    private static final System.Logger LOGGER = System.getLogger(
+            WorkerDeliveryService.class.getName()
+    );
+
+    private final WorkerCommandRuntime commandRuntime;
+    private final TaskEvidenceRuntime taskEvidence;
+    private final WorkerResourceCatalog workerCatalog;
+    private final DirectCallService directCalls;
+    private final WorkerServiceabilityRuntime serviceability;
+    private final WorkerProperties workerProperties;
+    private final WorkerSchedulingService scheduling;
+
+    public WorkerDeliveryService(
+            WorkerCommandRuntime commandRuntime,
+            TaskEvidenceRuntime taskEvidence,
+            WorkerResourceCatalog workerCatalog,
+            DirectCallService directCalls,
+            WorkerServiceabilityRuntime serviceability,
+            WorkerProperties workerProperties,
+            WorkerSchedulingService scheduling
+    ) {
+        this.commandRuntime = commandRuntime;
+        this.taskEvidence = taskEvidence;
+        this.workerCatalog = workerCatalog;
+        this.directCalls = directCalls;
+        this.serviceability = serviceability;
+        this.workerProperties = Objects.requireNonNull(workerProperties, "workerProperties");
+        this.scheduling = Objects.requireNonNull(scheduling, "scheduling");
+    }
+
+    public DeliveryCommand pollWorkerCommand(
+            String endpointManagerId,
+            String workerId
+    ) {
+        requirePointBinding(endpointManagerId, workerId);
+        observePolling(workerId);
+        try {
+            DeliveryCommand command = commandRuntime.consumeWorkerCommand(
+                    endpointManagerId,
+                    workerId
+            );
+            if (command == null
+                    || command.executeBeforeMillis()
+                    <= System.currentTimeMillis()) {
+                return null;
+            }
+            return command;
+        } catch (RuntimeException error) {
+            throw unavailable("workerDelivery.pollCommand", error);
+        }
+    }
+
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
+            String endpointManagerId,
+            int limit
+    ) {
+        String operation = "workerDelivery.consumeCommands";
+        requireAdapterBatchIdentity(endpointManagerId, operation);
+        List<DeliveryCommand> adapterCommands;
+        try {
+            adapterCommands = directCalls.consumeAdapterCommands(
+                    endpointManagerId,
+                    limit
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
+        }
+
+        int remaining = limit - adapterCommands.size();
+        Map<String, DeliveryCommand> workerCommands = Map.of();
+        RuntimeException workerSourceFailure = null;
+        if (remaining > 0) {
+            var consumeEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.COMMAND_CONSUME, remaining);
+            try {
+                workerCommands = activeCommands(
+                        commandRuntime.consumeWorkerCommands(
+                                endpointManagerId,
+                                remaining
+                        )
+                );
+                if (consumeEvent != null) {
+                    consumeEvent.batchSize = workerCommands.size();
+                    consumeEvent.failed = false;
+                }
+            } catch (RuntimeException error) {
+                workerSourceFailure = error;
+                workerCommands = Map.of();
+            } finally {
+                DeliveryStageEvent.finish(consumeEvent);
+            }
+        }
+        remaining -= workerCommands.size();
+        DeliveryCommand serviceabilityCommand = remaining > 0
+                ? consumeServiceabilityCommand(endpointManagerId)
+                : null;
+        if (workerSourceFailure != null) {
+            if (adapterCommands.isEmpty()
+                    && serviceabilityCommand == null) {
+                if (workerSourceFailure instanceof ServerException serverError) {
+                    throw serverError;
+                }
+                throw unavailable(operation, workerSourceFailure);
+            }
+            logLowerPriorityFailure(
+                    "workerDelivery.consumeWorkerCommands",
+                    endpointManagerId,
+                    workerSourceFailure,
+                    "Continuing with already-consumed higher-priority Commands"
+            );
+        }
+        return combineCommands(
+                adapterCommands,
+                workerCommands,
+                serviceabilityCommand
+        );
+    }
+
+    private DeliveryCommand consumeServiceabilityCommand(
+            String endpointManagerId
+    ) {
+        List<String> workerIds;
+        try {
+            workerIds = serviceability.consumeProbeRequests(
+                    endpointManagerId,
+                    SERVICEABILITY_PROBE_LIMIT
+            );
+        } catch (RuntimeException error) {
+            logLowerPriorityFailure(
+                    "workerDelivery.consumeServiceabilityCommand",
+                    endpointManagerId,
+                    error,
+                    "Continuing without a Serviceability Command"
+            );
+            return null;
+        }
+        if (workerIds.isEmpty()) {
+            return null;
+        }
+        long checkStartedAtMillis = System.currentTimeMillis();
+        return DeliveryCommand.create(
+                DeliveryEndpoint.KERNEL,
+                DeliveryEndpoint.ADAPTER,
+                SERVICEABILITY_EVENT,
+                Math.addExact(
+                        checkStartedAtMillis,
+                        SERVICEABILITY_COMMAND_VALIDITY_MILLIS
+                ),
+                Jsons.toJson(Map.of("workerIds", workerIds)),
+                SERVICEABILITY_FORWARD_PREFIX + checkStartedAtMillis
+        );
+    }
+
+    private static Map<String, DeliveryCommand> activeCommands(
+            Map<String, DeliveryCommand> commands
+    ) {
+        long nowMillis = System.currentTimeMillis();
+        Map<String, DeliveryCommand> active = new LinkedHashMap<>();
+        commands.forEach((workerId, command) -> {
+            if (command.executeBeforeMillis() > nowMillis) {
+                active.put(workerId, command);
+            }
+        });
+        return active;
+    }
+
+    private static Map<String, DeliveryCommand> combineCommands(
+            List<DeliveryCommand> adapterCommands,
+            Map<String, DeliveryCommand> workerCommands,
+            DeliveryCommand serviceabilityCommand
+    ) {
+        Map<String, DeliveryCommand> combined = new LinkedHashMap<>();
+        Set<String> occupied = new HashSet<>(workerCommands.keySet());
+        int ordinal = 0;
+        for (DeliveryCommand command : adapterCommands) {
+            String entryKey;
+            do {
+                entryKey = OPAQUE_COMMAND_ENTRY_PREFIX + ordinal++;
+            } while (occupied.contains(entryKey));
+            occupied.add(entryKey);
+            combined.put(entryKey, command);
+        }
+        combined.putAll(workerCommands);
+        if (serviceabilityCommand != null) {
+            String entryKey;
+            do {
+                entryKey = OPAQUE_COMMAND_ENTRY_PREFIX + ordinal++;
+            } while (occupied.contains(entryKey));
+            combined.put(entryKey, serviceabilityCommand);
+        }
+        return Collections.unmodifiableMap(combined);
+    }
+
+    private static void logLowerPriorityFailure(
+            String operation,
+            String endpointManagerId,
+            RuntimeException error,
+            String disposition
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "operation={0} endpointManagerId={1} failureType={2} "
+                        + "disposition={3}",
+                operation,
+                endpointManagerId,
+                error.getClass().getName(),
+                disposition
+        );
+    }
+
+    public void appendWorkerResult(
+            String endpointManagerId,
+            String workerId,
+            DeliveryReport result
+    ) {
+        String operation = "workerDelivery.appendWorkerResult";
+        requirePointBinding(endpointManagerId, workerId);
+        TaskEvidenceType evidenceType = taskEvidenceType(endpointManagerId, result);
+        if (result.src() != DeliveryEndpoint.WORKER
+                || !workerId.equals(result.sourceId())
+                || evidenceType == null) {
+            throw invalid(operation, "Worker report must be a supported TASK evidence event");
+        }
+        appendTaskEvidence(
+                evidenceType,
+                List.of(result),
+                operation
+        );
+    }
+
+    public WorkerResultAppendCounts appendAdapterReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports
+    ) {
+        String operation = "workerDelivery.appendAdapterReports";
+        requireAdapterBatchIdentity(endpointManagerId, operation);
+        List<DeliveryReport> batch = requireHomogeneousReportBatch(
+                reports,
+                operation
+        );
+        WorkerResultAppendCounts counts = switch (batch.get(0).dst()) {
+            case TASK -> appendAdapterTaskReports(
+                    endpointManagerId,
+                    batch,
+                    operation
+            );
+            case SERVER -> appendAdapterServerReports(
+                    endpointManagerId,
+                    batch,
+                    operation
+            );
+            case SYSTEM -> appendAdapterPropertiesReports(endpointManagerId, batch);
+            case KERNEL -> appendAdapterKernelReports(
+                    endpointManagerId,
+                    batch,
+                    operation
+            );
+            case ADAPTER, WORKER -> throw invalid(
+                    operation,
+                    "Adapter Report destination is unsupported"
+            );
+        };
+        logRejected(endpointManagerId, counts);
+        return counts;
+    }
+
+    private WorkerResultAppendCounts appendAdapterPropertiesReports(
+            String adapterId,
+            List<DeliveryReport> reports
+    ) {
+        Map<String, Map<String, String>> snapshots = new LinkedHashMap<>();
+        Map<String, Integer> inputCounts = new LinkedHashMap<>();
+        for (DeliveryReport report : reports) {
+            if (report.src() != DeliveryEndpoint.ADAPTER || !adapterId.equals(report.sourceId())
+                    || !ADAPTER_WORKER_PROPERTIES_OBSERVED.equals(report.messageType())
+                    || !report.forward().isEmpty()) {
+                continue;
+            }
+            try {
+                if (CODEC.encodeDeliveryReport(report).getBytes(StandardCharsets.UTF_8).length
+                        > MAX_PROPERTIES_REPORT_BYTES) {
+                    continue;
+                }
+                Map<String, Object> payload = Jsons.parseObject(report.payload());
+                if (!payload.keySet().equals(Set.of("workerId", "properties"))
+                        || !(payload.get("workerId") instanceof String workerId) || workerId.isBlank()
+                        || !(payload.get("properties") instanceof Map<?, ?> properties)) {
+                    continue;
+                }
+                snapshots.put(workerId, WorkerDeliveryCodec.copyWorkerProperties(properties));
+                inputCounts.merge(workerId, 1, Integer::sum);
+            } catch (RuntimeException ignored) {
+                // Invalid event input is a per-item rejection, never an Owner write.
+            }
+        }
+        if (snapshots.isEmpty()) {
+            return new WorkerResultAppendCounts(0, reports.size());
+        }
+        try {
+            Map<String, WorkerDescriptor> bindings = workerCatalog.getWorkerDescriptors(
+                    List.copyOf(snapshots.keySet())
+            );
+            Map<String, Map<String, Map<String, String>>> byGroup = new LinkedHashMap<>();
+            snapshots.forEach((workerId, properties) -> {
+                WorkerDescriptor binding = bindings.get(workerId);
+                if (binding != null && adapterId.equals(binding.endpointManagerId())) {
+                    byGroup.computeIfAbsent(binding.workerGroupId(), ignored -> new LinkedHashMap<>())
+                            .put(workerId, properties);
+                }
+            });
+            int accepted = 0;
+            for (var group : byGroup.entrySet()) {
+                Map<String, MutationResult> results = workerProperties.upsertWorkerFactsBatch(
+                        group.getKey(), group.getValue()
+                );
+                List<String> changed = new ArrayList<>();
+                for (String workerId : group.getValue().keySet()) {
+                    MutationResult result = Objects.requireNonNull(results.get(workerId), "Worker mutation result");
+                    switch (result.status()) {
+                        case APPLIED -> {
+                            accepted += inputCounts.get(workerId);
+                            changed.add(workerId);
+                        }
+                        case UNCHANGED -> accepted += inputCounts.get(workerId);
+                        case NOT_FOUND, INVALID, CONFLICT -> { }
+                    }
+                }
+                if (!changed.isEmpty()) {
+                    scheduling.invalidateCandidates(group.getKey(), changed);
+                }
+            }
+            return new WorkerResultAppendCounts(accepted, reports.size() - accepted);
+        } catch (RuntimeException error) {
+            // Earlier Group writes may already have committed. SYSTEM has no replay contract.
+            throw new ServerException(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE,
+                    "workerDelivery.appendAdapterPropertiesReports", null, error);
+        }
+    }
+
+    private WorkerResultAppendCounts appendAdapterTaskReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        List<DeliveryReport> successfulTaskResults = new ArrayList<>();
+        List<DeliveryReport> failedTaskResults = new ArrayList<>();
+        List<DeliveryReport> observations = new ArrayList<>();
+        int rejectedCount = 0;
+        for (DeliveryReport report : reports) {
+            TaskEvidenceType evidenceType = taskEvidenceType(
+                    endpointManagerId,
+                    report
+            );
+            if (evidenceType == TaskEvidenceType.EXECUTION_SUCCESS) {
+                successfulTaskResults.add(report);
+            } else if (evidenceType == TaskEvidenceType.EXECUTION_FAILURE) {
+                failedTaskResults.add(report);
+            } else if (evidenceType == TaskEvidenceType.OUTCOME_OBSERVATION) {
+                observations.add(report);
+            } else {
+                rejectedCount++;
+            }
+        }
+        int acceptedCount = 0;
+        if (!successfulTaskResults.isEmpty()) {
+            appendTaskEvidence(
+                    TaskEvidenceType.EXECUTION_SUCCESS,
+                    successfulTaskResults,
+                    operation
+            );
+            acceptedCount += successfulTaskResults.size();
+        }
+        if (!failedTaskResults.isEmpty()) {
+            appendTaskEvidence(
+                    TaskEvidenceType.EXECUTION_FAILURE,
+                    failedTaskResults,
+                    operation
+            );
+            acceptedCount += failedTaskResults.size();
+        }
+        if (!observations.isEmpty()) {
+            appendTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, observations, operation);
+            acceptedCount += observations.size();
+        }
+        return new WorkerResultAppendCounts(acceptedCount, rejectedCount);
+    }
+
+    private WorkerResultAppendCounts appendAdapterServerReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        try {
+            DirectCallService.ResultAppendCounts counts =
+                    directCalls.completeReports(endpointManagerId, reports);
+            return new WorkerResultAppendCounts(
+                    counts.acceptedCount(),
+                    counts.rejectedCount()
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
+        }
+    }
+
+    private WorkerResultAppendCounts appendAdapterKernelReports(
+            String endpointManagerId,
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        List<DeliveryReport> acceptedReports = new ArrayList<>();
+        for (DeliveryReport report : reports) {
+            if (report.src() == DeliveryEndpoint.ADAPTER
+                    && endpointManagerId.equals(report.sourceId())) {
+                acceptedReports.add(report);
+            }
+        }
+        if (acceptedReports.isEmpty()) {
+            return new WorkerResultAppendCounts(0, reports.size());
+        }
+        try {
+            int accepted = serviceability.appendNetworkEvidenceResults(
+                    acceptedReports
+            );
+            if (accepted != acceptedReports.size()) {
+                throw unavailable(
+                        operation,
+                        new IllegalStateException(
+                                "Adapter evidence batch was not fully accepted"
+                        )
+                );
+            }
+            return new WorkerResultAppendCounts(
+                    accepted,
+                    reports.size() - acceptedReports.size()
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
+        }
+    }
+
+    private static List<DeliveryReport> requireHomogeneousReportBatch(
+            List<DeliveryReport> reports,
+            String operation
+    ) {
+        if (reports == null
+                || reports.isEmpty()
+                || reports.size() > MAX_ADAPTER_RESULT_BATCH_SIZE) {
+            throw invalid(
+                    operation,
+                    "Adapter result batch must contain 1..100 Reports"
+            );
+        }
+        List<DeliveryReport> batch;
+        try {
+            batch = List.copyOf(reports);
+        } catch (NullPointerException error) {
+            throw invalid(operation, "Adapter result batch contains null");
+        }
+        DeliveryEndpoint destination = batch.get(0).dst();
+        if (destination != DeliveryEndpoint.TASK
+                && destination != DeliveryEndpoint.SERVER
+                && destination != DeliveryEndpoint.SYSTEM
+                && destination != DeliveryEndpoint.KERNEL) {
+            throw invalid(
+                    operation,
+                    "Adapter Report destination is unsupported"
+            );
+        }
+        for (DeliveryReport report : batch) {
+            if (report.dst() != destination) {
+                throw invalid(
+                        operation,
+                        "Adapter Report batch must have one destination"
+                );
+            }
+        }
+        return batch;
+    }
+
+    private static void logRejected(
+            String endpointManagerId,
+            WorkerResultAppendCounts counts
+    ) {
+        if (counts.rejectedCount() == 0) {
+            return;
+        }
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "endpointManagerId={0} acceptedCount={1} rejectedCount={2}",
+                endpointManagerId,
+                counts.acceptedCount(),
+                counts.rejectedCount()
+        );
+    }
+
+    private static TaskEvidenceType taskEvidenceType(
+            String endpointManagerId,
+            DeliveryReport report
+    ) {
+        if (report == null || report.dst() != DeliveryEndpoint.TASK) {
+            return null;
+        }
+        if (report.src() == DeliveryEndpoint.WORKER) {
+            return switch (report.messageType()) {
+                case WORKER_COMMAND_SUCCEEDED -> TaskEvidenceType.EXECUTION_SUCCESS;
+                case WORKER_COMMAND_FAILED -> TaskEvidenceType.EXECUTION_FAILURE;
+                case WORKER_TASK_OUTCOME_OBSERVED -> {
+                    var observation = new WorkerDeliveryCodec().decodeTaskOutcomeObservation(report.payload());
+                    yield observation != null && observation.observedAtMillis() <= TaskItemScoreBandCore.MAX_TIME_MILLIS
+                            && !report.forward().isBlank() ? TaskEvidenceType.OUTCOME_OBSERVATION : null;
+                }
+                default -> null;
+            };
+        }
+        if (report.src() != DeliveryEndpoint.ADAPTER
+                || !endpointManagerId.equals(report.sourceId())
+                || !ADAPTER_COMMAND_DELIVERY_FAILED.equals(report.messageType())) {
+            return null;
+        }
+        try {
+            Map<String, Object> payload = Jsons.parseObject(report.payload());
+            return payload.keySet().equals(Set.of("workerId", "reason"))
+                    && payload.get("workerId") instanceof String workerId
+                    && !workerId.isBlank()
+                    && "DEADLINE_EXCEEDED".equals(payload.get("reason"))
+                    ? TaskEvidenceType.EXECUTION_FAILURE : null;
+        } catch (RuntimeException invalidPayload) {
+            return null;
+        }
+    }
+
+    private void appendTaskEvidence(
+            TaskEvidenceType evidenceType,
+            List<DeliveryReport> results,
+            String operation
+    ) {
+        try {
+            int accepted = taskEvidence.appendTaskEvidence(
+                    evidenceType,
+                    results
+            );
+            if (accepted != results.size()) {
+                throw unavailable(
+                        operation,
+                        new IllegalStateException(
+                                "DeliveryReport batch was not fully accepted"
+                        )
+                );
+            }
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(operation, error);
+        }
+    }
+
+    private static void requireAdapterBatchIdentity(
+            String endpointManagerId,
+            String operation
+    ) {
+        requireNonBlank(
+                endpointManagerId,
+                "endpointManagerId",
+                operation
+        );
+        if (WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(
+                endpointManagerId
+        )) {
+            throw invalid(
+                    operation,
+                    "system-polling supports only point Worker access"
+            );
+        }
+    }
+
+    private void requirePointBinding(
+            String endpointManagerId,
+            String workerId
+    ) {
+        String operation = "workerDelivery.requirePointBinding";
+        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
+        requireNonBlank(workerId, "workerId", operation);
+        if (!WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(
+                endpointManagerId
+        )) {
+            throw invalid(
+                    operation,
+                    "Point Worker access requires system-polling"
+            );
+        }
+        WorkerDescriptor binding;
+        try {
+            binding = workerCatalog.getWorkerDescriptors(List.of(workerId)).get(workerId);
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_UNAVAILABLE, operation, null, error);
+        }
+        if (binding == null) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_NOT_FOUND, operation,
+                    "Worker has no valid Endpoint binding", null);
+        }
+        if (!endpointManagerId.equals(binding.endpointManagerId())) {
+            throw new ServerException(ServerErrorCode.WORKER_BINDING_CONFLICT, operation,
+                    "Worker is bound to a different Endpoint; connection does not migrate bindings", null);
+        }
+    }
+
+    private void observePolling(String workerId) {
+        try {
+            serviceability.appendNetworkEvidenceResults(List.of(DeliveryReport.create(
+                    DeliveryEndpoint.SERVER,
+                    WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                    DeliveryEndpoint.KERNEL,
+                    SERVER_WORKER_POLL_OBSERVED,
+                    "",
+                    Jsons.toJson(Map.of("workerId", workerId, "observedAtMillis", System.currentTimeMillis())),
+                    "worker-serviceability-evidence:v1"
+            )));
+        } catch (RuntimeException ignored) {
+            // Best-effort: Command consumption proceeds; the next valid poll supplies fresh evidence.
+        }
+    }
+
+    private static void requireNonBlank(
+            String value,
+            String name,
+            String operation
+    ) {
+        if (value == null || value.isBlank()) {
+            throw invalid(
+                    operation,
+                    name + " must be non-blank"
+            );
+        }
+    }
+
+    private static ServerException invalid(
+            String operation,
+            String message
+    ) {
+        return new ServerException(
+                ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                operation,
+                message,
+                null
+        );
+    }
+
+    private static ServerException unavailable(
+            String operation,
+            Throwable cause
+    ) {
+        return new ServerException(
+                ServerErrorCode.WORKER_DELIVERY_UNAVAILABLE,
+                operation,
+                null,
+                cause
+        );
+    }
+
+    public record WorkerResultAppendCounts(
+            int acceptedCount,
+            int rejectedCount
+    ) {
+    }
+}

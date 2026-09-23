@@ -1,0 +1,130 @@
+# XA Mass Kernel JVM
+
+Status: stable JVM Kernel owner contracts and mechanical Redis providers.
+
+`kernel_jvm` owns the production-call closure of the Java Kernel mechanical
+layer. It provides durable contracts and Redis state transitions, not
+scheduling policy or background loops. Unsupported provider operations fail
+with `KernelOperationNotImplementedException` rather than a no-op or fallback.
+
+## Ownership
+
+| Package | Responsibility |
+| --- | --- |
+| `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
+| `worker` | One WorkerResourceCatalog for Group directory, persistent Binding, batch registration and bounded reads; opaque lease references and finite execution/serviceability events |
+| `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
+| `assignment` | named Matching operations and immutable query and refill-target data |
+| `delivery` | Worker Command and Task Evidence runtimes plus internal ResultContext codec |
+| `serviceability` | Adapter probe and shared network-evidence handoff owner |
+| owner-local `redis` packages | Redis implementations for their package Owner only |
+
+Matching supplies bounded identities through the `WorkerMatching` port. Dispatch policy, result disposition,
+serviceability policy, Pacer loops and thread lifecycle belong to
+[`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed query functions, Pool maintenance and constraint evaluation belong to
+[`worker_matching_jvm`](../worker_matching_jvm/).
+
+TaskItems carry `WorkerQuery(executorName, input)`, a bounded immutable JSON
+request. Kernel stores its envelope without interpreting function names or local
+parameters. Pacer passes Group and messageId-to-query Maps; Matching routes through
+its fixed function table and returns at most one candidate per message ID. Pacer
+retains correlation, address checks and mechanical execution admission.
+
+Task Pool supply uses `RefillTarget(poolName,target,count)` and `EligibilityQuery`; declarations
+are optional in descriptor `refill`, persisted as `refillJson`. Ordinary Tasks default to no supply. Item queries do not drive
+refill and can name a different Group-enabled function. Old direct selector Maps
+(including ANY/ID) are unreadable from the earlier Item cutover; use a new scope, with no
+conversion or data cleanup. Matching Facts and source indexes are unchanged.
+
+The three Result event interfaces are stable semantic Mechanism ports rather
+than Pacer policy or new truth owners. Their default implementations may
+compose bounded mechanical owners, while `DeliveryReport`, lane identity, JSON
+and Adapter Event Names remain confined to `kernel_pacer_jvm` policies.
+`WorkerLeaseReference` keeps the assignment fence opaque outside the Worker
+owner package.
+
+`WorkerResourceCatalog` owns one Worker-ID Binding HASH with Group and actual
+Endpoint. Batch registration creates missing bindings and asks `WorkerScoreCore`
+to initialize missing cold members. Descriptors are read snapshots. Existing
+same-Group bindings win over changed defaults; Endpoint migration is not
+implemented. Score membership is registration existence, not online evidence.
+Every Pacer preset consumes network observations for best-effort activation.
+
+Worker Score uses package-private encoding arithmetic and fixed atomic Redis
+operations inside its existing provider. Pacer supplies recheck delay; Worker
+event Mechanisms select polarity and exact-release semantics. The
+[Score Owner](doc/score/worker-score-band-scheduling.md#java-composition-and-fixed-atomic-operations)
+defines composition and command budgets. High-mark Worker Score separates
+ordinary/execution time from candidate generation. Candidate admission preserves
+time; strict or current due acquisition establishes mark=0 execution leases.
+Properties advances past time and clears HOT candidate mark, while retaining
+RECOVERY mark and leaving current/future holds unchanged. Pause writes MAX,0, and
+past network polarity changes clear mark and advance generation. Normal same-polarity
+evidence is unchanged; below-floor HOT activation is the exception and requires
+post-floor evidence. Current/future network corrections preserve the hold. The encoding
+requires a new scope; no compatibility decoder or migration is added.
+
+## Production Call Closure
+
+The Java providers implement the operations currently called by the Runtime
+API and the fixed production Pacers, including:
+
+- Task create/lifecycle/Call submission, Item record access and Result storage;
+- Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
+  idle park/close, final promotion and completed-HOT release;
+- Worker registration and minimal identity/Group/Endpoint descriptors;
+- authoritative and non-overwriting Worker Command writes plus bounded
+  consume;
+- explicit EXECUTION_SUCCESS/EXECUTION_FAILURE/OUTCOME_OBSERVATION Task evidence append/consume without diagnostic-code policy;
+- Serviceability probe request offer/consume and evidence append/consume.
+
+Worker Binding uses the new single-HASH layout and requires an exact-scope
+rebuild, with no compatibility reads. Other owner keys remain unchanged. Worker Score uses time/mark encoding;
+cold registration uses no Redis TIME or Score readback. Redis-sensitive
+claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
+Operations outside the production caller closure remain explicit gaps.
+
+TaskItem Score has one schedulable ACTIVE tag (1) and generic TERMINAL tags
+(2..9). Existing scores only increase; terminal states can continue advancing
+without rescheduling the Item or reopening its Task. The Server supplies the
+execution failure/success tags to the fixed Pacer assembly. Terminal updates
+use one bounded Lua and state reads one `ZMSCORE`, each for at most 100 IDs.
+Result content remains a separate projection, conditionally replaced by higher
+tag and then later reported milliseconds within one bounded same-key Lua.
+Observations promote Score before optional content and never release Worker
+leases; execution success retains Result-before-Score ordering. The
+[Result Owner](doc/runtime-redis/task-result-runtime-redis-shape.md) defines the
+independent commits and exact-scope rebuild for the new Result shape.
+
+Default-off `xa.mass.TaskSubmission` and `xa.mass.TaskStorage` JFR observations
+time the existing Task Call activation, Item HASH write, Item Score initialization
+and successful Result write. These calls remain separate, with their existing
+partial-failure boundaries. Events contain durations, bounded counts and optional
+1/64 SHA-256 correlations; they add no storage, registry, Redis read or public
+mechanical operation. The [performance proof](../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis)
+owns offline joins and their incomplete/overlap limits. An observed Result write
+does not establish the later separate TaskItem Score promotion.
+
+## Boundaries
+
+`kernel_jvm` has no Spring, HTTP, Pacer thread or policy configuration
+dependency. It never depends on `kernel_pacer_jvm` or `server_jvm`.
+
+The
+[`kernel_owner_contract_manifest.json`](src/test/resources/kernel_owner_contract_manifest.json)
+is the Java public-contract snapshot guard. It is not source generation or an
+external protocol. There is no remote fallback or dual owner.
+
+Current mechanical Owner documents live under [`doc/`](doc/); the complete
+Kernel index is [`doc/kernel/README.md`](../doc/kernel/README.md).
+
+Build:
+
+```text
+./gradlew :kernel_jvm:build
+```
+
+Follow [Scheduling Mainline](../doc/kernel/scheduling-overview.md) for the
+caller sequence across Task supply, Item queries, exact execution admission and
+Result handling. The [HOT lease protocol](doc/score/worker-hot-acquire-lease-protocol.md)
+defines the two execution operations and their fences.

@@ -1,0 +1,18 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
+plugins { id 'java-library' }
+version = '0.1.0-preview'
+group = 'com.xa.mass.messages'
+base { archivesName.set('xa-mass-message-campaigns') }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+tasks.withType(JavaCompile).configureEach { options.compilerArgs.add('-parameters') }
+dependencies {
+    implementation platform(SpringBootPlugin.BOM_COORDINATES)
+    implementation 'org.springframework:spring-webmvc'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations'
+    implementation project(':server_jvm')
+    implementation project(':transport:worker-delivery-contract')
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') { useJUnitPlatform() }

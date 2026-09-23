@@ -1,0 +1,1244 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/TaskTraceSummary.java",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "Bounded same-JVM sampled joins are Harness contracts; aligned RPC load and repetitions remain exclusively in worker_call_performance."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/DispatchStageEvent.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Default-off Dispatch observation stays in its Owner and preserves all existing path-selected scheduling and delivery claims."
+    },
+    {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/JfrDiagnostics.java",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "Offline JFR whitelist and bounded aggregation are deterministic contracts; full diagnostic performance stays in its own lane."
+    },
+    {
+      "path": "integrations/worker-call-performance/diagnostics.jfc",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "The finite JFR settings belong to the existing call-performance proof, not an additional runtime claim."
+    },
+    {
+      "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/WorkerCallPerformanceMain.java",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "Call performance owns a distinct nightly/manual claim; ordinary CI builds and tests only its Harness."
+    },
+    {
+      "path": "integrations/worker-call-performance/run_worker_call_performance.py",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "Deterministic runner and comparison contracts run without repeating performance in PR lanes."
+    },
+    {
+      "path": ".github/workflows/worker-call-performance.yml",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "The independent performance workflow retains its own runtime claim."
+    },
+    {
+      "path": "README.md",
+      "lanes": [],
+      "reason": "Documentation is owned by the always-running Docs Contract."
+    },
+    {
+      "path": "TESTING.md",
+      "lanes": [],
+      "reason": "The proof registry is checked without selecting implementation lanes."
+    },
+    {
+      "path": "transport/worker-core/README.md",
+      "lanes": [],
+      "reason": "Module documentation remains Docs-only even when production files select downstream proofs."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/worker/WorkerResourceCatalog.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Kernel Worker registration and Binding now own the persistent identity/address boundary consumed by Java and Android Worker proofs."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/endpoint/WorkerEndpointDirectory.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "The Endpoint directory replaces Server Binding address configuration for Java and Android Prepare."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/preparation/WorkerPreparationService.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Prepare orchestrates identity, Kernel registration and actual Endpoint resolution for Java and Android Workers."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/test/java/com/xa/mass/kernel/pacer/KernelPacerRuntimeTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/PoolMaintenance.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/RedisHashPropertyIndex.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Independent phone membership and bounded lookup affect all Server-backed Worker execution paths."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/PhoneQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Identity and Phone executors retain the Matching production proof selection without adding a new lane."
+    },
+    {
+      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/refill/PoolRefillPolicyTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Matching test-only changes stay on deterministic owner, Redis and runtime contract lanes."
+    },
+    {
+      "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_host",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Worker Core production behavior reaches deterministic Java and Android proofs plus both Worker system claims."
+    },
+    {
+      "path": "transport/worker-core/src/test/java/com/xa/mass/worker/runtime/WorkerRunControllerTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "android_host",
+        "product_coexistence"
+      ],
+      "reason": "Core test changes stay on deterministic contract consumers and do not rerun production Worker worlds."
+    },
+    {
+      "path": "transport/netty-adapter/src/main/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerRouteRegistry.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Adapter route production changes reach boundary, Worker correctness, convergence and deployed runtime proofs."
+    },
+    {
+      "path": "transport/android-worker/src/main/java/com/xa/mass/worker/android/AndroidWorker.java",
+      "lanes": [
+        "android_host",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "Android production assembly requires deterministic, emulator and packaged SDK proofs."
+    },
+    {
+      "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
+      "lanes": [
+        "android_host"
+      ],
+      "reason": "Android test-only changes stay on the deterministic Android Host lane."
+    },
+    {
+      "path": "xa-android/worker-demo/src/lab2/res/values/lab.xml",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "Android Lab topology resources require deterministic assembly and the fixed three-App emulator proof."
+    },
+    {
+      "path": "integrations/worker-correctness/src/main/java/com/xa/mass/integration/workercorrectness/WorkerCorrectnessMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness"
+      ],
+      "reason": "Worker correctness owns the canonical 100-Worker identity, extension reachability and 100-Item exact closure claim."
+    },
+    {
+      "path": "integrations/worker_proof_support/scenario_inventory.py",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_convergence_health",
+        "worker_dynamic_matching"
+      ],
+      "reason": "The shared strict materializer defines the separate Correctness and Convergence worlds; Worker Loaded Capacity and Recovery Stability consumes it through its own nightly workflow."
+    },
+    {
+      "path": "integrations/worker-convergence-health/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health"
+      ],
+      "reason": "Convergence code owns state/server and in-flight-loss claims through public observations."
+    },
+    {
+      "path": "integrations/worker-loaded-recovery/src/main/java/com/xa/mass/integration/workerloadedrecovery/WorkerLoadedRecoveryMain.java",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "Worker Loaded Capacity and Recovery Stability remains a separately scheduled high-cost proof while compiling in JVM Contracts."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_convergence_health",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Generic Server error handling reaches Server-wide proofs but does not re-prove the Worker correctness primary claim."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/KernelPacerAssembly.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pacer assembly reaches convergence and runtime boundaries, not the fixed Worker correctness claim."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/api/v1/controller/WorkerPreparationController.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/api/v1/contract/task/TaskItemResultResponse.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "The Task Result response contract is strictly consumed by Worker correctness, convergence and the Android emulator proof."
+    },
+    {
+      "path": "integrations/android-worker-proof/src/main/java/com/xa/mass/integration/androidworkerproof/AndroidWorkerCorrectnessMain.java",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "The Java Android Worker proof is owner-tested and exercised against the API 33 emulator."
+    },
+    {
+      "path": "frontend/src/views/WorkerRuntimeView.vue",
+      "lanes": [
+        "frontend",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Frontend production changes remain isolated from runtime mechanism proofs."
+    },
+    {
+      "path": "run_local_runtime.py",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "frontend",
+        "product_coexistence"
+      ],
+      "reason": "The local launcher retains Lab/AgentForge and delegates Preview to its shared source/ZIP lifecycle."
+    },
+    {
+      "path": ".github/workflows/proof-ci.yml",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_host",
+        "android_emulator",
+        "frontend",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Workflow changes re-prove the complete required gate."
+    },
+    {
+      "path": ".github/proof-paths.yml",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_host",
+        "android_emulator",
+        "frontend",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Selection-contract changes re-prove the complete required gate."
+    },
+    {
+      "path": "distribution/server/build.gradle",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The shared distribution build consumes the Boot executable for Runtime and Preview and retains its existing host proof coverage."
+    },
+    {
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulatorControlServer.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
+    },
+    {
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulator.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Host persistence and SDK publication belong to the live Properties integration closure."
+    },
+    {
+      "path": "transport/netty-adapter/src/main/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerConnectionMechanism.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Current verified Channel admission and Properties cache publication require the live Properties proof."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/resource/WorkerResourceCommandService.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Server admission of dynamic Properties must select Worker Correctness through worker/resource."
+    },
+    {
+      "path": "integrations/worker-dynamic-matching/src/main/java/com/xa/mass/integration/workerdynamicmatching/DynamicMatchingMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/WorkerSimulatorExecutionWitnesses.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "product_coexistence"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "transport/java-worker/src/main/java/com/xa/mass/worker/javase/JavaWorkerManager.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "product_coexistence"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/score/redis/RedisWorkerScoreCore.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Dynamic matching crosses this production or proof entry."
+    },
+    {
+      "path": "server_boot_jvm/src/main/java/com/xa/mass/server/XaMassServerApplication.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
+    },
+    {
+      "path": "frontend/src/sms/SmsPage.vue",
+      "lanes": [
+        "frontend",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "SMS routes share Console lifecycle and the single Runtime distribution frontend."
+    },
+    {
+      "path": "frontend/src/sms/availability.ts",
+      "lanes": [
+        "frontend",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Catalog admission and Demo isolation belong to the unified frontend proof."
+    },
+    {
+      "path": "frontend/src/layouts/ConsoleLayout.vue",
+      "lanes": [
+        "frontend",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Shared navigation and theme must retain Runtime and SMS lifecycle isolation."
+    },
+    {
+      "path": "server_boot_jvm/src/main/java/com/xa/mass/serverboot/ConsoleFrontendConfiguration.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The executable owns finite Console page forwards in enabled and ordinary instances."
+    },
+    {
+      "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckTaskService.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "One-shot Task composition needs finite real Worker execution and packaged scenario assembly."
+    },
+    {
+      "path": "scenarios/app-checks-jvm/run_acceptance.py",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence"
+      ],
+      "reason": "Source and ZIP app-checks oracles run in the existing finite scenario lane."
+    },
+    {
+      "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Finite campaign submission and continuous product observation require application contracts, archive composition and real shared Worker proof."
+    },
+    {
+      "path": "server_boot_jvm/src/main/java/com/xa/mass/serverboot/PreviewConfiguration.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "The preview configuration declares the shared demo Group and two App Groups and enables all scenarios on one platform."
+    },
+    {
+      "path": "worker_simulator_jvm/src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Real send deduplication and recipient actions require Host tests and product process witnesses."
+    },
+    {
+      "path": "frontend/src/message-campaigns/MessageTaskWorkspace.vue",
+      "lanes": [
+        "frontend",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Business navigation and lifecycle are unified Console contracts and delivered in the shared Preview."
+    },
+    {
+      "path": "distribution/server/run_preview.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Two-process source and ZIP assembly belong to the coexistence proof."
+    },
+    {
+      "path": "server_boot_jvm/src/main/resources/application-preview.yaml",
+      "lanes": [
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The executable owns the fixed preview profile; both archives consume its canonical configuration."
+    },
+    {
+      "path": "distribution/server/src/test/python/verify_preview_archive.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Shared archive fingerprints and source-to-ZIP delivery are checked by the product proof."
+    },
+    {
+      "path": "integrations/scenario-coexistence/run_proof.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Small CI and explicit 1k acceptance use product, Runtime and Lab inputs only."
+    },
+    {
+      "path": "worker_simulator_jvm/config/lab.json",
+      "lanes": [
+        "jvm_contracts",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "product_coexistence"
+      ],
+      "reason": "Complete Simulator configurations replace main-resource defaults without reducing their selected proof set."
+    },
+    {
+      "path": "server_boot_jvm/src/main/java/com/xa/mass/serverboot/ServerBootConfiguration.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
+    },
+    {
+      "path": "server_boot_jvm/src/main/resources/application.yaml",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+    },
+    {
+      "path": "server_boot_jvm/src/main/resources/application-scenario-workers.yaml",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+    },
+    {
+      "path": "server_boot_jvm/src/main/resources/application-agentforge.yaml",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_correctness",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+    },
+    {
+      "path": "distribution/server/src/test/python/verify_runtime_archive.py",
+      "lanes": [
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Both archive verifiers reuse the Runtime configuration contract, so changes must verify both deliveries."
+    },
+    {
+      "path": "distribution/server/requirements-preview.txt",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
+    },
+    {
+      "path": "distribution/server/src/test/python/test_run_preview.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
+    },
+    {
+      "path": "distribution/server/src/test/python/test_verify_preview_archive.py",
+      "lanes": [
+        "product_coexistence"
+      ],
+      "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/pool/WorkerCandidatePool.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Rule-owned qualification, original Pacer fences and destructive local take require Owner fence/command proofs plus real Worker, dynamic facts and convergence proofs."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/WorkerEligibilityRefillPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Refill acquisition preserves opaque HOT and exact fence authority across Pacer and real Worker proofs."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/task/TaskRuntime.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Task descriptors now own Rule names and targets; preserve the previous configuration-contract proof coverage."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Moved Matching data contract preserves the original Matching production proof selection."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Item query envelope preserves the existing shared contract proof coverage."
+    },
+    {
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerMatching.java",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Candidate handoff changes remain covered by existing bounded Matching, Score and runtime proofs."
+    },
+    {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/RoutedWorkerCandidate.java",
+      "lanes": [
+        "android_emulator",
+        "jvm_contracts",
+        "product_coexistence",
+        "redis_owner",
+        "runtime_boundary",
+        "runtime_distribution",
+        "worker_convergence_health",
+        "worker_dynamic_matching"
+      ],
+      "reason": "Renaming the routed candidate preserves the existing Dispatch proof selection, including Android and distribution."
+    },
+    {
+      "path": "server_jvm/src/test/java/com/xa/mass/server/testsupport/IdentityHintPoolFixture.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "The zero-expectation Rule is a Runtime Boundary fixture only, not a production Rule or profile."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MatchingComposition.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MatchingGroup.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/PoolRefillPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/AnyPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/CountryPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/storage/FactsIndexStore.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/index/PropertyIndex.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/MessagingPhoneQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Qualified Direct Phone lookup separates directed Messages from Pool stock while retaining Kernel execution admission."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MessagingEligibility.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Messaging Pool and Direct Phone share fixed Facts qualification without adding a state Owner."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/buckets/ProofFactsBuckets.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/pool/CandidateBudget.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/CountryQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/MessagingPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/ProofFactsPoolPolicy.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Matching resource ownership retains the existing production proof selection."
+    },
+    {
+      "path": "worker_matching_jvm/src/test/java/com/xa/mass/workermatching/MatchingCompositionTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Resource assembly and Redis behavior tests retain the existing contract lanes."
+    },
+    {
+      "path": "server_jvm/src/test/java/com/xa/mass/server/assembly/matching/MatchingResourceIntegrationTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary"
+      ],
+      "reason": "Resource assembly and Redis behavior tests retain the existing contract lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/QueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Direct strategy admission and batched execution retain all Matching production proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/WorkerProperties.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/DefaultWorkerMatchingCatalog.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/PoolRefillCoordinator.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/WorkerObservationConsumer.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Allocation observation handoff retains Server proof selection and existing platform and scenario lifecycle lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/FunctionHandler.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Fixed internal observation functions retain the receiver's existing Server and scenario proof lanes."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/PlatformPropertiesHandler.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Moved Properties projection effects keep the former receiver's proof coverage and lifecycle boundaries."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/observation/WorkerPropertyProjection.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "The passive projection contract retains Server selection without adding a new proof lane."
+    },
+    {
+      "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckAssignmentWindow.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_distribution",
+        "product_coexistence"
+      ],
+      "reason": "Scenario arithmetic stays in the existing JVM and coexistence lanes; no new capacity claim."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/AssignmentWindowQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Fixed assignment-window qualification and Group configuration retain Matching and scenario proof selection."
+    }
+  ]
+}

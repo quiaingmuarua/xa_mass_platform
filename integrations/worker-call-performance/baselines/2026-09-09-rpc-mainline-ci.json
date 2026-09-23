@@ -1,0 +1,96 @@
+{
+  "workflowRunId": "34246405758",
+  "source": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/34246405758",
+  "status": {
+    "conclusion": "success",
+    "headSha": "b9b1471d26765cbbbdd3d860e7cbac606b78d9f5",
+    "jobs": [
+      {
+        "conclusion": "success",
+        "name": "Select proof lanes"
+      },
+      {
+        "conclusion": "success",
+        "name": "Docs Contract"
+      },
+      {
+        "conclusion": "success",
+        "name": "Worker Dynamic Matching"
+      },
+      {
+        "conclusion": "success",
+        "name": "JVM Contracts"
+      },
+      {
+        "conclusion": "success",
+        "name": "Worker Correctness"
+      },
+      {
+        "conclusion": "success",
+        "name": "Redis Owner"
+      },
+      {
+        "conclusion": "success",
+        "name": "Android APK Assembly"
+      },
+      {
+        "conclusion": "success",
+        "name": "Runtime Boundary"
+      },
+      {
+        "conclusion": "success",
+        "name": "Worker Convergence Health (task-fault)"
+      },
+      {
+        "conclusion": "success",
+        "name": "Runtime And Worker SDK Distribution"
+      },
+      {
+        "conclusion": "success",
+        "name": "Worker Convergence Health (state)"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Android Host"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Frontend"
+      },
+      {
+        "conclusion": "success",
+        "name": "Android Worker Proof"
+      },
+      {
+        "conclusion": "success",
+        "name": "Proof Gate"
+      }
+    ],
+    "status": "completed"
+  },
+  "junitSummaries": [
+    {
+      "lane": "JVM Contracts",
+      "tests": 932,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "lane": "Redis Owner",
+      "tests": 89,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "lane": "Runtime Boundary",
+      "tests": 13,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "pythonRunnerTests": 21,
+  "note": "CI checks the PR merge tree containing b9b1471d26765cbbbdd3d860e7cbac606b78d9f5. Performance acceptance is independent and failed the documented high-load Task cases."
+}

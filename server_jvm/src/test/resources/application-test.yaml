@@ -1,0 +1,66 @@
+server:
+  address: 127.0.0.1
+  port: 0
+
+spring:
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+
+xa:
+  mass:
+    redis:
+      # Assembly contract tests must not depend on a locally running Redis.
+      url: redis://127.0.0.1:1/15
+      scope: test_server_context
+    kernel-pacer:
+      enabled: false
+      preset: DEFAULT
+      shutdown-timeout: 5s
+    worker-endpoints:
+      defaults:
+        POLLING: system-polling
+      endpoints:
+        system-polling:
+          transport-type: POLLING
+          public-uri: http://127.0.0.1:${server.port:0}
+    task-rpc:
+      default-wait-timeout-millis: 30000
+      max-wait-timeout-millis: 60000
+      max-waiters: 10000
+      max-pending-observations: 100000
+      max-probe-items-per-round: 256
+      initial-probe-interval-millis: 50
+      normal-probe-interval-millis: 100
+      long-probe-interval-millis: 250
+    direct-call:
+      default-wait-timeout-millis: 3000
+      max-wait-timeout-millis: 10000
+      max-adapter-commands-per-adapter: 1000
+      max-pending-calls: 10000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,kernel,kernelRedis
+
+springdoc:
+  paths-to-match: /api/v1/**
+
+scalar:
+  enabled: true
+  path: /scalar
+  url: /v3/api-docs
+  page-title: XA Mass Runtime API
+  with-default-fonts: false
+  telemetry: false
+  agent:
+    disabled: true

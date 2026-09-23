@@ -1,0 +1,248 @@
+package com.xa.mass.server.api.v1.controller;
+
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.xa.mass.server.api.ApiExceptionHandler;
+import com.xa.mass.server.api.RequestIdFilter;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService.WorkerResultAppendCounts;
+import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import java.util.Collections;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+class AdapterBatchDeliveryControllerTest {
+
+    private static final DeliveryCommand COMMAND = DeliveryCommand.create(
+            DeliveryEndpoint.TASK,
+            DeliveryEndpoint.WORKER,
+            "test.event",
+            9_999_999_999_999L,
+            "opaque-item",
+            "context"
+    );
+    private WorkerDeliveryService service;
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        service = mock(WorkerDeliveryService.class);
+        LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
+        validator.afterPropertiesSet();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new AdapterBatchDeliveryController(service)
+                )
+                .setControllerAdvice(new ApiExceptionHandler())
+                .setValidator(validator)
+                .addFilters(new RequestIdFilter())
+                .build();
+    }
+
+    @Test
+    void adapterBatchPreservesWorkerDemux() throws Exception {
+        when(service.consumeWorkerCommands("endpoint-1", 100))
+                .thenReturn(Map.of("worker-1", command()));
+
+        mockMvc.perform(post(batchPath("commands:consume"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.worker-1.messageId"
+                ).doesNotExist())
+                .andExpect(jsonPath(
+                        "$.worker-1.messageType"
+                ).value("test.event"));
+    }
+
+    @Test
+    void adapterResultBatchUsesTheStableResponse() throws Exception {
+        DeliveryReport report = successReport();
+        when(service.appendAdapterReports(
+                org.mockito.ArgumentMatchers.eq("endpoint-1"),
+                anyList()
+        )).thenReturn(new WorkerResultAppendCounts(1, 0));
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[" + successResult() + "]"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.acceptedCount").value(1))
+                .andExpect(jsonPath("$.rejectedCount").value(0));
+
+        verify(service).appendAdapterReports(
+                "endpoint-1",
+                java.util.List.of(report)
+        );
+    }
+
+    @Test
+    void systemPollingAndMalformedBatchesAreRejected() throws Exception {
+        when(service.consumeWorkerCommands("system-polling", 100))
+                .thenThrow(new ServerException(
+                        ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                        "workerDelivery.consumeCommands",
+                        "system-polling supports only point Worker access",
+                        null
+                ));
+
+        mockMvc.perform(post(
+                        "/api/v1/worker-delivery/endpoint-managers/"
+                        + "system-polling/commands:consume"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("100"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"source\":\"WORKER\","
+                                        + "\"results\":[\"opaque\"]}"
+                        ))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[null]"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("commands:consume"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"limit\":100,\"unexpected\":true}"
+                        ))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("commands:consume"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cursor\":null,\"scanCount\":100}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void oversizedResultBatchIsRejectedBeforeCallingTheService()
+            throws Exception {
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(
+                                Collections.nCopies(
+                                        101,
+                                        Jsons.parseObject(successResult())
+                                )
+                        )))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void encodedStringResultBatchIsRejectedBeforeCallingTheService()
+            throws Exception {
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(java.util.List.of(
+                                successResult()
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void unknownReportFieldIsRejectedBeforeCallingTheService()
+            throws Exception {
+        Map<String, Object> report = new java.util.LinkedHashMap<>(
+                Jsons.parseObject(successResult())
+        );
+        report.put("unexpected", true);
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(java.util.List.of(report))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void retiredDiagnosticFieldIsRejectedBeforeCallingTheService() throws Exception {
+        for (String body : java.util.List.of(
+                successResult().replace("\"diagnosticCode\"", "\"outcomeCode\""),
+                successResult().replace("\"diagnosticCode\":\"\"",
+                        "\"diagnosticCode\":\"\",\"outcomeCode\":\"\""))) {
+            mockMvc.perform(post(batchPath("results:append"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("[" + body + "]"))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void diagnosticsMustBePresentNonNullStringsAtTheHttpBoundary() throws Exception {
+        for (String body : java.util.List.of(
+                successResult().replace("\"diagnosticCode\":\"\",", ""),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":null"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":200"),
+                successResult().replace("\"diagnosticCode\":\"\"", "\"diagnosticCode\":true"))) {
+            mockMvc.perform(post(batchPath("results:append"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("[" + body + "]"))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
+    private static DeliveryCommand command() {
+        return COMMAND;
+    }
+
+    private static String successResult() {
+        return """
+                {"dst":"TASK","forward":"context",\
+                "messageType":"platform.worker.command.succeeded","diagnosticCode":"",\
+                "payload":"null","sourceId":"worker-1","src":"WORKER"}\
+                """;
+    }
+
+    private static DeliveryReport successReport() {
+        return DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.TASK,
+                "platform.worker.command.succeeded",
+                "",
+                "null",
+                "context"
+        );
+    }
+
+    private static String batchPath(String action) {
+        return "/api/v1/worker-delivery/endpoint-managers/endpoint-1/"
+                + action;
+    }
+
+}

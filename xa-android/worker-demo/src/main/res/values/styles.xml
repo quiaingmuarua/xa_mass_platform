@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.XaMassAndroidWorker" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#006C4C</item>
+        <item name="android:navigationBarColor">#F4F6F5</item>
+        <item name="android:statusBarColor">#14352B</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

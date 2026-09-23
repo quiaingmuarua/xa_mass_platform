@@ -1,0 +1,300 @@
+# Transport Platform Event Catalog
+
+Status: current human-readable projection of Transport-owned platform events.
+
+This catalog answers which complete platform Event Names Transport itself
+installs or produces. Report event names below are not callable capabilities.
+This is not a registry, cross-module capability catalog, discovery
+service, Server whitelist, WorkerGroup declaration, or scheduling input. The
+immutable Handler map loaded by a running endpoint remains execution truth and
+is observable through that endpoint's `events.snapshot` event.
+
+Callable Worker/Adapter Command Event Names have this shape:
+
+```text
+(platform|extension).(worker|adapter).<capability>
+```
+
+`platform` and `extension` identify the capability provider. They do not
+identify the Command caller. `DeliveryCommand.src` remains invocation evidence
+and is not part of Worker Handler lookup. Extension Hosts register a short
+capability such as `string.md5`; TaskItem `eventCode`, WorkerGroup `eventCodes`,
+Direct Call `messageType`, and Delivery Command `messageType` always carry the
+full Event Name.
+
+## Report Event Contracts
+
+The three business categories are **command results**, **delivery facts**, and
+**observations**. Identity is a connection protocol Report. Categories do not
+create a runtime router or new queues. `diagnosticCode` is required string
+diagnostics, normally empty; event contracts alone determine semantics.
+A reason or state value stays in payload, not a new event name.
+
+| Complete Report name | Producer → receiver | Payload and correlation | Produced when / does not mean |
+| --- | --- | --- | --- |
+| `platform.worker.command.succeeded` | WORKER → TASK/SERVER | Original opaque output and Command `forward` | Handler completed; not TaskItem finality |
+| `platform.worker.command.failed` | WORKER → TASK/SERVER | Original opaque error output and Command `forward` | Input, missing Handler, execution or output failure; not final Task failure |
+| `platform.worker.task-outcome.observed` | WORKER → TASK | `{tag, observedAtMillis, opaqueResultPayload?}`, original Command `forward` | Later observation of the same Item; never a second execution completion or Worker lease release |
+| `platform.adapter.command.succeeded` | ADAPTER → SERVER/KERNEL | Original opaque Handler output and Command `forward` | Adapter Handler completed; not Worker execution |
+| `platform.adapter.command.failed` | ADAPTER → SERVER/KERNEL | Original opaque error output and Command `forward` | Adapter Handler failed; not availability evidence |
+| `platform.adapter.command.delivery-failed` | ADAPTER → TASK | `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`, original Command `forward` | TASK delivery expired and leaves retry; not a Handler failure or proof of disconnected Channel |
+| `platform.adapter.worker-delivery.expired` | ADAPTER → KERNEL | `{"workerId":"...","observedAtMillis":...}`; `worker-serviceability-evidence:v1` | Independent serviceability evidence for that expiry; not atomically paired with TASK |
+| `platform.adapter.worker-connection.changed` | ADAPTER → KERNEL | `{"workerId":"...","state":"CONNECTED\|DISCONNECTED","observedAtMillis":...}`; same evidence forward | Exact Route transition; not schedulability |
+| `platform.server.worker-poll.observed` | SERVER/system-polling → KERNEL | `{"workerId":"...","observedAtMillis":...}`; same evidence forward | Binding-validated point poll, including empty; not a lease |
+| `platform.worker.properties.updated` | WORKER → ADAPTER | Direct string KV Map, empty forward | Merge supplied keys into a full baseline; not upstream patch |
+| `platform.worker.properties.replaced` | WORKER → ADAPTER | Direct string KV Map, empty forward | Replace full baseline including omissions; not a query reply |
+| `platform.adapter.worker-properties.observed` | ADAPTER → SYSTEM | `{"workerId":"...","properties":{...}}`, empty forward | Complete installed observation for Server admission and Matching; not registration |
+| `worker.connection.identify` | WORKER → ADAPTER | `null`, empty forward; workerId in sourceId | New physical connection identity declaration; not authentication or readiness ACK |
+
+All payloads in this table are encoded into the existing Report **string**
+field. Command results do not wrap or reinterpret Handler output. The ordinary
+extension Command name is not copied into the Report and has no generated
+success/failure event pair.
+
+Task outcome observations accept integer tags 6..9 and positive reported
+milliseconds within the Score Owner range. Optional content must be a nonblank
+string. Higher tag takes precedence, then later milliseconds within one tag;
+equal timestamps retain content. Omitted content never erases an existing
+Result. This event uses the existing Adapter TASK lane and a dedicated Kernel
+evidence LIST within the existing Result Convergence lifecycle. It adds no Task
+mode, callable Handler or Direct Call response. The
+[SDK Reporter](worker-core/README.md#later-task-outcome-observations) preserves
+opaque correlation; Server admission and Kernel mechanisms own processing.
+
+KERNEL connection snapshot results use `platform.adapter.command.succeeded`
+with `worker-serviceability:v1:<checkStartedAtMillis>` and the existing
+`stateByWorkerId` payload. Only that exact event/correlation/schema combination
+is interpreted as a snapshot; failure is not an availability observation.
+
+No active Route or a temporarily non-writable Channel keeps Command
+`RETRY_LATER` internal and produces no failure Report. An `UNKNOWN` physical
+write cannot assert non-delivery. Direct Call expiry, queue exhaustion and
+shutdown retain timeout/best-effort drop semantics. Only expired TASK delivery
+uses `command.delivery-failed`, with diagnostic `23002`; no other reason is
+defined in this slice.
+
+## Platform Worker Events
+
+Java and Android Worker assemblies install these events before Host extension
+Definitions. Their mechanism contract is owned by
+[Worker Core](worker-core/README.md#message-path).
+
+| Event Name | Input payload | Result payload | Normal use |
+| --- | --- | --- | --- |
+| `platform.worker.probe` | `null` | `{"reachable":true}` | Observe that the Worker Handler lane can execute |
+| `platform.worker.properties.snapshot` | `null` | `{"properties":{...}}` | Read the current Host-provided properties |
+| `platform.worker.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observe the immutable Event Names loaded by this Worker process |
+
+`probe` is not schedulability, idleness, Binding, or connectivity truth.
+`properties.snapshot` reads flat string KV from the Host Provider. TASK/SERVER
+calls return ordinary correlated Results; an ADAPTER baseline request returns
+one full `properties.replaced` instead. A normal query has no write effect;
+an installed Adapter observation may be published through SYSTEM and Server
+admission to Matching facts, without directly changing scheduling truth.
+`events.snapshot` includes itself and all Host extensions, but does not replace
+WorkerGroup `eventCodes` or authorization.
+
+## Platform Adapter Events
+
+The Netty Adapter composition root installs one immutable map containing these
+events. Their detailed semantics are owned by the
+[Netty Adapter](netty-adapter/README.md#delivery-processes).
+
+| Event Name | Input payload | Result payload | Effect |
+| --- | --- | --- | --- |
+| `platform.adapter.probe` | `null` | Adapter identity and reachability | Observation only |
+| `platform.adapter.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observes the immutable Adapter event map |
+| `platform.adapter.worker-connections.snapshot` | `{"workerIds":["..."]}` | `{"stateByWorkerId":{"worker-1":"CONNECTED"}}` | Observes current Adapter-local route state |
+| `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
+| `platform.adapter.worker-properties.snapshot` | `{"workerIds":["..."]}` | `{"propertiesByWorkerId":{"worker-1":{...}}}` | Observes Adapter-local cached Worker properties |
+
+All Adapter events are callable through the ordinary `SERVER -> ADAPTER`
+Direct Call path. The Kernel may call only
+`platform.adapter.worker-connections.snapshot`, using `KERNEL -> ADAPTER`, for
+the optional Worker Serviceability convergence policy. The resulting
+`ADAPTER -> KERNEL` Report is ordinary Delivery evidence; Transport does not
+interpret or write Worker score.
+
+The Adapter also produces, but does not register as a callable Handler:
+
+```text
+platform.adapter.worker-connection.changed
+  ADAPTER -> KERNEL
+  payload={"workerId":"...","state":"CONNECTED|DISCONNECTED",
+           "observedAtMillis":...}
+  forward=worker-serviceability-evidence:v1
+
+platform.adapter.worker-delivery.expired
+  ADAPTER -> KERNEL
+  payload={"workerId":"worker-1","observedAtMillis":...}
+  forward=worker-serviceability-evidence:v1
+```
+
+One connection Report represents one exact Route availability transition. One
+delivery-expired Report accompanies the correlated command.delivery-failed TASK Report when a
+TASK-to-Worker Command misses its Adapter delivery deadline. It does not claim
+that the Channel is disconnected. Both carry no WorkerGroup, Binding,
+Properties, generation, or score. Several Reports may be submitted together by
+the existing Result Process. Queue pressure drops best-effort evidence without
+closing the Worker Channel.
+How Kernel weighs this evidence or maps it to a scheduling coordinate is
+policy, not part of the Transport event contract.
+
+Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
+are `UNKNOWN` when this Adapter process has no verification evidence, including
+while a first verification is pending, `CONNECTED` after verification with an
+active current Channel, and
+`DISCONNECTED` while retained verification evidence exists without an active
+current Channel. Disconnected evidence is finite and becomes `UNKNOWN` after
+its TTL or capacity eviction. These states do not imply Binding validity,
+schedulability, writability, Worker idleness, or process liveness. Anonymous
+physical Channels do not become Worker routes until identity succeeds. Closing
+the current Channel does not unbind, disable, or pause the Worker; the existing
+Client policy may reconnect it. Adapter restart clears this process-local
+observation. There is no application heartbeat, so a silent half-open
+connection converges only after the network stack, close, failure, or a write
+detects it.
+
+A properties entry reports Adapter-written `updatedAtMillis` and the complete
+cached `properties`. Both fields are null when the Adapter has no visible
+projection. Successive writes to a retained entry strictly increase the
+millisecond value, but after route identity loss, capacity eviction, or Adapter
+restart the next observation is a new baseline rather than a comparable global
+version. The cache has no independent freshness window: retained route
+verification evidence gates visibility, while a separate encoded-data budget
+may evict properties without affecting the connection. This cache is neither
+Worker resource truth nor evidence of Binding validity or schedulability.
+
+### Worker-produced property observation
+
+Two fixed `WORKER -> ADAPTER` Reports carry property observations. Neither is a
+callable management Handler or part of `events.snapshot`. Both require the bound
+Worker sourceId, empty forward, and a direct string KV Map payload; diagnostic
+codes are not admission criteria:
+
+- `platform.worker.properties.updated`, `{"network.type":"cellular"}`:
+  overwrite supplied keys, retaining omitted keys.
+- `platform.worker.properties.replaced`, `{"network.type":"wifi","battery":"87"}`:
+  replace the whole Map, removing omitted keys.
+
+Keys must be non-blank and values must be non-null strings; empty strings and
+empty Maps are valid. Dots are literal key characters. Nested values and
+implicit numeric/boolean conversion are not supported. Empty strings are values,
+not removal markers. There is no incremental deletion: the Host removes keys
+from its full data and sends a replacement. An empty update preserves content;
+an empty replacement establishes an empty baseline. `set`, `remove`, and
+`properties` are ordinary property names when their values are strings, not
+control fields. The complete Report frame is limited to 1,000,000 UTF-8 bytes.
+
+Only the exact current verified Channel can write this cache. Full replaces the
+baseline; update requires an existing baseline. Pre-identity, pending verification,
+stale Channel and invalid input are local drops. Baseline-less updates do not
+trigger compensation. Ordinary snapshot Results no longer update the cache.
+
+After each verified activation (including cached-verification reconnect), Adapter
+requests one full `properties.snapshot` directly on that Channel. Java/Android
+Hosts can call `reportProperties()` or update their one Provider then call
+`reportProperties(updates)`; Manager delegates by replica key. Automatic baseline
+reuses the successful snapshot output without reading the Provider again; explicit
+TASK/SERVER queries still return `{"properties":{...}}`. No SDK copy,
+history, ACK or retry is maintained by the SDK. A missed full
+requires a later explicit full or connection baseline, not automatic repair.
+
+The cache keeps immutable complete Properties, CRC32C over key-sorted JSON,
+observation time and encoded weight. Fingerprint equality never suppresses a
+valid write; metadata is not a field version or scheduling truth.
+
+Connection and properties are separate queries with no atomic join or common
+version. `CONNECTED` does not prove properties exist or are recent, and cached
+properties may remain while the route is `DISCONNECTED` but still verified. A
+management caller that needs a combined view invokes both events and joins
+their ordered workerId maps.
+
+### Adapter-produced complete Properties observation
+
+After installing either valid Worker event and rechecking the exact Channel,
+Adapter attempts one publication from that immutable complete cache value:
+
+```text
+messageType = platform.adapter.worker-properties.observed
+src         = ADAPTER
+sourceId    = adapterId
+dst         = SYSTEM
+diagnosticCode = ""
+forward     = ""
+payload     = {"workerId":"...","properties":{"network.type":"cellular"}}
+```
+
+This is not a callable Handler, raw Worker update, connection evidence or ACK.
+The complete encoded Report has the same 1,000,000 UTF-8 byte limit. Empty
+Properties clear the persistent Map; empty string values remain present. There
+are no timestamp, version, CRC or retry fields. Each valid installation offers
+once, including unchanged full reports and reconnect baselines. Missing baseline,
+rollback or invalid Channel/input offers nothing.
+
+The existing SYSTEM Queue submits homogeneous object batches through
+`results:append`. Oversize, encoding, queue and HTTP failures drop publication
+without undoing the cache or closing the Worker. There is no retry or automatic
+repair without new input. Server validates event source/shape, current Binding
+and Group, then creates or replaces Worker facts through the Matching Catalog. Unknown
+SYSTEM events are per-item rejections, never Direct Call completions.
+Later Matching Demands read the facts. APPLIED writes request the existing
+Score invalidation; this does not fan out to Candidate caches or change
+identity and Binding. Prepare creates no Matching facts; the
+first observation uses this same event. No observation-order fence or special
+retention of registration keys is provided.
+
+## Extension Boundary
+
+Concrete `extension.worker.*` events are intentionally not enumerated here.
+They belong to the Host or capability module that supplies their Definitions,
+such as [Scenario Workers](../worker_simulator_jvm/README.md) and
+[Android Capabilities](../xa-android/capabilities/README.md). Those Owners
+define their input, output, semantics, and evolution. Transport only validates
+the Definition shape, assembles the immutable Worker Handler map, and performs
+exact full-name dispatch.
+
+WorkerGroup `eventCodes` is a separate scheduling/resource declaration and may
+lag the running process. `platform.worker.events.snapshot` is the observation
+of extensions actually loaded by one Worker process. Adapter currently exposes
+no public `extension.adapter.*` registration surface.
+
+## Transport Protocol Messages That Are Not Handler Events
+
+The long-connection protocol also uses the following `messageType` values.
+They bypass the Adapter/Worker Event Definition maps:
+
+| Message type | Direction | Transport meaning |
+| --- | --- | --- |
+| `worker.connection.identify` | `WORKER -> ADAPTER` Report | Declares the Server-issued `workerId` for a newly opened physical connection; payload is `null` |
+| `worker.connection.close` | `ADAPTER -> WORKER` Command | Ends the current Worker run without producing a Delivery Report |
+
+Their DTO and direction contracts are owned by the
+[Worker Delivery Contract](worker-delivery-contract/README.md).
+
+## Operations That Are Not Events
+
+The following similarly named management surfaces are Owner operations or HTTP
+use cases, not Transport events:
+
+```text
+Worker register and Endpoint bind
+pause-scheduling and resume-scheduling
+DIRECT_CALL /direct-calls
+Adapter Command consume and Result append
+Worker score lease, mark, recovery, and Result Routing transitions
+```
+
+They must not be added to Handler maps merely to make this catalog appear
+complete.
+
+## Evolution Rules
+
+- Compatible optional input or output fields may retain an Event Name.
+- Incompatible input, output, semantics, or side effects require a new full
+  name such as `.v2`.
+- There are no aliases, dual lookup, wildcard or prefix routing, or fallback.
+- Server passes Event Names through as opaque values and does not maintain this
+  catalog as an execution whitelist.
+- Update this projection in the same change that adds, removes, or renames a
+  Transport-owned platform event.

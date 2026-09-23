@@ -1,0 +1,54 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+base {
+    archivesName.set('xa-mass-worker-core')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+    withSourcesJar()
+}
+
+publishing {
+    publications {
+        workerSdk(MavenPublication) {
+            from components.java
+            artifactId = 'xa-mass-worker-core'
+        }
+    }
+    repositories {
+        maven {
+            name = 'workerSdk'
+            url = rootProject.layout.projectDirectory.dir(
+                    'distribution/worker-sdk/build/repository'
+            )
+        }
+    }
+}
+
+tasks.named('compileJava', JavaCompile) {
+    options.release = 11
+}
+
+tasks.named('compileTestJava', JavaCompile) {
+    options.release = 11
+}
+
+dependencies {
+    api project(':transport:worker-delivery-contract')
+
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

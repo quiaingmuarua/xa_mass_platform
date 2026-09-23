@@ -1,0 +1,322 @@
+package com.xa.mass.kernel.task;
+
+import com.xa.mass.kernel.assignment.RefillTarget;
+
+import com.xa.mass.kernel.assignment.WorkerQuery;
+
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
+
+public interface TaskRuntime {
+
+    int MAX_RESULT_SCAN_COUNT_HINT = 1000;
+
+    Set<String> CONFIG_KEYS = Set.of(
+            "priority",
+            "maxRetryTimes"
+    );
+
+    TaskCreationResult createTask(TaskDescriptor descriptor);
+
+    Map<String, TaskItemAppendResult> appendItems(
+            String taskId,
+            List<TaskItem> items
+    );
+
+    Map<String, @Nullable TaskItem> loadTaskItems(
+            String taskId,
+            List<String> messageIds
+    );
+
+    void storeTaskItemSuccessResults(
+            String taskId,
+            Map<String, TaskItemSuccessResult> results
+    );
+
+    void storeTaskItemFailedResults(
+            String taskId,
+            List<String> messageIds
+    );
+
+    Map<String, @Nullable TaskItemResult> loadTaskItemResults(
+            String taskId,
+            List<String> messageIds
+    );
+
+    TaskItemResultPage scanTaskItemResults(
+            String taskId,
+            String cursor,
+            int countHint
+    );
+
+    enum TaskIdleDisposition {
+        CLOSE_WHEN_IDLE,
+        PARK_WHEN_IDLE
+    }
+
+    enum TaskItemAppendStatus {
+        APPENDED("appended"),
+        RETRYABLE("retryable"),
+        NOT_FOUND("not_found"),
+        INVALID("invalid");
+
+        private final String wireValue;
+
+        TaskItemAppendStatus(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
+    }
+
+    enum TaskCreationStatus {
+        CREATED("created"),
+        RETRYABLE("retryable"),
+        CONFLICT("conflict"),
+        INVALID("invalid");
+
+        private final String wireValue;
+
+        TaskCreationStatus(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
+    }
+
+    record TaskItem(
+            String messageId,
+            String eventCode,
+            long createdAtMillis,
+            Map<String, Object> payload,
+            int priority,
+            @Nullable Long expireAtMillis,
+            WorkerQuery workerSelector
+    ) {
+        public TaskItem {
+            requireNonBlank(messageId, "messageId");
+            requireNonBlank(eventCode, "eventCode");
+            Objects.requireNonNull(payload, "payload");
+            if (priority < 0 || priority > 10) {
+                throw new IllegalArgumentException(
+                        "priority must be in 0..10"
+                );
+            }
+            if (createdAtMillis < 0) {
+                throw new IllegalArgumentException(
+                        "createdAtMillis must be non-negative"
+                );
+            }
+            if (expireAtMillis != null
+                    && expireAtMillis <= createdAtMillis) {
+                throw new IllegalArgumentException(
+                        "expireAtMillis must be after createdAtMillis"
+                );
+            }
+            payload = immutableObjectMap(payload);
+            Objects.requireNonNull(workerSelector, "workerSelector");
+        }
+    }
+
+    record TaskDescriptor(
+            String taskId,
+            String projectId,
+            String workerGroupId,
+            TaskIdleDisposition idleDisposition,
+            Map<String, String> config,
+            List<RefillTarget> refill,
+            @Nullable String name,
+            Map<String, String> metadata
+    ) {
+        public TaskDescriptor {
+            if (name != null && (name.isBlank() || name.length() > 128)) {
+                throw new IllegalArgumentException("Task name must contain 1..128 characters");
+            }
+            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+            if (metadata.size() > 32 || metadata.entrySet().stream().anyMatch(entry ->
+                    entry.getKey().isBlank() || entry.getKey().length() > 128 || entry.getValue().length() > 4096)) {
+                throw new IllegalArgumentException("Task metadata exceeds its string field bounds");
+            }
+            requireNonBlank(taskId, "taskId");
+            if (projectId == null || projectId.isBlank()) {
+                throw new IllegalArgumentException("projectId must be non-blank");
+            }
+            requireNonBlank(workerGroupId, "workerGroupId");
+            refill = List.copyOf(Objects.requireNonNull(refill, "refill"));
+            if (refill.size() > 100) throw new IllegalArgumentException("refill allows at most 100 declarations");
+            Objects.requireNonNull(idleDisposition, "idleDisposition");
+            Objects.requireNonNull(config, "config");
+            if (!config.keySet().equals(CONFIG_KEYS)) {
+                throw new IllegalArgumentException(
+                        "config must contain exactly the declared keys"
+                );
+            }
+            int priority = decimalConfig(config, "priority");
+            int maxRetryTimes = decimalConfig(config, "maxRetryTimes");
+            if (priority < 0 || priority > 99) {
+                throw new IllegalArgumentException(
+                        "Task priority must be in 0..99"
+                );
+            }
+            if (maxRetryTimes < 0 || maxRetryTimes > 98) {
+                throw new IllegalArgumentException(
+                        "maxRetryTimes must be in 0..98"
+                );
+            }
+            config = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(config)
+            );
+        }
+
+        public int priority() {
+            return Integer.parseInt(config.get("priority"));
+        }
+
+    }
+
+    record TaskItemAppendResult(
+            TaskItemAppendStatus status,
+            @Nullable String reason
+    ) {
+        public TaskItemAppendResult {
+            Objects.requireNonNull(status, "status");
+        }
+
+        public TaskItemAppendResult(TaskItemAppendStatus status) {
+            this(status, null);
+        }
+    }
+
+    /** Ordering belongs to the Result projection; it is not an encoded Score. */
+    record TaskItemSuccessResult(
+            int tag,
+            long observedAtMillis,
+            String opaqueResultPayload
+    ) {
+        public TaskItemSuccessResult {
+            if (tag < TaskItemScoreBandCore.MIN_TERMINAL_TAG
+                    || tag > TaskItemScoreBandCore.MAX_TERMINAL_TAG
+                    || observedAtMillis < TaskItemScoreBandCore.MIN_TIME_MILLIS
+                    || observedAtMillis > TaskItemScoreBandCore.MAX_TIME_MILLIS) {
+                throw new IllegalArgumentException("Result outcome coordinate is invalid");
+            }
+            requireNonBlank(opaqueResultPayload, "opaqueResultPayload");
+        }
+    }
+
+    record TaskItemResult(
+            String code,
+            String opaqueResultPayload
+    ) {
+
+        private static final String SUCCESS_CODE = "200";
+        private static final String FAILED_CODE = "failed";
+        private static final String FAILED_PAYLOAD =
+                "TaskItem ended without a successful result";
+
+        public TaskItemResult {
+            requireNonBlank(code, "code");
+            requireNonBlank(
+                    opaqueResultPayload,
+                    "opaqueResultPayload"
+            );
+        }
+
+        public boolean succeeded() {
+            return SUCCESS_CODE.equals(code);
+        }
+
+        public static TaskItemResult succeeded(String payload) {
+            return new TaskItemResult(SUCCESS_CODE, payload);
+        }
+
+        public static TaskItemResult failed() {
+            return new TaskItemResult(FAILED_CODE, FAILED_PAYLOAD);
+        }
+    }
+
+    record TaskItemResultPage(
+            String nextCursor,
+            Map<String, TaskItemResult> results
+    ) {
+        public TaskItemResultPage {
+            requireDecimal(nextCursor, "nextCursor");
+            Objects.requireNonNull(results, "results");
+            results.forEach((messageId, result) -> {
+                requireNonBlank(messageId, "result messageId");
+                Objects.requireNonNull(result, "result");
+            });
+            results = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(results)
+            );
+        }
+    }
+
+    record TaskCreationResult(
+            TaskCreationStatus status,
+            @Nullable String reason
+    ) {
+        public TaskCreationResult {
+            Objects.requireNonNull(status, "status");
+        }
+
+        public TaskCreationResult(TaskCreationStatus status) {
+            this(status, null);
+        }
+    }
+
+    private static int decimalConfig(
+            Map<String, String> config,
+            String key
+    ) {
+        String value = config.get(key);
+        if (value == null || value.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "config " + key + " must be decimal text"
+            );
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                throw new IllegalArgumentException(
+                        "config " + key + " must be decimal text"
+                );
+            }
+        }
+        return Integer.parseInt(value);
+    }
+
+    private static Map<String, Object> immutableObjectMap(
+            Map<String, Object> source
+    ) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        if (value == null || value.isEmpty()) {
+            throw new IllegalArgumentException(name + " must be non-empty");
+        }
+    }
+
+    private static void requireDecimal(String value, String name) {
+        requireNonBlank(value, name);
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                throw new IllegalArgumentException(
+                        name + " must be decimal text"
+                );
+            }
+        }
+    }
+}

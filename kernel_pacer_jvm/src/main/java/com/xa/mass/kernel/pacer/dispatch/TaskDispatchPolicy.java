@@ -1,0 +1,248 @@
+package com.xa.mass.kernel.pacer.dispatch;
+
+import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.LongSupplier;
+
+final class TaskDispatchPolicy {
+
+    static final int PER_TASK_DISPATCH_LIMIT = 100;
+    static final long ITEM_CLAIM_LEASE_MILLIS = 5_000;
+
+    private final TaskScoreBandCore taskScores;
+    private final TaskItemScoreBandCore itemScores;
+    private final TaskRuntime taskRuntime;
+    private final TaskAssignmentDispatcher assignmentDispatcher;
+    private final TaskIdleSettlement idleSettlement;
+    private final WorkerCandidateSelectionPolicy candidateSelection;
+    private final LongSupplier currentTimeMillis;
+    private final int failedOutcomeTag;
+    // Bounded ordering hint only. Immutable snapshots also tolerate a cancelled
+    // producer finishing during a Pacer restart; it may only replace this hint.
+    private volatile List<String> recentlyServedTaskIds = List.of();
+
+    TaskDispatchPolicy(
+            TaskScoreBandCore taskScores,
+            TaskItemScoreBandCore itemScores,
+            TaskRuntime taskRuntime,
+            TaskAssignmentDispatcher assignmentDispatcher,
+            TaskIdleSettlement idleSettlement,
+            WorkerCandidateSelectionPolicy candidateSelection,
+            int failedOutcomeTag
+    ) {
+        this(
+                taskScores,
+                itemScores,
+                taskRuntime,
+                assignmentDispatcher,
+                idleSettlement,
+                candidateSelection,
+                failedOutcomeTag,
+                System::currentTimeMillis
+        );
+    }
+
+    TaskDispatchPolicy(
+            TaskScoreBandCore taskScores,
+            TaskItemScoreBandCore itemScores,
+            TaskRuntime taskRuntime,
+            TaskAssignmentDispatcher assignmentDispatcher,
+            TaskIdleSettlement idleSettlement,
+            WorkerCandidateSelectionPolicy candidateSelection,
+            int failedOutcomeTag,
+            LongSupplier currentTimeMillis
+    ) {
+        this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
+        this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
+        this.taskRuntime = Objects.requireNonNull(taskRuntime, "taskRuntime");
+        if (failedOutcomeTag < TaskItemScoreBandCore.MIN_TERMINAL_TAG
+                || failedOutcomeTag > TaskItemScoreBandCore.MAX_TERMINAL_TAG) {
+            throw new IllegalArgumentException("failedOutcomeTag must be in 2..9");
+        }
+        this.failedOutcomeTag = failedOutcomeTag;
+        this.assignmentDispatcher = Objects.requireNonNull(
+                assignmentDispatcher,
+                "assignmentDispatcher"
+        );
+        this.idleSettlement = Objects.requireNonNull(
+                idleSettlement,
+                "idleSettlement"
+        );
+        this.candidateSelection = Objects.requireNonNull(
+                candidateSelection,
+                "candidateSelection"
+        );
+        this.currentTimeMillis = Objects.requireNonNull(
+                currentTimeMillis,
+                "currentTimeMillis"
+        );
+    }
+
+    int dispatchTasks(List<ObservedTask> tasks) {
+        Objects.requireNonNull(tasks, "tasks");
+        long dispatchTimeMillis = currentTimeMillis.getAsLong();
+        long claimUntilMillis = Math.addExact(
+                dispatchTimeMillis,
+                ITEM_CLAIM_LEASE_MILLIS
+        );
+        Set<String> roundWorkerIds = new LinkedHashSet<>();
+        var servedTaskIds = new LinkedHashSet<>(recentlyServedTaskIds);
+        List<ObservedTask> orderedTasks = orderForDispatch(tasks, servedTaskIds);
+        recentlyServedTaskIds = List.copyOf(servedTaskIds);
+        int published = 0;
+        for (ObservedTask task : orderedTasks) {
+            long checkedAt = DispatchStageEvent.start();
+            Map<String, TaskItemScoreObservation> observed =
+                    itemScores.acquireItemScoreCandidates(
+                            task.taskId(),
+                            PER_TASK_DISPATCH_LIMIT
+                    );
+            DispatchStageEvent.items(checkedAt, "DISPATCH_CHECK", task.taskId(), observed.keySet(), observed.size(), false);
+            List<String> loadIds = observed.entrySet().stream()
+                    .filter(entry -> entry.getValue().remainingBudget() > 0)
+                    .map(Map.Entry::getKey)
+                    .toList();
+            Map<String, TaskItem> items = loadIds.isEmpty()
+                    ? Map.of()
+                    : taskRuntime.loadTaskItems(task.taskId(), loadIds);
+
+            List<String> failedIds = observed.entrySet().stream()
+                    .filter(entry -> failed(
+                            entry.getValue(),
+                            items.get(entry.getKey()),
+                            dispatchTimeMillis
+                    ))
+                    .map(Map.Entry::getKey)
+                    .toList();
+            if (!failedIds.isEmpty()) {
+                long failureStarted = DispatchStageEvent.start();
+                taskRuntime.storeTaskItemFailedResults(
+                        task.taskId(),
+                        failedIds
+                );
+                DispatchStageEvent.items(failureStarted, "FAILED_RESULT_STORED", task.taskId(), failedIds, failedIds.size(), false);
+                Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> targets = new LinkedHashMap<>();
+                failedIds.forEach(id -> targets.put(id,
+                        new TaskItemScoreBandCore.TaskItemOutcomeTarget(failedOutcomeTag, dispatchTimeMillis)));
+                itemScores.promoteItemOutcomes(task.taskId(), targets);
+            }
+            Set<String> failed = Set.copyOf(failedIds);
+            List<String> claimableIds = observed.entrySet().stream()
+                    .filter(entry -> entry.getValue().remainingBudget() > 0)
+                    .map(Map.Entry::getKey)
+                    .filter(items::containsKey)
+                    .filter(messageId -> !failed.contains(messageId))
+                    .toList();
+            if (claimableIds.isEmpty()) {
+                idleSettlement.settle(
+                        task,
+                        task.descriptor().idleDisposition(),
+                        dispatchTimeMillis
+                );
+                continue;
+            }
+
+            try {
+                long selectedAt = DispatchStageEvent.start();
+                Map<String, RoutedWorkerCandidate> assignments =
+                        assignments(
+                                task,
+                                claimableIds,
+                                items,
+                                roundWorkerIds
+                        );
+                DispatchStageEvent.items(selectedAt, "CANDIDATES", task.taskId(), claimableIds, assignments.size(), false);
+                List<TaskAssignmentDispatcher.AssignmentAttempt> attempts =
+                        new ArrayList<>(assignments.size());
+                assignments.forEach((messageId, worker) -> attempts.add(
+                        new TaskAssignmentDispatcher.AssignmentAttempt(
+                                Objects.requireNonNull(
+                                        items.get(messageId),
+                                        "assigned TaskItem"
+                                ),
+                                Objects.requireNonNull(
+                                        observed.get(messageId),
+                                        "assigned TaskItem score"
+                                ).score(),
+                                worker
+                        )
+                ));
+                int taskPublished = assignmentDispatcher.dispatch(
+                        task,
+                        attempts,
+                        claimUntilMillis
+                );
+                published += taskPublished;
+                if (taskPublished > 0) {
+                    servedTaskIds.remove(task.taskId());
+                    servedTaskIds.add(task.taskId());
+                    recentlyServedTaskIds = List.copyOf(servedTaskIds);
+                }
+            } finally {
+                taskScores.rewriteSameBandTimeMillis(
+                        task.taskId(),
+                        TaskScoreBand.RUNNING_VISIBLE,
+                        dispatchTimeMillis
+                );
+            }
+        }
+        return published;
+    }
+
+    private static List<ObservedTask> orderForDispatch(
+            List<ObservedTask> tasks,
+            Set<String> servedTaskIds
+    ) {
+        Map<String, ObservedTask> ordered = new LinkedHashMap<>();
+        tasks.forEach(task -> ordered.put(task.taskId(), task));
+        servedTaskIds.retainAll(ordered.keySet());
+        // Waiting Tasks precede served peers; empty rounds cannot phase-lock
+        // a fixed rotation with the Workers' release cadence.
+        for (String taskId : servedTaskIds) {
+            ObservedTask task = ordered.remove(taskId);
+            ordered.put(taskId, task);
+        }
+        return List.copyOf(ordered.values());
+    }
+
+    private Map<String, RoutedWorkerCandidate> assignments(
+            ObservedTask task,
+            List<String> messageIds,
+            Map<String, TaskItem> items,
+            Set<String> roundWorkerIds
+    ) {
+        var selectors = new LinkedHashMap<String, WorkerQuery>();
+        for (String messageId : messageIds) {
+            selectors.put(messageId, Objects.requireNonNull(
+                    items.get(messageId), "claimable TaskItem").workerSelector());
+        }
+        return candidateSelection.takeCandidates(
+                task.descriptor().workerGroupId(),
+                selectors,
+                roundWorkerIds
+        );
+    }
+
+    private static boolean failed(
+            TaskItemScoreObservation observation,
+            TaskItem item,
+            long observedAtMillis
+    ) {
+        return observation.remainingBudget() == 0
+                || item != null
+                && item.expireAtMillis() != null
+                && observedAtMillis >= item.expireAtMillis();
+    }
+}

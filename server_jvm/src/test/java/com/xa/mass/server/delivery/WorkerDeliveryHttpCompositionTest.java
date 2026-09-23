@@ -1,0 +1,102 @@
+package com.xa.mass.server.delivery;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.server.api.ApiExceptionHandler;
+import com.xa.mass.server.api.RequestIdFilter;
+import com.xa.mass.server.api.v1.controller.AdapterBatchDeliveryController;
+import com.xa.mass.server.api.v1.controller.WorkerPointDeliveryController;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.server.assembly.redis.KernelRedisConfiguration;
+import com.xa.mass.server.assembly.redis.KernelRedisHealthIndicator;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import com.xa.mass.server.delivery.directcall.DirectCallService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
+import com.xa.mass.workermatching.WorkerProperties;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+
+class WorkerDeliveryHttpCompositionTest {
+
+    private final ApplicationContextRunner contextRunner =
+            new ApplicationContextRunner()
+                    .withUserConfiguration(
+                            IsolatedWorkerDeliveryHttpApplication.class
+                    )
+                    .withPropertyValues(
+                            "xa.mass.redis.url="
+                                    + "redis://127.0.0.1:6379/15",
+                            "xa.mass.redis.scope="
+                                    + "test_worker_delivery_composition"
+                    )
+                    .withBean(
+                            WorkerResourceCatalog.class,
+                            () -> org.mockito.Mockito.mock(
+                                    WorkerResourceCatalog.class
+                            )
+                    )
+                    .withBean(
+                            WorkerProperties.class,
+                            () -> org.mockito.Mockito.mock(WorkerProperties.class)
+                    )
+                    .withBean(
+                            WorkerSchedulingService.class,
+                            () -> org.mockito.Mockito.mock(WorkerSchedulingService.class)
+                    )
+                    .withBean(
+                            DirectCallService.class,
+                            () -> org.mockito.Mockito.mock(
+                                    DirectCallService.class
+                            )
+                    );
+
+    @Test
+    void assemblesWithoutPlatformPropertiesManagementOrTaskResourceOwners() {
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
+            assertThat(context).hasSingleBean(TaskEvidenceRuntime.class);
+            assertThat(context).hasSingleBean(
+                    WorkerServiceabilityRuntime.class
+            );
+            assertThat(context).hasSingleBean(WorkerDeliveryService.class);
+            assertThat(context).doesNotHaveBean(WorkerResourceCommandService.class);
+            assertThat(context)
+                    .hasSingleBean(WorkerPointDeliveryController.class);
+            assertThat(context)
+                    .hasSingleBean(AdapterBatchDeliveryController.class);
+            assertThat(context)
+                    .hasSingleBean(KernelRedisHealthIndicator.class);
+            assertThat(context).hasSingleBean(ApiExceptionHandler.class);
+            assertThat(context).hasSingleBean(RequestIdFilter.class);
+
+            assertThat(context).doesNotHaveBean(TaskRuntime.class);
+            assertThat(context).doesNotHaveBean(TaskResourceCatalog.class);
+            assertThat(context).hasSingleBean(WorkerResourceCatalog.class);
+            assertThat(context).doesNotHaveBean(
+                    TaskLifecycleCommands.class
+            );
+        });
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @Import({
+            KernelRedisConfiguration.class,
+            WorkerDeliveryOwnerAssemblyConfiguration.class,
+            WorkerDeliveryConfiguration.class,
+            WorkerPointDeliveryController.class,
+            AdapterBatchDeliveryController.class,
+            ApiExceptionHandler.class,
+            RequestIdFilter.class
+    })
+    static class IsolatedWorkerDeliveryHttpApplication {
+    }
+}

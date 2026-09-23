@@ -1,43 +1,59 @@
 {
-    "name": "frontend",
-    "private": true,
-    "version": "0.0.0",
-    "type": "module",
-    "packageManager": "pnpm@10.19.0",
-    "scripts": {
-        "dev": "vite",
-        "build": "vue-tsc -b && vite build",
-        "preview": "vite preview",
-        "lint": "eslint .",
-        "format": "prettier --write .",
-        "format:check": "prettier --check .",
-        "typecheck": "vue-tsc --noEmit",
-        "test": "vitest",
-        "test:run": "vitest run"
-    },
-    "dependencies": {
-        "@element-plus/icons-vue": "^2.3.2",
-        "element-plus": "^2.11.4",
-        "vue": "^3.5.32",
-        "vue-router": "^4.6.3"
-    },
-    "devDependencies": {
-        "@eslint/js": "^9.39.1",
-        "@types/node": "^24.12.2",
-        "@vitejs/plugin-vue": "^6.0.6",
-        "@vue/tsconfig": "^0.9.1",
-        "@vue/test-utils": "^2.4.6",
-        "eslint": "^9.39.1",
-        "eslint-config-prettier": "^10.1.8",
-        "eslint-plugin-vue": "^10.5.1",
-        "globals": "^16.4.0",
-        "jsdom": "^27.2.0",
-        "prettier": "^3.6.2",
-    "typescript": "~6.0.2",
-    "typescript-eslint": "^8.46.2",
-    "vite": "^8.0.9",
-    "vitest": "^4.0.8",
-    "vue-eslint-parser": "^10.2.0",
-    "vue-tsc": "^3.2.7"
+  "name": "xa-mass-worker-runtime-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22.19.0 <25",
+    "pnpm": ">=11.9.0 <12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build": "vue-tsc --noEmit && vite build",
+    "build:demo": "vue-tsc --noEmit && vite build --mode mock",
+    "preview": "vite preview",
+    "lint": "eslint . --max-warnings 0 && prettier --check .",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
+    "@fontsource/inter": "5.3.0",
+    "@scalar/api-reference": "1.66.1",
+    "@vue/shared": "3.5.40",
+    "axios": "1.12.2",
+    "element-plus": "2.11.5",
+    "pinia": "3.0.3",
+    "vue": "3.5.40",
+    "vue-router": "4.6.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.38.0",
+    "@types/node": "22.20.1",
+    "@vitejs/plugin-vue": "6.0.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "9.38.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.5.1",
+    "jsdom": "30.0.1",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2",
+    "vite": "7.1.12",
+    "vitest": "4.1.10",
+    "vue-eslint-parser": "10.2.0",
+    "vue-tsc": "3.1.2"
+  },
+  "license": "MIT",
+  "homepage": "https://frontend-kylerrun-s-projects.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quiaingmuarua/xa_mass_platform.git",
+    "directory": "frontend"
   }
 }

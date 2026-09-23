@@ -1,14 +1,83 @@
-import type {RouteRecordRaw} from 'vue-router'
-import {createRouter, createWebHistory} from 'vue-router'
-import {installRouterGuards} from '@/router/guards'
-import {appRoutes} from '@/router/routes'
+import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import ConsoleLayout from "@/layouts/ConsoleLayout.vue";
+import RuntimeProvider from "@/layouts/RuntimeProvider.vue";
 
+const smsPage = () => import("@/sms/SmsPage.vue");
+const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
+const appChecksPage = () => import("@/app-checks/AppCheckPage.vue");
+export const consoleRoutes: RouteRecordRaw[] = [
+  {
+    path: "/",
+    component: ConsoleLayout,
+    children: [
+      { path: "", redirect: "/runtime/workers" },
+      {
+        path: "runtime",
+        component: RuntimeProvider,
+        meta: { section: "Runtime" },
+        children: [
+          {
+            path: "workers",
+            name: "runtime-workers",
+            component: () => import("@/views/WorkerRuntimeView.vue"),
+            meta: { title: "Worker Runtime" }
+          },
+          {
+            path: "tasks",
+            name: "runtime-tasks",
+            component: () => import("@/views/TaskRuntimeView.vue"),
+            meta: { title: "Tasks" }
+          }
+        ]
+      },
+      {
+        path: "reference/error-codes",
+        name: "reference-error-codes",
+        component: () => import("@/views/ErrorCodeReferenceView.vue"),
+        meta: { section: "Reference", title: "Diagnostic Codes" }
+      },
+      ...["sms", "sms/listeners", "sms/metrics"].map((path) => ({
+        path,
+        component: smsPage,
+        meta: { section: "Scenarios", title: "SMS" }
+      })),
+      ...["messages", "messages/tasks/:taskId"].map((path) => ({
+        path,
+        component: messagesPage,
+        meta: { section: "Scenarios", title: "Messages" }
+      })),
+      ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
+        path,
+        component: appChecksPage,
+        meta: { section: "Scenarios", title: "应用注册查询" }
+      }))
+    ]
+  },
+  {
+    path: "/api-reference",
+    alias: "/scalar",
+    name: "api-reference",
+    component: () => import("@/views/ApiReferenceView.vue"),
+    meta: { title: "API Reference" }
+  },
+  {
+    path: "/:pathMatch(.*)*",
+    name: "not-found",
+    component: () => import("@/views/NotFoundView.vue")
+  }
+];
 export const router = createRouter({
-    history: createWebHistory(),
-    routes: appRoutes as unknown as RouteRecordRaw[],
-    scrollBehavior() {
-        return { top: 0 }
-    },
-})
-
-installRouterGuards(router)
+  history: createWebHistory(),
+  routes: consoleRoutes,
+  scrollBehavior: (to, from) => {
+    // The Messages workspace restores its loaded-list position and focused row.
+    if (to.path === "/messages" && from.path.startsWith("/messages/tasks/"))
+      return false;
+    if (to.path === "/app-checks" && from.path.startsWith("/app-checks/tasks/"))
+      return false;
+    return { left: 0, top: 0 };
+  }
+});
+router.afterEach((to) => {
+  document.title = `${String(to.meta.title ?? "页面未找到")} · XA Mass`;
+});

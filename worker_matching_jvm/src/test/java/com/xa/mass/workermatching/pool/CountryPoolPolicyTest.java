@@ -1,0 +1,145 @@
+package com.xa.mass.workermatching.pool;
+
+import com.xa.mass.workermatching.functions.CountryQueryFunction;
+import com.xa.mass.workermatching.refill.CountryPoolPolicy;
+
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
+
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
+import com.xa.mass.kernel.assignment.*;
+import com.xa.mass.kernel.assignment.WorkerMatching.*;
+import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.workermatching.*;
+import io.lettuce.core.*;
+import io.lettuce.core.api.*;
+import io.lettuce.core.api.sync.*;
+import io.lettuce.core.codec.StringCodec;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
+
+class CountryPoolPolicyTest {
+    final CandidateBudget budget = new CandidateBudget();
+    final RedisClient client=mock(RedisClient.class);
+    @SuppressWarnings("unchecked") final StatefulRedisConnection<String,String> connection=mock(StatefulRedisConnection.class);
+    @SuppressWarnings("unchecked") final RedisCommands<String,String> redis=mock(RedisCommands.class);
+    final AtomicLong clock=new AtomicLong(1000);
+    final FactsIndexStore storage=new FactsIndexStore(client, new RedisKeyspace("test_country_buckets"), Map.of());
+    final WorkerCandidatePool pool=spy(new WorkerCandidatePool(clock::get, budget));
+    final CountryPoolPolicy policy=new CountryPoolPolicy(pool, storage::readWorkerFacts);
+    final Map<String,String> facts=new HashMap<>();
+    final List<List<String>> reads=new ArrayList<>();
+    final EligibilityQuery any=new EligibilityQuery(Map.of());
+    @BeforeEach void setup() {
+        when(client.connect(StringCodec.UTF8)).thenReturn(connection);when(connection.sync()).thenReturn(redis);
+        when(redis.hmget(anyString(),any(String[].class))).thenAnswer(call->{
+            assertEquals(storage.workerFactsKey("g"),call.getArgument(0));
+            var ids=new ArrayList<String>();var result=new ArrayList<KeyValue<String,String>>();
+            for(int i=1;i<call.getArguments().length;i++) {
+                String id=call.getArgument(i);ids.add(id);
+                result.add(facts.containsKey(id)?KeyValue.just(id,facts.get(id)):KeyValue.empty(id));
+            }
+            reads.add(List.copyOf(ids));return result;
+        });
+    }
+    @AfterEach void close() { storage.close(); }
+    EligibilityQuery country(String... values) { return new EligibilityQuery(Map.of("worker.country",List.of(values))); }
+    Map<String, Long> offers(String... ids) {
+        return Arrays.stream(ids).collect(java.util.stream.Collectors.toMap(id -> id, id -> 20L, (a,b) -> {throw new IllegalArgumentException("duplicate");}, LinkedHashMap::new));
+    }
+    void facts(String id,String country) { facts.put(id,"{\"country\":\""+country+"\"}"); }
+    @Test void overlappingTargetWatermarksDoNotLimitQualifiedAdmissions() {
+        facts("cn","CN");facts("us","US");facts("gb","GB");facts("jp","JP");
+        var targets=new LinkedHashMap<EligibilityQuery,Integer>();
+        targets.put(any,1);targets.put(country("CN","US","CN"),1);targets.put(country("US","GB"),1);
+        assertEquals(List.of("jp","us","cn","gb"),policy.refill("g",targets,offers("jp","us","cn","gb"),100));
+        assertTrue(policy.deficits("g",targets).values().stream().allMatch(n->n==0));
+        assertEquals(4,pool.countByKey("g").size());assertEquals(9996,budget.available());
+        assertEquals(List.of(List.of("jp","us","cn","gb")),reads);
+        clearInvocations(redis);
+        var selected=new CountryQueryFunction(pool).apply("g",Map.of("m",List.of("US","US")));
+        assertEquals(new WorkerCandidate("us",20),selected.get("m"));verifyNoInteractions(redis);
+        assertEquals(3,pool.countByKey("g").size());assertEquals(9997,budget.available());
+    }
+    @Test void equivalentCountryTargetsMergeMaxAndCountOneUnion() {
+        {
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"), null)), List.of("country"), Set.of());
+            var target=new RefillTarget("country",country("CN","US"),3);
+            var declarations=catalog.normalizeRefill("g",List.of(
+                    new RefillTarget("country",country("US","CN","US"),1),target));
+            assertEquals(List.of(target),declarations);
+            verifyNoInteractions(redis);
+            facts("us","US");facts("cn","CN");facts("gb","GB");
+            assertEquals(2,catalog.refill("g",declarations,offers("us","cn","gb")));
+            assertEquals(Map.of(target.target(),1),policy.deficits("g",Map.of(target.target(),3)));
+            assertEquals(9998,budget.available());
+        }
+    }
+    @Test void fullTargetsUseOneCountSnapshotAndOneFactsReadWithoutCountryPaging() {
+        var targets=new ArrayList<RefillTarget>();
+        for(int i=0;i<200;i++) targets.add(new RefillTarget("renamed-country-policy",country(""+(char)('A'+i/26)+(char)('A'+i%26)),1));
+        facts("late","HR"); // coordinate 199, beyond a 100-target first page
+        var traced=spy(policy);
+        {
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"), null)), List.of("renamed-country-policy"), Set.of());
+            assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
+            verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
+            assertEquals(1,catalog.refill("g",targets,offers("late")));
+            verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(100));
+            assertEquals(1,reads.size());
+            clearInvocations(pool);
+            policy.deficits("g",targets.stream().collect(java.util.stream.Collectors.toMap(RefillTarget::target,RefillTarget::count)));
+            verify(pool).countByKey("g");
+            verify(pool, never()).pollAnyBatch(anyString(), anyInt());
+        }
+    }
+    @Test void invalidOrMissingCountrySkipsButCorruptFactsFailBeforeAdmission() {
+        facts("valid","CN");facts("lowercase","cn");facts.put("number","{\"country\":42}");facts.put("empty","{}");
+        facts.put("corrupt","[]");
+        assertThrows(IllegalArgumentException.class,()->policy.refill("g",Map.of(any,100),offers("valid","corrupt"),100));
+        assertEquals(10000,budget.available());assertEquals(0,pool.countByKey("g").size());
+        assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100));
+        clock.set(61000); assertTrue(new CountryQueryFunction(pool).apply("g",Map.of("m",Map.of())).isEmpty());
+        assertEquals(0,pool.countByKey("g").size());assertEquals(10000,budget.available());
+    }
+    @Test void satisfiedWatermarkStillValidatesTheWholeOfferedFactsBatch() {
+        facts("resident", "US");
+        var targets = Map.of(country("US"), 1);
+        assertEquals(List.of("resident"), policy.refill("g", targets, offers("resident"), 100));
+        assertEquals(0, policy.deficits("g", targets).get(country("US")));
+        facts("valid", "US");
+        facts.put("corrupt", "[]");
+        assertThrows(IllegalArgumentException.class,
+                () -> policy.refill("g", targets, offers("valid", "corrupt"), 100));
+        assertEquals(List.of("valid", "corrupt"), reads.getLast());
+        assertEquals(1, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
+        facts("corrupt", "CN");
+        assertEquals(List.of("valid"), policy.refill("g", targets, offers("valid", "corrupt"), 100));
+        assertEquals(2, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
+    }
+    @Test void readFailureDoesNotAdmitAndSuccessfulAdmissionStartsLocalTtl() {
+        when(redis.hmget(anyString(),any(String[].class))).thenThrow(new IllegalStateException("read failed"));
+        assertThrows(IllegalStateException.class,()->policy.refill("g",Map.of(any,1),offers("w"),1));
+        assertEquals(10000,budget.available());
+        doAnswer(call->{clock.set(2000);return List.of(KeyValue.just("w","{\"country\":\"CN\"}"));})
+                .when(redis).hmget(anyString(),any(String[].class));
+        assertEquals(List.of("w"),policy.refill("g",Map.of(any,1),offers("w"),1));
+        clock.set(62_000); pool.discardExpired();
+        assertEquals(10000,budget.available());
+    }
+    @Test void multiCountryTakeUsesBucketOrderAndLeavesUnrelatedEntries() {
+        facts("a","US");facts("b","CN");facts("c","JP");facts("d","CN");
+        policy.refill("g",Map.of(any,4),offers("a","b","c","d"),4);
+        var requests=new LinkedHashMap<String,Object>();requests.put("first",List.of("CN","US"));requests.put("second",List.of("US","CN"));
+        var taken=new CountryQueryFunction(pool).apply("g",requests);
+        assertEquals(List.of("b","d"),taken.values().stream().map(WorkerCandidate::workerId).toList());
+        assertEquals(Map.of("US", 1, "JP", 1), pool.countByKey("g"));
+        assertTrue(new CountryQueryFunction(pool).apply("other",requests).isEmpty());
+        assertEquals(2,pool.countByKey("g").size());
+    }
+}

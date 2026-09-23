@@ -1,0 +1,274 @@
+package com.xa.mass.kernel.pacer.result;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+        .DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+        .DeliveryReport;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
+
+class WorkerServiceabilityResultPolicyTest {
+
+    private static final long NOW = 50_000;
+
+    @Test
+    void pollingHasItsOwnServerSourceAndRejectsForgedOrExpiredObservations() {
+        var events = org.mockito.Mockito.mock(WorkerServiceabilityEvents.class);
+        var policy = policy(events);
+        String type = "platform.server.worker-poll.observed";
+        String payload = "{\"workerId\":\"polling\",\"observedAtMillis\":49000}";
+        policy.handle(List.of(
+                DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload,
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "adapter-1",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload,
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload.replace("49000", "19000"),
+                        "worker-serviceability-evidence:v1"
+                ),
+                DeliveryReport.create(
+                        DeliveryEndpoint.SERVER,
+                        "system-polling",
+                        DeliveryEndpoint.KERNEL,
+                        type,
+                        "",
+                        payload.replace("49000", "50001"),
+                        "worker-serviceability-evidence:v1"
+                )
+        ));
+        org.mockito.Mockito.verifyNoInteractions(events);
+        policy.handle(List.of(DeliveryReport.create(
+                DeliveryEndpoint.SERVER,
+                "system-polling",
+                DeliveryEndpoint.KERNEL,
+                type,
+                "",
+                payload,
+                "worker-serviceability-evidence:v1"
+        )));
+        org.mockito.Mockito.verify(events).onAvailable(Map.of("polling",
+                new WorkerServiceabilityEvents.NetworkObservation("system-polling", 49_000L)));
+    }
+
+    @Test
+    void publishesTheThreeFixedLatestEvidenceEvents() {
+        RecordingEvents events = new RecordingEvents();
+        WorkerServiceabilityResultPolicy policy = policy(events);
+
+        policy.handle(List.of(
+                connection("connected", "CONNECTED", 49_001),
+                connection("route", "DISCONNECTED", 49_002),
+                expired("expired", 49_003),
+                snapshot(49_004, linkedStates(
+                        "probe", "UNKNOWN",
+                        "connected-snapshot", "CONNECTED"
+                ))
+        ));
+
+        assertEquals(List.of(
+                "connected:{connected=49001, connected-snapshot=49004}",
+                "route:{route=49002, expired=49003}",
+                "probe:{probe=49004}"
+        ), events.calls);
+    }
+
+    @Test
+    void sameTimestampUsesLaterReportAndInvalidEvidenceIsDiscarded() {
+        RecordingEvents events = new RecordingEvents();
+        WorkerServiceabilityResultPolicy policy = policy(events);
+
+        policy.handle(List.of(
+                connection("worker-1", "CONNECTED", 49_000),
+                DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER,
+                        "adapter-1",
+                        DeliveryEndpoint.KERNEL,
+                        "unknown.event",
+                        "",
+                        "{}",
+                        "worker-serviceability-evidence:v1"
+                ),
+                connection("worker-1", "DISCONNECTED", 49_000),
+                connection("future", "CONNECTED", NOW + 1),
+                connection("expired", "CONNECTED", 19_999)
+        ));
+
+        assertEquals(List.of("route:{worker-1=49000}"), events.calls);
+    }
+
+    @Test
+    void malformedSnapshotDoesNotReachWorkerOwner() {
+        RecordingEvents events = new RecordingEvents();
+        WorkerServiceabilityResultPolicy policy = policy(events);
+
+        policy.handle(List.of(report(
+                "platform.adapter.command.succeeded",
+                "{\"stateByWorkerId\":{\"worker-1\":\"INVALID\"}}",
+                "worker-serviceability:v1:49000"
+        )));
+
+        assertEquals(List.of(), events.calls);
+    }
+
+    @Test
+    void snapshotRequiresExactSuccessEventAndProbeCorrelationNotSuccessDiagnostic() {
+        RecordingEvents events = new RecordingEvents();
+        var policy = policy(events);
+        var snapshot = snapshot(49_000, Map.of("worker", "CONNECTED"));
+        for (String event : List.of("platform.adapter.worker-connections.snapshot",
+                "platform.adapter.command.failed", "extension.adapter.probe.succeeded",
+                "platform.worker.command.succeeded")) {
+            policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                    DeliveryEndpoint.KERNEL, event, "200", snapshot.payload(), snapshot.forward())));
+        }
+        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                DeliveryEndpoint.KERNEL, snapshot.messageType(), "200", snapshot.payload(), "direct-call:v1:test")));
+        assertEquals(List.of(), events.calls);
+        policy.handle(List.of(DeliveryReport.create(DeliveryEndpoint.ADAPTER, "adapter-1",
+                DeliveryEndpoint.KERNEL, snapshot.messageType(), "3303", snapshot.payload(), snapshot.forward())));
+        assertEquals(List.of("connected:{worker=49000}"), events.calls);
+    }
+
+    private static WorkerServiceabilityResultPolicy policy(
+            WorkerServiceabilityEvents events
+    ) {
+        return new WorkerServiceabilityResultPolicy(
+                events,
+                WorkerServiceabilityResultConfig.defaults(),
+                () -> NOW,
+                JsonMapper.builder().build()
+        );
+    }
+
+    private static Map<String, String> linkedStates(String... values) {
+        LinkedHashMap<String, String> states = new LinkedHashMap<>();
+        for (int index = 0; index < values.length; index += 2) {
+            states.put(values[index], values[index + 1]);
+        }
+        return states;
+    }
+
+    private static DeliveryReport connection(
+            String workerId,
+            String state,
+            long observedAtMillis
+    ) {
+        return report(
+                "platform.adapter.worker-connection.changed",
+                "{\"workerId\":\"" + workerId + "\",\"state\":\""
+                        + state + "\",\"observedAtMillis\":"
+                        + observedAtMillis + "}",
+                "worker-serviceability-evidence:v1"
+        );
+    }
+
+    private static DeliveryReport expired(
+            String workerId,
+            long observedAtMillis
+    ) {
+        return report(
+                "platform.adapter.worker-delivery.expired",
+                "{\"workerId\":\"" + workerId
+                        + "\",\"observedAtMillis\":"
+                        + observedAtMillis + "}",
+                "worker-serviceability-evidence:v1"
+        );
+    }
+
+    private static DeliveryReport snapshot(
+            long observedAtMillis,
+            Map<String, String> states
+    ) {
+        StringBuilder payload = new StringBuilder("{\"stateByWorkerId\":{");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : states.entrySet()) {
+            if (!first) {
+                payload.append(',');
+            }
+            first = false;
+            payload.append('\"').append(entry.getKey()).append("\":\"")
+                    .append(entry.getValue()).append('\"');
+        }
+        payload.append("}}");
+        return report(
+                "platform.adapter.command.succeeded",
+                payload.toString(),
+                "worker-serviceability:v1:" + observedAtMillis
+        );
+    }
+
+    private static DeliveryReport report(
+            String event,
+            String payload,
+            String forward
+    ) {
+        return DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "adapter-1",
+                DeliveryEndpoint.KERNEL,
+                event,
+                "",
+                payload,
+                forward
+        );
+    }
+
+    private static final class RecordingEvents
+            implements WorkerServiceabilityEvents {
+
+        private final List<String> calls = new ArrayList<>();
+        private Map<String, Long> times(Map<String, NetworkObservation> observations) {
+            Map<String, Long> result = new java.util.LinkedHashMap<>();
+            observations.forEach((id, value) -> {
+                assertEquals("adapter-1", value.endpointManagerId());
+                result.put(id, value.observedAtMillis());
+            });
+            return result;
+        }
+
+        @Override
+        public void onAvailable(Map<String, NetworkObservation> observedAtByWorkerId) {
+            calls.add("connected:" + times(observedAtByWorkerId));
+        }
+
+        @Override
+        public void onRouteUnavailable(
+                Map<String, NetworkObservation> observedAtByWorkerId
+        ) {
+            calls.add("route:" + times(observedAtByWorkerId));
+        }
+
+        @Override
+        public void onProbeUnavailable(
+                Map<String, NetworkObservation> observedAtByWorkerId
+        ) {
+            calls.add("probe:" + times(observedAtByWorkerId));
+        }
+    }
+}

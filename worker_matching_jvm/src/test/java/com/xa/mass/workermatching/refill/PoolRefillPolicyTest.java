@@ -1,0 +1,105 @@
+package com.xa.mass.workermatching.refill;
+
+import com.xa.mass.workermatching.functions.AnyQueryFunction;
+import com.xa.mass.workermatching.pool.CandidateBudget;
+import com.xa.mass.workermatching.pool.WorkerCandidatePool;
+import com.xa.mass.workermatching.storage.FactsIndexStore;
+
+import com.xa.mass.kernel.assignment.RefillTarget;
+
+import com.xa.mass.workermatching.*;
+import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+import io.lettuce.core.RedisClient;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class PoolRefillPolicyTest {
+    final CandidateBudget budget = new CandidateBudget();
+    @Test void targetOneHundredAllowsTwoHundredResidentsWithoutClippingOrEviction() {
+        var stock = new WorkerCandidatePool(() -> 1000, budget);
+        var policy = new AnyPoolPolicy(stock);
+        var target = new EligibilityQuery(Map.of());
+        var targets = Map.of(target, 100);
+        for (int start : List.of(0, 100)) {
+            var offered = new LinkedHashMap<String, Long>();
+            for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L + i);
+            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+            assertEquals(Map.of(target, 0), policy.deficits("g", targets));
+        }
+        assertEquals(200, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
+        assertEquals(9800, budget.available());
+        assertEquals(Map.of(target, 0), policy.deficits("g", targets));
+        assertEquals(200, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
+    }
+
+    @Test void batchBudgetAndHardCapacityStillBoundOffersAboveTheWatermark() {
+        var stock = new WorkerCandidatePool(() -> 1000, budget);
+        var policy = new AnyPoolPolicy(stock);
+        var targets = Map.of(new EligibilityQuery(Map.of()), 1);
+        for (int start = 0; start < 900; start += 100) {
+            var offered = new LinkedHashMap<String, Long>();
+            for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L);
+            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+        }
+        var offered = new LinkedHashMap<String, Long>();
+        for (int i = 900; i < 1000; i++) offered.put("w" + i, 20L);
+        assertEquals(7, policy.refill("g", targets, offered, 7).size());
+        assertEquals(93, policy.refill("g", targets, offered, 100).size());
+        assertTrue(policy.refill("g", targets, Map.of("overflow", 20L), 100).isEmpty());
+        assertEquals(1000, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
+        assertEquals(9000, budget.available());
+    }
+
+    @Test void messagingKeepsCountryQualificationWithoutPhoneViewsOrTargets() {
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
+            var stock=new WorkerCandidatePool(()->1000, budget);
+            var handler=new MessagingPoolPolicy(stock, storage::readWorkerFacts);
+            var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"))));
+            assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN","phone","+86123")));
+            assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN")));
+            assertEquals(Set.of("CN"),handler.matchingKeys("g",List.of(q),Set.of("CN","US")).get(q));
+            assertNull(handler.bucketKey("g","w",null));
+            assertNull(handler.bucketKey("g","w",Map.of("messaging.enabled","false","country","CN")));
+            assertNull(handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","invalid")));
+            assertThrows(IllegalArgumentException.class, () -> handler.normalizeQuery("g",
+                    new EligibilityQuery(Map.of("worker.phone", List.of("+86123")))));
+        }
+    }
+    @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
+        try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
+            for(var rule:List.of(new CountryPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new ProofFactsPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
+                assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of())));
+                assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("w")))));
+            }
+        }
+    }
+    @Test void anyNeedsNoFactsAndRejectsIdentityAndCountryConditions() {
+        var client=mock(RedisClient.class);
+        try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_any"), Map.of())) {
+            var stock=new WorkerCandidatePool(()->1000, budget);
+            var rule=new AnyPoolPolicy(stock);
+            var function=new AnyQueryFunction(stock);
+            var target=new EligibilityQuery(Map.of());
+            assertEquals(target,rule.normalizeQuery("g",target));
+            assertEquals(2,rule.deficits("g",Map.of(target,2)).get(target));
+            var offered = new LinkedHashMap<String,Long>(); offered.put("a",2L); offered.put("b",3L);
+            assertEquals(List.of("a","b"),rule.refill("g",Map.of(target,2),offered,100));
+            assertEquals(0,rule.deficits("g",Map.of(target,2)).get(target));
+            var requests=new LinkedHashMap<String,Object>();requests.put("first",Map.of());requests.put("second",Map.of());
+            var result=function.apply("g",requests);
+            assertEquals(List.of("first","second"),List.copyOf(result.keySet()));
+            assertEquals(List.of("a","b"),result.values().stream().map(c->c.workerId()).toList());
+            assertThrows(UnsupportedOperationException.class,result::clear);
+            for(var fields:List.of(Map.of("workerId",List.of("a")),Map.of("worker.country",List.of("CN"))))
+                assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(fields)));
+            for(var input:List.of(Map.of("workerId",List.of("a")),Map.of("country",List.of("CN")),List.of("CN")))
+                assertThrows(IllegalArgumentException.class,()->function.normalizeInput("g",input));
+            assertThrows(IllegalArgumentException.class,()->rule.refill("g", Map.of(target,0), Map.of(), 0));
+            assertThrows(IllegalArgumentException.class,()->rule.deficits("g",Map.of(target,1001)));
+            verifyNoInteractions(client);
+        }
+    }
+}

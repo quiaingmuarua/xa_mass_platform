@@ -1,0 +1,113 @@
+package com.xa.mass.server.api.v1.contract.delivery;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public final class WorkerDeliveryHttpContract {
+
+    private WorkerDeliveryHttpContract() {
+    }
+
+    public record WorkerCommandResponse(
+            String src,
+            String dst,
+            String messageType,
+            long executeBeforeMillis,
+            String payload,
+            String forward
+    ) {
+        public static WorkerCommandResponse from(DeliveryCommand command) {
+            return new WorkerCommandResponse(
+                    command.src().wireValue(),
+                    command.dst().wireValue(),
+                    command.messageType(),
+                    command.executeBeforeMillis(),
+                    command.payload(),
+                    command.forward()
+            );
+        }
+
+        public static Map<String, WorkerCommandResponse> fromCommands(
+                Map<String, DeliveryCommand> commands
+        ) {
+            Map<String, WorkerCommandResponse> response =
+                    new LinkedHashMap<>();
+            commands.forEach((entryKey, command) -> response.put(
+                    entryKey,
+                    WorkerCommandResponse.from(command)
+            ));
+            return Collections.unmodifiableMap(response);
+        }
+    }
+
+    public record WorkerResultRequest(
+            @NotBlank String src,
+            @NotBlank String sourceId,
+            @NotBlank String dst,
+            @Schema(description = "Exact Report event name. WORKER-to-TASK also accepts "
+                    + "platform.worker.task-outcome.observed for later observations of the same Item.")
+            @NotBlank String messageType,
+            @NotNull String diagnosticCode,
+            @Schema(description = "Event payload encoded as a JSON string. Task outcome observations use "
+                    + "{tag, observedAtMillis, opaqueResultPayload?}: tag 6..9, positive supported milliseconds, "
+                    + "and optional nonblank string content. Higher tag wins, then later milliseconds; "
+                    + "state-only observations preserve content. Forward remains the original opaque Command context.")
+            @NotNull String payload,
+            @NotNull String forward
+    ) {
+        // Bind raw JSON before Jackson can coerce numbers/booleans to strings.
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+        public static WorkerResultRequest fromJson(Map<String, Object> fields) {
+            DeliveryReport report = new WorkerDeliveryCodec().decodeDeliveryReport(fields);
+            if (report == null) {
+                throw invalid("DeliveryReport is invalid");
+            }
+            return new WorkerResultRequest(
+                    report.src().wireValue(), report.sourceId(), report.dst().wireValue(),
+                    report.messageType(), report.diagnosticCode(), report.payload(), report.forward()
+            );
+        }
+
+        public DeliveryReport toDeliveryReport() {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("src", src);
+            fields.put("sourceId", sourceId);
+            fields.put("dst", dst);
+            fields.put("messageType", messageType);
+            fields.put("diagnosticCode", diagnosticCode);
+            fields.put("payload", payload);
+            fields.put("forward", forward);
+            DeliveryReport report = new WorkerDeliveryCodec()
+                    .decodeDeliveryReport(fields);
+            if (report == null) {
+                throw invalid("DeliveryReport is invalid");
+            }
+            return report;
+        }
+    }
+
+    public record WorkerResultBatchResponse(
+            int acceptedCount,
+            int rejectedCount
+    ) {
+    }
+
+    private static ServerException invalid(String message) {
+        return new ServerException(
+                ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                "workerDelivery.decodeHttpRequest",
+                message,
+                null
+        );
+    }
+}

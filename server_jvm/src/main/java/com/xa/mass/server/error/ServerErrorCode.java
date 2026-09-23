@@ -1,0 +1,172 @@
+package com.xa.mass.server.error;
+
+public enum ServerErrorCode {
+    KERNEL_REJECTED_CONFLICT(
+            11005,
+            "Kernel control request conflicts with current state"
+    ),
+    INVALID_TASK_DATA_REQUEST(
+            12001,
+            "Task data request is invalid"
+    ),
+    TASK_NOT_FOUND(
+            12002,
+            "Task was not found"
+    ),
+    TASK_DATA_UNAVAILABLE(
+            12003,
+            "Task Owner is unavailable"
+    ),
+    TASK_CALL_NOT_REGISTERED(
+            12005,
+            "Project Task Call is not provisioned"
+    ),
+    TASK_CALL_REGISTRATION_CONFLICT(
+            12006,
+            "Project Task Call provisioning conflicts with current state"
+    ),
+    TASK_CALL_REGISTRATION_UNAVAILABLE(
+            12007,
+            "Project Task Call provisioning is unavailable"
+    ),
+    TASK_OPERATION_NOT_SUPPORTED(
+            12008,
+            "Task does not support this operation"
+    ),
+    TASK_STATE_CONFLICT(
+            12009,
+            "Task operation conflicts with current state"
+    ),
+    TASK_RESULTS_NOT_READY(
+            12010,
+            "Task results are not ready"
+    ),
+    TASK_WORKER_GROUP_NOT_FOUND(
+            12011,
+            "Task WorkerGroup was not found"
+    ),
+    INVALID_WORKER_DELIVERY_REQUEST(
+            13001,
+            "Worker Delivery request is invalid"
+    ),
+    WORKER_DELIVERY_UNAVAILABLE(
+            13002,
+            "Worker Delivery Redis is unavailable"
+    ),
+    INVALID_WORKER_IDENTITY_REQUEST(
+            14001,
+            "Worker identity request is invalid"
+    ),
+    WORKER_IDENTITY_NOT_FOUND(
+            14003,
+            "Worker identity was not found"
+    ),
+    WORKER_IDENTITY_CONFLICT(
+            14004,
+            "Worker identity conflicts with current state"
+    ),
+    WORKER_IDENTITY_UNAVAILABLE(
+            14005,
+            "Worker identity service is unavailable"
+    ),
+    INVALID_WORKER_BINDING_REQUEST(
+            14101,
+            "Worker binding request is invalid"
+    ),
+    WORKER_BINDING_NOT_FOUND(
+            14102,
+            "Worker binding was not found"
+    ),
+    WORKER_BINDING_CONFLICT(
+            14103,
+            "Worker binding conflicts with current endpoint"
+    ),
+    WORKER_BINDING_UNAVAILABLE(
+            14104,
+            "Worker binding service is unavailable"
+    ),
+    WORKER_ENDPOINT_UNAVAILABLE(
+            14105,
+            "Worker endpoint is unavailable"
+    ),
+    WORKER_GROUP_NOT_FOUND(
+            15001,
+            "WorkerGroup was not found"
+    ),
+    RUNTIME_VIEW_UNAVAILABLE(
+            15002,
+            "Runtime View is unavailable"
+    ),
+    RUNTIME_VIEW_FILTER_NOT_AVAILABLE(
+            15003,
+            "Runtime View filter is not available"
+    ),
+    WORKER_SCHEDULING_UNAVAILABLE(
+            15004,
+            "Worker scheduling control is unavailable"
+    ),
+    INVALID_WORKER_GROUP_REQUEST(
+            15005,
+            "WorkerGroup registration request is invalid"
+    ),
+    WORKER_GROUP_REGISTRATION_CONFLICT(
+            15006,
+            "WorkerGroup registration conflicts with current declaration"
+    ),
+    WORKER_GROUP_REGISTRATION_UNAVAILABLE(
+            15007,
+            "WorkerGroup registration is unavailable"
+    ),
+    WORKER_RESOURCE_NOT_FOUND(
+            15008,
+            "Worker resource was not found"
+    ),
+    WORKER_RESOURCE_STATE_CONFLICT(
+            15009,
+            "Worker resource operation conflicts with current state"
+    ),
+    INVALID_WORKER_RESOURCE_REQUEST(
+            15010,
+            "Worker resource request is invalid"
+    ),
+    WORKER_RESOURCE_UNAVAILABLE(
+            15011,
+            "Worker Resource Owner is unavailable"
+    ),
+    INVALID_DIRECT_CALL_REQUEST(
+            17001,
+            "Direct Call request is invalid"
+    ),
+    DIRECT_CALL_TARGET_NOT_FOUND(
+            17002,
+            "Direct Call target was not found"
+    ),
+    DIRECT_CALL_CAPACITY_EXCEEDED(
+            17003,
+            "Direct Call capacity is exhausted"
+    ),
+    DIRECT_CALL_UNAVAILABLE(
+            17004,
+            "Direct Call is unavailable"
+    ),
+    MALFORMED_REQUEST(
+            19001,
+            "Request body or parameters are invalid"
+    );
+
+    private final int code;
+    private final String defaultMessage;
+
+    ServerErrorCode(int code, String defaultMessage) {
+        this.code = code;
+        this.defaultMessage = defaultMessage;
+    }
+
+    public int code() {
+        return code;
+    }
+
+    public String defaultMessage() {
+        return defaultMessage;
+    }
+}

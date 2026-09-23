@@ -1,0 +1,392 @@
+{
+  "constants": {
+    "TaskRuntime": {
+      "MAX_RESULT_SCAN_COUNT_HINT": 1000
+    },
+    "TaskItemScoreBandCore": {
+      "ACTIVE_TAG": 1,
+      "MAX_REMAINING_BUDGET": 99,
+      "MAX_TIME_MILLIS": 9999999999900,
+      "MAX_TIME_SLOT": 99999999999,
+      "MIN_REMAINING_BUDGET": 0,
+      "MIN_TIME_MILLIS": 0,
+      "MIN_TIME_SLOT": 0,
+      "SLOT_MILLIS": 100,
+      "SUFFIX_FACTOR": 100,
+      "TAG_FACTOR": 10000000000000,
+      "TIME_SLOT_FACTOR": 100000000000,
+      "MIN_TERMINAL_TAG": 2,
+      "MAX_TERMINAL_TAG": 9,
+      "MAX_ITEM_BATCH_SIZE": 100,
+      "TERMINAL_SUFFIX": 0
+    },
+    "TaskScoreBandCore": {
+      "DEFAULT_TAG_FACTOR": 10000000000000,
+      "INITIAL_PRIORITY_STEP_MILLIS": 100,
+      "INITIAL_TIME_CEILING_MILLIS": 10000,
+      "MAX_SUFFIX": 99,
+      "MAX_TASK_SCORE_PREVIEW_LIMIT": 1000,
+      "MAX_TASK_SCHEDULING_BATCH_SIZE": 100,
+      "MAX_TIME_MILLIS": 9999999999900,
+      "MAX_TIME_SLOT": 99999999999,
+      "MIN_SUFFIX": 0,
+      "MIN_TIME_MILLIS": 0,
+      "MIN_TIME_SLOT": 0,
+      "MUTABLE_SCORE_MIN": 1,
+      "PAUSE_TIME_MILLIS": 9999999999900,
+      "PAUSE_TIME_SLOT": 99999999999,
+      "NORMAL_TIME_MIN_MILLIS": 10100,
+      "PRE_REVIEW_TAG": 2,
+      "RUNNING_VISIBLE_TAG": 1,
+      "SLOT_MILLIS": 100,
+      "SUFFIX_FACTOR": 100,
+      "TERMINAL_SCORE_MAX": -1,
+      "TIME_SCALE": 10,
+      "TIME_SLOT_FACTOR": 100000000000
+    },
+    "WorkerResourceCatalog": {
+      "MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT": 1000,
+      "MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT": 100,
+      "MAX_WORKER_BATCH_SIZE": 100
+    },
+    "WorkerScoreCore": {
+      "MAX_SCORE_BATCH_SIZE": 100,
+      "MAX_REGISTRATION_BATCH_SIZE": 100,
+      "MAX_REGISTERED_WORKER_SAMPLE_LIMIT": 1000
+    }
+  },
+  "contracts": {
+    "TaskItemResultEvents": [
+      "on_item_outcomes_observed",
+      "on_items_succeeded"
+    ],
+    "WorkerServiceabilityEvents": [
+      "on_available",
+      "on_probe_unavailable",
+      "on_route_unavailable"
+    ],
+    "WorkerMatching": [
+      "observe_refill_deficits",
+      "refill",
+      "take"
+    ],
+    "TaskEvidenceRuntime": [
+      "append_task_evidence",
+      "consume_task_evidence"
+    ],
+    "WorkerServiceabilityRuntime": [
+      "append_network_evidence_results",
+      "consume_network_evidence_results",
+      "consume_probe_requests",
+      "offer_probe_requests"
+    ],
+    "TaskItemScoreBandCore": [
+      "acquire_item_score_candidates",
+      "get_item_score_states",
+      "has_active_items",
+      "has_due_active_items",
+      "initialize_item_scores",
+      "observe_item_score_counts",
+      "promote_item_outcomes",
+      "rewrite_observed_item_scores"
+    ],
+    "TaskResourceCatalog": [
+      "get_project_task",
+      "list_project_tasks",
+      "load_task_allocation_descriptors"
+    ],
+    "TaskRuntime": [
+      "append_items",
+      "create_task",
+      "load_task_item_results",
+      "load_task_items",
+      "scan_task_item_results",
+      "store_task_item_failed_results",
+      "store_task_item_success_results"
+    ],
+    "TaskScoreBandCore": [
+      "acquire_scheduling_tasks",
+      "close_observed_score",
+      "close_score",
+      "count_running_tasks",
+      "filter_initial_task_scores",
+      "get_score_states",
+      "initialize_score",
+      "park_observed_idle_task",
+      "preview_score_states",
+      "promote_observed_initial_tasks",
+      "release_observed_score_hold",
+      "rewrite_same_band_time_millis",
+      "start_observed_pre_review_task",
+      "try_release_idle_park"
+    ],
+    "WorkerCommandRuntime": [
+      "append_worker_commands",
+      "consume_worker_command",
+      "consume_worker_commands",
+      "offer_worker_commands"
+    ],
+    "WorkerResourceCatalog": [
+      "get_worker_descriptors",
+      "get_worker_descriptors_async",
+      "get_worker_group_descriptors",
+      "register_worker_group",
+      "register_workers",
+      "sample_worker_descriptors",
+      "sample_worker_group_descriptors"
+    ],
+    "WorkerScoreCore": [
+      "acquire_current_hot_score_leases",
+      "acquire_observed_hot_score_leases",
+      "advance_past_score_times_to_now",
+      "candidateize_observed_hot_scores",
+      "defer_observed_to_recovery",
+      "initialize_registered_scores",
+      "observe_due_hot_score_candidates",
+      "observe_hot_candidate_scores_before",
+      "observe_hot_candidates_before",
+      "observe_recovery_recheck_candidates",
+      "observe_scheduling_states",
+      "park_observed_recovery_score",
+      "pause_scheduling",
+      "recycle_observed_hot_candidates",
+      "release_observed_hot_score_holds",
+      "release_score_holds",
+      "resume_scheduling",
+      "rewrite_current_polarity_within_time_fence",
+      "sample_registered_worker_ids",
+      "toggle_current_polarity"
+    ]
+  },
+  "dtos": {
+    "TaskItemOutcomeObservation": [
+      "message_id",
+      "tag",
+      "observed_at_millis",
+      "opaque_result_payload"
+    ],
+    "NetworkObservation": [
+      "endpoint_manager_id",
+      "observed_at_millis"
+    ],
+    "DeliveryReport": [
+      "src",
+      "source_id",
+      "dst",
+      "message_type",
+      "diagnostic_code",
+      "payload",
+      "forward"
+    ],
+    "TaskCreationResult": [
+      "status",
+      "reason"
+    ],
+    "ProjectTaskEntry": ["task_id", "created_at_millis"],
+    "TaskItemScoreCounts": ["total", "counts_by_tag"],
+    "ProjectTaskPage": ["tasks", "truncated"],
+    "TaskDescriptor": [
+      "task_id",
+      "project_id",
+      "worker_group_id",
+      "idle_disposition",
+      "config",
+      "refill",
+      "name",
+      "metadata"
+    ],
+    "TaskItem": [
+      "message_id",
+      "event_code",
+      "created_at_millis",
+      "payload",
+      "priority",
+      "expire_at_millis",
+      "worker_selector"
+    ],
+    "WorkerQuery": ["executor_name", "input"],
+    "EligibilityQuery": [
+      "query"
+    ],
+    "TaskItemAppendResult": [
+      "status",
+      "reason"
+    ],
+    "TaskItemResult": [
+      "code",
+      "opaque_result_payload"
+    ],
+    "TaskItemResultPage": [
+      "next_cursor",
+      "results"
+    ],
+    "TaskItemScoreState": [
+      "score",
+      "band",
+      "tag",
+      "time_millis",
+      "remaining_budget"
+    ],
+    "TaskItemScoreTransitionResult": [
+      "status",
+      "score"
+    ],
+    "TaskScoreState": [
+      "task_id",
+      "score",
+      "band",
+      "time_millis",
+      "suffix"
+    ],
+    "TaskScoreTransitionResult": [
+      "status",
+      "score"
+    ],
+    "DeliveryCommand": [
+      "src",
+      "dst",
+      "message_type",
+      "execute_before_millis",
+      "payload",
+      "forward"
+    ],
+    "WorkerDescriptor": [
+      "worker_id",
+      "worker_group_id",
+      "endpoint_manager_id"
+    ],
+    "WorkerGroupDescriptor": [
+      "worker_group_id",
+      "attributes",
+      "event_codes"
+    ],
+    "RegistrationResult": [
+      "status",
+      "reason"
+    ],
+    "WorkerScoreTransitionResult": [
+      "status",
+      "score"
+    ],
+    "WorkerRegistrationResult": [
+      "status",
+      "endpoint_manager_id",
+      "reason"
+    ],
+    "TaskItemSuccessResult": [
+      "tag",
+      "observed_at_millis",
+      "opaque_result_payload"
+    ],
+    "TaskItemOutcomeTarget": [
+      "tag",
+      "time_millis"
+    ],
+    "WorkerCandidate": [
+      "worker_id",
+      "expected_score"
+    ],
+    "WorkerSchedulingObservation": [
+      "read_at_millis",
+      "states_by_worker_id"
+    ]
+  },
+  "enums": {
+    "TaskEvidenceType": [
+      "EXECUTION_SUCCESS",
+      "EXECUTION_FAILURE",
+      "OUTCOME_OBSERVATION"
+    ],
+    "TaskCreationStatus": [
+      "created",
+      "retryable",
+      "conflict",
+      "invalid"
+    ],
+    "TaskItemAppendStatus": [
+      "appended",
+      "retryable",
+      "not_found",
+      "invalid"
+    ],
+    "TaskItemScoreBand": [
+      "active",
+      "terminal"
+    ],
+    "TaskItemScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "not_found",
+      "invalid",
+      "corrupt"
+    ],
+    "TaskScoreBand": [
+      "pre_review",
+      "running_visible",
+      "terminal"
+    ],
+    "TaskScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "invalid"
+    ],
+    "TaskIdleDisposition": [
+      "CLOSE_WHEN_IDLE",
+      "PARK_WHEN_IDLE"
+    ],
+    "WorkerCommandAppendStatus": [
+      "APPENDED",
+      "REPLACED"
+    ],
+    "WorkerCommandOfferStatus": [
+      "OFFERED",
+      "OCCUPIED"
+    ],
+    "ProbeRequestOfferStatus": [
+      "OFFERED",
+      "ALREADY_REQUESTED",
+      "CAPACITY"
+    ],
+    "DeliveryEndpoint": [
+      "TASK",
+      "SERVER",
+      "SYSTEM",
+      "KERNEL",
+      "ADAPTER",
+      "WORKER"
+    ],
+    "RegistrationStatus": [
+      "ok",
+      "noop",
+      "conflict",
+      "invalid",
+      "not_found"
+    ],
+    "WorkerScorePolarity": [
+      "HOT_ACQUIRE",
+      "RECOVERY_RECHECK"
+    ],
+    "WorkerScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "invalid"
+    ],
+    "SchedulingState": [
+      "HOT_SCORE_OVERDUE",
+      "HELD_HOT",
+      "PAUSED",
+      "RECOVERY",
+      "COLD",
+      "MISSING"
+    ],
+    "WorkerSchedulingChangeStatus": [
+      "APPLIED",
+      "UNCHANGED",
+      "MISSING",
+      "CONFLICT"
+    ]
+  }
+}

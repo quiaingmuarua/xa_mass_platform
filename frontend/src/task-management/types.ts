@@ -1,0 +1,107 @@
+import type { WorkerQuery } from "@/task-call-debug/types";
+import type { RefillTarget, RuntimeDataSourceMode } from "@/runtime-viewer/types";
+
+export type FiniteTaskStage =
+  | "CREATED"
+  | "ITEMS_APPENDED"
+  | "APPROVED"
+  | "EXPORT_READY";
+
+export interface FiniteTaskConfig {
+  priority: number;
+  refill: RefillTarget[];
+  maxRetryTimes: number;
+}
+
+export interface FiniteTaskSeedItem {
+  lineNumber: number;
+  payload: Record<string, string>;
+}
+
+export interface FiniteTaskSession {
+  taskId: string;
+  projectId: string;
+  workerGroupId: string;
+  eventCode: string;
+  workerSelectorText: string;
+  payloadKey: string;
+  originalFileName: string;
+  byteCount: number;
+  lineCount: number;
+  appendedCount: number;
+  stage: FiniteTaskStage;
+  config: FiniteTaskConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFiniteTaskExecutionRequest {
+  projectId: string;
+  workerGroupId: string;
+  eventCode: string;
+  workerSelector: WorkerQuery;
+  payloadKey: string;
+  file: File;
+  config: FiniteTaskConfig;
+}
+
+export interface TaskCreateApiRequest extends FiniteTaskConfig {
+  projectId: string;
+  workerGroupId: string;
+}
+
+export interface TaskCreateApiResponse {
+  taskId: string;
+}
+
+export interface TaskItemApiRequest {
+  messageId: string;
+  eventCode: string;
+  workerSelector: WorkerQuery;
+  payload: Record<string, string>;
+}
+
+export type ActionOutcome =
+  | { status: "applied" }
+  | { status: "unchanged" }
+  | { status: "rejected"; code: number; message: string };
+
+export type TaskItemsAppendApiResponse = Record<
+  string,
+  Exclude<ActionOutcome, { status: "unchanged" }>
+>;
+
+export interface TaskExportDownload {
+  ready: true;
+  fileName: string;
+  blob: Blob;
+}
+
+export interface TaskExportNotReady {
+  ready: false;
+}
+
+export type TaskExportResult = TaskExportDownload | TaskExportNotReady;
+
+export interface FiniteTaskClient {
+  createTask(request: TaskCreateApiRequest): Promise<TaskCreateApiResponse>;
+  appendItems(
+    taskId: string,
+    items: TaskItemApiRequest[]
+  ): Promise<TaskItemsAppendApiResponse>;
+  approveTask(taskId: string): Promise<void>;
+  exportResults(taskId: string): Promise<TaskExportResult>;
+}
+
+export interface TaskManagementCatalog {
+  readonly mode: RuntimeDataSourceMode;
+  readonly workerGroups: Array<{
+    workerGroupId: string;
+    eventCodes: string[];
+  }>;
+}
+
+export interface FiniteTaskDownload {
+  fileName: string;
+  blob: Blob;
+}

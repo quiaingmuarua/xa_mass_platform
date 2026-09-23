@@ -1,0 +1,86 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: 18082
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  threads:
+    virtual:
+      enabled: false
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  web:
+    resources:
+      static-locations: file:../frontend/dist/
+
+xa:
+  mass:
+    project-assembly:
+      projects: []
+    kernel-pacer:
+      enabled: ${XA_MASS_KERNEL_PACER_ENABLED:true}
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}
+      shutdown-timeout: 5s
+    redis:
+      url: ${XA_MASS_REDIS_URL:redis://localhost:6379/15}
+      scope: ${XA_MASS_REDIS_SCOPE:profile_default}
+    worker-endpoints:
+      defaults:
+        POLLING: system-polling
+      endpoints:
+        system-polling:
+          transport-type: POLLING
+          public-uri: http://127.0.0.1:${server.port:18082}
+    task-item-outcomes:
+      names:
+        6: succeeded
+    task-rpc:
+      default-wait-timeout-millis: 30000
+      max-wait-timeout-millis: 60000
+      max-waiters: 10000
+      max-pending-observations: 100000
+      max-probe-items-per-round: 256
+      initial-probe-interval-millis: 50
+      normal-probe-interval-millis: 100
+      long-probe-interval-millis: 250
+    direct-call:
+      default-wait-timeout-millis: 3000
+      max-wait-timeout-millis: 10000
+      max-adapter-commands-per-adapter: 1000
+      max-pending-calls: 10000
+    worker-delivery:
+      adapter:
+        remote-base-url: http://127.0.0.1:${server.port:18082}
+        remote-request-timeout: 5s
+        verification-queue-capacity: 100000
+        verification-timeout: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,kernel,kernelRedis
+
+springdoc:
+  paths-to-match: /api/v1/**
+
+scalar:
+  enabled: true
+  path: /scalar
+  url: /v3/api-docs
+  page-title: XA Mass Runtime API
+  with-default-fonts: false
+  telemetry: false
+  agent:
+    disabled: true

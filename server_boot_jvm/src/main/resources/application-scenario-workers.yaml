@@ -1,0 +1,84 @@
+xa:
+  mass:
+    project-assembly:
+      projects:
+        - project-id: scenario-workers
+          worker-group-ids: [scenario-phone-number-workers, scenario-string-utils-workers, android-demo-workers]
+    worker-matching:
+      groups:
+        scenario-string-utils-workers:
+          pools: [any]
+          functions: [worker.any]
+        scenario-phone-number-workers:
+          pools: [any]
+          functions: [worker.any]
+    task-rpc:
+      refill-by-worker-group:
+        scenario-string-utils-workers:
+          - '{"poolName":"any","target":{},"count":1000}'
+        scenario-phone-number-workers:
+          - '{"poolName":"any","target":{},"count":1000}'
+    task-item-outcomes:
+      names:
+        7: delivered
+        8: read
+        9: replied
+    kernel-pacer:
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:SCENARIO_LAB}
+    redis:
+      scope: ${XA_MASS_REDIS_SCOPE:profile_scenario_workers}
+    worker-delivery:
+      adapter:
+        instances:
+          scenario-websocket:
+            type: WEBSOCKET
+            listen-host: 127.0.0.1
+            listen-port: 18083
+            command-backoff: 100ms
+            command-consume-limit: 100
+            command-retry-capacity: 1000
+            report-backoff: 1s
+            report-queue-capacity: 1000
+            reconnect-verification-retention: 10m
+            maximum-disconnected-workers: 100000
+            maximum-encoded-properties-bytes: 67108864
+            send-time-limit: 5s
+            shutdown-timeout: 5s
+    worker-endpoints:
+      defaults:
+        WEBSOCKET: scenario-websocket
+      endpoints:
+        scenario-websocket:
+          transport-type: WEBSOCKET
+          public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+    worker-assembly:
+      group-config-json: |
+        {
+          "scenario-phone-number-workers": {
+            "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "extension.worker.phonenumber.e164",
+              "extension.worker.phonenumber.country",
+              "extension.worker.phonenumber.original-carrier"
+            ]
+          },
+          "scenario-string-utils-workers": {
+            "attributes": {"capability":"string-utils"},
+            "eventCodes": [
+              "extension.worker.string.md5",
+              "extension.worker.string.sha1",
+              "extension.worker.string.base64.encode",
+              "extension.worker.lab.checkpoint"
+            ]
+          },
+          "android-demo-workers": {
+            "attributes": {"capability":"android-demo-capabilities"},
+            "eventCodes": [
+              "extension.worker.android.state.read",
+              "extension.worker.android.battery.read",
+              "extension.worker.android.string.digest",
+              "extension.worker.lab.delay",
+              "extension.worker.lab.fail"
+            ]
+          }
+        }

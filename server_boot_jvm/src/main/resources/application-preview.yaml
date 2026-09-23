@@ -1,0 +1,88 @@
+server:
+  address: 127.0.0.1
+  port: ${PREVIEW_SERVER_PORT:18500}
+xa:
+  mass:
+    project-assembly:
+      projects:
+        - project-id: sms
+          worker-group-ids: [demo-sim]
+        - project-id: messages
+          worker-group-ids: [demo-sim]
+        - project-id: app-checks
+          worker-group-ids: [app-a-sim, app-b-sim]
+    task-rpc:
+      refill-by-worker-group:
+        demo-sim:
+          - '{"poolName":"country","target":{},"count":100}'
+    worker-matching:
+      groups:
+        demo-sim:
+          pools: [country, messaging]
+          functions: [worker.country, worker.messaging.available, worker.messaging.phone, worker.phone]
+        app-a-sim:
+          pools: [any]
+          functions: [worker.any, worker.assignment.available]
+          assignment-window:
+            window-millis: 60000
+            max-assignments: 10
+        app-b-sim:
+          pools: [any]
+          functions: [worker.any, worker.assignment.available]
+          assignment-window:
+            window-millis: 60000
+            max-assignments: 10
+    kernel-pacer:
+      enabled: true
+      preset: DEFAULT
+    redis:
+      url: ${XA_MASS_REDIS_URL:redis://127.0.0.1:6379/15}
+      scope: ${XA_MASS_REDIS_SCOPE}
+    worker-assembly:
+      group-config-json: |
+        {
+          "app-a-sim": {
+            "attributes": {},
+            "eventCodes": ["extension.worker.app.registration.check"]
+          },
+          "app-b-sim": {
+            "attributes": {},
+            "eventCodes": ["extension.worker.app.registration.check"]
+          },
+          "demo-sim": {
+            "attributes": {},
+            "eventCodes": [
+              "extension.worker.string.md5",
+              "extension.worker.string.sha1",
+              "extension.worker.string.base64.encode",
+              "extension.worker.sms.listen.start",
+              "extension.worker.sms.listen.cancel",
+              "extension.worker.message.send"
+            ]
+          }
+        }
+    worker-delivery:
+      adapter:
+        remote-base-url: http://127.0.0.1:${PREVIEW_SERVER_PORT:18500}
+        instances:
+          products-websocket:
+            type: WEBSOCKET
+            listen-host: 127.0.0.1
+            listen-port: ${PREVIEW_ADAPTER_PORT:18503}
+            command-backoff: 100ms
+            command-consume-limit: 100
+            command-retry-capacity: 1000
+            report-backoff: 100ms
+            report-queue-capacity: 10000
+            reconnect-verification-retention: 10m
+            maximum-disconnected-workers: 10000
+            maximum-encoded-properties-bytes: 67108864
+            send-time-limit: 5s
+            shutdown-timeout: 5s
+    worker-endpoints:
+      defaults:
+        WEBSOCKET: products-websocket
+      endpoints:
+        products-websocket:
+          transport-type: WEBSOCKET
+          public-uri: ws://127.0.0.1:${PREVIEW_ADAPTER_PORT:18503}/api/v1/worker-delivery/websocket

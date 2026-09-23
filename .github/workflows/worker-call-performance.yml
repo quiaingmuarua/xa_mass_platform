@@ -1,0 +1,120 @@
+name: Worker Call Performance
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Asia/Shanghai
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "RPC attribution, legacy fixtures, or seven RPC cases plus original mixed witness"
+        required: true
+        type: choice
+        default: rpc-diagnosis
+        options:
+          - task
+          - direct
+          - direct-diagnosis
+          - rpc-diagnosis
+          - nightly
+      repetitions:
+        description: "Same-version RPC repetitions; three rotates paths on one host and requires JFR off"
+        type: choice
+        default: '1'
+        options:
+          - '1'
+          - '3'
+      diagnostics:
+        description: "Private JFR diagnosis (separate from formal A/B comparisons)"
+        required: true
+        type: choice
+        default: 'off'
+        options:
+          - 'off'
+          - jfr
+      baseline_ref:
+        description: "Immutable baseline: three formal pairs, or one separate A/B pair in JFR mode"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-call-performance
+  cancel-in-progress: false
+
+jobs:
+  worker-call-performance:
+    name: Worker Call Performance
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline_ref != '' || inputs.repetitions == '3') && 120 || 45 }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Verify Harness and runner contracts
+        run: |
+          ./gradlew --no-daemon :integrations:worker-call-performance:test
+          python -m unittest discover -s integrations/worker-call-performance -p 'test_*.py'
+      - name: Run independent call performance proof
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+          CALL_SUITE: ${{ inputs.suite || 'task' }}
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
+          DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
+          REPETITIONS: ${{ inputs.repetitions || '1' }}
+        run: |
+          # RPC 2k has not passed fixed Result-closure acceptance. Keep the
+          # previously accepted schedule until the new manual manifest passes.
+          if [ "$SCHEDULED_RUN" = true ]; then
+            status=0
+            for suite in task direct-diagnosis; do
+              if ! python integrations/worker-call-performance/run_worker_call_performance.py \
+                --suite "$suite" --diagnostics off \
+                --output-root "build/worker-call-performance-proof/$suite"; then
+                status=1
+              fi
+            done
+            exit "$status"
+          fi
+          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS")
+          if [ -n "$BASELINE_REF" ]; then
+            args+=(--baseline-ref "$BASELINE_REF")
+            if [ "$DIAGNOSTICS" = jfr ]; then
+              args+=(--diagnostic-pair)
+            fi
+          fi
+          python integrations/worker-call-performance/run_worker_call_performance.py "${args[@]}"
+      - name: Publish independent performance summary
+        if: always()
+        run: |
+          if [ -f build/worker-call-performance-proof/evidence/summary.md ]; then
+            cat build/worker-call-performance-proof/evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          for suite in task direct-diagnosis; do
+            if [ -f "build/worker-call-performance-proof/$suite/evidence/summary.md" ]; then
+              cat "build/worker-call-performance-proof/$suite/evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Upload safe performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-call-performance-${{ github.run_attempt }}
+          path: |
+            build/worker-call-performance-proof/**/evidence/**
+            integrations/worker-call-performance/build/test-results/test/**
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,8 @@
+xa:
+  mass:
+    worker-delivery:
+      adapter:
+        instances:
+          scenario-websocket:
+            report-backoff: 100ms
+            report-queue-capacity: 20000

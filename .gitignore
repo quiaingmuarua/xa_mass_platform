@@ -1,69 +1,60 @@
-HELP.md
 target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-*.ps1
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+.runtime/
+.gradle/
+.kotlin/
 
-### VS Code ###
+.idea/
 .vscode/
 .cursor/
-cursor.rules
-/.mvn/
-/.mvn/
-/log/
-/catalina.base_IS_UNDEFINED/
-/logs/
-/xa-mass-server/logs/
-.DS_Store
-**/.DS_Store
-/.claude/
+.claude/
+.github/java-upgrade/
+.github/modernize/
+*.iml
 
-### Local runtime/test artifacts ###
-*.log
-*.log.*
-/.codex-root-test.log
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 
-### Local environment and secrets ###
 .env
 .env.*
 !.env.example
 !**/.env.example
 *.local
-*.pem
-*.key
-*.p12
-*.jks
-*.keystore
-/tmp/
-/data/
-/identifier.sqlite
-.vercel
+*.log
+*.log.*
+*.sqlite
+local.properties
+data/
+integrations/**/results/
+integrations/**/ci-results/
+logs/
+tmp/
+
+# Standalone frontend generated files
+frontend/node_modules/
+frontend/dist/
+frontend/dist-demo/
+frontend/coverage/
+frontend/.vite/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+products/**/node_modules/
+products/**/dist/
+products/**/coverage/
+products/**/*.tsbuildinfo
+!frontend/.env.mock
+frontend/.env.local
+frontend/.env.*.local
+.vercel/
+.DS_Store
+**/.DS_Store
+
+# Local historical archives are preserved only by the legacy Git tag.
+doc/archive/**
+!doc/archive/trace/
+!doc/archive/trace/legacy-trace-assets.md
+!doc/archive/testing/
+!doc/archive/testing/legacy-testing-assets.md
+/archive_readonly/

@@ -1,0 +1,41 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+base {
+    archivesName.set('xa-mass-worker-loaded-recovery')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    applicationName = 'xa-mass-worker-loaded-recovery'
+    mainClass = 'com.xa.mass.integration.workerloadedrecovery.WorkerLoadedRecoveryMain'
+}
+
+dependencies {
+    implementation project(':transport:worker-delivery-contract')
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.register('runWorkerLoadedRecovery', JavaExec) {
+    description = 'Runs one stage of Worker Loaded Capacity + Recovery Stability.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    workingDir = project.projectDir
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    workingDir = project.projectDir
+}

@@ -1,0 +1,178 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id 'base'
+}
+
+def sdkVersion = project.version.toString()
+def requestedVersion = providers.gradleProperty('xaMassVersion')
+def repositoryRoot = rootProject.projectDir
+def pythonExecutable = providers.environmentVariable('XA_MASS_PYTHON_EXECUTABLE')
+        .orElse('python')
+def repositoryDirectory = layout.buildDirectory.dir('repository')
+def generatedDirectory = layout.buildDirectory.dir('generated/sdk')
+def stagedDirectory = layout.buildDirectory.dir("sdk/${sdkVersion}")
+def sdkBaseName = 'xa-mass-worker-sdk'
+def sdkRootName = "${sdkBaseName}-${sdkVersion}"
+def gitCommit = providers.exec {
+    workingDir repositoryRoot
+    commandLine 'git', 'rev-parse', 'HEAD'
+}.standardOutput.asText.map { it.trim() }
+def artifacts = [
+        [
+                projectPath: ':transport:worker-delivery-contract',
+                artifactId : 'xa-mass-worker-delivery-contract',
+                packaging  : 'jar'
+        ],
+        [
+                projectPath: ':transport:worker-core',
+                artifactId : 'xa-mass-worker-core',
+                packaging  : 'jar'
+        ],
+        [
+                projectPath: ':transport:android-worker',
+                artifactId : 'xa-mass-android-worker',
+                packaging  : 'aar'
+        ],
+        [
+                projectPath: ':xa-android:capability-http',
+                artifactId : 'xa-mass-android-capability-http',
+                packaging  : 'aar'
+        ]
+]
+
+artifacts.each { artifact -> evaluationDependsOn(artifact.projectPath) }
+
+tasks.register('validateWorkerSdkVersion') {
+    group = 'verification'
+    description = 'Requires one explicit release SemVer for every Worker SDK artifact.'
+    doLast {
+        if (!requestedVersion.isPresent()) {
+            throw new GradleException(
+                    'Worker SDK distribution requires '
+                            + '-PxaMassVersion=<major.minor.patch>'
+            )
+        }
+        if (!(sdkVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+            throw new GradleException(
+                    "Worker SDK version must be release SemVer: ${sdkVersion}"
+            )
+        }
+    }
+}
+
+tasks.register('cleanWorkerSdkRepository', Delete) {
+    group = 'distribution'
+    delete repositoryDirectory
+}
+
+def publicationTasks = artifacts.collect { artifact ->
+    project(artifact.projectPath).tasks.named(
+            'publishWorkerSdkPublicationToWorkerSdkRepository'
+    )
+}
+publicationTasks.each { publicationTask ->
+    publicationTask.configure {
+        dependsOn tasks.named('cleanWorkerSdkRepository')
+    }
+}
+
+tasks.register('publishWorkerSdkRepository') {
+    group = 'distribution'
+    description = 'Publishes the four owning Worker SDK modules to one local Maven repository.'
+    dependsOn tasks.named('validateWorkerSdkVersion'), publicationTasks
+    outputs.dir(repositoryDirectory)
+}
+
+tasks.register('generateWorkerSdkManifest') {
+    group = 'distribution'
+    description = 'Generates the checked Worker SDK manifest.'
+    dependsOn tasks.named('publishWorkerSdkRepository')
+    inputs.property('sdkVersion', sdkVersion)
+    inputs.property('gitCommit', gitCommit)
+    outputs.file(generatedDirectory.map { it.file('manifest.json') })
+    doLast {
+        String resolvedGitCommit = gitCommit.get()
+        if (!(resolvedGitCommit ==~ /[0-9a-f]{40}/)) {
+            throw new GradleException(
+                    'git rev-parse HEAD did not return a full commit'
+            )
+        }
+        File output = generatedDirectory.get().file('manifest.json').asFile
+        output.parentFile.mkdirs()
+        output.setText(
+                JsonOutput.prettyPrint(JsonOutput.toJson([
+                        schemaVersion: 1,
+                        version      : sdkVersion,
+                        gitCommit    : resolvedGitCommit,
+                        repository   : 'repository',
+                        artifacts    : artifacts.collect { artifact -> [
+                                groupId   : 'com.xa.mass',
+                                artifactId: artifact.artifactId,
+                                packaging : artifact.packaging
+                        ] }
+                ])) + System.lineSeparator(),
+                'UTF-8'
+        )
+    }
+}
+
+tasks.register('stageWorkerSdk', Sync) {
+    group = 'distribution'
+    description = 'Stages the offline Worker SDK Maven repository.'
+    dependsOn tasks.named('generateWorkerSdkManifest')
+    into stagedDirectory
+    from(repositoryDirectory) {
+        into 'repository'
+    }
+    from(generatedDirectory.map { it.file('manifest.json') })
+    from('src/main/dist/LICENSE')
+    from('src/main/dist/THIRD_PARTY_NOTICES.md')
+}
+
+tasks.register('distZip', Zip) {
+    group = 'distribution'
+    description = 'Builds the publishable Worker SDK Maven Repository ZIP.'
+    dependsOn tasks.named('stageWorkerSdk')
+    archiveBaseName.set(sdkBaseName)
+    archiveVersion.set(sdkVersion)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    into(sdkRootName) {
+        from(stagedDirectory)
+    }
+}
+
+tasks.register('workerSdkDistributionTest', Exec) {
+    group = 'verification'
+    description = 'Verifies the Worker SDK archive and consumes it outside the repository.'
+    dependsOn tasks.named('distZip')
+    workingDir repositoryRoot
+    inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
+    inputs.file('src/test/python/verify_worker_sdk_archive.py')
+    outputs.upToDateWhen { false }
+    commandLine(
+            pythonExecutable.get(),
+            file('src/test/python/verify_worker_sdk_archive.py').absolutePath,
+            '--archive',
+            tasks.named('distZip', Zip).flatMap {
+                it.archiveFile
+            }.get().asFile.absolutePath,
+            '--version', sdkVersion,
+            '--gradle-wrapper', rootProject.file(
+                    System.getProperty('os.name').toLowerCase(Locale.ROOT)
+                            .contains('windows')
+                            ? 'gradlew.bat'
+                            : 'gradlew'
+            ).absolutePath
+    )
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('workerSdkDistributionTest')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('distZip')
+}

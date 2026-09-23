@@ -1,0 +1,118 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
+plugins {
+    id 'java-library'
+}
+
+base {
+    archivesName.set('xa-mass-server-jvm')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Keep the HTTP binding/OpenAPI parameter metadata formerly supplied by the Boot plugin.
+tasks.withType(JavaCompile).configureEach { options.compilerArgs.add('-parameters') }
+
+dependencies {
+    implementation platform(SpringBootPlugin.BOM_COORDINATES)
+    annotationProcessor platform(SpringBootPlugin.BOM_COORDINATES)
+    testImplementation platform(SpringBootPlugin.BOM_COORDINATES)
+
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.0'
+    implementation 'com.scalar.maven:scalar-webmvc:0.6.60'
+    implementation project(':kernel_jvm')
+    implementation project(':kernel_pacer_jvm')
+    api project(':worker_matching_jvm')
+    implementation project(':transport:netty-adapter')
+    implementation project(':transport:worker-delivery-contract')
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation project(':transport:java-worker')
+}
+
+tasks.named('test') {
+    useJUnitPlatform {
+        excludeTags 'redis-owner', 'runtime-boundary'
+    }
+}
+
+tasks.withType(Test).configureEach {
+    systemProperty(
+            'xa.mass.repository.root',
+            rootProject.projectDir.absolutePath
+    )
+}
+
+tasks.register('exportOpenApiSnapshot', JavaExec) {
+    group = 'documentation'
+    description = 'Exports the deterministic public OpenAPI snapshot.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass.set('com.xa.mass.server.openapi.OpenApiSnapshotExporter')
+    args rootProject.file(
+            'frontend/public/reference/openapi.json'
+    ).absolutePath
+    outputs.file(rootProject.file(
+            'frontend/public/reference/openapi.json'
+    ))
+    outputs.upToDateWhen { false }
+}
+
+def registerStrictIntegrationTest = {
+    String taskName,
+    String descriptionText,
+    String tag ->
+    tasks.register(taskName, Test) {
+        description = descriptionText
+        group = 'verification'
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags tag
+        }
+        shouldRunAfter tasks.named('test')
+        outputs.upToDateWhen { false }
+
+        afterSuite { descriptor, result ->
+            if (descriptor.parent != null) {
+                return
+            }
+            if (result.testCount == 0) {
+                throw new GradleException(
+                        taskName + ' did not execute any tests'
+                )
+            }
+            if (result.skippedTestCount != 0) {
+                throw new GradleException(
+                        taskName
+                                + ' skipped '
+                                + result.skippedTestCount
+                                + ' tests'
+                )
+            }
+        }
+    }
+}
+
+registerStrictIntegrationTest(
+        'redisOwnerIntegrationTest',
+        'Runs Server-owned and Kernel-owner Redis contract proofs.',
+        'redis-owner'
+)
+
+registerStrictIntegrationTest(
+        'runtimeBoundaryIntegrationTest',
+        'Runs the Java-owned Runtime boundary with Redis and supervised Pacers.',
+        'runtime-boundary'
+)

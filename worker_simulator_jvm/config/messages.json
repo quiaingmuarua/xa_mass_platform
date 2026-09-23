@@ -1,0 +1,36 @@
+{
+  "runtimeApiBaseUrl": "http://127.0.0.1:18082",
+  "sandboxRoot": "./data/scenario-workers",
+  "controlPort": 18086,
+  "workerGroups": {
+    "demo-sim": {
+      "events": [
+        "extension.worker.string.md5",
+        "extension.worker.string.sha1",
+        "extension.worker.string.base64.encode",
+        "extension.worker.message.send"
+      ],
+      "count": 60,
+      "propertiesTemplate": {
+        "runtime": "java",
+        "phone": {
+          "$index": [
+            861700000001,
+            1
+          ]
+        },
+        "country": {
+          "$choice": [
+            "CN",
+            "US",
+            "GB"
+          ]
+        },
+        "operator": "Preview SIM",
+        "simulated": "true",
+        "messaging.enabled": "true"
+      },
+      "newEnvironment": false
+    }
+  }
+}

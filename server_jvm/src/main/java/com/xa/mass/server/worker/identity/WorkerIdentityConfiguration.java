@@ -1,0 +1,28 @@
+package com.xa.mass.server.worker.identity;
+
+import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
+import io.lettuce.core.RedisClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+public class WorkerIdentityConfiguration {
+
+    @Bean(destroyMethod = "close")
+    WorkerIdentityRegistry workerIdentityRegistry(
+            RedisClient redisClient,
+            XaMassRedisProperties redisProperties
+    ) {
+        return new RedisWorkerIdentityRegistry(
+                redisClient,
+                redisProperties.keyspace()
+        );
+    }
+
+    @Bean
+    WorkerIdentityService workerIdentityService(
+            WorkerIdentityRegistry registry
+    ) {
+        return new WorkerIdentityService(registry);
+    }
+}

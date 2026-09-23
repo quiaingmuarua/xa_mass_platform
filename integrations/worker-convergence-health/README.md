@@ -1,0 +1,240 @@
+# Worker Convergence Health
+
+This Java 21 and Python Integration is the Primary Proof for
+Worker fault and scheduling convergence. It owns no Worker, Adapter, Server,
+Kernel, Redis or lifecycle implementation. Java phases use only the loopback
+Lab API and public Runtime APIs; Python owns isolated processes, Lab roots,
+Redis scopes and phase transitions.
+
+## Fixed World
+
+Each scenario uses:
+
+```text
+2 WorkerGroups x 500 Workers
+one WebSocket Adapter
+explicit Any Pool through managed batch items:call
+independent Lab, Network, Scheduling and Task observations
+```
+
+The runner materializes its canonical 2x500 Properties Inventory with the same
+strict materializer used by Worker Correctness, but into a separate Lab root
+and Redis scope. Capability assembly and all mutations remain owned by this
+convergence lane. Each Endpoint receives a bounded 600-attempt, 500-millisecond
+reconnect fixture so the deliberate Server restart stays within the same Worker
+run. This is a scenario boundary, not a reconnect SLA.
+
+Prepare creates identity, Binding and cold Score membership without Matching
+facts. Verified connection evidence supplies initial HOT activation; this proof
+does not treat Prepare as a network observation or repair lost activation
+evidence. Bounded
+Worker discovery skips empty Properties projections until an observation
+supplies the Lab coordinate; malformed non-empty coordinates still fail.
+After an explicit restart, the Properties witness observes the new Adapter
+publication independently of the local start result. It never re-Prepares or
+injects facts to repair a missing observation.
+
+The Integration owns a Server catalog override and one complete Simulator
+configuration (including the embedded startup plan) whose Group events add `extension.worker.lab.delay` and
+`extension.worker.lab.fail` only to the existing String Group. Every String
+batch offers one 10-second delay Item and one immediate Handler-failure Item as
+non-witness background work. The fixed 700/300 workloads remain unchanged as
+the topology grows to 1,000 Workers.
+
+The Lab is a mutation source and local witness, not a reconcile coordinator.
+Every action is sent once. A failed or ambiguous local operation fails that
+phase and is not treated as downstream convergence evidence.
+
+## State And Server Convergence
+
+Seven waves submit 50 Items per Group, for 700 offered Items total. Calls use a
+250-millisecond immediate observation window. Item one is the named valid
+witness, every tenth Item has deterministic invalid input, and String Items
+two and three are the delay and fail background work. Managed Any waves use explicit
+`worker.any` queries with empty input. A separate finite Pool-backed Task owns the
+Properties-matching witness with an explicit one-candidate refill target. The
+scenario profile supplies explicit `any / {} / 1000` declarations at Task creation;
+refill remains shared and independent of the current Item batch.
+
+The phase order is:
+
+1. Establish all 1,000 Workers connected and HOT. Stop the directed String
+   Worker before workload and keep it unavailable until after Server restart.
+2. Stop five other Workers per Group, observe disconnected and scheduling
+   unavailable, then restore them.
+3. Stop two Workers per Group, replace `convergenceSlot`, explicitly start them,
+   and observe the refreshed canonical Properties.
+4. Stop the other 499 String Workers and observe all 500 unavailable. Submit
+   wave one: Phone progresses while String witness work remains due. Restore
+   only those 499 Workers and close the wave.
+5. Complete waves two through five.
+6. Reconfirm the directed Worker is locally STOPPED, disconnected and scheduling
+   unavailable. Submit wave six and a separate finite Pool-backed Task requiring
+   `worker.convergenceSlot=C`. Require its Item to remain unobserved, then
+   restart Runtime Server while retaining Worker Simulator.
+7. Require the other 999 stable identities to reconnect while the directed Worker
+   stays stopped. Sample their scheduling states once per Group for diagnostics,
+   without waiting for the idle fleet to become HOT. Replace its stopped-state
+   slot and start it once. Require its original identity, canonical Property and
+   connected/HOT observations; close the Pool-backed witness and final wave seven.
+
+Acceptance fixes `700 offered / 70 invalid` and convergence of all named
+witnesses. The workload also offers seven delay and seven fail Items. These are
+submission counts, not Handler invocation or observed Result counts, and the
+scenario does not require every offered Item to succeed.
+
+**Restart acceptance:** the managed Phone Task may already be idle after its
+wave-six witness succeeds. Serviceability receives only Groups from Main's current
+NORMAL Task roots; elapsed recheck time does not discover an idle Group. Network
+evidence remains best-effort and may be lost, delayed or superseded. The restart
+sample therefore records state counts and identities, or an observation failure,
+without delaying the next work. It adds no replay, Properties repair or mutation
+retry. All 999 reconnects and stable identities, the directed Worker's HOT and
+Properties checks, the Pool-backed witness and all named execution witnesses
+remain mandatory. The 700/70 workload and existing observation bounds are unchanged.
+This acceptance change does not repair or establish monotonic network evidence.
+
+## In-Flight Loss Convergence
+
+Three waves offer 300 Items with 30 deterministic invalid inputs. Each String
+batch retains Item-two DELAY and Item-three FAIL background work. The first
+String Item in wave two is the only checkpoint execution promoted to an oracle.
+
+1. Establish all 1,000 Workers running, connected and HOT; complete both
+   wave-one witnesses.
+2. Explicitly stop the backup before arming the checkpoint and observe it
+   STOPPED, disconnected and scheduling unavailable. Arm the target's
+   Scenario-only checkpoint. The complete wave-two String batch uses an
+   independent `workerId` function targeting only the checkpoint Worker.
+   There is no `labSlot` condition or backup Properties mutation. With the
+   backup unavailable, wait for the target Handler to enter the checkpoint.
+3. Kill Worker Simulator and require the entire 1,000-Worker world to become
+   disconnected. Sample each Group's scheduling states once for diagnostics,
+   then proceed to recovery without waiting for every Score to leave HOT.
+4. Restart 999 Workers, including the original target, while keeping the backup
+   stopped. Require the 999 identities to reconnect unchanged and the original
+   target to become HOT before closing its checkpoint witness through direct
+   identity admission. This proves same-identity recovery, not ID-list failover. This does not require all recovered Workers to be simultaneously
+   HOT while due work is present.
+5. Complete both wave-three recovery witnesses.
+6. Kill Host again, observe the recovered world disconnected, and require the
+   checkpoint's successful Result to remain observable through `results:load`.
+   This is Result retention, not TaskItem Score finality.
+
+Acceptance fixes `300 offered / 30 invalid` and five named successful witnesses,
+not 300 successful Results. The synchronous checkpoint path bounds the
+in-flight String execution before the first Host kill; it does not establish
+exactly-once execution or the identity of a later successful executor.
+
+Neither scenario fixes intermediate score order, absence of transient
+serviceability regression, retry count, exact latency, executing Worker,
+non-witness outcome or capability payload. `NOT_OBSERVED` is an immediate
+observation, not a Worker failure; `FAILED` is a Result state but not a
+successful witness. Witnesses are observed with
+`results:load`; this lane does not poll `results:export`. In-flight loss also
+offers three delay and three fail background Items. There is no assertion that
+these background Items execute once, produce a terminal Result or determine a
+specific Worker state. There is no random campaign, seed, round count, fault
+DSL or automatic compensation.
+
+**Acceptance change:** Host-down establishes the physical outage, not an all-Worker
+scheduling barrier. The wave-two String Items target only the checkpoint pair,
+while the Task's ANY refill target can retain other Workers. An unused offline
+candidate may be recycled and refilled without any actual Adapter delivery.
+Those coordinate advances may keep it outside the old-HOT probe range.
+Neither that residual HOT state nor an unavailable diagnostic sample blocks the
+restart. The checkpoint, recovery work and retained Result witnesses remain
+mandatory; the 1,000-Worker topology, Item counts and existing time bounds remain.
+
+Runtime Boundary pairs this oracle change with a real WebSocket Worker and the
+production DEFAULT preset: deliberately lose the first disconnect evidence,
+require a real TASK Command to reach Adapter processing and expire, then observe
+its correlated rejection and new network evidence drive RECOVERY. Reconnecting
+the Worker must complete the same Item. DEFAULT has no periodic Probe that could
+substitute for this delivery path. Bounded failure traces identify Command
+handoff, evidence times, exact confirmation, evidence transitions and successful
+release, without recording payload content. This is a healthy subsequent handoff
+witness, not a guarantee under continuing evidence loss.
+
+The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
+current-slot evidence may correct polarity while preserving the stored
+coordinate and mark. Accepted past polarity changes clear mark and advance
+generation without passing Redis now; normal same-polarity Polling leaves it
+unchanged. A separate actual Pacer/Matching witness proves that reconnect can
+refill consumed stale stock without waiting for aged candidate recycling.
+Execution acquisition itself requires strictly past time. The Owner also checks past-slot rejection, PAUSE,
+arrival order, exact execution acquisition races and bounded command cost. This process
+proof does not force evidence into a particular slot or establish reliable replay.
+Owner/Pacer proofs also cover Recovery beyond the former attempt and 24-hour limits;
+the default 15-second eligibility delay is not a Probe execution deadline.
+
+Multi-Worker outage checks page Network and Scheduling observations at the
+public 100-ID boundary. State-scenario restart and task-fault Host-down each record
+one diagnostic scheduling sample per Group, including residual identities and
+state counts. Runtime Worker preview remains a 100-entry random sample per Group;
+it checks sampled canonical identity while
+the paged Network/Scheduling observations cover the exact fleet. A `wave-6`
+timeout additionally records a best-effort bounded
+snapshot of witness status, managed Task score band, target Network/Scheduling
+and local states, and whether the canonical slot equals C. Snapshot failure is
+suppressed under the original proof failure. Diagnostics do not record Worker
+Properties, score values, Redis keys, Task payloads or result payloads.
+
+## Run
+
+Redis 7 must already be reachable. With Python 3.11 or newer, install the shared
+proof dependency set once:
+
+```powershell
+python -m pip install -r .github/scripts/requirements.txt
+```
+
+Then run:
+
+```powershell
+python integrations/worker-convergence-health/run_worker_convergence_health.py `
+  --scenario all `
+  --redis-url redis://127.0.0.1:6379/15
+```
+
+Use `--scenario state` or `--scenario task-fault` for one isolated scenario.
+Proof CI runs those two values as independent matrix jobs; `--scenario all`
+remains the local complete entrypoint. One runner invocation reuses a Gradle
+daemon with a five-minute idle timeout across artifact build and Java phases;
+Server, Host, Redis-scope and mutation ownership are unchanged.
+The default five-minute observation bound covers the fixed serviceability
+recovery budget at this 1,000-Worker topology; it is not a latency SLA.
+Default evidence root:
+
+```text
+build/worker-convergence-health-proof/
+  state/evidence/
+  task-fault/evidence/
+```
+
+The Java phase entrypoints are available for an already orchestrated world:
+
+```text
+./gradlew :integrations:worker-convergence-health:runWorkerStateAndServerConvergence
+./gradlew :integrations:worker-convergence-health:runWorkerTaskFaultConvergence
+```
+
+Focused tests:
+
+```powershell
+.\gradlew.bat :integrations:worker-convergence-health:test
+python -m unittest integrations/worker-convergence-health/test_run_worker_convergence_health.py
+```
+
+See [Proof Registry](../../doc/testing/proof-registry.md#worker_convergence_health)
+for claim boundaries and [TESTING.md](../../TESTING.md) for lane selection.
+
+## Project fixture
+
+The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
+replace the Project list, retaining the original managed Task count. Managed Call
+clients read `GET /api/v1/projects/scenario-workers` once during preparation and
+reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
+side effects. Finite creation requests include projectId. Existing workload,
+fault, deadline and outcome assertions are unchanged; no query is added to a
+performance measurement window.

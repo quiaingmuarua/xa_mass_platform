@@ -1,0 +1,1286 @@
+# XA Mass JVM Runtime API Server
+
+Status: current external Runtime API, incremental Kernel provider assembly and
+configured Server runtime host.
+
+Within the [global behavior loop](../doc/kernel/scheduling-overview.md#system-behavior-model),
+Server admits work, hands off execution traffic, and routes feedback or projects
+selected observations through existing owners. These cross-domain use cases
+retain the authority boundaries below.
+
+`server_jvm` owns:
+
+- the versioned `/api/v1` HTTP boundary, validation and error mapping;
+- provider assembly over `kernel_jvm` owner contracts;
+- ordered writes and Runtime View composition over the independent
+  `worker_matching_jvm` facts, queries and Pool owner;
+- fixed Pacer preset selection, Spring lifecycle delegation and Health
+  projection for the
+  single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
+- Worker external Identity, configured Endpoint defaults and Prepare orchestration;
+- bounded application use cases such as finite Task Result export, managed
+  Task Call and DIRECT_CALL correlation;
+- configured WorkerGroup seed and Adapter startup order.
+
+This is an ordinary Java library with importable `XaMassServerConfiguration`.
+It owns Group registration, Task submission and complete Task data services,
+as well as HTTP waiting, Prepare, Direct Call and every Worker Delivery route.
+Spring assembly creates and closes one set of clients, Owners and platform
+lifecycles. The [Server Boot composition](../server_boot_jvm/README.md) owns
+the only production `XaMassServerApplication` main and Boot JAR. This library uses
+ordinary Spring configuration without Boot application auto-configuration or a
+production main. Its platform-only test bootstrap supplies Boot infrastructure
+for context tests and OpenAPI export. Server has no scenario dependency; scenarios
+may consume only their approved service and DTO surface.
+
+It does not own Matching candidate selection, Kernel Worker lease, TaskItem claim,
+retry, recovery, Task finality, query/eligibility interpretation, Adapter
+connection routing or Worker event execution. See the root
+[architecture entrypoint](../README.md).
+
+Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
+
+## Runtime Shape
+
+```text
+Public API
+  -> Controller and Server use-case service
+  -> kernel_jvm or worker_matching_jvm owner contract
+  -> owner-local Java Redis provider
+
+WorkerMatchingAssembly
+  -> shared Facts storage and enabled property HASH resources; retain indexes on restart
+  -> fixed query functions and Pool maintenance over injected resources
+  -> one MatchingComposition lifecycle with stable Catalog and Properties ports
+  -> synchronous bounded admission/refill/take and independent Properties operations
+
+KernelPacerAssembly
+  -> kernel_pacer_jvm KernelPacerRuntime
+     -> Java ResultConvergenceApplication
+        -> TASK_SUCCESS / TASK_FAILURE / NETWORK_EVIDENCE / TASK_OBSERVATION lanes
+     -> Java DispatchConvergenceApplication
+        -> RUNNING INITIAL initialization lane
+        -> RUNNING NORMAL allocation / dispatch / optional serviceability lanes
+     -> one bounded reverse shutdown
+
+Worker Identity -> Server-owned Redis boundary
+Worker Binding  -> Kernel WorkerResourceCatalog
+
+Worker Delivery
+  -> point or Adapter batch API
+  -> DeliveryCommand / DeliveryReport owner runtime
+
+Configured deployment
+  -> initialize configured WorkerGroups
+  -> prepare Project/Group managed Task Calls
+  -> start Adapter Manager
+  -> become ready without starting any Worker process
+```
+
+Task control, Task data, Worker resources, scheduling and delivery operations
+use Java Redis providers. Java owns every production Pacer. Missing JVM
+operations outside the production caller closure fail explicitly; there is no
+HTTP fallback or Server scheduler.
+
+Provider ownership is deliberately mixed but explicit:
+
+| Boundary | Current provider/owner |
+| --- | --- |
+| Task create, approve, close and Task Call Item submission | Server validates explicit Pool supply locally before creating complete Kernel Task records; Kernel retains immutable selectors and Matching admits property queries before Item persistence; lifecycle remains Kernel-owned |
+| Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
+| DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
+| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
+| Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
+| Worker Identity / Endpoint directory | Server identity HASH; local default/URI configuration |
+| Persistent Worker Binding | Kernel WorkerResourceCatalog, one Worker ID HASH |
+| Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
+| Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
+| Adapter Direct FIFO, waiter and correlation | Server instance memory |
+| Assignment Dispatch | `kernel_pacer_jvm` resolves bounded Task queries and acquires eligible identities, then owns exact confirmation, uniqueness, lease and claim |
+| Operations outside current production callers | Explicit JVM gaps |
+
+WorkerGroup registration creates no Server mapping or second Task catalog. In
+addition to the create-only Group declaration, it derives one internal Task
+coordinate, creates the fixed `PARK_WHEN_IDLE` descriptor
+through Kernel owners, and approves it. Calls submit one Item through the
+Kernel Task Call command and observe its Result projection through one shared
+probe; both `succeeded` and `failed` complete the bounded wait, while only an
+absent Result remains `not_observed`. This projection does not establish the
+TaskItem Score finality observed by Kernel lifecycle paths.
+Finite Task input remains caller-owned and is appended through the ordinary
+Task data API in chunks of at most 100. Result export waits only for a finite
+Task's `TERMINAL` score, scans the existing Result owner Hash, and streams a
+request-local JSONL file; Server owns no Lab input/output directory.
+Ordinary Task data append remains a pure data write and does not release the
+Kernel-private idle park; pause/resume calls the Worker score owner;
+DIRECT_CALL correlates caller-selected targets without
+creating Task or Result Routing truth. Its single public call is scoped to one
+configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
+one WorkerGroup plus a `1..100` entry `workerId -> opaquePayload` map targets
+only Workers currently bound to that Adapter. The two request modes are
+exclusive, and Server never partitions one Direct Call across Adapters.
+`messageType` and each opaque payload pass through unchanged. Server does not
+enumerate event support or convert an unknown event into an HTTP admission
+error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
+result event: `platform.adapter.command.failed` or
+`platform.worker.command.failed`. Future API Session authorization may restrict caller/target/event
+access before this use case, but it is not a DIRECT_CALL event whitelist.
+
+Direct Call completion matches the exact Worker or Adapter command success/failure
+event for the pending target, not the original Command name. Existing forward,
+Adapter, producer, deadline and completion guards remain. Properties and
+connection observations cannot complete a waiter. An observed target exposes
+`messageType + diagnosticCode + opaqueResultPayload`; unobserved/rejected targets
+expose only status/reason. Observed means a result was received, not success.
+Network observation requires the Adapter success event before decoding its
+known snapshot output. No extra execution-status field is introduced.
+
+Generic public Task creation is scoped by an existing WorkerGroup and has no
+profile selector:
+
+```text
+POST /api/v1/tasks
+```
+
+The request requires a profile-declared `projectId` and one of its registered WorkerGroups. Server generates task-{UUID}.
+Optional `refill` supplies 0..100 `{poolName,target,count}` declarations. Omission
+means `[]`; explicit null, retired `ruleId/refillTargets`, unavailable Pools and
+invalid targets fail. Counts are 1..1000. Matching normalizes and MAX-merges equal
+Group/Pool targets without Redis reads or stock changes. Kernel stores the complete
+immutable list. These watermarks are shared supply hints, never Task-private quotas.
+Priority defaults to 50 and retry budget to 3; finite Tasks use CLOSE_WHEN_IDLE.
+
+```json
+{"projectId":"example","workerGroupId":"country-workers","refill":[{"poolName":"country","target":{"worker.country":["CN"]},"count":100}],"priority":50,"maxRetryTimes":3}
+```
+
+An empty-supply Task can use Identity, Phone or stock supplied by another Task.
+Item functions are explicit and independent. Closing a supplier does not clear stock
+or unregister functions. Matching owns resource/maintenance/function composition;
+Server receives no predicate, index key, candidate selection or lease capability.
+
+Server normalizes declarations then creates Kernel metadata. No independent Matching
+write or rollback exists. Managed Call registration saves `[]` unless
+`xa.mass.task-rpc.refill-by-worker-group` supplies explicit declarations. Nonempty
+configuration entries use complete JSON strings decoded as the same RefillTarget.
+Lab overrides remain 1000. Re-registration compares the complete expected descriptor;
+ordinary lookup reads saved declarations without resolving new defaults. Old Task
+layouts require a new scope; no migration, cleanup or dual reading is provided.
+
+### Profile Projects and managed Tasks
+
+**Ownership change:** managed Task provisioning belongs to configured Project/Group
+pairs, not WorkerGroup registration. A Group may serve several Projects, each with
+its own stable `PARK_WHEN_IDLE` Task. Public Task creation always uses
+`CLOSE_WHEN_IDLE`. Project membership is passive Kernel data; all Tasks still share
+one Task Score key and the same Pacer. Pool/refill composition is unchanged.
+
+`xa.mass.project-assembly.projects` is an immutable list of `{project-id,
+worker-group-ids}` declarations. IDs are unique and each Group list is nonempty and
+unique. There is no Project registration, update or deletion API, Redis registry,
+dynamic Group association or default Project. Boot profiles own production values.
+
+Startup initializes configured WorkerGroups, prepares and approves each Project's
+managed Tasks, then starts Adapter ingress and scenarios. An absent Group or
+conflicting Task fails startup. Completed stages survive failure; the next startup
+uses the same coordinates and does not reset existing Scores, Items or creation
+time. Managed IDs encode both UTF-8 coordinates independently with
+Base64URL without padding, separated by a dot after `project-rpc-`. Clients consume
+the returned mapping rather than calculating IDs.
+
+```text
+GET /api/v1/projects/{projectId}
+GET /api/v1/projects/{projectId}/tasks?limit=100
+POST /api/v1/worker-groups/{workerGroupId}:register
+```
+
+Project lookup returns `projectId` and `managedTaskIds` (Group ID to Task ID), without
+initializing anything. Group registration returns only `workerGroupId` and
+`registered | already_registered`; it never creates Tasks.
+
+Project Task listing reads the Task Owner's project ZSET, newest first, with
+`limit=1..1000` (default 100) and a one-member lookahead for `truncated`. It has no
+cursor or total. Rows contain `taskId`, `createdAtMillis`, nullable `task` and nullable
+`scoreBand`; a missing projection stays null and corruption is an Owner failure.
+The operation reads descriptors and decoded Score states, never Results or the
+global preview. Closed Tasks remain in the directory; same-millisecond ordering is
+Redis reverse member order. These independent reads are not an atomic scheduling
+snapshot. The global Score Preview remains a separate diagnostic surface.
+
+All public Task data operations are Task-ID-addressed:
+
+```text
+POST /api/v1/tasks/{taskId}/approve
+POST /api/v1/tasks/{taskId}/close
+POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/items:call
+POST /api/v1/tasks/{taskId}/items:states
+POST /api/v1/tasks/{taskId}/results:load
+POST /api/v1/tasks/{taskId}/results:export
+```
+
+Finite Tasks support explicit approval, close, ordinary Item append, Item states
+and Result load. Managed Tasks support synchronous Item Call, Item states and Result load; their
+lifecycle and ordinary append remain non-public. Calling an operation with the
+wrong public Task type returns `400/12008`; a missing Task returns
+`400/12002`.
+
+Approve and close return the shared action effect
+`{"status":"applied"}` when owner state changes and
+`{"status":"unchanged"}` when the Task is already in the requested state.
+Ordinary Item append keeps its direct Message-ID-keyed Map: each accepted Item
+has `{"status":"applied"}`, while an independently rejected Item has
+`{"status":"rejected","code":...,"message":"..."}`. A whole-request
+failure still uses the non-2xx `ApiErrorResponse`; `rejected` is not a
+single-resource success response.
+
+The Tasks API follows the repository-wide HTTP response contract documented
+below: HTTP is the coarse processing class, while the numeric business code is
+the detailed rejection reason. Successful DTOs remain use-case-specific and
+are not wrapped in a common envelope.
+
+Within `/api/v1`, a body containing only one scalar, one collection or one Map
+uses that JSON value directly. A dedicated Contract type is retained only when
+the body combines fields, represents an independently meaningful structured
+resource or enforces a cross-field invariant. Consequently finite Item append
+accepts a direct `TaskItemRequest[]`, Result load accepts a direct
+`messageId[]`, and both return their Message-ID-keyed outcome Map directly.
+The removed object envelopes are not compatibility formats.
+
+`results:export` supports only finite Tasks. It observes the Task score once
+and returns `400/12010` immediately unless the Task is already `TERMINAL`.
+Once terminal, Server iterates the Task-scoped unified Result HASH through
+bounded owner `HSCAN COUNT 1000` pages, ignores entries
+classified as failed, deduplicates Redis cursor observations by caller-owned
+`messageId`, and streams `application/x-ndjson`. Only one
+Result scan and temporary-file generation may run per Task in one Server
+process; an overlapping request returns `400/12009`. The guard is released
+after file generation, so independent response transfers may overlap. Each
+line contains only `messageId` and the unchanged `opaqueResultPayload`;
+ordering is not a contract. The temporary file is deleted after the response
+stream closes, including failure paths.
+
+Terminal-only export is a scheduling admission rule, not a claim that business
+outcomes are immutable. Later observations may still change a retained Item's
+Result. Export reads pages over time rather than an atomic snapshot; another
+export may therefore contain newer content.
+
+Public Item requests contain caller-owned `messageId`, Event Name, Payload,
+explicit `workerSelector: {executorName, input}`, optional priority and optional
+`ttlMillis`. Server stamps creation time and derives absolute expiry. A missing
+selector rejects that Item in finite append; managed Call validates the complete
+batch before writes. Neither path derives a query from Task supply declarations.
+See [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java)
+and [TaskCallSubmissionService](src/main/java/com/xa/mass/server/task/call/TaskCallSubmissionService.java).
+
+The bounded immutable input is interpreted only by the named Matching function.
+Functions must be available for the Group, independently of the Task's Pool
+supply declarations; `workerId` is universal. Old direct selector Maps are
+rejected rather than converted to ANY, and retained old Items are unreadable.
+The [Matching Owner](../worker_matching_jvm/README.md#item-queries-and-pool-maintenance)
+defines current function names, local input shapes, bounds and Pool semantics.
+
+Direct queries use `{"executorName":"workerId","input":"w-123"}` or
+`{"executorName":"worker.phone","input":"+8613800000000"}`. Identity is available
+in all Groups; Phone requires explicit Group enablement and indexes the exact
+Worker Properties phone without Messaging conditions. Neither requires Pool stock.
+The Group-enabled `worker.messaging.phone` accepts required `phone` and optional
+`country` in an object, using Phone Index plus bounded Facts qualification. Directed
+Messages use it with empty Task supply; generic Phone semantics remain unchanged.
+Matching returns identity hints, Pacer verifies Binding/Group, and Kernel atomically
+acquires execution from strictly due HOT with either mark. Current/future holds
+cannot be preempted. Server neither reads Score nor selects an alternative on failure.
+
+Submission normalizes without consuming candidates. Finite invalid members retain
+per-member rejection; managed calls validate every original query, including
+overwritten duplicate IDs, before submission.
+
+The HTTP Call service and the SMS business module share Server's
+`TaskCallSubmissionService`: complete input validation, bounded managed-Task
+admission and ordered message IDs. HTTP retains immediate Result probing and its
+existing wait registry; product submission creates no servlet waiter. Direct Java
+Result queries also require a Task ID and `1..1000` non-blank message IDs.
+The approved product reuses existing input/Result values rather than mirroring
+the HTTP contract or bypassing application admission.
+
+`items:call` accepts `1..100` Items, submits the bounded batch once and
+synchronously waits within the caller's `waitTimeoutMillis`. The response is a
+Message-ID-keyed result map. Once submission is accepted it returns HTTP `200`;
+each observed entry is `succeeded` or `failed`, while timeout, saturated
+observation capacity, or Registry shutdown marks only the remainder
+`not_observed` without inferring their runtime state. A Dispatch-terminal
+failed Result completes that Item's waiter without a payload. It preserves all
+immediately observed succeeded or failed entries.
+Observation saturation does not return `429`. Duplicate Message IDs in one
+request use the latest Item and produce one response entry. The caller can
+later read the same Message IDs through the same Task-ID-scoped result route.
+Neither route selects a Worker. Server passes the finite Item
+`workerSelector` through structural capture and named Matching normalization using the Task descriptor Group and the Item executor name,
+then appends the normalized immutable query. Server validates every original
+query, including overwritten duplicates and identity selectors. It uses the same Catalog
+instance exposed to Pacer only through `WorkerMatching`. The Catalog's Server admission
+method is not part of that Pacer port. Submission does not take candidates; dispatch
+passes messageId-to-query Maps for the fixed function table to normalize, execute
+and correlate.
+Matching composition startup retains property HASH mappings without scanning or rebuilding.
+Matching owns the country range and
+take time; Kernel retains candidate generation, due execution acquisition and Item claim. There is no asynchronous Matching job, Candidate Cache or fallback owner.
+
+`results:load` accepts a direct JSON array and returns one state object for
+every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
+or `not_observed`. Only `succeeded` includes
+`opaqueResultPayload`; failed carries no Worker payload or reason. A late
+success may replace an earlier failed snapshot, so each response is a read-time
+view rather than an immutable historical event. Server does not read TaskItem
+score or Task score to derive these states. Consequently `items:call` or
+`results:load` may report `succeeded` while the independent Item Score remains
+`ACTIVE` or `TERMINAL(tag=5)`. Score-based lifecycle, statistics and Runtime
+projections continue to follow Kernel Score truth; Server neither coordinates
+nor repairs the two resources.
+
+`POST /api/v1/tasks/{taskId}/items:states` accepts a direct array of 1..100
+nonblank Message IDs and deduplicates them in input order. The same finite or
+managed Task admission applies as for Result load. One Task catalog read plus
+one Score Owner `ZMSCORE` returns each ID as null (missing) or
+`{band, tag, timeMillis, outcomeName?}`. Band is `active` for tag 1 and
+`terminal` for tags 2..9. Here `terminal` means no further scheduling, not frozen
+business state. Time is the band-local Score time, not a business event
+timestamp. No raw Score or Result is read or exposed through this query; Owner
+data failures use the existing 503 contract.
+
+`TaskItemOutcomeProperties` owns the application meaning of terminal tags.
+Dispatch exhaustion/expiry uses 5 (`failed`), and execution success uses 6
+(default `succeeded`), supplied through the sole Pacer assembly entry. Configure
+`xa.mass.task-item-outcomes.names` to name tags 6..9, for example
+`{6: sent, 7: delivered, 8: read, 9: replied}`. Names must be nonblank and unique,
+including the reserved name `failed`; 5 cannot be configured. Tags 2..4 remain
+legal unnamed terminal states. This is startup configuration, with no state
+management API or persistent name directory. Configuring a name installs no
+business observation event or handler.
+
+Only ACTIVE Items are scheduled. All terminal tags can advance to a greater
+legal Score, including a later slot within the same tag, without reopening the
+Task. Task scheduling lifecycle and Item outcome observation lifecycle are
+independent: while an Item is retained, valid observations remain admissible
+without a cutoff triggered by Task completion or closure. Server's application
+contract defines business finality; Kernel does not turn it into an observation
+seal. This does not promise permanent data retention or recreate deleted Items.
+`TaskEvidenceRuntime` carries `EXECUTION_SUCCESS`, `EXECUTION_FAILURE`,
+and `OUTCOME_OBSERVATION` in three bounded Redis LISTs. Every Pacer preset consumes
+them within the existing shared capacity. Result load still permits 1..1000 IDs;
+Task Call and export keep their existing projection contracts.
+
+A Handler can retain the SDK's `WorkerOutcomeReporter` after returning its
+execution Result. This TRACKED capability adds no Task mode or creation parameter.
+Send success finishes execution and releases its original Worker lease. Later
+observations affect only the same Item, including after Task closure or while the
+Worker executes another Item. The fixed WORKER-to-TASK event
+`platform.worker.task-outcome.observed` carries the original opaque `forward` and
+JSON `{tag, observedAtMillis, opaqueResultPayload?}`. Server admits tags 6..9,
+positive milliseconds within the Score Owner range, and optional nonblank string
+content; it rejects extra fields. Kernel verifies the correlated Worker source.
+
+Observation processing promotes Score first, then conditionally stores supplied
+content. Result ordering uses higher tag first, then strictly later reported
+milliseconds within the same tag. Equal timestamps retain existing content, and
+state-only observations never erase content. `results:load` repeatedly reads the
+latest content without exposing its ordering fields; `items:states` reads Score
+independently. `items:call` retains its existing Result wait and adds no
+delivered/read/replied completion prerequisite. It returns the Result projection
+available when observed, including newer content already present. Separate Owner
+commits remain best-effort: an observation
+may advance state without storing its content; there is no ACK, replay or repair.
+
+TaskItem outcome deployment uses a stopped-scope rebuild. Stop every process
+using the explicitly selected scope, clear only that exact scope with
+`SCAN` plus `UNLINK`, then rebuild its Groups, Workers and Tasks. Without a named
+scope, no non-test data is cleared. Old tag 9 is mechanically terminal but must
+not be interpreted automatically as the newly configured replied state. There are no
+compatibility reads, background migration or repair loops. Proofs use unique
+`test_*` scopes.
+
+Task Call remains at-least-once. Submission spans existing owner operations,
+so an Item write followed by an unconfirmed idle-park release repair can still return `503`.
+Server does not retry or roll back that submission; callers should retain the
+original Message IDs and reconcile them through `results:load` rather than
+assuming every non-2xx response means no execution occurred.
+
+```json
+{
+  "items": [
+    {
+      "messageId": "caller-message-001",
+      "eventCode": "extension.worker.string.md5",
+      "payload": {"value": "hello"},
+      "ttlMillis": 30000,
+      "workerSelector": {"executorName":"worker.any","input":{}}
+    }
+  ],
+  "waitTimeoutMillis": 30000
+}
+```
+
+## WorkerGroup And Worker Preparation
+
+WorkerGroup is a predeclared control-plane resource. The public registration
+route is create-only and also provisions its Task Call:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}:register
+```
+
+An equivalent `attributes + eventCodes` declaration with an exact approved
+Task Call returns `already_registered`; a different Group declaration returns
+`400/15006` and never updates the stored Group. Attributes and Event Names are
+directory metadata, not Worker Matching facts, Dispatch evidence, or
+per-Worker capability truth.
+
+Runtime View offers bounded explicit-coordinate and preview reads:
+
+```text
+POST /api/v1/runtime-view/worker-groups:batch-get
+POST /api/v1/runtime-view/worker-groups:preview
+POST /api/v1/runtime-view/tasks:preview
+```
+
+Batch-get reads at most 20 explicit IDs in request order. Preview performs one
+positive `HRANDFIELD ... WITHVALUES` for `1..100` random Groups. Preview has no
+cursor, total, stable order, or completeness meaning; unreadable sampled rows
+are counted and omitted from the returned views. Task Preview performs one
+descending `ZREVRANGE ... WITHSCORES` for the highest `1..1000` Task Score
+coordinates, then projects Task and WorkerGroup descriptors through their
+bounded Owner reads. Pool supply declarations come directly from the Task
+descriptor, without a Matching lookup. This is stored configuration, not evidence
+of current Pool stock or function availability. Corrupt descriptors retain the existing 503 mapping; no
+fallback Pool substitution occurs. Views expose only the Owner-defined Score Band, not raw Score.
+A missing descriptor remains a `null` projection; the read does not create,
+approve, close or repair a Task. It has no total, cursor, paging or completeness
+meaning, and its order is not business priority or execution evidence.
+
+An ordinary Worker start uses one public control call:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
+```
+
+A Java Manager may optionally prepare `1..100` Workers with one bounded call:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers:prepare-batch
+```
+
+Single and batch calls use the same Prepare item DTO:
+
+```json
+{"workerKind":"SCENARIO_LAB","transportType":"WEBSOCKET","workerProperties":{}}
+```
+
+`workerKind` is optional and defaults to `CLIENT_KEY`, preserving existing
+ordinary callers. Android supplies `CLIENT_KEY` explicitly; ordinary Java may
+omit it. `SCENARIO_LAB` derives its
+Server-owned registration coordinate from immutable
+`labInventoryKey + labInventoryLine` string properties (line parses as decimal
+`1..100`, preserving the same registration key) and strictly rejects numeric
+line values and `clientWorkerKey`; mutable fields such as `labSlot` do not participate in
+identity. A batch body is the direct array of `1..100` ordered Prepare items,
+all of which must share one kind and transport type. Both HTTP routes enter the
+same Server `prepareAll` path;
+the single route supplies a one-item list. Server validates the batch shape and
+every registration coordinate before side effects, then reads Group once and resolves the configured default Endpoint before any
+identity write. One Identity Lua resolves the entire batch, one Catalog Binding
+Lua creates or reads actual Group/Endpoint pairs, and one Score Owner Lua
+initializes absent cold members. There is no per-Worker synchronous round trip
+or identity confirmation reread.
+The response is an ordered list of the ordinary Prepare response DTO. Only a
+complete response returns `200`; completed side effects are not rolled back,
+so callers may retry through the same derived coordinates. Failure does not
+imply that only a prefix of the request produced side effects.
+
+`workerKind` only selects the Server-owned registration-key algorithm. It is
+not part of the Redis key address: all identities for one WorkerGroup are
+fields in the same Group identity Hash. Each algorithm emits a typed,
+unambiguous field value, so an arbitrary `CLIENT_KEY` input cannot alias a
+`SCENARIO_LAB` coordinate. The registration-key algorithms remain unchanged. This Binding layout cutover
+requires a stopped, exact-scope rebuild; it has no compatibility reads. Retain
+source Properties/configuration and recreate Groups, Workers and Tasks as
+described in the [Worker Redis contract](../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md#scope-rebuild).
+
+`CLIENT_KEY` Prepare requires an existing Group and a non-blank
+`workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
+Worker identity and calls Kernel batch registration with the default Endpoint.
+Existing same-Group Binding wins over any changed default. Server validates the
+returned actual Endpoint type and resolves its URI; it does not persist address
+state. Kernel initializes only missing cold Score members and preserves every
+existing Score. The HTTP field
+`workerProperties` retains its existing shape, but Server consumes only the
+selected identity policy's coordinates. Non-identity fields are neither
+interpreted nor encoded or persisted as Matching facts. These are separate owners and
+Redis keys, not one transaction; a repeated Prepare converges interrupted
+stages. Ordinary Workers retain only their
+Group/client key coordinate and never send a Worker ID hint. Transparent
+reconnect reuses the current in-memory identity and Endpoint without preparing
+again.
+
+Prepare success does not imply connectivity, scheduling availability or observed
+Properties. All Workers, including Polling, initially remain cold. Valid network
+evidence may later request activation; evidence loss has no replay guarantee. New Workers
+have no Matching facts until an admitted Adapter observation creates them;
+Country and Messaging qualify offered Worker Facts; Proof uses one atomic
+Worker/Platform Facts snapshot. Only Phone retains an independent Redis index.
+Explicit Any Pool and direct workerId need no Facts. Polling has no current Adapter
+Properties path, so new Polling Workers use explicitly supplied Any or Identity. Existing stored facts remain readable
+until a later complete observation replaces them; repeated Prepare never
+overwrites them, Platform Properties, an active Worker lease or PAUSE.
+
+Task and Worker Preview accept a required direct integer body in `1..1000`.
+The Runtime Viewer defaults to 100 and lets callers change the limit. Worker
+Preview samples one named Group once; Catalog Binding and Matching Properties
+reads use batches of at most 100. These reads have no shared atomic snapshot.
+WorkerGroup Preview retains its separate `1..100` limit; Network and Scheduling
+observation requests also retain their existing 100-identity bounds.
+
+Worker Preview still returns the Kernel-owned identity, Group and Endpoint when
+Matching returns no usable facts. Both Properties fields are then empty Maps,
+and the Worker counts as returned rather than unreadable. This is a projection,
+not a synthetic Matching record or proof of an observed empty baseline. The
+current `WorkerProperties` observation maps both missing and undecodable facts to no usable facts;
+this read distinction is unchanged. Missing Kernel descriptors still count as
+unreadable, and Owner call failures still fail the request.
+
+Worker scheduling control and platform Properties changes use the same action
+effect contract:
+
+```text
+POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling
+POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling
+PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
+```
+
+Pause, resume and Properties patch return `{"status":"applied"}` when the
+requested mutation changes owner state and `{"status":"unchanged"}` when the
+resource is already at the requested value. A Properties patch still accepts
+the direct JSON Properties object; it mutates Matching facts and never writes
+Worker Score.
+Platform Properties patch requires an existing Matching Worker facts row.
+Before the first observation it returns the existing `400/15008` outcome;
+it must not be used as a read-only probe for successful Prepare.
+Missing resources, invalid changes and state conflicts use the public
+`15008..15010` business codes and never expose the Kernel Owner reason.
+Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
+`503/15004`.
+
+Runtime View may request one bounded `1..100` Worker scheduling observation.
+`WorkerScoreCore.observeSchedulingStates` performs one batch read, interprets
+the Score snapshot and supplies one shared local read time. WorkerSchedulingService
+validates the request and result completeness, then passes that Kernel observation
+to Runtime View for wire serialization. It owns no decoded fields, slot arithmetic
+or state classification. This projection is independent of Adapter connection,
+Binding and Task execution evidence.
+
+Pause and resume call the Kernel pauseScheduling/resumeScheduling operations.
+Kernel owns the maximum-time PAUSED projection, atomic MAX,1 pause, exact resume
+fence and time sampling. Server maps
+APPLIED/UNCHANGED to ActionOutcome and MISSING/CONFLICT to the existing errors;
+provider failures retain the scheduling-unavailable response. Properties mutation
+still owns APPLIED-only best-effort invalidation, independently of these controls.
+
+```text
+POST /api/v1/runtime-view/worker-groups/{workerGroupId}/
+     workers:scheduling-observe
+body: ["worker-1","worker-2"]
+```
+
+The response contains one shared `readAt` plus a complete
+`statesByWorkerId` map in request order. States are `hot-score-overdue`, `held-hot`,
+`paused`, `recovery`, `cold`, or `missing`. They do not expose raw Score and do
+not claim to know the active Java Kernel process's HOT eligibility epoch.
+`hot-score-overdue` means only that a positive HOT Score precedes the current
+100ms slot; it is weaker than the Kernel's floor-aware candidate range.
+Provider failure returns the existing Runtime View unavailable error rather
+than inventing a Worker state.
+
+Runtime View also exposes one Adapter-scoped, bounded Network observation:
+
+```text
+POST /api/v1/runtime-view/endpoint-managers/{endpointManagerId}/
+     workers:network-observe
+body: ["worker-1","worker-2"]
+```
+
+This use case sends the existing
+`platform.adapter.worker-connections.snapshot` event through the same
+Adapter Direct FIFO, waiter and Result correlation as DIRECT_CALL. It projects
+the Adapter response to `connected`, `disconnected`, or `unknown` and never
+creates a Server copy of Route truth. `readAt` is the Server observation time.
+An Adapter timeout, rejection or malformed payload returns Runtime View
+unavailable; it is not converted into the legitimate Adapter state `unknown`.
+The caller groups Workers by `endpointManagerId`; Server does not join Adapter
+Network with Binding, WorkerGroup, scheduling or execution state.
+
+Worker calls do not require pause or read score. They use
+`WorkerCommandRuntime.offerWorkerCommands`: an empty field in the existing
+Adapter-partitioned Worker Command Hash is filled, while an occupied field is
+rejected as `command-slot-occupied`. The authoritative TASK append path may
+replace an offered Direct Command until it is destructively consumed. Timeout,
+HTTP cancellation and shutdown finish only the waiter; they do not retract a
+Worker Command already offered to Redis.
+
+Adapter-targeted calls enter a bounded Server-memory FIFO. Adapter Commands are
+consumed first; any remaining response capacity is filled by exactly one
+bounded consume from the shared Worker Command Hash. If capacity still remains,
+Server may consume up to 100 coalesced Kernel Serviceability requests and add
+one Adapter snapshot Command. Only a Worker Command map key is its workerId;
+Adapter and Kernel Command keys are response-local and opaque.
+
+Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects.
+The complete batch must have one supported `dst`; Server rejects a mixed or
+unsupported batch before calling any semantic Owner, then routes the whole
+batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
+SYSTEM is a platform-event destination, not Direct Call correlation. Its fixed
+`platform.adapter.worker-properties.observed` event enters the Worker resource
+use case; unknown events are individually rejected. Even a matching Direct Call
+`forward` cannot complete a waiter via SYSTEM.
+Direct Call Commands use `src=SERVER`; their Worker/Adapter replies target SERVER.
+The single HTTP endpoint and homogeneous-batch validation remain unchanged.
+Owner-local source, correlation, outcome and forward failures remain per-item
+rejections. Queue capacity remains an Adapter-local memory bound and is not an
+HTTP batch-size declaration. If Kernel Serviceability cannot admit the complete
+valid evidence subset, Server returns `503`.
+`commands:consume` accepts the JSON integer limit and returns the entry-keyed
+Command Map directly. `results:append` accepts the Report object array directly;
+only its accepted/rejected count response remains a named structure. All Report
+destinations share this path; adding a destination does not add an endpoint.
+Exact route schemas are available from the running Server:
+
+```text
+Live Scalar Reference   http://127.0.0.1:18082/scalar
+Live OpenAPI JSON       http://127.0.0.1:18082/v3/api-docs
+Static API Snapshot UI  http://127.0.0.1:18082/api-reference
+Static OpenAPI Snapshot http://127.0.0.1:18082/reference/openapi.json
+Architecture Overview  http://127.0.0.1:18082/overview.htm
+Diagnostic Code UI      http://127.0.0.1:18082/reference/error-codes
+Diagnostic Code JSON    http://127.0.0.1:18082/reference/platform-diagnostic-codes.json
+```
+
+Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external
+fonts are disabled. `/scalar` and `/v3/api-docs` are generated from the current
+running Server. `/api-reference` reads the committed deterministic snapshot
+used by the frontend and Vercel, so it is intentionally read only and can lag
+until the snapshot is regenerated.
+
+Regenerate the snapshot after changing a public Controller, DTO, Tag or
+OpenAPI description:
+
+```powershell
+.\gradlew.bat :server_jvm:exportOpenApiSnapshot
+```
+
+The exporter starts an isolated `test` Profile context on a random loopback
+port, reads the real `/v3/api-docs`, removes the request-derived `servers`
+field, canonicalizes JSON object order, and writes
+`frontend/public/reference/openapi.json`. Server tests compare the generated
+contract with that committed file and report drift without rewriting it.
+
+OpenAPI Introduction links to the two diagnostic reference paths without
+embedding the dictionary or binding codes to operations. Public
+`ApiErrorResponse.code` values belong to `server_jvm`; Netty Adapter and Worker
+Core codes remain in producer-local namespaces. The packaged JSON is generated
+by `distribution/server` from the current compiled enums, excludes Scenario
+and downstream capability errors, and makes no cross-version stability claim.
+
+Scalar navigation uses four caller-facing API groups:
+
+| Tag | Surface |
+| --- | --- |
+| `Worker Resources` | WorkerGroup declaration and Worker preparation or control |
+| `Tasks` | Task creation, lifecycle, Item Call and Result access by Task ID |
+| `Runtime View` | Read-only bounded runtime projections |
+| `Worker Delivery` | Worker/Adapter delivery and best-effort Direct Call |
+
+These tags are documentation navigation, not Redis storage domains or runtime
+owners. Redis `scope`, `result` and `dispatch` boundaries do not become public
+API categories merely because they own physical keys.
+
+After routing has matched a public Runtime operation, application and use-case
+outcomes share one response convention:
+
+| HTTP status | Meaning |
+| --- | --- |
+| `200` | The use case completed, including idempotent no-op and bounded partial observation results |
+| `400 + ApiErrorResponse` | Input, business resource, precondition or current state rejected the request |
+| `429 + ApiErrorResponse` | Generic admission capacity was exhausted; currently only Direct Call uses it |
+| `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
+
+Business resource absence is `400` with its detailed numeric code. Successful
+responses keep their natural JSON value or resource/use-case DTO; a scalar,
+single collection or single Map is not wrapped merely to name that value.
+Application rejection and
+unavailability errors use `code`, the stable public default `message`, and
+`requestId`. Owner reasons, Redis data and internal exception messages are not
+returned.
+
+Framework routing and protocol failures remain coarse HTTP concerns rather
+than XA business outcomes: an unknown URL may return `404`, an unsupported
+method `405`, an unsupported media type `415`, and an unexpected framework
+failure `500`. They are not assigned XA business codes by the application
+error mapping.
+
+Worker Delivery is the machine-protocol exception to the single `200` success
+rule. Command Poll returns `200` with a Command or `204` when empty; Worker and
+Adapter Report append returns `202`, and Adapter Command consume returns `200`.
+Route verification uses the asynchronous application port, not an HTTP endpoint.
+Delivery rejection still uses the same
+`400/503 + ApiErrorResponse` contract. No platform operation declares a business
+`404`, `409` or `422` response.
+
+The [SMS business module](../scenarios/sms-reception-jvm/README.md) depends on the
+the configured Project directory, Task submission and Task data services here.
+Server Boot composition imports its configuration beside Server configuration in the same
+context. Only `sms-reception` enables its API, jobs and Group registration.
+The unified console shares the Server origin; distribution owns its SMS page
+forwards while `/` keeps the Runtime entry. Frontend availability does not enable
+product resources. The product creates no Redis clients or platform loops.
+Product callers stop before platform resources. Failed initialization fails
+startup and destroys already-created resources, including the Adapter host.
+
+[Message Campaigns](../scenarios/message-campaigns-jvm/README.md) also consumes the
+existing finite `TaskCreationService` and `TaskLifecycleService`. Creation validates
+Group, Pool supply declarations and numeric fields before writes. `appendFiniteTaskItems` validates
+every input and the 1..100 batch bound before owner operations; `loadTaskItemResults`
+allows 1..1000 nonblank IDs and `loadTaskItemStates` allows 1..100. Application calls
+preserve HTTP input constraints. Products may use the existing TaskCreateRequest
+and TaskCreateResponse alongside TaskItemRequest and Result types;
+[App Checks](../scenarios/app-checks-jvm/README.md) reuses TaskCreateResponse for
+its completed creation result. No mirrored contracts or controller
+calls are introduced. Boot owns preview composition and shared Group declarations;
+distribution owns launching and packaging it. Server has no Messages dependency
+or business state names.
+
+## Assembly Boundaries
+
+Production packages use stable functional roots. The versioned HTTP surface
+centralizes route adapters under `api.v1.controller` and groups wire types under
+`api.v1.contract` by Task, Worker, Runtime View and Delivery vocabulary. Task
+use cases remain under `task` (`call` and `result`); Worker responsibilities
+under `worker` (`group`, `preparation`, `identity`, `endpoint`, `resource` and
+`scheduling`); delivery services under `delivery`; and process-wide provider or
+lifecycle wiring under `assembly` (`redis`, `kernel`, `pacer` and `runtime`).
+`runtimeview`, `operation`, `error` and `frontend` remain separate Server
+surfaces. These packages express ownership and composition boundaries; they do
+not add alternate Runtime owners.
+
+### Kernel Providers
+
+Controllers and use-case services depend on `kernel_jvm` and
+`worker_matching_jvm` owner contracts.
+Provider selection, construction and destruction stay in Server Spring
+assembly. The `assembly.redis` package owns connection and health only;
+Redis key operations live in
+owner-local provider packages.
+
+`assembly.matching` registers one `MatchingComposition` lifecycle Bean. It exposes
+stable `WorkerMatchingCatalog` and `WorkerProperties` interface Beans with independent
+destruction disabled. Task admission uses Catalog; Properties reception, Platform
+mutation and Runtime Facts display use only `WorkerProperties`. Pacer still sees
+only `WorkerMatching`. Properties APPLIED results continue to trigger separate
+best-effort Score invalidation in the Server use case.
+Composition creates enabled Pool and property lookup resources with one lazy Matching
+Redis connection. Startup does not read or rebuild indexes. Failed assembly and
+Composition destruction close that connection idempotently without shutting down
+the Server-owned RedisClient. Server does not assemble separate index lifecycles.
+Resource dependencies and atomic Facts/index writes belong to the
+[Matching Owner](../worker_matching_jvm/README.md#fixed-resource-composition).
+
+Worker Prepare composes Server identity resolution and Kernel
+`WorkerResourceCatalog.registerWorkers`. Catalog owns the unique persistent
+Binding and initializes missing members through Score Owner. A normal 1..100
+Worker Prepare uses four client commands: Group HMGET, Identity Lua, Binding
+Lua and Score Lua; Catalog alone uses two. This is a command budget, not a
+throughput/latency claim. `WorkerEndpointDirectory` binds the Endpoint configuration
+directly and retains its single immutable address model; it has no Redis connection.
+First and later Adapter observations create or replace Matching Properties
+without re-Prepare or Kernel Worker registration. Transparent Client reconnect
+performs no Prepare operation.
+
+### Worker Delivery
+
+Optional call diagnosis uses `xa.mass.diagnostics.enabled=true` plus explicit
+JFR event settings. The default has no HTTP diagnostic Filter or executor
+sampler. Server-owned events time Direct Binding reads, mailbox offers and
+Command consumption, Task Call submission and immediate/probed Result observation
+without additional Redis operations. Task RPC observations include waiter
+admission, each activated batch's maximum due-item lateness, probe batch/hit counts and deduplicated observation,
+timeout, cancellation and shutdown. The servlet filter also covers `items:call`.
+They carry fixed
+stages, counts and failure flags, never Worker identity, payload or results.
+The servlet observation registers its listener during `startAsync`, records
+initial execution separately, and emits at most one completion after timeout,
+error or normal completion. Servlet completion is distinct from client receipt.
+HTTP executor snapshots use JFR's periodic lifecycle and are removed on context
+shutdown; Server creates no sampling thread. Platform-pool metrics are
+inapplicable for virtual-thread execution. Diagnostics do not change admission,
+callback ordering or failure classification. The finite measurement and safe
+export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+Sampled Task correlations are stateless SHA-256 identifiers at 1/64; no identity
+or payload is a metric label. Offline joins stay inside one Server JVM, explicitly
+retain incomplete/overlapping evidence and do not infer TaskItem finality.
+
+Runtime Boundary checks the actual request thread and executor under the default
+200/10 pool, the 200/200 pool and virtual execution. Its finite HTTP/Redis test
+preserves observed success, occupied-slot rejection, unobserved timeout, rejection
+of late Reports and Owner shutdown. All six requests per configuration emit one
+initial and one completion observation. This is a correctness check, not load
+or capacity evidence.
+
+Server owns the Worker Delivery HTTP and owner-provider composition. It
+constructs active Adapters only through the finite public Netty factory.
+
+Adapter Command consume and Report append use the loopback Worker Delivery HTTP
+boundary. First route verification uses a Server-injected asynchronous port:
+one bounded Server queue is drained by one resident virtual thread, and current
+Catalog Binding snapshots are read asynchronously by one HMGET for at most 100
+IDs before the individual
+Adapter requests are completed. The queue is transient coordination, not Route
+or Binding truth. Adapter lifecycle, schedulers, queues, current route registry
+and physical Channels remain owned by `transport/netty-adapter`.
+
+Long-lived Worker identity carries `workerId` in the Report source and exact
+`null` payload. Adapter routing and retained verification use only workerId;
+WorkerGroup remains outside the Transport route. The optional Kernel
+Serviceability Dispatch lane writes Adapter-partitioned probe requests. Server
+destructively consumes a bounded request set only at the lowest Command-response
+priority and constructs one `KERNEL -> ADAPTER`
+`platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
+Result path routes all `ADAPTER -> KERNEL` Reports into the bounded Kernel
+Serviceability evidence handoff. This includes periodic snapshots and
+Adapter-produced single-Worker Route changes or TASK delivery-expiry evidence.
+Server parses neither event nor payload semantics, does not resolve
+WorkerGroup, and never invokes the Worker score owner.
+
+For `dst=TASK`, Worker Delivery validates producer identity and exact event
+contracts before mapping to the Kernel-owned lanes. WORKER plus
+`platform.worker.command.succeeded` maps to `TaskEvidenceType.EXECUTION_SUCCESS`;
+WORKER plus `platform.worker.command.failed` maps to FAILURE. Path-matching
+ADAPTER plus `platform.adapter.command.delivery-failed` also maps to FAILURE
+only with exactly `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`.
+WORKER plus `platform.worker.task-outcome.observed` maps to OUTCOME_OBSERVATION
+after strict payload admission. Other event/producer combinations are rejected. Polling point results accept
+only the matching Worker producer. Server never parses the opaque ResultContext.
+Kernel Result Routing receives the selected lane and does not reclassify it.
+`diagnosticCode` is required string diagnostics, allows empty and arbitrary
+values, and never controls acceptance, classification or correlation. Adapter delivery-expiry still emits a separate `dst=KERNEL`
+Serviceability report through its separate homogeneous Report batch.
+
+Adapter instances configure flat Route retention and Properties budget fields. The
+defaults retain disconnected verification evidence for `10m` with at most
+`100000` disconnected Workers, and bound properties by a `64 MiB` encoded-data
+budget. Properties have no Server-defined freshness window; their visibility
+follows retained Adapter route identity and may also be lost under properties
+capacity pressure. These are Adapter-owned process-local policies; Server only
+binds the complete Transport config and checks the corresponding Endpoint.
+Callers read the properties projection by
+DIRECT_CALL to `platform.adapter.worker-properties.snapshot`. Server treats the
+event name, opaque input and result payload transparently: it owns neither cache
+contents nor update time, route gate, TTL or eviction interpretation. Live
+connection state remains a separate
+`platform.adapter.worker-connections.snapshot` call; Server does not join the
+two projections. After verified connection/reconnection, Adapter requests one
+full Worker snapshot. Cache installation offers a distinct SYSTEM observation,
+never a KERNEL Properties Report.
+
+#Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
+
+## Worker Allocation Observations
+
+Pacer supplies the same five-field `KernelPacerRuntime.WorkerObservation` record
+directly to the Server assembly: `workerGroupId`, immutable `workerIds`,
+`observedAtMillis`, `messageEventName` and `observationEventName`. Source time is
+sampled after successful Worker acquisition and Item claim; `worker.assigned`
+precedes Command encoding/publication. It is not an execution/Result count or an
+eventual-consistency promise, and carries no Task, message ID, Project, Endpoint or
+Score correlation.
+
+`WorkerObservationConsumer` owns one standard queue of 256 whole DTO batches and
+one consumer thread. A drain handles at most 16 batches. Queue saturation drops
+the current whole batch, without delaying or changing dispatch. There is no retry,
+replay or deduplication. With no registered handlers it allocates
+neither queue nor thread, and Pacer receives a no-op sink.
+
+`KernelPacerConfiguration` explicitly assembles a deeply immutable
+`Group -> EventKey(messageEventName, observationEventName) -> List<FunctionHandler>`
+table. Selections match exact strings. Different handlers may share a selection;
+registering the same instance twice within one selection fails assembly. No prefix,
+wildcard, dynamic registration or handler identifier is used. Unmatched notices
+are ignored before queue admission without waking the consumer, reading Facts or
+changing diagnostics. Only matched notices contribute to enqueued/dropped counts;
+matched notices received while stopped are dropped. Each notice enters the queue
+once, regardless of handler count.
+
+The package-local `FunctionHandler.handle(List<WorkerObservation>)` receives a
+nonempty immutable list. Each drain calls each matching handler instance once,
+with its selected notification subsequence in receipt order, including duplicates.
+The list may span Groups and event selections. Handler execution follows first
+appearance in the drain; a shared notice uses registration-list order. Calls remain
+serial on the consumer thread, with no transactional or cross-handler dependency
+guarantee. A handler's ordinary runtime exception counts as one processing failure
+and does not prevent the remaining handlers. Effects are not rolled back or replayed.
+The receiver has no Properties dependency; handler-owned operations run outside
+its short admission/lifecycle gate.
+
+One `PlatformPropertiesHandler` serves all `WorkerPropertyProjection` definitions.
+Definitions provide a pure `(current Platform Properties, observation times) ->
+local patch` function; duplicate projection selections still fail assembly. The
+handler groups selected times by Group/Worker, chunks reads at the existing
+`WorkerProperties` read budget, and computes against immutable input snapshots.
+For each Worker, projections run in their first-appearance order within the drain.
+Each projection's time list retains notification receipt order without sorting or
+deduplication. Thus `A(10), B(20), A(30)` invokes `A([10,30])` then `B([20])`, not
+the original event interleaving. Projections must not depend on cross-selection
+event replay. Later projections see preceding local patches and overwrite any
+overlapping fields. This single handler issues at most one
+`WorkerResourceCommandService.patchPlatformProperties` per Worker in that drain.
+Unreturned fields remain unchanged; null retains the existing patch deletion meaning.
+
+Missing/unreadable Facts are skipped without initialization. Failed reads skip the
+affected page; computation/patch failures skip that Worker and retain earlier
+successful writes. One consumer serializes this local read/modify/write path;
+concurrent external writes to the same fields can still overwrite observations.
+There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
+APPLIED patch handling still performs separate best-effort candidate invalidation.
+The notification path does not make eligibility decisions. The fixed
+[Matching assignment-window function](../worker_matching_jvm/README.md#observed-assignment-window)
+can consume the projected fields during a subsequent query. Its Group configuration
+supplies the same window length to the App Checks projection; Server only binds
+the configuration and performs the existing observation/property operations.
+
+The consumer starts before Pacer and stops after it, before Matching destruction.
+Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds
+for the current processing call; repeated close uses the same deadline. Failed
+startup cleans any started consumer. Only the receiver modifies the assembly's
+shared running flag. The Properties handler reads it at the existing read/Worker/
+write boundaries, so a read returning after stop does not start the next write.
+Stop also prevents subsequent handler calls; already-started operations cannot be
+revoked. Handlers have no separate lifecycle or shutdown resources.
+Optional `xa.mass.WorkerObservation` JFR
+summaries contain cumulative enqueued/dropped batch counts and processing failures
+only, without business content or tracing identities. Fan-out does not multiply
+enqueue/drop counts; Properties failures retain their existing page/Worker counts
+through the receiver's shared failure counter.
+
+Scenario code receives only the Server's pure projection contract, without a
+Pacer or FunctionHandler dependency. Its first projection is the
+[App Checks assignment window](../scenarios/app-checks-jvm/README.md#分配窗口投影).
+
+## Runtime Worker Properties Admission
+
+`WorkerDeliveryService` recognizes only the fixed
+`ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` event here.
+Its sourceId must match the path adapterId, diagnostics are non-authoritative, forward must
+be empty, and payload must contain exactly `workerId + properties`. Properties
+are a complete flat string KV Map; the full encoded Report is limited to
+1,000,000 UTF-8 bytes. Event-level invalid input is rejected per item; mixed
+destinations and malformed Report DTOs still fail the whole HTTP batch first.
+
+The same `WorkerDeliveryService` reception use case collapses valid snapshots
+by Worker to the last valid input in that HTTP batch, retaining input counts.
+It reads Group and Endpoint in one bounded `WorkerResourceCatalog` Binding
+read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group, and calls
+`WorkerMatchingCatalog.upsertWorkerFactsBatch` directly. No intermediate
+resource mutation service or separate Properties Report API participates.
+Prepare and registration do not participate. After each Group facts write,
+APPLIED members alone request one bounded Score invalidation through the
+existing `WorkerSchedulingService`; UNCHANGED members add no Score command.
+APPLIED/UNCHANGED accepts all valid inputs collapsed into that Worker; other
+mutation outcomes reject them. Facts infrastructure failure returns `503` without
+rolling back earlier Group writes; the operation is
+`workerDelivery.appendAdapterPropertiesReports` with the existing Properties
+unavailable error code. SYSTEM then drops the batch, not retries it.
+
+`WorkerResourceCommandService.patchPlatformProperties` remains the independent
+management use case for `platform.*`. Its HTTP PATCH and nullable JSON values
+never modify the Worker-owned `worker.*` Map. Adapter observations always
+replace the complete Worker Map and leave Platform Properties unchanged.
+An APPLIED Platform patch requests the same Score invalidation with one Worker.
+
+Matching owns the persistent facts, not Server. Replacement removes omitted
+keys without retaining registration fields inside Properties; independent
+identity, Binding and Worker records remain intact. Subsequent refill rounds read
+the new facts. Invalidation calls advancePastScoreTimesToNow. Past HOT atomically
+advances to Redis execution time with mark=0; past non-cold RECOVERY advances while
+retaining mark. Both preserve polarity.
+Cold RECOVERY, current/future holds and missing members are not changed. The cold
+exception preserves pending initial network activation. Cached old fences fail
+strict execution acquisition after a successful generation change. Scheduling is
+not explicitly awakened; normal Refill can observe invalidated HOT after the
+current slot passes, without waiting for candidate recycling.
+
+Facts commit before Score invalidation. Execution acquisition can win in between;
+its future hold then survives invalidation and keeps its result-release fence.
+Invalidation failure preserves the successful facts response and emits an aggregate
+diagnostic. An UNCHANGED retry does not replay invalidation. There is no ACK,
+outbox, property-version transaction or background repair. Dispatch requires its
+own TRANSITIONED execution acquisition, never an inferred state observation.
+See the [HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
+for exact transitions and coordinated upgrade behavior.
+
+Concurrent observation batches have no timestamp/version
+fence; effective storage writes determine facts. A failed first publication can
+leave no facts, and a failed later publication can leave old facts. A later
+explicit complete report or connection baseline can supply new input. No
+quiet-network eventual repair, ACK, throttling or publication history is provided.
+If a full observation was installed in Adapter but lost upstream, a later
+Worker update publishes the Adapter's complete merged Map, including changes
+and deletions from that lost publication. Server never merges that update with
+its older facts. This does not repair Worker-to-Adapter input loss or guarantee
+that the Adapter cache always equals the latest Host state.
+
+Server-level route verification defaults to a `100000` request queue and a
+`5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner
+failure completes affected verification requests exceptionally; Server does
+not retry them. Worker connection retry remains the recovery owner.
+
+### Worker And Scenario Assembly
+
+The default profile starts no Adapter and declares no Scenario WorkerGroup. An
+explicit profile or external configuration may:
+
+1. register create-only advisory WorkerGroup declarations and their
+   deterministic Task Calls;
+2. construct and start configured Adapters.
+
+Server does not parse Worker files, construct business Definitions or own
+individual Worker lifecycle, and it never starts a Scenario Worker process.
+Those responsibilities belong to the independently launched
+[`worker_simulator_jvm`](../worker_simulator_jvm/README.md) Host.
+
+Deployment profiles, Group declarations and startup commands are maintained by
+[Server Boot composition](../server_boot_jvm/README.md#run).
+
+## Configuration
+
+Default application limits; deployment coordinates are maintained by
+[the executable configuration](../server_boot_jvm/README.md#pages-and-configuration):
+
+```text
+Managed Task Call wait         30s default / 60s maximum
+Task Call waiters              10000 maximum
+Task Call observations         100000 pending waiter-message associations
+Task Call Probe batch          256 due message IDs per round
+DIRECT_CALL wait               3s default / 10s maximum
+Adapter Direct FIFO capacity   1000 per Adapter
+Pending Direct targets         10000 per Server
+Serviceability probe requests  10000 per Adapter HASH
+Serviceability evidence       10000 per Redis scope
+```
+
+Spring Profile controls assembly while `xa.mass.redis.scope` controls the data
+boundary; the Redis DB number is not a profile or test discriminator. Scope
+syntax and the complete physical ABI are owned by the Kernel
+[Redis Keyspace contract](../kernel_jvm/doc/runtime-redis/redis-keyspace.md).
+
+The Serviceability handoff uses
+`xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests` and
+`xa_mass:<scope>:worker:serviceability:evidence_results`. These are
+Kernel-owned best-effort handoffs, not current connectivity truth. Server
+implements only the bounded Adapter request consume and Adapter-evidence append
+needed by its HTTP bridge. The fixed Java Kernel Pacer destructively consumes
+that evidence LIST and owns its score policy.
+
+The default Adapter section defines only remote API connection defaults. An
+Adapter instance is an explicit deployment declaration and must also have a
+matching Endpoint directory entry.
+
+Every configured transport type requires one explicit default, while multiple
+WebSocket or Socket Endpoints of that type may remain addressable:
+
+```yaml
+xa.mass.worker-endpoints:
+  defaults:
+    POLLING: system-polling
+    WEBSOCKET: adapter-a
+  endpoints:
+    system-polling:
+      transport-type: POLLING
+      public-uri: http://127.0.0.1:18082
+    adapter-a:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
+```
+
+No Worker-ID hashing chooses the default. A changed default does not migrate
+existing bindings. Unknown or wrong-type defaults fail startup. The old config
+prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+
+Each valid point poll verifies Catalog Binding, then best-effort appends
+`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
+before Command consumption. Server creates the timestamp. Empty polls count;
+queue capacity or append failure drops observation without changing the poll
+result. Public Adapter ingress rejects forged SERVER observations. All presets
+consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+dedup cache, activation ACK or replay is installed.
+
+## Run
+
+The Server library has no production main or Boot tasks. Use the
+[executable startup commands](../server_boot_jvm/README.md#run) or the
+[Runtime distribution](../distribution/server/README.md). Configuration binding,
+provider construction and bounded resource shutdown remain in this library.
+
+Health endpoints:
+
+```text
+GET /actuator/health/liveness
+GET /actuator/health/readiness
+```
+
+Liveness covers the JVM process. Readiness requires Worker Matching, Result
+Convergence, Dispatch Convergence and Kernel Redis to remain available. The
+optional Serviceability lane is part of Dispatch Convergence rather than a
+separate lifecycle. The `kernel` health contributor exposes only the aggregate
+lifecycle and the two Java convergence-application states; `workerMatching`
+reports its bounded consumer state separately.
+
+## Verification
+
+```text
+./gradlew :server_jvm:test
+
+./gradlew :server_jvm:redisOwnerIntegrationTest
+
+./gradlew :server_jvm:runtimeBoundaryIntegrationTest
+```
+
+The two integration tasks use the checked `integration-test` profile with
+Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary selects
+`RUNTIME_BOUNDARY_PROOF` and starts one Java Spring context and both Java
+convergence applications. No auxiliary Kernel process or second host is
+started by the test operator.
+
+The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
+`preset`, and `shutdown-timeout`. Spring accepts the normal
+`XA_MASS_KERNEL_PACER_PRESET` environment override or
+`--xa.mass.kernel-pacer.preset=...`; an unknown preset fails configuration
+binding before Runtime construction. Normal JVM tests use the `test` profile
+with this lifecycle disabled and an unreachable Redis URL, so a local Redis
+cannot hide an unintended connection during assembly.
+
+`xa.mass.redis` is the single production source for the Redis URL and scope.
+`kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT
+activation floor for every Runtime assembly. DEFAULT uses it for network activation
+without enabling Assignment scan floor or periodic Probe. Server
+passes the selected preset, shutdown timeout, owner dependencies and observation sink; it
+does not interpret scheduling policy. `SERVICEABILITY_DEFAULT` provides normal
+production cadence with Serviceability enabled. Runtime Boundary uses a unique
+`test_*` scope; Server rejects its proof-only preset for every other scope. The
+default and AgentForge profiles use `DEFAULT`; the checked Scenario profile
+uses `SCENARIO_LAB` and defaults to `profile_scenario_workers`.
+
+Exactly one Server instance per Redis scope may have the Pacer lifecycle
+enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
+there is no distributed leader election.
+
+Known readiness mismatch: `KernelPacerHealthIndicator` currently reports DOWN
+when that lifecycle is disabled, including the API-only replica described
+above. The readiness/deployment contract remains unresolved; disabling Pacer
+must not be documented as making such a replica readiness-UP. This documentation
+correction does not change the indicator or its tests.
+
+Result Convergence starts first and Dispatch Convergence starts second.
+Dispatch Convergence owns the fixed Task Initialization, Allocation, Task Dispatch and
+optional Serviceability lanes. Worker/Adapter assembly starts after the
+aggregate reaches `RUNNING`. Shutdown uses one shared deadline in the exact
+reverse order. A failed start rolls back every already-started Java
+application.
+
+The Runtime Boundary proof closes real Polling execution through an explicit Any Pool, WebSocket and Socket
+Task paths. It proves that Prepare alone creates no Matching facts, Preview
+can expose an identity before Properties, and an admitted text-protocol report
+can create the first facts without another Prepare. Lost first and later
+publications require new input; re-Prepare preserves observed facts and Worker
+scores. It also calls an unpaused real WebSocket Worker directly, executes a
+custom `extension.worker.*` event through a SERVER Command and the default
+probe/properties/events handlers, observes Adapter connection state, closes
+the current Channel, and proves transparent reconnect.
+
+An isolated DEFAULT-preset Runtime Boundary witness deliberately loses the first
+disconnect report after its real Redis handoff. Its test-only interceptors are
+installed before Pacer and Adapter startup; the target identity is armed only
+after the verified connected HOT baseline, avoiding live-consumer races during
+fixture setup. A subsequent TASK must reach the
+Adapter, expire, and supply correlated rejection plus new network evidence that
+changes the Worker to RECOVERY. A real reconnect then completes the same Item.
+The reconnect wait remains 15 seconds with production candidate recycling at
+60 seconds. Past polarity changes refresh the candidate generation; the real
+Pacer can replenish consumed stale stock without a Pool compensation path.
+Periodic probes cannot satisfy this witness. Failure evidence contains bounded
+Command/evidence timing and Score transition traces, never opaque content.
+
+The canonical proof ownership, prerequisites and CI lane selection are in
+[`TESTING.md`](../TESTING.md).
+
+## Task-backed Messages reads
+
+TaskCreateRequest and TaskView include optional name and immutable string-map
+metadata, stored by Task Owner with the descriptor, outside scheduling config.
+TaskCreationUnconfirmedException carries the generated identity when creation
+commit is unknown. Messages uses ProjectTaskQueryService for list/point reads,
+TaskDataService for Item Score quantities and bounded Result previews, and the
+existing creation/append/approval services synchronously. No Redis access or
+business scheduling moves to the scenario. Preview is one HSCAN COUNT 100 then
+at most 100 Item reads; counts are Owner ZCARD/ZCOUNT observations. These surfaces
+have independent snapshots and retain existing data-error/503 semantics. Business
+tag names and aggregation belong to the Messages Owner, not Server's generic API.

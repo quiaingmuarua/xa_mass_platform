@@ -1,0 +1,810 @@
+name: Proof CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: proof-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  XA_MASS_PYTHON_EXECUTABLE: python3
+  XA_MASS_REDIS_EPHEMERAL: "true"
+
+jobs:
+  changes:
+    name: Select proof lanes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      jvm_contracts: ${{ steps.filter.outputs.jvm_contracts }}
+      redis_owner: ${{ steps.filter.outputs.redis_owner }}
+      runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
+      worker_correctness: ${{ steps.filter.outputs.worker_correctness }}
+      worker_dynamic_matching: ${{ steps.filter.outputs.worker_dynamic_matching }}
+      worker_convergence_health: ${{ steps.filter.outputs.worker_convergence_health }}
+      android_host: ${{ steps.filter.outputs.android_host }}
+      android_emulator: ${{ steps.filter.outputs.android_emulator }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      runtime_distribution: ${{ steps.filter.outputs.runtime_distribution }}
+      product_coexistence: ${{ steps.filter.outputs.product_coexistence }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Verify proof selection contract
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python3 .github/scripts/test_check_proof_selection.py
+          python3 .github/scripts/check_proof_selection.py
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            proof_base="$PR_BASE_SHA"
+          elif [[ "$EVENT_NAME" == "push" && \
+                  "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            proof_base="$PUSH_BEFORE_SHA"
+          else
+            proof_base="$(git rev-parse HEAD^)"
+          fi
+          python3 .github/scripts/explain_proof_selection.py --base "$proof_base"
+      - id: filter
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: .github/proof-paths.yml
+          predicate-quantifier: some-with-excludes
+  docs-contract:
+    name: Docs Contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Verify current documentation contract
+        run: |
+          python3 .github/scripts/test_check_docs.py
+          python3 .github/scripts/check_docs.py
+
+  jvm-contracts:
+    name: JVM Contracts
+    needs: changes
+    if: >-
+      needs.changes.outputs.jvm_contracts == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Verify JVM contracts and owner boundaries
+        run: >-
+          ./gradlew --no-daemon --continue
+          :transport:worker-delivery-contract:build
+          :kernel_jvm:build
+          :worker_matching_jvm:build
+          :kernel_pacer_jvm:build
+          :transport:worker-core:build
+          :transport:java-worker:build
+          :transport:netty-adapter:build
+          :worker_simulator_jvm:build
+          :worker_simulator_jvm:installDist
+          :server_jvm:build
+          :server_boot_jvm:build
+          :scenarios:sms-reception-jvm:build
+          :scenarios:message-campaigns-jvm:build
+          :scenarios:app-checks-jvm:build
+          :integrations:worker-correctness:build
+          :integrations:worker-dynamic-matching:build
+          :integrations:worker-convergence-health:build
+          :integrations:worker-loaded-recovery:build
+          :integrations:worker-call-performance:build
+          :distribution:server:verifyPlatformDiagnosticCodes
+      - name: Verify installed Simulator single-file entry
+        run: python3 -m unittest discover -s worker_simulator_jvm/src/test/python -p 'test_*.py'
+      - name: Verify Worker inventory and loaded recovery runner contracts
+        run: |
+          python3 -m unittest \
+            integrations.worker_proof_support.test_scenario_inventory
+          python3 -m unittest discover \
+            -s integrations/worker-loaded-recovery \
+            -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-correctness \
+            -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-dynamic-matching \
+            -p 'test_*.py'
+          python3 -m unittest discover \
+            -s integrations/worker-call-performance \
+            -p 'test_*.py'
+      - name: Summarize JVM proof
+        if: always()
+        run: >-
+          python3 .github/scripts/summarize_junit.py
+          --label "JVM Contracts"
+          --require-reports
+          "**/build/test-results/test/TEST-*.xml"
+      - name: Upload JVM failure reports
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: jvm-contracts-${{ github.run_attempt }}
+          path: |
+            **/build/test-results/test/**
+            **/build/reports/tests/test/**
+            build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  redis-owner:
+    name: Redis Owner
+    needs: changes
+    if: >-
+      needs.changes.outputs.redis_owner == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Verify Redis owner contracts
+        run: >-
+          ./gradlew --no-daemon
+          :server_jvm:redisOwnerIntegrationTest
+      - name: Summarize Redis proof
+        if: always()
+        run: >-
+          python3 .github/scripts/summarize_junit.py
+          --label "Redis Owner"
+          --require-reports
+          "server_jvm/build/test-results/redisOwnerIntegrationTest/TEST-*.xml"
+      - name: Upload Redis failure reports
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: redis-owner-${{ github.run_attempt }}
+          path: |
+            server_jvm/build/test-results/redisOwnerIntegrationTest/**
+            server_jvm/build/reports/tests/redisOwnerIntegrationTest/**
+            build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  runtime-boundary:
+    name: Runtime Boundary
+    needs: changes
+    if: >-
+      needs.changes.outputs.runtime_boundary == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Verify Java-owned Runtime boundary
+        run: >-
+          ./gradlew --no-daemon
+          :server_jvm:runtimeBoundaryIntegrationTest
+      - name: Summarize Runtime proof
+        if: always()
+        run: >-
+          python3 .github/scripts/summarize_junit.py
+          --label "Runtime Boundary"
+          --require-reports
+          "server_jvm/build/test-results/runtimeBoundaryIntegrationTest/TEST-*.xml"
+      - name: Upload Runtime failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: runtime-boundary-${{ github.run_attempt }}
+          path: |
+            server_jvm/build/test-results/runtimeBoundaryIntegrationTest/**
+            server_jvm/build/reports/tests/runtimeBoundaryIntegrationTest/**
+            build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  worker-correctness:
+    name: Worker Correctness
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_correctness == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Prove Worker correctness
+        run: >-
+          python3 integrations/worker-correctness/run_worker_correctness.py
+          --redis-url redis://127.0.0.1:6379/15
+          --output-root "$GITHUB_WORKSPACE/build/worker-correctness-proof"
+      - name: Summarize Worker correctness proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Worker Correctness:** workers=100, taskItems=100, liveProperties=8x32+9 replacements, prepareDelta=0, restartIdentity=matched" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Worker Correctness:** failed; inspect evidence and process logs" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Worker correctness evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-correctness-${{ github.run_attempt }}
+          path: |
+            build/worker-correctness-proof/evidence/worker-correctness-initial.json
+            build/worker-correctness-proof/evidence/worker-correctness-live-properties.json
+            build/worker-correctness-proof/evidence/worker-correctness-restart.json
+            build/worker-correctness-proof/runtime-server.log
+            build/worker-correctness-proof/scenario-host-initial.log
+            build/worker-correctness-proof/scenario-host-restart.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  worker-dynamic-matching:
+    name: Worker Dynamic Matching
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_dynamic_matching == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Prove Worker dynamic matching
+        run: >-
+          python3 integrations/worker-dynamic-matching/run_worker_dynamic_matching.py
+          --redis-url redis://127.0.0.1:6379/15
+          --output-root "$GITHUB_WORKSPACE/build/worker-dynamic-matching-proof"
+      - name: Upload Worker dynamic matching evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-dynamic-matching-${{ github.run_attempt }}
+          path: |
+            build/worker-dynamic-matching-proof/evidence/worker-dynamic-matching.json
+            build/worker-dynamic-matching-proof/runtime-server.log
+            build/worker-dynamic-matching-proof/scenario-host.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  worker-convergence-health:
+    name: Worker Convergence Health (${{ matrix.scenario }})
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_convergence_health == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - state
+          - task-fault
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Prove Worker convergence health
+        run: >-
+          python3 integrations/worker-convergence-health/run_worker_convergence_health.py
+          --scenario "${{ matrix.scenario }}"
+          --redis-url redis://127.0.0.1:6379/15
+          --output-root "$GITHUB_WORKSPACE/build/worker-convergence-health-proof"
+      - name: Summarize Worker convergence health proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Worker Convergence Health (${{ matrix.scenario }}):** succeeded" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Worker Convergence Health (${{ matrix.scenario }}):** failed; inspect scenario evidence" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Worker convergence evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-convergence-health-${{ matrix.scenario }}-${{ github.run_attempt }}
+          path: |
+            build/worker-convergence-health-proof/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  android-host:
+    name: Android Host
+    needs: changes
+    if: >-
+      needs.changes.outputs.android_host == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Verify Android Worker and demo host
+        run: >-
+          ./gradlew --no-daemon --continue
+          :transport:android-worker:testDebugUnitTest
+          :transport:android-worker:assembleDebug
+          :xa-android:capabilities:testDebugUnitTest
+          :xa-android:capabilities:assembleDebug
+          :xa-android:capability-http:testDebugUnitTest
+          :xa-android:capability-http:assembleDebug
+          :xa-android:worker-demo:testDebugUnitTest
+          :integrations:android-worker-proof:test
+      - name: Summarize Android proof
+        if: always()
+        run: >-
+          python3 .github/scripts/summarize_junit.py
+          --label "Android Host"
+          --require-reports
+          "**/build/test-results/testDebugUnitTest/TEST-*.xml"
+          "integrations/android-worker-proof/build/test-results/test/TEST-*.xml"
+      - name: Upload Android failure reports
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-host-${{ github.run_attempt }}
+          path: |
+            transport/android-worker/build/test-results/testDebugUnitTest/**
+            transport/android-worker/build/reports/tests/testDebugUnitTest/**
+            xa-android/capabilities/build/test-results/testDebugUnitTest/**
+            xa-android/capabilities/build/reports/tests/testDebugUnitTest/**
+            xa-android/capability-http/build/test-results/testDebugUnitTest/**
+            xa-android/capability-http/build/reports/tests/testDebugUnitTest/**
+            xa-android/worker-demo/build/test-results/testDebugUnitTest/**
+            xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
+            integrations/android-worker-proof/build/test-results/test/**
+            integrations/android-worker-proof/build/reports/tests/test/**
+            build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  android-apk:
+    name: Android APK Assembly
+    needs: changes
+    if: >-
+      needs.changes.outputs.android_host == 'true' ||
+      needs.changes.outputs.android_emulator == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Assemble Android Worker APKs
+        run: >-
+          ./gradlew --no-daemon --continue
+          :xa-android:worker-demo:assembleDebug
+          :xa-android:worker-demo:assembleLab1
+          :xa-android:worker-demo:assembleLab2
+          :xa-android:worker-demo:assembleLab3
+      - name: Stage Android Worker APKs
+        run: |
+          mkdir -p build/android-worker-apks
+          cp xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk \
+            build/android-worker-apks/
+          for variant in lab1 lab2 lab3; do
+            cp "xa-android/worker-demo/build/outputs/apk/$variant/xa-mass-android-worker-demo-$variant.apk" \
+              build/android-worker-apks/
+          done
+      - name: Upload Android Worker Demo APKs
+        if: >-
+          needs.changes.outputs.android_emulator == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-worker-demo-apk
+          path: build/android-worker-apks/*.apk
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      - name: Summarize Android APK assembly
+        if: always()
+        run: |
+          echo "- **Android APK Assembly:** ${{ job.status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  android-emulator-worker:
+    name: Android Worker Proof
+    needs:
+      - changes
+      - android-apk
+    if: >-
+      always() &&
+      (needs.changes.outputs.android_emulator == 'true' ||
+      github.event_name == 'workflow_dispatch') &&
+      needs.android-apk.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    concurrency:
+      group: android-emulator-worker-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ANDROID_API_LEVEL: "33"
+      ANDROID_WORKER_PROOF_ROOT: ${{ github.workspace }}/build/android-emulator-proof
+      ANDROID_WORKER_APK_ROOT: ${{ github.workspace }}/build/android-emulator-proof/apk
+      ANDROID_WORKER_APK: ${{ github.workspace }}/build/android-emulator-proof/apk/xa-mass-android-worker-demo-debug.apk
+      XA_MASS_REDIS_SCOPE: test_android_emulator_${{ github.run_id }}_${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Download Android Worker Demo APK
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: android-worker-demo-apk
+          path: build/android-emulator-proof/apk
+      - name: Build Scenario Server
+        run: >-
+          ./gradlew --daemon
+          -Dorg.gradle.daemon.idletimeout=300000
+          :server_boot_jvm:bootJar
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prove Android Worker on API 33 Emulator
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 33
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -camera-back none
+          script: bash .github/scripts/run_android_emulator_worker.sh
+      - name: Summarize Android Worker proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Android Worker Proof:** API=33, singleCorrectness=10/10, singleLifecycle=converged, triadCorrectness=3/3, partialOutage=converged" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Android Worker Proof:** failed; inspect scenario evidence and filtered logs" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Android Worker proof evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-worker-proof-${{ github.run_attempt }}
+          path: |
+            build/android-emulator-proof/evidence/*.json
+            build/android-emulator-proof/logs/server-*.log
+            build/android-emulator-proof/logs/android-filtered.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend:
+    name: Frontend
+    needs: changes
+    if: >-
+      needs.changes.outputs.frontend == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Build Vercel demo
+        run: pnpm build:demo
+      - name: Summarize Frontend proof
+        if: always()
+        run: |
+          echo "- **Frontend:** ${{ job.status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  runtime-distribution:
+    name: Runtime And Worker SDK Distribution
+    needs: changes
+    if: >-
+      needs.changes.outputs.runtime_distribution == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      XA_MASS_REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Build and prove Runtime and Worker SDK archives
+        run: >-
+          ./gradlew --no-daemon
+          :distribution:server:runtimeDistributionTest
+          :distribution:worker-sdk:workerSdkDistributionTest
+          -PxaMassVersion=0.5.0
+      - name: Summarize Distribution proof
+        if: always()
+        run: |
+          echo "- **Runtime and Worker SDK Distribution:** ${{ job.status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Runtime archive
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-server-runtime-${{ github.run_attempt }}
+          path: distribution/server/build/distributions/xa-mass-server-runtime-0.5.0.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Worker SDK archive
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-worker-sdk-${{ github.run_attempt }}
+          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.5.0.zip
+          if-no-files-found: ignore
+          retention-days: 7
+
+  product-coexistence:
+    name: Product Coexistence
+    needs: changes
+    if: >-
+      needs.changes.outputs.product_coexistence == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/product-coexistence.yml
+
+  proof-gate:
+    name: Proof Gate
+    if: always()
+    needs:
+      - changes
+      - jvm-contracts
+      - redis-owner
+      - runtime-boundary
+      - worker-correctness
+      - worker-dynamic-matching
+      - worker-convergence-health
+      - android-host
+      - android-apk
+      - android-emulator-worker
+      - frontend
+      - runtime-distribution
+      - product-coexistence
+      - docs-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      JVM_CONTRACTS_SELECTED: ${{ needs.changes.outputs.jvm_contracts }}
+      JVM_CONTRACTS_RESULT: ${{ needs.jvm-contracts.result }}
+      REDIS_OWNER_SELECTED: ${{ needs.changes.outputs.redis_owner }}
+      REDIS_OWNER_RESULT: ${{ needs.redis-owner.result }}
+      RUNTIME_BOUNDARY_SELECTED: ${{ needs.changes.outputs.runtime_boundary }}
+      RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
+      WORKER_CORRECTNESS_SELECTED: ${{ needs.changes.outputs.worker_correctness }}
+      WORKER_CORRECTNESS_RESULT: ${{ needs.worker-correctness.result }}
+      WORKER_DYNAMIC_MATCHING_SELECTED: ${{ needs.changes.outputs.worker_dynamic_matching }}
+      WORKER_DYNAMIC_MATCHING_RESULT: ${{ needs.worker-dynamic-matching.result }}
+      WORKER_CONVERGENCE_HEALTH_SELECTED: ${{ needs.changes.outputs.worker_convergence_health }}
+      WORKER_CONVERGENCE_HEALTH_RESULT: ${{ needs.worker-convergence-health.result }}
+      ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
+      ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
+      ANDROID_APK_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
+      ANDROID_APK_RESULT: ${{ needs.android-apk.result }}
+      ANDROID_EMULATOR_SELECTED: ${{ needs.changes.outputs.android_emulator }}
+      ANDROID_EMULATOR_RESULT: ${{ needs.android-emulator-worker.result }}
+      FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
+      FRONTEND_RESULT: ${{ needs.frontend.result }}
+      RUNTIME_DISTRIBUTION_SELECTED: ${{ needs.changes.outputs.runtime_distribution }}
+      RUNTIME_DISTRIBUTION_RESULT: ${{ needs.runtime-distribution.result }}
+      PRODUCT_COEXISTENCE_SELECTED: ${{ needs.changes.outputs.product_coexistence }}
+      PRODUCT_COEXISTENCE_RESULT: ${{ needs.product-coexistence.result }}
+      DOCS_RESULT: ${{ needs.docs-contract.result }}
+    steps:
+      - name: Require every selected proof lane
+        shell: bash
+        run: |
+          failed=0
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "Change classification failed: $CHANGES_RESULT"
+            failed=1
+          fi
+
+          check_lane() {
+            name=$1
+            selected=$2
+            result=$3
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              selected=true
+            fi
+            if [ "$selected" = "true" ]; then
+              expected=success
+            else
+              expected=skipped
+            fi
+            echo "- **$name:** selected=$selected, result=$result" \
+              >> "$GITHUB_STEP_SUMMARY"
+            if [ "$result" != "$expected" ]; then
+              echo "$name expected $expected but was $result"
+              failed=1
+            fi
+          }
+
+          check_lane \
+            "JVM Contracts" "$JVM_CONTRACTS_SELECTED" "$JVM_CONTRACTS_RESULT"
+          check_lane \
+            "Redis Owner" "$REDIS_OWNER_SELECTED" "$REDIS_OWNER_RESULT"
+          check_lane \
+            "Runtime Boundary" "$RUNTIME_BOUNDARY_SELECTED" "$RUNTIME_BOUNDARY_RESULT"
+          check_lane \
+            "Worker Correctness" "$WORKER_CORRECTNESS_SELECTED" "$WORKER_CORRECTNESS_RESULT"
+          check_lane \
+            "Worker Dynamic Matching" "$WORKER_DYNAMIC_MATCHING_SELECTED" "$WORKER_DYNAMIC_MATCHING_RESULT"
+          check_lane \
+            "Worker Convergence Health" "$WORKER_CONVERGENCE_HEALTH_SELECTED" "$WORKER_CONVERGENCE_HEALTH_RESULT"
+          check_lane \
+            "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
+          check_lane \
+            "Android APK Assembly" "$ANDROID_APK_SELECTED" "$ANDROID_APK_RESULT"
+          check_lane \
+            "Android Worker Proof" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
+          check_lane \
+            "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
+          check_lane \
+            "Runtime Distribution" "$RUNTIME_DISTRIBUTION_SELECTED" "$RUNTIME_DISTRIBUTION_RESULT"
+          check_lane \
+            "Product Coexistence" "$PRODUCT_COEXISTENCE_SELECTED" "$PRODUCT_COEXISTENCE_RESULT"
+          check_lane \
+            "Docs Contract" "true" "$DOCS_RESULT"
+
+          exit "$failed"
