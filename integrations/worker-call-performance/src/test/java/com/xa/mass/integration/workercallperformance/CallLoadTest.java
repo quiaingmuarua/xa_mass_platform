@@ -115,6 +115,34 @@ class CallLoadTest {
         assertThat(batch.summary().get("unresolvedAcceptedIds")).isEqualTo(List.of("missing-0"));
     }
 
+    @Test void drainBudgetKeepsFixedClosureWithinSingleTaskBudgetAndDerivesItAbove() {
+        assertThat(WorkerCallPerformanceMain.drainBudgetSeconds(500, 60_000, 100)).isEqualTo(180);
+        assertThat(WorkerCallPerformanceMain.drainBudgetSeconds(1_000, 120_000, 100)).isEqualTo(180);
+        assertThat(WorkerCallPerformanceMain.drainBudgetSeconds(2_000, 224_447, 100)).isEqualTo(345);
+        assertThat(WorkerCallPerformanceMain.drainBudgetSeconds(2_000, 60_000, 100)).isEqualTo(180);
+        assertThat(WorkerCallPerformanceMain.drainBudgetSeconds(2_000, 240_000, 1_000)).isEqualTo(180);
+    }
+
+    @Test void targetsWithoutSuccessCountOnlyWorkersWhoseLaterAcceptedItemsAllMissedSuccess() {
+        var clock = new AtomicLong(1_000_000_000L);
+        var batch = CallLoad.schedule(4, 120, 1, "targeted", Runnable::run,
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.NOT_OBSERVED), clock::get, clock::set);
+        var targets = List.of("w-0", "w-1", "w-2", "w-3");
+        for (int index = 0; index < batch.samples().size(); index++) {
+            var sample = batch.samples().get(index);
+            boolean late = sample.planned - batch.samples().getFirst().planned >= 60_000_000_000L;
+            sample.observed = switch (index % 4) {
+                case 0 -> late ? "failed" : "succeeded";
+                case 1 -> index % 8 == 1 ? "failed" : "succeeded";
+                default -> "succeeded";
+            };
+        }
+        assertThat(WorkerCallPerformanceMain.targetsWithoutSuccessAfter(batch.samples(), targets, 60_000_000_000L))
+                .isEqualTo(1);
+        assertThat(WorkerCallPerformanceMain.targetsWithoutSuccessAfter(batch.samples(), targets, 0)).isZero();
+        assertThat(WorkerCallPerformanceMain.targetsWithoutSuccessAfter(List.of(), targets, 0)).isZero();
+    }
+
     @Test void coexistenceCannotPassWithObservedFailuresAfterDrain() {
         var clock = new AtomicLong(1_000_000_000L);
         var batch = CallLoad.schedule(1, 1, 1, "mixed", Runnable::run,

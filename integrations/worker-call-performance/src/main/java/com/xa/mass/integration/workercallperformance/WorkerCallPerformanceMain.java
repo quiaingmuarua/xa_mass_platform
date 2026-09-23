@@ -25,9 +25,13 @@ public final class WorkerCallPerformanceMain {
         var options = new LinkedHashMap<String, String>();
         for (String arg : args) {
             var pair = arg.split("=", 2);
-            if (pair.length != 2 || !Set.of("--case", "--output", "--runtime-url", "--lab-url").contains(pair[0])
-                    || options.putIfAbsent(pair[0], pair[1]) != null) throw new IllegalArgumentException("Invalid option");
+            if (pair.length != 2 || !Set.of("--case", "--output", "--runtime-url", "--lab-url", "--assignment-batch-limit")
+                    .contains(pair[0]) || options.putIfAbsent(pair[0], pair[1]) != null)
+                throw new IllegalArgumentException("Invalid option");
         }
+        int assignmentBatchLimit = Integer.parseInt(options.getOrDefault("--assignment-batch-limit", "100"));
+        if (assignmentBatchLimit < 1 || assignmentBatchLimit > 1_000)
+            throw new IllegalArgumentException("assignment-batch-limit must be in 1..1000");
         String name = options.get("--case");
         if (DirectCallPerformance.CASES.containsKey(name) && options.containsKey("--output")) {
             DirectCallPerformance.run(name, options);
@@ -104,7 +108,10 @@ public final class WorkerCallPerformanceMain {
             }
             if (monitorFailure.get() != null) throw monitorFailure.get();
             summary.put("phase", "drain");
-            settle(api, task, measured, 180);
+            long accepted = measured.samples().stream().filter(CallLoad.Sample::accepted).count();
+            int drainSeconds = drainBudgetSeconds(rate, accepted, assignmentBatchLimit);
+            summary.put("drainBudgetSeconds", drainSeconds);
+            settle(api, task, measured, drainSeconds);
             if (background == null) requireHealthy(measured);
             else requireSucceededAcceptedResults(measured);
             summary.put("status", "passed");
@@ -121,6 +128,11 @@ public final class WorkerCallPerformanceMain {
             }
             if (measured != null) {
                 summary.putAll(measured.summary());
+                summary.put("followupObservationMaxMillis", measured.samples().stream()
+                        .mapToLong(s -> s.observedAfterWaitMillis).max().orElse(-1));
+                if (diagnosis && targeted && summary.get("workerIds") instanceof List<?> ids)
+                    summary.put("targetsWithoutSuccessAfter60Seconds",
+                            targetsWithoutSuccessAfter(measured.samples(), ids, 60_000_000_000L));
                 if (diagnosis) {
                     summary.put("windows", Map.of("surge", measured.summary(0, 30_000_000_000L),
                             "sustained", measured.summary(30_000_000_000L, 120_000_000_000L)));
@@ -134,6 +146,31 @@ public final class WorkerCallPerformanceMain {
             Files.writeString(output.resolve("summary.json"), Jsons.toJson(summary), StandardOpenOption.CREATE_NEW);
         }
         if (failure != null) throw new IllegalStateException("Performance case failed; inspect safe summary", failure);
+    }
+
+    /**
+     * Result follow-up budget for one measured batch. Within the documented single-Task check
+     * budget (10 x assignment ceiling per second) the fixed 180 seconds remain. Above it, every
+     * accepted Item has expired within the Item TTL after the window and Dispatch settles at most
+     * that budget per second, so closure is awaited for TTL + accepted / budget seconds instead.
+     */
+    static int drainBudgetSeconds(int offeredRate, long accepted, int assignmentBatchLimit) {
+        long checksPerSecond = 10L * assignmentBatchLimit;
+        if (offeredRate <= checksPerSecond) return 180;
+        return (int) Math.max(180, 120 + Math.ceilDiv(accepted, checksPerSecond));
+    }
+
+    /** Target Workers whose accepted Items planned from {@code fromNanos} on all ended without success. */
+    static long targetsWithoutSuccessAfter(List<CallLoad.Sample> samples, List<?> targetIds, long fromNanos) {
+        if (samples.isEmpty() || targetIds.isEmpty()) return 0;
+        long start = samples.getFirst().planned;
+        var succeeded = new LinkedHashMap<Object, Boolean>();
+        for (int index = 0; index < samples.size(); index++) {
+            var sample = samples.get(index);
+            if (!sample.accepted() || sample.planned - start < fromNanos) continue;
+            succeeded.merge(targetIds.get(index % targetIds.size()), sample.observed.equals("succeeded"), Boolean::logicalOr);
+        }
+        return succeeded.values().stream().filter(ok -> !ok).count();
     }
 
     static void settle(CallApi api, String task, CallLoad.Batch batch, int seconds) throws Exception {

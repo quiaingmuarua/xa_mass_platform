@@ -284,17 +284,29 @@ def markdown_summary(final):
                     f"| {window['httpResponsesDuringWindowPerSecond']:.2f} | {window['successRate']:.2%} "
                     f"| {window['successfulCohortPerSecond']:.2f} | {drained} "
                     f"| {window['successfulCallLatencyMillis']['p99']:.2f} | {window['generatorLimited']} |")
+        drains = [row for row in final["runs"] if "drainBudgetSeconds" in row]
+        if drains:
+            lines += ["", "| Repetition | Case | Drain budget s | Last follow-up observation s | Targets without success after 60s |",
+                      "| --- | --- | --- | --- | --- |"]
+            for row in drains:
+                last = row.get("followupObservationMaxMillis", -1)
+                last = f"{last / 1000:.1f}" if last >= 0 else "—"
+                lines.append(f"| {row['pair'] + 1} | {row['case']} | {row['drainBudgetSeconds']} | {last} "
+                             f"| {row.get('targetsWithoutSuccessAfter60Seconds', 'N/A')} |")
         failed = [row for row in final["runs"] if row["status"] != "passed"]
         if failed:
             lines += ["", "Case validation failures:", ""]
             for row in failed:
                 unresolved = row.get("acceptedResultsAfterDrain", {}).get("not_observed", 0)
-                reason = f"{unresolved} accepted Items remain unobserved after the fixed drain budget" if unresolved else "see case-summary.json for the failed prerequisite or evidence check"
+                budget = row.get("drainBudgetSeconds", 180)
+                reason = f"{unresolved} accepted Items remain unobserved after the {budget}-second drain budget" if unresolved else "see case-summary.json for the failed prerequisite or evidence check"
                 lines.append(f"- Repetition {row['pair'] + 1}, {row['case']}: {reason}.")
         lines += ["", "Original success uses sent requests; drain uses HTTP-accepted Items and never rewrites call latency. "
             "Planned cohorts and responses arriving within a window are separate. Limited windows cannot quantify capacity. "
             "Pass means the finite measurement contract passed, not a QPS SLA or an A/B improvement. "
             "Task checks use the recorded instance ceiling; DEFAULT retains its 50ms completion interval and independent 100ms Score slots. "
+            "Result closure waits 180 seconds within the single-Task budget of 10 x ceiling checks/s, otherwise Item TTL plus accepted Items divided by that budget. "
+            "Targets without success after 60s is diagnostic evidence of unassignable targeted Workers, not a gate. "
             "Sampled stages are observations, not finality.", ""]
         return "\n".join(lines)
     if final.get("suite") in ("direct", "direct-diagnosis"):
@@ -475,7 +487,7 @@ def run_case(root, case, output, version, deadline, diagnostics="off", assignmen
         harness_output = evidence / "harness"
         processes["harness"] = start_process(["java", *JVM, *jfr_options(private, "harness", diagnostics), "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
             "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", f"--case={case}",
-            f"--output={harness_output}"], private / "harness.log", env)
+            f"--output={harness_output}", f"--assignment-batch-limit={assignment_batch_limit}"], private / "harness.log", env)
         sampler.register("harness", processes["harness"])
         while processes["harness"].poll() is None:
             if time.monotonic() >= deadline or sampler.failure or any(processes[r].poll() is not None for r in ("server", "host")):
