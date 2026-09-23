@@ -6,6 +6,11 @@ Cross-module scheduling and delivery authority is fixed by the root
 [architecture entrypoint](../README.md). This document owns only the Transport
 module map and common implementation boundaries.
 
+In the [global behavior loop](../doc/kernel/scheduling-overview.md#system-behavior-model),
+Transport delivers and locally executes work, and produces Result, connection
+and Properties evidence for Convergence. Execution admission and resulting
+platform-state changes remain with their respective platform owners.
+
 ```text
 :transport:worker-delivery-contract
   -> Worker Delivery DTOs, Jsons, strict codecs

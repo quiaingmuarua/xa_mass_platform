@@ -1,10 +1,112 @@
 # Kernel Scheduling Mainline
 
-Status: current cross-owner scheduling flow and scale boundary.
+Status: current system behavior model, cross-owner scheduling flow and scale boundary.
 
-The [Kernel index](README.md) links mechanical and policy contracts. This
-page explains their handoffs; encoding, individual round limits and legal
-transitions remain with the owning documents.
+XA Mass connects work demand with changing Worker resources. Matching,
+Execution and Convergence form a continuing feedback loop that advances work
+and updates resource state. This page owns the complete behavioral model and
+its mapping to implementation owners. The [Kernel index](README.md) links the
+local contracts; encoding, individual round limits and legal transitions stay
+with those owners.
+
+## System Behavior Model
+
+There are two connected lines of state:
+
+- **Work:** Project provides business attribution; Task and TaskItem describe
+  work, scheduling progress, retries and termination. Retained Items can receive
+  later business observations after their scheduling has ended.
+- **Resources:** Workers have scheduling coordinates, observed facts and business
+  context. Pools retain finite candidate evidence; indexes provide lookup from
+  accepted facts. Connection evidence, qualification and execution availability
+  each retain their own meaning.
+
+Task/Item scheduling decides which work enters a round. Matching supplies
+candidates for that work. Execution attempts the pairing, and Convergence
+feeds changes back into both work progress and resource state.
+
+| Behavioral domain | Question | Responsibility |
+| --- | --- | --- |
+| Matching | Which Worker may this work attempt? | Organize supply and qualification, maintain candidate stock, and select candidates through Pool or direct queries. |
+| Execution | How does a candidate become an execution attempt? | Obtain current execution authority, claim the Item, deliver the Command and invoke the Worker Handler. |
+| Convergence | How does what happened affect subsequent decisions? | Interpret internal feedback and external observations, and apply the appropriate updates to scheduling state, facts, results and business/resource observations. |
+
+```mermaid
+flowchart TB
+    W["Work intent and progress<br/>Project / Task / Item"] -->|"Work selected for this round"| M["Matching<br/>Supply, qualification and selection"]
+    R["Worker scheduling state, facts<br/>and candidate resources"] -->|"Supply and query inputs"| M
+    M -->|"Candidate evidence"| E["Execution<br/>Admission, delivery and Handler"]
+    W -.->|"Current Item claim"| E
+    R -.->|"Current Worker admission"| E
+    E -->|"Internal feedback"| C["Convergence"]
+    X["External observations<br/>and time progression"] --> C
+    C -->|"Work progress and results"| W
+    C -->|"Resource state and observations"| R
+```
+
+The arrows describe responsibilities and effects across existing owners, not
+one synchronous call chain or an atomic system snapshot. Candidate evidence,
+execution authority, actual Handler execution and an observed business outcome
+are separate facts. Execution still checks current Worker and Item state after
+Matching. Execution admission does not prove successful delivery or business
+completion.
+
+## Convergence Sources And State
+
+Convergence brings several existing mechanisms into one behavioral view:
+
+- **Endogenous feedback** comes from the system's own activity: assignment,
+  execution result, failure, timeout and resource release. Time-based rechecks
+  and candidate recycling also allow progress when feedback is absent.
+- **Exogenous observation** comes from the Worker or its environment:
+  connect/disconnect, Adapter network evidence, Worker Properties and externally
+  supplied Platform state, including device/account facts when admitted as
+  properties. Probe responses bring an external observation into a system-initiated
+  check. This classification adds no account/device discovery mechanism.
+
+These paths affect **Worker scheduling state**, **Matching facts**, and
+**business/resource observations**. Execution outcomes also feed the work side:
+Item progress, stored results and the later Task lifecycle. A completed attempt
+can free a Worker while its retained Item continues receiving business observations.
+
+| Change source | Receiver and interpreter | State affected | Effect on later decisions |
+| --- | --- | --- | --- |
+| Connect/disconnect, Probe result, Adapter evidence | Server ingress, Pacer Serviceability policy and Worker semantic events | Worker serviceability evidence and legal Score transitions | Activation, recovery or changed candidate validity through the [Serviceability contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md). |
+| Execution success or failure; later business outcomes | Result policy, TaskItem and Worker event owners | Item Result/progress and correlated Worker release through separate operations; later outcomes do not release a lease | Work may finish scheduling, remain eligible for retry, or continue observation; released capacity can serve later work. See [Result convergence](../../kernel_pacer_jvm/doc/result/result-routing-scheduling.md). |
+| Worker Properties replacement or Platform Properties patch | Server admission and the Matching Properties owner; Server separately requests candidate invalidation | Facts and applicable property indexes; a separate best-effort Score operation may invalidate old candidate evidence | Later qualification uses accepted facts; old Pool fences can become stale. See [Properties maintenance](../../worker_matching_jvm/README.md#facts-writes-and-index-maintenance). |
+| Business usage observation, such as successful assignment | Server's fixed observation handlers and the scenario's pure projection | Selected Platform Properties, for example App Checks assignment-window observations | A query function may use the projection as soft eligibility. See the [observed assignment window](../../worker_matching_jvm/README.md#observed-assignment-window). |
+| Passage of time or missing feedback | Existing dispatch, refill and configured recheck policies, with their mechanical owners | Due claims/leases, Item exhaustion/expiry, recycled candidate generations and local stock expiry | Subsequent bounded rounds can retry, settle work or obtain fresh candidates. See [assignment recovery](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-generation-boundary). |
+
+Serviceability is one part of this domain. A connected Worker can be occupied
+or ineligible for a particular business query; changed facts need not mean that
+an executing task has ended. Each path retains its evidence acceptance and
+failure rules. The behavioral term **Convergence** does not promise delivery,
+repair or eventual consistency across all these states. In particular, lossy
+business projections remain observations rather than reliable admission quotas.
+
+## Behavior Domains And Owners
+
+The domains organize the system's behavior. Modules identify who implements
+and may mutate each mechanism; their boundaries do not coincide one-to-one.
+
+| Domain | Current participating owners |
+| --- | --- |
+| Matching | Pacer organizes candidate supply through Kernel operations; the [Matching Owner](../../worker_matching_jvm/README.md) owns query interpretation, qualification, Pools, indexes and bounded candidate results. |
+| Execution | Kernel owns Worker execution admission and Item claims; Pacer orders those operations and constructs Commands. [Server and Transport](worker-delivery-dispatch.md) hand off targeted work to the local Worker Handler. |
+| Convergence | Pacer policies interpret scheduling evidence; Kernel owners change scheduling state and Results. Server routes observations and runs fixed projection handlers; Matching maintains admitted Properties/indexes. Worker/Adapter owners produce their own evidence. |
+
+A module can participate in several domains: Matching both consumes facts for
+selection and maintains new facts; Kernel both admits execution and handles
+later release/progress. `ResultConvergenceRuntime` and
+`DispatchConvergenceRuntime` are existing Pacer lifecycle boundaries, not the
+definition or complete implementation of this global Convergence domain.
+
+To investigate or change a mechanism, first locate its input, state effect and
+subsequent consumer in this loop. Then follow the responsible Owner, its caller
+and a [representative proof](#production-and-proof-pointers). The local owner
+remains authoritative for the exact invariant. [Liveness](#scale-and-liveness)
+is a property of the whole loop: compatible resources and pending work must
+continue making progress under the documented scheduling conditions.
 
 ## Independent Scheduling Truth
 
@@ -103,8 +205,9 @@ owns the opaque fence across candidate generation, assignment and release.
 Optional [Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 combines bounded demanded-Group probes and Adapter evidence. Dispatch advances
 its exact observation before offering a probe; Result interpretation invokes
-the dedicated time-fenced Score operation. Neither Server nor Transport moves
-Score, and Task result evidence must not infer network polarity.
+the dedicated time-fenced Score operation. Server and Transport route this
+evidence rather than implement Score transitions, and Task result evidence
+must not infer network polarity.
 
 ## Scale And Liveness
 

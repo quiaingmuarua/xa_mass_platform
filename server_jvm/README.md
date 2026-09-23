@@ -3,6 +3,11 @@
 Status: current external Runtime API, incremental Kernel provider assembly and
 configured Server runtime host.
 
+Within the [global behavior loop](../doc/kernel/scheduling-overview.md#system-behavior-model),
+Server admits work, hands off execution traffic, and routes feedback or projects
+selected observations through existing owners. These cross-domain use cases
+retain the authority boundaries below.
+
 `server_jvm` owns:
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
@@ -28,7 +33,7 @@ production main. Its platform-only test bootstrap supplies Boot infrastructure
 for context tests and OpenAPI export. Server has no scenario dependency; scenarios
 may consume only their approved service and DTO surface.
 
-It does not own Kernel candidate selection, Worker lease, TaskItem claim,
+It does not own Matching candidate selection, Kernel Worker lease, TaskItem claim,
 retry, recovery, Task finality, query/eligibility interpretation, Adapter
 connection routing or Worker event execution. See the root
 [architecture entrypoint](../README.md).

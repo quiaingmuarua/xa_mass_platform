@@ -7,6 +7,12 @@ TaskItems, mutate Scores or decide Result truth. This document owns the
 handoffs between Kernel, Server and Transport; the local mechanisms are linked
 below rather than reproduced here.
 
+Read the [global behavior model](scheduling-overview.md#system-behavior-model)
+first. This boundary connects Execution to returning evidence and external
+observations; the model explains how their owners feed Convergence into work
+progress and resource state. Delivery retains its own loss and duplication
+boundaries throughout that loop.
+
 ## Owners And Contracts
 
 | Boundary | Canonical contract |

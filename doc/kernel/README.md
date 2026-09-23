@@ -18,11 +18,17 @@ server_jvm
   Spring assembly and public Runtime API
 ```
 
-Only Kernel chooses resources or converges scheduling. Worker Matching
-interprets Worker facts and rules but returns evidence rather than a decision.
-Server validates, coordinates writes, assembles lifecycles and exposes those
-owners; Transport delivers already-targeted Commands and executes
-endpoint-local handlers.
+Kernel owns scheduling order, execution admission and mechanical state
+transitions. Worker Matching selects bounded candidate evidence from facts
+and candidate resources. Server validates, coordinates writes, assembles
+lifecycles and exposes those owners; Transport delivers already-targeted
+Commands and executes endpoint-local handlers.
+
+These are implementation owners. The complete
+[Matching / Execution / Convergence model](scheduling-overview.md#system-behavior-model)
+explains their shared behavior and the feedback into both work and resource
+state. Read that model after the root summary, then use this index to locate
+the affected Owner, its caller and proof.
 
 ## Trust Order
 
@@ -70,8 +76,9 @@ Cross-module documents:
 
 ## Cross-Owner Reading
 
-[Scheduling Mainline](scheduling-overview.md) explains the independent Score
-owners, Matching handoff, Result evidence and vertical scale boundary.
+[Scheduling Mainline](scheduling-overview.md) owns the global behavioral model,
+its internal/external feedback paths, independent Score owners and vertical
+scale boundary.
 [Worker Delivery Boundary](worker-delivery-dispatch.md) follows already-decided
 Commands and returning evidence through Server and Transport. The Owner links
 above maintain the detailed transitions, storage and policies.

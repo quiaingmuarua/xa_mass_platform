@@ -2,21 +2,32 @@
 
 Status: current cross-module architecture and repository entrypoint.
 
-XA Mass schedules TaskItems onto Workers and observes their execution through
-explicit, independent owners. The supported load shape is a small bounded
-active Task set, many Items per Task, and many Workers inside finite Groups.
+XA Mass connects work demand with changing Worker resources. Through
+**Matching, Execution and Convergence**, it advances work and updates the
+resource state used by subsequent decisions:
+
+- **Matching** organizes supply, qualification and candidate selection for work.
+- **Execution** obtains execution authority, delivers Commands and invokes Worker Handlers.
+- **Convergence** interprets internal feedback and external observations to update
+  work progress, resource state, facts and business/resource observations.
+
+Start with the [system behavior model](doc/kernel/scheduling-overview.md#system-behavior-model)
+for the complete loop, feedback sources and mapping to implementation owners.
+The supported load shape is a small bounded active Task set, many Items per
+Task, and many Workers inside finite Groups.
 
 ## Authority And Dispatch
 
 | Owner | Responsibility |
 | --- | --- |
-| Kernel | Task/TaskItem/Worker scheduling truth, selection, lease, claim, retry, recovery and finality |
+| Kernel | Task/TaskItem/Worker scheduling truth, scheduling order, execution admission, lease, claim, retry, recovery and finality |
 | Worker Matching | Worker/Platform Properties, fixed query functions, indexes, Pool maintenance and shared candidate stock |
 | Server | Runtime API, validation, external identity, Endpoint configuration, cross-owner use cases, routing, correlation and assembly |
 | Transport Adapter | Current verified routes, delivery and Adapter-local events |
 | Transport Worker | Local Event Name resolution, execution and Result evidence |
 
-Only Kernel decides whether an assignment should exist. Server routes an
+Matching selects bounded candidate evidence; Kernel decides whether the current
+Worker and Item can be assigned. Server routes an
 already-owned command or result; Transport delivers it and invokes a local
 handler. Neither Server nor Transport selects replacement Workers or decides
 scheduling eligibility.
@@ -149,14 +160,18 @@ reference is `/scalar`, while the demo's static reference cannot send requests.
 
 ## Reading Path
 
-1. Follow [Scheduling Mainline](doc/kernel/scheduling-overview.md) and
-   [Worker Delivery Boundary](doc/kernel/worker-delivery-dispatch.md) from
-   admission to execution, returned evidence and failure windows.
-2. Use the [Java Kernel index](doc/kernel/README.md) and relevant module README
-   to inspect the Owner, production caller and representative assertion.
+1. Start with the summary above, then read the complete
+   [behavior loop](doc/kernel/scheduling-overview.md#system-behavior-model),
+   its feedback sources and work/resource state relationships.
+2. Locate the affected Owner through the [Java Kernel index](doc/kernel/README.md)
+   or module README. Follow its production caller and the mainline's
+   [code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers).
+   Use the [Delivery Boundary](doc/kernel/worker-delivery-dispatch.md) when tracing
+   Command or observation handoffs.
 3. Use [Proof Registry](doc/testing/proof-registry.md) for claims and nonclaims,
    then [TESTING](TESTING.md) for the corresponding commands and CI selection.
-4. Read the SMS/Messages business Owners and their shared Preview proof.
+4. Read the relevant SMS, Messages or App Checks scenario after the platform
+   mainline; its workload exercises the shared mechanisms with business assertions.
 
 The [Documentation Index](doc/README.md) identifies which document owns each
 kind of information; configuration, storage details and scenario thresholds

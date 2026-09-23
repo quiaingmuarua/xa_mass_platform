@@ -2,6 +2,11 @@
 
 Status: Kernel-owned production scheduling policy and finite Pacer lifecycle.
 
+The [global behavior model](../doc/kernel/scheduling-overview.md#system-behavior-model)
+places this module across Matching supply, Execution orchestration and
+Convergence of scheduling feedback. The two application names below identify
+local lifecycle boundaries; they do not partition the three global domains.
+
 This internal Java 21 module contains the faster-moving policy layer over the
 stable owner contracts in [`kernel_jvm`](../kernel_jvm/). It is loaded into the
 Server Boot JAR as an ordinary dependency; it is not deployed, published or

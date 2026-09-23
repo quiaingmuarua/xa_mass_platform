@@ -2,6 +2,12 @@
 
 Status: current Worker Properties, fixed query functions, bounded Facts qualification, Phone Index and Pool Owner.
 
+In the [global behavior loop](../doc/kernel/scheduling-overview.md#system-behavior-model),
+this module supplies Matching candidates and maintains the admitted Properties
+and indexes used by subsequent decisions. The latter is also part of Convergence.
+Kernel retains execution admission; this Owner defines the local resource and
+query contracts rather than the entire behavioral domain.
+
 Matching saves accepted Worker attributes, maintains property indexes, and supplies
 bounded candidates through Pool or Index resources. Its public entrypoints follow
 three caller paths:

@@ -2,14 +2,20 @@
 
 Status: current repository change contract.
 
-Read the root [architecture entrypoint](README.md) for current system behavior
-and [TESTING.md](TESTING.md) for proof ownership. This file governs how
+Read the root [architecture summary](README.md), then the complete
+[Matching / Execution / Convergence behavior model](doc/kernel/scheduling-overview.md#system-behavior-model)
+before narrowing to an affected Owner, its callers and [proof](TESTING.md).
+This file governs how
 agents change the repository; it is not the canonical mechanism narrative.
 
 ## Applying This Contract
 
 - Start with the current Git HEAD and worktree. Preserve unrelated edits and
   read the affected Owner, callers and proof before changing their behavior.
+- Locate the change in the global work/resource loop before reviewing its local
+  implementation: identify its input, state effect and subsequent consumer.
+  Behavioral domains do not relocate mutation authority or define new modules;
+  keep the full narrative in the linked mainline rather than duplicating it here.
 - Follow the user's requested outcome and scope. An authorized implementation
   plan covers its necessary slices; a slice boundary, status label or missing
   template field does not require another approval. Review-only requests remain

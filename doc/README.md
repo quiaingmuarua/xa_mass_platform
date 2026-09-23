@@ -4,15 +4,18 @@ Status: current repository document index.
 
 ## Start Here
 
-Follow the [Repository reading path](../README.md#reading-path): understand
-platform authority, scheduling and delivery before reading business scenarios.
+Follow the [Repository reading path](../README.md#reading-path): start with the
+system summary, then the [behavior loop](kernel/scheduling-overview.md#system-behavior-model),
+the affected Owner and its callers/proof. Read business scenarios after this
+platform mainline.
 Use the [Human Architecture Overview](../frontend/public/overview.htm) as a
 visual projection of the same boundaries.
 
 | Document | Information it owns |
 | --- | --- |
-| [Repository Entry](../README.md) | Whole-project authority, main paths, module and deployment map |
-| [Scheduling Mainline](kernel/scheduling-overview.md) and [Delivery Boundary](kernel/worker-delivery-dispatch.md) | Cross-owner handoffs, failure boundaries and code/proof navigation |
+| [Repository Entry](../README.md) | Short system summary, reading path, authority, module and deployment map |
+| [Scheduling Mainline](kernel/scheduling-overview.md) | Complete Matching / Execution / Convergence model, work/resource feedback, Owner mapping and code/proof navigation |
+| [Delivery Boundary](kernel/worker-delivery-dispatch.md) | Command and observation handoffs, local Owner links and cross-boundary failure windows |
 | Module README and linked Owner documents | Local mechanism, transitions, storage, configuration and lifecycle |
 | [Proof Registry](testing/proof-registry.md) | Primary proof, claim and deliberate nonclaims |
 | [TESTING](../TESTING.md) | Proof commands, prerequisites and CI selection |
