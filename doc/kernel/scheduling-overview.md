@@ -2,12 +2,13 @@
 
 Status: current system behavior model, cross-owner scheduling flow and scale boundary.
 
-XA Mass connects work demand with changing Worker resources. Matching,
-Execution and Convergence form a continuing feedback loop that advances work
-and updates resource state. This page owns the complete behavioral model and
-its mapping to implementation owners. The [Kernel index](README.md) links the
-local contracts; encoding, individual round limits and legal transitions stay
-with those owners.
+XA Mass is a closed-loop execution Runtime for heterogeneous, changing Workers.
+It connects business work with resources under explicit scheduling and execution
+authority, and uses execution feedback and external observations to update work
+progress and subsequent resource selection. This page owns the complete
+Matching / Execution / Convergence model and its mapping to implementation owners.
+The [Kernel index](README.md) links the local contracts; encoding, individual
+round limits and legal transitions stay with those owners.
 
 ## System Behavior Model
 
@@ -20,6 +21,16 @@ There are two connected lines of state:
   context. Pools retain finite candidate evidence; indexes provide lookup from
   accepted facts. Connection evidence, qualification and execution availability
   each retain their own meaning.
+
+Both lines are first-class: heterogeneous Worker capabilities and context make
+resource selection distinctive, while Task/Item progress, retry, termination
+and results remain independent responsibilities.
+
+The current [Project contract](../../server_jvm/README.md#profile-projects-and-managed-tasks)
+provides business attribution, configured Group associations and managed Task
+entrypoints. Projects do not partition Kernel scheduling or Matching stock;
+they do not own the Pools or query strategies used by their Tasks. Broader
+Project ideas are possible evolution, not implied current authority.
 
 Task/Item scheduling decides which work enters a round. Matching supplies
 candidates for that work. Execution attempts the pairing, and Convergence
@@ -45,11 +56,16 @@ flowchart TB
 ```
 
 The arrows describe responsibilities and effects across existing owners, not
-one synchronous call chain or an atomic system snapshot. Candidate evidence,
+one synchronous call chain or an atomic system snapshot. The domains operate
+throughout the Runtime: supply can proceed separately from dispatch, external
+observations can arrive without any execution, and feedback can continue after
+Item scheduling ends. Candidate evidence,
 execution authority, actual Handler execution and an observed business outcome
 are separate facts. Execution still checks current Worker and Item state after
 Matching. Execution admission does not prove successful delivery or business
-completion.
+completion. Scheduling fences do not stop an already-admitted Handler or make
+business side effects exactly-once; the [Worker run contract](../../transport/worker-core/README.md#one-worker-run)
+allows admitted work to finish after its run is revoked.
 
 ## Convergence Sources And State
 
@@ -100,6 +116,12 @@ selection and maintains new facts; Kernel both admits execution and handles
 later release/progress. `ResultConvergenceRuntime` and
 `DispatchConvergenceRuntime` are existing Pacer lifecycle boundaries, not the
 definition or complete implementation of this global Convergence domain.
+
+The extensibility goal is to accommodate changing qualification, Handler
+capabilities and feedback interpretation while keeping each state and execution
+authority explicit. This is a design goal, not a promise that core mechanisms
+never need to change. [Evolution principles](../../AGENTS.md#evolution-principles)
+govern when an actual problem or a foundational benefit justifies such a change.
 
 To investigate or change a mechanism, first locate its input, state effect and
 subsequent consumer in this loop. Then follow the responsible Owner, its caller

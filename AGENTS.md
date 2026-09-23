@@ -2,20 +2,27 @@
 
 Status: current repository change contract.
 
-Read the root [architecture summary](README.md), then the complete
-[Matching / Execution / Convergence behavior model](doc/kernel/scheduling-overview.md#system-behavior-model)
-before narrowing to an affected Owner, its callers and [proof](TESTING.md).
-This file governs how
-agents change the repository; it is not the canonical mechanism narrative.
+Use the root [reading path](README.md#reading-path) to move from the Runtime
+summary to the complete behavior model, then the affected Owner, callers and
+proof. This file governs how agents change the repository; it is not the
+canonical mechanism narrative.
 
 ## Applying This Contract
 
-- Start with the current Git HEAD and worktree. Preserve unrelated edits and
-  read the affected Owner, callers and proof before changing their behavior.
-- Locate the change in the global work/resource loop before reviewing its local
-  implementation: identify its input, state effect and subsequent consumer.
-  Behavioral domains do not relocate mutation authority or define new modules;
-  keep the full narrative in the linked mainline rather than duplicating it here.
+Start a new investigation with this reading sequence:
+
+1. Check the current Git HEAD, worktree and requested scope; preserve unrelated edits.
+2. Read the root summary and [global behavior model](doc/kernel/scheduling-overview.md#system-behavior-model)
+   to establish the work/resource loop.
+3. Identify the affected input, state effect and subsequent consumer.
+4. Read the responsible Owner, production callers, assembly and corresponding
+   [proof](TESTING.md) before changing their behavior.
+
+Reuse context already established in the session and refresh what the current
+change affects. A small local edit does not require another whole-repository scan.
+Behavioral domains do not relocate mutation authority or define new modules;
+keep the full narrative in the linked mainline.
+
 - Follow the user's requested outcome and scope. An authorized implementation
   plan covers its necessary slices; a slice boundary, status label or missing
   template field does not require another approval. Review-only requests remain
@@ -33,6 +40,21 @@ agents change the repository; it is not the canonical mechanism narrative.
   truth or permission to expand the task. Retrieve historical versions only
   when the requested investigation needs them; do not restore retired designs
   or historical defects as default constraints.
+
+## Evolution Principles
+
+- Long-term discussions explain possible directions. They do not establish
+  current ownership, required work or a need to reserve interfaces. Distinguish
+  implemented behavior, authorized plans, discussion and version-scoped history.
+- Let concrete problems drive ordinary evolution through small, verifiable
+  changes. Real scenario workloads can reveal which boundary needs to evolve.
+- Foundational mechanism problems or clear high-return changes may justify
+  earlier structural work. Establish the concrete risk or cost, expected benefit
+  and how to verify it; a production incident need not happen first.
+- Current Owner boundaries guide current work while authorized, evidence-based
+  migrations can revise them with their callers and proof. These principles add
+  no scoring system, proposal template or approval step, and do not interrupt an
+  already-authorized implementation.
 
 ## Mainline
 

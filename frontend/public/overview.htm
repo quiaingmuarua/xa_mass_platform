@@ -616,11 +616,12 @@
 
       <main id="main">
         <section class="hero" id="overview">
-          <p class="eyebrow">Project overview · 工作、资源与持续反馈</p>
+          <p class="eyebrow">Runtime overview · 工作、资源与持续反馈</p>
           <h1>XA Mass<br /><span>架构全景</span></h1>
           <p class="lede">
-            将工作需求与变化中的 Worker 资源对接。XA Mass 通过 Matching、Execution、Convergence
-            持续推进工作，让执行反馈与外部变化影响下一轮资源选择。
+            XA Mass 是面向异构、动态 Worker 的闭环执行 Runtime，将业务工作与资源对接，
+            在明确的调度与执行准入下推进工作。Matching、Execution、Convergence
+            让执行反馈与外部观察更新工作进度和后续资源选择。
             业务能力运行在独立的 Java 或 Android 终端上。
           </p>
           <div class="hero-links">
@@ -695,7 +696,8 @@
             </div>
             <p>
               工作侧记录待执行、重试、结束及后续观察；资源侧记录调度状态、属性、候选和业务观察。
-              Task／Item 调度选出本轮工作，三个行为域将这两条状态线连接起来。
+              下面展示一次任务执行路径。三个行为域持续参与运行，供给与派发分别推进，
+              外部观察也可以在没有任务执行时到来。
             </p>
           </div>
           <div class="flow">
@@ -733,7 +735,7 @@
           <div class="rule">
             <strong>反馈同时回到工作与资源。</strong>结果可以结束任务项调度、释放资源；
             连接和属性变化可以影响后续资格；业务使用观察也可以参与资源选择。
-            调度结束后仍可能接收业务观察。Convergence 概括这些共同作用，
+            调度结束后仍可能接收业务观察。Convergence 概括已有机制的共同作用，
             每条路径保留各自的失败与交付边界。
             <a
               href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/scheduling-overview.md#system-behavior-model"
@@ -1041,8 +1043,8 @@
           <h3 class="reading-title">接下来，按你要解决的问题阅读</h3>
           <div class="reading">
             <a
-              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/scheduling-overview.md#system-behavior-model"
-              ><b>理解完整行为闭环 ↗</b><br />先读工作、资源与反馈，再定位参与的 Owner。</a
+              href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md#reading-path"
+              ><b>从阅读入口快速上手 ↗</b><br />从项目摘要进入完整闭环，再按问题找到 Owner。</a
             >
             <a
               href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"

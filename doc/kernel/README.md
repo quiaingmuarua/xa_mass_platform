@@ -2,7 +2,8 @@
 
 Status: current Kernel authority and documentation entrypoint.
 
-The Java Kernel is split by rate of change, not by authority:
+Follow the root [reading path](../../README.md#reading-path) for Runtime orientation.
+This index locates Kernel mechanisms, Pacer policy and adjacent Owners:
 
 ```text
 kernel_jvm
@@ -27,8 +28,9 @@ Commands and executes endpoint-local handlers.
 These are implementation owners. The complete
 [Matching / Execution / Convergence model](scheduling-overview.md#system-behavior-model)
 explains their shared behavior and the feedback into both work and resource
-state. Read that model after the root summary, then use this index to locate
-the affected Owner, its caller and proof.
+state. Use the relevant Owner below and the mainline's
+[production and proof pointers](scheduling-overview.md#production-and-proof-pointers)
+to trace the affected caller, assembly and assertion.
 
 ## Trust Order
 
@@ -37,10 +39,9 @@ Use production code and the owning tests to establish current behavior.
 rules. Correct stale prose within scope; a code change requires authorization
 for that behavior. Historical evidence remains version-scoped.
 
-Start with [Scheduling Mainline](scheduling-overview.md), including its
-[production and proof pointers](scheduling-overview.md#production-and-proof-pointers),
-then [Worker Delivery Boundary](worker-delivery-dispatch.md). Use the index
-below for the affected transition, storage shape or lifecycle.
+Read [Worker Delivery Boundary](worker-delivery-dispatch.md) when the investigation
+crosses Command or observation handoffs. Local transitions, storage shapes and
+lifecycles remain in the affected Owner documents.
 
 ## Owner Documents
 

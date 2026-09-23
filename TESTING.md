@@ -12,10 +12,10 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
-For project orientation, follow the [root summary](README.md), the
-[global behavior loop](doc/kernel/scheduling-overview.md#system-behavior-model),
-and the affected Owner before choosing proof. Matching, Execution and
-Convergence are behavioral domains spanning these owners, not new proof lanes.
+For project orientation, follow the [root reading path](README.md#reading-path)
+from Runtime summary through the behavior model to the affected Owner and caller.
+Then choose proof for the changed claim. Matching, Execution and Convergence
+span existing owners and proof lanes.
 For a mechanism walkthrough, use the
 [mainline code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers)
 before selecting a lane. The pointers identify representative assertions, not

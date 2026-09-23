@@ -4,10 +4,11 @@ Status: current repository document index.
 
 ## Start Here
 
-Follow the [Repository reading path](../README.md#reading-path): start with the
-system summary, then the [behavior loop](kernel/scheduling-overview.md#system-behavior-model),
-the affected Owner and its callers/proof. Read business scenarios after this
-platform mainline.
+Follow the [Repository reading path](../README.md#reading-path): Runtime summary,
+then the [behavior model](kernel/scheduling-overview.md#system-behavior-model),
+the affected Owner, production callers/assembly and corresponding proof. This
+index locates documents; each investigation reads the relevant branches, not
+the whole list. Business scenarios follow the platform model.
 Use the [Human Architecture Overview](../frontend/public/overview.htm) as a
 visual projection of the same boundaries.
 
@@ -20,7 +21,7 @@ visual projection of the same boundaries.
 | [Proof Registry](testing/proof-registry.md) | Primary proof, claim and deliberate nonclaims |
 | [TESTING](../TESTING.md) | Proof commands, prerequisites and CI selection |
 | Integration/scenario README | Complete workload, mutation sequence, thresholds and assertions |
-| [AGENTS](../AGENTS.md) | Change constraints and required Owner reading |
+| [AGENTS](../AGENTS.md) | Change constraints, scoped Owner reading and [evolution principles](../AGENTS.md#evolution-principles) |
 
 Keep a mechanism's detailed definition with its Owner. Entry documents link to
 that definition and explain the handoff instead of repeating local parameters.
@@ -50,6 +51,7 @@ proof provides a current validation result.
 - [Frontend](../frontend/README.md)
 - [SMS Reception business workload](../scenarios/sms-reception-jvm/README.md)
 - [Message Campaigns business workload](../scenarios/message-campaigns-jvm/README.md)
+- [App Checks business workload](../scenarios/app-checks-jvm/README.md)
 - [Scenario Preview delivery](../distribution/server/PREVIEW.md)
 - [Scenario Coexistence](../integrations/scenario-coexistence/README.md)
 
