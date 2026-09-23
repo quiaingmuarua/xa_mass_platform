@@ -8,6 +8,17 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class AppCheckAssignmentWindowTest {
+    @Test void groupsProjectUsingTheirOwnInjectedWindowLength() {
+        var configuration = new AppCheckScenarioConfiguration();
+        var a = configuration.appAAssignmentProjection(100);
+        var b = configuration.appBAssignmentProjection(200);
+        assertThat(a.project().apply(Map.of(), List.of(99L, 100L)))
+                .containsEntry("windowAssignmentCount", 1L);
+        assertThat(b.project().apply(Map.of(), List.of(99L, 100L)))
+                .containsEntry("windowAssignmentCount", 2L);
+        assertThat(a.workerGroupId()).isEqualTo("app-a-sim");
+        assertThat(b.workerGroupId()).isEqualTo("app-b-sim");
+    }
     final AppCheckAssignmentWindow projection = new AppCheckAssignmentWindow(60_000);
 
     @Test void initializesAndCountsOnlyTheLatestObservedFixedWindow() {

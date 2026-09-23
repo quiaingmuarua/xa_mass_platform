@@ -1224,6 +1224,21 @@
         "product_coexistence"
       ],
       "reason": "Scenario arithmetic stays in the existing JVM and coexistence lanes; no new capacity claim."
+    },
+    {
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/AssignmentWindowQueryFunction.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_convergence_health",
+        "android_emulator",
+        "runtime_distribution",
+        "worker_dynamic_matching",
+        "product_coexistence"
+      ],
+      "reason": "Fixed assignment-window qualification and Group configuration retain Matching and scenario proof selection."
     }
   ]
 }

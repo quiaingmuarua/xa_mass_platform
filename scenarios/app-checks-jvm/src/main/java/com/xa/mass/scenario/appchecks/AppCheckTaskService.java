@@ -122,7 +122,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                     var payload = new LinkedHashMap<String, Object>(specification.simulation());
                     payload.put("number", number); payload.put("salt", submission.salt());
                     items.add(new TaskItemRequest(UUID.randomUUID().toString(), EVENT, Map.copyOf(payload), 5, 600_000L,
-                            new WorkerQuery("worker.any", Map.of())));
+                            new WorkerQuery("worker.assignment.available", Map.of())));
                 }
                 var appended = data.appendFiniteTaskItems(taskId, items);
                 if (appended.size() != items.size() || items.stream().anyMatch(item -> appended.get(item.messageId()) == null

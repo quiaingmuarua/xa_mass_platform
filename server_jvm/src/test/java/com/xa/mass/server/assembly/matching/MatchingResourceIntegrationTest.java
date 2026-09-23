@@ -37,7 +37,7 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void phoneOnlyAssemblyMaintainsAndRetainsWithoutPoolOrTaskDemand() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
             assertThat(composition.pools()).isEmpty(); assertThat(composition.policies()).isEmpty();
@@ -64,7 +64,7 @@ class MatchingResourceIntegrationTest {
 
     @Test void poolConsumptionExpirationAndFullCapacityDoNotChangePropertyIndex() {
         var clock = new AtomicLong(1_000);
-        var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone"), null));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, clock::get);
             {
@@ -92,9 +92,9 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void twoFunctionsReadTheSamePhoneResourceWithoutDuplicatingStorageOrConsumingIt() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone"), null));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))), System::currentTimeMillis);
+            var composition = new MatchingComposition(store, Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null)), System::currentTimeMillis);
             var direct = composition.functions().get("worker.phone");
             var functions = new LinkedHashMap<>(composition.functions());
             functions.put("worker.phone", direct);
@@ -125,7 +125,7 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void twoFunctionsEnableOnePropertyAndAnUnchangedReportReassertsItsMapping() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone"), null));
         assertThat(MatchingComposition.indexedProperties(groups).get("g")).containsExactly("phone");
         try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
             var catalog = composition.catalog();
@@ -138,7 +138,7 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void phonePreflightProtectsFactsAndMembershipWithoutAnyDemand() {
-        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone")));
+        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone"), null));
         try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
             var catalog = composition.catalog();
             var original = Map.of("phone", "old", "country", "CN", "messaging.enabled", "true", "proofPool", "A", "proofTarget", "yes");

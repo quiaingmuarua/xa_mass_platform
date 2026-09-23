@@ -108,7 +108,7 @@ class RuntimeBoundaryIntegrationTest {
                     "proof.messaging.country", "proof.messaging.countries");
             rules.groups().forEach((group, config) -> builtIns.put(group, new MatchingGroup(
                     config.pools().stream().filter(name -> !fixturePools.contains(name)).collect(java.util.stream.Collectors.toSet()),
-                    config.functions().stream().filter(name -> !fixtureFunctions.contains(name)).collect(java.util.stream.Collectors.toSet()))));
+                    config.functions().stream().filter(name -> !fixtureFunctions.contains(name)).collect(java.util.stream.Collectors.toSet()), null)));
             return new MatchingComposition(storage,builtIns,System::currentTimeMillis);
         }
         @Bean IdentityHintPoolFixture identityHintRule(MatchingComposition composition) {

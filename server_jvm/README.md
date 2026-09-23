@@ -996,7 +996,11 @@ successful writes. One consumer serializes this local read/modify/write path;
 concurrent external writes to the same fields can still overwrite observations.
 There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
 APPLIED patch handling still performs separate best-effort candidate invalidation.
-No window eligibility/quota filtering is added by this notification path.
+The notification path does not make eligibility decisions. The fixed
+[Matching assignment-window function](../worker_matching_jvm/README.md#observed-assignment-window)
+can consume the projected fields during a subsequent query. Its Group configuration
+supplies the same window length to the App Checks projection; Server only binds
+the configuration and performs the existing observation/property operations.
 
 The consumer starts before Pacer and stops after it, before Matching destruction.
 Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds

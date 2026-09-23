@@ -213,6 +213,11 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
   only at the Matching-to-Pacer boundary; no zero sentinel reaches Kernel.
   Do not downgrade a failed strict expectation to current identity acquisition,
   or restore/retake stock when a candidate association is dropped.
+- Assignment-window queries consume Any stock once, then qualify bounded Facts
+  snapshots using fixed Group configuration. Keep window interpretation in the
+  function, with no counter reservation, Pool condition, replacement poll or
+  Score operation. Rejected stock follows ordinary candidate recycling; window
+  eligibility alone does not promise immediate execution.
 - Worker Facts and enabled property HASHes prepare before one bounded fixed Lua write.
   Platform patches never maintain Worker property mappings. Index upkeep
   is independent of Task demand and Pool stock; Score invalidation is a separate
@@ -545,7 +550,8 @@ finite state, idempotency and observation. Their device owners remain in
 - App Checks owns only event selection and pure assignment-window computation.
   It may use the Server projection contract, never the Pacer callback/runtime or
   Properties operations directly. The fields describe best-effort observations
-  at the named point; the first slice adds no Matching window filtering.
+  at the named point. Projection and Matching read the same Group window length;
+  the scenario cannot implement Matching or reinterpret a threshold as a strict quota.
 - Messages reads Task-owned display data, Item Score quantities and Result content
   on request. It owns only current-run submission deduplication, with synchronous
   bounded creation/append/approval; no Campaign Result cache or statistics loop.

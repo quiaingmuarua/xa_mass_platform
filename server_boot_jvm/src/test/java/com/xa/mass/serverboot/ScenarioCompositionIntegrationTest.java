@@ -58,6 +58,12 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
             if (preview) {
+                var matching = context.getBean(com.xa.mass.server.assembly.matching.MatchingProperties.class);
+                for (String group : List.of("app-a-sim", "app-b-sim")) {
+                    assertThat(matching.groups().get(group).assignmentWindow().windowMillis()).isEqualTo(60_000);
+                    assertThat(matching.groups().get(group).assignmentWindow().maxAssignments()).isEqualTo(10);
+                    assertThat(matching.groups().get(group).functions()).contains("worker.assignment.available", "worker.any");
+                }
                 assertThat(context.getBean(AppCheckTaskService.class).isRunning()).isTrue();
                 var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));
                 assertThat(groups.values()).doesNotContainNull();

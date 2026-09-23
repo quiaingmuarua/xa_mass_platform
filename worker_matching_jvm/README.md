@@ -153,8 +153,9 @@ execution exception ends the call without rolling back earlier consumption.
 `WorkerCandidate(workerId, expectedScore)` carries no inventory deadline. All
 production Pool strategies return their original nonzero fence. Refill takes a
 Map of opaque fences; storage creates and checks its own admission TTL.
-Current Pool take reads no Redis or Facts. Function results are candidates only;
-Kernel retains execution admission.
+The Pool resource poll reads no Redis or Facts. A consuming function may then
+qualify that stock through bounded Facts reads, as the assignment-window function
+does below. Function results are candidates only; Kernel retains execution admission.
 
 Identity and Phone functions return `expectedScore=0` as an identity hint. Catalog
 preserves that value without reading WorkerScore, filling in a fence or downgrading
@@ -198,6 +199,7 @@ limits and entry/expiry/capacity checks retain their independent owners.
 | Current function name | Local input |
 | --- | --- |
 | `worker.any` | Only `{}`; explicitly enabled `any` Pool, no Facts required |
+| `worker.assignment.available` | Only `{}`; Any stock qualified against the Group's configured Platform assignment window |
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
 | `worker.messaging.available` | `{}` or an object with optional `country` list; consumes Messaging Pool stock |
 | `worker.messaging.phone` | Object with required nonblank `phone` and optional `country` list; qualified Direct lookup |
@@ -216,6 +218,38 @@ choice have no aliases or replacement multi-ID function.
 ```json
 {"workerSelector":{"executorName":"worker.messaging.phone","input":{"country":["CN"],"phone":"+8613800000000"}}}
 ```
+
+### Observed assignment window
+
+`worker.assignment.available` combines the existing Any Pool with a bounded
+Worker/Platform Facts snapshot. It is explicitly enabled per Group and requires
+`pools: [any]` plus `assignment-window: {window-millis: 60000, max-assignments: 10}`.
+Both configuration values must be positive; missing configuration fails assembly.
+Other Groups receive no implicit policy. Inputs cannot override these values.
+
+The function polls at most the requested count once, preserves the first original
+nonzero fence for each identity, and reads those distinct identities in Facts-owner
+pages. After reading, one clock sample determines the current fixed window. It
+returns qualifying candidates in stock order against the first input message IDs.
+Missing Facts are skipped. With Facts present, absent `lastAssignedAt` and
+`windowAssignmentCount` means no observed assignments. A previous window has an
+effective count of zero; a current window qualifies below the configured threshold;
+a future window is skipped. Incomplete, negative, non-integer or overflowing fields
+are skipped per Worker with an aggregate diagnostic. Nothing repairs or resets them.
+
+Polling already consumed stock before the read. A storage/JSON decoding failure
+fails the function without restoring any stock. Rejection never polls replacements,
+renews a fence, returns an identity hint or modifies properties. Existing candidate
+recycling remains responsible for supply: crossing a window changes qualification,
+but a rejected candidate may still wait for the existing 60-second aging interval,
+refill and scheduling. No immediate boundary execution is promised.
+
+This is best-effort assignment observation, not a reserved or atomic quota.
+Asynchronous projection delay/loss and changes after the snapshot can permit more
+assignments than the threshold. The function is an explicit query capability,
+not a Group-wide gate on other functions. `worker.any` keeps its original semantics.
+Window length stays fixed within a scope; changing it requires a new scope because
+persisted counts do not contain the old window definition. No migration is performed.
 
 The [PoolRefillPolicy interface](src/main/java/com/xa/mass/workermatching/PoolRefillPolicy.java)
 now owns only the refill side:
@@ -614,7 +648,10 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Group shortage observation: zero Redis commands; local target aggregation and
   capacity-pressure cleanup only when a requested Group-Pool has no room. Country uses one bucket-count snapshot for
   all targets; other policies receive only visited target pages.
-- Pool stock counts and take: zero Redis commands or facts reads.
+- Pool resource counts and polling, and existing unqualified Pool functions:
+  zero Redis commands or Facts reads. Assignment-window take adds one EVAL_RO
+  snapshot (two HMGETs) per Facts-owner page of polled distinct identities; empty
+  stock adds no read. It never expands the Item request budget to find substitutes.
 - Identity take: zero Redis commands. Nonempty Phone take: one HMGET for at most
   100 unique exact values, returning at most one identity per value, without a lease read.
 - Qualified Messaging Phone take: the same bounded lookup plus at most one HMGET

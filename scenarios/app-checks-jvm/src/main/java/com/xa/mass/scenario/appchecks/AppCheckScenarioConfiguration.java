@@ -6,24 +6,22 @@ import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
 
 @Configuration(proxyBeanMethods = false)
 @Import(AppCheckController.class)
 public class AppCheckScenarioConfiguration {
     @Bean
-    AppCheckAssignmentWindow appCheckAssignmentWindow() {
-        return new AppCheckAssignmentWindow(60_000);
+    WorkerPropertyProjection appAAssignmentProjection(
+            @Value("${xa.mass.worker-matching.groups.app-a-sim.assignment-window.window-millis}") long windowMillis) {
+        return assignmentProjection("app-a-sim", new AppCheckAssignmentWindow(windowMillis));
     }
 
     @Bean
-    WorkerPropertyProjection appAAssignmentProjection(AppCheckAssignmentWindow window) {
-        return assignmentProjection("app-a-sim", window);
-    }
-
-    @Bean
-    WorkerPropertyProjection appBAssignmentProjection(AppCheckAssignmentWindow window) {
-        return assignmentProjection("app-b-sim", window);
+    WorkerPropertyProjection appBAssignmentProjection(
+            @Value("${xa.mass.worker-matching.groups.app-b-sim.assignment-window.window-millis}") long windowMillis) {
+        return assignmentProjection("app-b-sim", new AppCheckAssignmentWindow(windowMillis));
     }
 
     private static WorkerPropertyProjection assignmentProjection(String group, AppCheckAssignmentWindow window) {

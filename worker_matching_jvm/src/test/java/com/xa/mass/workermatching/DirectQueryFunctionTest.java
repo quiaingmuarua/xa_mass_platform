@@ -78,6 +78,6 @@ class DirectQueryFunctionTest {
     }
 
     private DefaultWorkerMatchingCatalog catalog() {
-        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction((group, values) -> { throw new AssertionError("admission must not read the index"); })), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
+        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction((group, values) -> { throw new AssertionError("admission must not read the index"); })), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"), null)), List.of(), Set.of("workerId"));
     }
 }
