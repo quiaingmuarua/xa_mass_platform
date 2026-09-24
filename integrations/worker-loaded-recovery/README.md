@@ -66,6 +66,16 @@ Worker. The latter check keeps all 5,000 stopped baseline identities present in
 Kernel scheduling truth even though the Lab snapshot no longer exposes a
 stopped run's `workerId`.
 
+Each projection scan also records `activeNotHotStates`: counts of active
+Workers outside HOT, keyed by `scheduling|network` projection (for example
+`recovery|connected`), without Worker identities. The stage summary repeats the
+final post-work value as `postWorkActiveNotHotStates`, and a convergence timeout
+message includes it. These counts are diagnostic only; they do not change any
+threshold. Earlier nightlies show a small post-work set of connected but non-HOT
+Workers after graceful restart (15 to 60 of 10,000), and the 2026-09-23 run
+failed with 592. Without NORMAL Tasks after the drain, Main no longer supplies
+this Group to Serviceability, so such Workers have no further recovery path.
+
 Each loaded workload creates ten Tasks and appends 5,000 valid Items to each
 in 50 requests. A complete active-network scan establishes the required
 connection baseline immediately before approval; subsequent scans retain their

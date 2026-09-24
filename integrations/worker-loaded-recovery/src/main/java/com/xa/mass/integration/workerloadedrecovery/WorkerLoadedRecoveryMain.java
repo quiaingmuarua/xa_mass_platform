@@ -15,6 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /** Public-API proof for one stage of the loaded capacity and recovery stability lane. */
 public final class WorkerLoadedRecoveryMain {
@@ -269,6 +270,10 @@ public final class WorkerLoadedRecoveryMain {
             summary.put(
                     "postWorkStoppedMissing",
                     postWorkConvergence.scan().stoppedMissing()
+            );
+            summary.put(
+                    "postWorkActiveNotHotStates",
+                    new TreeMap<>(postWorkConvergence.scan().activeNotHotStates())
             );
             long completedAt = System.currentTimeMillis();
             summary.put(
@@ -704,7 +709,8 @@ public final class WorkerLoadedRecoveryMain {
                 active.hotWithoutConnection(),
                 stopped.connected(),
                 stopped.hot(),
-                stopped.missing()
+                stopped.missing(),
+                active.notHotStates()
         );
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("atEpochMillis", System.currentTimeMillis());
@@ -723,6 +729,7 @@ public final class WorkerLoadedRecoveryMain {
         evidence.put("stoppedConnected", stopped.connected());
         evidence.put("stoppedHot", stopped.hot());
         evidence.put("stoppedMissing", stopped.missing());
+        evidence.put("activeNotHotStates", new TreeMap<>(active.notHotStates()));
         LoadedRecoveryEvidence.appendTimeline(options.timelineFile(), evidence);
         return scan;
     }
@@ -737,6 +744,7 @@ public final class WorkerLoadedRecoveryMain {
         int connectedAndHot = 0;
         int hotWithoutConnection = 0;
         int missing = 0;
+        Map<String, Integer> notHotStates = new TreeMap<>();
         for (int offset = 0;
                 offset < workerIds.size();
                 offset += OBSERVATION_CHUNK_SIZE) {
@@ -769,6 +777,12 @@ public final class WorkerLoadedRecoveryMain {
                     connectedAndHot++;
                 } else if (isHot) {
                     hotWithoutConnection++;
+                } else {
+                    notHotStates.merge(
+                            notHotStateKey(schedulingState, network.get(workerId)),
+                            1,
+                            Integer::sum
+                    );
                 }
             }
         }
@@ -777,8 +791,15 @@ public final class WorkerLoadedRecoveryMain {
                 hot,
                 connectedAndHot,
                 hotWithoutConnection,
-                missing
+                missing,
+                Map.copyOf(notHotStates)
         );
+    }
+
+    /** Diagnostic bucket for a non-HOT Worker: scheduling projection, then network projection. */
+    static String notHotStateKey(String schedulingState, String networkState) {
+        return (schedulingState == null ? "absent" : schedulingState)
+                + "|" + (networkState == null ? "absent" : networkState);
     }
 
     private static Map<String, Object> taskSummary(TaskProgress task) {
@@ -883,7 +904,8 @@ public final class WorkerLoadedRecoveryMain {
             int hot,
             int connectedAndHot,
             int hotWithoutConnection,
-            int missing
+            int missing,
+            Map<String, Integer> notHotStates
     ) {
     }
 
@@ -894,7 +916,8 @@ public final class WorkerLoadedRecoveryMain {
             int activeHotWithoutConnection,
             int stoppedConnected,
             int stoppedHot,
-            int stoppedMissing
+            int stoppedMissing,
+            Map<String, Integer> activeNotHotStates
     ) {
     }
 
