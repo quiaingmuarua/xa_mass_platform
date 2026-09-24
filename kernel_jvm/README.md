@@ -105,6 +105,15 @@ mechanical operation. The [performance proof](../integrations/worker-call-perfor
 owns offline joins and their incomplete/overlap limits. An observed Result write
 does not establish the later separate TaskItem Score promotion.
 
+Default-off `xa.mass.WorkerScoreDiagnostic` records the existing Worker Score
+batch and compare-and-set replies, including STALE, without additional Redis
+operations. Each event carries SHA-256 of `workerId + "\n"`, the operation,
+local start/end epoch milliseconds, status, and Owner-decoded polarity/time/mark
+when the reply contains valid coordinates. Current-polarity calls also carry
+the original evidence milliseconds and requested polarity. Missing or invalid
+coordinates use an empty polarity and `-1` time/mark. These diagnostic replies
+are not a second state owner or a guarantee of complete event delivery.
+
 ## Boundaries
 
 `kernel_jvm` has no Spring, HTTP, Pacer thread or policy configuration

@@ -26,6 +26,8 @@ public final class WorkerLoadedRecoveryMain {
     private static final int OBSERVATION_CHUNK_SIZE = 100;
     private static final int STOP_BATCH_SIZE = 100;
     private static final int REQUIRED_CONSECUTIVE_SCANS = 3;
+    private static final boolean SCORE_DIAGNOSTICS =
+            "1".equals(System.getenv("XA_MASS_WORKER_SCORE_DIAGNOSTICS"));
 
     private WorkerLoadedRecoveryMain() {
     }
@@ -58,6 +60,16 @@ public final class WorkerLoadedRecoveryMain {
                     identityByLabKey,
                     topology.stoppedLabWorkerKeys()
             );
+            if (SCORE_DIAGNOSTICS) {
+                try {
+                    LoadedRecoveryEvidence.writeSummary(options.timelineFile().resolveSibling(
+                        options.stage().wireValue() + "-worker-score-cohorts.json"), Map.of(
+                        "active", activeWorkerIds.stream().map(id -> LoadedRecoveryEvidence.identityDigest(List.of(id))).toList(),
+                        "stopped", stoppedWorkerIds.stream().map(id -> LoadedRecoveryEvidence.identityDigest(List.of(id))).toList()));
+                } catch (RuntimeException error) {
+                    LOG.log(System.Logger.Level.WARNING, "Worker Score cohort diagnosis incomplete: {0}", error.getClass().getSimpleName());
+                }
+            }
 
             StableWindow initialHeadroom = null;
             Convergence activeConvergence = null;
@@ -731,6 +743,15 @@ public final class WorkerLoadedRecoveryMain {
         evidence.put("stoppedMissing", stopped.missing());
         evidence.put("activeNotHotStates", new TreeMap<>(active.notHotStates()));
         LoadedRecoveryEvidence.appendTimeline(options.timelineFile(), evidence);
+        if (SCORE_DIAGNOSTICS) {
+            try {
+                LoadedRecoveryEvidence.appendTimeline(options.timelineFile().resolveSibling("worker-score-projections.jsonl"), Map.of(
+                    "atEpochMillis", evidence.get("atEpochMillis"), "stage", options.stage().wireValue(),
+                    "checkpoint", stage, "activeNotHot", active.diagnosticNonHot()));
+            } catch (RuntimeException error) {
+                LOG.log(System.Logger.Level.WARNING, "Worker Score projection diagnosis incomplete: {0}", error.getClass().getSimpleName());
+            }
+        }
         return scan;
     }
 
@@ -745,6 +766,7 @@ public final class WorkerLoadedRecoveryMain {
         int hotWithoutConnection = 0;
         int missing = 0;
         Map<String, Integer> notHotStates = new TreeMap<>();
+        Map<String, String> diagnosticNonHot = new TreeMap<>();
         for (int offset = 0;
                 offset < workerIds.size();
                 offset += OBSERVATION_CHUNK_SIZE) {
@@ -778,6 +800,9 @@ public final class WorkerLoadedRecoveryMain {
                 } else if (isHot) {
                     hotWithoutConnection++;
                 } else {
+                    if (SCORE_DIAGNOSTICS) diagnosticNonHot.put(
+                            LoadedRecoveryEvidence.identityDigest(List.of(workerId)),
+                            notHotStateKey(schedulingState, network.get(workerId)));
                     notHotStates.merge(
                             notHotStateKey(schedulingState, network.get(workerId)),
                             1,
@@ -792,7 +817,8 @@ public final class WorkerLoadedRecoveryMain {
                 connectedAndHot,
                 hotWithoutConnection,
                 missing,
-                Map.copyOf(notHotStates)
+                Map.copyOf(notHotStates),
+                Map.copyOf(diagnosticNonHot)
         );
     }
 
@@ -905,7 +931,8 @@ public final class WorkerLoadedRecoveryMain {
             int connectedAndHot,
             int hotWithoutConnection,
             int missing,
-            Map<String, Integer> notHotStates
+            Map<String, Integer> notHotStates,
+            Map<String, String> diagnosticNonHot
     ) {
     }
 

@@ -63,6 +63,65 @@ WORKER_GROUP = "scenario-string-utils-workers"
 ENDPOINT_MANAGER = "scenario-websocket"
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
 
+# At most the four proof-owned Servers. No scheduler or recovery state lives here.
+_DIAGNOSTIC_SERVERS: dict[int, tuple[Path, Path]] = {}
+
+
+def _diagnostic_options(output_root: Path, log_name: str, environment: dict[str, str]) -> list[str]:
+    if environment.get("XA_MASS_WORKER_SCORE_DIAGNOSTICS") != "1":
+        return []
+    recording = output_root / "private" / (Path(log_name).stem + ".jfr")
+    return [
+        "-XX:FlightRecorderOptions=maxchunksize=8m",
+        f"-XX:StartFlightRecording=name=worker-score,settings={MODULE_ROOT / 'diagnostics.jfc'},"
+        f"filename={recording},maxsize=128m,dumponexit=true,disk=true",
+    ]
+
+
+def _diagnostic_note(output_root: Path, **fields: object) -> None:
+    try:
+        _append_jsonl(output_root / "evidence" / "worker-score-diagnostic-manifest.jsonl", fields)
+    except Exception:
+        print("Worker Score diagnostic manifest could not be written", file=sys.stderr)
+
+
+def _dump_server_diagnostic(process: subprocess.Popen[str]) -> None:
+    entry = _DIAGNOSTIC_SERVERS.get(process.pid)
+    if entry is None or process.poll() is not None:
+        return
+    output_root, recording = entry
+    started = int(time.time() * 1_000)
+    try:
+        result = subprocess.run(
+            ["jcmd", str(process.pid), "JFR.dump", "name=worker-score", f"filename={recording}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False,
+        )
+        _diagnostic_note(output_root, action="dump-before-kill", recording=recording.name,
+                         startedEpochMillis=started, endedEpochMillis=int(time.time() * 1_000),
+                         exitCode=result.returncode)
+    except Exception as error:
+        _diagnostic_note(output_root, action="dump-before-kill", recording=recording.name,
+                         startedEpochMillis=started, endedEpochMillis=int(time.time() * 1_000),
+                         errorType=type(error).__name__)
+
+
+def _export_server_diagnostics() -> None:
+    # Run after every process exits, including SIGTERM's dumponexit shutdown tail.
+    for output_root, recording in _DIAGNOSTIC_SERVERS.values():
+        destination = output_root / "evidence" / (recording.stem + "-worker-score.jsonl")
+        classpath = MODULE_ROOT / "build/install/xa-mass-worker-loaded-recovery/lib/*"
+        try:
+            result = subprocess.run(
+                ["java", "-cp", str(classpath),
+                 "com.xa.mass.integration.workerloadedrecovery.LoadedRecoveryDiagnostics",
+                 str(recording), str(destination)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60, check=False,
+            )
+            _diagnostic_note(output_root, action="export", recording=recording.name, exitCode=result.returncode)
+        except Exception as error:
+            _diagnostic_note(output_root, action="export", recording=recording.name, errorType=type(error).__name__)
+    _DIAGNOSTIC_SERVERS.clear()
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -425,6 +484,7 @@ def main() -> int:
         for process in tuple(processes.values())[::-1]:
             _stop_process(process, force=True, timeout_seconds=15)
         processes.clear()
+        _export_server_diagnostics()
         shutil.rmtree(private_root / "gates", ignore_errors=True)
         baseline = private_root / "worker-ids.json"
         baseline.unlink(missing_ok=True)
@@ -569,11 +629,13 @@ def _start_server(
         MODULE_ROOT
         / "server-config/application-worker-loaded-recovery.yaml"
     ).resolve()
-    return _start_process(
+    diagnostic_options = _diagnostic_options(output_root, log_name, environment)
+    process = _start_process(
         [
             "java",
             "-Xmx3g",
             "-XX:+ExitOnOutOfMemoryError",
+            *diagnostic_options,
             "-jar",
             str(boot_jar),
             "--spring.profiles.active=scenario-workers",
@@ -582,6 +644,9 @@ def _start_server(
         output_root / log_name,
         environment,
     )
+    if diagnostic_options:
+        _DIAGNOSTIC_SERVERS[process.pid] = (output_root, output_root / "private" / (Path(log_name).stem + ".jfr"))
+    return process
 
 
 def _start_host(
@@ -780,6 +845,8 @@ def _terminate_server_for_stage(
     sampler: _ProcessSampler,
 ) -> None:
     sampler.check()
+    if server_signal == HARD_KILL_SIGNAL:
+        _dump_server_diagnostic(process)
     ready_at = mutation_ready["atEpochMillis"]
     assert isinstance(ready_at, int)
     signal_delay_millis = int(time.time() * 1_000) - ready_at
@@ -1440,6 +1507,8 @@ def _stop_process(
 ) -> None:
     if process.poll() is not None:
         return
+    if force:
+        _dump_server_diagnostic(process)
     os.killpg(process.pid, HARD_KILL_SIGNAL if force else signal.SIGTERM)
     try:
         process.wait(timeout=timeout_seconds)

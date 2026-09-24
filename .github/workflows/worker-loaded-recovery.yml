@@ -14,6 +14,8 @@ concurrency:
 
 env:
   XA_MASS_REDIS_EPHEMERAL: "true"
+  # Diagnostic branch: keep the original workload and acceptance unchanged.
+  XA_MASS_WORKER_SCORE_DIAGNOSTICS: "1"
 
 jobs:
   worker-loaded-recovery:
