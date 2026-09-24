@@ -657,7 +657,7 @@ public final class RedisWorkerScoreCore
         if (target == ZERO_SCORE) {
             return transition(WorkerScoreTransitionStatus.INVALID);
         }
-        return compareAndSet(homeBucketId, workerId, observedScore, target);
+        return compareAndSet(homeBucketId, workerId, observedScore, target, "toggle_current_polarity");
     }
 
     @Override
@@ -773,7 +773,7 @@ public final class RedisWorkerScoreCore
                 arguments.add(Long.toString(suppliedTimeSlot));
             });
             transitioned.putAll(executeBatch(homeBucketId, pending.keySet(),
-                    CURRENT_POLARITY_SCRIPT, arguments, "Worker score polarity"));
+                    CURRENT_POLARITY_SCRIPT, arguments, "Worker score polarity", ordered, targetPolarity));
         }
         return mergeOrderedResults(ordered.keySet(), immediate, transitioned);
     }
@@ -800,7 +800,7 @@ public final class RedisWorkerScoreCore
                 COLD_PARK_TIME_SLOT,
                 observed.mark()
         );
-        return compareAndSet(homeBucketId, workerId, observedScore, nextScore);
+        return compareAndSet(homeBucketId, workerId, observedScore, nextScore, "park_observed_recovery_score");
     }
 
     @Override
@@ -922,15 +922,28 @@ public final class RedisWorkerScoreCore
     private Map<String, WorkerScoreTransitionResult> executeBatch(
             String group, Iterable<String> ids, String script, List<String> arguments, String operation
     ) {
-        return batchScriptResults(ids, commands().eval(script, ScriptOutputType.MULTI,
+        return executeBatch(group, ids, script, arguments, operation, null, null);
+    }
+
+    private Map<String, WorkerScoreTransitionResult> executeBatch(
+            String group, Iterable<String> ids, String script, List<String> arguments, String operation,
+            Map<String, Long> evidence, WorkerScorePolarity targetPolarity
+    ) {
+        long started = WorkerScoreDiagnostic.start();
+        var results = batchScriptResults(ids, commands().eval(script, ScriptOutputType.MULTI,
                 new String[]{scoreKey(group)}, arguments.toArray(String[]::new)), operation);
+        WorkerScoreDiagnostic.batch(started, operation, results, evidence, targetPolarity);
+        return results;
     }
 
     private WorkerScoreTransitionResult compareAndSet(
-            String group, String id, long observed, long target
+            String group, String id, long observed, long target, String operation
     ) {
-        return scriptResult(commands().eval(CAS_UPDATE_SCRIPT, ScriptOutputType.MULTI,
+        long started = WorkerScoreDiagnostic.start();
+        var result = scriptResult(commands().eval(CAS_UPDATE_SCRIPT, ScriptOutputType.MULTI,
                 new String[]{scoreKey(group)}, id, Long.toString(observed), Long.toString(target), ""));
+        WorkerScoreDiagnostic.single(started, operation, id, result);
+        return result;
     }
 
     /** Each tuple contains the exact observation and the complete Java-computed target. */
@@ -940,6 +953,7 @@ public final class RedisWorkerScoreCore
         if (targets.isEmpty()) {
             return Map.of();
         }
+        long started = WorkerScoreDiagnostic.start();
         RedisAsyncCommands<String, String> async = connection().async();
         List<RedisFuture<Object>> futures = new ArrayList<>(targets.size());
         String[] keys = {scoreKey(group)};
@@ -947,7 +961,10 @@ public final class RedisWorkerScoreCore
                 CAS_UPDATE_SCRIPT, ScriptOutputType.MULTI, keys, id,
                 Long.toString(pair[0]), Long.toString(pair[1]),
                 acceptCounterpart ? Long.toString(-pair[0]) : "")));
-        return collectScriptResults(targets.keySet(), futures);
+        var results = collectScriptResults(targets.keySet(), futures);
+        WorkerScoreDiagnostic.batch(started, acceptCounterpart
+                ? "release_observed_hot_score_holds" : "release_score_holds", results, null, null);
+        return results;
     }
 
     private static Map<String, WorkerScoreTransitionResult>

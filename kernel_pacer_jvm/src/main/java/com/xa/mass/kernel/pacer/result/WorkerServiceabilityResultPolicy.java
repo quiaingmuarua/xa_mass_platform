@@ -66,13 +66,15 @@ final class WorkerServiceabilityResultPolicy {
     void handle(List<DeliveryReport> reports) {
         java.util.Objects.requireNonNull(reports, "reports");
         long nowMillis = currentTimeMillis.getAsLong();
+        long diagnosticBatch = WorkerEvidenceDiagnostic.batch();
         LinkedHashMap<String, WorkerEvidence> latestEvidence =
                 new LinkedHashMap<>();
         for (DeliveryReport report : reports) {
             Map<String, WorkerEvidence> decoded = decodeReport(
                     report,
                     nowMillis,
-                    config.evidenceMaxAgeMillis()
+                    config.evidenceMaxAgeMillis(),
+                    diagnosticBatch
             );
             if (decoded == null) {
                 continue;
@@ -94,6 +96,8 @@ final class WorkerServiceabilityResultPolicy {
         LinkedHashMap<String, NetworkObservation> routeUnavailable = new LinkedHashMap<>();
         LinkedHashMap<String, NetworkObservation> probeUnavailable = new LinkedHashMap<>();
         latestEvidence.forEach((workerId, evidence) -> {
+            WorkerEvidenceDiagnostic.record(diagnosticBatch, workerId, "SELECTED", "",
+                    evidence.kind().name(), evidence.observedAtMillis(), nowMillis);
             Map<String, NetworkObservation> target = switch (evidence.kind()) {
                 case AVAILABLE -> available;
                 case ROUTE_UNAVAILABLE -> routeUnavailable;
@@ -115,7 +119,8 @@ final class WorkerServiceabilityResultPolicy {
     private Map<String, WorkerEvidence> decodeReport(
             DeliveryReport report,
             long nowMillis,
-            long evidenceMaxAgeMillis
+            long evidenceMaxAgeMillis,
+            long diagnosticBatch
     ) {
         if (report == null
                 || (report.src() != DeliveryEndpoint.ADAPTER && report.src() != DeliveryEndpoint.SERVER)
@@ -146,9 +151,15 @@ final class WorkerServiceabilityResultPolicy {
         for (WorkerEvidence evidence : decoded.values()) {
             long age = nowMillis - evidence.observedAtMillis();
             if (age < 0 || age > evidenceMaxAgeMillis) {
+                decoded.forEach((id, rejected) -> WorkerEvidenceDiagnostic.record(
+                        diagnosticBatch, id, age < 0 ? "DROPPED_FUTURE" : "DROPPED_AGE",
+                        report.messageType(), rejected.kind().name(), rejected.observedAtMillis(), nowMillis));
                 return null;
             }
         }
+        decoded.forEach((id, evidence) -> WorkerEvidenceDiagnostic.record(
+                diagnosticBatch, id, "DECODED", report.messageType(), evidence.kind().name(),
+                evidence.observedAtMillis(), nowMillis));
         return decoded;
     }
 

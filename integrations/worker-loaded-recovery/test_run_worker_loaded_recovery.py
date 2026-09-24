@@ -22,6 +22,35 @@ SPEC.loader.exec_module(RUNNER)
 
 class WorkerLoadedRecoveryRunnerTest(unittest.TestCase):
 
+    def test_diagnostic_dump_failure_cannot_prevent_process_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = Mock(pid=4321)
+            process.poll.return_value = None
+            RUNNER._DIAGNOSTIC_SERVERS[4321] = (root, root / "private.jfr")
+            try:
+                with patch.object(RUNNER.subprocess, "run", side_effect=subprocess.TimeoutExpired("jcmd", 5)), \
+                        patch.object(RUNNER.os, "killpg") as kill:
+                    RUNNER._stop_process(process, force=True, timeout_seconds=15)
+                kill.assert_called_once_with(4321, RUNNER.HARD_KILL_SIGNAL)
+                process.wait.assert_called_once_with(timeout=15)
+                manifest = root / "evidence/worker-score-diagnostic-manifest.jsonl"
+                self.assertEqual("TimeoutExpired", json.loads(manifest.read_text())["errorType"])
+            finally:
+                RUNNER._DIAGNOSTIC_SERVERS.clear()
+
+    def test_diagnostics_do_not_extend_the_original_mutation_gate(self):
+        process = Mock(pid=4321)
+        process.poll.return_value = None
+        with patch.object(RUNNER, "_dump_server_diagnostic") as dump, \
+                patch.object(RUNNER.time, "time", return_value=3), \
+                patch.object(RUNNER.os, "killpg") as kill:
+            with self.assertRaisesRegex(RuntimeError, "within two seconds"):
+                RUNNER._terminate_server_for_stage(process, RUNNER.HARD_KILL_SIGNAL,
+                                                   {"atEpochMillis": 0}, Mock())
+            dump.assert_called_once_with(process)
+            kill.assert_not_called()
+
     def test_inventory_uses_at_most_one_hundred_strict_records_per_file(self):
         with tempfile.TemporaryDirectory() as directory:
             sandbox = Path(directory) / "scenario-workers"

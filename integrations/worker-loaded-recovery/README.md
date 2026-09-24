@@ -165,6 +165,29 @@ stages pass; the 60-minute Workflow timeout is only a failure ceiling.
 
 ## Project fixture
 
+### Temporary Worker Score diagnosis
+
+The diagnostic branch enables `XA_MASS_WORKER_SCORE_DIAGNOSTICS=1` while
+retaining the original workload, mutation gates, budgets and acceptance.
+Default-off Owner JFR events record network evidence selection/rejection and
+existing Score operation replies. They introduce no Redis reads or writes.
+The Harness reuses its existing scans to record non-HOT identities as
+SHA-256 hashes of Worker ID plus newline and exports the two anonymous cohorts.
+
+Each Server records privately with a 128 MiB retention limit (the final JFR
+chunk can add some overhead). SIGTERM uses `dumponexit`;
+SIGKILL and force cleanup request a bounded dump first. The original two-second
+mutation signal gate still applies, including any pre-kill dump time. Hard kills
+have no recorded tail after that dump. After all processes exit, the runner
+exports only the fixed Owner event fields, timestamps, numeric thread IDs and
+JFR data-loss counts into evidence JSONL. Raw recordings remain private.
+The manifest records dump/export failures independently of the proof result.
+Recordings can discard old chunks at the size bound; diagnostic completeness
+must be checked before attributing a residual Worker's last transition.
+
+These events describe possible causes. Their presence alone does not establish
+that a mechanism or a source change caused the observed nightly regression.
+
 The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
 replace the Project list, retaining the original managed Task count. Managed Call
 clients read `GET /api/v1/projects/scenario-workers` once during preparation and
