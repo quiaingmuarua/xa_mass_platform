@@ -52,4 +52,14 @@ class LoadedRecoveryEvidenceTest {
         assertThat(result.stoppedLabWorkerKeys())
                 .containsExactly("workers-001.jsonl:1");
     }
+
+    @Test
+    void notHotStateKeyKeepsSchedulingAndNetworkProjectionsWithoutIdentity() {
+        assertThat(WorkerLoadedRecoveryMain.notHotStateKey("recovery", "connected"))
+                .isEqualTo("recovery|connected");
+        assertThat(WorkerLoadedRecoveryMain.notHotStateKey(null, null))
+                .isEqualTo("absent|absent");
+        assertThat(WorkerLoadedRecoveryMain.notHotStateKey("cold", "disconnected"))
+                .isEqualTo("cold|disconnected");
+    }
 }
