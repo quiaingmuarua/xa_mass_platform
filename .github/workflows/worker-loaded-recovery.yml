@@ -1,15 +1,13 @@
-name: Worker Loaded Capacity + Recovery Stability
+name: Worker Loaded Commit Slices
 
 on:
-  schedule:
-    - cron: "0 18 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: worker-loaded-recovery
+  group: worker-loaded-slices-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -17,7 +15,22 @@ env:
 
 jobs:
   worker-loaded-recovery:
-    name: Worker Loaded Capacity + Recovery Stability
+    name: Loaded slice ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - label: baseline-4a
+            ref: 4a5ccb3f7022471fd605d2041fa1a2f1f7a70093
+          - label: original-0e
+            ref: 0e2a0302b878ac01d482d2b1f3e4d9ec874fac77
+          - label: minus-observation
+            ref: fb86a93d7ab1663a67a6e43dff7981e1adee9662
+          - label: minus-window
+            ref: 333d1714db8970007d604604172f333d08e090e2
+          - label: minus-batch
+            ref: 08444a82f181b106a6ffe7ce57e8f44dc2ee89bd
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:
@@ -32,6 +45,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
       - uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
@@ -71,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: worker-loaded-recovery-${{ github.run_attempt }}
+          name: worker-loaded-${{ matrix.label }}-${{ github.run_attempt }}
           path: |
             build/worker-loaded-recovery-proof/evidence/**
             build/worker-loaded-recovery-proof/process-resources.jsonl
