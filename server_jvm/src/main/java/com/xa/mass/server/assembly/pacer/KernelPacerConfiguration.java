@@ -31,7 +31,6 @@ import org.springframework.beans.factory.ObjectProvider;
 @EnableConfigurationProperties({KernelPacerProperties.class, TaskItemOutcomeProperties.class})
 public class KernelPacerConfiguration {
 
-    @Bean
     WorkerObservationConsumer workerObservationConsumer(List<WorkerPropertyProjection> projections,
             ObjectProvider<WorkerProperties> properties, ObjectProvider<WorkerResourceCommandService> commands) {
         var running = new AtomicBoolean();
@@ -61,11 +60,9 @@ public class KernelPacerConfiguration {
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatching workerMatching,
-            ObjectProvider<WorkerObservationConsumer> observations
+            WorkerMatching workerMatching
     ) {
         validatePresetScope(properties.preset(), redisProperties.scope());
-        var consumer = observations.getIfAvailable();
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
@@ -81,7 +78,7 @@ public class KernelPacerConfiguration {
                 workerCommands,
                 serviceability,
                 workerMatching,
-                consumer != null && consumer.enabled() ? consumer::accept : ignored -> {}
+                ignored -> {}
         );
     }
 
