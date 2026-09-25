@@ -8,20 +8,6 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MatchingPropertiesTest {
-    @Test void windowConfigurationBindsOncePerGroupAndRejectsMalformedNumbers() {
-        runner.withPropertyValues("xa.mass.worker-matching.groups.g.assignment-window.window-millis=60000",
-                "xa.mass.worker-matching.groups.g.assignment-window.max-assignments=10")
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    var window = context.getBean(MatchingProperties.class).groups().get("g").assignmentWindow();
-                    assertThat(window.windowMillis()).isEqualTo(60000);
-                    assertThat(window.maxAssignments()).isEqualTo(10);
-                });
-        for (String bad : List.of("0", "-1", "1.5", "many"))
-            runner.withPropertyValues("xa.mass.worker-matching.groups.g.assignment-window.window-millis=60000",
-                    "xa.mass.worker-matching.groups.g.assignment-window.max-assignments=" + bad)
-                    .run(context -> assertThat(context).hasFailed());
-    }
     @EnableConfigurationProperties({MatchingProperties.class,TaskRpcProperties.class})
     @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class Binding {}

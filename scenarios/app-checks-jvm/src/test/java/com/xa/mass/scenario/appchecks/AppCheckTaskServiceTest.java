@@ -91,8 +91,7 @@ class AppCheckTaskServiceTest {
             String salt = created.metadata().get("salt");
             order.verify(data, times(2)).appendFiniteTaskItems(eq("task"), argThat(items -> items.size() == 100
                     && items.stream().allMatch(i -> i.payload().get("salt").equals(salt) && i.ttlMillis() == 600_000L
-                    && i.eventCode().equals(AppCheckTaskService.EVENT) && i.workerSelector().executorName().equals("worker.assignment.available")
-                    && i.workerSelector().input().equals(Map.of()))));
+                    && i.eventCode().equals(AppCheckTaskService.EVENT) && i.workerSelector().executorName().equals("worker.any"))));
             order.verify(data).appendFiniteTaskItems(eq("task"), argThat(items -> items.size() == 1));
             order.verify(lifecycle).approve("task");
             assertThat(service.create(request(201)).taskId()).isEqualTo("task");

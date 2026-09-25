@@ -2,34 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import time
 import uuid
 
 SCENARIO = Path(__file__).resolve().parent
 PREVIEW = SCENARIO.parents[1] / "distribution/server"
-
-
-@contextmanager
-def regression_window_configuration():
-    """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
-    previous = os.environ.get("SPRING_APPLICATION_JSON")
-    configuration = json.loads(previous) if previous else {}
-    for group in ("app-a-sim", "app-b-sim"):
-        configuration[f"xa.mass.worker-matching.groups.{group}.assignment-window.max-assignments"] = 1000
-    os.environ["SPRING_APPLICATION_JSON"] = json.dumps(configuration)
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("SPRING_APPLICATION_JSON", None)
-        else:
-            os.environ["SPRING_APPLICATION_JSON"] = previous
 
 
 def require(condition, message):
@@ -58,17 +39,9 @@ def functional(run, http):
     groups = {row["appId"]: row["workerGroupId"] for row in catalog["apps"]}
     require(groups == {"app-a": "app-a-sim", "app-b": "app-b-sim"}, "Wrong application assembly")
     workers = http(run.host, "/lab/v1/workers")["workers"]
-    for app, group in groups.items():
-        expected = {row["workerId"] for row in workers if row["workerGroupId"] == group and row.get("workerId")}
-        require(len(expected) == 2,
+    for group in groups.values():
+        require(sum(row["workerGroupId"] == group and bool(row.get("workerId")) for row in workers) == 2,
                 "App fixture must contain two prepared Workers per Group")
-        # Observe only these two known fixture identities; Prepare/route evidence does not establish Facts.
-        def facts_observed():
-            sample = http(run.url, f"/api/v1/runtime-view/worker-groups/{group}/workers:preview", 100)
-            return expected <= {row["workerId"] for row in sample["workers"]
-                                if row["workerProperties"].get("application") == app}
-
-        run.wait_for(facts_observed, 15, "App Worker Properties publication")
     cases = [
         request("registered", "app-a", 0, 6, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 30]),
         request("unregistered", "app-a", 100, 6, ([0, 0], [0, 1000], [1000, 1000]), [10, 40]),
@@ -147,10 +120,9 @@ def main():
     result = {"passed": False}
     phase = "startup"
     try:
-        with regression_window_configuration(), run:
+        with run:
             phase = "execution"
             result = functional(run, preview.http)
-            result["windowThresholdOverride"] = 1000
     except Exception as error:
         # No phone numbers, opaque Result content or HTTP body in public proof artifacts.
         result.update(passed=False, failedPhase=phase, failureType=type(error).__name__)

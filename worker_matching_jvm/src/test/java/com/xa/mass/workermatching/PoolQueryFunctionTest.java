@@ -41,7 +41,7 @@ class PoolQueryFunctionTest {
 
         {
             var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), () -> 1000,
-                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"), null)), List.of(), Set.of());
+                        Map.of(), Map.of("country", function), Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of());
             var inputs = new LinkedHashMap<String, WorkerQuery>();
             inputs.put("a", new WorkerQuery("country", List.of("CN", "CN")));
             inputs.put("b", new WorkerQuery("country", List.of("US")));
@@ -68,7 +68,7 @@ class PoolQueryFunctionTest {
         {
             var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), () -> 1000,
                         Map.of(), Map.of("country", new CountryQueryFunction(pool), "workerId", identity),
-                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"), null)), List.of(), Set.of("workerId"));
+                        Map.of("g", new MatchingGroup(Set.of(), Set.of("country"))), List.of(), Set.of("workerId"));
             var oversized = new LinkedHashMap<String, WorkerQuery>();
             for (int i = 0; i <= 1000; i++) oversized.put("m" + i, new WorkerQuery("workerId", "w" + i));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", oversized));

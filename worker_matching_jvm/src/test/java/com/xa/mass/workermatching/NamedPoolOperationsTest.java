@@ -37,11 +37,11 @@ class NamedPoolOperationsTest {
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
         for(int i=0;i<100;i++) {
-            groups.put("g"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any"), null));
-            groups.put("group"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any"), null));
+            groups.put("g"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any")));
+            groups.put("group"+i,new MatchingGroup(Set.of("any"),Set.of("worker.any")));
         }
-        groups.put("g1",new MatchingGroup(Set.of("any","test.pool","zz.fail"),Set.of("worker.any","test.pool","zz.fail"), null));
-        groups.put("g2",new MatchingGroup(Set.of("any","test.pool"),Set.of("worker.any","test.pool"), null));
+        groups.put("g1",new MatchingGroup(Set.of("any","test.pool","zz.fail"),Set.of("worker.any","test.pool","zz.fail")));
+        groups.put("g2",new MatchingGroup(Set.of("any","test.pool"),Set.of("worker.any","test.pool")));
         return groups;
     }
 
@@ -331,7 +331,7 @@ class NamedPoolOperationsTest {
         failingRule.facts.put("w", "US");
         var configured = new DefaultWorkerMatchingCatalog(budget,
                 Map.of("a", rule.stock, "z", failingRule.stock), clock::get,
-                Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of(), null)),
+                Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of())),
                 List.of("z", "a"), Set.of());
         var targets = List.of(new RefillTarget("a", ANY, 1), new RefillTarget("z", ANY, 1));
         assertEquals(1, configured.refill("g", targets, Map.of("w", 42L)));
@@ -401,7 +401,7 @@ class NamedPoolOperationsTest {
         b.offerBatch("idle", "any", List.of(new WorkerCandidate("live", 21)));
         var local = new DefaultWorkerMatchingCatalog(budget, Map.of("a", a, "b", b), clock::get,
                 Map.of("a", new AnyPoolPolicy(a), "b", new AnyPoolPolicy(b)), Map.of(),
-                Map.of("g", new MatchingGroup(Set.of("a", "b"), Set.of(), null)), List.of("a", "b"), Set.of());
+                Map.of("g", new MatchingGroup(Set.of("a", "b"), Set.of())), List.of("a", "b"), Set.of());
         clearInvocations(a, b);
         clock.set(61_000);
         assertEquals(Map.of("g", 2), local.observeRefillDeficits(Map.of("g", List.of(

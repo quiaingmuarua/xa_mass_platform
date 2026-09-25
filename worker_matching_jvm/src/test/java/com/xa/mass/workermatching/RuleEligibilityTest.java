@@ -148,7 +148,7 @@ class RuleEligibilityTest {
         populate(2); int reads=rule.reads;
         var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of("pool", rule.stock), clock::get,
                 Map.of("pool", rule), Map.of("pool", rule.functions()),
-                Map.of("g", new MatchingGroup(Set.of("pool"), Set.of("pool"), null)), List.of("pool"), Set.of());
+                Map.of("g", new MatchingGroup(Set.of("pool"), Set.of("pool"))), List.of("pool"), Set.of());
         var oversized = new LinkedHashMap<String, WorkerQuery>();
         for (int i = 0; i < 1001; i++) oversized.put("m" + i, new WorkerQuery("pool", Map.of()));
         assertThrows(IllegalArgumentException.class,()->catalog.take("g",oversized));

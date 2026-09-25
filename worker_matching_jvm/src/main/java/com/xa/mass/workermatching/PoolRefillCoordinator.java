@@ -52,7 +52,7 @@ final class PoolRefillCoordinator {
 
     private @Nullable PoolRefillPolicy poolPolicy(String group,String id) {
         var handler=poolPolicies.get(id);
-        var enabled=groups.getOrDefault(group,new MatchingGroup(Set.of(),Set.of(), null)).pools();
+        var enabled=groups.getOrDefault(group,new MatchingGroup(Set.of(),Set.of())).pools();
         return handler==null || !enabled.contains(id) ? null : handler;
     }
 

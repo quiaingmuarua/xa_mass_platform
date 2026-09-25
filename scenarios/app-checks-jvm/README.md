@@ -9,8 +9,8 @@ Console 的 `/app-checks` 页面直接使用以下 API；详情可通过
 `/app-checks/tasks/{taskId}` 打开，Server 重启后继续读取原 Task。
 
 **业务执行契约：已注册和未注册都属于执行成功；失败区间让真实 Handler 抛异常。**
-新 Item 使用下述 Matching 分配窗口策略；Kernel、Pacer、SDK、Adapter 的既有
-调度和执行机制保持，没有新增 Task 模式、Redis key、Evidence 队列、回执或业务结果缓存。
+Kernel、Matching、Pacer、SDK、Adapter 的调度和执行机制没有变化，没有新增 Task
+模式、Redis key、Evidence 队列、回执或业务结果缓存。
 
 ## API 和 Task 数据
 
@@ -46,8 +46,7 @@ Console 的 `/app-checks` 页面直接使用以下 API；详情可通过
 `+86`、US `+1` 或 GB `+44` 前缀，前缀后至少一位。只检查格式，不证明真实地区或可达性。
 
 Server 生成 Task/Item ID。Task priority=50、maxRetryTimes=3；Item priority=5、
-TTL=10 分钟。Task 声明 `any` Pool、空 target、水位 100；新 Item 使用
-`worker.assignment.available({})`。已有 `worker.any` Item 保留原语义，不改写历史任务。
+TTL=10 分钟。Task 声明 `any` Pool、空 target、水位 100；Item 使用 `worker.any({})`。
 名称存在 descriptor；metadata 保存 `scenario、appId、country、simulation、salt、saltDate`。
 号码和执行参数只在 Items，不保存号码列表副本或数量。
 
@@ -112,8 +111,7 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 
 投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window.window-millis`，
-与 Matching 使用同一份启动配置，Preview 默认为 60 秒，窗口编号为
+窗口长度在场景配置中单处构造为 60 秒，窗口编号为
 `floor(observedAtMillis / 60000)`。同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
 整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
@@ -122,24 +120,10 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 后续发送、执行失败不会扣减；重试再次分配会再次通知。Server 队列丢弃、进程退出、
 Facts 缺失或属性写入失败均可能造成缺口，没有补发、最终一致性或精确额度保证。
 不定时清零，空闲时保留最近窗口；重启读取已写入值，不补齐未处理通知。
-新建 Item 的 Matching 函数读取这两个字段，投影只提供选择和纯计算，由 Server 的同一个
+首片不把这些字段用于 Matching 筛选。投影只提供选择和纯计算，由 Server 的同一个
 Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 FunctionHandler。
 固定路由、异步交接及既有 patch/候选失效的完整边界见
 [Server](../../server_jvm/README.md#worker-allocation-observations)。
-
-## 分配窗口筛选
-
-Preview 的两个 App Group 各自配置 `assignment-window.max-assignments: 10`。
-新查询仅接受 `{}`，阈值由 Group 装配决定。函数从现有 Any Pool 消费本次有界候选，
-批量读取其 Platform Properties，并原样返回合格候选的严格围栏。当前窗口达到阈值时
-筛掉；过去窗口按零次观察处理；两个字段都不存在时允许初次分配。Facts 缺失、
-不完整或非法字段、未来窗口均不分配，不写回修复。完整失败和读取预算见
-[Matching Owner](../../worker_matching_jvm/README.md#observed-assignment-window)。
-
-筛掉的候选不归还、不补取，继续由既有 60 秒候选老化回收和补货推进。
-跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把 10 当成严格
-执行上限；失败和迟到结果不会扣减统计。范围是 Group 内的单 Worker，没有跨设备
-IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改变使用新 scope，不迁移旧值。
 
 ## 页面与结果核对
 
@@ -185,17 +169,8 @@ python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-prev
 迟到结果，并验证重启保留属性。测试有界记录真正的 Pacer 通知，用其源时间和
 Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见证不进入生产代码。
 
-窗口专用 Boot 用例使用一个实际 Worker、60 秒窗口、阈值 1：真实分配通知推进属性后，
-通过实际 Facts 快照读取和空 take 结果见证筛选拒绝；跨窗后等待正常 60 秒候选回收、
-补货与执行，不手动清零、恢复库存或改 Score。恢复观察最多 180 秒，字段边界另由
-受控时钟单元测试证明。投影延迟允许继续选择，测试不把阈值当成严格配额。
-
-原 101 Item 等非窗口 Boot 回归显式把阈值设为 1000，仍走新函数。
-进程 runner 通过标准 `SPRING_APPLICATION_JSON` 仅覆盖两个 Group 的阈值为 1000，
-保留并恢复调用环境，在摘要记录覆盖值。它验证原业务闭环，不声称验证默认窗口限额。
-Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个闲置 demo Worker，
-先只读确认已知 App Worker 的 Properties 已上报，再创建四个 Task 共 30 Items，
-最多每 Task 45 秒观察；独立 Python 复算成功结果和延迟。
+进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个闲置 demo Worker，
+创建四个 Task 共 30 Items，最多每 Task 45 秒观察；独立 Python 复算成功结果和延迟。
 不要求混合比例、均匀分配或固定执行者；进程 runner 不以终态失败证明执行次数。
 CI 使用现有 `product_coexistence` lane 执行源码及新解压 ZIP；原 SMS/Messages
 proof 显式 `app_count=0`，负载和断言保持原样。公开产物只包含阶段、数量和校验摘要，

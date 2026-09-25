@@ -52,7 +52,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
     private static Map<String,MatchingGroup> groups(Map<String,Set<String>> enabled) {
         var result=new LinkedHashMap<String,MatchingGroup>();
         enabled.forEach((group,names)->result.put(group,new MatchingGroup(
-                names.stream().map(DefaultWorkerMatchingCatalogIntegrationTest::poolName).collect(java.util.stream.Collectors.toSet()),names, null)));
+                names.stream().map(DefaultWorkerMatchingCatalogIntegrationTest::poolName).collect(java.util.stream.Collectors.toSet()),names)));
         return result;
     }
     private static final EligibilityQuery ANY=EligibilityQuery.parse(Map.of());
@@ -87,7 +87,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var builtIns = new LinkedHashMap<String, MatchingGroup>();
         groups.forEach((group, config) -> builtIns.put(group, new MatchingGroup(
                 config.pools().stream().filter(name -> !name.equals(BucketPoolFixture.ID)).collect(java.util.stream.Collectors.toSet()),
-                config.functions().stream().filter(name -> !name.equals(BucketPoolFixture.ID)).collect(java.util.stream.Collectors.toSet()), null)));
+                config.functions().stream().filter(name -> !name.equals(BucketPoolFixture.ID)).collect(java.util.stream.Collectors.toSet()))));
         var composition=new MatchingComposition(storage,builtIns,System::currentTimeMillis);
         var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
         var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,fail);

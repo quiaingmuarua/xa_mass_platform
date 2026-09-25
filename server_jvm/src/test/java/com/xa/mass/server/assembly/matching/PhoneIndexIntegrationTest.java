@@ -44,8 +44,8 @@ class PhoneIndexIntegrationTest {
     }
     private MatchingComposition create() {
         return com.xa.mass.workermatching.MatchingComposition.create(client, keyspace, Map.of(
-                "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("any","messaging"), Set.of("worker.any","worker.phone","worker.messaging.available"), null),
-                "other", new com.xa.mass.workermatching.MatchingGroup(Set.of(), Set.of("worker.phone"), null)));
+                "g", new com.xa.mass.workermatching.MatchingGroup(Set.of("any","messaging"), Set.of("worker.any","worker.phone","worker.messaging.available")),
+                "other", new com.xa.mass.workermatching.MatchingGroup(Set.of(), Set.of("worker.phone"))));
     }
     @AfterEach void cleanup() {
         if (catalog != null) composition.close();

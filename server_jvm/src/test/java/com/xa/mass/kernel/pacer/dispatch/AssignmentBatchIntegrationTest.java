@@ -29,7 +29,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 @Tag("redis-owner")
 class AssignmentBatchIntegrationTest {
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"101,worker.assignment.available,any", "1000,worker.assignment.available,any", "1000,worker.messaging.available,messaging"})
+    @org.junit.jupiter.params.provider.CsvSource({"101,worker.any,any", "1000,worker.any,any", "1000,worker.messaging.available,messaging"})
     void oneRoundRefillsQualifiesClaimsAndPublishesTheWholeBatch(int limit, String function, String pool) {
         withOwners((f) -> {
             var ids = IntStream.range(0, limit).mapToObj(i -> "w%04d".formatted(i)).toList();
@@ -68,7 +68,7 @@ class AssignmentBatchIntegrationTest {
             var observed = new ArrayList<WorkerObservation>();
             f.commands.clear();
             assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isEqualTo(limit);
-            assertThat(Collections.frequency(f.commands, "EVAL_RO")).isEqualTo(function.equals("worker.assignment.available") ? 1 : 0);
+            assertThat(Collections.frequency(f.commands, "EVAL_RO")).isZero();
             assertThat(Collections.frequency(f.commands, "HMGET")).isEqualTo(2); // Items and addresses
             assertThat(observed).hasSize(1);
             assertThat(observed.getFirst().workerIds()).containsExactlyInAnyOrderElementsOf(ids);
@@ -135,8 +135,7 @@ class AssignmentBatchIntegrationTest {
              var catalog = new RedisWorkerResourceCatalog(client, workerScores, scope.keyspace());
              var delivery = new RedisWorkerCommandRuntime(client, new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec(), scope.keyspace());
              var matching = MatchingComposition.create(client, scope.keyspace(), Map.of("g", new MatchingGroup(
-                     Set.of("any", "messaging"), Set.of("worker.any", "worker.assignment.available", "worker.messaging.phone", "worker.messaging.available"),
-                     new MatchingGroup.AssignmentWindow(60_000, 10))))) {
+                     Set.of("any", "messaging"), Set.of("worker.any", "worker.messaging.phone", "worker.messaging.available"))))) {
             proof.accept(new Fixture(scope, client, taskScores, itemScores, tasks, workerScores, catalog, delivery, matching, commands));
         } finally {
             try (var connection = client.connect()) { scope.cleanup(connection.sync()); }

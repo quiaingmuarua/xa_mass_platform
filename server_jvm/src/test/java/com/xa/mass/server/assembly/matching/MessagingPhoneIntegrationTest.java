@@ -32,8 +32,8 @@ class MessagingPhoneIntegrationTest {
     private WorkerProperties properties;
     private final List<String> commands = new CopyOnWriteArrayList<>();
     private final Map<String, MatchingGroup> groups = Map.of(
-            "direct", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone"), null),
-            "mixed", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"), null));
+            "direct", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")),
+            "mixed", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone")));
 
     @BeforeEach void setup() {
         scope = RedisTestScope.create("messaging_phone");

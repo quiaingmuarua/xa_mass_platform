@@ -47,10 +47,10 @@ class WorkerSelectorAdmissionTest {
     @Test void invalidCompositionAndTargetsFailWithoutRedis() {
         var client=mock(RedisClient.class);
         try (var storage=new FactsIndexStore(client, new RedisKeyspace("test_admission"), Map.of())) {
-            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of(), null)), System::currentTimeMillis).catalog());
-            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country"), null)), System::currentTimeMillis).catalog());
+            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("unknown"),Set.of())), System::currentTimeMillis).catalog());
+            assertThrows(IllegalArgumentException.class,()->new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.country"))), System::currentTimeMillis).catalog());
             {
-            var catalog=new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("country"),Set.of(), null)), System::currentTimeMillis).catalog();
+            var catalog=new MatchingComposition(storage, Map.of("g",new MatchingGroup(Set.of("country"),Set.of())), System::currentTimeMillis).catalog();
                 assertThrows(IllegalArgumentException.class,()->catalog.normalizeRefill("g",List.of(
                         new RefillTarget("country",new EligibilityQuery(Map.of("workerId",List.of("w"))),1))));
             }

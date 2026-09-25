@@ -22,7 +22,7 @@ class MatchingCompositionTest {
 
     @Test void directOnlyCompositionHasNoPoolOrPolicyAndAdmissionNeedsNoConnection() {
         var client = mock(RedisClient.class);
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
         try (var store = new FactsIndexStore(client, keyspace, MatchingComposition.indexedProperties(groups))) {
             var composition = new MatchingComposition(store, groups, () -> 1_000L);
             assertTrue(composition.pools().isEmpty());
@@ -50,7 +50,7 @@ class MatchingCompositionTest {
         when(connection.sync()).thenReturn(commands);
         when(commands.hmget(anyString(), eq("number"))).thenReturn(List.of(KeyValue.just("number", "w")));
         when(commands.hmget(anyString(), eq("w"))).thenReturn(List.of(KeyValue.just("w", "{}")));
-        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone", "worker.messaging.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone", "worker.messaging.phone")));
         var composition = MatchingComposition.create(client, keyspace, groups);
         var catalog = composition.catalog();
         assertSame(catalog, composition.catalog());
@@ -71,7 +71,7 @@ class MatchingCompositionTest {
     @Test void startupAndCloseDoNotOpenRedisOrRebuildIndexes() {
         var client = mock(RedisClient.class);
         try (var composition = MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null)))) {
+                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))))) {
             assertEquals(Map.of(), composition.catalog().take("g", Map.of()));
         }
         verifyNoInteractions(client);
@@ -80,7 +80,7 @@ class MatchingCompositionTest {
     @Test void partialAssemblyFailureDoesNotOpenAConnection() {
         var client = mock(RedisClient.class);
         assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.phone", "unknown"), null))));
+                Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.phone", "unknown")))));
         verifyNoInteractions(client);
     }
 
@@ -107,7 +107,7 @@ class MatchingCompositionTest {
 
     @Test void qualifiedPhoneNeedsOnlyOnePhoneIndexAndNoPoolOrGenericPhoneFunction() {
         var client = mock(RedisClient.class);
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")));
         var indexes = MatchingComposition.indexedProperties(groups);
         assertEquals(Set.of("phone"), indexes.get("g"));
         assertThrows(UnsupportedOperationException.class, indexes::clear);
@@ -127,6 +127,6 @@ class MatchingCompositionTest {
             }
         }
         assertEquals(1, MatchingComposition.indexedProperties(Map.of("g", new MatchingGroup(Set.of(),
-                Set.of("worker.phone", "worker.messaging.phone"), null))).get("g").size());
+                Set.of("worker.phone", "worker.messaging.phone")))).get("g").size());
     }
 }

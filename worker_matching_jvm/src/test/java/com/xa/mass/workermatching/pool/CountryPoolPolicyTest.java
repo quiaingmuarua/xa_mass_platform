@@ -68,7 +68,7 @@ class CountryPoolPolicyTest {
     }
     @Test void equivalentCountryTargetsMergeMaxAndCountOneUnion() {
         {
-            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"), null)), List.of("country"), Set.of());
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("country", pool), clock::get, Map.of("country",policy), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("country"),Set.of("worker.country"))), List.of("country"), Set.of());
             var target=new RefillTarget("country",country("CN","US"),3);
             var declarations=catalog.normalizeRefill("g",List.of(
                     new RefillTarget("country",country("US","CN","US"),1),target));
@@ -86,7 +86,7 @@ class CountryPoolPolicyTest {
         facts("late","HR"); // coordinate 199, beyond a 100-target first page
         var traced=spy(policy);
         {
-            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"), null)), List.of("renamed-country-policy"), Set.of());
+            var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"))), List.of("renamed-country-policy"), Set.of());
             assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
             assertEquals(1,catalog.refill("g",targets,offers("late")));

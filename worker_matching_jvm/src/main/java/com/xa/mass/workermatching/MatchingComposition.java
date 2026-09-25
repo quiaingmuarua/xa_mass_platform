@@ -7,7 +7,6 @@ import com.xa.mass.workermatching.functions.MessagingQueryFunction;
 import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.functions.AnyQueryFunction;
-import com.xa.mass.workermatching.functions.AssignmentWindowQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.pool.CandidateBudget;
@@ -42,15 +41,9 @@ public final class MatchingComposition implements AutoCloseable {
             this.groups = Map.copyOf(groups);
             var enabledPools = new HashSet<String>();
             var enabledFunctions = new HashSet<String>();
-            var windows = new LinkedHashMap<String, MatchingGroup.AssignmentWindow>();
-            var dependencies = Map.of("worker.any", "any", "worker.assignment.available", "any", "worker.country", "country",
+            var dependencies = Map.of("worker.any", "any", "worker.country", "country",
                     "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
-            groups.forEach((group, config) -> {
-                if (config.functions().contains("worker.assignment.available")) {
-                    if (config.assignmentWindow() == null)
-                        throw new IllegalArgumentException("Assignment window required for Group " + group);
-                    windows.put(group, config.assignmentWindow());
-                }
+            groups.values().forEach(config -> {
                 for (String name : config.functions()) {
                     String required = dependencies.get(name);
                     if (required != null && !config.pools().contains(required))
@@ -87,8 +80,6 @@ public final class MatchingComposition implements AutoCloseable {
                     default -> throw new IllegalStateException("Unexpected built-in Pool");
                 }
             }
-            if (!windows.isEmpty()) functions.put("worker.assignment.available",
-                    new AssignmentWindowQueryFunction(pools.get("any"), storage::readFactsSnapshot, clock, windows));
             if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
                 var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
                 if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));

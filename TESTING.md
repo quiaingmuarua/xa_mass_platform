@@ -62,17 +62,6 @@ exceptions and independent result recomputation. Boot proves bounded preview and
 Server restart reads. Its runner runs source and fresh Preview ZIP without frontend
 changes or a new performance workload; SMS/Messages retain app_count=0 fixtures.
 
-The App Checks assignment-window witness uses one real Worker and a threshold of
-one: it observes the actual allocation projection, a nonempty qualification read
-with rejected take, and execution after a real window transition plus normal
-candidate recycling. Empty stock or a busy Worker alone cannot prove rejection.
-Recovery observation is bounded at 180 seconds; deterministic function tests own
-exact time boundaries and delayed/missing projection semantics. Redis Owner covers
-snapshot command budgets, retained strict fences and read-failure consumption.
-Non-window Boot regressions and the process runner explicitly use threshold 1000,
-retain all original workloads/oracles and still execute the window function.
-Preview defaults remain 60 seconds / 10 observations, without a strict quota claim.
-
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) adds a selected
 Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the
 same Worker, receipts after Task completion/closure, duplicates, ordering and
@@ -575,9 +564,7 @@ keeps message association and first-appearance selection order. The Catalog requ
 budget rejects oversized inputs before a strategy runs; pure normalization never
 accesses injected resources. Shared Pool take and late-invalid-input tests retain
 their inventory and original-fence assertions.
-Redis Owner retains qualification command budgets and zero-Redis Pool resource polling;
-the assignment-window function additionally performs one atomic Facts snapshot for its
-entire nonempty candidate batch, including 1000 identities.
+Redis Owner retains qualification command budgets and zero-Redis Pool take.
 Runtime Boundary and Scenario Coexistence cover the new envelope through real
 Workers. Use new scopes; old direct-selector Items are deliberately unreadable.
 

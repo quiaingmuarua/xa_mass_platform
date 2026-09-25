@@ -37,7 +37,7 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var function = queryFunctions.get(name);
         if (function == null || !globalFunctions.contains(name)
-                && !groups.getOrDefault(group, new MatchingGroup(Set.of(),Set.of(), null)).functions().contains(name))
+                && !groups.getOrDefault(group, new MatchingGroup(Set.of(),Set.of())).functions().contains(name))
             throw new IllegalArgumentException("unavailable Matching function");
         return function;
     }

@@ -10,11 +10,7 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workersimulator.appchecks.AppRegistrationCheck;
 import com.xa.mass.server.assembly.pacer.WorkerObservationWitness;
 import com.xa.mass.workermatching.WorkerProperties;
-import com.xa.mass.workermatching.WorkerMatchingCatalog;
-import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.kernel.assignment.WorkerQuery;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.event.command.*;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
 import java.io.*;
@@ -27,81 +23,15 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
-    @Test @Timeout(240)
-    void observedWindowRejectsActualStockAndRecoversThroughNormalRecycling() throws Exception {
-        try (var world = new World(1, 1); var worker = world.workers("app-a-sim")) {
-            worker.start();
-            List<String> ids = world.readyFacts(worker, "app-a-sim");
-            // Leave room to witness a real rejected take in the original window, not a timing-only absence.
-            while (60_000 - System.currentTimeMillis() % 60_000 < 20_000) Thread.sleep(100);
-            String first = world.create("window-first", "app-a", 1, 1000, 1000, 0);
-            world.settled(first, 1);
-            world.assertAllocationProjection("app-a-sim", ids);
-            var before = world.context.getBean(WorkerProperties.class).loadWorkerFacts("app-a-sim", ids)
-                    .get(ids.getFirst()).platformProperties();
-            long firstWindow = ((Number) before.get("lastAssignedAt")).longValue() / 60_000;
-            assertThat(((Number) before.get("windowAssignmentCount")).longValue()).isEqualTo(1);
-            String second = world.create("window-second", "app-a", 1, 1000, 1000, 0);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
-            while (world.selections.rejectedAt.get() == 0 && System.nanoTime() < deadline) Thread.sleep(20);
-            long rejectedAt = world.selections.rejectedAt.get();
-            assertThat(rejectedAt).as("a nonempty candidate page was read and rejected by Matching; reads=%s takes=%s empty=%s",
-                    world.selections.snapshots.get(), world.selections.takes.get(), world.selections.empty.get()).isPositive();
-            assertThat(rejectedAt / 60_000).isEqualTo(firstWindow);
-            assertThat(world.observations.snapshot()).hasSize(1);
-            assertThat(task(world.get("/api/v1/app-checks/tasks/" + second))).containsEntry("activeCount", 1L);
-            // No patch, direct acquisition, synthetic supply, Score write or retry mutation helps this request.
-            var result = world.settled(second, 1, 180);
-            assertThat(task(result)).containsEntry("succeededCount", 1L);
-            world.assertAllocationProjection("app-a-sim", ids);
-            assertThat(world.observations.snapshot()).hasSize(2);
-            assertThat(world.observations.snapshot().getLast().observedAtMillis() / 60_000).isGreaterThan(firstWindow);
-            assertThat(rows(result).getFirst()).containsEntry("workerId", ids.getFirst());
-        }
-    }
-
-    /** Observes the production read and take; does not change its candidates, properties or decisions. */
-    static final class WindowSelectionWitness implements BeanPostProcessor {
-        final AtomicLong snapshots = new AtomicLong();
-        final AtomicLong rejectedAt = new AtomicLong();
-        final AtomicLong takes = new AtomicLong();
-        final AtomicLong empty = new AtomicLong();
-        @Override public Object postProcessAfterInitialization(Object bean, String name) {
-            if (bean instanceof RedisClient client) client.addListener(new CommandListener() {
-                @Override public void commandStarted(CommandStartedEvent event) {
-                    if (event.getCommand().getType().toString().equals("EVAL_RO")
-                            && event.getCommand().getArgs().toCommandString().contains(":matching:worker:platform-properties:app-a-sim"))
-                        snapshots.incrementAndGet();
-                }
-            });
-            if (!(bean instanceof WorkerMatchingCatalog catalog)) return bean;
-            var witnessed = spy(catalog);
-            doAnswer(call -> {
-                long before = snapshots.get();
-                @SuppressWarnings("unchecked") var result = (Map<String, WorkerCandidate>) call.callRealMethod();
-                Map<String, WorkerQuery> inputs = call.getArgument(1);
-                if (!inputs.isEmpty()) { takes.incrementAndGet(); if (result.isEmpty()) empty.incrementAndGet(); }
-                if ("app-a-sim".equals(call.getArgument(0)) && !inputs.isEmpty()
-                        && inputs.values().stream().allMatch(query -> query.executorName().equals("worker.assignment.available"))
-                        && result.isEmpty() && snapshots.get() > before)
-                    rejectedAt.compareAndSet(0, System.currentTimeMillis());
-                return result;
-            }).when(witnessed).take(anyString(), anyMap());
-            return witnessed;
-        }
-    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"1000,1000,0,false", "0,0,0,true", "1000,1000,6000,false"})
     @Timeout(90)
@@ -136,8 +66,6 @@ class AppChecksIntegrationTest {
     void realHandlersIsolateAppsThrowFailuresAndRetainResultsAcrossServerRestart() throws Exception {
         try (var world = new World(); var a = world.workers("app-a-sim"); var b = world.workers("app-b-sim")) {
             a.start(); b.start();
-            world.readyFacts(a, "app-a-sim");
-            world.readyFacts(b, "app-b-sim");
             String registered = world.create("registered", "app-a", 101, 1000, 1000, 0);
             String unregistered = world.create("unregistered", "app-a", 4, 0, 1000, 0);
             String failed = world.create("failed", "app-b", 2, 0, 0, 0);
@@ -205,25 +133,16 @@ class AppChecksIntegrationTest {
         final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         final Queue<Attempt> attempts = new ConcurrentLinkedQueue<>();
         final WorkerObservationWitness observations = new WorkerObservationWitness();
-        final WindowSelectionWitness selections = new WindowSelectionWitness();
-        final List<String> replicas;
         final URI base;
         final SpringApplication application = new SpringApplication(ServerBootConfiguration.class);
         final String[] arguments;
         ConfigurableApplicationContext context;
         int sequence;
         World() throws Exception {
-            this(1000, 2);
-        }
-        World(long maxAssignments, int workerCount) throws Exception {
-            replicas = IntStream.range(0, workerCount).mapToObj(i -> "replica-" + i).toList();
             int port = port(), adapter = port(); base = URI.create("http://127.0.0.1:" + port);
             application.setRegisterShutdownHook(false);
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
-            application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
             arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.worker-matching.groups.app-a-sim.assignment-window.max-assignments=" + maxAssignments,
-                    "--xa.mass.worker-matching.groups.app-b-sim.assignment-window.max-assignments=" + maxAssignments,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
@@ -237,7 +156,7 @@ class AppChecksIntegrationTest {
         JavaWorkerManager workers(String group, CountDownLatch entered, CountDownLatch release) {
             var reference = new AtomicReference<JavaWorkerManager>();
             var builder = JavaWorkerManager.builder(base, group, WorkerTransportType.WEBSOCKET);
-            for (String replica : replicas) {
+            for (String replica : List.of("one", "two")) {
                 var actual = AppRegistrationCheck.definition(group, () -> reference.get().snapshot(replica).workerId());
                 var witnessed = WorkerEventDefinition.extension("app.registration.check", WorkerEventParameterResolvers.jsonMap(), input -> {
                     long start = System.nanoTime(); boolean failed = false;
@@ -260,10 +179,10 @@ class AppChecksIntegrationTest {
         List<String> readyFacts(JavaWorkerManager manager, String group) throws Exception {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
             do {
-                var ids = replicas.stream().map(replica -> manager.snapshot(replica).workerId())
+                var ids = List.of("one", "two").stream().map(replica -> manager.snapshot(replica).workerId())
                         .filter(Objects::nonNull).toList();
-                if (ids.size() == replicas.size() && context.getBean(WorkerProperties.class).loadWorkerFacts(group, ids).values().stream()
-                        .filter(Objects::nonNull).count() == replicas.size()) return ids;
+                if (ids.size() == 2 && context.getBean(WorkerProperties.class).loadWorkerFacts(group, ids).values().stream()
+                        .filter(Objects::nonNull).count() == 2) return ids;
                 Thread.sleep(20);
             } while (System.nanoTime() < deadline);
             throw new AssertionError("Worker Facts publication was not established");
@@ -305,10 +224,7 @@ class AppChecksIntegrationTest {
             return (String) Jsons.parseObject(response.body()).get("taskId");
         }
         Map<String, Object> settled(String id, int total) throws Exception {
-            return settled(id, total, 45);
-        }
-        Map<String, Object> settled(String id, int total, long seconds) throws Exception {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
             do {
                 var detail = get("/api/v1/app-checks/tasks/" + id); var task = task(detail);
                 if (Long.valueOf(total).equals(task.get("totalCount")) && Long.valueOf(0).equals(task.get("activeCount"))
