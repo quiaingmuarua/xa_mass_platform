@@ -70,7 +70,6 @@ class MessagingPhoneIntegrationTest {
         assertThatThrownBy(found::clear).isInstanceOf(UnsupportedOperationException.class);
         assertThat(catalog.observeRefillDeficits(Map.of("direct", List.of()))).isEmpty();
 
-        for (int i = 100; i < 1000; i++) requests.put("m" + i, query("extra" + i));
         requests.put("overflow", query("extra")); commands.clear();
         assertThatThrownBy(() -> catalog.take("direct", requests)).isInstanceOf(IllegalArgumentException.class);
         assertThat(commands).isEmpty();

@@ -70,11 +70,11 @@ class PoolQueryFunctionTest {
                         Map.of(), Map.of("country", new CountryQueryFunction(pool), "workerId", identity),
                         Map.of("g", new MatchingGroup(Set.of(), Set.of("country"), null)), List.of(), Set.of("workerId"));
             var oversized = new LinkedHashMap<String, WorkerQuery>();
-            for (int i = 0; i <= 1000; i++) oversized.put("m" + i, new WorkerQuery("workerId", "w" + i));
+            for (int i = 0; i <= 100; i++) oversized.put("m" + i, new WorkerQuery("workerId", "w" + i));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", oversized));
             verifyNoInteractions(identity);
-            oversized.remove("m1000");
-            assertEquals(1000, catalog.take("g", oversized).size());
+            oversized.remove("m100");
+            assertEquals(100, catalog.take("g", oversized).size());
 
             var invalid = new LinkedHashMap<String, WorkerQuery>();
             invalid.put("good", new WorkerQuery("country", List.of("CN")));

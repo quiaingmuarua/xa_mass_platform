@@ -27,7 +27,7 @@ public interface WorkerScoreCore {
 
     /**
      * Reads the head of the current due HOT range, with mark=0.
-     * Returns an immutable map in ascending score/member order. The caller supplies a positive raw-row limit;
+     * Returns an immutable map in ascending score/member order. Limit is 1..100 raw rows;
      * corrupt rows are omitted without scanning replacements or changing stored scores.
      * Successful candidateization moves candidates out of this range; observation alone does not.
      */

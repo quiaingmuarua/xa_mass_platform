@@ -542,8 +542,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 .containsEntry("w", worker("w", "g", "endpoint"))
                 .containsEntry("missing", null).containsEntry("wrong-group", null);
         var tooMany = java.util.stream.IntStream.range(0, 101).mapToObj(i -> "w" + i).toList();
-        assertThat(catalog.getWorkerDescriptors(tooMany)).hasSize(101);
-        assertThat(catalog.getWorkerDescriptorsAsync(tooMany).join()).hasSize(101);
+        assertThatThrownBy(() -> catalog.getWorkerDescriptors(tooMany)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.getWorkerDescriptorsAsync(tooMany)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> catalog.registerWorkers("g", List.of("w", "w"), "e")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> catalog.registerWorkers("g", tooMany, "e")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> catalog.registerWorkers("g", List.of(), "e")).isInstanceOf(IllegalArgumentException.class);
@@ -573,7 +573,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         sampled.forEach((id, descriptor) ->
                 assertThat(descriptor).isEqualTo(worker(id, "preview-group", "endpoint")));
         assertThat(catalog.sampleWorkerDescriptors("preview-group", 1)).hasSize(1);
-        assertThat(catalog.getWorkerDescriptors(ids.subList(0, 1000))).hasSize(1000);
+        assertThatThrownBy(() -> catalog.getWorkerDescriptors(ids.subList(0, 101)))
+                .isInstanceOf(IllegalArgumentException.class);
         for (int limit : List.of(0, 1001)) {
             assertThatThrownBy(() -> catalog.sampleWorkerDescriptors("preview-group", limit))
                     .isInstanceOf(IllegalArgumentException.class);
@@ -1044,7 +1045,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(redis.zcard(scoreKey("bad-head"))).isEqualTo(101);
         assertThat(redis.zscore(scoreKey("bad-head"), "valid-tail")).isEqualTo((double) eligible + 1);
         assertThat(scoreCore.observeDueHotScoreCandidates("absent", null, 100)).isEmpty();
-        for (int limit : new int[]{0, -1}) {
+        for (int limit : new int[]{0, 101}) {
             assertThatThrownBy(() -> scoreCore.observeDueHotScoreCandidates("g", null, limit))
                     .isInstanceOf(IllegalArgumentException.class);
         }

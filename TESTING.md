@@ -264,23 +264,6 @@ uncommitted deletions so package moves fail locally before CI. Kernel Worker
 registration, Server Endpoint configuration and Prepare select both Java Worker
 Correctness and Android Worker Proof after the Binding ownership move.
 
-## Assignment ceiling proof
-
-The instance Pacer assignment ceiling defaults to 100 and permits 1..1000.
-Pacer tests cover raw-row charging, small/zero deficits, non-divisor round
-remainders, and independent supply/recycling rotation. Redis Owner exercises
-101 and 1000 Items through real candidateization, Matching qualification,
-address reads, lease acquisition, claim and Command publication, plus whole
-batches of expired/exhausted Item failure settlement. Qualification retains one
-atomic Worker/Platform snapshot. WorkerObservation tests retain the Properties
-Owner's read budget across a 1000-identity notification. Existing tracked and
-Runtime proofs retain their independent claims.
-
-Call Performance's explicit `--assignment-batch-limit` comparison uses the same
-new artifacts and fixed `rpc-any-2000` world; see its Owner for pair ordering,
-JFR separation and evidence requirements. It adds no heavy ordinary CI lane,
-changes no scheduled default and cannot replace selected correctness proofs.
-
 ## Lane Index
 
 | Lane | Primary command | External dependency |
@@ -576,8 +559,7 @@ budget rejects oversized inputs before a strategy runs; pure normalization never
 accesses injected resources. Shared Pool take and late-invalid-input tests retain
 their inventory and original-fence assertions.
 Redis Owner retains qualification command budgets and zero-Redis Pool resource polling;
-the assignment-window function additionally performs one atomic Facts snapshot for its
-entire nonempty candidate batch, including 1000 identities.
+the assignment-window function additionally performs one Facts snapshot per nonempty read page.
 Runtime Boundary and Scenario Coexistence cover the new envelope through real
 Workers. Use new scopes; old direct-selector Items are deliberately unreadable.
 

@@ -92,17 +92,15 @@ class DispatchBudgetTest {
         verify(dispatch, times(2)).dispatchTasks(anyList());
     }
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 100, 101, 333, 1000})
-    void oneTaskChecksAtMostConfiguredItemsPerRoundAndLeavesTheRestForLater(int batchLimit) {
+    @Test void oneTaskChecksAtMostOneHundredItemsPerRoundAndLeavesTheRestForLater() {
         var scores = mock(TaskItemScoreBandCore.class);
         var runtime = mock(TaskRuntime.class);
         var pending = new LinkedHashMap<String, TaskItemScoreBandCore.TaskItemScoreObservation>();
-        for (int i = 0; i < batchLimit + 1; i++) pending.put("item-" + i, new TaskItemScoreBandCore.TaskItemScoreObservation(123L, 0));
+        for (int i = 0; i < 101; i++) pending.put("item-" + i, new TaskItemScoreBandCore.TaskItemScoreObservation(123L, 0));
         var observedSizes = new ArrayList<Integer>();
         when(scores.acquireItemScoreCandidates(eq("task"), anyInt())).thenAnswer(call -> {
             int limit = call.getArgument(1);
-            assertEquals(batchLimit, limit);
+            assertEquals(100, limit);
             var page = new LinkedHashMap<String, TaskItemScoreBandCore.TaskItemScoreObservation>();
             pending.entrySet().stream().limit(limit).forEach(e -> page.put(e.getKey(), e.getValue()));
             observedSizes.add(page.size());
@@ -112,13 +110,13 @@ class DispatchBudgetTest {
                 .when(runtime).storeTaskItemFailedResults(eq("task"), anyList());
         var policy = new TaskDispatchPolicy(mock(TaskScoreBandCore.class), scores, runtime,
                 mock(TaskAssignmentDispatcher.class), mock(TaskIdleSettlement.class),
-                mock(WorkerCandidateSelectionPolicy.class), batchLimit, 5, () -> 1_000L);
+                mock(WorkerCandidateSelectionPolicy.class), 5, () -> 1_000L);
         var input = List.of(new ObservedTask(descriptor(), 123L));
         policy.dispatchTasks(input);
-        assertEquals(Set.of("item-" + batchLimit), pending.keySet());
+        assertEquals(Set.of("item-100"), pending.keySet());
         policy.dispatchTasks(input);
         assertTrue(pending.isEmpty());
-        assertEquals(List.of(batchLimit, 1), observedSizes);
+        assertEquals(List.of(100, 1), observedSizes);
     }
 
     @Test void serviceabilityUsesTheNextExistingTaskObservationAfterAnEmptyPage() {

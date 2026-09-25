@@ -80,10 +80,6 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Ordered Result writes preserve maximum tag then reported milliseconds,
   including same-slot replies. Heterogeneous 100-Item observations cost one
   Score Lua plus zero or one Result Lua; missing/corrupt Items create no content.
-  Assignment-ceiling composition additionally executes 101/1000 candidate and
-  Item batches through qualification, address lookup, lease, claim and mailbox
-  publication. It verifies full failed-Result/Score settlement for expired and
-  exhausted batches, without widening independent registration/Properties inputs.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
 - **Contract:** [Server verification](../../server_jvm/README.md#verification).
 

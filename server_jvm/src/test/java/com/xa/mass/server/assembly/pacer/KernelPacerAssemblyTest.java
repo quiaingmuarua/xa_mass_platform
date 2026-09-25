@@ -66,12 +66,12 @@ class KernelPacerAssemblyTest {
         assertThatThrownBy(() -> new KernelPacerProperties(
                 true,
                 null,
-                Duration.ofSeconds(1), 100
+                Duration.ofSeconds(1)
         )).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new KernelPacerProperties(
                 true,
                 KernelPacerRuntime.PolicyPreset.DEFAULT,
-                Duration.ZERO, 100
+                Duration.ZERO
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -79,7 +79,7 @@ class KernelPacerAssemblyTest {
         return new KernelPacerProperties(
                 enabled,
                 KernelPacerRuntime.PolicyPreset.DEFAULT,
-                Duration.ofSeconds(1), 100
+                Duration.ofSeconds(1)
         );
     }
 

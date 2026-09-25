@@ -191,9 +191,7 @@ A terminal promotion invalidates every prior ACTIVE observation.
 ### Terminal Outcome Promotion
 
 `promoteItemOutcomes(taskId, targets)` accepts an ordered Map from Message ID to
-`TaskItemOutcomeTarget(tag, timeMillis)` in a caller-bounded collection.
-Promotion uses one Lua for the complete prepared input, including a 1000-Item
-Dispatch failure batch; the independent state-read budget remains 100. Each Item may
+`TaskItemOutcomeTarget(tag, timeMillis)`, with at most 100 entries. Each Item may
 have a different terminal tag and time. Java validates each target and encodes
 its score with suffix 0; invalid entries return INVALID without blocking valid
 entries. An invalid Task ID or oversized batch rejects the entire batch. One same-key Lua
@@ -570,7 +568,7 @@ details as public kernel contracts.
 [`RedisTaskItemScoreBandCore`](../../src/main/java/com/xa/mass/kernel/score/redis/RedisTaskItemScoreBandCore.java)
 implements the complete surface. Initialization retains pipelined `ZADD NX`;
 acquisition remains a bounded ACTIVE range read; claims keep their exact CAS.
-Terminal promotion uses one Lua for the caller-bounded input collection.
+Terminal promotion uses one Lua for up to 100 IDs.
 
 `getItemScoreStates(taskId, messageIds)` accepts at most 100 IDs and returns an
 ordered deduplicated map from one `ZMSCORE`. Missing members map to null.

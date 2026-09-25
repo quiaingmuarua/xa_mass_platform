@@ -218,7 +218,7 @@ public final class RedisTaskItemScoreBandCore
         if (targets.isEmpty()) {
             return Map.of();
         }
-        if (isBlank(taskId)) {
+        if (isBlank(taskId) || targets.size() > MAX_ITEM_BATCH_SIZE) {
             return uniformResults(
                     targets.keySet(),
                     TaskItemScoreTransitionStatus.INVALID

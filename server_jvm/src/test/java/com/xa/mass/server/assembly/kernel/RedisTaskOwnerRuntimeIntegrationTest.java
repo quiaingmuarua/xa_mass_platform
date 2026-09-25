@@ -1423,7 +1423,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 .isInstanceOf(IllegalArgumentException.class);
         var oversized = IntStream.range(0, 101).mapToObj(i -> "id-" + i).toList();
         assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(oversized, 2, 0)).values())
-                .allMatch(result -> result.status() == NOT_FOUND);
+                .allMatch(result -> result.status() == INVALID);
         assertThatThrownBy(() -> itemScoreCore.getItemScoreStates("outcomes", oversized))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(redis.zcard(key)).isEqualTo(1);

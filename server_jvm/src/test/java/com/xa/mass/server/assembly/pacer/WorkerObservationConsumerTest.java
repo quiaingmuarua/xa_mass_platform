@@ -142,9 +142,7 @@ class WorkerObservationConsumerTest {
         verifyNoMoreInteractions(scheduling);
     }
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(ints = {205, 1000})
-    void readComputeAndWriteFailuresAreIsolatedAndThePropertiesReadBudgetIsOwnedByProperties(int size) throws Exception {
+    @Test void readComputeAndWriteFailuresAreIsolatedAndThePropertiesReadBudgetIsOwnedByProperties() throws Exception {
         var complete = new CountDownLatch(1);
         var pages = new ArrayList<List<String>>();
         when(properties.loadWorkerFacts(eq("g"), anyList())).thenAnswer(call -> {
@@ -157,7 +155,7 @@ class WorkerObservationConsumerTest {
         when(properties.patchWorkerPlatformProperties(eq("g"), anyString(), anyMap())).thenAnswer(call -> {
             String worker = call.getArgument(1);
             if (worker.equals("w103")) throw new IllegalStateException("write failed");
-            if (worker.equals("w" + (size - 1))) complete.countDown();
+            if (worker.equals("w204")) complete.countDown();
             return new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.APPLIED);
         });
         var consumer = consumer(projection("g", "event", (current, times) -> {
@@ -166,16 +164,15 @@ class WorkerObservationConsumerTest {
         }));
         consumer.start();
         try {
-            consumer.accept(new WorkerObservation("g", IntStream.range(0, size).mapToObj(i -> "w" + i).toList(),
+            consumer.accept(new WorkerObservation("g", IntStream.range(0, 205).mapToObj(i -> "w" + i).toList(),
                     123, "event", "worker.assigned"));
             await(complete);
         } finally { consumer.stop(); }
-        assertThat(pages).allSatisfy(page -> assertThat(page.size()).isLessThanOrEqualTo(100));
-        assertThat(pages.stream().mapToInt(List::size).sum()).isEqualTo(size);
+        assertThat(pages.stream().map(List::size)).containsExactly(100, 100, 5);
         verify(properties, never()).patchWorkerPlatformProperties(eq("g"), eq("w101"), anyMap());
         verify(properties, never()).patchWorkerPlatformProperties(eq("g"), eq("w102"), anyMap());
         verify(properties).patchWorkerPlatformProperties(eq("g"), eq("w103"), anyMap());
-        verify(properties).patchWorkerPlatformProperties("g", "w" + (size - 1), Map.of("observed", 123L));
+        verify(properties).patchWorkerPlatformProperties("g", "w204", Map.of("observed", 123L));
     }
 
     @Test void fullQueueDropsWholeBatchesAndCloseDiscardsBacklogWithoutFlush() throws Exception {

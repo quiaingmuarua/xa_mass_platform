@@ -132,11 +132,11 @@ class AssignmentWindowQueryFunctionTest {
         assertEquals(window(120_000L, 1), facts.get("w").platformProperties());
     }
 
-    @Test void completeQualificationUsesOneSnapshotWithoutAddingAnExecutorLimit() {
-        int count = 1000;
+    @Test void qualificationChunksByFactsOwnerBudgetWithoutAddingAnExecutorLimit() {
+        int count = WorkerProperties.MAX_BATCH_SIZE + 1;
         IntStream.range(0, count).forEach(i -> offer("w" + i, Map.of()));
         assertEquals(count, function.apply("g", requests(count)).size());
-        assertEquals(List.of(count), reads.stream().map(List::size).toList());
+        assertEquals(List.of(WorkerProperties.MAX_BATCH_SIZE, 1), reads.stream().map(List::size).toList());
     }
 
     @Test void compositionSharesAnyStockAndRejectsTheEntireInvalidBatchBeforeConsumption() {

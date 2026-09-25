@@ -159,7 +159,6 @@ class AssignmentPacersTest {
                 dispatcher,
                 mock(TaskIdleSettlement.class),
                 selection,
-                100,
                 5,
                 () -> 1_000L
         );

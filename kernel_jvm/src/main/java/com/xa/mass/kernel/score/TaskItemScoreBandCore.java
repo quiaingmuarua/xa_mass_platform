@@ -47,7 +47,7 @@ public interface TaskItemScoreBandCore {
 
     /**
      * Advances existing members to a terminal tag (2..9) only when the encoded
-     * target is greater. Caller-bounded per-Item targets retain input order.
+     * target is greater. At most 100 per-Item targets, in input order.
      * Missing or corrupt members are never created or overwritten.
      */
     Map<String, TaskItemScoreTransitionResult> promoteItemOutcomes(

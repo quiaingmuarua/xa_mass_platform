@@ -18,6 +18,7 @@ import java.util.function.LongSupplier;
 
 final class TaskDispatchPolicy {
 
+    static final int PER_TASK_DISPATCH_LIMIT = 100;
     static final long ITEM_CLAIM_LEASE_MILLIS = 5_000;
 
     private final TaskScoreBandCore taskScores;
@@ -28,7 +29,6 @@ final class TaskDispatchPolicy {
     private final WorkerCandidateSelectionPolicy candidateSelection;
     private final LongSupplier currentTimeMillis;
     private final int failedOutcomeTag;
-    private final int assignmentBatchLimit;
     // Bounded ordering hint only. Immutable snapshots also tolerate a cancelled
     // producer finishing during a Pacer restart; it may only replace this hint.
     private volatile List<String> recentlyServedTaskIds = List.of();
@@ -40,7 +40,6 @@ final class TaskDispatchPolicy {
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
             WorkerCandidateSelectionPolicy candidateSelection,
-            int assignmentBatchLimit,
             int failedOutcomeTag
     ) {
         this(
@@ -50,7 +49,6 @@ final class TaskDispatchPolicy {
                 assignmentDispatcher,
                 idleSettlement,
                 candidateSelection,
-                assignmentBatchLimit,
                 failedOutcomeTag,
                 System::currentTimeMillis
         );
@@ -63,7 +61,6 @@ final class TaskDispatchPolicy {
             TaskAssignmentDispatcher assignmentDispatcher,
             TaskIdleSettlement idleSettlement,
             WorkerCandidateSelectionPolicy candidateSelection,
-            int assignmentBatchLimit,
             int failedOutcomeTag,
             LongSupplier currentTimeMillis
     ) {
@@ -75,7 +72,6 @@ final class TaskDispatchPolicy {
             throw new IllegalArgumentException("failedOutcomeTag must be in 2..9");
         }
         this.failedOutcomeTag = failedOutcomeTag;
-        this.assignmentBatchLimit = assignmentBatchLimit;
         this.assignmentDispatcher = Objects.requireNonNull(
                 assignmentDispatcher,
                 "assignmentDispatcher"
@@ -111,7 +107,7 @@ final class TaskDispatchPolicy {
             Map<String, TaskItemScoreObservation> observed =
                     itemScores.acquireItemScoreCandidates(
                             task.taskId(),
-                            assignmentBatchLimit
+                            PER_TASK_DISPATCH_LIMIT
                     );
             DispatchStageEvent.items(checkedAt, "DISPATCH_CHECK", task.taskId(), observed.keySet(), observed.size(), false);
             List<String> loadIds = observed.entrySet().stream()

@@ -4,6 +4,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.MatchingGroup.AssignmentWindow;
 import com.xa.mass.workermatching.QueryFunction;
 import com.xa.mass.workermatching.RuleInputs;
+import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.math.BigDecimal;
@@ -43,7 +44,11 @@ public final class AssignmentWindowQueryFunction implements QueryFunction {
             candidates.putIfAbsent(candidate.workerId(), candidate);
         if (candidates.isEmpty()) return Map.of();
         var ids = List.copyOf(candidates.keySet());
-        var facts = readFacts.apply(group, ids);
+        var facts = new HashMap<String, WorkerFacts>();
+        for (int offset = 0; offset < ids.size(); offset += WorkerProperties.MAX_BATCH_SIZE) {
+            var page = ids.subList(offset, Math.min(ids.size(), offset + WorkerProperties.MAX_BATCH_SIZE));
+            facts.putAll(readFacts.apply(group, page));
+        }
         long window = Math.floorDiv(clock.getAsLong(), policy.windowMillis());
         var messages = inputs.keySet().iterator();
         var result = new LinkedHashMap<String, WorkerCandidate>();

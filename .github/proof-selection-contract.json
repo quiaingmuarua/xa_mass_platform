@@ -1239,20 +1239,6 @@
         "product_coexistence"
       ],
       "reason": "Fixed assignment-window qualification and Group configuration retain Matching and scenario proof selection."
-    },
-    {
-      "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/KernelPacerProperties.java",
-      "lanes": [
-        "jvm_contracts",
-        "redis_owner",
-        "runtime_boundary",
-        "worker_dynamic_matching",
-        "worker_convergence_health",
-        "android_emulator",
-        "runtime_distribution",
-        "product_coexistence"
-      ],
-      "reason": "Assignment ceiling admission and demand-driven supply retain the existing scheduling, Matching and delivery proof selection."
     }
   ]
 }

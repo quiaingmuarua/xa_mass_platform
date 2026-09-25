@@ -126,7 +126,7 @@ class TaskDispatchProgressTest {
                 return assignments.size();
             });
             policy = new TaskDispatchPolicy(mock(TaskScoreBandCore.class), itemScores, runtime, dispatcher,
-                    mock(TaskIdleSettlement.class), selection, 100, 5, () -> 1_000L);
+                    mock(TaskIdleSettlement.class), selection, 5, () -> 1_000L);
         }
     }
 }

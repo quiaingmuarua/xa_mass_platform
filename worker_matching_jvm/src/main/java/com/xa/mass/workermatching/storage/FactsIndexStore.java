@@ -154,8 +154,8 @@ public final class FactsIndexStore implements WorkerProperties, AutoCloseable {
     public String workerFactsKey(String group) { return keyspace.base() + ":matching:worker:facts:" + group; }
     /** Internal supply read: one bounded Worker HASH read, no Platform facts or index scan. */
     public Map<String, Map<String, Object>> readWorkerFacts(String group, List<String> ids) {
-        if (new HashSet<>(ids).size() != ids.size())
-            throw new IllegalArgumentException("unique Worker identities required");
+        if (ids.size() > 100 || new HashSet<>(ids).size() != ids.size())
+            throw new IllegalArgumentException("at most 100 unique Worker identities");
         if (ids.isEmpty()) return Map.of();
         var result = new LinkedHashMap<String, Map<String, Object>>();
         for (var value : commands().hmget(workerFactsKey(group), ids.toArray(String[]::new)))
@@ -168,8 +168,8 @@ public final class FactsIndexStore implements WorkerProperties, AutoCloseable {
 
     /** Internal qualification snapshot. Both HASH reads share one Redis execution; corrupt present facts fail the batch. */
     public Map<String, WorkerFacts> readFactsSnapshot(String group, List<String> ids) {
-        if (new HashSet<>(ids).size() != ids.size())
-            throw new IllegalArgumentException("unique Worker identities required");
+        if (ids.size() > 100 || new HashSet<>(ids).size() != ids.size())
+            throw new IllegalArgumentException("at most 100 unique Worker identities");
         if (ids.isEmpty()) return Map.of();
         List<List<String>> rows = commands().evalReadOnly(FACTS_SNAPSHOT, ScriptOutputType.MULTI,
                 new String[]{workerFactsKey(group), workerPlatformFactsKey(group)}, ids.toArray(String[]::new));

@@ -41,7 +41,6 @@ public final class DispatchConvergenceRuntime {
     public static DispatchConvergenceRuntime assemble(
             PolicyPreset preset,
             long hotEligibilityFloorMillis,
-            int assignmentBatchLimit,
             int failedOutcomeTag,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
@@ -74,7 +73,7 @@ public final class DispatchConvergenceRuntime {
                 : serviceabilityConfig.hotEligibilityFloorMillis();
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(workerCatalog, workerMatching);
-        WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores, workerMatching, assignmentHotFloor, assignmentBatchLimit,
+        WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores, workerMatching, assignmentHotFloor,
                 preset == PolicyPreset.RUNTIME_BOUNDARY_PROOF ? 10 : WorkerEligibilityRefillPolicy.CANDIDATE_RECYCLE_AFTER_MILLIS,
                 System::currentTimeMillis);
         TaskInitializationPolicy initialization =
@@ -101,7 +100,6 @@ public final class DispatchConvergenceRuntime {
                 assignmentDispatcher,
                 idleSettlement,
                 candidateSelection,
-                assignmentBatchLimit,
                 failedOutcomeTag
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =

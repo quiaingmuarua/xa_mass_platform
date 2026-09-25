@@ -30,27 +30,24 @@ Main Group roots and NORMAL Task supply declarations
 ```
 
 Candidateize accepts only exact due ordinary HOT. Its T stays unchanged and may
-be old; it is a generation coordinate, not an admission timestamp. Pacer requests
-`min(instance assignment ceiling, positive Matching deficit, remaining round budget)`
-raw candidates per Group, charging requested rows against 1000 per round. The
-ceiling defaults to 100 and permits 1..1000; it creates no refill demand. Separate
-100-per-Group/1000-per-round maintenance recycles old mark=1 into HOT 0/RedisNow.
-Supply and recycling retain independent bounded Group rotation hints.
-Recycling advances generation to invalidate
+be old; it is a generation coordinate, not an admission timestamp. Pacer attempts
+at most 100 candidates per Group and 1000 per round. A separate equal-sized budget
+recycles old mark=1 into HOT 0/RedisNow. Recycling advances generation to invalidate
 old fences and prevent the same old head from immediately recycling again.
 Both reads honor Assignment's optional startup floor, Group rotation and raw-row
 budgets. No Worker cursor or new thread exists.
 
 Default candidate age and Pool local TTL are each 60 seconds, owned separately.
-Pool TTL starts at actual admission, not from T. Entries are immutable occurrences;
-offers do not refresh, deduplicate, replace or remove older entries. Capacity
-bounds admission, and expired entries cannot be taken. A previously taken candidate
+Pool TTL starts at actual admission, not from T. Repeated supply of the same
+Worker/fence neither counts again nor extends TTL. A requalified new fence replaces
+the old entry/views even at full storage capacity; a changed fence which no longer
+matches removes the old entry. Stale local selection references cannot consume a
+later replacement. Expired entries cannot be taken; a previously taken candidate
 is governed only by final exact and due checks, not by the local TTL.
 
 A Pacer-issued generation enters at most one Pool; accepted identities leave
 the input offered to subsequent Pools. Catalog rotates Pool attempts and counts actual accepted entries
-against the admitted input collection, at most 1000 supplied identities. Internal
-maintenance has no second fixed quantity ceiling; it does not promise all Pools fill in one call.
+against its 100-entry call budget; it does not promise all Pools fill in one call.
 Direct execution acquisition does not notify a Pool or remove its cached entry;
 a later strict acquisition rejects the obsolete fence. Matching reads no Worker
 Score and cannot renew, acquire, decode or substitute a

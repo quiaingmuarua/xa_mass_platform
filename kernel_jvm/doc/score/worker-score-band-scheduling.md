@@ -101,11 +101,8 @@ and encode batch results; time-dependent scripts share the Redis clock helper.
 | Advance past times | For legal past values outside cold RECOVERY, write Redis current time; clear HOT mark, preserve RECOVERY mark and polarity |
 | Current polarity correction | Apply fixed evidence-time fence and optional minimum activation time |
 
-Candidateization accepts caller-bounded same-Group observations in one Lua;
-ordinary HOT reads use the caller's positive raw-row limit. Neither inherits a
-Pacer policy ceiling. Execution leases retain 100-member Lua chunks; independent
-registration, network evidence and Properties budgets remain at their own entries.
-Per-member release pipelines and TIME sampling positions remain. Candidateize,
+Writes handle at most 100 same-Group members per Lua. Existing lease splitting,
+per-member release pipelines and TIME sampling positions remain. Candidateize,
 recycle and Properties each sample TIME once per batch; pause samples none.
 There are no preceding point reads or conflict retries. Serviceability's two
 mark ranges explicitly increase bounded read work; other paths retain their

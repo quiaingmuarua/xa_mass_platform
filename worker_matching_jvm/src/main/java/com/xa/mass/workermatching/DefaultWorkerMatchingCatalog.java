@@ -9,8 +9,7 @@ import java.util.function.LongSupplier;
 
 /** Pure query admission/correlation with caller-driven Pool supply coordination. */
 public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog {
-    private static final int MAX_TAKE_REQUESTS = 1_000;
-    private static final int MAX_REFILL_CANDIDATES = 1_000;
+    private static final int MAX_TAKE_REQUESTS = 100;
     private final Map<String, QueryFunction> queryFunctions;
     private final Map<String, MatchingGroup> groups;
     private final Set<String> globalFunctions;
@@ -85,9 +84,6 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
     }
 
     @Override public int refill(String group, List<RefillTarget> declarations, Map<String, Long> offered) {
-        Objects.requireNonNull(offered, "offeredCandidates");
-        if (offered.size() > MAX_REFILL_CANDIDATES)
-            throw new IllegalArgumentException("at most " + MAX_REFILL_CANDIDATES + " candidate Workers");
         return refillCoordinator.refill(group, declarations, offered);
     }
 

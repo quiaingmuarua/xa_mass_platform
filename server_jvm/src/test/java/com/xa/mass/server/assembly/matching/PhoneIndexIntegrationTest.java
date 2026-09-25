@@ -189,11 +189,11 @@ class PhoneIndexIntegrationTest {
 
     @Test void invalidLateInputDoesNotExecuteEarlierLookupAndBatchRemainsBounded() {
         var input = new LinkedHashMap<String, WorkerQuery>();
-        for (int i = 0; i < 1000; i++) input.put("m" + i, new WorkerQuery("worker.phone", "+" + i));
+        for (int i = 0; i < 100; i++) input.put("m" + i, new WorkerQuery("worker.phone", "+" + i));
         commands.clear(); assertThat(catalog.take("g", input)).isEmpty(); assertThat(commands).containsExactly("HMGET");
-        input.put("m1001", new WorkerQuery("workerId", "w")); commands.clear();
+        input.put("m101", new WorkerQuery("workerId", "w")); commands.clear();
         assertThatThrownBy(() -> catalog.take("g", input)).isInstanceOf(IllegalArgumentException.class);
-        assertThat(commands).isEmpty(); input.remove("m1001"); input.put("m999", new WorkerQuery("workerId", " "));
+        assertThat(commands).isEmpty(); input.remove("m101"); input.put("m99", new WorkerQuery("workerId", " "));
         assertThatThrownBy(() -> catalog.take("g", input)).isInstanceOf(IllegalArgumentException.class);
         assertThat(commands).isEmpty();
     }

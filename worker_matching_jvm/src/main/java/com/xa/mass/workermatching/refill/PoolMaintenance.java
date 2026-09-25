@@ -53,7 +53,8 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             Map<String, Long> offered, int maxAccepted) {
         var normalized = targets(group, targets);
         Objects.requireNonNull(offered);
-        if (maxAccepted < 0) throw new IllegalArgumentException("maxAccepted must be nonnegative");
+        if (offered.size() > 100 || maxAccepted < 0 || maxAccepted > 100)
+            throw new IllegalArgumentException("at most 100 offers and maxAccepted in 0..100");
         offered.forEach((id, score) -> {
             identity(id);
             if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required");

@@ -91,14 +91,12 @@ class WorkerCandidateSelectionPolicyTest {
         assertTrue(policy.takeCandidates("g",Map.of("next",any),round).isEmpty());
         verify(catalog,times(1)).getWorkerDescriptors(anyList());
     }
-    @Test void emptyBatchSkipsOwnersAndNonemptyBatchUsesMatchingAdmission() {
+    @Test void emptyAndOversizedBatchesDoNotReachOwners() {
         assertTrue(policy.takeCandidates("g",Map.of(),new HashSet<>()).isEmpty());
-        verifyNoInteractions(matching,catalog);
         var items=new LinkedHashMap<String,WorkerQuery>();
-        for(int i=0;i<1000;i++)items.put("m"+i,any);
-        assertTrue(policy.takeCandidates("g",items,new HashSet<>()).isEmpty());
-        verify(matching).take("g",items);
-        verifyNoInteractions(catalog);
+        for(int i=0;i<101;i++)items.put("m"+i,any);
+        assertThrows(IllegalArgumentException.class,()->policy.takeCandidates("g",items,new HashSet<>()));
+        verifyNoInteractions(matching,catalog);
     }
     @Test void directIdentitiesStillRequireExistingSameGroupDescriptors() {
         var input = new LinkedHashMap<String, WorkerQuery>();

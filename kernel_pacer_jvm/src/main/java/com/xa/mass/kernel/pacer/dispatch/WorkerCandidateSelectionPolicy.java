@@ -23,6 +23,7 @@ final class WorkerCandidateSelectionPolicy {
 
     Map<String,RoutedWorkerCandidate> takeCandidates(String workerGroupId,
             Map<String,WorkerQuery> selectors, Set<String> roundWorkerIds) {
+        if (selectors.size()>100) throw new IllegalArgumentException("at most 100 Item selectors");
         if (selectors.isEmpty()) return Map.of();
         var taken=matching.take(workerGroupId,selectors);
         var selected=new LinkedHashMap<String,String>();

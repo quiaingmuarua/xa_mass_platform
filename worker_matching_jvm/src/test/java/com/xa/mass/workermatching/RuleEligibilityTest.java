@@ -150,7 +150,7 @@ class RuleEligibilityTest {
                 Map.of("pool", rule), Map.of("pool", rule.functions()),
                 Map.of("g", new MatchingGroup(Set.of("pool"), Set.of("pool"), null)), List.of("pool"), Set.of());
         var oversized = new LinkedHashMap<String, WorkerQuery>();
-        for (int i = 0; i < 1001; i++) oversized.put("m" + i, new WorkerQuery("pool", Map.of()));
+        for (int i = 0; i < 101; i++) oversized.put("m" + i, new WorkerQuery("pool", Map.of()));
         assertThrows(IllegalArgumentException.class,()->catalog.take("g",oversized));
         var inputs=new LinkedHashMap<String,WorkerQuery>();
         inputs.put("first",new WorkerQuery("pool",Map.of()));
@@ -162,7 +162,9 @@ class RuleEligibilityTest {
         assertThrows(IllegalArgumentException.class,()->rule.refill("g", tooMany, Map.of(), 100));
         var offered=offers(3,1,"US");
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",targets(List.of(pools(3,"US"))),Map.of("invalid", 0L),100));
+        assertThrows(IllegalArgumentException.class,()->rule.refill("g",targets(List.of(pools(3,"US"))),offered,101));
         assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(ANY,3),offered,-1));
+        assertThrows(IllegalArgumentException.class,()->rule.refill("g",Map.of(ANY,3),offers(10,101,"US"),100));
         assertEquals(reads,rule.reads); assertEquals(2,consume(rule,"g",Map.of(),100).size());
     }
     @Test void qualifiedOffersKeepInputOrderWithinTheBatchBudget() {

@@ -19,7 +19,7 @@ public interface PoolRefillPolicy {
     /** Observed shortages, not reservations; ALL accepts up to 10,000 targets, PAGED at most 100. Capacity may suppress refill. */
     Map<EligibilityQuery, Integer> deficits(String workerGroupId, Map<EligibilityQuery, Integer> targets);
     /**
-     * Qualifies the Catalog-admitted generations and returns IDs actually admitted.
+     * Qualifies at most 100 supplied generations and returns IDs actually admitted.
      * Preserves fences; Pool admission owns its TTL. Validates before admitting new candidates.
      * Target counts guide shortage observation, never an admission quota. Qualified offers may
      * exceed the watermark; maxAccepted and hard capacity still bound admission.
