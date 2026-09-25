@@ -1,4 +1,4 @@
-name: Worker Loaded Commit Slices
+name: Worker Loaded Original Commit Slices
 
 on:
   workflow_dispatch:
@@ -18,19 +18,15 @@ jobs:
     name: Loaded slice ${{ matrix.label }}
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 3
       matrix:
         include:
-          - label: baseline-4a
-            ref: 4a5ccb3f7022471fd605d2041fa1a2f1f7a70093
-          - label: original-0e
-            ref: 0e2a0302b878ac01d482d2b1f3e4d9ec874fac77
-          - label: minus-observation
-            ref: fb86a93d7ab1663a67a6e43dff7981e1adee9662
-          - label: minus-window
-            ref: 333d1714db8970007d604604172f333d08e090e2
-          - label: minus-batch
-            ref: 08444a82f181b106a6ffe7ce57e8f44dc2ee89bd
+          - label: original-9d
+            ref: 9d104e9873b39191785c15873c48ae285978be22
+          - label: original-d390
+            ref: d390b9ebb8c9e67366581e861414cd4ca3205691
+          - label: original-b3
+            ref: b3b0fa14568bc54ef0844f89f3c4895217507111
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:
