@@ -5,7 +5,6 @@ import com.xa.mass.scenario.sms.ListenerService;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import com.xa.mass.scenario.messages.MessageTaskService;
 import com.xa.mass.scenario.appchecks.AppCheckTaskService;
-import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -56,7 +55,6 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(ListenerService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
-            assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
             if (preview) {
                 var matching = context.getBean(com.xa.mass.server.assembly.matching.MatchingProperties.class);
                 for (String group : List.of("app-a-sim", "app-b-sim")) {

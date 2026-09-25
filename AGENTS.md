@@ -277,10 +277,6 @@ Policy documents own workflow, capacity and lifecycle.
 - `KernelPacerRuntime` is the only externally supported production entry.
   Result and Dispatch may each expose one narrow module-internal lifecycle bridge;
   other modules must not import those bridges or internal policy types.
-- Its nested `WorkerObservation` is a passive five-field notification contract.
-  Assignment emits only after execution acquisition and exact Item claim, before
-  Command encoding/publication. Keep source event strings opaque; notification
-  failure cannot control dispatch or create retry/replay or tracing state.
 - Keep one fixed Result application and one fixed Dispatch application with
   separate capacity and lifecycle ownership. Server adapts this runtime to
   Spring; it does not host an alternative scheduler or Task fallback.
@@ -322,17 +318,6 @@ production profiles.
   OpenAPI use explicit test-only platform configuration. Scenario composition and
   deployment overlay tests follow Boot, with no reverse dependency or copied host
   configuration in Server tests.
-- Server assembly receives the Pacer observation DTO through a bounded lossy
-  handoff. Ignore unmatched Group/event selections before queue admission and
-  diagnostic counting. Fixed handlers share one receiver queue/thread; enqueue
-  each notice once, batch by handler instance and isolate ordinary handler failures
-  without replay or rollback. The receiver must not depend on Properties services.
-  One Properties handler combines all pure projections in per-Worker
-  first-appearance order through the existing read/patch services and candidate
-  invalidation; do not promise cross-projection event replay. Preserve its shared
-  read-only stop signal without independent handler lifecycles. Keep the consumer
-  lifecycle outside Pacer and close it before Matching resources. Do not promote
-  projected counts to execution truth or a reliable admission quota.
 - Server normalizes supply and Item queries through local Matching admission,
   then writes complete Kernel data. Admission cannot read inventory, create
   refill demand, retain a separate binding or compensate through Matching.
@@ -581,11 +566,6 @@ finite state, idempotency and observation. Their device owners remain in
   Worker identity, then hash and delay; unregistered is execution success and the
   failure range throws. Keep retries and late results in existing platform owners.
   No business Result cache, extra lease, Reporter or production attempt journal.
-- App Checks owns only event selection and pure assignment-window computation.
-  It may use the Server projection contract, never the Pacer callback/runtime or
-  Properties operations directly. The fields describe best-effort observations
-  at the named point. Projection and Matching read the same Group window length;
-  the scenario cannot implement Matching or reinterpret a threshold as a strict quota.
 - Messages reads Task-owned display data, Item Score quantities and Result content
   on request. It owns only current-run submission deduplication, with synchronous
   bounded creation/append/approval; no Campaign Result cache or statistics loop.

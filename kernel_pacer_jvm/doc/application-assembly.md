@@ -61,19 +61,6 @@ Server-only Properties reads/writes use the separate `WorkerProperties` port.
 Both interfaces are assembled under one MatchingComposition lifetime; this split
 does not change Pacer Producers, Group rotation or Score operations.
 
-`KernelPacerRuntime.assemble` also accepts one non-blocking
-`Consumer<KernelPacerRuntime.WorkerObservation>`. The nested immutable record
-contains only Group, Worker IDs, source time, message event name and observation
-event name. It is a passive best-effort notification, not a mechanical event or
-an acknowledgement. Assemblies without consumers pass an explicit no-op.
-Assignment emits `worker.assigned` after confirmed execution acquisition and
-exact Item claim, before Command encoding/publication. Batches share Group and
-message event; Pacer forwards exact `TaskItem.eventCode` strings without business
-interpretation. Ordinary sink exceptions cannot prevent publication. This adds
-no Pacer thread, queue, deduplication, replay or new Kernel operation.
-The [Server consumer](../../server_jvm/README.md#worker-allocation-observations)
-owns asynchronous delivery and any downstream projection.
-
 The finite Java caller closure is:
 
 ```text

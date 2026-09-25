@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.kernel.assignment.*;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
-import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.redis.*;
 import com.xa.mass.kernel.task.TaskRuntime.*;
@@ -65,13 +64,10 @@ class AssignmentBatchIntegrationTest {
             assertThat(refill.refill(List.of("g"), List.of(task))).isEqualTo(limit);
             // Two bounded head reads and one candidateization Lua, also at 1,000 identities.
             assertThat(Collections.frequency(f.commands, "EVAL")).isEqualTo(3);
-            var observed = new ArrayList<WorkerObservation>();
             f.commands.clear();
-            assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isEqualTo(limit);
+            assertThat(f.dispatch(limit, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isEqualTo(limit);
             assertThat(Collections.frequency(f.commands, "EVAL_RO")).isEqualTo(function.equals("worker.assignment.available") ? 1 : 0);
             assertThat(Collections.frequency(f.commands, "HMGET")).isEqualTo(2); // Items and addresses
-            assertThat(observed).hasSize(1);
-            assertThat(observed.getFirst().workerIds()).containsExactlyInAnyOrderElementsOf(ids);
             var published = f.delivery.consumeWorkerCommands("adapter", limit);
             assertThat(published).hasSize(limit);
             var correlations = new HashSet<String>();
@@ -90,7 +86,7 @@ class AssignmentBatchIntegrationTest {
                     assertThat(state.remainingBudget()).isEqualTo(1);
                 });
             }
-            assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isZero();
+            assertThat(f.dispatch(limit, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isZero();
         });
     }
 
@@ -111,7 +107,7 @@ class AssignmentBatchIntegrationTest {
             once.forEach((id, result) -> exhausted.put(id, result.score()));
             assertThat(f.itemScores.rewriteObservedItemScores(task.taskId(), exhausted, now - 500, -1).values())
                     .allSatisfy(result -> assertThat(result.status().wireValue()).isEqualTo("transitioned"));
-            assertThat(f.dispatch(limit, new ArrayList<>(), () -> now + 20_000).dispatchTasks(List.of(f.observed(task)))).isZero();
+            assertThat(f.dispatch(limit, () -> now + 20_000).dispatchTasks(List.of(f.observed(task)))).isZero();
             var results = f.tasks.loadTaskItemResults(task.taskId(), items.stream().map(TaskItem::messageId).toList());
             assertThat(results).hasSize(limit);
             assertThat(results.values()).allSatisfy(result -> assertThat(result).isEqualTo(TaskItemResult.failed()));
@@ -164,9 +160,9 @@ class AssignmentBatchIntegrationTest {
         ObservedTask observed(TaskDescriptor task) {
             return new ObservedTask(task, taskScores.getScoreStates(List.of(task.taskId())).get(task.taskId()).score());
         }
-        TaskDispatchPolicy dispatch(int limit, List<WorkerObservation> observations, java.util.function.LongSupplier clock) {
+        TaskDispatchPolicy dispatch(int limit, java.util.function.LongSupplier clock) {
             return new TaskDispatchPolicy(taskScores, itemScores, tasks,
-                    new TaskAssignmentDispatcher(itemScores, workerScores, delivery, new ResultContextCodec(), observations::add),
+                    new TaskAssignmentDispatcher(itemScores, workerScores, delivery, new ResultContextCodec()),
                     new TaskIdleSettlement(taskScores, itemScores), new WorkerCandidateSelectionPolicy(catalog, matching.catalog()),
                     limit, 5, clock);
         }

@@ -944,87 +944,6 @@ result. Public Adapter ingress rejects forged SERVER observations. All presets
 consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
 dedup cache, activation ACK or replay is installed.
 
-## Worker Allocation Observations
-
-Pacer supplies the same five-field `KernelPacerRuntime.WorkerObservation` record
-directly to the Server assembly: `workerGroupId`, immutable `workerIds`,
-`observedAtMillis`, `messageEventName` and `observationEventName`. Source time is
-sampled after successful Worker acquisition and Item claim; `worker.assigned`
-precedes Command encoding/publication. It is not an execution/Result count or an
-eventual-consistency promise, and carries no Task, message ID, Project, Endpoint or
-Score correlation.
-
-`WorkerObservationConsumer` owns one standard queue of 256 whole DTO batches and
-one consumer thread. A drain handles at most 16 batches. Queue saturation drops
-the current whole batch, without delaying or changing dispatch. There is no retry,
-replay or deduplication. With no registered handlers it allocates
-neither queue nor thread, and Pacer receives a no-op sink.
-
-`KernelPacerConfiguration` explicitly assembles a deeply immutable
-`Group -> EventKey(messageEventName, observationEventName) -> List<FunctionHandler>`
-table. Selections match exact strings. Different handlers may share a selection;
-registering the same instance twice within one selection fails assembly. No prefix,
-wildcard, dynamic registration or handler identifier is used. Unmatched notices
-are ignored before queue admission without waking the consumer, reading Facts or
-changing diagnostics. Only matched notices contribute to enqueued/dropped counts;
-matched notices received while stopped are dropped. Each notice enters the queue
-once, regardless of handler count.
-
-The package-local `FunctionHandler.handle(List<WorkerObservation>)` receives a
-nonempty immutable list. Each drain calls each matching handler instance once,
-with its selected notification subsequence in receipt order, including duplicates.
-The list may span Groups and event selections. Handler execution follows first
-appearance in the drain; a shared notice uses registration-list order. Calls remain
-serial on the consumer thread, with no transactional or cross-handler dependency
-guarantee. A handler's ordinary runtime exception counts as one processing failure
-and does not prevent the remaining handlers. Effects are not rolled back or replayed.
-The receiver has no Properties dependency; handler-owned operations run outside
-its short admission/lifecycle gate.
-
-One `PlatformPropertiesHandler` serves all `WorkerPropertyProjection` definitions.
-Definitions provide a pure `(current Platform Properties, observation times) ->
-local patch` function; duplicate projection selections still fail assembly. The
-handler groups selected times by Group/Worker, chunks reads at the existing
-`WorkerProperties` read budget, and computes against immutable input snapshots.
-For each Worker, projections run in their first-appearance order within the drain.
-Each projection's time list retains notification receipt order without sorting or
-deduplication. Thus `A(10), B(20), A(30)` invokes `A([10,30])` then `B([20])`, not
-the original event interleaving. Projections must not depend on cross-selection
-event replay. Later projections see preceding local patches and overwrite any
-overlapping fields. This single handler issues at most one
-`WorkerResourceCommandService.patchPlatformProperties` per Worker in that drain.
-Unreturned fields remain unchanged; null retains the existing patch deletion meaning.
-
-Missing/unreadable Facts are skipped without initialization. Failed reads skip the
-affected page; computation/patch failures skip that Worker and retain earlier
-successful writes. One consumer serializes this local read/modify/write path;
-concurrent external writes to the same fields can still overwrite observations.
-There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
-APPLIED patch handling still performs separate best-effort candidate invalidation.
-The notification path does not make eligibility decisions. The fixed
-[Matching assignment-window function](../worker_matching_jvm/README.md#observed-assignment-window)
-can consume the projected fields during a subsequent query. Its Group configuration
-supplies the same window length to the App Checks projection; Server only binds
-the configuration and performs the existing observation/property operations.
-
-The consumer starts before Pacer and stops after it, before Matching destruction.
-Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds
-for the current processing call; repeated close uses the same deadline. Failed
-startup cleans any started consumer. Only the receiver modifies the assembly's
-shared running flag. The Properties handler reads it at the existing read/Worker/
-write boundaries, so a read returning after stop does not start the next write.
-Stop also prevents subsequent handler calls; already-started operations cannot be
-revoked. Handlers have no separate lifecycle or shutdown resources.
-Optional `xa.mass.WorkerObservation` JFR
-summaries contain cumulative enqueued/dropped batch counts and processing failures
-only, without business content or tracing identities. Fan-out does not multiply
-enqueue/drop counts; Properties failures retain their existing page/Worker counts
-through the receiver's shared failure counter.
-
-Scenario code receives only the Server's pure projection contract, without a
-Pacer or FunctionHandler dependency. Its first projection is the
-[App Checks assignment window](../scenarios/app-checks-jvm/README.md#分配窗口投影).
-
 ## Runtime Worker Properties Admission
 
 `WorkerDeliveryService` recognizes only the fixed
@@ -1222,7 +1141,7 @@ cannot hide an unintended connection during assembly.
 `kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT
 activation floor for every Runtime assembly. DEFAULT uses it for network activation
 without enabling Assignment scan floor or periodic Probe. Server
-passes the selected preset, shutdown timeout, owner dependencies and observation sink; it
+passes only the selected preset, shutdown timeout and owner dependencies; it
 does not interpret scheduling policy. `SERVICEABILITY_DEFAULT` provides normal
 production cadence with Serviceability enabled. Runtime Boundary uses a unique
 `test_*` scope; Server rejects its proof-only preset for every other scope. The

@@ -13,40 +13,14 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.task.TaskItemOutcomeProperties;
-import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
-import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
-import com.xa.mass.workermatching.WorkerProperties;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.ObjectProvider;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({KernelPacerProperties.class, TaskItemOutcomeProperties.class})
 public class KernelPacerConfiguration {
-
-    @Bean
-    WorkerObservationConsumer workerObservationConsumer(List<WorkerPropertyProjection> projections,
-            ObjectProvider<WorkerProperties> properties, ObjectProvider<WorkerResourceCommandService> commands) {
-        var running = new AtomicBoolean();
-        var failures = new AtomicLong();
-        var routes = new LinkedHashMap<String, Map<EventKey, List<FunctionHandler>>>();
-        if (!projections.isEmpty()) {
-            var handler = new PlatformPropertiesHandler(projections, properties.getObject(), commands.getObject(),
-                    running::get, failures::addAndGet);
-            for (var projection : projections) {
-                routes.computeIfAbsent(projection.workerGroupId(), ignored -> new LinkedHashMap<>())
-                        .put(new EventKey(projection.messageEventName(), projection.observationEventName()), List.of(handler));
-            }
-        }
-        return new WorkerObservationConsumer(routes, running, failures);
-    }
 
     @Bean
     KernelPacerRuntime kernelPacerRuntime(
@@ -61,11 +35,9 @@ public class KernelPacerConfiguration {
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            WorkerMatching workerMatching,
-            ObjectProvider<WorkerObservationConsumer> observations
+            WorkerMatching workerMatching
     ) {
         validatePresetScope(properties.preset(), redisProperties.scope());
-        var consumer = observations.getIfAvailable();
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
@@ -81,8 +53,7 @@ public class KernelPacerConfiguration {
                 workerCatalog,
                 workerCommands,
                 serviceability,
-                workerMatching,
-                consumer != null && consumer.enabled() ? consumer::accept : ignored -> {}
+                workerMatching
         );
     }
 

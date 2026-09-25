@@ -62,13 +62,10 @@ exceptions and independent result recomputation. Boot proves bounded preview and
 Server restart reads. Its runner runs source and fresh Preview ZIP without frontend
 changes or a new performance workload; SMS/Messages retain app_count=0 fixtures.
 
-The App Checks assignment-window witness uses one real Worker and a threshold of
-one: it observes the actual allocation projection, a nonempty qualification read
-with rejected take, and execution after a real window transition plus normal
-candidate recycling. Empty stock or a busy Worker alone cannot prove rejection.
-Recovery observation is bounded at 180 seconds; deterministic function tests own
-exact time boundaries and delayed/missing projection semantics. Redis Owner covers
-snapshot command budgets, retained strict fences and read-failure consumption.
+This experimental branch withdraws assignment observations and their dependent
+App Checks window integration proof. Deterministic Matching function tests retain
+exact time boundaries and delayed/missing property semantics. Redis Owner retains
+snapshot command budgets, strict fences and read-failure consumption.
 Non-window Boot regressions and the process runner explicitly use threshold 1000,
 retain all original workloads/oracles and still execute the window function.
 Preview defaults remain 60 seconds / 10 observations, without a strict quota claim.
@@ -272,9 +269,8 @@ remainders, and independent supply/recycling rotation. Redis Owner exercises
 101 and 1000 Items through real candidateization, Matching qualification,
 address reads, lease acquisition, claim and Command publication, plus whole
 batches of expired/exhausted Item failure settlement. Qualification retains one
-atomic Worker/Platform snapshot. WorkerObservation tests retain the Properties
-Owner's read budget across a 1000-identity notification. Existing tracked and
-Runtime proofs retain their independent claims.
+atomic Worker/Platform snapshot. Existing tracked and Runtime proofs retain
+their independent claims.
 
 Call Performance's explicit `--assignment-batch-limit` comparison uses the same
 new artifacts and fixed `rpc-any-2000` world; see its Owner for pair ordering,
@@ -412,40 +408,6 @@ eligible for bounded polling. Android is not a secondary witness for the Java
 Worker proof.
 
 ## Shared Eligibility refill and dispatch
-
-### Allocation observations and App Checks projection
-
-Pacer focused tests prove the five-field notification after both execution
-acquisition and Item claim, event/Worker grouping, and notification before Command
-encoding/publication. Sink errors do not alter dispatch. Server tests cover exact
-Group/event selection before queue admission: unmatched traffic cannot consume
-waiting capacity, trigger Facts reads or change diagnostic counters. Latch-controlled
-tests retain matched whole-batch saturation and prove first-appearance projection
-grouping for interleaved events, unsorted/duplicate times, local patch visibility
-and overlapping-field precedence. They also cover bounded Properties reads, one
-patch per Worker per drain, isolation of read/compute/write failures and lifecycle
-cleanup. A different-field projection uses the same
-Properties handler without changing Pacer. Function dispatch tests use consumers
-with no Properties dependencies and prove one enqueue with multiple handlers,
-immutable routing/input snapshots, instance-based batching across Groups/events,
-receipt order including duplicate notices, handler failure isolation, and the
-existing drain budget. They also cover duplicate registration, stopping before
-subsequent handlers, close timeout and restart only after the previous thread exits.
-Direct Properties-handler tests retain local patch/deletion visibility, whole-Worker
-failure isolation and stop checks before writes without starting a queue/thread.
-App Checks tests own fixed-window arithmetic,
-invalid persisted values, older observations and restart continuation.
-
-The existing `:server_boot_jvm:scenarioCompositionIntegrationTest` now also gates
-success, failure and late App Checks Reports behind a test-only Handler barrier.
-Before release, actual Platform Properties must match the bounded source
-allocation witness while no Result has arrived. After release it keeps the
-original business assertions and proves persisted properties survive restart.
-The proof compares notification times/identities, not Item or Result totals.
-The ordinary App Checks process acceptance retains its execution oracle. Neither
-proof establishes reliable counting or window-based Matching admission.
-
-### Existing Matching proof ownership
 
 Redis Owner proves complete Task descriptors, preserved source coordinates, bounded qualified Messaging Phone lookup,
 live Worker/Platform projection, corrupted metadata rejection and command budgets:

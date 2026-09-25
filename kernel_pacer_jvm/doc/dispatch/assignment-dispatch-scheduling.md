@@ -113,7 +113,6 @@ Only package-private TaskAssignmentDispatcher creates claimed Commands:
 nonzero expected fence -> acquireObservedHotScoreLeases
 identity hint          -> acquireCurrentHotScoreLeases
   -> returned execution fence -> exact ACTIVE Item claim
-  -> best-effort worker.assigned notification, grouped by Item eventCode
   -> ResultContext -> Adapter-partitioned Worker mailbox
 ```
 
@@ -140,16 +139,6 @@ evidence reaches the startup floor. Reconnect can therefore return a consumed
 candidate to ordinary Refill without waiting for aged recycling.
 Task Dispatch independently records exhausted/expired failure before terminal Item
 movement. Result content, Item finality and Worker release keep separate commits.
-
-Allocation observations contain only Workers with both transitions confirmed.
-The source samples wall-clock milliseconds immediately after the claim response;
-event batches retain their first-appearance order and original Worker association.
-The immutable Worker list has no separate notification-size contract. A selected
-candidate or execution lease alone does not produce an observation. Command
-encoding/publication failures do not retract one, and a later successful allocation
-attempt produces another. This is an observation of the allocation boundary, not
-proof of Handler execution or delivery. Sink failures do not alter the closure's
-publication count or trigger retry, compensation or Result activity.
 
 ## Failure Semantics
 

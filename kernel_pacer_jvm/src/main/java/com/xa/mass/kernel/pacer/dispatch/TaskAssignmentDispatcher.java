@@ -4,7 +4,6 @@ import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.ResultContextCodec.ResultContext;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandAppendStatus;
-import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -20,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.function.Consumer;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -41,15 +39,13 @@ final class TaskAssignmentDispatcher {
     private final WorkerScoreCore workerScores;
     private final WorkerCommandRuntime workerCommands;
     private final ResultContextCodec resultContextCodec;
-    private final Consumer<WorkerObservation> workerObservations;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
     TaskAssignmentDispatcher(
             TaskItemScoreBandCore itemScores,
             WorkerScoreCore workerScores,
             WorkerCommandRuntime workerCommands,
-            ResultContextCodec resultContextCodec,
-            Consumer<WorkerObservation> workerObservations
+            ResultContextCodec resultContextCodec
     ) {
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
         this.workerScores = Objects.requireNonNull(
@@ -64,7 +60,6 @@ final class TaskAssignmentDispatcher {
                 resultContextCodec,
                 "resultContextCodec"
         );
-        this.workerObservations = Objects.requireNonNull(workerObservations, "workerObservations");
     }
 
     int dispatch(
@@ -154,27 +149,6 @@ final class TaskAssignmentDispatcher {
                         claimUntilMillis,
                         -1
                 );
-        long observedAtMillis = System.currentTimeMillis();
-        List<AssignmentAttempt> assigned = new ArrayList<>();
-        LinkedHashMap<String, List<String>> workersByEvent = new LinkedHashMap<>();
-        attemptsByMessageId.forEach((messageId, attempt) -> {
-            var claim = claims.get(messageId);
-            if (claim != null && claim.status() == TaskItemScoreTransitionStatus.TRANSITIONED
-                    && claim.score() != null && verifiedScores.containsKey(attempt.worker().workerId())) {
-                assigned.add(attempt);
-                workersByEvent.computeIfAbsent(attempt.item().eventCode(), ignored -> new ArrayList<>())
-                        .add(attempt.worker().workerId());
-            }
-        });
-        workersByEvent.forEach((event, workers) -> {
-            try {
-                workerObservations.accept(new WorkerObservation(task.descriptor().workerGroupId(),
-                        workers, observedAtMillis, event, "worker.assigned"));
-            } catch (RuntimeException ignored) {
-                // An observation gap must not prevent already-claimed Commands from being published.
-                DispatchStageEvent.batch(claimedAt, "WORKER_OBSERVATION_REJECTED", workers.size(), 0, true);
-            }
-        });
         if (claimedAt != 0) {
             var claimedIds = claims.entrySet().stream().filter(e -> e.getValue().status() == TaskItemScoreTransitionStatus.TRANSITIONED
                     && e.getValue().score() != null).map(Map.Entry::getKey).toList();
@@ -184,10 +158,17 @@ final class TaskAssignmentDispatcher {
 
         LinkedHashMap<String, Map<String, DeliveryCommand>> byAdapter =
                 new LinkedHashMap<>();
-        assigned.forEach(attempt -> {
+        attemptsByMessageId.forEach((messageId, attempt) -> {
             RoutedWorkerCandidate worker = attempt.worker();
-            String messageId = attempt.item().messageId();
+            var claim = claims.get(messageId);
             Long workerLeaseScore = verifiedScores.get(worker.workerId());
+            if (claim == null
+                    || claim.status()
+                    != TaskItemScoreTransitionStatus.TRANSITIONED
+                    || claim.score() == null
+                    || workerLeaseScore == null) {
+                return;
+            }
             TaskItem item = attempt.item();
             DeliveryCommand command = DeliveryCommand.create(
                     DeliveryEndpoint.TASK,

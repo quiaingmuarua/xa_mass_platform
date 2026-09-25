@@ -102,32 +102,10 @@ delay = min + value(domain="delay") mod (max - min + 1)
 为 5 秒，较长延迟可能重试并产生迟到结果。场景不续租，也不承诺只执行一次。
 最终 FAILED 本身不能证明 Handler 执行过，真实失败证明另有测试装配内的调用见证。
 
-## 分配窗口投影
-
-Preview 为 `app-a-sim`、`app-b-sim` 各装配一个纯属性投影，只接收
-`observationEventName=worker.assigned` 且
-`messageEventName=extension.worker.app.registration.check` 的通知。
-Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发出通知。
-同组其他事件、选择候选但分配失败、仅取得租约都不计入。
-
-投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
-前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window.window-millis`，
-与 Matching 使用同一份启动配置，Preview 默认为 60 秒，窗口编号为
-`floor(observedAtMillis / 60000)`。同窗口累加、时间取最大值；新窗口重新计数；
-更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
-整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
-
-这里统计的是 best-effort **分配观察**，不是 Handler 实际执行次数或成功次数。
-后续发送、执行失败不会扣减；重试再次分配会再次通知。Server 队列丢弃、进程退出、
-Facts 缺失或属性写入失败均可能造成缺口，没有补发、最终一致性或精确额度保证。
-不定时清零，空闲时保留最近窗口；重启读取已写入值，不补齐未处理通知。
-新建 Item 的 Matching 函数读取这两个字段，投影只提供选择和纯计算，由 Server 的同一个
-Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 FunctionHandler。
-固定路由、异步交接及既有 patch/候选失效的完整边界见
-[Server](../../server_jvm/README.md#worker-allocation-observations)。
-
 ## 分配窗口筛选
+
+本实验分支撤回分配通知及窗口属性投影，保留后续提交的 Matching 窗口筛选。
+属性仍由既有 Properties 输入提供；不再包含依赖自动投影的窗口 Boot 联动验收。
 
 Preview 的两个 App Group 各自配置 `assignment-window.max-assignments: 10`。
 新查询仅接受 `{}`，阈值由 Group 装配决定。函数从现有 Any Pool 消费本次有界候选，
@@ -178,17 +156,7 @@ python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-prev
 单元测试证明准入、固定 hash、半开边界、异常、中断、提交幂等及部分失败。Boot 的
 真实 Redis/HTTP/Worker 测试用两个 Group 各两个 Worker，证明 101 条预览有界、真实
 异常调用、未注册成功、Group 隔离、6 秒迟到成功及 Server 重启读取。调用见证仅在测试
-装配中，溢出失败，不增加生产尝试日志或场景队列。
-
-额外的分配观察证明保持实际 Redis、Server、Adapter 和 Java Worker：在测试装配中
-阻塞 Handler 返回 Report，先确认 Platform 窗口已推进，再放行成功、异常及 6 秒
-迟到结果，并验证重启保留属性。测试有界记录真正的 Pacer 通知，用其源时间和
-Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见证不进入生产代码。
-
-窗口专用 Boot 用例使用一个实际 Worker、60 秒窗口、阈值 1：真实分配通知推进属性后，
-通过实际 Facts 快照读取和空 take 结果见证筛选拒绝；跨窗后等待正常 60 秒候选回收、
-补货与执行，不手动清零、恢复库存或改 Score。恢复观察最多 180 秒，字段边界另由
-受控时钟单元测试证明。投影延迟允许继续选择，测试不把阈值当成严格配额。
+装配中，溢出失败，不增加生产日志或队列。
 
 原 101 Item 等非窗口 Boot 回归显式把阈值设为 1000，仍走新函数。
 进程 runner 通过标准 `SPRING_APPLICATION_JSON` 仅覆盖两个 Group 的阈值为 1000，
