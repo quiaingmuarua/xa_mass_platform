@@ -988,11 +988,14 @@ def lane_markdown(result):
                   "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
         lines += [f"| {x['repetition']} | {x['rate']} | {x['path']} | {x['p99LatencyRatio']:.2f} | {x['completionRatio']:.2f} |"
                   for x in result["pathRatios"] if x["p99LatencyRatio"] is not None and x["completionRatio"] is not None]
-    lines += ["", "| Milestone | Elapsed s |", "| --- | --- |"]
-    lines += [f"| {name} | {value / 1000:.1f} |" for name, value in timings.items()]
-    lines += ["", "| Role | Peak threads | Peak FDs | Peak RSS MiB |", "| --- | --- | --- | --- |"]
-    lines += [f"| {role} | {peak['peakNativeThreads']} | {peak['peakFileDescriptors']} | {peak['peakRssBytes'] / 2**20:.0f} |"
-              for role, peak in result.get("resourcePeaks", {}).items() if not role.startswith("harness-")]
+    if timings:
+        lines += ["", "| Milestone | Elapsed s |", "| --- | --- |"]
+        lines += [f"| {name} | {value / 1000:.1f} |" for name, value in timings.items()]
+    peaks = {role: peak for role, peak in result.get("resourcePeaks", {}).items() if not role.startswith("harness-")}
+    if peaks:
+        lines += ["", "| Role | Peak threads | Peak FDs | Peak RSS MiB |", "| --- | --- | --- | --- |"]
+        lines += [f"| {role} | {peak['peakNativeThreads']} | {peak['peakFileDescriptors']} | {peak['peakRssBytes'] / 2**20:.0f} |"
+                  for role, peak in peaks.items()]
     if result.get("runnerFailure"):
         lines += ["", f"Failure: {result['runnerFailure']}"]
     lines += ["", "Saturation cases (sat-*) seed a deep backlog per Group and count Items completed within the window; "

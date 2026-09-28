@@ -128,7 +128,11 @@ final class LaneCase {
             boolean saturated = saturated(stopped, window);
             if (!saturated && (CallLoad.STOP_GENERATOR_LAG.equals(stopped) || scheduleLagP99Millis(window) > 100))
                 invalid.add("generator-lag");
-            if (!workersAvailable(workerSamples)) invalid.add("workers-exhausted");
+            // Overload holds every lease while Results queue: exhausted idle Workers are then a
+            // consequence of saturation, recorded but not a separate resource gap.
+            boolean workersExhausted = !workersAvailable(workerSamples);
+            summary.put("workersExhausted", workersExhausted);
+            if (workersExhausted && !saturated) invalid.add("workers-exhausted");
             if (saturated) summary.put("admittedPerSecond",
                     ((Number) window.get("accepted")).longValue() / (measured.windowNanos() / 1e9));
             summary.put("status", !invalid.isEmpty() ? "invalid" : saturated ? "saturated" : "passed");

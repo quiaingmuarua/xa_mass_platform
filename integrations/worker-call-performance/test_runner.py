@@ -522,6 +522,8 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual(3.0, merged["pathRatios"][0]["p99LatencyRatio"])
         self.assertEqual("failed", missing["status"])
         self.assertIn("| rate-1000 | missing |", runner.lane_markdown(missing))
+        self.assertNotIn("| Milestone |", runner.lane_markdown(merged))
+        self.assertNotIn("| Role |", runner.lane_markdown(merged))
 
     def test_lane_markdown_separates_invalid_and_failed_cases(self):
         cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,
