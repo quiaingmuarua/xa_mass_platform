@@ -450,34 +450,42 @@ class LaneWorldConfigTest(unittest.TestCase):
 
     def test_lane_plan_runs_every_path_per_rate_and_rotates_path_order(self):
         plan = runner.lane_plan((500, 2000), 3)
-        self.assertEqual(18, len(plan))
-        first = [path for rep, rate, path in plan if rep == 1 and rate == 500]
-        second = [path for rep, rate, path in plan if rep == 2 and rate == 500]
-        third = [path for rep, rate, path in plan if rep == 3 and rate == 2000]
-        self.assertEqual(["task-any", "task-targeted", "direct"], first)
-        self.assertEqual(["task-targeted", "direct", "task-any"], second)
-        self.assertEqual(["direct", "task-any", "task-targeted"], third)
+        self.assertEqual(24, len(plan))
+        open_cases = lambda rep, rate: [e["path"] for e in plan if e["mode"] == "open" and e["repetition"] == rep and e["rate"] == rate]
+        self.assertEqual(["task-any", "task-targeted", "direct"], open_cases(1, 500))
+        self.assertEqual(["task-targeted", "direct", "task-any"], open_cases(2, 500))
+        self.assertEqual(["direct", "task-any", "task-targeted"], open_cases(3, 2000))
+        saturation = [e["case"] for e in plan if e["mode"] == "saturation" and e["repetition"] == 2]
+        self.assertEqual(["sat-task-targeted", "sat-task-any"], saturation)
+        self.assertEqual(["sat-task-any", "sat-task-targeted"],
+                         [e["case"] for e in runner.lane_plan((500,), 1, ("saturation",))])
+        self.assertEqual(3, len(runner.lane_plan((500,), 1, ("open",))))
         self.assertEqual((500, 1000, 2000), runner.lane_rates("500,1000,2000"))
+        self.assertEqual(("saturation",), runner.lane_modes("saturation"))
+        with self.assertRaises(runner.argparse.ArgumentTypeError):
+            runner.lane_modes("open,open")
 
     def test_path_ratios_compare_passed_task_cases_with_direct_on_the_same_cell(self):
         def record(path, status="passed", p99=100.0, completed=500.0, rate=500, repetition=1):
             return dict(repetition=repetition, rate=rate, path=path, status=status, completedPerSecond=completed,
                         successfulCallLatencyMillis={"p99": p99})
+        saturation = dict(record("task-any"), mode="saturation", rate=None)
         ratios = runner.lane_path_ratios([record("direct", p99=50, completed=500), record("task-any", p99=150, completed=400),
-                                          record("task-targeted", status="invalid"), record("task-any", rate=1000)])
+                                          record("task-targeted", status="invalid"), record("task-any", rate=1000), saturation])
         self.assertEqual([dict(repetition=1, rate=500, path="task-any", p99LatencyRatio=3.0, completionRatio=0.8)], ratios)
 
     def test_case_record_normalizes_cost_per_completed_call(self):
-        case = dict(status="invalid", invalidReasons=["generator-limited"], completedPerSecond=100.0,
+        case = dict(status="invalid", invalidReasons=["generator-lag"], completedPerSecond=100.0,
                     measurementStartedEpochMillis=1, measurementEndedEpochMillis=2,
                     metrics=dict(successRate=.9, successfulCallLatencyMillis={"p50": 10, "p99": 20}, generatorLimited=True))
-        record = runner.lane_case_record(2, 1000, "task-any", case,
+        entry = dict(repetition=2, mode="open", rate=1000, path="task-any", case="task-any-1000")
+        record = runner.lane_case_record(entry, case,
                                          dict(serverCpuSeconds=6.0, redisCommands=30_000, redisCpuSeconds=1.0,
                                               serverCoveredSeconds=30, redisCoveredSeconds=30))
         self.assertEqual("task-any-1000", record["case"])
         self.assertEqual(10.0, record["cost"]["redisCommandsPerCompleted"])
         self.assertEqual(2.0, record["cost"]["serverCpuMillisPerCompleted"])
-        self.assertEqual(["generator-limited"], record["invalidReasons"])
+        self.assertEqual(["generator-lag"], record["invalidReasons"])
 
     def test_window_cost_uses_only_samples_inside_the_measurement(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -497,13 +505,20 @@ class LaneWorldConfigTest(unittest.TestCase):
                       completedPerSecond=500.0, successfulCallLatencyMillis={"p50": 20.0, "p99": 90.0},
                       attribution=dict(checkedItemsPerSecond=1200, candidateShortfallRatio=.01, strictAcquisitionStaleRatio=.002),
                       cost=dict(redisCommandsPerCompleted=12.5)),
-                 dict(repetition=1, case="direct-2000", status="invalid", invalidReasons=["generator-limited"]),
-                 dict(repetition=1, case="task-targeted-2000", status="failed", invalidReasons=[], failureReason="drain-stalled")]
-        value = runner.lane_markdown(dict(status="failed", caseCounts={"passed": 1, "invalid": 1, "failed": 1}, cases=cases,
+                 dict(repetition=1, case="direct-2000", status="invalid", invalidReasons=["generator-lag"]),
+                 dict(repetition=1, case="task-any-2000", status="saturated", invalidReasons=[], admittedPerSecond=1500.2,
+                      leaseHeldPeakRatio=.946),
+                 dict(repetition=1, case="task-targeted-2000", status="failed", invalidReasons=[], failureReason="drain-stalled"),
+                 dict(repetition=1, case="sat-task-any", status="passed", invalidReasons=[], completedPerSecond=1580.0,
+                      completedPerSecondErrorBound=12.5)]
+        value = runner.lane_markdown(dict(status="failed", caseCounts={"passed": 1, "invalid": 1, "saturated": 1, "failed": 1}, cases=cases,
             timingsMillis={"serverReady": 12_000}, resourcePeaks={"host": dict(samples=3, peakNativeThreads=50,
             peakFileDescriptors=2100, peakRssBytes=2**29)}))
-        self.assertIn("| 1 | task-any-500 | passed | 95.00% | 500.0 | 20.0 / 90.0 | 1200 | 1.00% | 0.20% | 12.5 |", value)
-        self.assertIn("invalid (generator-limited)", value)
+        self.assertIn("| 1 | task-any-500 | passed | 95.00% | 500.0 | 20.0 / 90.0 | 1200 | 1.00% | 0.20% | — | 12.5 |", value)
+        self.assertIn("invalid (generator-lag)", value)
+        self.assertIn("saturated (admitted 1500/s)", value)
+        self.assertIn("| 1 | sat-task-any | passed | — | 1580.0 ± 12.5 |", value)
+        self.assertIn("94.60%", value)
         self.assertIn("failed (drain-stalled)", value)
         self.assertIn("| host | 50 | 2100 | 512 |", value)
         self.assertIn("Performance values never fail the lane", value)

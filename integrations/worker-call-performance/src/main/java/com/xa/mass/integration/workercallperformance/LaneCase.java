@@ -15,8 +15,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * One open-loop performance-lane case: a fixed path and total offered rate split evenly across
- * the two lane Groups. Status is {@code passed}, {@code invalid} (a resource or the generator was
- * the binding constraint) or {@code failed} (a correctness floor or fast-fail rule was violated).
+ * the two lane Groups. Status is {@code passed}; {@code saturated} (the offered rate exceeds the
+ * path capacity: responses outlast their wait until arrivals meet the in-flight cap);
+ * {@code invalid} (the generator or Worker availability bound the case, so its numbers are not
+ * comparable); or {@code failed} (a correctness floor or fast-fail rule was violated).
  */
 final class LaneCase {
     enum Path { TASK_ANY, TASK_TARGETED, DIRECT;
@@ -24,7 +26,7 @@ final class LaneCase {
     }
     static final List<Integer> RATES = List.of(500, 1_000, 2_000);
     static final int WARMUP_RATE = 100;
-    static final int WARMUP_SECONDS = 15;
+    static final int WARMUP_SECONDS = 30;
     static final int MEASUREMENT_SECONDS = 30;
     static final int MAX_IN_FLIGHT = 4_096;
     static final int ASSIGNMENT_BATCH_LIMIT = 1_000;
@@ -108,11 +110,9 @@ final class LaneCase {
                 sampler.join(10_000);
             }
             summary.put("measurementEndedEpochMillis", System.currentTimeMillis());
-            if ("protocol-error".equals(stop.get())) throw new Failed("protocol-error", "Invalid call response");
-            if (stop.get() != null) {
-                summary.put("fastFail", stop.get());
-                invalid.add(stop.get());
-            }
+            String stopped = stop.get();
+            if (CallLoad.STOP_PROTOCOL_ERROR.equals(stopped)) throw new Failed("protocol-error", "Invalid call response");
+            if (stopped != null) summary.put("fastFail", stopped);
             if (spec.path() != Path.DIRECT) {
                 summary.put("stage", "drain");
                 long accepted = measured.samples().stream().filter(CallLoad.Sample::accepted).count();
@@ -124,10 +124,14 @@ final class LaneCase {
             }
             if (measured.samples().stream().anyMatch(s -> s.outcome == CallLoad.Outcome.PROTOCOL_ERROR))
                 throw new Failed("protocol-error", "Invalid call response");
-            if (Boolean.TRUE.equals(measured.summary().get("generatorLimited")) && !invalid.contains("generator-limited"))
-                invalid.add("generator-limited");
-            if (!workersSufficient(workerSamples)) invalid.add("workers-insufficient");
-            summary.put("status", invalid.isEmpty() ? "passed" : "invalid");
+            var window = measured.summary();
+            boolean saturated = saturated(stopped, window);
+            if (!saturated && (CallLoad.STOP_GENERATOR_LAG.equals(stopped) || scheduleLagP99Millis(window) > 100))
+                invalid.add("generator-lag");
+            if (!workersAvailable(workerSamples)) invalid.add("workers-exhausted");
+            if (saturated) summary.put("admittedPerSecond",
+                    ((Number) window.get("accepted")).longValue() / (measured.windowNanos() / 1e9));
+            summary.put("status", !invalid.isEmpty() ? "invalid" : saturated ? "saturated" : "passed");
             summary.put("stage", "complete");
         } catch (Exception error) {
             failure = error;
@@ -137,6 +141,7 @@ final class LaneCase {
         } finally {
             summary.put("invalidReasons", invalid);
             summary.put("workerSamples", workerSamples);
+            summary.put("leaseHeldPeakRatio", leaseHeldPeakRatio(workerSamples));
             if (warmup != null) summary.put("warmup", warmup.responseSummary());
             if (measured != null) {
                 var metrics = measured.summary();
@@ -178,21 +183,47 @@ final class LaneCase {
     }
 
     /**
-     * Workers are sufficient when every usable sample of every Group has at least twice as many
-     * idle due HOT Workers as executing ones. An all-unavailable sampling run is not evidence.
+     * Arrivals refused at the in-flight cap mean the server responses outlasted their wait:
+     * the offered rate exceeds this path capacity. That is a measured outcome, not a resource gap.
      */
-    static boolean workersSufficient(List<Map<String, Object>> samples) {
-        var usable = samples.stream().filter(s -> !Boolean.TRUE.equals(s.get("unavailable"))).toList();
+    static boolean saturated(String stopped, Map<String, Object> window) {
+        long notSent = ((Number) CallApi.object(window.get("outcomes")).get("not_sent")).longValue();
+        return CallLoad.STOP_IN_FLIGHT_CAP.equals(stopped) || notSent > 0;
+    }
+
+    static double scheduleLagP99Millis(Map<String, Object> window) {
+        return ((Number) CallApi.object(window.get("scheduleLagMillis")).get("p99")).doubleValue();
+    }
+
+    /**
+     * With a near-zero Handler, Workers are exhausted only when a Group has no idle due HOT Worker
+     * in some usable sample. Many held leases are reported as lease-release backlog instead: they
+     * wait on Result convergence, not on Worker execution. An all-unavailable run is not evidence.
+     */
+    static boolean workersAvailable(List<Map<String, Object>> samples) {
+        var usable = usable(samples);
         if (usable.isEmpty()) return false;
-        for (var sample : usable) {
-            for (String group : LaneWorld.GROUPS) {
-                var counts = CallApi.object(sample.get(group));
-                long idle = ((Number) counts.getOrDefault("hot-score-overdue", 0L)).longValue();
-                long held = ((Number) counts.getOrDefault("held-hot", 0L)).longValue();
-                if (idle < 2 * held) return false;
-            }
-        }
+        for (var sample : usable)
+            for (String group : LaneWorld.GROUPS)
+                if (count(sample, group, "hot-score-overdue") == 0) return false;
         return true;
+    }
+
+    /** Largest share of a Group Workers holding a lease in any usable sample. */
+    static double leaseHeldPeakRatio(List<Map<String, Object>> samples) {
+        double peak = 0;
+        for (var sample : usable(samples))
+            for (String group : LaneWorld.GROUPS)
+                peak = Math.max(peak, count(sample, group, "held-hot") / (double) LaneWorld.WORKERS_PER_GROUP);
+        return peak;
+    }
+
+    private static List<Map<String, Object>> usable(List<Map<String, Object>> samples) {
+        return samples.stream().filter(s -> !Boolean.TRUE.equals(s.get("unavailable"))).toList();
+    }
+
+    private static long count(Map<String, Object> sample, String group, String state) {
+        return ((Number) CallApi.object(sample.get(group)).getOrDefault(state, 0L)).longValue();
     }
 
     private static Map<String, Object> sampleWorkers(CallApi api, Map<String, List<String>> world, long offset) throws Exception {

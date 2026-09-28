@@ -138,9 +138,16 @@ final class CallLoad {
         }
     }
 
-    /** Fast-fail checkpoint for the generator-limited rule: not-sent or schedule-lag p99 above 100ms. */
+    /**
+     * Fast-fail checkpoint. Arrivals refused at the in-flight cap mean responses outlast their
+     * wait: the server side is saturated. Otherwise a schedule-lag p99 above 100ms means the
+     * generator itself could not keep pace.
+     */
     static final long EARLY_CHECK_NANOS = 10_000_000_000L;
     static final long LATE_SEND_NANOS = 100_000_000L;
+    static final String STOP_IN_FLIGHT_CAP = "in-flight-cap";
+    static final String STOP_GENERATOR_LAG = "generator-lag";
+    static final String STOP_PROTOCOL_ERROR = "protocol-error";
 
     static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender) {
         return schedule(rate, seconds, capacity, prefix, executor, sender, System::nanoTime, CallLoad::awaitDeadline, null);
@@ -178,8 +185,8 @@ final class CallLoad {
                 if (!checked && planned - start >= EARLY_CHECK_NANOS) {
                     checked = true;
                     long sent = sentCount.sum();
-                    if (notSent > 0 || (sent > 0 && lateCount.sum() * 100 > sent))
-                        stop.compareAndSet(null, "generator-limited");
+                    if (notSent > 0) stop.compareAndSet(null, STOP_IN_FLIGHT_CAP);
+                    else if (sent > 0 && lateCount.sum() * 100 > sent) stop.compareAndSet(null, STOP_GENERATOR_LAG);
                 }
                 if (stop.get() != null) {
                     offered = i;
@@ -208,7 +215,7 @@ final class CallLoad {
                     } catch (ProtocolFailure error) {
                         sample.httpStatus = 200;
                         sample.outcome = Outcome.PROTOCOL_ERROR;
-                        if (stop != null) stop.compareAndSet(null, "protocol-error");
+                        if (stop != null) stop.compareAndSet(null, STOP_PROTOCOL_ERROR);
                     } catch (java.net.http.HttpTimeoutException error) {
                         sample.outcome = Outcome.UNKNOWN;
                         sample.detail = "client-timeout";

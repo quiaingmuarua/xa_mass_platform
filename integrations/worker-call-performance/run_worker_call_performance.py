@@ -370,6 +370,13 @@ def lane_rates(value):
     return rates
 
 
+def lane_modes(value):
+    modes = tuple(part for part in value.split(","))
+    if not modes or len(set(modes)) != len(modes) or any(mode not in LANE_MODES for mode in modes):
+        raise argparse.ArgumentTypeError("lane modes must be distinct values from open,saturation")
+    return modes
+
+
 def assignment_limit(value):
     limit = int(value)
     if not 1 <= limit <= 1000:
@@ -671,17 +678,27 @@ def run_lane_harness(phase, harness_output, private, env, processes, sampler, de
 
 
 LANE_PATHS = ("task-any", "task-targeted", "direct")
+LANE_SATURATION_PATHS = ("task-any", "task-targeted")
 LANE_RATES = (500, 1000, 2000)
+LANE_MODES = ("open", "saturation")
 LANE_CASE_SECONDS = 180
 
 
-def lane_plan(rates, repetitions):
-    """Every rate runs all three paths on one host; path order rotates per repetition (ABC, BCA, CAB)."""
+def rotate(values, repetition):
+    shift = (repetition - 1) % len(values)
+    return values[shift:] + values[:shift]
+
+
+def lane_plan(rates, repetitions, modes=LANE_MODES):
+    """Open-loop cases run every path per rate on one host, then saturation cases; path order rotates per repetition."""
     plan = []
     for repetition in range(1, repetitions + 1):
-        shift = (repetition - 1) % len(LANE_PATHS)
-        order = LANE_PATHS[shift:] + LANE_PATHS[:shift]
-        plan += [(repetition, rate, path) for rate in rates for path in order]
+        if "open" in modes:
+            plan += [dict(repetition=repetition, mode="open", rate=rate, path=path, case=f"{path}-{rate}")
+                     for rate in rates for path in rotate(LANE_PATHS, repetition)]
+        if "saturation" in modes:
+            plan += [dict(repetition=repetition, mode="saturation", rate=None, path=path, case=f"sat-{path}")
+                     for path in rotate(LANE_SATURATION_PATHS, repetition)]
     return plan
 
 
@@ -703,14 +720,20 @@ def lane_window_cost(path, started, ended):
     return result
 
 
-def lane_case_record(repetition, rate, path, case, cost):
+def lane_case_record(entry, case, cost):
     metrics = case.get("metrics", {})
-    record = {"repetition": repetition, "rate": rate, "path": path, "case": f"{path}-{rate}",
+    record = {"repetition": entry["repetition"], "mode": entry["mode"], "rate": entry["rate"], "path": entry["path"],
+              "case": entry["case"],
               "status": case.get("status", "failed"), "invalidReasons": case.get("invalidReasons", []),
               "failureReason": case.get("failureReason"), "fastFail": case.get("fastFail"),
               "measurementStartedEpochMillis": case.get("measurementStartedEpochMillis"),
               "measurementEndedEpochMillis": case.get("measurementEndedEpochMillis"),
               "completedPerSecond": case.get("completedPerSecond"),
+              "admittedPerSecond": case.get("admittedPerSecond"),
+              "completedPerSecondErrorBound": case.get("completedPerSecondErrorBound"),
+              "heldLeasesAtWindowEnd": case.get("heldLeasesAtWindowEnd"),
+              "seedMillis": case.get("seedMillis"),
+              "leaseHeldPeakRatio": case.get("leaseHeldPeakRatio"),
               "successWithinWait": metrics.get("successRate"),
               "successfulCallLatencyMillis": metrics.get("successfulCallLatencyMillis"),
               "generatorLimited": metrics.get("generatorLimited"),
@@ -724,7 +747,8 @@ def lane_case_record(repetition, rate, path, case, cost):
 
 
 def lane_path_ratios(records):
-    """Task paths relative to Direct on the same host, rate and repetition; passed cases only."""
+    """Task paths relative to Direct on the same host, rate and repetition; passed open-loop cases only."""
+    records = [r for r in records if r.get("mode", "open") == "open"]
     ratios = []
     for repetition in sorted({r["repetition"] for r in records}):
         for rate in sorted({r["rate"] for r in records}):
@@ -762,7 +786,7 @@ def attribute_lane(private, evidence, records):
     return {key: result[key] for key in ("complete", "dataLoss", "dispatchEvents")}
 
 
-def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attribution=True):
+def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attribution=True, modes=LANE_MODES):
     """Start the world once, then run each case between quiesce gates (DESIGN-performance-lane.md, S1-S2)."""
     import redis
     evidence = output / "evidence"
@@ -775,7 +799,7 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
     processes = {}
     cleanup_errors = []
     records = []
-    result = {"lane": "performance", "status": "failed", "scope": scope, "rates": list(rates),
+    result = {"lane": "performance", "status": "failed", "scope": scope, "rates": list(rates), "modes": list(modes),
               "repetitions": repetitions, "attribution": attribution, "timingsMillis": {}, "cases": records}
     timings = result["timingsMillis"]
     started = time.monotonic()
@@ -818,7 +842,7 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM, "serverRecording": recording,
             "groups": list(LANE_GROUPS), "workersPerGroup": LANE_WORKERS_PER_GROUP, "project": LANE_PROJECT,
             "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT, "hostGroups": lane_host_groups(),
-            "plan": [dict(repetition=r, rate=rate, path=path) for r, rate, path in lane_plan(rates, repetitions)],
+            "plan": lane_plan(rates, repetitions, modes),
             "configurationSourceSha256": fingerprint(root), "configurationSources": configuration_sources(root),
             "sourceHead": command(["git", "rev-parse", "HEAD"], cwd=root), "redisImage": REDIS_IMAGE})
         write_json(evidence / "artifact-fingerprints.json", artifact_fingerprints(root, jar))
@@ -841,24 +865,23 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
         result["bootstrap"] = run_lane_harness("bootstrap", harness_output, private, env, processes, sampler, deadline)
         timings["bootstrapped"] = elapsed()
         world = harness_output / "bootstrap.json"
-        plan = lane_plan(rates, repetitions)
-        for index, (repetition, rate, path) in enumerate(plan):
-            case_output = harness_output / f"r{repetition}" / f"{path}-{rate}"
+        plan = lane_plan(rates, repetitions, modes)
+        for index, entry in enumerate(plan):
+            case_output = harness_output / f"r{entry['repetition']}" / entry["case"]
             try:
                 run_lane_harness("quiesce", case_output, private, env, processes, sampler, deadline, f"--world={world}")
             except RuntimeError:
                 # F6: a polluted world makes this and every later case incomparable.
-                records.extend({"repetition": r, "rate": q, "path": p, "case": f"{p}-{q}", "status": "invalid",
-                                "invalidReasons": ["quiesce-timeout"]} for r, q, p in plan[index:])
+                records.extend(dict(later, status="invalid", invalidReasons=["quiesce-timeout"]) for later in plan[index:])
                 break
             case = run_lane_harness("case", case_output, private, env, processes, sampler, deadline,
-                                    f"--case={path}-{rate}", f"--repetition={repetition}", f"--world={world}",
-                                    accepted=("passed", "invalid"))
+                                    f"--case={entry['case']}", f"--repetition={entry['repetition']}", f"--world={world}",
+                                    accepted=("passed", "invalid", "saturated"))
             cost = None
             if case.get("measurementEndedEpochMillis"):
                 cost = lane_window_cost(evidence / "process-resources.jsonl", case["measurementStartedEpochMillis"],
                                         case["measurementEndedEpochMillis"])
-            records.append(lane_case_record(repetition, rate, path, case, cost))
+            records.append(lane_case_record(entry, case, cost))
             print("lane case " + json.dumps({k: records[-1][k] for k in ("repetition", "case", "status", "invalidReasons", "failureReason")}), flush=True)
         timings["casesCompleted"] = elapsed()
         if sampler.failure or any(sampler.counts[r] < 1 for r in ("server", "host", "redis")):
@@ -905,20 +928,24 @@ def lane_markdown(result):
     lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
              f"{len(LANE_GROUPS)} Groups x {LANE_WORKERS_PER_GROUP} Workers, one Adapter, assignment ceiling "
              f"{LANE_ASSIGNMENT_BATCH_LIMIT}. Offered load splits evenly across the Groups.", "",
-             "| Rep | Case | Status | Success within 1s | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | STALE | Redis cmds / completed |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "| Rep | Case | Status | Success within 1s | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | STALE | Lease-held peak | Redis cmds / completed |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in result.get("cases", []):
         latency = r.get("successfulCallLatencyMillis") or {}
         attribution = r.get("attribution") or {}
         cost = r.get("cost") or {}
         status = r["status"] + (f" ({', '.join(r['invalidReasons'])})" if r.get("invalidReasons") else "") \
-            + (f" ({r['failureReason']})" if r.get("failureReason") else "")
+            + (f" ({r['failureReason']})" if r.get("failureReason") else "") \
+            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "")
         pct = lambda value: f"{value:.2%}" if isinstance(value, (int, float)) else "—"
         num = lambda value, fmt: format(value, fmt) if isinstance(value, (int, float)) else "—"
+        completed = num(r.get("completedPerSecond"), ".1f") + (
+            f" ± {r['completedPerSecondErrorBound']:.1f}" if r.get("completedPerSecondErrorBound") is not None else "")
         lines.append(f"| {r['repetition']} | {r['case']} | {status} | {pct(r.get('successWithinWait'))} "
-                     f"| {num(r.get('completedPerSecond'), '.1f')} | {num(latency.get('p50'), '.1f')} / {num(latency.get('p99'), '.1f')} "
+                     f"| {completed} | {num(latency.get('p50'), '.1f')} / {num(latency.get('p99'), '.1f')} "
                      f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
-                     f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
+                     f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
+                     f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
     if result.get("pathRatios"):
         lines += ["", "Task path relative to Direct on the same host (passed cases only):", "",
                   "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
@@ -931,7 +958,11 @@ def lane_markdown(result):
               for role, peak in result.get("resourcePeaks", {}).items() if not role.startswith("harness-")]
     if result.get("runnerFailure"):
         lines += ["", f"Failure: {result['runnerFailure']}"]
-    lines += ["", "Invalid means a configurable resource or the generator bound the case; its numbers are not comparable. "
+    lines += ["", "Saturation cases (sat-*) seed a deep backlog per Group and count Items completed within the window; "
+              "the ± bound is the leases still held when the window closed.", ""]
+    lines += ["Saturated means the offered rate exceeds the path capacity: responses outlasted their wait until "
+              "arrivals met the in-flight cap; admitted/s is not a completion ceiling (the saturation mode measures that). "
+              "Invalid means the generator lagged or a Group ran out of idle Workers; its numbers are not comparable. "
               "Failed means a correctness floor or fast-fail rule was violated. Performance values never fail the lane.", ""]
     return "\n".join(lines)
 
@@ -1095,6 +1126,7 @@ def main():
                         help="Instance assignment ceiling (1..1000); supply still follows Matching deficits")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     parser.add_argument("--lane-rates", type=lane_rates, help="Lane only: comma-separated subset of 500,1000,2000")
+    parser.add_argument("--lane-modes", type=lane_modes, help="Lane only: comma-separated subset of open,saturation")
     parser.add_argument("--lane-attribution", choices=("on", "off"), default="on",
                         help="Lane only: Server Dispatch Owner events for per-case attribution")
     options = parser.parse_args()
@@ -1102,8 +1134,8 @@ def main():
                                     or options.diagnostic_pair or options.assignment_batch_limit != 100):
         parser.error("The lane fixes its own configuration; baseline, case, diagnostics "
                      "and assignment ceiling options do not apply")
-    if options.suite != "lane" and (options.lane_rates or options.lane_attribution != "on"):
-        parser.error("--lane-rates and --lane-attribution apply only to --suite lane")
+    if options.suite != "lane" and (options.lane_rates or options.lane_modes or options.lane_attribution != "on"):
+        parser.error("--lane-rates, --lane-modes and --lane-attribution apply only to --suite lane")
     try:
         if options.suite != "lane":
             validate_repetitions(options.suite, options.repetitions, options.baseline_ref, options.diagnostics, options.diagnostic_pair)
@@ -1203,9 +1235,10 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
     if not options.skip_build:
         build(ROOT, harness=True)
     rates = options.lane_rates or LANE_RATES
-    plan = lane_plan(rates, options.repetitions)
+    modes = options.lane_modes or LANE_MODES
+    plan = lane_plan(rates, options.repetitions, modes)
     result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + len(plan) * LANE_CASE_SECONDS,
-                      rates, options.repetitions, options.lane_attribution == "on")
+                      rates, options.repetitions, options.lane_attribution == "on", modes)
     result.update(referenceHost=reference, os=os_release, java=java.strip(), cpuCount=os.cpu_count(),
                   machine=platform.machine(), kernel=platform.release(), redisImageId=image_id,
                   harnessCommit=command(["git", "rev-parse", "HEAD"]),

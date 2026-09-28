@@ -137,6 +137,17 @@ final class CallApi implements AutoCloseable {
         throw new CallLoad.ProtocolFailure("Unexpected Direct status or reason");
     }
 
+    /** Number of success lines in the streamed export of a terminal Task; payloads are not retained. */
+    long exportCount(String task) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(runtime + "/api/v1/tasks/" + task + "/results:export"))
+                .timeout(Duration.ofSeconds(120)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        var response = http.send(request, HttpResponse.BodyHandlers.ofLines());
+        try (var lines = response.body()) {
+            if (response.statusCode() != 200) throw new IllegalStateException("Export HTTP " + response.statusCode());
+            return lines.filter(line -> !line.isBlank()).count();
+        }
+    }
+
     Map<String, String> results(String task, List<String> ids) throws Exception {
         return results(task, ids, ExpectedResult.MD5);
     }

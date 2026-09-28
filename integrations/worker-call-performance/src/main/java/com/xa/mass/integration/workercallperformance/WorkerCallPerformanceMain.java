@@ -31,7 +31,8 @@ public final class WorkerCallPerformanceMain {
         }
         if (options.containsKey("--phase")) {
             if ("case".equals(options.get("--phase"))) {
-                LaneCase.run(options);
+                if (LaneSaturation.handles(options.get("--case"))) LaneSaturation.run(options);
+                else LaneCase.run(options);
                 return;
             }
             if (options.containsKey("--case")) throw new IllegalArgumentException("Lane world phases take no case");

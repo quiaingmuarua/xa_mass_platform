@@ -21,7 +21,7 @@ class LaneCaseTest {
     }
 
     @Test
-    void generatorLimitStopsOfferingAtTheTenSecondCheckpoint() throws Exception {
+    void inFlightCapStopsOfferingAtTheTenSecondCheckpointAsSaturation() throws Exception {
         var clock = new AtomicLong(1_000_000_000L);
         var stop = new AtomicReference<String>();
         var parked = new ArrayList<Runnable>();
@@ -29,10 +29,23 @@ class LaneCaseTest {
         var batch = CallLoad.schedule(10, 30, 1, "lane", parked::add,
                 (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.SUCCEEDED), clock::get, clock::set, stop);
 
-        assertThat(stop.get()).isEqualTo("generator-limited");
+        assertThat(stop.get()).isEqualTo(CallLoad.STOP_IN_FLIGHT_CAP);
         assertThat(batch.samples()).hasSize(100);
         assertThat(batch.windowNanos()).isEqualTo(10_000_000_000L);
-        assertThat(batch.summary()).containsEntry("generatorLimited", true);
+        assertThat(LaneCase.saturated(stop.get(), batch.summary())).isTrue();
+    }
+
+    @Test
+    void lateSendsWithoutRefusalStopAsGeneratorLag() {
+        var clock = new AtomicLong(1_000_000_000L);
+        var stop = new AtomicReference<String>();
+        // Every task starts 200ms after its planned arrival, but capacity never runs out.
+        var batch = CallLoad.schedule(10, 30, 4, "lane", task -> { clock.addAndGet(200_000_000L); task.run(); },
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.SUCCEEDED), clock::get, clock::set, stop);
+
+        assertThat(stop.get()).isEqualTo(CallLoad.STOP_GENERATOR_LAG);
+        assertThat(LaneCase.saturated(stop.get(), batch.summary())).isFalse();
+        assertThat(LaneCase.scheduleLagP99Millis(batch.summary())).isGreaterThan(100);
     }
 
     @Test
@@ -42,7 +55,7 @@ class LaneCaseTest {
         var batch = CallLoad.schedule(10, 30, 4, "lane", Runnable::run,
                 (id, index) -> { throw new CallLoad.ProtocolFailure("bad shape"); }, clock::get, clock::set, stop);
 
-        assertThat(stop.get()).isEqualTo("protocol-error");
+        assertThat(stop.get()).isEqualTo(CallLoad.STOP_PROTOCOL_ERROR);
         assertThat(batch.samples()).hasSize(1);
     }
 
@@ -73,18 +86,21 @@ class LaneCaseTest {
     }
 
     @Test
-    void workersAreSufficientOnlyWhenIdleHotStaysAtLeastTwiceTheExecutingCount() {
+    void workersAreExhaustedOnlyWhenAGroupHasNoIdleHotAndHeldLeasesAreReportedSeparately() {
         var healthy = Map.<String, Object>of("offsetMillis", 0,
                 "perf-a", Map.of("hot-score-overdue", 900L, "held-hot", 100L),
                 "perf-b", Map.of("hot-score-overdue", 700L, "held-hot", 300L));
-        var saturated = Map.<String, Object>of("offsetMillis", 5000,
-                "perf-a", Map.of("hot-score-overdue", 900L, "held-hot", 100L),
+        var backlog = Map.<String, Object>of("offsetMillis", 5000,
+                "perf-a", Map.of("hot-score-overdue", 53L, "held-hot", 946L, "recovery", 1L),
                 "perf-b", Map.of("hot-score-overdue", 500L, "held-hot", 500L));
-        var unavailable = Map.<String, Object>of("offsetMillis", 10_000, "unavailable", true);
+        var exhausted = Map.<String, Object>of("offsetMillis", 10_000,
+                "perf-a", Map.of("held-hot", 1000L), "perf-b", Map.of("hot-score-overdue", 1000L));
+        var unavailable = Map.<String, Object>of("offsetMillis", 15_000, "unavailable", true);
 
-        assertThat(LaneCase.workersSufficient(List.of(healthy, unavailable))).isTrue();
-        assertThat(LaneCase.workersSufficient(List.of(healthy, saturated))).isFalse();
-        assertThat(LaneCase.workersSufficient(List.of(unavailable))).isFalse();
+        assertThat(LaneCase.workersAvailable(List.of(healthy, backlog, unavailable))).isTrue();
+        assertThat(LaneCase.workersAvailable(List.of(healthy, exhausted))).isFalse();
+        assertThat(LaneCase.workersAvailable(List.of(unavailable))).isFalse();
+        assertThat(LaneCase.leaseHeldPeakRatio(List.of(healthy, backlog, unavailable))).isEqualTo(0.946);
     }
 
     @Test
