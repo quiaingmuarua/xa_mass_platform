@@ -7,7 +7,8 @@ record WorkerServiceabilityDispatchConfig(
         long hotEligibilityFloorMillis,
         long recheckDelayMillis,
         long hotProbeStaleAfterMillis,
-        List<String> probeExcludedEndpointManagerIds
+        List<String> probeExcludedEndpointManagerIds,
+        boolean hotProbeEnabled
 ) {
 
     public static final long DEFAULT_INTERVAL_MILLIS = 1_000;
@@ -24,7 +25,13 @@ record WorkerServiceabilityDispatchConfig(
                     "serviceability durations must be positive"
             );
         }
-        requireFloor(hotEligibilityFloorMillis);
+        if (hotProbeEnabled) {
+            requireFloor(hotEligibilityFloorMillis);
+        } else if (hotEligibilityFloorMillis != 0) {
+            throw new IllegalArgumentException(
+                    "RECOVERY-only rechecks carry no HOT eligibility floor"
+            );
+        }
         if (probeExcludedEndpointManagerIds == null
                 || probeExcludedEndpointManagerIds.size() > 100) {
             throw new IllegalArgumentException(
@@ -41,6 +48,39 @@ record WorkerServiceabilityDispatchConfig(
         }
         probeExcludedEndpointManagerIds = List.copyOf(
                 probeExcludedEndpointManagerIds
+        );
+    }
+
+    /** Full Serviceability: stale or below-floor HOT probes before RECOVERY rechecks. */
+    public WorkerServiceabilityDispatchConfig(
+            long intervalMillis,
+            long hotEligibilityFloorMillis,
+            long recheckDelayMillis,
+            long hotProbeStaleAfterMillis,
+            List<String> probeExcludedEndpointManagerIds
+    ) {
+        this(
+                intervalMillis,
+                hotEligibilityFloorMillis,
+                recheckDelayMillis,
+                hotProbeStaleAfterMillis,
+                probeExcludedEndpointManagerIds,
+                true
+        );
+    }
+
+    /**
+     * DEFAULT rechecks due RECOVERY only: no HOT probes and no Assignment scan floor,
+     * so ordinary HOT scheduling is unchanged while connected RECOVERY Workers converge.
+     */
+    public static WorkerServiceabilityDispatchConfig recoveryOnly() {
+        return new WorkerServiceabilityDispatchConfig(
+                DEFAULT_INTERVAL_MILLIS,
+                0,
+                DEFAULT_RECHECK_DELAY_MILLIS,
+                DEFAULT_HOT_PROBE_STALE_AFTER_MILLIS,
+                DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS,
+                false
         );
     }
 

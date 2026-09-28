@@ -1,7 +1,9 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import java.util.List;
@@ -19,10 +21,20 @@ class DispatchConvergenceRuntimeTest {
 
     @Test
     void keepsFiniteServiceabilityPresetValuesInsideTheDispatchPackage() {
-        assertNull(DispatchConvergenceRuntime.serviceabilityConfigForPreset(
-                PolicyPreset.DEFAULT,
-                0
-        ));
+        WorkerServiceabilityDispatchConfig recoveryOnly =
+                DispatchConvergenceRuntime.serviceabilityConfigForPreset(
+                        PolicyPreset.DEFAULT,
+                        0
+                );
+        assertFalse(recoveryOnly.hotProbeEnabled());
+        assertEquals(0, recoveryOnly.hotEligibilityFloorMillis());
+        assertEquals(1_000, recoveryOnly.intervalMillis());
+        assertEquals(15_000, recoveryOnly.recheckDelayMillis());
+        assertThrows(IllegalArgumentException.class, () ->
+                DispatchConvergenceRuntime.serviceabilityConfigForPreset(
+                        PolicyPreset.DEFAULT,
+                        1
+                ));
 
         assertServiceability(PolicyPreset.SERVICEABILITY_DEFAULT, 15_000, 60_000);
         assertServiceability(PolicyPreset.SCENARIO_LAB, 15_000, 60_000);
@@ -56,6 +68,7 @@ class DispatchConvergenceRuntimeTest {
                         preset,
                         12_300
                 );
+        assertTrue(config.hotProbeEnabled());
         assertEquals(12_300, config.hotEligibilityFloorMillis());
         assertEquals(1_000, config.intervalMillis());
         assertEquals(

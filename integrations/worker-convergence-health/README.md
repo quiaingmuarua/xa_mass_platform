@@ -150,8 +150,9 @@ Runtime Boundary pairs this oracle change with a real WebSocket Worker and the
 production DEFAULT preset: deliberately lose the first disconnect evidence,
 require a real TASK Command to reach Adapter processing and expire, then observe
 its correlated rejection and new network evidence drive RECOVERY. Reconnecting
-the Worker must complete the same Item. DEFAULT has no periodic Probe that could
-substitute for this delivery path. Bounded failure traces identify Command
+the Worker must complete the same Item. DEFAULT's RECOVERY-only rechecks never
+probe the retained HOT coordinate, so no Probe can substitute for this delivery
+path. Bounded failure traces identify Command
 handoff, evidence times, exact confirmation, evidence transitions and successful
 release, without recording payload content. This is a healthy subsequent handoff
 witness, not a guarantee under continuing evidence loss.

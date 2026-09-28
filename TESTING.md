@@ -567,7 +567,8 @@ requires post-floor evidence and is the only same-polarity refresh.
 Actual Pacer, Matching and Redis Owner composition consumes stale Pool stock,
 reconnects and refills a new generation without waiting for the 60-second recycle.
 The isolated DEFAULT Runtime witness retains its 15-second reconnect deadline
-and cannot depend on periodic Probe or a shortened recycle threshold.
+and cannot depend on a HOT Probe or a shortened recycle threshold; RECOVERY-only
+rechecks may follow, but never precede, its expiry evidence.
 Only a missed timing window may be resampled; a wrong in-window result fails.
 Worker Convergence Health retains its original outage fixture and timeout;
 these checks do not promise strict network ordering or evidence replay. After

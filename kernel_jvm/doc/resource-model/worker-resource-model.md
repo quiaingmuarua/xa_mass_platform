@@ -107,7 +107,7 @@ rules remain in Score Owner.
 Activation is best-effort. Lost evidence leaves a Worker cold until new valid
 evidence arrives. There is no activation ACK, replay or cold-member scan.
 Periodic probes and the HOT eligibility floor remain preset-controlled;
-DEFAULT installs no probes. Execution Result events and opaque lease references
+DEFAULT installs RECOVERY-only rechecks without HOT probes or a floor. Execution Result events and opaque lease references
 retain their separate responsibilities.
 
 Storage and rebuild procedure: [Worker Redis shape](../runtime-redis/worker-runtime-redis-shape.md).

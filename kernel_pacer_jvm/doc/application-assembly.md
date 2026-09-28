@@ -40,8 +40,9 @@ registry, or per-field Server override.
 
 Every preset consumes Network Evidence. Runtime samples one immutable millisecond
 activation floor and supplies it to the event Mechanism for bounded CONNECTED
-activation. Serviceability-enabled presets also use that value for refill and
-candidate recycling. DEFAULT keeps no Assignment scan floor or periodic Probe.
+activation. HOT-probing presets also use that value for refill and candidate
+recycling. DEFAULT runs RECOVERY-only Serviceability rechecks, with no Assignment
+scan floor and no HOT Probe.
 Score Owner alone aligns time. The floor is not stored in Redis or exposed by an
 API, and restart of the same Runtime loops does not resample it.
 
@@ -161,14 +162,20 @@ its complete root input. A busy Producer skips that source snapshot and retains
 no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
-If an eligible Serviceability or refill Producer receives no NORMAL Task input, it waits
-for the next source observation already triggered by another fixed Producer.
-An empty page does not consume another full Serviceability interval: otherwise
-its deadline can repeatedly coincide with Task pacing's current-slot gap. This
-wait stores no Task or Group input and neither wakes Main nor adds source reads.
-A non-empty round or source failure restores the ordinary completion/backoff
-interval. `DispatchBudgetTest` checks progress and the unchanged source-call count
-under deliberately aligned clocks.
+If an eligible refill Producer receives no NORMAL Task input, it waits for the
+next source observation already triggered by another fixed Producer. An empty
+page does not consume another full interval: otherwise its deadline can
+repeatedly coincide with Task pacing's current-slot gap. This wait stores no Task
+or Group input and neither wakes Main nor adds source reads. A non-empty round or
+source failure restores the ordinary completion/backoff interval.
+
+Serviceability does not share that due-Task source. When eligible, Main reads its
+own bounded root observation, `observeRunningTasksAscending(100)`, which includes
+INITIAL, NORMAL and idle-parked RUNNING Tasks regardless of pacing. It reuses the
+same round's NORMAL Descriptors and loads only missing ones. Empty roots or a
+root failure defer only Serviceability by its ordinary interval.
+`DispatchBudgetTest` checks both Serviceability intervals under deliberately
+paced clocks.
 
 Task Dispatch checks at most the instance assignment ceiling `B` Items per Task per round.
 `xa.mass.kernel-pacer.assignment-batch-limit` defaults to 100 and accepts 1..1000
@@ -219,7 +226,7 @@ The fixed Producers are:
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
 | ELIGIBILITY_REFILL | NORMAL Task descriptors | Group shortage observation, independent aged-candidate recycle, due-head candidateization and Matching admission; no Item read |
 | TASK_DISPATCH | NORMAL RUNNING descriptors | consume inventory, acquire execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
-| WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
+| WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from ascending RUNNING Tasks, INITIAL through idle park | offer Adapter route probes |
 
 Main shares the already-read NORMAL Task descriptors. Matching performs only
 named eligibility calls, with no Task configuration read. Candidate work is not

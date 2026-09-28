@@ -46,6 +46,13 @@ public interface TaskScoreBandCore {
 
     Map<String, Long> acquireSchedulingTasks(int limit);
 
+    /**
+     * Observes RUNNING Tasks from the fixed INITIAL slot through the private idle park,
+     * excluding PAUSE, in ascending score order. The read is independent of due time and
+     * never mutates Score; malformed rows are skipped without a replacement read.
+     */
+    Map<String, Long> observeRunningTasksAscending(int limit);
+
     Map<String, Long> filterInitialTaskScores(
             Map<String, Long> observedTaskScores
     );

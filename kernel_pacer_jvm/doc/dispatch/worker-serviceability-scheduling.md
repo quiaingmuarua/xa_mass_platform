@@ -1,6 +1,6 @@
 # Worker Serviceability Scheduling
 
-Status: active Java Kernel network-evidence policy with optional periodic probes. Result and Dispatch Pacers are
+Status: active Java Kernel network-evidence policy with preset-selected periodic probes. Result and Dispatch Pacers are
 production Java mechanisms.
 Transport evidence is stable; score thresholds and recheck timing remain
 tunable.
@@ -9,7 +9,8 @@ tunable.
 
 Worker Serviceability keeps old scheduling coordinates from remaining ordinary
 HOT candidates forever and activates cold registered members from valid network
-observations. Every preset consumes evidence; only configured presets probe. It
+observations. Every preset consumes evidence and rechecks due RECOVERY; only
+HOT-probing presets also probe old HOT coordinates. It
 consumes Adapter Route evidence and Server Polling observations; it does not mirror
 network state and does not call a Worker:
 
@@ -21,7 +22,8 @@ exact Route change or expired Worker delivery
   -> WorkerServiceabilityEvents
   -> Worker resource and score-owner primitives
 
-or pre-epoch or stale ordinary HOT / due RECOVERY score
+or due RECOVERY score (every preset)
+or pre-epoch or stale ordinary HOT score (HOT-probing presets)
   -> Adapter-scoped snapshot request
   -> platform.adapter.worker-connections.snapshot
   -> the same Network Evidence policy
@@ -37,9 +39,10 @@ Adapter delivery deadline.
 Runtime samples one immutable millisecond activation floor in every preset.
 The event Mechanism receives it for CONNECTED activation; only Score Owner aligns
 it. Reusing the Runtime keeps the value, while a new Runtime receives a new floor.
-Serviceability-enabled presets also pass it to Assignment refill and candidate
-recycling. DEFAULT has no Assignment scan floor and no periodic Probe, while
-still consuming network evidence. Direct execution gets no extra floor condition.
+HOT-probing presets also pass it to Assignment refill and candidate recycling.
+DEFAULT runs RECOVERY-only rechecks: it has no Assignment scan floor and never
+reads or probes HOT coordinates, while still consuming network evidence. Direct
+execution gets no extra floor condition.
 
 ```text
 below floor      excluded from floor-enabled refill/recycle; Probe may activate
@@ -56,7 +59,7 @@ current/future coordinates retain time and mark. The precise rule is below.
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
 
-Serviceability computes one call-local HOT Probe cutoff in milliseconds:
+A HOT-probing preset computes one call-local HOT Probe cutoff in milliseconds:
 
 ```text
 max(hotEligibilityFloorMillis, max(0, now - hotProbeStaleAfterMillis))
@@ -106,25 +109,31 @@ Refill alone therefore does not guarantee fleet-wide unavailability after an
 outage. Task-fault records these scheduling states as diagnostics and proves
 actual work recovery after reconnect. Runtime Boundary separately loses the first
 disconnect evidence and requires a real TASK delivery expiry to supply new
-evidence under DEFAULT, where no periodic probe can mask that path. Existing
+evidence under DEFAULT, whose RECOVERY-only rechecks cannot probe that retained
+HOT coordinate. Existing
 past-slot STALE checks and exact completed-HOT counterpart release still apply.
 
 ## Resource Producer
 
-`DispatchMainScheduler` receives one bounded descending score map, removes the
-INITIAL subset identified by the Task Score Owner, and loads Descriptors once
-for the NORMAL complement. It does not issue a Task Score point recheck. The
-Main Scheduler derives unique WorkerGroup IDs in first-occurrence Task order
-and supplies that complete root input to the optional Worker Serviceability
-Producer. With no surviving due Task, the Producer is not invoked and therefore
-does not read Worker state or offer Probe requests.
+Serviceability roots are independent of due Task pacing. When the Producer is
+eligible, `DispatchMainScheduler` calls the Task Score Owner's
+`observeRunningTasksAscending(100)`: RUNNING Tasks from the fixed INITIAL slot
+through the private idle park, in ascending score order, excluding PAUSE. The
+read does not depend on due time and never mutates Score. Descriptors already
+loaded for the same round's due NORMAL Tasks are reused; only the remaining
+Task IDs are loaded, once. Main derives unique WorkerGroup IDs in first-occurrence
+Task order and supplies that complete root input to the Producer.
 
-An eligible Producer that receives no NORMAL input remains ready for the next
-Task source observation already required by the other fixed Producers. Waiting
-does not create a poll, wake Main, or retain previous Group identities. This
-prevents the one-second deadline from repeatedly missing Tasks while their
-current 100ms pacing slot is outside the due range. After a non-empty round or
-source failure, the ordinary interval applies again.
+Ascending order visits INITIAL Groups, then NORMAL Groups by earliest pacing
+coordinate, then idle-parked Groups. An idle platform therefore still rechecks
+the Groups of its parked Tasks, including managed PARK Tasks. A Group reachable
+only through a Task beyond the first 100 rows, or only through PAUSE, is not
+scanned in that round; there is no cursor that rotates past it.
+
+With no RUNNING root, or when the root read or Descriptor load fails, only the
+Serviceability Producer is deferred by its ordinary one-second interval. It does
+not wait for another Producer's Task observation, and a failure does not defer
+Initialization, Refill or Dispatch.
 
 One Serviceability round receives distinct WorkerGroups from the Main Scheduler
 and visits each Group in that order. The Policy cannot discover or add Groups.
@@ -132,12 +141,13 @@ There is no process-local Group rotation cursor or per-Group scan state. Every
 round reads the current bounded range head for the supplied Groups; a Group
 outside the current Task input is not scanned.
 
-The whole batch shares a budget of 100 successfully held Probe attempts. For
-each Group, the policy first reads at most the remaining budget from
-`[MIN_BASE, hotProbeCutoff)`, where the cutoff is the later of the process floor
-and the stale-HOT threshold above. RECOVERY is read only when that Group's raw
-HOT result is empty. A non-empty HOT result suppresses RECOVERY only for that
-Group; unused budget continues to later Groups. A successful exact Score hold
+The whole batch shares a budget of 100 successfully held Probe attempts. In a
+HOT-probing preset, the policy first reads for each Group at most the remaining
+budget from `[MIN_BASE, hotProbeCutoff)`, where the cutoff is the later of the
+process floor and the stale-HOT threshold above. RECOVERY is read only when that
+Group's raw HOT result is empty. A non-empty HOT result suppresses RECOVERY only
+for that Group; unused budget continues to later Groups. RECOVERY-only mode skips
+the HOT read and reads due RECOVERY directly. A successful exact Score hold
 consumes budget even when the subsequent HASH offer returns `ALREADY_REQUESTED`
 or `CAPACITY`, because that Score change is not rolled back. Processing stops
 when the budget is exhausted or every Group has been visited.
@@ -149,15 +159,22 @@ outside that range. There is no attempt count, attempt limit or exhaustion.
 
 | Observed state | Exact transition before offer | Request |
 | --- | --- | --- |
-| eligible HOT | RECOVERY(next time=Redis now+delay) | Probe |
+| eligible HOT (HOT-probing presets) | RECOVERY(next time=Redis now+delay) | Probe |
 | due RECOVERY | RECOVERY(next time=Redis now+delay) | Probe |
 
-The Producer interval remains 1 second. recheckDelayMillis defaults to 15 seconds;
-hotProbeStaleAfterMillis independently remains 60 seconds for the HOT cutoff.
+The Producer interval remains 1 second. recheckDelayMillis defaults to 15 seconds
+in every preset except Runtime Boundary; hotProbeStaleAfterMillis independently
+remains 60 seconds for the HOT cutoff and is unused in RECOVERY-only mode.
 The Runtime Boundary preset retains separate 10ms values for both checks.
 Pacer supplies the fixed delay. Score Owner encodes floor((Redis now+delay)/100)
 inside the exact batch Lua and clears mark. Only storedSlot < redisNowSlot
 is due, so rounding down cannot permit an early check.
+
+A connected Worker whose deferred recheck is still in the future returns to HOT
+on CONNECTED evidence while keeping that coordinate, so it becomes acquirable only
+when the recheck time is due. In DEFAULT, a reconnect after a Probe can therefore
+wait up to the 15-second delay; this is the same trade-off the HOT-probing presets
+already accept, not an extra hold.
 
 **15 seconds is eligibility delay, not a promised Probe time or periodic schedule.**
 Main's Group input, Producer scheduling, HOT-first ordering and the 100-successful-
@@ -165,8 +182,9 @@ hold budget determine actual progress. A delayed round starts the next delay
 from its Redis execution time. An eligible Recovery member is not cold-parked
 because of its age or how often it has been checked.
 
-The policy reads `observeHotCandidatesBefore`, falling back to
-`observeRecoveryRecheckCandidates` only for an empty HOT result, then loads
+The policy reads `observeHotCandidatesBefore` when HOT probing is enabled,
+falling back to `observeRecoveryRecheckCandidates` only for an empty HOT result;
+RECOVERY-only mode reads only the latter. It then loads
 canonical Worker descriptors for Binding checks. It does not point-read Score
 states. The selected observation entry supplies the lane; Pacer passes the
 original opaque fences to `deferObservedToRecovery(group, observedScores, delayMillis)`
@@ -329,7 +347,8 @@ reappearing after requalification. Current/future execution fences still change 
 by exact sign, preserving Result association. A recovered past Worker returns to the
 ordinary head without a 60-second recycling wait even if a failed strict acquisition
 has already consumed its Pool entry. The DEFAULT offline-delivery proof retains its
-15-second reconnect witness and excludes periodic Probe assistance.
+15-second reconnect witness and requires that no Probe is offered before the
+delivery-expiry evidence moves its Worker to RECOVERY.
 
 The Runtime supplies one activation floor to the event Mechanism even in DEFAULT;
 the Result policy does not calculate it. Score time is not a network event version.
@@ -369,10 +388,11 @@ close a Worker Channel merely because delivery expired.
 
 ## Lifecycle And Guardrails
 
-All presets install the Network Evidence lane. DEFAULT has no HOT floor or
-periodic Serviceability Dispatch lane. Production mints the floor
-once in Java and shares it with the event Mechanism and, when enabled, Serviceability Dispatch and Assignment,
-and uses:
+All presets install the Network Evidence lane and the Serviceability Dispatch
+Producer. DEFAULT configures that Producer as RECOVERY-only, with no HOT floor
+for Serviceability or Assignment. Production mints the floor once in Java and
+shares it with the event Mechanism and, in HOT-probing presets, Serviceability
+Dispatch and Assignment, and uses:
 
 ```text
 start: Java Result Convergence
@@ -382,7 +402,7 @@ stop: Java Dispatch Convergence
    -> Java Result Convergence
 ```
 
-Serviceability Dispatch and Assignment use the same floor. Network Evidence's
+HOT-probing Serviceability Dispatch and Assignment use the same floor. Network Evidence's
 event Mechanism receives it for activation; the Result policy never calculates it.
 This assembly has no duplicate consumers or
 Probe Request producers.

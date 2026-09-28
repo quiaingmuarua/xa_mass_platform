@@ -64,7 +64,7 @@ Each valid point poll verifies Catalog Binding, then best-effort appends
 before Command consumption. Server creates the timestamp. Empty polls count;
 queue capacity or append failure drops observation without changing the poll
 result. Public Adapter ingress rejects forged SERVER observations. All presets
-consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+consume the shared evidence lane; DEFAULT adds RECOVERY-only rechecks. No Server
 dedup cache, activation ACK or replay is installed.
 
 ## Runtime Shape
@@ -942,7 +942,7 @@ Each valid point poll verifies Catalog Binding, then best-effort appends
 before Command consumption. Server creates the timestamp. Empty polls count;
 queue capacity or append failure drops observation without changing the poll
 result. Public Adapter ingress rejects forged SERVER observations. All presets
-consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+consume the shared evidence lane; DEFAULT adds RECOVERY-only rechecks. No Server
 dedup cache, activation ACK or replay is installed.
 
 ## Worker Allocation Observations
@@ -1171,7 +1171,7 @@ Each valid point poll verifies Catalog Binding, then best-effort appends
 before Command consumption. Server creates the timestamp. Empty polls count;
 queue capacity or append failure drops observation without changing the poll
 result. Public Adapter ingress rejects forged SERVER observations. All presets
-consume the shared evidence lane; DEFAULT adds no periodic probe. No Server
+consume the shared evidence lane; DEFAULT adds RECOVERY-only rechecks. No Server
 dedup cache, activation ACK or replay is installed.
 
 ## Run
@@ -1222,7 +1222,7 @@ cannot hide an unintended connection during assembly.
 `xa.mass.redis` is the single production source for the Redis URL and scope.
 `kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT
 activation floor for every Runtime assembly. DEFAULT uses it for network activation
-without enabling Assignment scan floor or periodic Probe. Server
+and runs RECOVERY-only rechecks without Assignment scan floor or HOT Probe. Server
 passes the selected preset, shutdown timeout, owner dependencies and observation sink; it
 does not interpret scheduling policy. `SERVICEABILITY_DEFAULT` provides normal
 production cadence with Serviceability enabled. Runtime Boundary uses a unique
@@ -1267,7 +1267,9 @@ changes the Worker to RECOVERY. A real reconnect then completes the same Item.
 The reconnect wait remains 15 seconds with production candidate recycling at
 60 seconds. Past polarity changes refresh the candidate generation; the real
 Pacer can replenish consumed stale stock without a Pool compensation path.
-Periodic probes cannot satisfy this witness. Failure evidence contains bounded
+DEFAULT never probes the retained HOT coordinate; the witness requires that no
+Probe is offered before expiry evidence moves the Worker to RECOVERY, so periodic
+probes cannot satisfy it. Failure evidence contains bounded
 Command/evidence timing and Score transition traces, never opaque content.
 
 The canonical proof ownership, prerequisites and CI lane selection are in

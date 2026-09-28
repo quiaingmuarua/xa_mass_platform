@@ -121,19 +121,47 @@ class DispatchBudgetTest {
         assertEquals(List.of(batchLimit, 1), observedSizes);
     }
 
-    @Test void serviceabilityUsesTheNextExistingTaskObservationAfterAnEmptyPage() {
+    @Test void serviceabilityRootsFollowTheirOwnIntervalIndependentOfDueTaskPacing() {
         var scores = mock(TaskScoreBandCore.class);
         var catalog = mock(TaskResourceCatalog.class);
         var serviceability = mock(WorkerServiceabilityDispatchPolicy.class);
-        var clock = new AtomicLong();
-        // Task pacing can hide the Group in the current 100 ms score slot.
-        // Every 1-second Serviceability deadline deliberately falls in that gap.
-        when(scores.acquireSchedulingTasks(100)).thenAnswer(call ->
-                clock.get() / 1_000_000L % 100 == 0 ? Map.of() : Map.of("task", 123L));
+        // Task pacing hides the parked Task from every due page; RUNNING roots still expose its Group.
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of());
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
         when(catalog.loadTaskAllocationDescriptors(List.of("task")))
                 .thenReturn(Map.of("task", descriptor()));
-        var config = WorkerServiceabilityDispatchConfig.defaults(100L);
+        var config = WorkerServiceabilityDispatchConfig.recoveryOnly();
+
+        runThreeSeconds(scores, catalog, serviceability, config);
+
+        verify(serviceability, times(4)).dispatchProbes(List.of("group"), config);
+        verify(scores, times(4)).observeRunningTasksAscending(100);
+    }
+
+    @Test void emptyServiceabilityRootsWaitTheOrdinaryIntervalWithoutRepolling() {
+        var scores = mock(TaskScoreBandCore.class);
+        var catalog = mock(TaskResourceCatalog.class);
+        var serviceability = mock(WorkerServiceabilityDispatchPolicy.class);
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeRunningTasksAscending(100)).thenReturn(Map.of());
+        when(catalog.loadTaskAllocationDescriptors(List.of("task")))
+                .thenReturn(Map.of("task", descriptor()));
+
+        runThreeSeconds(scores, catalog, serviceability, WorkerServiceabilityDispatchConfig.recoveryOnly());
+
+        verify(serviceability, never()).dispatchProbes(anyList(), any());
+        verify(scores, times(4)).observeRunningTasksAscending(100);
+    }
+
+    private static void runThreeSeconds(
+            TaskScoreBandCore scores,
+            TaskResourceCatalog catalog,
+            WorkerServiceabilityDispatchPolicy serviceability,
+            WorkerServiceabilityDispatchConfig config
+    ) {
+        var clock = new AtomicLong();
         var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
                 mock(TaskDispatchPolicy.class), mock(WorkerEligibilityRefillPolicy.class), serviceability, AssignmentDispatchConfig.defaults(), config);
         var executor = new ManualExecutor();
@@ -142,10 +170,8 @@ class DispatchBudgetTest {
             clock.set(TimeUnit.MILLISECONDS.toNanos(millis));
             run.step();
             while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
-            run.step(); // Apply completions; waiting for input must not create a source poll.
+            run.step(); // Apply completions before the next tick.
         }
-        verify(serviceability, times(3)).dispatchProbes(List.of("group"), config);
-        verify(scores, times(61)).acquireSchedulingTasks(100);
     }
 
     private static final class ManualExecutor extends AbstractExecutorService {

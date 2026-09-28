@@ -34,6 +34,14 @@ class RedisTaskScoreBandCoreTest {
                     IllegalArgumentException.class,
                     () -> scoreCore.acquireSchedulingTasks(101)
             );
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> scoreCore.observeRunningTasksAscending(0)
+            );
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> scoreCore.observeRunningTasksAscending(101)
+            );
         } finally {
             redisClient.shutdown();
         }

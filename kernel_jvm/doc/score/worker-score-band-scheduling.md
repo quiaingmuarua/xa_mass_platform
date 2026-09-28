@@ -150,8 +150,8 @@ cannot fence out a pending CONNECTED event before activation. The exception
 preserves both marks and uses the existing cold coordinate classification; it
 adds no initialization flag. Non-cold RECOVERY still advances and may reject an
 older CONNECTED event once its new coordinate is past. Such a Worker needs newer
-network evidence; a Group absent from Main's Task roots has no periodic Probe to
-supply it. Proofs must still establish initial HOT activation rather than infer
+network evidence; a Group absent from Main's RUNNING Task roots has no periodic
+Probe to supply it. Proofs must still establish initial HOT activation rather than infer
 it from network connection alone.
 
 ### Release And Polarity Move

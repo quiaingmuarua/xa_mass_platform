@@ -305,6 +305,36 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
+    public Map<String, Long> observeRunningTasksAscending(int limit) {
+        if (limit < 1 || limit > MAX_TASK_SCHEDULING_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "limit must be between 1 and "
+                            + MAX_TASK_SCHEDULING_BATCH_SIZE
+            );
+        }
+        List<ScoredValue<String>> rows = commands()
+                .zrangebyscoreWithScores(
+                        scoreKey(),
+                        score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MIN_SUFFIX),
+                        idleParkScore(),
+                        0,
+                        limit
+                );
+        LinkedHashMap<String, Long> taskScores = new LinkedHashMap<>();
+        for (ScoredValue<String> row : rows) {
+            try {
+                taskScores.put(
+                        row.getValue(),
+                        scoreToLong(row.getScore())
+                );
+            } catch (IllegalStateException invalidScore) {
+                // Malformed score evidence is skipped without refilling.
+            }
+        }
+        return Collections.unmodifiableMap(taskScores);
+    }
+
+    @Override
     public Map<String, Long> filterInitialTaskScores(
             Map<String, Long> observedTaskScores
     ) {

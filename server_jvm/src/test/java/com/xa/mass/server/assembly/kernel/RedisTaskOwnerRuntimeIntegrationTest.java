@@ -1215,6 +1215,75 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void runningObservationReadsInitialThroughIdleParkAscendingWithoutPause() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot + 200,
+                0
+        ), "running-future");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot - 1,
+                0
+        ), "running-due");
+        redis.zadd(scoreKey, idleParkScore(), "idle-park");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.INITIAL_TIME_SLOT,
+                TaskScoreBandCore.MAX_SUFFIX
+        ), "initial-low-priority");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.INITIAL_TIME_SLOT,
+                0
+        ), "initial-high-priority");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.PAUSE_TIME_SLOT,
+                TaskScoreBandCore.MAX_SUFFIX
+        ), "pause");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot + 100,
+                0
+        ) + 0.5D, "invalid-fractional");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.PRE_REVIEW_TAG,
+                nowSlot - 1,
+                0
+        ), "pre-review");
+        redis.zadd(scoreKey, TaskScoreBandCore.TERMINAL_SCORE_MAX, "terminal");
+        var before = redis.zrangeWithScores(scoreKey, 0, -1);
+
+        assertThat(scoreCore.observeRunningTasksAscending(100).keySet())
+                .containsExactly(
+                        "initial-high-priority",
+                        "initial-low-priority",
+                        "running-due",
+                        "running-future",
+                        "idle-park"
+                );
+        // The limit applies to raw rows; a skipped malformed row is not replaced.
+        assertThat(scoreCore.observeRunningTasksAscending(4).keySet())
+                .containsExactly(
+                        "initial-high-priority",
+                        "initial-low-priority",
+                        "running-due"
+                );
+        assertThat(redis.zrangeWithScores(scoreKey, 0, -1)).isEqualTo(before);
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> scoreCore.observeRunningTasksAscending(0)
+        );
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> scoreCore.observeRunningTasksAscending(101)
+        );
+    }
+
+    @Test
     void schedulingTaskScanFiltersInvalidScoresWithoutRefill() {
         String scoreKey = keyspace.base() + ":task:score";
         long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;

@@ -83,6 +83,14 @@ members are skipped without a compensating second read, so a page may contain
 fewer than the requested limit. With valid Owner data, due NORMAL scores appear
 newest first, followed by the fixed INITIAL slot ordered by priority suffix.
 
+`observe_running_tasks_ascending(limit)` is a separate bounded root observation
+for Worker Serviceability. It reads RUNNING scores in ascending order from the
+fixed INITIAL slot through the private idle park, independent of due time, and
+excludes PAUSE, PRE_REVIEW and terminal scores. It accepts `1..100`, never
+mutates Score and returns the same opaque ordered map. Malformed rows count
+against the limit and are skipped without a replacement read. It is not an
+Assignment source and grants no claim on the Tasks it observes.
+
 ## Owner Surface
 
 Read operations:
@@ -93,6 +101,7 @@ preview_score_states(limit)
 count_running_tasks()
 acquire_scheduling_tasks(limit)
 filter_initial_task_scores(observed_task_scores)
+observe_running_tasks_ascending(limit)
 ```
 
 Lifecycle operations:

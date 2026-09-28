@@ -87,8 +87,20 @@ class DispatchConvergenceLifecycleTest {
                     ),
                     dispatchedTasks.get()
             );
+            verify(fixture.taskScores).observeRunningTasksAscending(100);
+            // Only RUNNING roots missing from the due NORMAL projection are loaded again.
+            verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
+                    "task-initial",
+                    "task-invalid",
+                    "task-parked"
+            ));
             assertEquals(
-                    List.of("group-1", "group-2"),
+                    List.of(
+                            "group-initial",
+                            "group-1",
+                            "group-2",
+                            "group-parked"
+                    ),
                     serviceabilityGroups.get()
             );
             assertTrue(fixture.runtime.isRunning());
@@ -106,7 +118,7 @@ class DispatchConvergenceLifecycleTest {
     }
 
     @Test
-    void sourceFailureDefersEveryEligibleProducer() throws Exception {
+    void dueSourceFailureDefersEveryAssignmentProducer() throws Exception {
         Fixture fixture = fixture(
                 oneShotAssignment(),
                 enabledServiceability()
@@ -124,11 +136,81 @@ class DispatchConvergenceLifecycleTest {
         assertTrue(sourceAttempt.await(2, TimeUnit.SECONDS));
         verify(fixture.initialization, never()).initialize(any());
         verify(fixture.dispatch, never()).dispatchTasks(any());
-        verify(fixture.serviceability, never()).dispatchProbes(
-                any(), any()
-        );
+        verify(fixture.refill, never()).refill(any(), any());
         assertTrue(fixture.runtime.isRunning());
         fixture.runtime.stop(2_000);
+    }
+
+    @Test
+    void idleParkedRootsDriveServiceabilityWithoutDueTasks() throws Exception {
+        Fixture fixture = fixture(
+                oneShotAssignment(),
+                enabledServiceability()
+        );
+        when(fixture.taskScores.acquireSchedulingTasks(100)).thenReturn(
+                Map.of()
+        );
+        when(fixture.taskScores.filterInitialTaskScores(any())).thenReturn(
+                Map.of()
+        );
+        when(fixture.taskScores.observeRunningTasksAscending(100)).thenReturn(
+                Map.of("task-parked", 1L)
+        );
+        when(fixture.taskCatalog.loadTaskAllocationDescriptors(
+                List.of("task-parked")
+        )).thenReturn(Map.of(
+                "task-parked",
+                descriptor("task-parked", "group-parked")
+        ));
+        AtomicReference<List<String>> groups = new AtomicReference<>();
+        CountDownLatch probed = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            groups.set(invocation.getArgument(0));
+            probed.countDown();
+            return 0;
+        }).when(fixture.serviceability).dispatchProbes(any(), any());
+
+        fixture.runtime.start();
+        try {
+            assertTrue(probed.await(2, TimeUnit.SECONDS));
+            assertEquals(List.of("group-parked"), groups.get());
+            verify(fixture.dispatch, never()).dispatchTasks(any());
+        } finally {
+            fixture.runtime.stop(2_000);
+        }
+    }
+
+    @Test
+    void serviceabilitySourceFailureDefersOnlyServiceability() throws Exception {
+        Fixture fixture = fixture(
+                oneShotAssignment(),
+                enabledServiceability()
+        );
+        stubNormalBatch(fixture);
+        CountDownLatch rootAttempt = new CountDownLatch(1);
+        when(fixture.taskScores.observeRunningTasksAscending(100)).thenAnswer(
+                ignored -> {
+                    rootAttempt.countDown();
+                    throw new IllegalStateException("roots unavailable");
+                }
+        );
+        CountDownLatch dispatched = new CountDownLatch(1);
+        doAnswer(ignored -> {
+            dispatched.countDown();
+            return 0;
+        }).when(fixture.dispatch).dispatchTasks(any());
+
+        fixture.runtime.start();
+        try {
+            assertTrue(rootAttempt.await(2, TimeUnit.SECONDS));
+            assertTrue(dispatched.await(2, TimeUnit.SECONDS));
+            verify(fixture.serviceability, never()).dispatchProbes(
+                    any(), any()
+            );
+            assertTrue(fixture.runtime.isRunning());
+        } finally {
+            fixture.runtime.stop(2_000);
+        }
     }
 
 
@@ -285,6 +367,9 @@ class DispatchConvergenceLifecycleTest {
         when(fixture.taskScores.acquireSchedulingTasks(100)).thenReturn(
                 Map.of("task-normal", 101L)
         );
+        when(fixture.taskScores.observeRunningTasksAscending(100)).thenReturn(
+                Map.of("task-normal", 101L)
+        );
         when(fixture.taskScores.filterInitialTaskScores(any())).thenReturn(
                 Map.of()
         );
@@ -329,6 +414,15 @@ class DispatchConvergenceLifecycleTest {
         when(fixture.taskScores.filterInitialTaskScores(any())).thenReturn(
                 Map.of("task-initial", 100L)
         );
+        LinkedHashMap<String, Long> runningAscending = new LinkedHashMap<>();
+        runningAscending.put("task-initial", 100L);
+        runningAscending.put("task-invalid", 101L);
+        runningAscending.put("task-repeat-group", 102L);
+        runningAscending.put("task-second", 103L);
+        runningAscending.put("task-first", 104L);
+        runningAscending.put("task-parked", 999L);
+        when(fixture.taskScores.observeRunningTasksAscending(100))
+                .thenReturn(runningAscending);
         when(fixture.taskCatalog.loadTaskAllocationDescriptors(any()))
                 .thenReturn(Map.of(
                         "task-first",
@@ -350,6 +444,16 @@ class DispatchConvergenceLifecycleTest {
                         descriptor(
                                 "other-task",
                                 "group-3"
+                        ),
+                        "task-initial",
+                        descriptor(
+                                "task-initial",
+                                "group-initial"
+                        ),
+                        "task-parked",
+                        descriptor(
+                                "task-parked",
+                                "group-parked"
                         )
                 ));
     }

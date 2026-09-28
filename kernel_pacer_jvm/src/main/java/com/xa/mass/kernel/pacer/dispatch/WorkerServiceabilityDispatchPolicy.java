@@ -99,11 +99,14 @@ final class WorkerServiceabilityDispatchPolicy {
             if (remainingProbeBudget == 0) {
                 break;
             }
-            Map<String, Long> hot = workerScores.observeHotCandidatesBefore(
-                    workerGroupId,
-                    hotProbeCutoffMillis,
-                    remainingProbeBudget
-            );
+            // RECOVERY-only rechecks never read or probe HOT Workers.
+            Map<String, Long> hot = config.hotProbeEnabled()
+                    ? workerScores.observeHotCandidatesBefore(
+                            workerGroupId,
+                            hotProbeCutoffMillis,
+                            remainingProbeBudget
+                    )
+                    : Map.of();
             Map<String, Long> candidates = hot.isEmpty()
                     ? workerScores.observeRecoveryRecheckCandidates(
                             workerGroupId,

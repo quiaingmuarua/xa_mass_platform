@@ -373,6 +373,46 @@ class WorkerServiceabilityDispatchPolicyTest {
     }
 
     @Test
+    void recoveryOnlyModeCarriesNoFloorAndHotModeStillRequiresOne() {
+        var recoveryOnly = WorkerServiceabilityDispatchConfig.recoveryOnly();
+        assertEquals(false, recoveryOnly.hotProbeEnabled());
+        assertEquals(0, recoveryOnly.hotEligibilityFloorMillis());
+        assertEquals(15_000, recoveryOnly.recheckDelayMillis());
+        assertEquals(List.of("system-polling"), recoveryOnly.probeExcludedEndpointManagerIds());
+        assertThrows(IllegalArgumentException.class, () -> new WorkerServiceabilityDispatchConfig(
+                1_000, 10_000, 15_000, 60_000, List.of(), false));
+        assertThrows(IllegalArgumentException.class, () -> new WorkerServiceabilityDispatchConfig(
+                1_000, 0, 15_000, 60_000, List.of(), true));
+    }
+
+    @Test
+    void recoveryOnlyModeNeverReadsOrProbesHotWorkers() {
+        var scores = mock(WorkerScoreCore.class);
+        var catalog = mock(WorkerResourceCatalog.class);
+        var runtime = mock(WorkerServiceabilityRuntime.class);
+        long fence = -777L;
+        when(scores.observeRecoveryRecheckCandidates("group-1", 100))
+                .thenReturn(Map.of("worker-1", fence));
+        when(catalog.getWorkerDescriptors(List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(scores.deferObservedToRecovery("group-1", Map.of("worker-1", fence), 15_000))
+                .thenReturn(Map.of("worker-1", transitioned(-999L)));
+        when(runtime.offerProbeRequests("adapter-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", ProbeRequestOfferStatus.OFFERED));
+
+        assertEquals(1, policy(scores, catalog, runtime, 500_000).dispatchProbes(
+                List.of("group-1"),
+                WorkerServiceabilityDispatchConfig.recoveryOnly()
+        ));
+        verify(scores, never()).observeHotCandidatesBefore(
+                anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyInt()
+        );
+        verify(scores).deferObservedToRecovery("group-1", Map.of("worker-1", fence), 15_000);
+    }
+
+    @Test
     void probeSubmissionExceptionDoesNotUndoTheSuccessfulDeferral() {
         var scores = mock(WorkerScoreCore.class);
         var catalog = mock(WorkerResourceCatalog.class);

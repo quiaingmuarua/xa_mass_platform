@@ -92,7 +92,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
         registry.add("server.port", () -> PORT);
         registry.add("xa.mass.redis.url", () -> REDIS_URL);
         registry.add("xa.mass.redis.scope", SCOPE::scope);
-        // DEFAULT consumes network evidence but has no periodic probes that could mask this path.
+        // DEFAULT consumes network evidence and rechecks only RECOVERY; no HOT probe can mask this path.
         registry.add("xa.mass.kernel-pacer.preset", () -> "DEFAULT");
         registry.add("xa.mass.worker-delivery.adapter.remote-base-url", BASE::toString);
         registry.add("xa.mass.worker-endpoints.defaults.WEBSOCKET", () -> ADAPTER);
@@ -159,7 +159,8 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             assertThat(invoked).hasValue(0);
             assertThat(scores.observeDueHotScoreCandidates(GROUP, null, 100)).isEmpty();
             assertThat(scores.acquireObservedHotScoreLeases(GROUP, Map.of(workerId, candidateFence.get()), System.currentTimeMillis() + 1_000).get(workerId).status()).isEqualTo(STALE);
-            verify(serviceability, never()).offerProbeRequests(anyString(), anyList());
+            // RECOVERY-only rechecks may probe after expiry evidence, never the lost-disconnect HOT state.
+            assertThat(evidence.probesBeforeExpiry).hasValue(0);
 
             worker.start();
             await("same Item succeeds after a real reconnect", () -> {
@@ -206,6 +207,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
         final List<DeliveryCommand> delivered = new CopyOnWriteArrayList<>();
         final AtomicReference<Long> candidateFence = new AtomicReference<>();
         final AtomicReference<WorkerScoreTransitionResult> applied = new AtomicReference<>();
+        final AtomicInteger probesBeforeExpiry = new AtomicInteger();
         final List<String> trace = new CopyOnWriteArrayList<>();
 
         synchronized void record(String stage, Object value) {
@@ -244,6 +246,14 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             }
             return List.copyOf(retained);
         }).when(serviceability).consumeNetworkEvidenceResults(anyInt());
+        doAnswer(call -> {
+            List<String> workerIds = call.getArgument(1);
+            if (workerIds.contains(evidence.workerId.get())) {
+                if (applied.get() == null) evidence.probesBeforeExpiry.incrementAndGet();
+                evidence.record("PROBE_OFFER", applied.get() == null ? "before-expiry" : "after-expiry");
+            }
+            return call.callRealMethod();
+        }).when(serviceability).offerProbeRequests(anyString(), anyList());
         doAnswer(call -> {
             Map<String, DeliveryCommand> result = (Map<String, DeliveryCommand>) call.callRealMethod();
             DeliveryCommand command = result.get(evidence.workerId.get());

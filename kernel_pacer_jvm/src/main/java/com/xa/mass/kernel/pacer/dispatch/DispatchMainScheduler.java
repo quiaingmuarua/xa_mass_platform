@@ -119,6 +119,38 @@ final class DispatchMainScheduler {
         return List.copyOf(tasks);
     }
 
+    private List<String> loadServiceabilityGroups(
+            List<ObservedTask> normalTasks
+    ) {
+        Map<String, Long> runningScores = Objects.requireNonNull(
+                taskScores.observeRunningTasksAscending(TASK_BATCH_LIMIT),
+                "Task score owner returned null RUNNING scores"
+        );
+        LinkedHashMap<String, TaskDescriptor> descriptors =
+                new LinkedHashMap<>();
+        normalTasks.forEach(task -> descriptors.put(
+                task.descriptor().taskId(),
+                task.descriptor()
+        ));
+        List<String> missingTaskIds = runningScores.keySet().stream()
+                .filter(taskId -> !descriptors.containsKey(taskId))
+                .toList();
+        if (!missingTaskIds.isEmpty()) {
+            descriptors.putAll(Objects.requireNonNull(
+                    taskCatalog.loadTaskAllocationDescriptors(missingTaskIds),
+                    "Task catalog returned null descriptors"
+            ));
+        }
+        LinkedHashSet<String> groupIds = new LinkedHashSet<>();
+        for (String taskId : runningScores.keySet()) {
+            TaskDescriptor descriptor = descriptors.get(taskId);
+            if (descriptor != null && taskId.equals(descriptor.taskId())) {
+                groupIds.add(descriptor.workerGroupId());
+            }
+        }
+        return List.copyOf(groupIds);
+    }
+
     final class SchedulerRun {
 
         private final ExecutorService executor;
@@ -164,7 +196,22 @@ final class DispatchMainScheduler {
             if (eligible.isEmpty()) {
                 return;
             }
+            boolean serviceabilityEligible = eligible.remove(
+                    DispatchProducerId.WORKER_SERVICEABILITY
+            );
+            List<ObservedTask> normalTasks = dispatchDueTasks(eligible);
+            if (serviceabilityEligible) {
+                scheduleServiceability(normalTasks);
+            }
+        }
 
+        /** Returns the NORMAL Tasks it loaded, for descriptor reuse by Serviceability. */
+        private List<ObservedTask> dispatchDueTasks(
+                Set<DispatchProducerId> eligible
+        ) {
+            if (eligible.isEmpty()) {
+                return List.of();
+            }
             Map<String, Long> observedScores;
             Map<String, Long> initialScores;
             try {
@@ -181,14 +228,14 @@ final class DispatchMainScheduler {
             } catch (RuntimeException failure) {
                 deferProducers(eligible);
                 logFailure("taskSource", null, 0, failure);
-                return;
+                return List.of();
             }
             scheduleInitialization(eligible, initialScores);
 
             Set<DispatchProducerId> normalEligible = EnumSet.copyOf(eligible);
             normalEligible.remove(DispatchProducerId.TASK_INITIALIZATION);
             if (normalEligible.isEmpty()) {
-                return;
+                return List.of();
             }
 
             List<ObservedTask> normalTasks;
@@ -200,9 +247,49 @@ final class DispatchMainScheduler {
             } catch (RuntimeException failure) {
                 deferProducers(normalEligible);
                 logFailure("taskProjection", null, 0, failure);
-                return;
+                return List.of();
             }
             scheduleNormalProducers(normalEligible, normalTasks);
+            return normalTasks;
+        }
+
+        /**
+         * Serviceability roots are RUNNING Tasks in ascending Score order from the
+         * INITIAL slot through idle park, independent of due time, so an idle
+         * platform still rechecks the Groups of parked Tasks. A root failure
+         * defers only Serviceability.
+         */
+        private void scheduleServiceability(List<ObservedTask> normalTasks) {
+            List<String> workerGroupIds;
+            try {
+                workerGroupIds = loadServiceabilityGroups(normalTasks);
+            } catch (RuntimeException failure) {
+                deferProducer(Objects.requireNonNull(
+                        runtimes.get(DispatchProducerId.WORKER_SERVICEABILITY),
+                        "producer runtime"
+                ));
+                logFailure(
+                        "serviceabilitySource",
+                        DispatchProducerId.WORKER_SERVICEABILITY,
+                        0,
+                        failure
+                );
+                return;
+            }
+            startProducer(
+                    DispatchProducerId.WORKER_SERVICEABILITY,
+                    workerGroupIds.size(),
+                    () -> Objects.requireNonNull(
+                            serviceability,
+                            "serviceability"
+                    ).dispatchProbes(
+                            workerGroupIds,
+                            Objects.requireNonNull(
+                                    serviceabilityConfig,
+                                    "serviceabilityConfig"
+                            )
+                    )
+            );
         }
 
         private void scheduleInitialization(
@@ -263,22 +350,6 @@ final class DispatchMainScheduler {
                         }
                 );
             }
-            if (eligible.contains(DispatchProducerId.WORKER_SERVICEABILITY)) {
-                startProducer(
-                        DispatchProducerId.WORKER_SERVICEABILITY,
-                        workerGroupIds.size(),
-                        () -> Objects.requireNonNull(
-                                serviceability,
-                                "serviceability"
-                        ).dispatchProbes(
-                                workerGroupIds,
-                                Objects.requireNonNull(
-                                        serviceabilityConfig,
-                                        "serviceabilityConfig"
-                                )
-                        )
-                );
-            }
         }
 
         private void startProducer(
@@ -294,8 +365,7 @@ final class DispatchMainScheduler {
                 return;
             }
             if (batchSize == 0) {
-                if (producerId == DispatchProducerId.WORKER_SERVICEABILITY
-                        || producerId == DispatchProducerId.ELIGIBILITY_REFILL) {
+                if (producerId == DispatchProducerId.ELIGIBILITY_REFILL) {
                     // Keep eligibility for the next existing Task observation.
                     // Another full interval can repeatedly miss a paced Task.
                     runtime.waitingForTaskSource = true;

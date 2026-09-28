@@ -69,7 +69,9 @@ public final class DispatchConvergenceRuntime {
                         preset,
                         hotEligibilityFloorMillis
                 );
+        // Only HOT-probing presets apply the startup floor to Assignment scans.
         Long assignmentHotFloor = serviceabilityConfig == null
+                || !serviceabilityConfig.hotProbeEnabled()
                 ? null
                 : serviceabilityConfig.hotEligibilityFloorMillis();
         WorkerCandidateSelectionPolicy candidateSelection =
@@ -216,11 +218,11 @@ public final class DispatchConvergenceRuntime {
             case DEFAULT -> {
                 if (hotEligibilityFloorMillis != 0) {
                     throw new IllegalArgumentException(
-                            "disabled Serviceability must not carry a HOT "
-                                    + "floor"
+                            "RECOVERY-only Serviceability must not carry a "
+                                    + "HOT floor"
                     );
                 }
-                yield null;
+                yield WorkerServiceabilityDispatchConfig.recoveryOnly();
             }
             case SERVICEABILITY_DEFAULT, SCENARIO_LAB ->
                     WorkerServiceabilityDispatchConfig.defaults(
